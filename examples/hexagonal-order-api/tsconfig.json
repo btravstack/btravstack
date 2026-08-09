@@ -2,21 +2,7 @@
   "extends": "@btravstack/tsconfig/base.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "types": ["node"],
-    // This package is private and never emits: no build script, nothing
-    // ever runs `tsc` in emit mode against it. Left on (the base's default),
-    // `declaration: true` alone — even under `--noEmit` — makes the checker
-    // verify every exported symbol is *nameable* in a declaration file, and
-    // an exported `class X extends Port(id)<Shape> {}` fails that: `Shape`'s
-    // base type is `PortInstance<Id, Service>`, keyed on two `unique symbol`s
-    // (`ID`/`SERVICE`) that `@btravstack/di` deliberately never exports —
-    // confirmed present, still unexported, in its own built `dist/index.d.mts`
-    // (`pnpm --filter @btravstack/di build`). TS4020 ("has or is using
-    // private name 'ID'") is the result. Turned off here because nothing in
-    // this package needs it; see the top-level report for why this is worth
-    // knowing about beyond just this workaround.
-    "declaration": false,
-    "declarationMap": false
+    "types": ["node"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/**/*.test-d.ts"]
