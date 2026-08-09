@@ -35,6 +35,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # A `workflow_run` checkout defaults to the default branch's CURRENT
+          # tip, which a push landing after CI went green can have moved — the
+          # site would then build from a commit no CI run has validated,
+          # defeating the point of chaining off CI at all. `head_sha` is the
+          # exact commit the green run measured. Empty (hence `|| github.sha`)
+          # only for `workflow_dispatch`, where the dispatched ref is the
+          # intent.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup
         uses: ./.github/actions/setup
