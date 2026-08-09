@@ -7,12 +7,15 @@ strictPeerDependencies: true
 packages:
   - packages/*
   - examples/*
+  - docs
 
 catalog:
   "@btravstack/commitlint": 0.1.0
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
+  "@btravstack/theme": 1.7.0
   "@btravstack/tsconfig": 0.2.0
+  "@btravstack/typedoc": 0.1.0
   "@changesets/cli": 2.31.1
   "@commitlint/cli": 21.2.1
   "@types/node": 26.1.2
@@ -24,6 +27,8 @@ catalog:
   oxlint: 1.77.0
   tsdown: 0.22.14
   turbo: 2.10.8
+  typedoc: 0.28.20
+  typedoc-plugin-markdown: 4.12.0
   # 7.0.2 is the exact release the ported implementation (from
   # `@saas/platform-di`) was built and verified against. Kept in step with
   # that measurement rather than trailing it — see `@btravstack/entity`'s own
@@ -40,7 +45,37 @@ catalog:
   typescript-consumer: "npm:typescript@5.9.3"
   unthrown: 5.1.0
   "@vitest/coverage-v8": 4.1.10
+  vitepress: 1.6.4
   vitest: 4.1.10
+
+catalogs:
+  # TypeDoc's own toolchain, deliberately NOT the default catalog's TypeScript.
+  # `typescript: 7.0.2` above is the native port: it ships `lib/tsc.js` (a thin
+  # launcher) and no `typescript.js`, so the compiler API TypeDoc is written
+  # against does not exist there — measured in `@btravstack/entity`, whose docs
+  # this setup follows, and the reason `typedoc` runs from the `docs` workspace
+  # rather than from `packages/di`. 6.0.3 is the last release carrying the JS
+  # API, and is what `typedoc@0.28`'s peer range allows.
+  typedoc:
+    typescript: 6.0.3
+
+# Force patched versions of vulnerable transitive dependencies. Every advisory
+# below reaches us only through dev/build tooling (never the published package's
+# runtime deps, which is the one peer). Each selector is version-scoped so only
+# the affected line moves and unrelated lines are untouched.
+overrides:
+  # GHSA-fx2h-pf6j-xcff (High, `server.fs.deny` bypass on Windows alternate data
+  # streams) plus three moderates on the same line. All four are dev-server-only;
+  # the docs ship as static HTML. They reach us via docs > vitepress > vite:
+  # vitepress 1.6.x pins `vite ^5.4.14`, and the 5.x line has no patched release,
+  # so lift any pre-6.4.3 vite to 6.4.3 (the first fixed version). Same override,
+  # same rationale and verification, as `@btravstack/entity`'s.
+  "vite@<6.4.3": "6.4.3"
+
+peerDependencyRules:
+  ignoreMissing:
+    # Optional analytics peer of VitePress's bundled Algolia DocSearch.
+    - search-insights
 
 allowBuilds:
   esbuild: true
