@@ -1,0 +1,15 @@
+/* di accent — blue, the family's slot for this package (the logo's syringe
+ * barrel is drawn in it). Blue is plumbing: the connections behind the wall
+ * that everything visible runs on, which is what a wiring container is. The
+ * hex is the logo's own deep blue, so chrome and artwork stay one color.
+ * @btravstack/theme derives the accent shades from this token. */
+:root {
+  --accent: #2a62b8;
+}
+
+/* Hero name in the package accent — the BtravStack multi-accent rule: the
+ * canvas stays neutral, the product glows in its own color (AA via
+ * --text-accent, which darkens on light). */
+:root:root {
+  --vp-home-hero-name-color: var(--text-accent);
+}

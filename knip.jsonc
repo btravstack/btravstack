@@ -28,11 +28,17 @@
   // precedent to copy.
   "ignore": ["**/*.test-d.ts", "**/type-assert.ts"],
 
-  // Two config packages knip cannot trace: `@btravstack/oxlint` from
-  // `.oxlintrc.json`'s `extends`, and `@btravstack/lefthook` from
-  // `lefthook.yml`'s `extends`. Knip resolves neither of these config
-  // formats, so it reads both as unused devDependencies.
-  "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"],
+  // Four config packages knip cannot trace, each verified referenced:
+  // `@btravstack/oxlint` from `.oxlintrc.json`'s `extends`, `@btravstack/lefthook`
+  // from `lefthook.yml`'s `extends`, and `@btravstack/typedoc` plus
+  // `typedoc-plugin-markdown` from `docs/typedoc.json`. Knip resolves none of
+  // these config formats, so it reads all four as unused devDependencies.
+  "ignoreDependencies": [
+    "@btravstack/lefthook",
+    "@btravstack/oxlint",
+    "@btravstack/typedoc",
+    "typedoc-plugin-markdown",
+  ],
 
   "workspaces": {
     "examples/hexagonal-order-api": {
