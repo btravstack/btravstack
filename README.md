@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/public/logo.svg" alt="di" width="100" height="130" />
+
 # di
 
 **A module-based dependency-injection container for [TypeScript](https://www.typescriptlang.org/) — ports as the vocabulary your application defines, providers bound at one edge, and `Result` instead of throws.**
