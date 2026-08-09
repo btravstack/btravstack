@@ -1,12 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
 
-  // `PortClass` and `ManyPortClass` are exported from `port.ts` and consumed
-  // inside it — as `PortDeclaration`'s and `Port.many`'s own return-type
-  // annotations — and nowhere else (neither re-exported from `index.ts` nor
-  // imported by another module). This setting says "used inside its own file
-  // still counts", which is the truth here and what the sibling repos
-  // configure (see `@btravstack/entity`'s identical setting and rationale).
+  // "Used inside its own file still counts." This was introduced for
+  // `PortClass`/`ManyPortClass`, which were exported from `port.ts`, consumed
+  // inside it as `PortDeclaration`'s and `Port.many`'s own return-type
+  // annotations, and read by nothing else. `index.ts` now re-exports both — the
+  // declaration-emit fix — so nothing in this repo currently depends on the
+  // setting (measured: knip reports the same with it off). Kept because it is
+  // what the sibling repos configure and the next port-internal type alias will
+  // want it again, not because something is relying on it today.
   "ignoreExportsUsedInFile": true,
 
   // Type-level behaviour lives in `*.test-d.ts`, checked by its own tsc pass and
@@ -30,5 +32,22 @@
   // `.oxlintrc.json`'s `extends`, and `@btravstack/lefthook` from
   // `lefthook.yml`'s `extends`. Knip resolves neither of these config
   // formats, so it reads both as unused devDependencies.
+  // Two config packages knip cannot trace: `@btravstack/oxlint` from
+  // `.oxlintrc.json`'s `extends`, and `@btravstack/lefthook` from
+  // `lefthook.yml`'s `extends`. Knip resolves neither of these config
+  // formats, so it reads both as unused devDependencies.
   "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"],
+
+  "workspaces": {
+    "examples/hexagonal-order-api": {
+      // `emit-guards.ts` is deliberately imported by nothing. It exists to be
+      // COMPILED: it is the declaration-emit fixture that keeps TS4020 from
+      // coming back, and its assertions are `@ts-expect-error` directives with
+      // no runtime moment. Naming it an entry is what stops knip reporting the
+      // guard as dead code and someone helpfully deleting it. `src/index.ts` is
+      // not listed: it is already the package entry.
+      "entry": ["src/emit-guards.ts"],
+      "project": ["src/**/*.ts"],
+    },
+  },
 }

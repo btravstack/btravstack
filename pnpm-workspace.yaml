@@ -29,6 +29,15 @@ catalog:
   # that measurement rather than trailing it — see `@btravstack/entity`'s own
   # catalog comment for the same pin, which this repo follows.
   typescript: 7.0.2
+  # The TypeScript a *consumer* is realistically on, for the second
+  # declaration-emit pass in `examples/hexagonal-order-api`
+  # (`tsconfig.emit.json`, compiled once by each version). 7.0.2 is the native
+  # port and the one this repo builds with; a published package has to be
+  # readable by the stable line too, and the two emitters do not agree on
+  # everything. Aliased because one `package.json` cannot name `typescript`
+  # twice — the same arrangement, and the same alias, as
+  # `@btravstack/entity`'s `examples/billing-domain`.
+  typescript-consumer: "npm:typescript@5.9.3"
   unthrown: 5.1.0
   "@vitest/coverage-v8": 4.1.10
   vitest: 4.1.10

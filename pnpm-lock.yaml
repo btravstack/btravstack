@@ -57,6 +57,9 @@ catalogs:
     typescript:
       specifier: 7.0.2
       version: 7.0.2
+    typescript-consumer:
+      specifier: npm:typescript@5.9.3
+      version: 5.9.3
     unthrown:
       specifier: 5.1.0
       version: 5.1.0
@@ -123,6 +126,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      typescript-consumer:
+        specifier: 'catalog:'
+        version: typescript@5.9.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(yaml@2.9.0)
@@ -2244,6 +2250,11 @@ packages:
     resolution: {integrity: sha512-9+8YX5QOkGXzZxcIykTHgaooRHGMWO+jfdyRK0o+rN0U7hBIig2MrJ8r/aNzIPDPhdA73SGb0O+tIztaModTMg==}
     hasBin: true
 
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   typescript@7.0.2:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
     engines: {node: '>=16.20.0'}
@@ -4080,6 +4091,8 @@ snapshots:
       '@turbo/linux-arm64': 2.10.8
       '@turbo/windows-64': 2.10.8
       '@turbo/windows-arm64': 2.10.8
+
+  typescript@5.9.3: {}
 
   typescript@7.0.2:
     optionalDependencies:
