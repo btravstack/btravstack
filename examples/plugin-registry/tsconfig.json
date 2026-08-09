@@ -1,0 +1,14 @@
+{
+  "extends": "@btravstack/tsconfig/base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "types": ["node"],
+    // This package is private and never emits declarations — see the
+    // identical, longer comment in the hexagonal-order-api example's
+    // tsconfig.json for why leaving `declaration: true` on trips TS4020 the
+    // moment a `Port`-derived class is exported.
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src/**/*"]
+}
