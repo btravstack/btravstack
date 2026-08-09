@@ -216,7 +216,7 @@ const descriptor = (
       // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- see the field comment on `Provider.construct`
     ) => Result<unknown, unknown> | AsyncResult<unknown, unknown>;
     // Lifting through an Ok keeps a sync Result and an AsyncResult on one path,
-    // with no runtime type-sniffing — the same trick demesne uses in Layer.make.
+    // with no runtime type-sniffing — the same trick demesne (this library's retired predecessor) used in Layer.make.
     return Ok()
       .toAsync()
       .flatMap(() => f(...services));

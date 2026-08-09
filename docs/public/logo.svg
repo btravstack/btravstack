@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="24 10 112 146" width="112" height="146" fill="none">
   <!-- dependency injection: the beet IS the plug — its taproot the prong,
        the port a socket. Blue is di's accent in the btravstack family
-       (unthrown teal #3FB0A5, demesne purple #B45CE0, entity mauve #33262C). -->
+       (unthrown teal #3FB0A5, entity mauve #33262C). -->
   <!-- socket plate -->
   <rect x="30" y="118" width="100" height="34" rx="10" fill="#3E7FD4"/>
   <rect x="37" y="125" width="86" height="20" rx="6" stroke="#A9CBF5" stroke-width="2.5" fill="none" opacity="0.55"/>
