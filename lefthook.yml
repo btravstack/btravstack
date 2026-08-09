@@ -1,0 +1,11 @@
+extends:
+  - node_modules/@btravstack/lefthook/lefthook.yml
+
+pre-commit:
+  commands:
+    format:
+      exclude:
+        - "pnpm-lock.yaml"
+    lint:
+      exclude:
+        - "*.test-d.ts"
