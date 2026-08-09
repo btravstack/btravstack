@@ -207,13 +207,27 @@ pnpm add @btravstack/di unthrown
 ## Public surface
 
 ```ts
-export { Port, Scope } from "./port.js";
-export type { AnyPort, ServiceOf } from "./port.js";
+export { Port } from "./port.js";
+export type {
+  AnyPort,
+  ManyPortClass,
+  PortClass,
+  Scope,
+  ServiceOf,
+} from "./port.js";
 export { Context } from "./context.js";
 export { Provider } from "./provider.js";
 export { Module } from "./module.js";
 export type { ScopedOptions } from "./build.js";
 ```
+
+`Scope` is a **type** only. Every legitimate use of it is a type position, and
+the class value is what would let you write `Provider(Scope)(…)` or widen it to
+`AnyPort` — the two ways past the guard. `PortClass` and `ManyPortClass` are
+exported so that a consumer compiling with `declaration: true` can export a port
+of its own; without them the emitter reaches the module-private brand symbols
+and fails with TS4020. The symbols stay unexported, so port instances remain
+unforgeable.
 
 Everything else — `unsafeAdd`, `flatten`, `plan`, `run`, `runScoped`, `createScope`,
 `constructLevel`, `WiringDefect`, and the handful of type-level helpers
