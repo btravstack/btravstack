@@ -1,0 +1,34 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+
+  // `PortClass` and `ManyPortClass` are exported from `port.ts` and consumed
+  // inside it — as `PortDeclaration`'s and `Port.many`'s own return-type
+  // annotations — and nowhere else (neither re-exported from `index.ts` nor
+  // imported by another module). This setting says "used inside its own file
+  // still counts", which is the truth here and what the sibling repos
+  // configure (see `@btravstack/entity`'s identical setting and rationale).
+  "ignoreExportsUsedInFile": true,
+
+  // Type-level behaviour lives in `*.test-d.ts`, checked by its own tsc pass and
+  // deliberately kept out of the main one, out of oxlint (`.oxlintrc.json`'s
+  // `ignorePatterns`) and out of knip. Nothing imports them — that is the design
+  // — so knip reads them as dead files. Spelled out here because introducing
+  // this config file at all replaced the defaults that had been excluding them.
+  //
+  // `src/type-assert.ts` rides along in the same ignore list, not just the
+  // glob: its only export, `Equal`, exists purely for `*.test-d.ts` files to
+  // import, and those files are the ones just excluded above. With them gone
+  // from knip's project, nothing left in scope imports `Equal`, so without
+  // this it would be reported dead even though it is exactly as load-bearing
+  // as the assertions that use it — `@btravstack/entity` has no equivalent
+  // (its type-level tests use vitest's own `expectTypeOf`/`assertType`
+  // instead of a shared custom helper), so this entry has no sibling-repo
+  // precedent to copy.
+  "ignore": ["**/*.test-d.ts", "**/type-assert.ts"],
+
+  // Two config packages knip cannot trace: `@btravstack/oxlint` from
+  // `.oxlintrc.json`'s `extends`, and `@btravstack/lefthook` from
+  // `lefthook.yml`'s `extends`. Knip resolves neither of these config
+  // formats, so it reads both as unused devDependencies.
+  "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"],
+}
