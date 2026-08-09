@@ -32,10 +32,6 @@
   // `.oxlintrc.json`'s `extends`, and `@btravstack/lefthook` from
   // `lefthook.yml`'s `extends`. Knip resolves neither of these config
   // formats, so it reads both as unused devDependencies.
-  // Two config packages knip cannot trace: `@btravstack/oxlint` from
-  // `.oxlintrc.json`'s `extends`, and `@btravstack/lefthook` from
-  // `lefthook.yml`'s `extends`. Knip resolves neither of these config
-  // formats, so it reads both as unused devDependencies.
   "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"],
 
   "workspaces": {
