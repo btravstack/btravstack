@@ -10,7 +10,7 @@ pnpm workspace + turbo monorepo: `packages/di` is the single published package; 
 
 ## Commands
 
-Node `>=22.19` (pinned in `.node-version`), pnpm `11.7.0` (via `corepack enable`). `pnpm install` at the root.
+Node `>=22.19` (root `engines` floor; `.node-version` pins the exact dev version), pnpm `11.7.0` (via `corepack enable`). `pnpm install` at the root. The published package separately claims `>=20` — see CONTRIBUTING.md for what each of the three numbers means.
 
 The gate — every change must keep all of these green (CI runs the same set):
 
