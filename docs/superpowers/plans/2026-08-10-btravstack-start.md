@@ -1224,7 +1224,9 @@ export const testRuntime = (name = "test"): TestRuntime => {
       if (serving === undefined) {
         // A test-only fixture: reaching here means the test forgot to start
         // the runtime, which is a bug in the test, not a modeled outcome.
-        // oxlint-disable-next-line unthrown/no-throw
+        // (No `oxlint-disable` needed — `unthrown/no-throw` is opt-in and this
+        // repo does not enable it; an unused disable directive is itself a
+        // lint warning.)
         throw new Error("[test-runtime] not started");
       }
       return serving;
@@ -1233,7 +1235,6 @@ export const testRuntime = (name = "test"): TestRuntime => {
       if (run === undefined || !accepting) {
         // Same rationale as above: a test asserting post-drain behaviour wants
         // this to be loud, not routed.
-        // oxlint-disable-next-line unthrown/no-throw
         throw new Error("[test-runtime] not accepting work");
       }
 
@@ -1353,7 +1354,7 @@ describe("start", () => {
 
   it("reports a construction failure without wrapping the module's own error", async () => {
     const Failing = Module("Failing")({
-      provides: [Provider(Greeting)({ factory: () => Err("no-config" as const).toAsync() })],
+      provides: [Provider(Greeting)({ make: () => Err("no-config" as const).toAsync() })],
       exports: [Greeting],
     });
 
