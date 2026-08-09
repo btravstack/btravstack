@@ -215,17 +215,38 @@ export default defineConfig({
           "typescript, dependency injection, di, ioc, inversion of control, hexagonal architecture, ports and adapters, modules, container, errors as values, result, unthrown",
       },
     ],
-    // Open Graph — og:title/description/url are added per page in transformPageData.
-    // No og:image yet: the 1280x640 social card on the family template does not
-    // exist for this package, and an SVG logo is not a valid og:image (X, Slack,
-    // LinkedIn and Discord all refuse to render one — measured on the sibling
-    // sites). Add the card and its four meta tags together when it is drawn.
+    // Open Graph — og:title/description/url are added per page in transformPageData
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:site_name", content: "di" }],
     ["meta", { property: "og:locale", content: "en_US" }],
-    // Twitter Card — plain `summary` until the wide card image exists;
-    // `summary_large_image` with no image renders nothing at all.
-    ["meta", { name: "twitter:card", content: "summary" }],
+    // The 1280x640 social card, on the same template as the other btravstack
+    // packages. SVG is not a valid og:image: X, Slack, LinkedIn and Discord all
+    // refuse to render one, which is why this is a rendered PNG rather than the
+    // logo itself.
+    ["meta", { property: "og:image", content: `${SITE_URL}og-di.png` }],
+    ["meta", { property: "og:image:type", content: "image/png" }],
+    // The card's true, measured size.
+    ["meta", { property: "og:image:width", content: "1280" }],
+    ["meta", { property: "og:image:height", content: "640" }],
+    [
+      "meta",
+      {
+        property: "og:image:alt",
+        content: "di — a module-based dependency-injection container for TypeScript",
+      },
+    ],
+    // Twitter Card
+    // summary_large_image is the wide banner; plain `summary` crops to a square
+    // thumbnail beside the title and wastes the card.
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
+    ["meta", { name: "twitter:image", content: `${SITE_URL}og-di.png` }],
+    [
+      "meta",
+      {
+        name: "twitter:image:alt",
+        content: "di — a module-based dependency-injection container for TypeScript",
+      },
+    ],
     // JSON-LD structured data for better SEO
     [
       "script",
