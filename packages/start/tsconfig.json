@@ -4,7 +4,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "declarationMap": false,
-    "types": ["node", "@unthrown/vitest"]
+    "types": ["node"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/**/*.test-d.ts"]

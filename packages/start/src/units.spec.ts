@@ -83,19 +83,28 @@ describe("createUnitRegistry", () => {
 
   it("aborts every open unit on abortAll", async () => {
     const registry = createUnitRegistry();
-    let aborted = false;
+    let abortedA = false;
+    let abortedB = false;
 
-    const running = registry.run(meta, async (signal) => {
+    const runA = registry.run({ kind: "test", id: "a" }, async (signal) => {
       signal.addEventListener("abort", () => {
-        aborted = true;
+        abortedA = true;
+      });
+      await Promise.resolve();
+      return Ok("done");
+    });
+    const runB = registry.run({ kind: "test", id: "b" }, async (signal) => {
+      signal.addEventListener("abort", () => {
+        abortedB = true;
       });
       await Promise.resolve();
       return Ok("done");
     });
 
     registry.abortAll();
-    await running;
-    expect(aborted).toBe(true);
+    await Promise.all([runA, runB]);
+    expect(abortedA).toBe(true);
+    expect(abortedB).toBe(true);
   });
 
   it("awaitIdle resolves immediately when nothing is in flight", async () => {
@@ -105,12 +114,20 @@ describe("createUnitRegistry", () => {
 
   it("awaitIdle resolves once the last unit settles", async () => {
     const registry = createUnitRegistry();
-    let release = (): void => {};
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
+    let releaseA = (): void => {};
+    let releaseB = (): void => {};
+    const heldA = new Promise<void>((resolve) => {
+      releaseA = resolve;
     });
-    const running = registry.run(meta, async () => {
-      await held;
+    const heldB = new Promise<void>((resolve) => {
+      releaseB = resolve;
+    });
+    const runA = registry.run({ kind: "test", id: "a" }, async () => {
+      await heldA;
+      return Ok("done");
+    });
+    const runB = registry.run({ kind: "test", id: "b" }, async () => {
+      await heldB;
       return Ok("done");
     });
 
@@ -120,8 +137,13 @@ describe("createUnitRegistry", () => {
     });
 
     expect(idle).toBe(false);
-    release();
-    await running;
+    releaseA();
+    await runA;
+    await Promise.resolve();
+    expect(idle).toBe(false);
+
+    releaseB();
+    await runB;
     await Promise.resolve();
     expect(idle).toBe(true);
   });

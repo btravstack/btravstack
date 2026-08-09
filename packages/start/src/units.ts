@@ -68,6 +68,8 @@ export const createUnitRegistry = (): UnitRegistry => {
     },
     inFlight: () => open.size,
     abortAll: () => {
+      // `open` is iterated live: a unit started synchronously from an abort
+      // listener is visited and aborted by this same pass too.
       for (const controller of open) controller.abort();
     },
     awaitIdle: () =>
