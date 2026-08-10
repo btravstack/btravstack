@@ -6,6 +6,7 @@ strictPeerDependencies: true
 
 packages:
   - packages/*
+  - examples/*
 
 catalog:
   "@btravstack/commitlint": 0.1.0
