@@ -1,4 +1,25 @@
-import { describe, expect, it } from "vitest";
+import type { Server } from "node:http";
+
+import { describe, expect, it, vi } from "vitest";
+
+// Capture the real `http.Server` instances `startProbeServer` creates, so the
+// "listener is removed after a successful bind" test can assert on the server
+// itself. This is the observable most directly tied to the fix (a stale
+// `once("error", ...)` listener swallowing a post-bind failure) without
+// exposing the raw server through the shipped `ProbeServer` type just for a
+// test. `vi.mock` is hoisted above the imports below by vitest's transform.
+const createdServers: Server[] = [];
+vi.mock("node:http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:http")>();
+  return {
+    ...actual,
+    createServer: (...args: Parameters<typeof actual.createServer>) => {
+      const server = actual.createServer(...args);
+      createdServers.push(server);
+      return server;
+    },
+  };
+});
 
 import { startProbeServer } from "./probes.js";
 
@@ -47,5 +68,17 @@ describe("startProbeServer", () => {
       expect.objectContaining({ runtime: "probes" }),
     );
     await first.close();
+  });
+
+  it("removes the bind-failure error listener once the bind succeeds", async () => {
+    const before = createdServers.length;
+    const started = await startProbeServer({ port: 0, live: () => true, ready: () => true });
+    const server = started.getOrThrow();
+
+    const created = createdServers[createdServers.length - 1];
+    expect(createdServers.length).toBe(before + 1);
+    expect(created?.listenerCount("error")).toBe(0);
+
+    await server.close();
   });
 });

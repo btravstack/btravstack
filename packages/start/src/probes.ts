@@ -33,11 +33,15 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
         response.writeHead(404).end();
       });
 
-      server.once("error", (cause) => {
+      const onBindError = (cause: Error): void => {
         resolve(Err(new RuntimeStartFailed({ runtime: "probes", cause })));
-      });
+      };
+
+      server.once("error", onBindError);
 
       server.listen(args.port, "127.0.0.1", () => {
+        server.removeListener("error", onBindError);
+
         const address = server.address();
         const port = typeof address === "object" && address !== null ? address.port : args.port;
         resolve(
