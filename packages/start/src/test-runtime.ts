@@ -1,5 +1,6 @@
 import { Ok, type AsyncResult, type Result } from "unthrown";
 
+import { createDeferred } from "./deferred.js";
 import type { DrainReport } from "./drain-report.js";
 import type { Runtime, RuntimeHost, Serving } from "./runtime.js";
 import type { RunUnit } from "./runtime.js";
@@ -12,6 +13,8 @@ export type SubmittedUnit<T, E> = {
 
 export type TestRuntime = Runtime<never> & {
   readonly started: () => boolean;
+  /** Resolves the first time the kernel calls `start` — `start` itself stays pending until shutdown. */
+  readonly untilStarted: () => Promise<void>;
   readonly serving: () => Serving;
   readonly submit: <T = string, E = never>() => SubmittedUnit<T, E>;
 };
@@ -22,6 +25,7 @@ export const testRuntime = (name = "test"): TestRuntime => {
   let serving: Serving | undefined;
   let submitted = 0;
   let completed = 0;
+  const started = createDeferred<void>();
 
   const make = (): Serving => ({
     drain: (signal) => {
@@ -47,9 +51,11 @@ export const testRuntime = (name = "test"): TestRuntime => {
       run = host.run;
       accepting = true;
       serving = make();
+      started.resolve(undefined);
       return Ok(serving).toAsync();
     },
     started: () => serving !== undefined,
+    untilStarted: () => started.promise,
     serving: () => {
       if (serving === undefined) {
         // A test-only fixture: reaching here means the test forgot to start
