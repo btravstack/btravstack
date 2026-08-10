@@ -8,6 +8,7 @@ import { drainApp } from "./drain.js";
 import { safeSink, stderrSink, type EventSink } from "./events.js";
 import { createPhaseTracker, type Phase } from "./phase.js";
 import type { RunUnit, Runtime, RuntimeStartFailed, Serving } from "./runtime.js";
+import { installSignalHandlers } from "./signals.js";
 import { createUnitRegistry } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
@@ -71,9 +72,16 @@ export const start = <X, E, Needs extends AnyPort>(
   const startedAt = clock.now();
   const preDrainDelayMs = options.preDrainDelayMs ?? 5_000;
   const drainTimeoutMs = options.drainTimeoutMs ?? 20_000;
-  // Nothing aborts this yet — Task 9's second-signal fast path will, to cut a
-  // slow drain short.
+  // The second signal aborts this, cutting short whichever `drainApp` sleep
+  // (pre-drain delay or drain timeout) is currently pending.
   const skipDrain = new AbortController();
+  const disposeSignals =
+    options.signals === false
+      ? () => {}
+      : installSignalHandlers({
+          onFirst: () => shutdown.resolve("signal"),
+          onSecond: () => skipDrain.abort(),
+        });
 
   emit({ type: "building" });
 
@@ -107,6 +115,7 @@ export const start = <X, E, Needs extends AnyPort>(
       tracker.advanceTo("stopping");
 
       return serving.stop().map(() => {
+        disposeSignals();
         tracker.advanceTo("exited");
         return {
           reason,
@@ -168,6 +177,7 @@ export const start = <X, E, Needs extends AnyPort>(
     // application that has already exited.
   ).tapFailure(() => {
     tracker.advanceTo("stopping");
+    disposeSignals();
     tracker.advanceTo("exited");
   });
 

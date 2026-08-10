@@ -138,4 +138,32 @@ describe("start", () => {
       }),
     );
   });
+
+  it("drains on SIGTERM and skips the drain on a second signal", async () => {
+    const listenerCount = (): number =>
+      process.listenerCount("SIGTERM") + process.listenerCount("SIGINT");
+    const before = listenerCount();
+
+    const runtime = testRuntime();
+    const app = start(AppModule, {
+      runtime,
+      probes: false,
+      preDrainDelayMs: 60_000,
+      drainTimeoutMs: 60_000,
+    });
+    await runtime.untilStarted();
+    expect(listenerCount()).toBe(before + 2);
+
+    process.emit("SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(app.phase()).toBe("draining");
+
+    process.emit("SIGTERM");
+
+    const report = await app.exited;
+    expect(report).toBeOkWith(expect.objectContaining({ reason: "signal" }));
+    // Load-bearing: a leaked listener from this app would fire into (and
+    // throw off) every subsequent test in this file that emits a signal.
+    expect(listenerCount()).toBe(before);
+  });
 });
