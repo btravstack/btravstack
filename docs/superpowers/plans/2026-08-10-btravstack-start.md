@@ -1,5 +1,14 @@
 # `@btravstack/start` Implementation Plan
 
+> **Status: executed (2026-08-10).** All thirteen tasks landed. This document is
+> the plan as written and is kept as the historical record — it is **not** the
+> current reference. Its "Deviations from the spec" section below lists the
+> **two** deviations known at planning time; the shipped package accumulated ten.
+> The full list is in the design document's
+> [Changes during implementation](../specs/2026-08-09-btravstack-start-design.md#changes-during-implementation),
+> and the current reference is [`CLAUDE.md`](../../../CLAUDE.md) at the
+> repository root.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `@btravstack/start`, the application kernel that boots a `@btravstack/di` module into a running process with one runtime, and stops it again without losing in-flight work.
@@ -31,11 +40,13 @@ Two, both deliberate, both to be reflected back into the spec when this plan is 
 ### Task 1: Scaffold the workspace
 
 **Files:**
+
 - Create: `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `.oxlintrc.json`, `.oxfmtrc.json`, `knip.json`, `lefthook.yml`, `commitlint.config.js`, `.gitignore`, `.node-version`, `.changeset/config.json`
 - Create: `packages/start/package.json`, `packages/start/tsconfig.json`, `packages/start/tsconfig.test-d.json`, `packages/start/vitest.config.ts`, `packages/start/src/index.ts`
 - Test: `packages/start/src/index.spec.ts`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces: a working `pnpm test` / `pnpm build` / `pnpm lint` gate, and the package name `@btravstack/start` with subpath export `./testing`.
 
@@ -209,7 +220,7 @@ export default { extends: ["@btravstack/commitlint"] };
 24.16.0
 ```
 
-`.gitignore` — note the deliberate omission of a `docs/superpowers/` entry, which the sibling repos ignore. This repo is built *from* a committed spec, so its design documents are tracked:
+`.gitignore` — note the deliberate omission of a `docs/superpowers/` entry, which the sibling repos ignore. This repo is built _from_ a committed spec, so its design documents are tracked:
 
 ```
 node_modules/
@@ -277,12 +288,24 @@ coverage/
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "import": { "types": "./dist/index.d.mts", "default": "./dist/index.mjs" },
-      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./testing": {
-      "import": { "types": "./dist/testing.d.mts", "default": "./dist/testing.mjs" },
-      "require": { "types": "./dist/testing.d.cts", "default": "./dist/testing.cjs" }
+      "import": {
+        "types": "./dist/testing.d.mts",
+        "default": "./dist/testing.mjs"
+      },
+      "require": {
+        "types": "./dist/testing.d.cts",
+        "default": "./dist/testing.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
@@ -406,10 +429,12 @@ git commit -m "chore: scaffold the workspace"
 ### Task 2: Phase tracker and kernel events
 
 **Files:**
+
 - Create: `packages/start/src/phase.ts`, `packages/start/src/events.ts`
 - Test: `packages/start/src/phase.spec.ts`, `packages/start/src/events.spec.ts`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces:
   - `type Phase = "building" | "starting" | "serving" | "draining" | "stopping" | "exited"`
@@ -467,7 +492,8 @@ Expected: FAIL — `Failed to resolve import "./phase.js"`.
 - [ ] **Step 3: Implement `phase.ts`**
 
 ```ts
-export type Phase = "building" | "starting" | "serving" | "draining" | "stopping" | "exited";
+export type Phase =
+  "building" | "starting" | "serving" | "draining" | "stopping" | "exited";
 
 const ORDER: readonly Phase[] = [
   "building",
@@ -485,7 +511,9 @@ export type PhaseTracker = {
   readonly advanceTo: (phase: Phase) => boolean;
 };
 
-export const createPhaseTracker = (onChange: (phase: Phase) => void): PhaseTracker => {
+export const createPhaseTracker = (
+  onChange: (phase: Phase) => void,
+): PhaseTracker => {
   let phase: Phase = "building";
 
   return {
@@ -562,7 +590,11 @@ export type KernelEvent =
   | { readonly type: "drained"; readonly report: DrainReport }
   | { readonly type: "stopping" }
   | { readonly type: "exited" }
-  | { readonly type: "teardownError"; readonly port: string; readonly cause: unknown }
+  | {
+      readonly type: "teardownError";
+      readonly port: string;
+      readonly cause: unknown;
+    }
   | { readonly type: "uncaught"; readonly cause: unknown };
 
 export type EventSink = (event: KernelEvent) => void;
@@ -614,10 +646,12 @@ git commit -m "feat: add the phase tracker and kernel events"
 ### Task 3: The injectable clock
 
 **Files:**
+
 - Create: `packages/start/src/clock.ts`
 - Test: `packages/start/src/clock.spec.ts`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces: `type Clock = { now: () => number; sleep: (ms: number, signal?: AbortSignal) => Promise<void> }`, `systemClock: Clock`.
 
@@ -656,7 +690,9 @@ describe("systemClock", () => {
   });
 
   it("resolves immediately when the signal is already aborted", async () => {
-    await expect(systemClock.sleep(5_000, AbortSignal.abort())).resolves.toBeUndefined();
+    await expect(
+      systemClock.sleep(5_000, AbortSignal.abort()),
+    ).resolves.toBeUndefined();
   });
 });
 ```
@@ -719,10 +755,12 @@ git commit -m "feat: add the injectable clock"
 ### Task 4: The ambient unit record
 
 **Files:**
+
 - Create: `packages/start/src/ambient.ts`
 - Test: `packages/start/src/ambient.spec.ts`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces: `type UnitRecord`, `runWithUnit<T>(record: UnitRecord, fn: () => T): T`, `currentUnit(): UnitRecord | undefined`.
 
@@ -798,7 +836,8 @@ export type UnitRecord = {
 
 const storage = new AsyncLocalStorage<UnitRecord>();
 
-export const runWithUnit = <T>(record: UnitRecord, fn: () => T): T => storage.run(record, fn);
+export const runWithUnit = <T>(record: UnitRecord, fn: () => T): T =>
+  storage.run(record, fn);
 
 export const currentUnit = (): UnitRecord | undefined => storage.getStore();
 ```
@@ -820,10 +859,12 @@ git commit -m "feat: add the ambient unit record"
 ### Task 5: The unit registry
 
 **Files:**
+
 - Create: `packages/start/src/units.ts`
 - Test: `packages/start/src/units.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `runWithUnit`, `UnitRecord` (Task 4).
 - Produces:
   - `type UnitMeta = { kind: string; id: string; traceId?: string; tenantId?: string; deadline?: number }`
@@ -851,7 +892,9 @@ describe("createUnitRegistry", () => {
 
   it("passes the error channel through", async () => {
     const registry = createUnitRegistry();
-    await expect(registry.run(meta, () => Err("nope" as const).toAsync())).toBeErrWith("nope");
+    await expect(
+      registry.run(meta, () => Err("nope" as const).toAsync()),
+    ).toBeErrWith("nope");
   });
 
   it("counts a unit as in flight until it settles", async () => {
@@ -967,7 +1010,10 @@ export type UnitWork<T, E> = (
 ) => AsyncResult<T, E> | Promise<Result<T, E>> | Result<T, E>;
 
 export type UnitRegistry = {
-  readonly run: <T, E>(meta: UnitMeta, work: UnitWork<T, E>) => AsyncResult<T, E>;
+  readonly run: <T, E>(
+    meta: UnitMeta,
+    work: UnitWork<T, E>,
+  ) => AsyncResult<T, E>;
   readonly inFlight: () => number;
   readonly abortAll: () => void;
   readonly awaitIdle: () => Promise<void>;
@@ -1050,10 +1096,12 @@ git commit -m "feat: add the unit registry"
 ### Task 6: The Runtime contract and the test runtime
 
 **Files:**
+
 - Create: `packages/start/src/runtime.ts`, `packages/start/src/test-runtime.ts`
 - Test: `packages/start/src/test-runtime.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `UnitMeta`, `UnitWork` (Task 5); `Context`, `AnyPort` from `@btravstack/di`.
 - Produces:
   - `class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{ runtime: string; cause: unknown }>`
@@ -1078,7 +1126,10 @@ export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
 
 export type RunUnit<Needs extends AnyPort> = <T, E>(
   meta: UnitMeta,
-  work: (ctx: Context<Needs>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
+  work: (
+    ctx: Context<Needs>,
+    signal: AbortSignal,
+  ) => ReturnType<UnitWork<T, E>>,
 ) => AsyncResult<T, E>;
 
 export type RuntimeHost<Needs extends AnyPort> = {
@@ -1094,7 +1145,9 @@ export type Serving = {
 export type Runtime<Needs extends AnyPort> = {
   readonly name: string;
   readonly needs: readonly Needs[];
-  readonly start: (host: RuntimeHost<Needs>) => AsyncResult<Serving, RuntimeStartFailed>;
+  readonly start: (
+    host: RuntimeHost<Needs>,
+  ) => AsyncResult<Serving, RuntimeStartFailed>;
 };
 ```
 
@@ -1121,8 +1174,13 @@ const hostFor = (registry = createUnitRegistry()) => {
   const ctx = Context.empty();
   return {
     ctx,
-    run: (<T, E>(meta: UnitMeta, work: (c: typeof ctx, s: AbortSignal) => never) =>
-      registry.run<T, E>(meta, (signal) => work(ctx, signal))) as RunUnit<never>,
+    run: (<T, E>(
+      meta: UnitMeta,
+      work: (c: typeof ctx, s: AbortSignal) => never,
+    ) =>
+      registry.run<T, E>(meta, (signal) =>
+        work(ctx, signal),
+      )) as RunUnit<never>,
   };
 };
 
@@ -1245,14 +1303,23 @@ export const testRuntime = (name = "test"): TestRuntime => {
       });
       let signal!: AbortSignal;
 
-      const result = run<T, E>({ kind: "test", id: `${submitted}` }, async (_ctx, s) => {
-        signal = s;
-        const value = await held;
-        completed += 1;
-        return value;
-      });
+      const result = run<T, E>(
+        { kind: "test", id: `${submitted}` },
+        async (_ctx, s) => {
+          signal = s;
+          const value = await held;
+          completed += 1;
+          return value;
+        },
+      );
 
-      return { settle, result, get signal() { return signal; } };
+      return {
+        settle,
+        result,
+        get signal() {
+          return signal;
+        },
+      };
     },
   };
 };
@@ -1276,11 +1343,13 @@ git commit -m "feat: add the Runtime contract and the test runtime"
 ### Task 7: `start` — build, serve, stop
 
 **Files:**
+
 - Create: `packages/start/src/start.ts`, `packages/start/src/deferred.ts`
 - Modify: `packages/start/src/index.ts`
 - Test: `packages/start/src/start.spec.ts`
 
 **Interfaces:**
+
 - Consumes: everything from Tasks 2–6, plus `Module`, `Context`, `AnyPort` from `@btravstack/di`.
 - Produces:
   - `type ExitReport = { reason: "signal" | "runtimeStopped" | "uncaught"; drain: DrainReport | undefined; teardownErrors: readonly { port: string; cause: unknown }[]; uptimeMs: number }`
@@ -1354,11 +1423,17 @@ describe("start", () => {
 
   it("reports a construction failure without wrapping the module's own error", async () => {
     const Failing = Module("Failing")({
-      provides: [Provider(Greeting)({ make: () => Err("no-config" as const).toAsync() })],
+      provides: [
+        Provider(Greeting)({ make: () => Err("no-config" as const).toAsync() }),
+      ],
       exports: [Greeting],
     });
 
-    const app = start(Failing, { runtime: testRuntime(), signals: false, probes: false });
+    const app = start(Failing, {
+      runtime: testRuntime(),
+      signals: false,
+      probes: false,
+    });
 
     await expect(app.exited).toBeErrWith("no-config");
   });
@@ -1366,12 +1441,21 @@ describe("start", () => {
   it("reports a runtime that refuses to start", async () => {
     const broken = {
       ...testRuntime(),
-      start: () => Err(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })).toAsync(),
+      start: () =>
+        Err(
+          new RuntimeStartFailed({ runtime: "broken", cause: "port in use" }),
+        ).toAsync(),
     };
 
-    const app = start(AppModule, { runtime: broken, signals: false, probes: false });
+    const app = start(AppModule, {
+      runtime: broken,
+      signals: false,
+      probes: false,
+    });
 
-    await expect(app.exited).toBeErrTagged("RuntimeStartFailed", { runtime: "broken" });
+    await expect(app.exited).toBeErrTagged("RuntimeStartFailed", {
+      runtime: "broken",
+    });
   });
 
   it("closes the application scope on a clean stop", async () => {
@@ -1452,7 +1536,8 @@ export const start = <X extends AnyPort, E, Needs extends AnyPort>(
   const clock = options.clock ?? systemClock;
   const emit = safeSink(options.onEvent ?? stderrSink);
   const tracker = createPhaseTracker((phase) => {
-    if (phase === "serving") emit({ type: "serving", runtime: options.runtime.name });
+    if (phase === "serving")
+      emit({ type: "serving", runtime: options.runtime.name });
     if (phase === "stopping") emit({ type: "stopping" });
     if (phase === "exited") emit({ type: "exited" });
   });
@@ -1482,8 +1567,14 @@ export const start = <X extends AnyPort, E, Needs extends AnyPort>(
       // call goes exactly here, replacing `runtimeCtx` with the fork's context.
       const run = (<T, E>(
         meta: UnitMeta,
-        work: (c: Context<Needs>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
-      ) => registry.run<T, E>(meta, (signal) => work(runtimeCtx, signal))) as RunUnit<Needs>;
+        work: (
+          c: Context<Needs>,
+          signal: AbortSignal,
+        ) => ReturnType<UnitWork<T, E>>,
+      ) =>
+        registry.run<T, E>(meta, (signal) =>
+          work(runtimeCtx, signal),
+        )) as RunUnit<Needs>;
 
       const host = { ctx: runtimeCtx, run };
 
@@ -1491,7 +1582,15 @@ export const start = <X extends AnyPort, E, Needs extends AnyPort>(
         tracker.advanceTo("serving");
 
         return fromShutdown(shutdown.promise).flatMap((reason) =>
-          finish(serving, reason, tracker, registry, clock, startedAt, teardownErrors),
+          finish(
+            serving,
+            reason,
+            tracker,
+            registry,
+            clock,
+            startedAt,
+            teardownErrors,
+          ),
         );
       });
     },
@@ -1548,7 +1647,12 @@ Note `Module<X, E, never>`: the kernel accepts only a module with no unmet needs
 
 ```ts
 export { start } from "./start.js";
-export type { ExitReport, RunningApp, StartOptions, TeardownError } from "./start.js";
+export type {
+  ExitReport,
+  RunningApp,
+  StartOptions,
+  TeardownError,
+} from "./start.js";
 export type { Clock } from "./clock.js";
 export { systemClock } from "./clock.js";
 export type { DrainReport } from "./drain-report.js";
@@ -1581,11 +1685,13 @@ git commit -m "feat: boot a module into a running application"
 ### Task 8: Draining
 
 **Files:**
+
 - Modify: `packages/start/src/start.ts`
 - Create: `packages/start/src/drain.ts`
 - Test: `packages/start/src/drain.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `Clock` (Task 3), `UnitRegistry` (Task 5), `Serving` (Task 6), `DrainReport` (Task 2).
 - Produces: `drainApp(args): AsyncResult<DrainReport, never>` where `args = { serving: Serving; registry: UnitRegistry; clock: Clock; preDrainDelayMs: number; drainTimeoutMs: number; skip: AbortSignal; onReadyChange: (ready: boolean) => void }`.
 
@@ -1631,7 +1737,11 @@ describe("drainApp", () => {
       serving: {
         drain: () => {
           order.push("stopAccepting");
-          return Ok({ inFlightAtStart: 0, completed: 0, abandoned: 0 }).toAsync();
+          return Ok({
+            inFlightAtStart: 0,
+            completed: 0,
+            abandoned: 0,
+          }).toAsync();
         },
         stop: serving.stop,
       },
@@ -1686,14 +1796,20 @@ describe("drainApp", () => {
       onReadyChange: () => {},
     });
 
-    expect(report).toBeOkWith({ inFlightAtStart: 1, completed: 0, abandoned: 1 });
+    expect(report).toBeOkWith({
+      inFlightAtStart: 1,
+      completed: 0,
+      abandoned: 1,
+    });
     expect(aborted).toBe(true);
   });
 
   it("reports every unit completed when they settle before the deadline", async () => {
     const registry = createUnitRegistry();
     const { serving } = servingStub();
-    const running = registry.run({ kind: "t", id: "1" }, () => Ok("done").toAsync());
+    const running = registry.run({ kind: "t", id: "1" }, () =>
+      Ok("done").toAsync(),
+    );
     await running;
 
     const report = await drainApp({
@@ -1706,7 +1822,11 @@ describe("drainApp", () => {
       onReadyChange: () => {},
     });
 
-    expect(report).toBeOkWith({ inFlightAtStart: 0, completed: 0, abandoned: 0 });
+    expect(report).toBeOkWith({
+      inFlightAtStart: 0,
+      completed: 0,
+      abandoned: 0,
+    });
   });
 });
 ```
@@ -1763,7 +1883,11 @@ export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
         args.registry.abortAll();
       }
 
-      return { inFlightAtStart, completed: inFlightAtStart - abandoned, abandoned };
+      return {
+        inFlightAtStart,
+        completed: inFlightAtStart - abandoned,
+        abandoned,
+      };
     })(),
   ).flatMap((report) => Ok(report));
 };
@@ -1833,11 +1957,13 @@ git commit -m "feat: drain in-flight work before stopping"
 ### Task 9: Signal handling
 
 **Files:**
+
 - Create: `packages/start/src/signals.ts`
 - Modify: `packages/start/src/start.ts`
 - Test: `packages/start/src/signals.spec.ts`
 
 **Interfaces:**
+
 - Consumes: nothing from earlier tasks.
 - Produces: `installSignalHandlers(args: { onFirst: () => void; onSecond: () => void }): () => void` — returns a disposer that removes every listener it added.
 
@@ -1871,7 +1997,10 @@ describe("installSignalHandlers", () => {
 
   it("removes every listener it added", () => {
     const before = listenerCount();
-    const dispose = installSignalHandlers({ onFirst: () => {}, onSecond: () => {} });
+    const dispose = installSignalHandlers({
+      onFirst: () => {},
+      onSecond: () => {},
+    });
 
     expect(listenerCount()).toBe(before + 2);
     dispose();
@@ -1897,7 +2026,9 @@ export type SignalHandlers = {
   readonly onSecond: () => void;
 };
 
-export const installSignalHandlers = (handlers: SignalHandlers): (() => void) => {
+export const installSignalHandlers = (
+  handlers: SignalHandlers,
+): (() => void) => {
   let seen = 0;
 
   const onSignal = (): void => {
@@ -1983,11 +2114,13 @@ git commit -m "feat: drain on SIGTERM and skip the drain on a second signal"
 ### Task 10: Uncaught exceptions and unhandled rejections
 
 **Files:**
+
 - Create: `packages/start/src/uncaught.ts`
 - Modify: `packages/start/src/start.ts`
 - Test: `packages/start/src/uncaught.spec.ts`
 
 **Interfaces:**
+
 - Consumes: nothing from earlier tasks.
 - Produces: `installUncaughtHandlers(onUncaught: (cause: unknown) => void): () => void`.
 
@@ -2025,15 +2158,18 @@ describe("installUncaughtHandlers", () => {
 
   it("removes every listener it added", () => {
     const before =
-      process.listenerCount("uncaughtException") + process.listenerCount("unhandledRejection");
+      process.listenerCount("uncaughtException") +
+      process.listenerCount("unhandledRejection");
     const dispose = installUncaughtHandlers(() => {});
 
     expect(
-      process.listenerCount("uncaughtException") + process.listenerCount("unhandledRejection"),
+      process.listenerCount("uncaughtException") +
+        process.listenerCount("unhandledRejection"),
     ).toBe(before + 2);
     dispose();
     expect(
-      process.listenerCount("uncaughtException") + process.listenerCount("unhandledRejection"),
+      process.listenerCount("uncaughtException") +
+        process.listenerCount("unhandledRejection"),
     ).toBe(before);
   });
 });
@@ -2049,7 +2185,9 @@ Expected: FAIL — `Failed to resolve import "./uncaught.js"`.
 - [ ] **Step 3: Implement `uncaught.ts`**
 
 ```ts
-export const installUncaughtHandlers = (onUncaught: (cause: unknown) => void): (() => void) => {
+export const installUncaughtHandlers = (
+  onUncaught: (cause: unknown) => void,
+): (() => void) => {
   let reported = false;
 
   const report = (cause: unknown): void => {
@@ -2099,7 +2237,11 @@ const disposeUncaught =
 ```ts
 it("skips the drain and marks itself unready on an uncaught exception", async () => {
   const runtime = testRuntime();
-  const app = start(AppModule, { runtime, probes: false, preDrainDelayMs: 60_000 });
+  const app = start(AppModule, {
+    runtime,
+    probes: false,
+    preDrainDelayMs: 60_000,
+  });
   await runtime.untilStarted();
 
   process.emit("uncaughtException", new Error("boom"));
@@ -2126,11 +2268,13 @@ git commit -m "feat: stop hard on an uncaught exception"
 ### Task 11: The probe server
 
 **Files:**
+
 - Create: `packages/start/src/probes.ts`
 - Modify: `packages/start/src/start.ts`
 - Test: `packages/start/src/probes.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `Phase` (Task 2).
 - Produces: `startProbeServer(args: { port: number; live: () => boolean; ready: () => boolean }): AsyncResult<ProbeServer, RuntimeStartFailed>` where `ProbeServer = { port: number; close: () => Promise<void> }`.
 
@@ -2145,7 +2289,10 @@ import { describe, expect, it } from "vitest";
 
 import { startProbeServer } from "./probes.js";
 
-const get = async (port: number, path: string): Promise<{ status: number; body: string }> => {
+const get = async (
+  port: number,
+  path: string,
+): Promise<{ status: number; body: string }> => {
   const response = await fetch(`http://127.0.0.1:${port}${path}`);
   return { status: response.status, body: await response.text() };
 };
@@ -2153,20 +2300,34 @@ const get = async (port: number, path: string): Promise<{ status: number; body: 
 describe("startProbeServer", () => {
   it("serves liveness and readiness from the supplied predicates", async () => {
     let ready = false;
-    const started = await startProbeServer({ port: 0, live: () => true, ready: () => ready });
+    const started = await startProbeServer({
+      port: 0,
+      live: () => true,
+      ready: () => ready,
+    });
     const server = started.getOrThrow();
 
-    expect(await get(server.port, "/livez")).toEqual({ status: 200, body: "ok" });
+    expect(await get(server.port, "/livez")).toEqual({
+      status: 200,
+      body: "ok",
+    });
     expect((await get(server.port, "/readyz")).status).toBe(503);
 
     ready = true;
-    expect(await get(server.port, "/readyz")).toEqual({ status: 200, body: "ready" });
+    expect(await get(server.port, "/readyz")).toEqual({
+      status: 200,
+      body: "ready",
+    });
 
     await server.close();
   });
 
   it("404s an unknown path", async () => {
-    const started = await startProbeServer({ port: 0, live: () => true, ready: () => true });
+    const started = await startProbeServer({
+      port: 0,
+      live: () => true,
+      ready: () => true,
+    });
     const server = started.getOrThrow();
 
     expect((await get(server.port, "/nope")).status).toBe(404);
@@ -2217,7 +2378,9 @@ export type ProbeArgs = {
   readonly ready: () => boolean;
 };
 
-export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, RuntimeStartFailed> =>
+export const startProbeServer = (
+  args: ProbeArgs,
+): AsyncResult<ProbeServer, RuntimeStartFailed> =>
   fromSafePromise(
     new Promise<Result<ProbeServer, RuntimeStartFailed>>((resolve) => {
       const server: Server = createServer((request, response) => {
@@ -2239,11 +2402,15 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
 
       server.listen(args.port, "127.0.0.1", () => {
         const address = server.address();
-        const port = typeof address === "object" && address !== null ? address.port : args.port;
+        const port =
+          typeof address === "object" && address !== null
+            ? address.port
+            : args.port;
         resolve(
           Ok({
             port,
-            close: () => new Promise<void>((done) => server.close(() => done())),
+            close: () =>
+              new Promise<void>((done) => server.close(() => done())),
           }),
         );
       });
@@ -2290,11 +2457,13 @@ git commit -m "feat: serve liveness and readiness probes"
 ### Task 12: `runMain`, the testing entry point, and the invariants suite
 
 **Files:**
+
 - Create: `packages/start/src/run-main.ts`, `packages/start/src/testing.ts`, `packages/start/src/with-app.ts`, `packages/start/src/fake-clock.ts`
 - Modify: `packages/start/src/index.ts`, `packages/start/package.json` (restore `src/testing.ts` in the build scripts)
 - Test: `packages/start/src/run-main.spec.ts`, `packages/start/src/invariants.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `RunningApp`, `ExitReport` (Task 7); everything above.
 - Produces:
   - `runMain<E>(app: RunningApp<E>, exit?: (code: number) => void): Promise<void>`
@@ -2319,7 +2488,14 @@ describe("runMain", () => {
   it("exits 0 on a clean report", async () => {
     const codes: number[] = [];
     await runMain(
-      appWith(Ok({ reason: "signal", drain: undefined, teardownErrors: [], uptimeMs: 1 }).toAsync()),
+      appWith(
+        Ok({
+          reason: "signal",
+          drain: undefined,
+          teardownErrors: [],
+          uptimeMs: 1,
+        }).toAsync(),
+      ),
       (code) => codes.push(code),
     );
     expect(codes).toEqual([0]);
@@ -2343,7 +2519,9 @@ describe("runMain", () => {
 
   it("exits 1 on a startup failure", async () => {
     const codes: number[] = [];
-    await runMain(appWith(Err("no-config").toAsync()), (code) => codes.push(code));
+    await runMain(appWith(Err("no-config").toAsync()), (code) =>
+      codes.push(code),
+    );
     expect(codes).toEqual([1]);
   });
 });
@@ -2399,9 +2577,15 @@ Expected: PASS (3 tests).
 ```ts
 import type { Clock } from "./clock.js";
 
-type Sleeper = { readonly due: number; readonly resolve: () => void; readonly signal?: AbortSignal };
+type Sleeper = {
+  readonly due: number;
+  readonly resolve: () => void;
+  readonly signal?: AbortSignal;
+};
 
-export type FakeClock = Clock & { readonly advance: (ms: number) => Promise<void> };
+export type FakeClock = Clock & {
+  readonly advance: (ms: number) => Promise<void>;
+};
 
 export const createFakeClock = (start = 0): FakeClock => {
   let now = start;
@@ -2468,7 +2652,11 @@ export const withApp = async <X extends AnyPort, E, Needs extends AnyPort, A>(
 
 ```ts
 export { createFakeClock, type FakeClock } from "./fake-clock.js";
-export { testRuntime, type SubmittedUnit, type TestRuntime } from "./test-runtime.js";
+export {
+  testRuntime,
+  type SubmittedUnit,
+  type TestRuntime,
+} from "./test-runtime.js";
 export { withApp } from "./with-app.js";
 ```
 
@@ -2500,15 +2688,19 @@ describe("load-bearing invariants", () => {
     const runtime = testRuntime();
     const order: string[] = [];
 
-    await withApp(AppModule, { runtime, clock, onEvent: () => {} }, async (app) => {
-      await runtime.untilStarted();
-      runtime.onStopAccepting(() => order.push("stopAccepting"));
-      app.requestDrain();
-      await Promise.resolve();
-      order.push(`ready:${app.ready()}`);
-      await clock.advance(5_000);
-      await app.exited;
-    });
+    await withApp(
+      AppModule,
+      { runtime, clock, onEvent: () => {} },
+      async (app) => {
+        await runtime.untilStarted();
+        runtime.onStopAccepting(() => order.push("stopAccepting"));
+        app.requestDrain();
+        await Promise.resolve();
+        order.push(`ready:${app.ready()}`);
+        await clock.advance(5_000);
+        await app.exited;
+      },
+    );
 
     expect(order[0]).toBe("ready:false");
     expect(order[1]).toBe("stopAccepting");
@@ -2518,19 +2710,25 @@ describe("load-bearing invariants", () => {
     const clock = createFakeClock();
     const runtime = testRuntime();
 
-    const report = await withApp(AppModule, { runtime, clock, onEvent: () => {} }, async (app) => {
-      await runtime.untilStarted();
-      const unit = runtime.submit<string>();
-      app.requestDrain();
-      await clock.advance(5_000);
-      unit.settle(Ok("done"));
-      await unit.result;
-      await clock.advance(20_000);
-      return app.exited;
-    });
+    const report = await withApp(
+      AppModule,
+      { runtime, clock, onEvent: () => {} },
+      async (app) => {
+        await runtime.untilStarted();
+        const unit = runtime.submit<string>();
+        app.requestDrain();
+        await clock.advance(5_000);
+        unit.settle(Ok("done"));
+        await unit.result;
+        await clock.advance(20_000);
+        return app.exited;
+      },
+    );
 
     expect(report).toBeOkWith(
-      expect.objectContaining({ drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 } }),
+      expect.objectContaining({
+        drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 },
+      }),
     );
   });
 
@@ -2538,17 +2736,23 @@ describe("load-bearing invariants", () => {
     const clock = createFakeClock();
     const runtime = testRuntime();
 
-    const report = await withApp(AppModule, { runtime, clock, onEvent: () => {} }, async (app) => {
-      await runtime.untilStarted();
-      runtime.submit<string>();
-      app.requestDrain();
-      await clock.advance(5_000);
-      await clock.advance(20_000);
-      return app.exited;
-    });
+    const report = await withApp(
+      AppModule,
+      { runtime, clock, onEvent: () => {} },
+      async (app) => {
+        await runtime.untilStarted();
+        runtime.submit<string>();
+        app.requestDrain();
+        await clock.advance(5_000);
+        await clock.advance(20_000);
+        return app.exited;
+      },
+    );
 
     expect(report).toBeOkWith(
-      expect.objectContaining({ drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 } }),
+      expect.objectContaining({
+        drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 },
+      }),
     );
   });
 
@@ -2557,16 +2761,20 @@ describe("load-bearing invariants", () => {
     const runtime = testRuntime();
     let aborted = false;
 
-    await withApp(AppModule, { runtime, clock, onEvent: () => {} }, async (app) => {
-      await runtime.untilStarted();
-      const unit = runtime.submit<string>();
-      unit.signal.addEventListener("abort", () => {
-        aborted = true;
-      });
-      app.requestDrain();
-      await clock.advance(25_000);
-      await app.exited;
-    });
+    await withApp(
+      AppModule,
+      { runtime, clock, onEvent: () => {} },
+      async (app) => {
+        await runtime.untilStarted();
+        const unit = runtime.submit<string>();
+        unit.signal.addEventListener("abort", () => {
+          aborted = true;
+        });
+        app.requestDrain();
+        await clock.advance(25_000);
+        await app.exited;
+      },
+    );
 
     expect(aborted).toBe(true);
   });
@@ -2587,17 +2795,25 @@ describe("load-bearing invariants", () => {
     const broken = {
       ...testRuntime(),
       start: () =>
-        Err(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })).toAsync(),
+        Err(
+          new RuntimeStartFailed({ runtime: "broken", cause: "nope" }),
+        ).toAsync(),
     };
 
-    await start(Half, { runtime: broken, signals: false, probes: false, onEvent: () => {} })
-      .exited;
+    await start(Half, {
+      runtime: broken,
+      signals: false,
+      probes: false,
+      onEvent: () => {},
+    }).exited;
 
     expect(released).toEqual(["greeting"]);
   });
 
   it("8. start neither throws nor calls process.exit", async () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => {}) as never);
     const runtime = testRuntime();
 
     await withApp(AppModule, { runtime, onEvent: () => {} }, async (app) => {
@@ -2625,6 +2841,7 @@ describe("load-bearing invariants", () => {
 Invariants 6 (second signal skips the drain) and 7 (teardown errors never mask the exit reason) are already covered by `start.spec.ts` — add a comment in this file pointing at the covering test rather than duplicating it.
 
 This step requires three additions to earlier files, all small:
+
 - `RunningApp` gains `requestDrain: () => void` (resolves the shutdown deferred with `"signal"`) and `ready: () => boolean`.
 - `testRuntime` gains `untilStarted(): Promise<void>` and `onStopAccepting(fn: () => void): void`.
 - Import `Err`, `vi` and `RuntimeStartFailed` where used.
@@ -2646,10 +2863,12 @@ git commit -m "feat: add runMain, the testing entry point, and the invariants su
 ### Task 13: Documentation and the first changeset
 
 **Files:**
+
 - Create: `README.md`, `CLAUDE.md`, `packages/start/README.md`, `LICENSE`, `packages/start/LICENSE`, `.changeset/initial-kernel.md`
 - Modify: `docs/superpowers/specs/2026-08-09-btravstack-start-design.md` (record the two deviations and close the three open questions)
 
 **Interfaces:**
+
 - Consumes: the finished public surface.
 - Produces: nothing code depends on.
 

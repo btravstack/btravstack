@@ -1,0 +1,32 @@
+name: CI
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: btravstack/config/.github/workflows/ci-reusable.yml@workflows-v1
+    with:
+      # "" uses .node-version (the dev version). 22.19 is the ROOT package's
+      # engines floor. 24 and 26 cover the current LTS and the live release
+      # line; 24 overlaps "" while .node-version stays on 24.x and is listed
+      # explicitly so bumping that file does not silently drop 24 coverage.
+      #
+      # The PUBLISHED package's floor (`engines: ">=20"`) is not covered here
+      # and cannot be by this matrix: these jobs run the dev toolchain, and
+      # pnpm 11 needs `node:sqlite`, which Node 20 does not have. That floor is
+      # declared, not proven.
+      node-versions: '["", "22.19", "24", "26"]'
+      # The reusable default appends `--coverage`; packages/start already runs
+      # `vitest run --coverage` (with 100% thresholds), and the root script is
+      # `turbo run test`, which would take the extra flags as its own.
+      test-command: "pnpm test"
