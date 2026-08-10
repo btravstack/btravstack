@@ -51,11 +51,26 @@ const occupy = (
     server.unref();
   });
 
-const handlerCounts = (): Record<string, number> => ({
+type HandlerCounts = {
+  readonly SIGTERM: number;
+  readonly SIGINT: number;
+  readonly uncaughtException: number;
+  readonly unhandledRejection: number;
+};
+
+const handlerCounts = (): HandlerCounts => ({
   SIGTERM: process.listenerCount("SIGTERM"),
   SIGINT: process.listenerCount("SIGINT"),
   uncaughtException: process.listenerCount("uncaughtException"),
   unhandledRejection: process.listenerCount("unhandledRejection"),
+});
+
+// Every one of `start`'s four process handlers, one higher.
+const allRaisedFrom = (base: HandlerCounts): HandlerCounts => ({
+  SIGTERM: base.SIGTERM + 1,
+  SIGINT: base.SIGINT + 1,
+  uncaughtException: base.uncaughtException + 1,
+  unhandledRejection: base.unhandledRejection + 1,
 });
 
 describe("load-bearing invariants", () => {
@@ -322,6 +337,16 @@ describe("probe wiring", () => {
     // the time this lands. Its pre-drain delay is still pending on the fake
     // clock, so the runtime has not yet been told to stop accepting: readiness
     // goes false strictly first, which is the whole point of the delay.
+    //
+    // Note which mechanism answers here: `runDrain` advances the tracker to
+    // `"draining"` synchronously before `drainApp` calls `onUnready`, so on
+    // this path the phase term of `ready()` alone already returns false and
+    // the `forcedUnready` latch changes nothing. This test therefore does NOT
+    // guard the latch (deleting it leaves this green) — it guards the
+    // *ordering*, and fails if the pre-drain delay that creates the window is
+    // removed. The latch is guarded solely by the uncaught-exception test
+    // below, the one path where the phase is still `"serving"` when readiness
+    // flips. See the comment on `ready()` in `start.ts`.
     expect((await get(port, "/readyz")).status).toBe(503);
     expect(runtime.accepting()).toBe(true);
 
@@ -448,23 +473,21 @@ describe("probe wiring", () => {
   });
 
   it("binds 9000 when no probe port is given", async () => {
-    const blocker = await occupy(9000);
+    const runtime = testRuntime();
+    const app = start(AppModule, { runtime, signals: false, onEvent: () => {} });
 
-    try {
-      const app = start(AppModule, {
-        runtime: testRuntime(),
-        signals: false,
-        onEvent: () => {},
-      });
+    // Asserted positively — the bound port *is* 9000, and answers there —
+    // rather than inferred from a deliberate conflict on 9000, which proved
+    // the default only by implication and failed outright on any machine
+    // already using the port. The residual coupling is the honest one: this
+    // needs 9000 to be free, where the old shape needed it to be free *and*
+    // then took it.
+    await expect(app.probePort()).resolves.toBe(9000);
+    expect(await get(9000, "/livez")).toEqual({ status: 200, body: "ok" });
 
-      await expect(app.exited).toBeErrTagged(
-        "RuntimeStartFailed",
-        expect.objectContaining({ runtime: "probes" }),
-      );
-      await expect(app.probePort()).resolves.toBeUndefined();
-    } finally {
-      await blocker.close();
-    }
+    await runtime.untilStarted();
+    app.stop();
+    await app.exited;
   });
 
   it("a bind failure stops the graph being built and still disposes the handlers", async () => {
@@ -489,6 +512,12 @@ describe("probe wiring", () => {
       onEvent: () => {},
     });
 
+    // Installed synchronously by `start`, before the bind is even attempted.
+    // Asserting the rise is what makes the fall below mean something: a
+    // `start` that never installed a handler at all would satisfy the
+    // "back to baseline" check on its own.
+    expect(handlerCounts()).toEqual(allRaisedFrom(before));
+
     await expect(app.exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "probes" }),
@@ -497,6 +526,10 @@ describe("probe wiring", () => {
     expect(built).toBe(false);
     expect(app.phase()).toBe("exited");
     expect(handlerCounts()).toEqual(before);
+    // The failure route out of the bind attempt still settles `probePort`, so
+    // a caller awaiting it cannot hang. (The success route is asserted by
+    // every `probes: { port: 0 }` test above, via `boundPort`.)
+    await expect(app.probePort()).resolves.toBeUndefined();
 
     await blocker.close();
   });

@@ -7,10 +7,28 @@ import type { ExitReport, RunningApp } from "./start.js";
 // sharing `1` with a startup failure the operator can act on.
 const EX_SOFTWARE = 70;
 
-// `2` is the one code an operator reads as "we stopped, but not cleanly": the
-// drain ran out of time and some work never finished. A clean drain, or no
+// The precedence is deliberate and must stay explicit.
+//
+// An `"uncaught"` reason means the process died from an uncaught exception or
+// an unhandled rejection. Installing a handler for either suppresses Node's own
+// default exit code of `1` (see `uncaught.ts`), so if this returned `0` the
+// kernel would report *success* to an orchestrator for a process that crashed —
+// the exact opposite of what the uncaught path exists to signal. It is an
+// internal software error, which is what `EX_SOFTWARE` names, so it shares the
+// defect channel's code.
+//
+// A crash outranks abandoned work: both can be true of one report, and the
+// crash is the more important fact about how the process died. In practice the
+// uncaught path skips the drain entirely, so `drain` is `undefined` here — but
+// the ordering is written out rather than left to depend on that.
+//
+// `2` is then the one code an operator reads as "we stopped, but not cleanly":
+// the drain ran out of time and some work never finished. A clean drain, or no
 // drain at all, is a `0`.
-const codeFor = (report: ExitReport): number => ((report.drain?.abandoned ?? 0) > 0 ? 2 : 0);
+const codeFor = (report: ExitReport): number => {
+  if (report.reason === "uncaught") return EX_SOFTWARE;
+  return (report.drain?.abandoned ?? 0) > 0 ? 2 : 0;
+};
 
 /**
  * Wait for an application to exit and turn its outcome into a process exit
@@ -26,7 +44,12 @@ const codeFor = (report: ExitReport): number => ((report.drain?.abandoned ?? 0) 
  * | exited cleanly | `0` |
  * | startup failure (a modeled `Err`) | `1` |
  * | drained with work abandoned | `2` |
+ * | stopped by an uncaught exception or unhandled rejection | `70` |
  * | a defect | `70` |
+ *
+ * The two `70`s are the same statement — sysexits(3)'s `EX_SOFTWARE`, an
+ * internal software error — reached through the two channels a bug can take.
+ * A crash takes precedence over abandoned work.
  *
  * @example
  * ```ts

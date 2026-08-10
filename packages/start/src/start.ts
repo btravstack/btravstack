@@ -97,19 +97,32 @@ export const start = <X, E, Needs extends AnyPort>(
   // (pre-drain delay or drain timeout) is currently pending.
   const skipDrain = new AbortController();
   // Forced false by the drain (before the runtime stops accepting new work)
-  // and by an uncaught exception; never reset back to `true`. `ready()`
-  // below reads this alongside the phase rather than the phase alone,
-  // because the uncaught path can flip it while the phase is still
-  // `"serving"` — the tracker only reaches `"stopping"` once the shutdown
-  // promise's continuation runs, a tick or more later. Hoisted out of
-  // `runDrain` so the uncaught-exception path (which skips the drain
-  // entirely) can flip it too, through the same mechanism rather than a
-  // second one.
+  // and by an uncaught exception; never reset back to `true` — which is why
+  // the setter takes no argument. Hoisted out of `runDrain` so the
+  // uncaught-exception path (which skips the drain entirely) can flip it too,
+  // through the same mechanism rather than a second one.
   let forcedUnready = false;
-  const onReadyChange = (nowReady: boolean): void => {
-    if (!nowReady) forcedUnready = true;
+  const onUnready = (): void => {
+    forcedUnready = true;
   };
   const live = (): boolean => tracker.current() !== "exited";
+  // The two terms do NOT contribute equally, and the next person to touch this
+  // needs to know which one does the work.
+  //
+  // On the DRAIN path the phase term alone already answers false: `runDrain`
+  // advances the tracker to `"draining"` synchronously *before* `drainApp`
+  // calls `onUnready`, and the tracker never returns to `"serving"`. So
+  // `!forcedUnready` changes nothing there.
+  //
+  // The latch is load-bearing on exactly one path — the uncaught-exception
+  // one, where the handler flips it while the phase is still `"serving"`,
+  // because the tracker only moves once the shutdown promise's continuation
+  // runs a tick or more later. Deleting `!forcedUnready` is consequently
+  // invisible to every drain test and is caught by exactly one assertion:
+  // `invariants.spec.ts`'s "an uncaught exception forces readiness false while
+  // the phase is still serving". That test reads `app.ready()` synchronously
+  // rather than over HTTP because no round trip fits inside that single tick —
+  // which is also why `ready()` is exposed on `RunningApp` at all.
   const ready = (): boolean => tracker.current() === "serving" && !forcedUnready;
   const disposeSignals =
     options.signals === false
@@ -123,7 +136,7 @@ export const start = <X, E, Needs extends AnyPort>(
       ? () => {}
       : installUncaughtHandlers((cause) => {
           emit({ type: "uncaught", cause });
-          onReadyChange(false);
+          onUnready();
           skipDrain.abort();
           shutdown.resolve("uncaught");
         });
@@ -179,7 +192,7 @@ export const start = <X, E, Needs extends AnyPort>(
       preDrainDelayMs,
       drainTimeoutMs,
       skip: skipDrain.signal,
-      onReadyChange,
+      onUnready,
     }).tap((report) => emit({ type: "drained", report }));
   };
 

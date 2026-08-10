@@ -12,7 +12,9 @@ export type DrainArgs = {
   readonly preDrainDelayMs: number;
   readonly drainTimeoutMs: number;
   readonly skip: AbortSignal;
-  readonly onReadyChange: (ready: boolean) => void;
+  // One-way: readiness only ever goes false, so this takes no argument. A
+  // `(ready: boolean)` callback would carry a `true` case nothing can reach.
+  readonly onUnready: () => void;
 };
 
 // The three beats, in order — the order is the whole point:
@@ -35,7 +37,7 @@ export type DrainArgs = {
 //    deadline; `deadline` is aborted the instant the race settles, on
 //    either branch, so such a runtime is always released.
 export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
-  args.onReadyChange(false);
+  args.onUnready();
 
   const inFlightAtStart = args.registry.inFlight();
   const closedAtStart = args.registry.closed();

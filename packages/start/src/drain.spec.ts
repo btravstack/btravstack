@@ -55,7 +55,7 @@ describe("drainApp", () => {
       preDrainDelayMs: 5_000,
       drainTimeoutMs: 20_000,
       skip: new AbortController().signal,
-      onReadyChange: (ready) => order.push(`ready:${ready}`),
+      onUnready: () => order.push("ready:false"),
     });
 
     // The pre-drain delay's sleep, and the runtime being told to stop
@@ -77,7 +77,7 @@ describe("drainApp", () => {
       preDrainDelayMs: 5_000,
       drainTimeoutMs: 20_000,
       skip: new AbortController().signal,
-      onReadyChange: () => {},
+      onUnready: () => {},
     });
 
     expect(sleep).toHaveBeenCalledWith(5_000, expect.any(AbortSignal));
@@ -103,7 +103,7 @@ describe("drainApp", () => {
       preDrainDelayMs: 0,
       drainTimeoutMs: 0,
       skip: new AbortController().signal,
-      onReadyChange: () => {},
+      onUnready: () => {},
     });
 
     expect(report).toBeOkWith({ inFlightAtStart: 1, completed: 0, abandoned: 1 });
@@ -135,7 +135,7 @@ describe("drainApp", () => {
       preDrainDelayMs: 0,
       drainTimeoutMs: 20_000,
       skip: new AbortController().signal,
-      onReadyChange: () => {},
+      onUnready: () => {},
     });
 
     // Release the pre-drain delay so `drainApp` reaches beat 3 and arms the
@@ -167,7 +167,7 @@ describe("drainApp", () => {
       preDrainDelayMs: 0,
       drainTimeoutMs: 20_000,
       skip: new AbortController().signal,
-      onReadyChange: () => {},
+      onUnready: () => {},
     });
 
     // `inFlightAtStart`/`closedAtStart` are sampled synchronously inside this
@@ -209,7 +209,7 @@ describe("drainApp", () => {
       preDrainDelayMs: 30_000,
       drainTimeoutMs: 30_000,
       skip: controller.signal,
-      onReadyChange: () => {},
+      onUnready: () => {},
     });
 
     expect(Date.now() - startedAt).toBeLessThan(1_000);
@@ -229,7 +229,7 @@ describe("drainApp", () => {
       preDrainDelayMs: 30_000,
       drainTimeoutMs: 30_000,
       skip: controller.signal,
-      onReadyChange: () => {},
+      onUnready: () => {},
     });
 
     // Let the real pre-drain-delay timer actually get scheduled before
