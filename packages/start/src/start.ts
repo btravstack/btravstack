@@ -1,13 +1,14 @@
 import { Module, type AnyPort, type Context, type Scope } from "@btravstack/di";
-import { fromSafePromise, type AsyncResult } from "unthrown";
+import { fromSafePromise, Ok, type AsyncResult } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
 import { createDeferred } from "./deferred.js";
 import type { DrainReport } from "./drain-report.js";
+import { drainApp } from "./drain.js";
 import { safeSink, stderrSink, type EventSink } from "./events.js";
-import { createPhaseTracker, type Phase, type PhaseTracker } from "./phase.js";
+import { createPhaseTracker, type Phase } from "./phase.js";
 import type { RunUnit, Runtime, RuntimeStartFailed, Serving } from "./runtime.js";
-import { createUnitRegistry, type UnitRegistry } from "./units.js";
+import { createUnitRegistry } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
 
@@ -31,37 +32,8 @@ export type StartOptions<Needs extends AnyPort> = {
 export type RunningApp<E> = {
   readonly exited: AsyncResult<ExitReport, E | RuntimeStartFailed>;
   readonly stop: () => void;
+  readonly requestDrain: () => void;
   readonly phase: () => Phase;
-};
-
-const finish = (
-  serving: Serving,
-  reason: ExitReport["reason"],
-  tracker: PhaseTracker,
-  // Task 8 drains through the registry here; until then it is only carried.
-  registry: UnitRegistry,
-  clock: Clock,
-  startedAt: number,
-  teardownErrors: readonly TeardownError[],
-): AsyncResult<ExitReport, never> => {
-  void registry;
-  tracker.advanceTo("stopping");
-
-  return serving.stop().map(() => {
-    tracker.advanceTo("exited");
-    return {
-      reason,
-      drain: undefined,
-      // The aliasing is LOAD-BEARING: this is the same mutable array
-      // `onTeardownError` pushes into, and di closes the scope *after* `use`
-      // settles but *before* its own result settles — so every finaliser
-      // failure lands in the array after this object is built and before the
-      // caller can observe it. A defensive copy here (or anywhere on this
-      // path) would silently drop every teardown error.
-      teardownErrors,
-      uptimeMs: clock.now() - startedAt,
-    };
-  });
 };
 
 // `Module<X, E, Scope>`, not `Module<X, E, never>`: `Needs` sits in covariant
@@ -97,8 +69,60 @@ export const start = <X, E, Needs extends AnyPort>(
   const shutdown = createDeferred<ExitReport["reason"]>();
   const teardownErrors: TeardownError[] = [];
   const startedAt = clock.now();
+  const preDrainDelayMs = options.preDrainDelayMs ?? 5_000;
+  const drainTimeoutMs = options.drainTimeoutMs ?? 20_000;
+  // Nothing aborts this yet — Task 9's second-signal fast path will, to cut a
+  // slow drain short.
+  const skipDrain = new AbortController();
 
   emit({ type: "building" });
+
+  // Only a `"signal"` shutdown reason drains. `"runtimeStopped"` (plain
+  // `stop()`) and `"uncaught"` (Task 10) go straight to `stopping`, leaving
+  // `ExitReport.drain` `undefined`.
+  const runDrain = (serving: Serving): AsyncResult<DrainReport, never> => {
+    tracker.advanceTo("draining");
+    emit({ type: "draining", inFlight: registry.inFlight() });
+
+    return drainApp({
+      serving,
+      registry,
+      clock,
+      preDrainDelayMs,
+      drainTimeoutMs,
+      skip: skipDrain.signal,
+      // Task 11 wires this into the probe server's readiness endpoint.
+      onReadyChange: () => {},
+    }).tap((report) => emit({ type: "drained", report }));
+  };
+
+  const finish = (
+    serving: Serving,
+    reason: ExitReport["reason"],
+  ): AsyncResult<ExitReport, never> => {
+    const drained: AsyncResult<DrainReport | undefined, never> =
+      reason === "signal" ? runDrain(serving) : Ok<DrainReport | undefined>(undefined).toAsync();
+
+    return drained.flatMap((report) => {
+      tracker.advanceTo("stopping");
+
+      return serving.stop().map(() => {
+        tracker.advanceTo("exited");
+        return {
+          reason,
+          drain: report,
+          // The aliasing is LOAD-BEARING: this is the same mutable array
+          // `onTeardownError` pushes into, and di closes the scope *after* `use`
+          // settles but *before* its own result settles — so every finaliser
+          // failure lands in the array after this object is built and before the
+          // caller can observe it. A defensive copy here (or anywhere on this
+          // path) would silently drop every teardown error.
+          teardownErrors,
+          uptimeMs: clock.now() - startedAt,
+        };
+      });
+    });
+  };
 
   const exited = Module.scoped(
     module,
@@ -128,9 +152,7 @@ export const start = <X, E, Needs extends AnyPort>(
       return options.runtime.start(host).flatMap((serving: Serving) => {
         tracker.advanceTo("serving");
 
-        return fromSafePromise(shutdown.promise).flatMap((reason) =>
-          finish(serving, reason, tracker, registry, clock, startedAt, teardownErrors),
-        );
+        return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
       });
     },
     {
@@ -152,6 +174,7 @@ export const start = <X, E, Needs extends AnyPort>(
   return {
     exited,
     stop: () => shutdown.resolve("runtimeStopped"),
+    requestDrain: () => shutdown.resolve("signal"),
     phase: tracker.current,
   };
 };
