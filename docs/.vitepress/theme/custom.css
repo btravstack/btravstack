@@ -1,10 +1,16 @@
 /* di accent — blue, the family's slot for this package (the logo's syringe
  * barrel is drawn in it). Blue is plumbing: the connections behind the wall
  * that everything visible runs on, which is what a wiring container is. The
- * hex is the logo's own deep blue, so chrome and artwork stay one color.
+ * hex is the logo's own lighter blue — the barrel rim, the plunger and the
+ * needle hub — so chrome and artwork stay one color.
+ *
+ * Not the logo's deep #2a62b8, which this file used until the landing measured
+ * it: 3.22 against the dark card, where the other four package accents sit at
+ * 5.00–7.25. This one is 4.72 there and 7.10 as darkened text on white. It is
+ * --pkg-di in @btravstack/theme, so the landing panel and this site agree.
  * @btravstack/theme derives the accent shades from this token. */
 :root {
-  --accent: #2a62b8;
+  --accent: #3e7fd4;
 }
 
 /* Hero name in the package accent — the BtravStack multi-accent rule: the
