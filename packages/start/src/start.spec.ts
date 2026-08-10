@@ -2,6 +2,7 @@ import { Module, Port, Provider } from "@btravstack/di";
 import { Err, Ok } from "unthrown";
 import { describe, expect, it } from "vitest";
 
+import type { KernelEvent } from "./events.js";
 import { RuntimeStartFailed } from "./runtime.js";
 import { start } from "./start.js";
 import { testRuntime } from "./test-runtime.js";
@@ -18,8 +19,20 @@ describe("start", () => {
     const runtime = testRuntime();
     const app = start(AppModule, { runtime, signals: false, probes: false });
 
+    let settledEarly = false;
+    void app.exited.then(() => {
+      settledEarly = true;
+    });
+
     await runtime.untilStarted();
     expect(runtime.started()).toBe(true);
+
+    // A full macrotask turn after the runtime is serving: `exited` must still
+    // be pending, or this test would also pass against an implementation that
+    // ignores `stop()` and settles the moment the runtime is up.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settledEarly).toBe(false);
+    expect(app.phase()).toBe("serving");
 
     app.stop();
 
@@ -27,6 +40,7 @@ describe("start", () => {
     expect(report).toBeOkWith(
       expect.objectContaining({ reason: "runtimeStopped", teardownErrors: [] }),
     );
+    expect(app.phase()).toBe("exited");
   });
 
   it("reports a construction failure without wrapping the module's own error", async () => {
@@ -76,5 +90,52 @@ describe("start", () => {
     await app.exited;
 
     expect(released).toEqual(["greeting"]);
+  });
+
+  it("reaches the exited phase when the runtime refuses to start", async () => {
+    const events: KernelEvent["type"][] = [];
+    const broken = {
+      ...testRuntime(),
+      start: () =>
+        Err(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })).toAsync(),
+    };
+
+    const app = start(AppModule, {
+      runtime: broken,
+      signals: false,
+      probes: false,
+      onEvent: (event) => events.push(event.type),
+    });
+
+    await app.exited;
+
+    expect(app.phase()).toBe("exited");
+    expect(events).toEqual(["building", "stopping", "exited"]);
+  });
+
+  it("surfaces a failing release in the exit report's teardown errors", async () => {
+    const boom = new Error("release failed");
+    const Leaky = Module("Leaky")({
+      provides: [
+        Provider(Greeting)({
+          acquire: () => Ok({ text: "hi" }).toAsync(),
+          release: () => Promise.reject(boom),
+        }),
+      ],
+      exports: [Greeting],
+    });
+
+    const runtime = testRuntime();
+    const app = start(Leaky, { runtime, signals: false, probes: false, onEvent: () => {} });
+    await runtime.untilStarted();
+    app.stop();
+
+    // The report is built before di closes the scope, so this only holds
+    // because `ExitReport.teardownErrors` aliases the live array.
+    expect(await app.exited).toBeOkWith(
+      expect.objectContaining({
+        teardownErrors: [{ port: "Greeting", cause: boom }],
+      }),
+    );
   });
 });
