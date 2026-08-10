@@ -122,7 +122,7 @@ export default defineConfig({
   },
 
   themeConfig: {
-    logo: "/logo.svg",
+    logo: { light: "/logo-light.svg", dark: "/logo-dark.svg" },
 
     nav: [
       // The guide is organised by the four Diátaxis modes; the dropdown links

@@ -8,7 +8,8 @@ hero:
   text: "Wiring, checked at compile time"
   tagline: Ports as the vocabulary your application defines, providers bound at one edge, and modules that declare their imports and exports — with unmet dependencies, leaked internals and resource leaks caught by the compiler, and Result instead of throws.
   image:
-    src: /logo.svg
+    light: /logo-light.svg
+    dark: /logo-dark.svg
     alt: di
   actions:
     - theme: brand
