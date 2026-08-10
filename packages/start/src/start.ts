@@ -37,6 +37,25 @@ export type RunningApp<E> = {
   readonly stop: () => void;
   readonly requestDrain: () => void;
   readonly phase: () => Phase;
+  /**
+   * The predicate `/readyz` answers from — serving, and not forced unready by
+   * a drain or an uncaught exception.
+   *
+   * Readable synchronously, which the probe endpoint is not: the uncaught path
+   * forces it false while the phase is still `"serving"`, a window no HTTP
+   * round trip can observe. Also what an embedder wires into a health endpoint
+   * of its own when `probes` is `false`.
+   */
+  readonly ready: () => boolean;
+  /**
+   * The port the probe server actually bound, once the bind attempt has
+   * settled — `undefined` when probes are disabled or the bind failed.
+   *
+   * Resolves before the graph is built, since the probe server is up first.
+   * The point of it is `probes: { port: 0 }`: the OS picks the port, and this
+   * is how the caller learns which one.
+   */
+  readonly probePort: () => Promise<number | undefined>;
 };
 
 // `Module<X, E, Scope>`, not `Module<X, E, never>`: `Needs` sits in covariant
@@ -112,6 +131,9 @@ export const start = <X, E, Needs extends AnyPort>(
   // below); stays a no-op when probes are disabled or the bind never
   // succeeds, so both dispose sites can call it unconditionally.
   let disposeProbes = (): void => {};
+  // Settled exactly once, on every route out of the bind attempt — bound,
+  // disabled, or failed — so `probePort()` can never hang.
+  const probeBound = createDeferred<number | undefined>();
 
   emit({ type: "building" });
 
@@ -122,16 +144,20 @@ export const start = <X, E, Needs extends AnyPort>(
   // `Module.scoped`'s below, since a failed `probesStarted` short-circuits
   // the `flatMap` that would otherwise reach it.
   const probesOptions = options.probes ?? { port: 9000 };
+  if (probesOptions === false) probeBound.resolve(undefined);
+
   const probesStarted: AsyncResult<undefined, RuntimeStartFailed> = (
     probesOptions === false
       ? Ok(undefined).toAsync()
       : startProbeServer({ port: probesOptions.port, live, ready }).map((server) => {
+          probeBound.resolve(server.port);
           disposeProbes = () => {
             void server.close();
           };
           return undefined;
         })
   ).tapFailure(() => {
+    probeBound.resolve(undefined);
     tracker.advanceTo("stopping");
     disposeSignals();
     disposeUncaught();
@@ -245,5 +271,7 @@ export const start = <X, E, Needs extends AnyPort>(
     stop: () => shutdown.resolve("runtimeStopped"),
     requestDrain: () => shutdown.resolve("signal"),
     phase: tracker.current,
+    ready,
+    probePort: () => probeBound.promise,
   };
 };

@@ -14,6 +14,12 @@ export type TestRuntime = Runtime<never> & {
   readonly started: () => boolean;
   /** Resolves the first time the kernel calls `start` — `start` itself stays pending until shutdown. */
   readonly untilStarted: () => Promise<void>;
+  /**
+   * Whether the runtime would still take new work — false once `drain` or
+   * `stop` has been called. Lets a test observe *when* the kernel told the
+   * runtime to stop accepting, which the drain's ordering invariant turns on.
+   */
+  readonly accepting: () => boolean;
   readonly serving: () => Serving;
   readonly submit: <T = string, E = never>() => SubmittedUnit<T, E>;
 };
@@ -49,6 +55,7 @@ export const testRuntime = (name = "test"): TestRuntime => {
     },
     started: () => serving !== undefined,
     untilStarted: () => started.promise,
+    accepting: () => accepting,
     serving: () => {
       if (serving === undefined) {
         // A test-only fixture: reaching here means the test forgot to start

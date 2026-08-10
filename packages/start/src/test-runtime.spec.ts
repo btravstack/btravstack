@@ -41,6 +41,16 @@ describe("testRuntime", () => {
     expect(registry.inFlight()).toBe(0);
   });
 
+  // The fixture's two misuse guards are loud on purpose — a test that forgot
+  // to start the runtime is a bug in the test, not a modeled outcome, so it
+  // must not be routed into a `Result` a careless assertion could swallow.
+  it("is loud when asked for a Serving it has not produced yet", () => {
+    const runtime = testRuntime();
+
+    expect(runtime.started()).toBe(false);
+    expect(() => runtime.serving()).toThrow("not started");
+  });
+
   it("refuses work after drain has begun", async () => {
     const runtime = testRuntime();
     await runtime.start(hostFor());
