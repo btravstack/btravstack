@@ -7,6 +7,7 @@ import type { DrainReport } from "./drain-report.js";
 import { drainApp } from "./drain.js";
 import { safeSink, stderrSink, type EventSink } from "./events.js";
 import { createPhaseTracker, type Phase } from "./phase.js";
+import { startProbeServer } from "./probes.js";
 import type { RunUnit, Runtime, RuntimeStartFailed, Serving } from "./runtime.js";
 import { installSignalHandlers } from "./signals.js";
 import { installUncaughtHandlers } from "./uncaught.js";
@@ -76,11 +77,21 @@ export const start = <X, E, Needs extends AnyPort>(
   // The second signal aborts this, cutting short whichever `drainApp` sleep
   // (pre-drain delay or drain timeout) is currently pending.
   const skipDrain = new AbortController();
-  // Task 11 wires this into the probe server's readiness endpoint. Hoisted
-  // out of `runDrain` so the uncaught-exception path (which skips the drain
+  // Forced false by the drain (before the runtime stops accepting new work)
+  // and by an uncaught exception; never reset back to `true`. `ready()`
+  // below reads this alongside the phase rather than the phase alone,
+  // because the uncaught path can flip it while the phase is still
+  // `"serving"` — the tracker only reaches `"stopping"` once the shutdown
+  // promise's continuation runs, a tick or more later. Hoisted out of
+  // `runDrain` so the uncaught-exception path (which skips the drain
   // entirely) can flip it too, through the same mechanism rather than a
   // second one.
-  const onReadyChange = (_ready: boolean): void => {};
+  let forcedUnready = false;
+  const onReadyChange = (nowReady: boolean): void => {
+    if (!nowReady) forcedUnready = true;
+  };
+  const live = (): boolean => tracker.current() !== "exited";
+  const ready = (): boolean => tracker.current() === "serving" && !forcedUnready;
   const disposeSignals =
     options.signals === false
       ? () => {}
@@ -97,8 +108,35 @@ export const start = <X, E, Needs extends AnyPort>(
           skipDrain.abort();
           shutdown.resolve("uncaught");
         });
+  // Reassigned once the probe server actually binds (see `probesStarted`
+  // below); stays a no-op when probes are disabled or the bind never
+  // succeeds, so both dispose sites can call it unconditionally.
+  let disposeProbes = (): void => {};
 
   emit({ type: "building" });
+
+  // Bound before `Module.scoped` runs, so `/livez` answers while the graph
+  // is still building (there is deliberately no separate startup probe —
+  // see `probes.ts`). A bind failure is a startup failure of its own: the
+  // `tapFailure` here runs the same construction-failure cleanup as
+  // `Module.scoped`'s below, since a failed `probesStarted` short-circuits
+  // the `flatMap` that would otherwise reach it.
+  const probesOptions = options.probes ?? { port: 9000 };
+  const probesStarted: AsyncResult<undefined, RuntimeStartFailed> = (
+    probesOptions === false
+      ? Ok(undefined).toAsync()
+      : startProbeServer({ port: probesOptions.port, live, ready }).map((server) => {
+          disposeProbes = () => {
+            void server.close();
+          };
+          return undefined;
+        })
+  ).tapFailure(() => {
+    tracker.advanceTo("stopping");
+    disposeSignals();
+    disposeUncaught();
+    tracker.advanceTo("exited");
+  });
 
   // Only a `"signal"` shutdown reason drains. `"runtimeStopped"` (plain
   // `stop()`) and `"uncaught"` go straight to `stopping`, leaving
@@ -133,6 +171,7 @@ export const start = <X, E, Needs extends AnyPort>(
         disposeSignals();
         disposeUncaught();
         tracker.advanceTo("exited");
+        disposeProbes();
         return {
           reason,
           drain: report,
@@ -149,54 +188,57 @@ export const start = <X, E, Needs extends AnyPort>(
     });
   };
 
-  const exited = Module.scoped(
-    module,
-    (ctx: Context<X>): AsyncResult<ExitReport, RuntimeStartFailed> => {
-      tracker.advanceTo("starting");
+  const exited = probesStarted.flatMap(() =>
+    Module.scoped(
+      module,
+      (ctx: Context<X>): AsyncResult<ExitReport, RuntimeStartFailed> => {
+        tracker.advanceTo("starting");
 
-      // `Context<in R>` is contravariant, so an application context whose
-      // exports cover the runtime's needs is assignable here. The assertion is
-      // needed only because the `gate` rest parameter proves
-      // `InstanceType<Needs> extends X` at the *call site*, and that proof is
-      // not visible to the checker inside this body, where `X` and `Needs` are
-      // still unresolved type parameters.
-      const runtimeCtx = ctx as unknown as Context<InstanceType<Needs>>;
+        // `Context<in R>` is contravariant, so an application context whose
+        // exports cover the runtime's needs is assignable here. The assertion is
+        // needed only because the `gate` rest parameter proves
+        // `InstanceType<Needs> extends X` at the *call site*, and that proof is
+        // not visible to the checker inside this body, where `X` and `Needs` are
+        // still unresolved type parameters.
+        const runtimeCtx = ctx as unknown as Context<InstanceType<Needs>>;
 
-      // The registry counts and aborts; it knows nothing about contexts. The
-      // kernel is what closes over `runtimeCtx` and hands a runtime the
-      // two-argument `RunUnit` its handlers expect. When the `unit` module
-      // lands (deferred, see the end of this plan), the `Module.forkScope`
-      // call goes exactly here, replacing `runtimeCtx` with the fork's context.
-      // An annotation, not an assertion: a future divergence between this
-      // adapter and `RunUnit` is reported here rather than absorbed.
-      const run: RunUnit<Needs> = (meta, work) =>
-        registry.run(meta, (signal) => work(runtimeCtx, signal));
+        // The registry counts and aborts; it knows nothing about contexts. The
+        // kernel is what closes over `runtimeCtx` and hands a runtime the
+        // two-argument `RunUnit` its handlers expect. When the `unit` module
+        // lands (deferred, see the end of this plan), the `Module.forkScope`
+        // call goes exactly here, replacing `runtimeCtx` with the fork's context.
+        // An annotation, not an assertion: a future divergence between this
+        // adapter and `RunUnit` is reported here rather than absorbed.
+        const run: RunUnit<Needs> = (meta, work) =>
+          registry.run(meta, (signal) => work(runtimeCtx, signal));
 
-      const host = { ctx: runtimeCtx, run };
+        const host = { ctx: runtimeCtx, run };
 
-      return options.runtime.start(host).flatMap((serving: Serving) => {
-        tracker.advanceTo("serving");
+        return options.runtime.start(host).flatMap((serving: Serving) => {
+          tracker.advanceTo("serving");
 
-        return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
-      });
-    },
-    {
-      onTeardownError: (port, cause) => {
-        teardownErrors.push({ port, cause });
-        emit({ type: "teardownError", port, cause });
+          return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
+        });
       },
-    },
-    // Construction failed, or the runtime refused to start: `use` never
-    // reached `finish`, so nothing has moved the tracker off a live phase.
-    // The plan's state diagram says any failure short-circuits to `stopping`;
-    // without this the event stream just stops and `phase()` lies about an
-    // application that has already exited.
-  ).tapFailure(() => {
-    tracker.advanceTo("stopping");
-    disposeSignals();
-    disposeUncaught();
-    tracker.advanceTo("exited");
-  });
+      {
+        onTeardownError: (port, cause) => {
+          teardownErrors.push({ port, cause });
+          emit({ type: "teardownError", port, cause });
+        },
+      },
+      // Construction failed, or the runtime refused to start: `use` never
+      // reached `finish`, so nothing has moved the tracker off a live phase.
+      // The plan's state diagram says any failure short-circuits to `stopping`;
+      // without this the event stream just stops and `phase()` lies about an
+      // application that has already exited.
+    ).tapFailure(() => {
+      tracker.advanceTo("stopping");
+      disposeSignals();
+      disposeUncaught();
+      tracker.advanceTo("exited");
+      disposeProbes();
+    }),
+  );
 
   return {
     exited,
