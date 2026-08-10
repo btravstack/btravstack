@@ -14,7 +14,7 @@ const AppModule = Module("App")({
 });
 
 const serving: Serving = {
-  drain: () => Ok({ inFlightAtStart: 0, completed: 0, abandoned: 0 }).toAsync(),
+  drain: () => Ok(undefined).toAsync(),
   stop: () => Ok(undefined).toAsync(),
 };
 

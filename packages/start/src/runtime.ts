@@ -1,7 +1,6 @@
 import type { AnyPort, Context } from "@btravstack/di";
 import { TaggedError, type AsyncResult } from "unthrown";
 
-import type { DrainReport } from "./drain-report.js";
 import type { UnitMeta, UnitWork } from "./units.js";
 
 export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
@@ -26,7 +25,11 @@ export type RuntimeHost<Needs extends AnyPort> = {
 };
 
 export type Serving = {
-  readonly drain: (signal: AbortSignal) => AsyncResult<DrainReport, never>;
+  // Returns `void`, not a `DrainReport`: only the kernel can see the unit
+  // registry, so it — not the runtime — owns the accounting. `drain` tells
+  // the runtime to stop accepting new work; the kernel decides what counts as
+  // completed vs. abandoned once its own deadline passes.
+  readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
   readonly stop: () => AsyncResult<void, never>;
 };
 

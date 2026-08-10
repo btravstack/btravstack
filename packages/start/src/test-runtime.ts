@@ -1,7 +1,6 @@
 import { Ok, type AsyncResult, type Result } from "unthrown";
 
 import { createDeferred } from "./deferred.js";
-import type { DrainReport } from "./drain-report.js";
 import type { Runtime, RuntimeHost, Serving } from "./runtime.js";
 import type { RunUnit } from "./runtime.js";
 
@@ -24,19 +23,13 @@ export const testRuntime = (name = "test"): TestRuntime => {
   let accepting = false;
   let serving: Serving | undefined;
   let submitted = 0;
-  let completed = 0;
   const started = createDeferred<void>();
 
   const make = (): Serving => ({
     drain: (signal) => {
       accepting = false;
       void signal;
-      const report: DrainReport = {
-        inFlightAtStart: submitted - completed,
-        completed,
-        abandoned: 0,
-      };
-      return Ok(report).toAsync();
+      return Ok(undefined).toAsync();
     },
     stop: () => {
       accepting = false;
@@ -81,11 +74,9 @@ export const testRuntime = (name = "test"): TestRuntime => {
       });
       let signal!: AbortSignal;
 
-      const result = run<T, E>({ kind: "test", id: `${submitted}` }, async (_ctx, s) => {
+      const result = run<T, E>({ kind: "test", id: `${submitted}` }, (_ctx, s) => {
         signal = s;
-        const value = await held;
-        completed += 1;
-        return value;
+        return held;
       });
 
       return {

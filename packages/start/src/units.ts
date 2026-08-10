@@ -18,6 +18,11 @@ export type UnitWork<T, E> = (
 export type UnitRegistry = {
   readonly run: <T, E>(meta: UnitMeta, work: UnitWork<T, E>) => AsyncResult<T, E>;
   readonly inFlight: () => number;
+  // Monotonic: only ever increments, so `closed() - closedAtSomeEarlierPoint`
+  // can never go negative the way `inFlightAtStart - inFlight()` can (a unit
+  // that starts after the earlier point is sampled shrinks the latter below
+  // zero; it only grows the former).
+  readonly closed: () => number;
   readonly abortAll: () => void;
   readonly awaitIdle: () => Promise<void>;
 };
@@ -32,6 +37,7 @@ const nextId = (): string => {
 export const createUnitRegistry = (): UnitRegistry => {
   const open = new Set<AbortController>();
   const idleWaiters = new Set<() => void>();
+  let closedCount = 0;
 
   const settleIfIdle = (): void => {
     if (open.size > 0) return;
@@ -60,13 +66,17 @@ export const createUnitRegistry = (): UnitRegistry => {
           try {
             return await work(controller.signal);
           } finally {
+            // Same `finally` as the delete: every path a unit can leave by —
+            // Ok, Err, or a throw — closes it exactly once, here.
             open.delete(controller);
+            closedCount += 1;
             settleIfIdle();
           }
         }),
       ).flatMap((result) => result);
     },
     inFlight: () => open.size,
+    closed: () => closedCount,
     abortAll: () => {
       // `open` is iterated live: a unit started synchronously from an abort
       // listener is visited and aborted by this same pass too.
