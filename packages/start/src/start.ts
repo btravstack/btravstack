@@ -9,6 +9,7 @@ import { safeSink, stderrSink, type EventSink } from "./events.js";
 import { createPhaseTracker, type Phase } from "./phase.js";
 import type { RunUnit, Runtime, RuntimeStartFailed, Serving } from "./runtime.js";
 import { installSignalHandlers } from "./signals.js";
+import { installUncaughtHandlers } from "./uncaught.js";
 import { createUnitRegistry } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
@@ -75,6 +76,11 @@ export const start = <X, E, Needs extends AnyPort>(
   // The second signal aborts this, cutting short whichever `drainApp` sleep
   // (pre-drain delay or drain timeout) is currently pending.
   const skipDrain = new AbortController();
+  // Task 11 wires this into the probe server's readiness endpoint. Hoisted
+  // out of `runDrain` so the uncaught-exception path (which skips the drain
+  // entirely) can flip it too, through the same mechanism rather than a
+  // second one.
+  const onReadyChange = (_ready: boolean): void => {};
   const disposeSignals =
     options.signals === false
       ? () => {}
@@ -82,12 +88,22 @@ export const start = <X, E, Needs extends AnyPort>(
           onFirst: () => shutdown.resolve("signal"),
           onSecond: () => skipDrain.abort(),
         });
+  const disposeUncaught =
+    options.signals === false
+      ? () => {}
+      : installUncaughtHandlers((cause) => {
+          emit({ type: "uncaught", cause });
+          onReadyChange(false);
+          skipDrain.abort();
+          shutdown.resolve("uncaught");
+        });
 
   emit({ type: "building" });
 
   // Only a `"signal"` shutdown reason drains. `"runtimeStopped"` (plain
-  // `stop()`) and `"uncaught"` (Task 10) go straight to `stopping`, leaving
-  // `ExitReport.drain` `undefined`.
+  // `stop()`) and `"uncaught"` go straight to `stopping`, leaving
+  // `ExitReport.drain` `undefined` — draining after an uncaught exception
+  // risks completing in-flight work against corrupted state.
   const runDrain = (serving: Serving): AsyncResult<DrainReport, never> => {
     tracker.advanceTo("draining");
     emit({ type: "draining", inFlight: registry.inFlight() });
@@ -99,8 +115,7 @@ export const start = <X, E, Needs extends AnyPort>(
       preDrainDelayMs,
       drainTimeoutMs,
       skip: skipDrain.signal,
-      // Task 11 wires this into the probe server's readiness endpoint.
-      onReadyChange: () => {},
+      onReadyChange,
     }).tap((report) => emit({ type: "drained", report }));
   };
 
@@ -116,6 +131,7 @@ export const start = <X, E, Needs extends AnyPort>(
 
       return serving.stop().map(() => {
         disposeSignals();
+        disposeUncaught();
         tracker.advanceTo("exited");
         return {
           reason,
@@ -178,6 +194,7 @@ export const start = <X, E, Needs extends AnyPort>(
   ).tapFailure(() => {
     tracker.advanceTo("stopping");
     disposeSignals();
+    disposeUncaught();
     tracker.advanceTo("exited");
   });
 

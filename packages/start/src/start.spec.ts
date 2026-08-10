@@ -166,4 +166,24 @@ describe("start", () => {
     // throw off) every subsequent test in this file that emits a signal.
     expect(listenerCount()).toBe(before);
   });
+
+  it("skips the drain and marks itself unready on an uncaught exception", async () => {
+    const uncaughtListenerCount = (): number =>
+      process.listenerCount("uncaughtException") + process.listenerCount("unhandledRejection");
+    const before = uncaughtListenerCount();
+
+    const runtime = testRuntime();
+    const app = start(AppModule, { runtime, probes: false, preDrainDelayMs: 60_000 });
+    await runtime.untilStarted();
+    expect(uncaughtListenerCount()).toBe(before + 2);
+
+    process.emit("uncaughtException", new Error("boom"));
+
+    const report = await app.exited;
+    expect(report).toBeOkWith(expect.objectContaining({ reason: "uncaught", drain: undefined }));
+    // Load-bearing for the same reason as the signal test above: a leaked
+    // listener here would fire into every subsequent test in this file that
+    // emits an uncaught exception or rejection.
+    expect(uncaughtListenerCount()).toBe(before);
+  });
 });
