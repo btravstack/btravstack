@@ -82,6 +82,17 @@ const tappedApi = () => {
 };
 
 /**
+ * A composition root whose repository fails in a way nobody modelled: no
+ * `qualify` triaged the rejection, so it is a defect and never reaches the
+ * contract's declared error map.
+ */
+const unmodelledApi = () =>
+  apiWith({
+    save: (order) => OkAsync(order),
+    find: () => fromSafePromise(Promise.reject(new Error("the database is on fire"))),
+  });
+
+/**
  * A repository whose `find` never settles until `release()` is called, and
  * whose `arrived` promise reports the moment the request reached it. Both drain
  * specs turn on knowing a unit is genuinely in flight before the drain starts —
@@ -120,7 +131,7 @@ export type ApiFixtures = {
   readonly clientFor: <E>(app: App<E>) => Promise<OrderApiClient>;
   readonly probesFor: <E>(app: App<E>) => Promise<string>;
   readonly statusOf: (url: string) => Promise<number>;
-  readonly apiWith: typeof apiWith;
+  readonly unmodelled: ReturnType<typeof unmodelledApi>;
   readonly gate: ReturnType<typeof gatedApi>;
   readonly tapped: ReturnType<typeof tappedApi>;
 };
@@ -181,8 +192,8 @@ export const it = test.extend<ApiFixtures>({
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
-  apiWith: async ({}, use) => {
-    await use(apiWith);
+  unmodelled: async ({}, use) => {
+    await use(unmodelledApi());
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

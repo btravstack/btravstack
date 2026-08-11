@@ -615,7 +615,7 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
 
 ## Test conventions
 
-Four rules, each with the reason it exists. They hold across `examples/`, which
+Five rules, each with the reason it exists. They hold across `examples/`, which
 is the teaching surface and where the shape is read as advice. `packages/start`'s
 own 14 spec files still predate them — that sweep is deliberately deferred and
 reviewed separately (see Status), so a **new or rewritten** kernel spec follows
@@ -651,10 +651,40 @@ these and an untouched one is not churned for it.
    as the subject; a test that cannot be split into three is usually testing more
    than one thing. These markers are **exempt from the sparse comment-density
    rule** above — they are structure, not narration.
+5. **One deep `expect` per test, asserting once against one resource.** Not a
+   scatter of shallow assertions, and never an assertion that can decline to
+   run. The failure mode is concrete: `expect(r).toBeErr(); if (r.isErr()) {
+expect(r.error.code)… }` passes on the outer assertion alone the moment the
+   narrowing is false — every assertion inside silently does not run, and the
+   test still goes green. So does `descriptor?.writable`, and so does any
+   assertion reached through an `&&` guard. A single deep assertion has no such
+   hole: `await expect(call()).toBeErrWith(expect.objectContaining({ code:
+"CONFLICT", data: { id } }))` either matches or fails. In practice:
+   - Collapse several properties of one resource into one deep assertion, with
+     `@unthrown/vitest`'s matchers (`toBeOkWith`, `toBeErrWith`,
+     `toBeErrTagged`, `toBeDefectWith`) plus `expect.objectContaining` /
+     `expect.any` / `expect.not.stringContaining` where a partial or loose match
+     is genuinely wanted. To pin a **class** inside the same assertion, put
+     `constructor: TheClass` in the `objectContaining` — asymmetric matchers
+     read through the prototype chain, so it is `toBeInstanceOf` without a
+     second `expect` (verified: it rejects a structural impostor).
+     Where the facts are not properties of one object, assert a **projection**
+     of them (`expect({ livez, readyz, ready }).toEqual({ … })`).
+   - **Two resources means two tests**, not two assertions. The test count
+     rising is the expected outcome.
+   - The GIVEN phase asserts nothing. Chain the setup into the subject
+     (`repository.save(x).flatMap(() => repository.find(id))`) so a failed setup
+     surfaces in the one assertion instead of needing a guard assertion of its
+     own — which also keeps the setup's `Result` consumed rather than dropped.
+   - Waiting is not asserting: use `vi.waitUntil(() => …)` to synchronise on a
+     state, and assert that state in the test's one `expect`. `expect.poll` used
+     as a barrier reads as an assertion and is not one.
+   - Fixture teardown keeps its own `expect` (rule 3) — that is cleanup, not the
+     test's assertion.
 
-A fifth rule is about production code that tests keep honest:
+A sixth rule is about production code that tests keep honest:
 
-5. **Configuration is validated through a schema and returned as a value, never
+6. **Configuration is validated through a schema and returned as a value, never
    `.parse()`d.** `examples/order-api/src/env.ts` is the shape: a schema over
    `process.env` run through `@unthrown/standard-schema`'s `fromSchema`, whose
    issues are the modeled `E`, folded by the entry point into a message and a

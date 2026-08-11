@@ -6,13 +6,23 @@ import { PersistenceModule } from "./index.js";
 import { it } from "./test-fixtures.js";
 
 describe("the Prisma OrderRepository", () => {
-  it("round-trips a saved order through the database", async ({ repository, anOrder }) => {
+  it("hands back the entity it saved", async ({ repository, anOrder }) => {
     // GIVEN a fresh database
     // WHEN an order is saved
+    // THEN the write answers with the entity itself
     await expect(repository.save(anOrder("o-1", 3))).toBeOkWith({ id: "o-1", quantity: 3 });
+  });
 
-    // THEN it reads back as the same entity
-    await expect(repository.find("o-1")).toBeOkWith({ id: "o-1", quantity: 3 });
+  it("reads a saved order back as the same entity", async ({ repository, anOrder }) => {
+    // GIVEN an order saved into a fresh database
+    // WHEN it is read back — chained, so the write's own `Result` is consumed
+    // and a failed write cannot be mistaken for a failed read
+    const roundTripped = await repository
+      .save(anOrder("o-1", 3))
+      .flatMap(() => repository.find("o-1"));
+
+    // THEN the round trip is lossless
+    expect(roundTripped).toBeOkWith({ id: "o-1", quantity: 3 });
   });
 
   it("translates a real unique-constraint violation into DuplicateOrder", async ({
@@ -20,17 +30,17 @@ describe("the Prisma OrderRepository", () => {
     anOrder,
   }) => {
     // GIVEN an order already stored
-    await expect(repository.save(anOrder("o-1", 1))).toBeOk();
-
     // WHEN the same id is saved again
-    const duplicate = await repository.save(anOrder("o-1", 2));
+    const duplicate = await repository
+      .save(anOrder("o-1", 1))
+      .flatMap(() => repository.save(anOrder("o-1", 2)));
 
     // THEN the load-bearing assertion: the UNIQUE index on `Order.orderId`
     // raises a real P2002, `@unthrown/prisma` hands it over as
     // `UniqueConstraintViolation`, and what leaves the adapter is the
-    // application's own `DuplicateOrder`.
+    // application's own `DuplicateOrder` — a single `_tag`, so asserting it is
+    // also the assertion that the infrastructure tag did not escape.
     expect(duplicate).toBeErrTagged("DuplicateOrder", { id: "o-1" });
-    expect(duplicate).not.toBeErrTagged("UniqueConstraintViolation");
   });
 
   it("returns the domain's OrderNotFound for an unknown id", async ({ repository }) => {
@@ -80,15 +90,16 @@ describe("PersistenceModule", () => {
     // client. Declared this way, that failure is a loud TypeError at the access.
     let escaped!: ServiceOf<OrderRepository>;
 
-    // WHEN the scope closes
-    const result = await Module.scoped(PersistenceModule, (ctx) => {
+    // WHEN the scope closes and the same repository is asked to query again.
+    // One chain, so the scope's own `Result` is consumed rather than dropped
+    // and a failure inside it reaches the assertion instead of skipping it.
+    const afterClose = await Module.scoped(PersistenceModule, (ctx) => {
       escaped = ctx.get(OrderRepository);
       return escaped.save(anOrder("o-1", 1));
-    });
+    }).flatMap(() => escaped.find("o-1"));
 
     // THEN teardown reached a real resource: the client it acquired is
     // disconnected, so the same repository can no longer query
-    expect(result).toBeOk();
-    await expect(escaped.find("o-1")).toBeDefectWith(expect.any(Error));
+    expect(afterClose).toBeDefectWith(expect.any(Error));
   });
 });

@@ -1,3 +1,4 @@
+import { P } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { describeEnvIssues, readEnv } from "./env.js";
@@ -32,11 +33,12 @@ describe("readEnv", () => {
     // WHEN it is validated
     const env = readEnv(source);
 
-    // THEN neither reaches a socket: both are issues in the error channel
-    expect(env).toBeErr();
-    expect(env.isErr() && env.error.map((issue) => issue.path?.[0])).toEqual([
-      "PORT",
-      "PROBE_PORT",
+    // THEN neither reaches a socket: both are issues in the error channel,
+    // named and in order, asserted on the `Err` itself rather than behind an
+    // `env.isErr() &&` guard that evaluates to `false` when it does not hold
+    expect(env).toBeErrWith([
+      expect.objectContaining({ path: ["PORT"] }),
+      expect.objectContaining({ path: ["PROBE_PORT"] }),
     ]);
   });
 
@@ -44,11 +46,15 @@ describe("readEnv", () => {
     // GIVEN a number that parses but cannot be bound
     const source = { PORT: "99999" };
 
-    // WHEN it is validated
-    const env = readEnv(source);
+    // WHEN its error channel is folded into the message a deployment reads
+    const described = readEnv(source).match({
+      ok: () => "WRONGLY ACCEPTED",
+      // oxlint-disable-next-line unthrown/no-catch-all-pattern -- `E` is one type (the schema's list of issues), not a union of cases to enumerate
+      errCases: (matcher) => matcher.with(P._, describeEnvIssues),
+      defect: () => "defect",
+    });
 
     // THEN the range is the schema's business, not the OS's
-    expect(env).toBeErr();
-    expect(env.isErr() && describeEnvIssues(env.error)).toContain("PORT: Too big");
+    expect(described).toContain("PORT: Too big");
   });
 });
