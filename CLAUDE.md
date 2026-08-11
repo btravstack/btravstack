@@ -116,7 +116,7 @@ hook). User-facing changes need a changeset.
    "async, and cannot fail", which is what `fromSafePromise` produces. The point
    is uniformity — every async surface awaits into a `Result`, so a caller never
    has to remember which ones did and which ones did not. `probePort()`,
-   `Clock.sleep`, `FakeClock.advance`, `UnitRegistry.awaitIdle`,
+   `runtimeInfo()`, `Clock.sleep`, `FakeClock.advance`, `UnitRegistry.awaitIdle`,
    `TestRuntime.untilStarted` and `ProbeServer.close` all carry `E = never`.
    `unthrown/prefer-async-result` cannot enforce this — it only flags a
    `Promise<Result<T, E>>`, and a `Promise<void>` is not Result-bearing — so it
@@ -233,6 +233,13 @@ Beyond the nine:
   asserts the success route.
 - **The probe socket is closed at both dispose sites.** `invariants.spec.ts` →
   _"both dispose sites close the probe socket"_.
+- **`runtimeInfo()` can never hang either.** Resolved with `Serving.info` the
+  moment the runtime is serving, and with `undefined` by the single `tapFailure`
+  on `exited` for every route that never gets there. `start.spec.ts` →
+  _"hands back what a serving runtime published about itself"_, _"resolves
+  undefined for a runtime that publishes nothing"_, _"stays pending until the
+  runtime is serving"_ and _"resolves undefined when the runtime never serves,
+  so a caller cannot hang"_.
 
 Type-level invariants live in `start.test-d.ts` and are checked by
 `pnpm typecheck`:
@@ -282,13 +289,14 @@ so a production bundle never pulls the fakes in.
   whose `acquire`/`release` provider adds `Scope` — the single need
   `Module.scoped` discharges itself). Followed by the phantom `...gate` rest
   tuple that makes the runtime's needs a compile-time check.
-- **`StartOptions<Needs>`** — `runtime` (required); `clock`
+- **`StartOptions<Needs, Info>`** — `runtime` (required); `clock`
   (default `systemClock`); `signals` (default `true`; **`false` disables the
   SIGTERM/SIGINT handlers _and_ the uncaught ones together**); `probes`
   (default `{ port: 9000 }`, or `false`); `preDrainDelayMs` (`5_000`);
   `drainTimeoutMs` (`20_000`); `onEvent` (default `stderrSink`).
-- **`RunningApp<E>`** — `exited` (`AsyncResult<ExitReport, E | RuntimeStartFailed>`),
-  `stop()`, `requestDrain()`, `phase()`, `ready()`, `probePort()`.
+- **`RunningApp<E, Info>`** — `exited` (`AsyncResult<ExitReport, E | RuntimeStartFailed>`),
+  `stop()`, `requestDrain()`, `phase()`, `ready()`, `probePort()`,
+  `runtimeInfo()`.
   `stop()` exits without draining; `requestDrain()` takes the signal path.
   `ready()` is the synchronous read of the same predicate `/readyz` answers
   from — needed because the uncaught path forces it false while the phase is
@@ -296,7 +304,10 @@ so a production bundle never pulls the fakes in.
   embedder wires into a health endpoint of its own when `probes: false`.
   `probePort()` is an `AsyncResult<number | undefined, never>` resolving the
   port actually bound (the point of it is `{ port: 0 }`), or `undefined` when
-  probes are disabled or the bind failed.
+  probes are disabled or the bind failed. `runtimeInfo()` is the same deferred
+  one layer up, for the **runtime**: an `AsyncResult<Info | undefined, never>`
+  resolving whatever the runtime published on `Serving.info` once it is serving,
+  and `undefined` when it publishes nothing or never got there.
 - **`ExitReport`** — `reason` (`"signal" | "runtimeStopped" | "uncaught"`),
   `drain` (`DrainReport | undefined` — `undefined` whenever the drain was
   skipped), `teardownErrors`, `uptimeMs`. **`TeardownError`** is
@@ -306,14 +317,21 @@ so a production bundle never pulls the fakes in.
   `inFlightAtStart` if in-flight work spawned more, which is honest reporting,
   not a bug), `abandoned` (units still open at the deadline; **the field the
   exit code keys on**).
-- **`Runtime<Needs>` / `RuntimeHost<Needs>` / `RunUnit<Needs>` / `Serving`** —
-  the runtime contract. All parameterised by port **classes**
+- **`Runtime<Needs, Info>` / `RuntimeHost<Needs>` / `RunUnit<Needs>` /
+  `Serving<Info>`** — the runtime contract. All parameterised by port **classes**
   (`Needs extends AnyPort`) but handing out `Context<InstanceType<Needs>>`,
   because di parameterises `Context<in R>` by port **instance** types.
   `Serving.drain(signal)` returns `AsyncResult<void, never>` — **not** a
   `DrainReport`: only the kernel can see the unit registry, so the kernel owns
   the accounting. `drain` means "stop accepting"; the `AbortSignal` fires when
   the kernel's deadline passes, so a runtime never does arithmetic on time.
+  `Serving.info?: Info` is what the runtime publishes about **itself** once it
+  is serving, read back through `RunningApp.runtimeInfo()`. `Info` is the
+  runtime's own shape and deliberately **not** a port number — an ephemeral
+  `port: 0` bind is the motivating case, but a queue consumer has none and
+  would publish `{ queue, prefetch }`. It defaults to `never`, so `info` is
+  unwritable and both types read exactly as they did for a runtime with nothing
+  to publish; that default is what makes publishing optional with no ceremony.
 - **`RuntimeStartFailed`** — the one error the kernel mints, a `TaggedError`
   carrying `{ runtime, cause }`. A probe bind failure uses
   `runtime: "probes"`.
@@ -348,9 +366,11 @@ checker already verifies.
 
 ### `@btravstack/start/testing`
 
-- **`testRuntime(name?)`** — an in-memory `Runtime<never>` plus `started()`,
-  `untilStarted()` (an `AsyncResult<void, never>`), `accepting()`, `serving()`,
-  `submit<T, E>()`. `submit`
+- **`testRuntime(name?)`** — an in-memory `Runtime<never, TestRuntimeInfo>` plus
+  `started()`, `untilStarted()` (an `AsyncResult<void, never>`), `accepting()`,
+  `serving()`, `submit<T, E>()`. It publishes `{ name }` on `Serving.info` — the
+  one thing an in-memory runtime genuinely knows about itself — so the
+  `runtimeInfo()` channel is exercised end to end by the suite. `submit`
   returns a `SubmittedUnit` (`settle`, `result`, `signal`) so a test can hold a
   unit open across a drain. It deliberately **ignores** the
   `Serving.drain(signal)` deadline, which is what makes the abort tests tests of
@@ -417,6 +437,14 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
   `"serving"` because the tracker only moves a tick later. Deleting
   `!forcedUnready` is invisible to every drain test and is caught by exactly one
   assertion (named above). This is also why `ready()` is on `RunningApp` at all.
+
+- **`runtimeInfo`'s deferred is settled exactly where `probePort`'s is.**
+  `runtimePublished` takes `Serving.info` the moment the runtime is serving, and
+  `undefined` from the **same two** `tapFailure` blocks that already settle
+  `probeBound` — the probe bind failure, and `Module.scoped`'s (construction
+  failure, a runtime refusing to start, a defect). `createDeferred.resolve` is
+  idempotent, so a runtime that did serve and then failed later keeps what it
+  published. One mechanism, two deferreds, no third shape.
 
 - **The probe server binds before the graph is built.** `/livez` therefore
   answers while construction is still running, which is why there is no separate

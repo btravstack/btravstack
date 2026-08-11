@@ -23,7 +23,7 @@ const get = async (port: number, path: string): Promise<{ status: number; body: 
   return { status: response.status, body: await response.text() };
 };
 
-const boundPort = async (app: RunningApp<never>): Promise<number> => {
+const boundPort = async (app: RunningApp<never, unknown>): Promise<number> => {
   const port = (await app.probePort()).get();
   if (port === undefined) {
     // oxlint-disable-next-line unthrown/no-throw -- a test-only fixture: reaching here means the probe server never bound, which is a bug in the test's setup rather than a modeled outcome, and routing it would make every call site handle a case that only ever means "the test is broken"

@@ -19,7 +19,9 @@ export type DrainReport = {
 };
 
 export type DrainArgs = {
-  readonly serving: Serving;
+  // `Serving<unknown>`, not `Serving`: the drain reads only `drain`/`stop`, and
+  // `info` is covariant, so this accepts a runtime publishing anything at all.
+  readonly serving: Serving<unknown>;
   readonly registry: UnitRegistry;
   readonly clock: Clock;
   readonly preDrainDelayMs: number;

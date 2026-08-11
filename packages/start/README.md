@@ -92,6 +92,11 @@ is a type error at the `start` call.
   so LIFO release, close-on-failure and non-masking finaliser errors are
   inherited from `di`, not reimplemented. Failing finalisers surface in
   `ExitReport.teardownErrors`.
+- **A channel for what a runtime is.** A runtime that binds `port: 0` publishes
+  `Serving.info`, and the caller reads it back through `app.runtimeInfo()` — so
+  no runtime has to invent an `onListening` hook. The shape is the runtime's own
+  (a queue consumer has no port), and publishing is optional: `Info` defaults to
+  `never`.
 - **Unit tracking the runtimes do not implement.** `host.run` counts open
   units and hands each one an `AbortSignal`, which is what makes
   `DrainReport.abandoned` accurate without cooperation.

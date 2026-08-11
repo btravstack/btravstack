@@ -10,7 +10,15 @@ export type SubmittedUnit<T, E> = {
   readonly signal: AbortSignal;
 };
 
-export type TestRuntime = Runtime<never> & {
+/**
+ * What `testRuntime` publishes on `Serving.info` — its own name, the one thing
+ * an in-memory runtime genuinely knows about itself. A real runtime publishes
+ * its own shape (an HTTP one, a bound `port`); this exists so the mechanism is
+ * exercised end to end by the suite.
+ */
+export type TestRuntimeInfo = { readonly name: string };
+
+export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   readonly started: () => boolean;
   /** Resolves the first time the kernel calls `start` — `start` itself stays pending until shutdown. */
   readonly untilStarted: () => AsyncResult<void, never>;
@@ -20,18 +28,19 @@ export type TestRuntime = Runtime<never> & {
    * runtime to stop accepting, which the drain's ordering invariant turns on.
    */
   readonly accepting: () => boolean;
-  readonly serving: () => Serving;
+  readonly serving: () => Serving<TestRuntimeInfo>;
   readonly submit: <T = string, E = never>() => SubmittedUnit<T, E>;
 };
 
 export const testRuntime = (name = "test"): TestRuntime => {
   let run: RunUnit<never> | undefined;
   let accepting = false;
-  let serving: Serving | undefined;
+  let serving: Serving<TestRuntimeInfo> | undefined;
   let submitted = 0;
   const started = createDeferred<void>();
 
-  const make = (): Serving => ({
+  const make = (): Serving<TestRuntimeInfo> => ({
+    info: { name },
     drain: (signal) => {
       accepting = false;
       void signal;

@@ -129,12 +129,12 @@ or whose failure takes the process down.
 ## The `Runtime` contract
 
 ```ts
-type Runtime<Needs extends AnyPort> = {
+type Runtime<Needs extends AnyPort, Info = never> = {
   readonly name: string;
   readonly needs: readonly Needs[];
   readonly start: (
     host: RuntimeHost<Needs>,
-  ) => AsyncResult<Serving, RuntimeStartFailed>;
+  ) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
 };
 
 type RuntimeHost<Needs extends AnyPort> = {
@@ -142,9 +142,10 @@ type RuntimeHost<Needs extends AnyPort> = {
   readonly run: RunUnit<Needs>;
 };
 
-type Serving = {
+type Serving<Info = never> = {
   readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
   readonly stop: () => AsyncResult<void, never>;
+  readonly info?: Info;
 };
 ```
 
@@ -161,6 +162,39 @@ deadline passes, so a runtime never does arithmetic on time.
 `Runtime`, `RuntimeHost` and `RunUnit` are parameterised by port **classes**
 (`Needs extends AnyPort`) but hand out `Context<InstanceType<Needs>>`, because
 `di` parameterises `Context<in R>` by port **instance** types.
+
+### What a runtime publishes about itself
+
+A runtime that binds `port: 0` knows which port it got, and nothing else does.
+`Serving.info` is the channel for that, and `RunningApp.runtimeInfo()` is where
+the caller reads it — so no runtime has to invent an `onListening` hook of its
+own.
+
+```ts
+type HttpInfo = { readonly port: number };
+
+const httpish: Runtime<typeof Greeter, HttpInfo> = {
+  name: "httpish",
+  needs: [Greeter],
+  start: () =>
+    OkAsync({
+      drain: () => OkAsync(),
+      stop: () => OkAsync(),
+      // Whatever the runtime actually bound. A queue consumer has no port and
+      // would publish `{ queue, prefetch }` instead — the shape is its own.
+      info: { port: 8080 },
+    }),
+};
+
+const app = start(AppModule, { runtime: httpish });
+const info = await app.runtimeInfo(); // Result<HttpInfo | undefined, never>
+```
+
+`Info` defaults to `never`, so publishing is **optional**: a runtime with
+nothing to say omits `info` and its type is unchanged. `runtimeInfo()` is
+`probePort()` one layer up — the same deferred, settled when the runtime starts
+serving and `undefined` on every route that never gets there, so it can never
+hang.
 
 ## The unit of work
 
