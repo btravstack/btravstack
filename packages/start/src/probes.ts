@@ -47,6 +47,11 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
         resolve(
           Ok({
             port,
+            // Keep this route defect-free: `start.ts`'s `disposeProbes` drops
+            // the `Result` it returns, and the justification there is that
+            // nothing inside here can produce a `Defect`. Node's own close
+            // error is discarded deliberately — both dispose sites may fire,
+            // and the second would only report `ERR_SERVER_NOT_RUNNING`.
             close: () => fromSafePromise(new Promise<void>((done) => server.close(() => done()))),
           }),
         );

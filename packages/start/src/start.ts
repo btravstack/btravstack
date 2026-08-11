@@ -179,6 +179,17 @@ export const start = <X, E, Needs extends AnyPort, Info = never>(
           .tap((server) => {
             probeBound.resolve(server.port);
             disposeProbes = () => {
+              // The one `Result` this kernel deliberately drops. Two reasons,
+              // and both must hold for it to stay dropped: `ProbeServer.close`
+              // is our own three-line `fromSafePromise` over `server.close(cb)`
+              // — no third-party code runs inside it, and node's own close
+              // error is discarded on purpose (both dispose sites can fire, and
+              // the second would report `ERR_SERVER_NOT_RUNNING`), so its
+              // defect channel is unreachable; and it must not be awaited on
+              // the exit path — the socket is `unref`'d and `close` waits out
+              // live keep-alive connections, so threading it would delay the
+              // exit report behind a probe agent, or strand it entirely when
+              // nothing else keeps the loop alive.
               void server.close();
             };
           })

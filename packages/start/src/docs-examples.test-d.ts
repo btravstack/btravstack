@@ -8,8 +8,12 @@
 // `package.json`'s `exports` map points at.
 
 import { Module, Port, Provider, type AnyPort, type Context } from "@btravstack/di";
+// The matcher augmentation `src/vitest.d.ts` carries for the specs: this
+// config compiles `*.test-d.ts` alone, so the testing sample below needs it in
+// scope to spell `toBeOkWith`.
+import type {} from "@unthrown/vitest";
 import { Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
-import { expectTypeOf } from "vitest";
+import { expect, expectTypeOf } from "vitest";
 
 import {
   currentUnit,
@@ -48,9 +52,17 @@ const ticker: Runtime<typeof Greeter> = {
     const timer = setInterval(() => {
       // Every piece of work goes through `host.run`: that is what makes it
       // count towards the drain, and what gives it an `AbortSignal`.
-      void host.run({ kind: "tick", id: `${Date.now()}` }, (ctx, signal) =>
-        signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world")),
-      );
+      //
+      // The unit's `Result` is the runtime's to map — the kernel hands it back
+      // and stays out of it. A timer has nowhere to return one, so it observes
+      // it instead; dropping it would hide the work's `Err` *and* a `Defect`.
+      void host
+        .run({ kind: "tick", id: `${Date.now()}` }, (ctx, signal) =>
+          signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world")),
+        )
+        .tapFailure((failure) => {
+          process.stderr.write(`${JSON.stringify({ tick: failure.tag })}\n`);
+        });
     }, 1_000);
 
     const serving: Serving = {
@@ -172,7 +184,9 @@ const drainTest = async (): Promise<void> => {
     await clock.advance(5_000); // the pre-drain delay
 
     unit.settle(Ok("done"));
-    await unit.result;
+    // The unit's own outcome, asserted rather than awaited for its timing
+    // alone — a bare `await unit.result;` would drop it.
+    expect(await unit.result).toBeOkWith("done");
 
     return await app.exited;
   });

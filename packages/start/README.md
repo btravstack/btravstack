@@ -50,9 +50,17 @@ const ticker: Runtime<typeof Greeter> = {
     const timer = setInterval(() => {
       // Every piece of work goes through `host.run`: that is what makes it
       // count towards the drain, and what gives it an `AbortSignal`.
-      void host.run({ kind: "tick", id: `${Date.now()}` }, (ctx, signal) =>
-        signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world")),
-      );
+      //
+      // The unit's `Result` is the runtime's to map — the kernel hands it back
+      // and stays out of it. A timer has nowhere to return one, so it observes
+      // it instead; dropping it would hide the work's `Err` *and* a `Defect`.
+      void host
+        .run({ kind: "tick", id: `${Date.now()}` }, (ctx, signal) =>
+          signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world")),
+        )
+        .tapFailure((failure) => {
+          process.stderr.write(`${JSON.stringify({ tick: failure.tag })}\n`);
+        });
     }, 1_000);
 
     const serving: Serving = {
@@ -172,7 +180,9 @@ const drainTest = async (): Promise<void> => {
     await clock.advance(5_000); // the pre-drain delay
 
     unit.settle(Ok("done"));
-    await unit.result;
+    // The unit's own outcome, asserted rather than awaited for its timing
+    // alone — a bare `await unit.result;` would drop it.
+    expect(await unit.result).toBeOkWith("done");
 
     return await app.exited;
   });
@@ -186,7 +196,10 @@ const drainTest = async (): Promise<void> => {
 
 `withApp` forces `signals` and `probes` off whatever the caller passes:
 process-wide handlers would fight across a test file, and a probe port would
-collide between tests.
+collide between tests. It **rethrows a `Defect`** on `exited`, so a shutdown
+that blew up fails the test even when `use` never looked at `exited`; a modeled
+`Err` passes through untouched, being an outcome a test may legitimately be
+asserting.
 
 ## Options
 

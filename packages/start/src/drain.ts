@@ -72,7 +72,10 @@ export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
     // An `AsyncResult` is a thenable, so racing the two branches yields
     // whichever `Result` settles first — inspected below rather than dropped.
     // `allAsync` is the pair's `Promise.all`, with a Defect from either side
-    // dominating.
+    // dominating. The LOSING branch's `Result` is dropped, and that is the one
+    // drop here: when the timeout wins, the deadline has already decided the
+    // report and settled `exited`, so a `drain` that defects afterwards has no
+    // consumer left — and an `AsyncResult` never rejects, so nothing floats.
     return fromSafePromise(
       Promise.race([
         allAsync([drainStopped, args.registry.awaitIdle()]).discard(),

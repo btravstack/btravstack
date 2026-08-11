@@ -233,6 +233,23 @@ Beyond the nine:
   asserts the success route.
 - **The probe socket is closed at both dispose sites.** `invariants.spec.ts` →
   _"both dispose sites close the probe socket"_.
+- **No `Result` is produced and left unexamined — with exactly two audited
+  exceptions, each carrying its reason inline.** `AsyncResult<T, never>` empties
+  the **error** channel only; a `Defect` can still be there, and a `Serving`
+  written by a third party is where one comes from. `drain.spec.ts`'s four
+  _"propagates a Defect from …"_ tests guard the drain; `with-app.spec.ts` →
+  _"surfaces a shutdown Defect that `use` never looked at"_ and _"lets a failure
+  thrown by `use` win over a shutdown Defect"_ guard the harness. The two
+  survivors are `start.ts`'s `void server.close()` (our own `fromSafePromise`
+  over `server.close(cb)`, so no third-party code can defect inside it — and it
+  must not be awaited: the socket is `unref`'d and `close` waits out live
+  keep-alive connections, which would delay or strand the exit report) and
+  `drain.ts`'s losing race branch (once the timeout has decided the report,
+  `exited` has settled and a late defect has no consumer left). Neither can
+  float: an `AsyncResult` never rejects. `unthrown/no-unhandled-result` cannot
+  catch this class — it is deliberately syntactic, and an `await` inside a
+  larger expression is not a bare expression statement — so review is the only
+  guard.
 - **`runtimeInfo()` can never hang either.** Resolved with `Serving.info` the
   moment the runtime is serving, and with `undefined` by the single `tapFailure`
   on `exited` for every route that never gets there. `start.spec.ts` →
@@ -383,7 +400,14 @@ checker already verifies.
   whatever `use` does. `signals` and `probes` are **forced off** whatever the
   caller passes; a test needing the real probe server calls `start` directly.
   It carries the same phantom gate as `start`, and is the one harness-shaped
-  exception to Thesis #6 (both it and `use` speak a bare `Promise`).
+  exception to Thesis #6 (both it and `use` speak a bare `Promise`). It
+  **rethrows a `Defect`** on `exited` and only a `Defect`: the harness awaits
+  `exited` to know the application stopped, and dropping that `Result` let a
+  shutdown that blew up pass as a green test when `use` never read `exited`. A
+  modeled `Err` is an outcome a test may be asserting, so it passes through. A
+  failure thrown by `use` outranks both — it is held while the application is
+  stopped and rethrown unchanged, so a shutdown defect can never mask the
+  assertion that actually failed.
 
 ## Internal design (don't break these)
 
