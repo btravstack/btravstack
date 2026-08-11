@@ -179,17 +179,24 @@ export const start = <X, E, Needs extends AnyPort, Info = never>(
           .tap((server) => {
             probeBound.resolve(server.port);
             disposeProbes = () => {
-              // The one `Result` this kernel deliberately drops. Two reasons,
-              // and both must hold for it to stay dropped: `ProbeServer.close`
-              // is our own three-line `fromSafePromise` over `server.close(cb)`
-              // — no third-party code runs inside it, and node's own close
-              // error is discarded on purpose (both dispose sites can fire, and
-              // the second would report `ERR_SERVER_NOT_RUNNING`), so its
-              // defect channel is unreachable; and it must not be awaited on
-              // the exit path — the socket is `unref`'d and `close` waits out
-              // live keep-alive connections, so threading it would delay the
-              // exit report behind a probe agent, or strand it entirely when
-              // nothing else keeps the loop alive.
+              // The one `Result` this kernel deliberately drops, and the drop
+              // rests on the OUTCOME being unactionable rather than on a claim
+              // that nothing here can fail. The process is already exiting:
+              // there is no recovery to attempt, and the exit report describes
+              // the application's shutdown, not its health endpoint's. So even
+              // a `Defect` would be correctly discarded here.
+              //
+              // Resting it instead on "the defect channel is unreachable" would
+              // rest it on node's internals. `server.close(cb)` reports
+              // `ERR_SERVER_NOT_RUNNING` through `cb` rather than throwing —
+              // measured on v24, for both the double-close and never-listened
+              // cases, which is why the second dispose site is harmless — but
+              // that is node's guarantee to change, not ours.
+              //
+              // It must also not be awaited on the exit path: the socket is
+              // `unref`'d and `close` waits out live keep-alive connections, so
+              // threading it would delay the exit report behind a probe agent,
+              // or strand it entirely when nothing else keeps the loop alive.
               void server.close();
             };
           })

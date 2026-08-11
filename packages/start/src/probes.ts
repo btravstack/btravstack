@@ -47,11 +47,15 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
         resolve(
           Ok({
             port,
-            // Keep this route defect-free: `start.ts`'s `disposeProbes` drops
-            // the `Result` it returns, and the justification there is that
-            // nothing inside here can produce a `Defect`. Node's own close
-            // error is discarded deliberately — both dispose sites may fire,
-            // and the second would only report `ERR_SERVER_NOT_RUNNING`.
+            // Node's own close error is discarded deliberately — both dispose
+            // sites may fire, and the second reports `ERR_SERVER_NOT_RUNNING`
+            // through the callback (it does not throw; measured on v24).
+            //
+            // This route is NOT relied upon to be defect-free. `start.ts`'s
+            // `disposeProbes` drops the `Result`, but on the grounds that a
+            // failed close during exit is unactionable — see the comment there.
+            // A `Defect` escaping here would be correctly discarded too, so
+            // neither side depends on node's throwing behaviour staying put.
             close: () => fromSafePromise(new Promise<void>((done) => server.close(() => done()))),
           }),
         );
