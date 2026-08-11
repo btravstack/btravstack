@@ -298,6 +298,49 @@ importers:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(yaml@2.9.0)
 
+  examples/order-worker:
+    dependencies:
+      '@btravstack/di':
+        specifier: 'catalog:'
+        version: 0.1.0(unthrown@5.2.0)
+      '@btravstack/start':
+        specifier: workspace:*
+        version: link:../../packages/start
+      '@btravstack/start-example-order-application':
+        specifier: workspace:*
+        version: link:../order-application
+      '@btravstack/start-example-order-domain':
+        specifier: workspace:*
+        version: link:../order-domain
+      '@btravstack/start-example-order-infrastructure':
+        specifier: workspace:*
+        version: link:../order-infrastructure
+      '@unthrown/standard-schema':
+        specifier: 'catalog:'
+        version: 5.2.0
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.2.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.2.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.1.2
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(yaml@2.9.0)
+
   packages/start:
     devDependencies:
       '@btravstack/di':

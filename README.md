@@ -134,6 +134,12 @@ and deploy independently, and it removes a whole class of design problem: there
 is never a question of how two runtimes in one process share a drain deadline,
 or whose failure takes the process down.
 
+[`examples/`](./examples) proves this rather than asserting it: one
+clean-architecture application, booted by an oRPC runtime and by a queue-worker
+runtime, with the application and persistence layers unchanged between them —
+and the same `DuplicateOrder` arriving as a typed `CONFLICT` on one and as a
+dead-letter on the other.
+
 ## The `Runtime` contract
 
 ```ts
@@ -554,10 +560,11 @@ complete one.
 
 ## Documentation
 
-See [`packages/start`](./packages/start) for the package README, and
-[`CLAUDE.md`](./CLAUDE.md) for the authoritative spec: the theses, the
-load-bearing invariants with the test that guards each, and the internal design
-notes.
+See [`packages/start`](./packages/start) for the package README,
+[`examples/`](./examples) for a five-package clean-architecture application
+booted under two different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
+authoritative spec: the theses, the load-bearing invariants with the test that
+guards each, and the internal design notes.
 
 ## License
 

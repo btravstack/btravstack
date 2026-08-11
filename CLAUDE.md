@@ -20,7 +20,10 @@ throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
 pnpm workspace + turbo monorepo. `packages/start` is the single published
-package; there are no other workspaces yet.
+package; `examples/` holds five private ones — a clean-architecture application
+(`order-domain` → `order-application` → `order-infrastructure`) booted under two
+different runtimes (`order-api`, `order-worker`). They are consumers, not
+fixtures: they are part of the gate, and `examples/README.md` is their index.
 
 ## Commands
 
@@ -60,6 +63,11 @@ hook). User-facing changes need a changeset.
    question of how two runtimes in one process share a drain deadline, or whose
    failure takes the process down. `StartOptions.runtime` is therefore a single
    value, not an array, and no future option should make it plural.
+   `examples/order-api` and `examples/order-worker` make this testable rather
+   than asserted: the same `ApplicationModule` + `PersistenceModule`
+   composition under two runtimes, with the same `DuplicateOrder` arriving as a
+   typed `CONFLICT` on one and as a dead-letter on the other — and neither
+   mapping anywhere near the kernel.
 
 2. **Ambient carries DATA. The DI `Context` carries CAPABILITIES.** The kernel
    opens one `AsyncLocalStorage` store per unit holding a small, fixed record —
@@ -559,6 +567,25 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
 
 ## Toolchain & conventions
 
+- **`examples/` is part of the gate, not a folder of illustrations.** All five
+  workspaces run under the same six commands as the kernel — 59 specs plus two
+  `needs-gate.test-d.ts` files — so an example that stops compiling, stops
+  linting or stops passing fails CI exactly as `packages/start` would. They are
+  also the only place a runtime with a **non-empty `needs`** meets a real
+  module, which is what exercises `start`'s phantom rest-tuple gate and
+  `RuntimeHost`'s `Context<InstanceType<Needs>>` end to end.
+- **The Prisma client is generated at test time, and there is nothing to
+  install.** `@btravstack/start-example-order-infrastructure`'s `test` and
+  `typecheck` scripts both begin with `prisma generate`, writing a gitignored
+  client into `src/generated`, and turbo's `test` / `typecheck` / `test:types`
+  tasks carry a `^generate` edge so a dependent workspace gets one too. The
+  database is SQLite **in memory** with the schema applied by hand —
+  deliberately no Docker, so `pnpm test` stays self-contained on any machine.
+- **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
+  `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
+  the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
+  range resolves 1.x and fails `strictPeerDependencies`. The exact beta is the
+  contract until v2 goes stable; raise it deliberately, not on a bot bump.
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
   dependencies — the dual-copy hazard is real for both (di's port identity and
   unthrown's `isResult` each compare across copies). `node:` builtins only
@@ -701,6 +728,9 @@ A sixth rule is about production code that tests keep honest:
 Shipped: the whole kernel — phase tracker, injectable clock, ambient record,
 unit registry, `Runtime` contract, `start`, draining, signals, uncaught
 handling, probes, `runMain`, the testing entry point, and the invariants suite.
+Plus the five `examples/` workspaces: the clean-architecture application and its
+**two** deployments, `order-api` (oRPC) and `order-worker` (an in-memory queue),
+which together are the proof of Thesis #1.
 
 Deferred, deliberately:
 

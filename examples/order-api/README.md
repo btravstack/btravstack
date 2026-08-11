@@ -28,6 +28,10 @@ adapter in between:
 | `Err(error)` | a returned `ORPCError`  |
 | `Defect`     | `INTERNAL_SERVER_ERROR` |
 
+None of it is the kernel's doing — which is what [`order-worker`](../order-worker)
+demonstrates by folding the very same `Result` into ack / retry / dead-letter
+over the very same composition root.
+
 `handlerResult` performs that elimination, and the `mapErrCases` in front of it
 is the triage point — the boundary where the application's vocabulary stops:
 
@@ -133,7 +137,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-api test  # 8 runtime specs + 4 env specs
+pnpm --filter @btravstack/start-example-order-api test  # 15 runtime specs + 4 env specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
