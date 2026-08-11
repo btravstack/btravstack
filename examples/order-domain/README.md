@@ -1,11 +1,13 @@
 # `@btravstack/start` example: the order domain
 
 The innermost layer. It holds the vocabulary — an `Order`, the rule that a
-quantity must be positive, and the three failures the rest of the system names —
-and it depends on `unthrown` and nothing else.
+quantity must be positive, and the three failures the rest of the system names.
+The entity is modelled with
+[`@btravstack/entity`](https://github.com/btravstack/entity), which is the
+library built for exactly this layer.
 
 ```
-src/order.ts  Order, placeOrder, and the domain errors
+src/order.ts  the Order entity, its vocabulary, placeOrder, and the domain errors
 ```
 
 ## What is deliberately absent
@@ -16,8 +18,55 @@ ask; ports live one layer out, in `@btravstack/start-example-order-application`.
 The `dependencies` block of `package.json` is the whole statement:
 
 ```json
-"dependencies": { "unthrown": "catalog:" }
+"dependencies": {
+  "@btravstack/entity": "catalog:",
+  "unthrown": "catalog:",
+  "zod": "catalog:"
+}
 ```
+
+Every one of the three is a domain-modelling tool: an entity builder, the schema
+layer it is built on, and errors as values. Nothing here can reach a framework.
+
+## The entity
+
+```ts
+export const OrderId = z.string().brand("OrderId");
+export const Quantity = z.number().int().brand("Quantity");
+
+export class Order extends Entity("Order")(
+  {
+    id: Entity.field(OrderId, { immutable: true }),
+    quantity: Quantity,
+  },
+  {
+    invariants: [
+      Entity.invariant(
+        (d) => d.quantity > 0,
+        (d) =>
+          `order ${d.id} asks for ${d.quantity} items, which is not a positive quantity`,
+      ),
+    ],
+  },
+) {}
+```
+
+Four things the hand-written `type Order = { id: string; quantity: number }` and
+its constructor function could not do:
+
+- **The fields are branded.** An `OrderId` is not a `string` and a `Quantity` is
+  not a `number`, so the two cannot be swapped at a call site.
+- **`id` is `immutable`.** It is absent from `updateInput`, so `update` refuses
+  it at compile time — and rejects it at runtime when it is smuggled past the
+  type.
+- **The rule is declared once, on the entity.** `Entity.invariant` re-checks it
+  on every path that produces an `Order` — `make`, a factory, `update`. The
+  `quantity > 0 ? Ok(…) : Err(…)` it replaces guarded only the one path it was
+  written on, so any other way of building an order bypassed it.
+- **Instances are immutable at runtime.** Every field is installed non-writable
+  and deep-frozen, so `readonly` is not merely a compile-time claim.
+
+Nothing throws: `Order.make` and `update` both return an `unthrown` `Result`.
 
 ## The rule, as a value
 
@@ -26,10 +75,19 @@ export const placeOrder = (
   id: string,
   quantity: number,
 ): Result<Order, InvalidQuantity> =>
-  quantity > 0
-    ? Ok({ id, quantity })
-    : Err(new InvalidQuantity({ id, quantity }));
+  Order.make({ id, quantity }).mapErrCases((matcher) =>
+    matcher.with(
+      P.tag("InvalidEntity"),
+      () => new InvalidQuantity({ id, quantity }),
+    ),
+  );
 ```
+
+`Order.make` validates, runs the invariants and constructs, reporting a
+structural failure as `InvalidEntity` with the issues attached. `placeOrder`
+names that failure in the layer's own vocabulary, which is what the outer layers
+already speak. The translation is total: `OrderId` carries no rule of its own,
+so for a typed caller the quantity is the only field that can be wrong.
 
 `InvalidQuantity` is the only failure this layer can _raise_ — it is the only
 one it can decide. `OrderNotFound` and `DuplicateOrder` are declared here too,
@@ -57,6 +115,6 @@ fails in both directions, which is what makes it a guard rather than a comment.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-domain test        # 4 specs
+pnpm --filter @btravstack/start-example-order-domain test        # 9 specs
 pnpm --filter @btravstack/start-example-order-domain test:types  # the layering guard
 ```

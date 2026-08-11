@@ -1,1 +1,9 @@
-export { DuplicateOrder, InvalidQuantity, OrderNotFound, placeOrder, type Order } from "./order.js";
+export {
+  DuplicateOrder,
+  InvalidQuantity,
+  Order,
+  OrderId,
+  OrderNotFound,
+  Quantity,
+  placeOrder,
+} from "./order.js";

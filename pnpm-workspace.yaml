@@ -11,6 +11,7 @@ packages:
 catalog:
   "@btravstack/commitlint": 0.1.0
   "@btravstack/di": 0.1.0
+  "@btravstack/entity": 0.7.0
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
   "@btravstack/tsconfig": 0.2.0
@@ -18,6 +19,7 @@ catalog:
   "@commitlint/cli": 21.2.1
   "@types/node": 26.1.2
   "@unthrown/oxlint": 5.2.0
+  "@unthrown/standard-schema": 5.2.0
   "@unthrown/vitest": 5.2.0
   knip: 6.32.0
   lefthook: 2.1.10
@@ -29,6 +31,7 @@ catalog:
   unthrown: 5.2.0
   "@vitest/coverage-v8": 4.1.10
   vitest: 4.1.10
+  zod: 4.4.3
 
 allowBuilds:
   esbuild: true
@@ -36,6 +39,8 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - "@btravstack/di@0.1.0"
+  - "@btravstack/entity@0.7.0"
   - "@unthrown/oxlint@5.2.0"
+  - "@unthrown/standard-schema@5.2.0"
   - "@unthrown/vitest@5.2.0"
   - "unthrown@5.2.0"
