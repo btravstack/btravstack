@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["./node_modules/@btravstack/oxlint/base.json"],
+  "ignorePatterns": ["**/*.test-d.ts"],
+  "jsPlugins": [{ "name": "unthrown", "specifier": "@unthrown/oxlint" }],
+  "rules": {
+    "unthrown/no-ambiguous-error-type": "error",
+    "unthrown/no-catch-all-pattern": "error",
+    "unthrown/no-get-or-throw": "error",
+    "unthrown/no-throw": "error",
+    "unthrown/no-unhandled-result": "error",
+    "unthrown/no-unused-matcher": "error",
+    "unthrown/prefer-async-result": "error",
+    "unthrown/prefer-ensure": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.spec.ts"],
+      "rules": {
+        "unthrown/no-get-or-throw": "off"
+      }
+    }
+  ]
+}
