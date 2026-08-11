@@ -1,0 +1,12 @@
+{
+  "extends": "@btravstack/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    // The generated Prisma client imports its own files with explicit `.ts`
+    // extensions; `noEmit` makes that legal.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "src/generated"]
+}

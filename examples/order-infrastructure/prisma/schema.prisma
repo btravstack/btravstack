@@ -1,0 +1,20 @@
+// The example's persistence schema. `orderId` is the business id the domain
+// speaks, kept distinct from the surrogate primary key and carrying the UNIQUE
+// constraint whose violation (P2002) the adapter translates into the domain's
+// own `DuplicateOrder`. Generated into src/generated (gitignored) by the
+// test/typecheck scripts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Order {
+  id       Int    @id @default(autoincrement())
+  orderId  String @unique
+  quantity Int
+}
