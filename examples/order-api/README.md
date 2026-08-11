@@ -12,6 +12,7 @@ src/client.ts         an AsyncResult client for the same contract
 src/module.ts         OrderApiModule — the composition root
 src/env.ts            process.env validated through a schema, as a Result
 src/main.ts           the process: readEnv + start + runMain
+src/test-fixtures.ts  serve / clientFor / gate / tapped, as Vitest fixtures
 ```
 
 ## The two channels survive the wire
@@ -138,6 +139,20 @@ pnpm --filter @btravstack/start-example-order-api test  # 8 runtime specs + 4 en
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
 serialization, which is where the defect collapse to `INTERNAL_SERVER_ERROR`
 actually happens. No Docker, nothing to install.
+
+Every helper they need is a Vitest fixture in `src/test-fixtures.ts`, so the spec
+opens on `describe` and each test names its dependencies in its own parameter
+list. Shutting an app down is the `serve` fixture's job, which is why no test
+here has a `try`/`finally`: fixture cleanup runs even when the body fails, and it
+still asserts the app exited `Ok`.
+
+```ts
+it("lets an in-flight call finish while draining", async ({ serve, clientFor, gate }) => {
+  // GIVEN a call held open inside the repository
+  const app = serve(gate.api);
+  …
+});
+```
 
 `src/main.ts` is the process itself — and it reads its configuration the same way
 it reads everything else, as a value:

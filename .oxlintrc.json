@@ -15,7 +15,7 @@
   },
   "overrides": [
     {
-      "files": ["**/*.spec.ts"],
+      "files": ["**/*.spec.ts", "**/test-fixtures.ts"],
       "rules": {
         "unthrown/no-get-or-throw": "off"
       }
