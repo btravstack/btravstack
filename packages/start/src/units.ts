@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { fromSafePromise, type AsyncResult, type Result } from "unthrown";
+import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 export type UnitRecord = {
   readonly unitId: string;
@@ -37,7 +37,7 @@ export type UnitRegistry = {
   // zero; it only grows the former).
   readonly closed: () => number;
   readonly abortAll: () => void;
-  readonly awaitIdle: () => Promise<void>;
+  readonly awaitIdle: () => AsyncResult<void, never>;
 };
 
 let counter = 0;
@@ -97,9 +97,11 @@ export const createUnitRegistry = (): UnitRegistry => {
     },
     awaitIdle: () =>
       open.size === 0
-        ? Promise.resolve()
-        : new Promise<void>((resolve) => {
-            idleWaiters.add(resolve);
-          }),
+        ? OkAsync()
+        : fromSafePromise(
+            new Promise<void>((resolve) => {
+              idleWaiters.add(resolve);
+            }),
+          ),
   };
 };

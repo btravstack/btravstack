@@ -111,7 +111,33 @@ hook). User-facing changes need a changeset.
    Only a **signal** drains — `stop()` and an uncaught exception both go
    straight to `stopping`, leaving `ExitReport.drain` `undefined`.
 
-6. **The startup error channel is the application's own, unwrapped.** The kernel
+6. **Every async API returns an `AsyncResult`, never a bare `Promise`.** Not
+   only the fallible ones: `AsyncResult<T, never>` is this package's spelling of
+   "async, and cannot fail", which is what `fromSafePromise` produces. The point
+   is uniformity — every async surface awaits into a `Result`, so a caller never
+   has to remember which ones did and which ones did not. `probePort()`,
+   `Clock.sleep`, `FakeClock.advance`, `UnitRegistry.awaitIdle`,
+   `TestRuntime.untilStarted` and `ProbeServer.close` all carry `E = never`.
+   `unthrown/prefer-async-result` cannot enforce this — it only flags a
+   `Promise<Result<T, E>>`, and a `Promise<void>` is not Result-bearing — so it
+   is a convention held by review. There are exactly **three** exceptions, each
+   documented where it lives:
+   - **`runMain`** returns `Promise<void>`. Its whole job is to leave the Result
+     world and become a process exit code; it is the boundary, and a top-level
+     `await runMain(...)` in an entry point is the intended shape.
+   - **`UnitWork`'s `Promise<Result<T, E>>` arm** exists to accept a _caller's_
+     `async` handler, and carries a reasoned `prefer-async-result` disable in
+     `units.ts`.
+   - **`withApp` and its `use` callback.** `use` is the test body: a thrown
+     assertion failure inside it must reach the test runner, and an
+     `AsyncResult` never rejects — converting either side would turn a failing
+     `expect` into a `Defect` a caller can forget to unwrap, i.e. a green test
+     that asserted nothing (`invariants.spec.ts`'s _"8. start neither throws nor
+     calls process.exit"_ is exactly that shape). `A` is the test author's own
+     type and carries no error channel, so the wrapper would add no information
+     either.
+
+7. **The startup error channel is the application's own, unwrapped.** The kernel
    does **not** wrap a construction failure in a kernel error — that would erase
    the module's modeled error type. `Module.scoped` already reports the module's
    `E`, so `start` returns `AsyncResult<ExitReport, E | RuntimeStartFailed>` and
@@ -268,8 +294,9 @@ so a production bundle never pulls the fakes in.
   from — needed because the uncaught path forces it false while the phase is
   still `"serving"`, a window no HTTP round trip fits inside; it is also what an
   embedder wires into a health endpoint of its own when `probes: false`.
-  `probePort()` resolves the port actually bound (the point of it is
-  `{ port: 0 }`), or `undefined` when probes are disabled or the bind failed.
+  `probePort()` is an `AsyncResult<number | undefined, never>` resolving the
+  port actually bound (the point of it is `{ port: 0 }`), or `undefined` when
+  probes are disabled or the bind failed.
 - **`ExitReport`** — `reason` (`"signal" | "runtimeStopped" | "uncaught"`),
   `drain` (`DrainReport | undefined` — `undefined` whenever the drain was
   skipped), `teardownErrors`, `uptimeMs`. **`TeardownError`** is
@@ -293,13 +320,15 @@ so a production bundle never pulls the fakes in.
 - **`UnitMeta` / `UnitWork` / `UnitRegistry`** — `UnitMeta` is
   `{ kind, id, traceId?, tenantId?, deadline? }`; `traceId` defaults to `id`.
   `UnitWork` may return an `AsyncResult`, a `Promise<Result>` or a plain
-  `Result`.
+  `Result` — the `Promise` arm is Thesis #6's second exception, since it exists
+  to accept a caller's `async` handler. `UnitRegistry.awaitIdle()` returns
+  `AsyncResult<void, never>`.
 - **`currentUnit()` → `UnitRecord | undefined`** — the ambient read. `undefined`
   outside a unit.
-- **`Clock` / `systemClock`** — `{ now, sleep(ms, signal?) }`. `sleep` takes an
-  `AbortSignal` because a second signal must cut the pre-drain delay short, and
-  `systemClock` `unref`s its timer so a shutdown sleep is never the reason the
-  event loop stays alive.
+- **`Clock` / `systemClock`** — `{ now, sleep(ms, signal?) }`, where `sleep`
+  returns `AsyncResult<void, never>`. It takes an `AbortSignal` because a second
+  signal must cut the pre-drain delay short, and `systemClock` `unref`s its
+  timer so a shutdown sleep is never the reason the event loop stays alive.
 - **`Phase`** — `"building" | "starting" | "serving" | "draining" | "stopping" | "exited"`.
 - **`KernelEvent` / `EventSink` / `stderrSink`** — eight events: `building`,
   `serving`, `draining`, `drained`, `stopping`, `exited`, `teardownError`,
@@ -320,19 +349,21 @@ checker already verifies.
 ### `@btravstack/start/testing`
 
 - **`testRuntime(name?)`** — an in-memory `Runtime<never>` plus `started()`,
-  `untilStarted()`, `accepting()`, `serving()`, `submit<T, E>()`. `submit`
+  `untilStarted()` (an `AsyncResult<void, never>`), `accepting()`, `serving()`,
+  `submit<T, E>()`. `submit`
   returns a `SubmittedUnit` (`settle`, `result`, `signal`) so a test can hold a
   unit open across a drain. It deliberately **ignores** the
   `Serving.drain(signal)` deadline, which is what makes the abort tests tests of
   the kernel.
-- **`createFakeClock(start?)`** — a `Clock` whose time moves only on `advance`,
-  which brackets itself with a real macrotask at each end so a test can trigger
-  a shutdown and advance in the very next statement without racing the kernel
-  arming its next sleep.
+- **`createFakeClock(start?)`** — a `Clock` whose time moves only on
+  `advance(ms)` (an `AsyncResult<void, never>`), which brackets itself with a
+  real macrotask at each end so a test can trigger a shutdown and advance in the
+  very next statement without racing the kernel arming its next sleep.
 - **`withApp(module, options, use)`** — start, hand to `use`, stop again
   whatever `use` does. `signals` and `probes` are **forced off** whatever the
   caller passes; a test needing the real probe server calls `start` directly.
-  It carries the same phantom gate as `start`.
+  It carries the same phantom gate as `start`, and is the one harness-shaped
+  exception to Thesis #6 (both it and `use` speak a bare `Promise`).
 
 ## Internal design (don't break these)
 

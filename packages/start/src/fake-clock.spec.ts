@@ -30,14 +30,14 @@ describe("createFakeClock", () => {
   });
 
   it("resolves a non-positive sleep without waiting", async () => {
-    await expect(createFakeClock().sleep(0)).resolves.toBeUndefined();
+    await expect(createFakeClock().sleep(0)).toBeOkWith(undefined);
   });
 
   it("resolves immediately against an already-aborted signal", async () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(createFakeClock().sleep(30_000, controller.signal)).resolves.toBeUndefined();
+    await expect(createFakeClock().sleep(30_000, controller.signal)).toBeOkWith(undefined);
   });
 
   it("cuts a pending sleep short when its signal aborts, and forgets it", async () => {
@@ -46,7 +46,7 @@ describe("createFakeClock", () => {
     const sleeping = clock.sleep(30_000, controller.signal);
 
     controller.abort();
-    await expect(sleeping).resolves.toBeUndefined();
+    await expect(sleeping).toBeOkWith(undefined);
 
     // The aborted sleeper is gone rather than merely resolved: advancing past
     // its original deadline must not try to resolve it a second time.

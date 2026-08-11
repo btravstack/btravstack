@@ -24,7 +24,7 @@ const get = async (port: number, path: string): Promise<{ status: number; body: 
 };
 
 const boundPort = async (app: RunningApp<never>): Promise<number> => {
-  const port = await app.probePort();
+  const port = (await app.probePort()).get();
   if (port === undefined) {
     // oxlint-disable-next-line unthrown/no-throw -- a test-only fixture: reaching here means the probe server never bound, which is a bug in the test's setup rather than a modeled outcome, and routing it would make every call site handle a case that only ever means "the test is broken"
     throw new Error("[invariants] the probe server did not bind");
@@ -481,7 +481,7 @@ describe("probe wiring", () => {
     // already using the port. The residual coupling is the honest one: this
     // needs 9000 to be free, where the old shape needed it to be free *and*
     // then took it.
-    await expect(app.probePort()).resolves.toBe(9000);
+    await expect(app.probePort()).toBeOkWith(9000);
     expect(await get(9000, "/livez")).toEqual({ status: 200, body: "ok" });
 
     await runtime.untilStarted();
@@ -528,7 +528,7 @@ describe("probe wiring", () => {
     // The failure route out of the bind attempt still settles `probePort`, so
     // a caller awaiting it cannot hang. (The success route is asserted by
     // every `probes: { port: 0 }` test above, via `boundPort`.)
-    await expect(app.probePort()).resolves.toBeUndefined();
+    await expect(app.probePort()).toBeOkWith(undefined);
 
     await blocker.close();
   });

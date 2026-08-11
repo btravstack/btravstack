@@ -1,4 +1,4 @@
-import { OkAsync, type AsyncResult, type Result } from "unthrown";
+import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { createDeferred } from "./deferred.js";
 import type { Runtime, RuntimeHost, Serving } from "./runtime.js";
@@ -13,7 +13,7 @@ export type SubmittedUnit<T, E> = {
 export type TestRuntime = Runtime<never> & {
   readonly started: () => boolean;
   /** Resolves the first time the kernel calls `start` — `start` itself stays pending until shutdown. */
-  readonly untilStarted: () => Promise<void>;
+  readonly untilStarted: () => AsyncResult<void, never>;
   /**
    * Whether the runtime would still take new work — false once `drain` or
    * `stop` has been called. Lets a test observe *when* the kernel told the
@@ -54,7 +54,7 @@ export const testRuntime = (name = "test"): TestRuntime => {
       return OkAsync(serving);
     },
     started: () => serving !== undefined,
-    untilStarted: () => started.promise,
+    untilStarted: () => fromSafePromise(started.promise),
     accepting: () => accepting,
     serving: () => {
       if (serving === undefined) {

@@ -18,6 +18,15 @@ import { start, type RunningApp, type StartOptions } from "./start.js";
  *   return await app.exited;
  * });
  * ```
+ *
+ * @remarks
+ * `use` and `withApp` both speak a bare `Promise`, not an `AsyncResult` — the
+ * one harness-shaped exception to this package's rule. `use` is the test body:
+ * a thrown assertion failure inside it must reach the test runner, and an
+ * `AsyncResult` never rejects, so converting either side would turn a failing
+ * `expect` into a `Defect` a caller can forget to unwrap — a green test that
+ * asserted nothing. `A` is the test author's own type and carries no error
+ * channel, so the wrapper would add no information either.
  */
 export const withApp = async <X, E, Needs extends AnyPort, A>(
   module: Module<X, E, Scope>,

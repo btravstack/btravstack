@@ -193,6 +193,26 @@ Per-unit ports are not wired yet: `run` currently hands the work the
 _application_ `Context`. `RunUnit` is typed so a `Module.forkScope` call can
 land there without a signature change.
 
+## Every async surface is an `AsyncResult`
+
+Not only the fallible ones. `AsyncResult<T, never>` is how this package spells
+"async, and cannot fail" — exactly what `fromSafePromise` produces — so
+`app.probePort()`, `clock.sleep(ms)`, `clock.advance(ms)`,
+`registry.awaitIdle()`, `runtime.untilStarted()` and a probe server's `close()`
+all await into a `Result`. A caller never has to remember which async surfaces
+returned a `Result` and which returned a bare value.
+
+Three surfaces are deliberately outside it:
+
+- **`runMain`** returns `Promise<void>`. Its job is to _leave_ the Result world
+  and become a process exit code — it is the boundary.
+- **`UnitWork`'s `Promise<Result<T, E>>` arm**, which exists to accept your own
+  `async` handler.
+- **`withApp` and its `use` callback.** `use` is the test body: a thrown
+  assertion failure must reach the test runner, and an `AsyncResult` never
+  rejects — so wrapping it would turn a failing `expect` into a `Defect` you can
+  forget to unwrap, which is a green test that asserted nothing.
+
 ## Lifecycle
 
 ```
@@ -247,7 +267,7 @@ monotonic total precisely so it can never go negative.
 Liveness and readiness are process-level concerns, not transport-level ones, so
 the kernel runs its own `node:http` probe server on a separate port (default
 `9000`, `probes: false` to disable, `{ port: 0 }` to let the OS choose and read
-it back from `app.probePort()`):
+it back from `app.probePort()`, an `AsyncResult<number | undefined, never>`):
 
 | Route         | 200                                         | 503           |
 | ------------- | ------------------------------------------- | ------------- |

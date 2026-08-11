@@ -1,4 +1,4 @@
-import { Ok, OkAsync, type Result } from "unthrown";
+import { Ok, OkAsync, fromSafePromise, type Result } from "unthrown";
 import { describe, expect, it, vi } from "vitest";
 
 import { systemClock, type Clock } from "./clock.js";
@@ -17,6 +17,13 @@ const servingStub = (): { readonly serving: Serving } => ({
 // call's resolution explicitly by invoking the entry `sleeps` collects, in
 // call order. Lets a test park `drainApp` mid-drain and observe/mutate
 // registry state before letting it proceed, instead of racing real timers.
+// One real macrotask: every microtask already queued — and every microtask
+// those queue in turn — has run by the time it resolves. Used to let `drainApp`
+// travel from a released sleep to arming the next one; the `fromSafePromise`
+// hop each `Clock.sleep` now carries makes counting microtasks by hand
+// unreliable.
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 const controlledClock = (): { readonly clock: Clock; readonly sleeps: Array<() => void> } => {
   const sleeps: Array<() => void> = [];
   return {
@@ -24,9 +31,11 @@ const controlledClock = (): { readonly clock: Clock; readonly sleeps: Array<() =
     clock: {
       now: () => 0,
       sleep: () =>
-        new Promise<void>((resolve) => {
-          sleeps.push(resolve);
-        }),
+        fromSafePromise(
+          new Promise<void>((resolve) => {
+            sleeps.push(resolve);
+          }),
+        ),
     },
   };
 };
@@ -49,7 +58,7 @@ describe("drainApp", () => {
         now: () => 0,
         sleep: (ms) => {
           order.push(`sleep:${ms}`);
-          return Promise.resolve();
+          return OkAsync();
         },
       },
       preDrainDelayMs: 5_000,
@@ -67,7 +76,7 @@ describe("drainApp", () => {
   });
 
   it("waits preDrainDelayMs before stopping acceptance", async () => {
-    const sleep = vi.fn().mockResolvedValue(undefined);
+    const sleep = vi.fn(() => OkAsync());
     const { serving } = servingStub();
 
     await drainApp({
@@ -99,7 +108,7 @@ describe("drainApp", () => {
     const report = await drainApp({
       serving,
       registry,
-      clock: { now: () => 0, sleep: () => Promise.resolve() },
+      clock: { now: () => 0, sleep: () => OkAsync() },
       preDrainDelayMs: 0,
       drainTimeoutMs: 0,
       skip: new AbortController().signal,
@@ -141,7 +150,7 @@ describe("drainApp", () => {
     // Release the pre-drain delay so `drainApp` reaches beat 3 and arms the
     // deadline race.
     sleeps[0]?.();
-    await Promise.resolve();
+    await settle();
 
     // Settle the first unit and wait for its `finally` — the `closed()`
     // increment — to actually run before the deadline fires.
@@ -170,22 +179,26 @@ describe("drainApp", () => {
       onUnready: () => {},
     });
 
-    // `inFlightAtStart`/`closedAtStart` are sampled synchronously inside this
-    // call, before anything below runs — both are 0, since no unit exists
-    // yet.
-    sleeps[0]?.();
-    await Promise.resolve();
-
-    // A unit starts *after* that sample and is still open when the deadline
-    // hits. The naive `inFlightAtStart - abandoned` (0 - 1) goes negative;
-    // the monotonic `closed() - closedAtStart` (0 - 0) does not — this is
-    // the exact shape the reviewer reproduced ({ inFlightAtStart: 0,
+    // `inFlightAtStart`/`closedAtStart` are sampled synchronously inside the
+    // call above, before anything here runs — both are 0, since no unit exists
+    // yet. This one starts *after* that sample and is still open when the
+    // deadline hits. The naive `inFlightAtStart - abandoned` (0 - 1) goes
+    // negative; the monotonic `closed() - closedAtStart` (0 - 0) does not —
+    // this is the exact shape the reviewer reproduced ({ inFlightAtStart: 0,
     // completed: -1, abandoned: 1 }).
+    //
+    // It is started before the pre-drain delay is released, not after: an
+    // idle registry makes `awaitIdle()` resolve at once, so beat 3's race
+    // would settle on its own and the window to register a unit inside it is
+    // a microtask wide. With the unit already open, only the deadline sleep
+    // can end the race, which is what the release below drives.
     void registry.run({ kind: "t", id: "late" }, async () => {
       await new Promise(() => {});
       return Ok("never");
     });
 
+    sleeps[0]?.();
+    await settle();
     sleeps[1]?.();
 
     const result = await report;

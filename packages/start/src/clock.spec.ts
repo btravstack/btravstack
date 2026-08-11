@@ -21,11 +21,11 @@ describe("systemClock", () => {
     const sleeping = systemClock.sleep(5_000, controller.signal);
     controller.abort();
 
-    await expect(sleeping).resolves.toBeUndefined();
+    await expect(sleeping).toBeOkWith(undefined);
     expect(systemClock.now() - before).toBeLessThan(1_000);
   });
 
   it("resolves immediately when the signal is already aborted", async () => {
-    await expect(systemClock.sleep(5_000, AbortSignal.abort())).resolves.toBeUndefined();
+    await expect(systemClock.sleep(5_000, AbortSignal.abort())).toBeOkWith(undefined);
   });
 });

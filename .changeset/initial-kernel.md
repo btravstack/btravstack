@@ -25,3 +25,12 @@ application scope on every path.
   `{ unitId, traceId, tenantId, deadline }` — data, never capabilities.
 - A `@btravstack/start/testing` entry point with `testRuntime`,
   `createFakeClock` and `withApp`.
+- **Every async API returns an `AsyncResult`, never a bare `Promise`** — the
+  infallible ones included, where `AsyncResult<T, never>` spells "async, and
+  cannot fail". `probePort()`, `Clock.sleep`, `FakeClock.advance`,
+  `UnitRegistry.awaitIdle`, `TestRuntime.untilStarted` and `ProbeServer.close`
+  all carry `E = never`. Three surfaces are deliberately outside it: `runMain`
+  (the boundary out of the Result world, into a process exit code), `UnitWork`'s
+  `Promise<Result<T, E>>` arm (it accepts a caller's `async` handler) and
+  `withApp`/`use` (a thrown assertion inside a test body must reach the test
+  runner, which an `AsyncResult` — which never rejects — would swallow).

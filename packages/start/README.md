@@ -101,6 +101,13 @@ is a type error at the `start` call.
 - **Events, not a logger.** `building`, `serving`, `draining`, `drained`,
   `stopping`, `exited`, `teardownError`, `uncaught` — JSON to stderr by
   default, or your own `onEvent` sink.
+- **Every async surface is an `AsyncResult`**, including the infallible ones:
+  `AsyncResult<T, never>` is how this package spells "async, and cannot fail",
+  so `app.probePort()`, `clock.sleep(ms)` and friends all
+  await into a `Result`. The three exceptions are `runMain` (the boundary out of
+  the Result world), `UnitWork`'s `Promise<Result>` arm (it accepts your own
+  `async` handler) and `withApp`/`use` (a thrown assertion must reach the test
+  runner).
 
 ## Exit codes
 

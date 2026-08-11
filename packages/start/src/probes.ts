@@ -6,7 +6,7 @@ import { RuntimeStartFailed } from "./runtime.js";
 
 export type ProbeServer = {
   readonly port: number;
-  readonly close: () => Promise<void>;
+  readonly close: () => AsyncResult<void, never>;
 };
 
 export type ProbeArgs = {
@@ -47,7 +47,7 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
         resolve(
           Ok({
             port,
-            close: () => new Promise<void>((done) => server.close(() => done())),
+            close: () => fromSafePromise(new Promise<void>((done) => server.close(() => done()))),
           }),
         );
       });

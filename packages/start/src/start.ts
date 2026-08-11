@@ -53,7 +53,7 @@ export type RunningApp<E> = {
    * The point of it is `probes: { port: 0 }`: the OS picks the port, and this
    * is how the caller learns which one.
    */
-  readonly probePort: () => Promise<number | undefined>;
+  readonly probePort: () => AsyncResult<number | undefined, never>;
 };
 
 // `Module<X, E, Scope>`, not `Module<X, E, never>`: `Needs` sits in covariant
@@ -284,6 +284,6 @@ export const start = <X, E, Needs extends AnyPort>(
     requestDrain: () => shutdown.resolve("signal"),
     phase: tracker.current,
     ready,
-    probePort: () => probeBound.promise,
+    probePort: () => fromSafePromise(probeBound.promise),
   };
 };
