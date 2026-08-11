@@ -1,4 +1,4 @@
-import { Ok, type Result } from "unthrown";
+import { Ok, OkAsync, type Result } from "unthrown";
 import { describe, expect, it, vi } from "vitest";
 
 import { systemClock, type Clock } from "./clock.js";
@@ -8,8 +8,8 @@ import { createUnitRegistry } from "./units.js";
 
 const servingStub = (): { readonly serving: Serving } => ({
   serving: {
-    drain: () => Ok(undefined).toAsync(),
-    stop: () => Ok(undefined).toAsync(),
+    drain: () => OkAsync(),
+    stop: () => OkAsync(),
   },
 });
 

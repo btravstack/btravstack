@@ -1,7 +1,7 @@
 import { createServer } from "node:net";
 
 import { Module, Port, Provider } from "@btravstack/di";
-import { Err, Ok, fromSafePromise } from "unthrown";
+import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDeferred } from "./deferred.js";
@@ -26,8 +26,7 @@ const get = async (port: number, path: string): Promise<{ status: number; body: 
 const boundPort = async (app: RunningApp<never>): Promise<number> => {
   const port = await app.probePort();
   if (port === undefined) {
-    // A test-only fixture: reaching here means the probe server never bound,
-    // which is a bug in the test's setup rather than a modeled outcome.
+    // oxlint-disable-next-line unthrown/no-throw -- a test-only fixture: reaching here means the probe server never bound, which is a bug in the test's setup rather than a modeled outcome, and routing it would make every call site handle a case that only ever means "the test is broken"
     throw new Error("[invariants] the probe server did not bind");
   }
   return port;
@@ -162,7 +161,7 @@ describe("load-bearing invariants", () => {
     const Half = Module("Half")({
       provides: [
         Provider(Greeting)({
-          acquire: () => Ok({ text: "hi" }).toAsync(),
+          acquire: () => OkAsync({ text: "hi" }),
           release: () => {
             released.push("greeting");
           },
@@ -172,7 +171,7 @@ describe("load-bearing invariants", () => {
     });
     const broken = {
       ...testRuntime(),
-      start: () => Err(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })).toAsync(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })),
     };
 
     const app = start(Half, {
@@ -202,7 +201,7 @@ describe("load-bearing invariants", () => {
     const Leaky = Module("Leaky")({
       provides: [
         Provider(Greeting)({
-          acquire: () => Ok({ text: "hi" }).toAsync(),
+          acquire: () => OkAsync({ text: "hi" }),
           release: () => Promise.reject(boom),
         }),
       ],
@@ -454,7 +453,7 @@ describe("probe wiring", () => {
     // refuses to start after the probe server is already up.
     const broken = {
       ...testRuntime(),
-      start: () => Err(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })).toAsync(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })),
     };
     const failing = start(AppModule, {
       runtime: broken,
@@ -499,7 +498,7 @@ describe("probe wiring", () => {
         Provider(Greeting)({
           make: () => {
             built = true;
-            return Ok({ text: "hi" }).toAsync();
+            return OkAsync({ text: "hi" });
           },
         }),
       ],

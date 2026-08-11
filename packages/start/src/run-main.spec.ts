@@ -1,5 +1,5 @@
 import { Module, Port, Provider } from "@btravstack/di";
-import { Err, Ok } from "unthrown";
+import { ErrAsync, OkAsync } from "unthrown";
 import { describe, expect, it, vi } from "vitest";
 
 import { createFakeClock } from "./fake-clock.js";
@@ -30,7 +30,7 @@ describe("runMain", () => {
   it("exits 0 on a clean report", async () => {
     const codes: number[] = [];
 
-    await runMain(appWith(Ok(clean).toAsync()), (code) => codes.push(code));
+    await runMain(appWith(OkAsync(clean)), (code) => codes.push(code));
 
     expect(codes).toEqual([0]);
   });
@@ -40,10 +40,10 @@ describe("runMain", () => {
 
     await runMain(
       appWith(
-        Ok({
+        OkAsync({
           ...clean,
           drain: { inFlightAtStart: 3, completed: 3, abandoned: 0 },
-        }).toAsync(),
+        }),
       ),
       (code) => codes.push(code),
     );
@@ -56,10 +56,10 @@ describe("runMain", () => {
 
     await runMain(
       appWith(
-        Ok({
+        OkAsync({
           ...clean,
           drain: { inFlightAtStart: 3, completed: 1, abandoned: 2 },
-        }).toAsync(),
+        }),
       ),
       (code) => codes.push(code),
     );
@@ -73,9 +73,7 @@ describe("runMain", () => {
     // Installing an `uncaughtException` handler suppresses Node's own default
     // exit code of 1, so without this row a crashed process would report
     // success to its orchestrator.
-    await runMain(appWith(Ok({ ...clean, reason: "uncaught" }).toAsync()), (code) =>
-      codes.push(code),
-    );
+    await runMain(appWith(OkAsync({ ...clean, reason: "uncaught" })), (code) => codes.push(code));
 
     expect(codes).toEqual([70]);
   });
@@ -88,11 +86,11 @@ describe("runMain", () => {
     // rather than an accident of the order the conditions happen to be in.
     await runMain(
       appWith(
-        Ok({
+        OkAsync({
           ...clean,
           reason: "uncaught",
           drain: { inFlightAtStart: 3, completed: 1, abandoned: 2 },
-        }).toAsync(),
+        }),
       ),
       (code) => codes.push(code),
     );
@@ -103,7 +101,7 @@ describe("runMain", () => {
   it("exits 1 on a startup failure", async () => {
     const codes: number[] = [];
 
-    await runMain(appWith(Err("no-config").toAsync()), (code) => codes.push(code));
+    await runMain(appWith(ErrAsync("no-config")), (code) => codes.push(code));
 
     expect(codes).toEqual([1]);
   });
@@ -113,11 +111,10 @@ describe("runMain", () => {
 
     await runMain(
       appWith(
-        Ok(clean)
-          .toAsync()
-          .map(() => {
-            throw new Error("boom");
-          }),
+        OkAsync(clean).map(() => {
+          // oxlint-disable-next-line unthrown/no-throw -- a `Defect` has no public constructor by design, so a throw caught by a combinator's throw-to-defect net is the only way to hand `runMain` the defect this row asserts
+          throw new Error("boom");
+        }),
       ),
       (code) => codes.push(code),
     );
@@ -128,7 +125,7 @@ describe("runMain", () => {
   it("sets process.exitCode when no exit callback is supplied", async () => {
     const previous = process.exitCode;
 
-    await runMain(appWith(Ok(clean).toAsync()));
+    await runMain(appWith(OkAsync(clean)));
 
     expect(process.exitCode).toBe(0);
     process.exitCode = previous;
@@ -138,7 +135,7 @@ describe("runMain", () => {
     const codes: number[] = [];
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
 
-    await runMain(appWith(Ok(clean).toAsync()), (code) => codes.push(code));
+    await runMain(appWith(OkAsync(clean)), (code) => codes.push(code));
 
     expect(exitSpy).not.toHaveBeenCalled();
     exitSpy.mockRestore();

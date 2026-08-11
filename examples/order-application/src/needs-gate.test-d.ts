@@ -6,7 +6,7 @@
  */
 import { Module, Provider } from "@btravstack/di";
 import { DuplicateOrder, OrderNotFound, type Order } from "@btravstack/start-example-order-domain";
-import { Err, Ok } from "unthrown";
+import { ErrAsync } from "unthrown";
 
 import { ApplicationModule, FindOrder, Logger, OrderRepository, PlaceOrder } from "./index.js";
 
@@ -20,8 +20,8 @@ const Wired = Module("Wired")({
   provides: [
     Provider(OrderRepository)({
       value: {
-        save: (order: Order) => Err(new DuplicateOrder({ id: order.id })).toAsync(),
-        find: (id: string) => Err(new OrderNotFound({ id })).toAsync(),
+        save: (order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
+        find: (id: string) => ErrAsync(new OrderNotFound({ id })),
       },
     }),
   ],

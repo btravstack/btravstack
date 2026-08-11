@@ -1,4 +1,4 @@
-import { Ok, type AsyncResult, type Result } from "unthrown";
+import { OkAsync, type AsyncResult, type Result } from "unthrown";
 
 import { createDeferred } from "./deferred.js";
 import type { Runtime, RuntimeHost, Serving } from "./runtime.js";
@@ -35,11 +35,11 @@ export const testRuntime = (name = "test"): TestRuntime => {
     drain: (signal) => {
       accepting = false;
       void signal;
-      return Ok(undefined).toAsync();
+      return OkAsync();
     },
     stop: () => {
       accepting = false;
-      return Ok(undefined).toAsync();
+      return OkAsync();
     },
   });
 
@@ -51,26 +51,21 @@ export const testRuntime = (name = "test"): TestRuntime => {
       accepting = true;
       serving = make();
       started.resolve(undefined);
-      return Ok(serving).toAsync();
+      return OkAsync(serving);
     },
     started: () => serving !== undefined,
     untilStarted: () => started.promise,
     accepting: () => accepting,
     serving: () => {
       if (serving === undefined) {
-        // A test-only fixture: reaching here means the test forgot to start
-        // the runtime, which is a bug in the test, not a modeled outcome.
-        // (No `oxlint-disable` needed — `unthrown/no-throw` is opt-in and this
-        // repo does not enable it; an unused disable directive is itself a
-        // lint warning.)
+        // oxlint-disable-next-line unthrown/no-throw -- a test-only fixture: reaching here means the test forgot to start the runtime, which is a bug in the test rather than a modeled outcome, so it must be loud and not routed into a `Result` a careless assertion could swallow
         throw new Error("[test-runtime] not started");
       }
       return serving;
     },
     submit: <T, E>() => {
       if (run === undefined || !accepting) {
-        // Same rationale as above: a test asserting post-drain behaviour wants
-        // this to be loud, not routed.
+        // oxlint-disable-next-line unthrown/no-throw -- same rationale as `serving()` above: a test asserting post-drain behaviour wants this loud, not routed
         throw new Error("[test-runtime] not accepting work");
       }
 

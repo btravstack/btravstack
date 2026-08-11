@@ -39,7 +39,7 @@ The kernel itself has no runtime dependencies beyond `node:` builtins.
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
 import { runMain, start, type Runtime, type Serving } from "@btravstack/start";
-import { Ok } from "unthrown";
+import { Ok, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{
   readonly greet: (name: string) => string;
@@ -71,12 +71,12 @@ const ticker: Runtime<typeof Greeter> = {
       // Stop accepting new work. In-flight units are the kernel's business.
       drain: () => {
         clearInterval(timer);
-        return Ok(undefined).toAsync();
+        return OkAsync();
       },
-      stop: () => Ok(undefined).toAsync(),
+      stop: () => OkAsync(),
     };
 
-    return Ok(serving).toAsync();
+    return OkAsync(serving);
   },
 };
 

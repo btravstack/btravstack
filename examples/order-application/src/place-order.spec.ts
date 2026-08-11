@@ -1,6 +1,6 @@
 import { Module, Provider } from "@btravstack/di";
 import { DuplicateOrder, OrderNotFound, type Order } from "@btravstack/start-example-order-domain";
-import { Err, Ok } from "unthrown";
+import { ErrAsync, OkAsync } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { ApplicationModule, FindOrder, Logger, OrderRepository, PlaceOrder } from "./index.js";
@@ -17,13 +17,13 @@ const stubRepository = Provider(OrderRepository)({
     const rows = new Map<string, Order>();
     return {
       save: (order: Order) => {
-        if (rows.has(order.id)) return Err(new DuplicateOrder({ id: order.id })).toAsync();
+        if (rows.has(order.id)) return ErrAsync(new DuplicateOrder({ id: order.id }));
         rows.set(order.id, order);
-        return Ok(order).toAsync();
+        return OkAsync(order);
       },
       find: (id: string) => {
         const row = rows.get(id);
-        return row === undefined ? Err(new OrderNotFound({ id })).toAsync() : Ok(row).toAsync();
+        return row === undefined ? ErrAsync(new OrderNotFound({ id })) : OkAsync(row);
       },
     };
   },

@@ -1,4 +1,4 @@
-import { Err, Ok } from "unthrown";
+import { ErrAsync, Ok, OkAsync } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { currentUnit } from "./ambient.js";
@@ -9,12 +9,12 @@ const meta = { kind: "test", id: "1" };
 describe("createUnitRegistry", () => {
   it("returns the work's result unchanged", async () => {
     const registry = createUnitRegistry();
-    await expect(registry.run(meta, () => Ok(42).toAsync())).toBeOkWith(42);
+    await expect(registry.run(meta, () => OkAsync(42))).toBeOkWith(42);
   });
 
   it("passes the error channel through", async () => {
     const registry = createUnitRegistry();
-    await expect(registry.run(meta, () => Err("nope" as const).toAsync())).toBeErrWith("nope");
+    await expect(registry.run(meta, () => ErrAsync("nope" as const))).toBeErrWith("nope");
   });
 
   it("counts a unit as in flight until it settles", async () => {
@@ -40,6 +40,7 @@ describe("createUnitRegistry", () => {
 
     await expect(
       registry.run(meta, () => {
+        // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test: a unit must be counted closed on the throw-to-defect path too
         throw new Error("boom");
       }),
     ).toBeDefect();
@@ -49,9 +50,7 @@ describe("createUnitRegistry", () => {
   it("exposes the ambient record to the work", async () => {
     const registry = createUnitRegistry();
 
-    const seen = await registry.run({ ...meta, tenantId: "acme" }, () =>
-      Ok(currentUnit()).toAsync(),
-    );
+    const seen = await registry.run({ ...meta, tenantId: "acme" }, () => OkAsync(currentUnit()));
 
     expect(seen).toBeOkWith(expect.objectContaining({ tenantId: "acme" }));
   });
@@ -65,7 +64,7 @@ describe("createUnitRegistry", () => {
       outerSeen.push(currentUnit());
 
       const innerResult = await registry.run({ kind: "inner", id: "i" }, () =>
-        Ok(currentUnit()).toAsync(),
+        OkAsync(currentUnit()),
       );
 
       outerSeen.push(currentUnit());

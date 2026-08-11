@@ -1,5 +1,5 @@
 import { Module, type AnyPort, type Context, type Scope } from "@btravstack/di";
-import { fromSafePromise, Ok, type AsyncResult } from "unthrown";
+import { fromSafePromise, OkAsync, type AsyncResult } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
 import { createDeferred } from "./deferred.js";
@@ -159,16 +159,17 @@ export const start = <X, E, Needs extends AnyPort>(
   const probesOptions = options.probes ?? { port: 9000 };
   if (probesOptions === false) probeBound.resolve(undefined);
 
-  const probesStarted: AsyncResult<undefined, RuntimeStartFailed> = (
+  const probesStarted: AsyncResult<void, RuntimeStartFailed> = (
     probesOptions === false
-      ? Ok(undefined).toAsync()
-      : startProbeServer({ port: probesOptions.port, live, ready }).map((server) => {
-          probeBound.resolve(server.port);
-          disposeProbes = () => {
-            void server.close();
-          };
-          return undefined;
-        })
+      ? OkAsync()
+      : startProbeServer({ port: probesOptions.port, live, ready })
+          .tap((server) => {
+            probeBound.resolve(server.port);
+            disposeProbes = () => {
+              void server.close();
+            };
+          })
+          .discard()
   ).tapFailure(() => {
     probeBound.resolve(undefined);
     tracker.advanceTo("stopping");
@@ -201,7 +202,7 @@ export const start = <X, E, Needs extends AnyPort>(
     reason: ExitReport["reason"],
   ): AsyncResult<ExitReport, never> => {
     const drained: AsyncResult<DrainReport | undefined, never> =
-      reason === "signal" ? runDrain(serving) : Ok<DrainReport | undefined>(undefined).toAsync();
+      reason === "signal" ? runDrain(serving) : OkAsync<DrainReport | undefined>(undefined);
 
     return drained.flatMap((report) => {
       tracker.advanceTo("stopping");

@@ -31,7 +31,7 @@ The gate — every change must keep all six green, and CI runs the same set:
 
 ```sh
 pnpm format --check   # oxfmt (run without --check to auto-fix)
-pnpm lint             # oxlint, incl. @unthrown/oxlint's five recommended rules
+pnpm lint             # oxlint, incl. all eight @unthrown/oxlint rules
 pnpm typecheck        # tsc, incl. the type-level *.test-d.ts files
 pnpm knip             # dead code / unused deps
 pnpm test             # vitest + v8 coverage (100% lines/functions, enforced)
@@ -363,7 +363,7 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
   signature with the phantom tuple already discharged.
 
 - **`finish` skips the drain for every reason but `"signal"`.**
-  `reason === "signal" ? runDrain(serving) : Ok(undefined)`. `runtimeStopped` is
+  `reason === "signal" ? runDrain(serving) : OkAsync(undefined)`. `runtimeStopped` is
   a deliberate stop with nothing to wait for; `"uncaught"` is deliberately
   harsher — after an uncaught throw the process state may be corrupt, so
   draining risks completing in-flight work **wrongly**, and half-finished
@@ -450,16 +450,30 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
   ESM-first; `moduleResolution: NodeNext` — relative imports carry `.js`.
 - **oxlint rules are binding: no `interface` (use `type`), no `any` (use
   `unknown`).** Genuine exceptions carry a targeted `oxlint-disable` **with a
-  reason** — there are two, both recorded in place: `units.ts`'s `UnitWork`
-  return union (`prefer-async-result`, a function-type return position) and
-  `run-main.ts`'s `P._` (`no-catch-all-pattern`, the generic-`E` case where the
-  catch-all is the only arm that can terminate the match).
-- The repo dogfoods `@unthrown/oxlint`'s five recommended rules.
-  `unthrown/no-throw` is **not** enabled; the convention still holds, and the
-  only `throw`s in shipped source are `test-runtime.ts`'s two loud test-fixture
-  guards, each carrying a comment saying why (spec files throw freely — a
-  fixture blowing up is a bug in the test, not a modeled outcome). An unused
-  `oxlint-disable` is itself a warning, so do not add one pre-emptively.
+  reason**. Two are structural: `units.ts`'s `UnitWork` return union
+  (`prefer-async-result`, a function-type return position) and `run-main.ts`'s
+  `P._` (`no-catch-all-pattern`, the generic-`E` case where the catch-all is
+  the only arm that can terminate the match).
+- The repo dogfoods **every** `@unthrown/oxlint` rule — the five `recommended`
+  ones plus all three opt-ins (`no-throw`, `prefer-ensure`, `no-get-or-throw`).
+  So a `throw` is a lint error everywhere, spec files included: the six that
+  survive each carry an `oxlint-disable-next-line unthrown/no-throw` naming
+  why. They fall into two kinds — a **loud test fixture** whose failure means
+  the _test_ is buggy (`test-runtime.ts`'s two misuse guards, `invariants.spec.ts`'s
+  `boundPort`), and a throw that **is the subject under test**
+  (`events.spec.ts`'s throwing sink, `units.spec.ts`'s throwing unit,
+  `run-main.spec.ts`'s defect, which has no public constructor to mint it any
+  other way). `no-get-or-throw` is switched off for the `*.spec.ts` glob through
+  an `overrides` entry — the exemption the rule's own diagnostic prescribes,
+  since `getOrThrow()` is the right tool in a test; it stays on everywhere
+  else, where nothing uses it. An unused `oxlint-disable` is itself a warning,
+  so do not add one pre-emptively.
+- **Pre-lifted constructors, not `.toAsync()` on a fresh literal.** `OkAsync(v)`
+  / `ErrAsync(e)` / `OkAsync()` are what unthrown ships for this;
+  `Ok(v).toAsync()` and `Ok(undefined)` are the boilerplate they replace.
+  `.toAsync()` survives only where it lifts a `Result` that already exists —
+  `examples/order-application`'s `placeOrder(id, quantity).toAsync()` is the one
+  such site.
 - Comment density: **sparse**. No comments in JSON files. Rationale belongs
   here, not inline — except where a comment is guarding a specific line against
   a plausible "simplification" (the `teardownErrors` aliasing, the `ready()`

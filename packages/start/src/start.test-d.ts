@@ -1,5 +1,5 @@
 import { Module, Port, Provider } from "@btravstack/di";
-import { Ok } from "unthrown";
+import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
 import type { Runtime, Serving } from "./runtime.js";
@@ -14,20 +14,20 @@ const AppModule = Module("App")({
 });
 
 const serving: Serving = {
-  drain: () => Ok(undefined).toAsync(),
-  stop: () => Ok(undefined).toAsync(),
+  drain: () => OkAsync(),
+  stop: () => OkAsync(),
 };
 
 const needsGreeting: Runtime<typeof Greeting> = {
   name: "needs-greeting",
   needs: [Greeting],
-  start: () => Ok(serving).toAsync(),
+  start: () => OkAsync(serving),
 };
 
 const needsClock: Runtime<typeof Clock> = {
   name: "needs-clock",
   needs: [Clock],
-  start: () => Ok(serving).toAsync(),
+  start: () => OkAsync(serving),
 };
 
 // The gate is satisfied: the module exports the port the runtime needs.
@@ -50,6 +50,6 @@ start(AppModule, { runtime: needsClock }, "UNSATISFIED RUNTIME NEEDS", new Clock
 const needsNothing: Runtime<never> = {
   name: "needs-nothing",
   needs: [],
-  start: () => Ok(serving).toAsync(),
+  start: () => OkAsync(serving),
 };
 expectTypeOf(start(AppModule, { runtime: needsNothing })).toEqualTypeOf<RunningApp<never>>();

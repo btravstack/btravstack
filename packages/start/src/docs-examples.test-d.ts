@@ -8,7 +8,7 @@
 // `package.json`'s `exports` map points at.
 
 import { Module, Port, Provider, type AnyPort, type Context } from "@btravstack/di";
-import { Ok, P, type AsyncResult } from "unthrown";
+import { Ok, OkAsync, P, type AsyncResult } from "unthrown";
 import { expectTypeOf } from "vitest";
 
 import {
@@ -57,12 +57,12 @@ const ticker: Runtime<typeof Greeter> = {
       // Stop accepting new work. In-flight units are the kernel's business.
       drain: () => {
         clearInterval(timer);
-        return Ok(undefined).toAsync();
+        return OkAsync();
       },
-      stop: () => Ok(undefined).toAsync(),
+      stop: () => OkAsync(),
     };
 
-    return Ok(serving).toAsync();
+    return OkAsync(serving);
   },
 };
 

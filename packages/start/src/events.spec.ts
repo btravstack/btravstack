@@ -14,6 +14,7 @@ describe("safeSink", () => {
 
   it("swallows a throwing sink", () => {
     const sink = safeSink(() => {
+      // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test: `safeSink` exists to stop a throwing sink taking the process down mid-shutdown
       throw new Error("broken reporter");
     });
 

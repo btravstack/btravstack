@@ -1,5 +1,5 @@
 import { Module, Port, Provider } from "@btravstack/di";
-import { Err, Ok } from "unthrown";
+import { ErrAsync, OkAsync } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import type { KernelEvent } from "./events.js";
@@ -45,7 +45,7 @@ describe("start", () => {
 
   it("reports a construction failure without wrapping the module's own error", async () => {
     const Failing = Module("Failing")({
-      provides: [Provider(Greeting)({ make: () => Err("no-config" as const).toAsync() })],
+      provides: [Provider(Greeting)({ make: () => ErrAsync("no-config" as const) })],
       exports: [Greeting],
     });
 
@@ -57,8 +57,7 @@ describe("start", () => {
   it("reports a runtime that refuses to start", async () => {
     const broken = {
       ...testRuntime(),
-      start: () =>
-        Err(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })).toAsync(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
     };
 
     const app = start(AppModule, { runtime: broken, signals: false, probes: false });
@@ -74,7 +73,7 @@ describe("start", () => {
     const Resourceful = Module("Resourceful")({
       provides: [
         Provider(Greeting)({
-          acquire: () => Ok({ text: "hi" }).toAsync(),
+          acquire: () => OkAsync({ text: "hi" }),
           release: () => {
             released.push("greeting");
           },
@@ -96,8 +95,7 @@ describe("start", () => {
     const events: KernelEvent["type"][] = [];
     const broken = {
       ...testRuntime(),
-      start: () =>
-        Err(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })).toAsync(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
     };
 
     const app = start(AppModule, {
@@ -118,7 +116,7 @@ describe("start", () => {
     const Leaky = Module("Leaky")({
       provides: [
         Provider(Greeting)({
-          acquire: () => Ok({ text: "hi" }).toAsync(),
+          acquire: () => OkAsync({ text: "hi" }),
           release: () => Promise.reject(boom),
         }),
       ],
