@@ -8,7 +8,10 @@ import { openDatabase, PersistenceModule, prismaOrderRepository } from "./index.
 const it = test.extend<{ repository: ServiceOf<OrderRepository> }>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; the repository depends on no other fixture
   repository: async ({}, use) => {
-    const db = await openDatabase();
+    // `.get()` compiles only on a `Result<T, never>`, which is exactly what
+    // `openDatabase` returns — and it panics on a Defect, which is what a test
+    // wants from a database that would not open.
+    const db = (await openDatabase()).get();
     await use(prismaOrderRepository(db));
     await db.$disconnect();
   },
@@ -47,7 +50,7 @@ describe("the read path's error channel", () => {
   // written straight past Prisma — is an unmodelled failure, so it arrives as a
   // defect rather than widening `E` with infrastructure vocabulary.
   it("surfaces a corrupt row as a defect, not as an error", async () => {
-    const db = await openDatabase();
+    const db = (await openDatabase()).get();
     await db.$executeRawUnsafe(
       `INSERT INTO "Order" ("orderId", "quantity") VALUES ('o-corrupt', 0)`,
     );
@@ -71,7 +74,11 @@ describe("PersistenceModule", () => {
   // Teardown reaching a real resource: the client the scope acquired is
   // disconnected on close, so the same repository can no longer query.
   it("disconnects the Prisma client when the scope closes", async () => {
-    let escaped: ServiceOf<OrderRepository> | undefined;
+    // Definite assignment, not `| undefined` plus `escaped?.`: the optional
+    // call would make this assertion tolerate a scope callback that never ran,
+    // asserting against `undefined` instead of against a disconnected client.
+    // Declared this way, that failure is a loud TypeError at the access.
+    let escaped!: ServiceOf<OrderRepository>;
 
     const result = await Module.scoped(PersistenceModule, (ctx) => {
       escaped = ctx.get(OrderRepository);
@@ -79,6 +86,6 @@ describe("PersistenceModule", () => {
     });
 
     expect(result).toBeOk();
-    await expect(escaped?.find("o-1")).toBeDefect();
+    await expect(escaped.find("o-1")).toBeDefect();
   });
 });
