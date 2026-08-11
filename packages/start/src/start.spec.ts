@@ -1,9 +1,10 @@
 import { Module, Port, Provider } from "@btravstack/di";
-import { ErrAsync, OkAsync } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, it } from "vitest";
 
+import { createDeferred } from "./deferred.js";
 import type { KernelEvent } from "./events.js";
-import { RuntimeStartFailed } from "./runtime.js";
+import { RuntimeStartFailed, type Runtime, type RuntimeHost } from "./runtime.js";
 import { start } from "./start.js";
 import { testRuntime } from "./test-runtime.js";
 
@@ -183,5 +184,81 @@ describe("start", () => {
     // listener here would fire into every subsequent test in this file that
     // emits an uncaught exception or rejection.
     expect(uncaughtListenerCount()).toBe(before);
+  });
+});
+
+describe("runtimeInfo", () => {
+  it("hands back what a serving runtime published about itself", async () => {
+    const runtime = testRuntime("greeter");
+    const app = start(AppModule, { runtime, signals: false, probes: false });
+
+    await expect(app.runtimeInfo()).toBeOkWith({ name: "greeter" });
+
+    app.stop();
+    await app.exited;
+  });
+
+  it("resolves undefined for a runtime that publishes nothing", async () => {
+    // Publishing is optional: this runtime declares no `Info` at all and omits
+    // `Serving.info`, which is the whole point of the default.
+    const silent: Runtime<never> = {
+      name: "silent",
+      needs: [],
+      start: () => OkAsync({ drain: () => OkAsync(), stop: () => OkAsync() }),
+    };
+    const app = start(AppModule, { runtime: silent, signals: false, probes: false });
+
+    await expect(app.runtimeInfo()).toBeOkWith(undefined);
+
+    app.stop();
+    await app.exited;
+  });
+
+  it("stays pending until the runtime is serving", async () => {
+    const gate = createDeferred<void>();
+    const inner = testRuntime();
+    const stalled = {
+      ...inner,
+      start: (host: RuntimeHost<never>) =>
+        fromSafePromise(gate.promise).flatMap(() => inner.start(host)),
+    };
+    const app = start(AppModule, { runtime: stalled, signals: false, probes: false });
+
+    // Asked for before the runtime is anywhere near serving — the deferred is
+    // what lets this be read at any point rather than only after a hook fires.
+    const info = app.runtimeInfo();
+    let settled = false;
+    void info.then(() => {
+      settled = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    expect(app.phase()).not.toBe("serving");
+
+    gate.resolve(undefined);
+    await expect(info).toBeOkWith({ name: "test" });
+
+    app.stop();
+    await app.exited;
+  });
+
+  it("resolves undefined when the runtime never serves, so a caller cannot hang", async () => {
+    const broken = {
+      ...testRuntime(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })),
+    };
+    const app = start(AppModule, {
+      runtime: broken,
+      signals: false,
+      probes: false,
+      onEvent: () => {},
+    });
+
+    await expect(app.exited).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({ runtime: "broken" }),
+    );
+    await expect(app.runtimeInfo()).toBeOkWith(undefined);
   });
 });

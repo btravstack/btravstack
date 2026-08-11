@@ -1,10 +1,10 @@
-import { Ok, OkAsync, type Result } from "unthrown";
+import { Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 import { describe, expect, it, vi } from "vitest";
 
 import { systemClock, type Clock } from "./clock.js";
 import { drainApp } from "./drain.js";
 import type { Serving } from "./runtime.js";
-import { createUnitRegistry } from "./units.js";
+import { createUnitRegistry, type UnitRegistry } from "./units.js";
 
 const servingStub = (): { readonly serving: Serving } => ({
   serving: {
@@ -17,6 +17,13 @@ const servingStub = (): { readonly serving: Serving } => ({
 // call's resolution explicitly by invoking the entry `sleeps` collects, in
 // call order. Lets a test park `drainApp` mid-drain and observe/mutate
 // registry state before letting it proceed, instead of racing real timers.
+// One real macrotask: every microtask already queued — and every microtask
+// those queue in turn — has run by the time it resolves. Used to let `drainApp`
+// travel from a released sleep to arming the next one; the `fromSafePromise`
+// hop each `Clock.sleep` now carries makes counting microtasks by hand
+// unreliable.
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 const controlledClock = (): { readonly clock: Clock; readonly sleeps: Array<() => void> } => {
   const sleeps: Array<() => void> = [];
   return {
@@ -24,11 +31,53 @@ const controlledClock = (): { readonly clock: Clock; readonly sleeps: Array<() =
     clock: {
       now: () => 0,
       sleep: () =>
-        new Promise<void>((resolve) => {
-          sleeps.push(resolve);
-        }),
+        fromSafePromise(
+          new Promise<void>((resolve) => {
+            sleeps.push(resolve);
+          }),
+        ),
     },
   };
+};
+
+const boom = new Error("boom");
+
+// A defect-state `AsyncResult`. A `Defect` has no public constructor by design,
+// so a throw caught by a combinator's throw-to-defect net is the documented way
+// to build one — which is exactly how a third-party runtime's internal throw
+// reaches `drainApp` in production.
+const defecting = (): AsyncResult<void, never> =>
+  OkAsync().map(() => {
+    // oxlint-disable-next-line unthrown/no-throw -- see above: the only documented route to a defect-state `Result`
+    throw boom;
+  });
+
+const pending = (): AsyncResult<void, never> => fromSafePromise(new Promise<void>(() => {}));
+
+const immediate = (): AsyncResult<void, never> => OkAsync();
+
+// `drainApp` sleeps exactly twice — the pre-drain delay, then the drain
+// timeout — so scripting the two in order is what lets a test decide which
+// single call defects and which half of beat 3's race can settle at all.
+const scriptedClock = (
+  preDrain: () => AsyncResult<void, never>,
+  timeout: () => AsyncResult<void, never>,
+): Clock => {
+  let armed = 0;
+  return {
+    now: () => 0,
+    sleep: () => {
+      armed += 1;
+      return armed === 1 ? preDrain() : timeout();
+    },
+  };
+};
+
+const openUnit = (registry: UnitRegistry): void => {
+  void registry.run({ kind: "t", id: "open" }, async () => {
+    await new Promise(() => {});
+    return Ok("never");
+  });
 };
 
 describe("drainApp", () => {
@@ -49,7 +98,7 @@ describe("drainApp", () => {
         now: () => 0,
         sleep: (ms) => {
           order.push(`sleep:${ms}`);
-          return Promise.resolve();
+          return OkAsync();
         },
       },
       preDrainDelayMs: 5_000,
@@ -67,7 +116,7 @@ describe("drainApp", () => {
   });
 
   it("waits preDrainDelayMs before stopping acceptance", async () => {
-    const sleep = vi.fn().mockResolvedValue(undefined);
+    const sleep = vi.fn(() => OkAsync());
     const { serving } = servingStub();
 
     await drainApp({
@@ -99,7 +148,7 @@ describe("drainApp", () => {
     const report = await drainApp({
       serving,
       registry,
-      clock: { now: () => 0, sleep: () => Promise.resolve() },
+      clock: { now: () => 0, sleep: () => OkAsync() },
       preDrainDelayMs: 0,
       drainTimeoutMs: 0,
       skip: new AbortController().signal,
@@ -141,7 +190,7 @@ describe("drainApp", () => {
     // Release the pre-drain delay so `drainApp` reaches beat 3 and arms the
     // deadline race.
     sleeps[0]?.();
-    await Promise.resolve();
+    await settle();
 
     // Settle the first unit and wait for its `finally` — the `closed()`
     // increment — to actually run before the deadline fires.
@@ -170,22 +219,26 @@ describe("drainApp", () => {
       onUnready: () => {},
     });
 
-    // `inFlightAtStart`/`closedAtStart` are sampled synchronously inside this
-    // call, before anything below runs — both are 0, since no unit exists
-    // yet.
-    sleeps[0]?.();
-    await Promise.resolve();
-
-    // A unit starts *after* that sample and is still open when the deadline
-    // hits. The naive `inFlightAtStart - abandoned` (0 - 1) goes negative;
-    // the monotonic `closed() - closedAtStart` (0 - 0) does not — this is
-    // the exact shape the reviewer reproduced ({ inFlightAtStart: 0,
+    // `inFlightAtStart`/`closedAtStart` are sampled synchronously inside the
+    // call above, before anything here runs — both are 0, since no unit exists
+    // yet. This one starts *after* that sample and is still open when the
+    // deadline hits. The naive `inFlightAtStart - abandoned` (0 - 1) goes
+    // negative; the monotonic `closed() - closedAtStart` (0 - 0) does not —
+    // this is the exact shape the reviewer reproduced ({ inFlightAtStart: 0,
     // completed: -1, abandoned: 1 }).
+    //
+    // It is started before the pre-drain delay is released, not after: an
+    // idle registry makes `awaitIdle()` resolve at once, so beat 3's race
+    // would settle on its own and the window to register a unit inside it is
+    // a microtask wide. With the unit already open, only the deadline sleep
+    // can end the race, which is what the release below drives.
     void registry.run({ kind: "t", id: "late" }, async () => {
       await new Promise(() => {});
       return Ok("never");
     });
 
+    sleeps[0]?.();
+    await settle();
     sleeps[1]?.();
 
     const result = await report;
@@ -239,5 +292,82 @@ describe("drainApp", () => {
 
     expect(await report).toBeOkWith({ inFlightAtStart: 0, completed: 0, abandoned: 0 });
     expect(Date.now() - startedAt).toBeLessThan(1_000);
+  });
+
+  // The four below all guard one rule: every `Result` the drain awaits is
+  // inspected. `AsyncResult<void, never>` says the *error* channel is empty, not
+  // that a `Defect` cannot be there — dropping one would report a clean
+  // shutdown that did not happen.
+  it("propagates a Defect from the pre-drain sleep, without telling the runtime to stop accepting", async () => {
+    const { serving } = servingStub();
+    const drain = vi.fn(serving.drain);
+
+    const report = await drainApp({
+      serving: { drain, stop: serving.stop },
+      registry: createUnitRegistry(),
+      // Only the pre-drain sleep defects: the timeout never settles and the
+      // registry is idle, so dropping this `Result` leaves an `Ok` report.
+      clock: scriptedClock(defecting, pending),
+      preDrainDelayMs: 5_000,
+      drainTimeoutMs: 20_000,
+      skip: new AbortController().signal,
+      onUnready: () => {},
+    });
+
+    expect(report).toBeDefectWith(boom);
+    expect(drain).not.toHaveBeenCalled();
+  });
+
+  it("propagates a Defect from the drain-timeout sleep", async () => {
+    const registry = createUnitRegistry();
+    const { serving } = servingStub();
+
+    // Keeps `awaitIdle` pending, so the timeout sleep is the only branch of the
+    // race that can settle it.
+    openUnit(registry);
+
+    const report = await drainApp({
+      serving,
+      registry,
+      clock: scriptedClock(immediate, defecting),
+      preDrainDelayMs: 0,
+      drainTimeoutMs: 20_000,
+      skip: new AbortController().signal,
+      onUnready: () => {},
+    });
+
+    expect(report).toBeDefectWith(boom);
+  });
+
+  it("propagates a Defect from the runtime's drain", async () => {
+    const { serving } = servingStub();
+
+    const report = await drainApp({
+      serving: { drain: defecting, stop: serving.stop },
+      registry: createUnitRegistry(),
+      clock: scriptedClock(immediate, pending),
+      preDrainDelayMs: 0,
+      drainTimeoutMs: 20_000,
+      skip: new AbortController().signal,
+      onUnready: () => {},
+    });
+
+    expect(report).toBeDefectWith(boom);
+  });
+
+  it("propagates a Defect from the registry going idle", async () => {
+    const { serving } = servingStub();
+
+    const report = await drainApp({
+      serving,
+      registry: { ...createUnitRegistry(), awaitIdle: defecting },
+      clock: scriptedClock(immediate, pending),
+      preDrainDelayMs: 0,
+      drainTimeoutMs: 20_000,
+      skip: new AbortController().signal,
+      onUnready: () => {},
+    });
+
+    expect(report).toBeDefectWith(boom);
   });
 });

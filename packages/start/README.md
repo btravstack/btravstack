@@ -92,6 +92,11 @@ is a type error at the `start` call.
   so LIFO release, close-on-failure and non-masking finaliser errors are
   inherited from `di`, not reimplemented. Failing finalisers surface in
   `ExitReport.teardownErrors`.
+- **A channel for what a runtime is.** A runtime that binds `port: 0` publishes
+  `Serving.info`, and the caller reads it back through `app.runtimeInfo()` — so
+  no runtime has to invent an `onListening` hook. The shape is the runtime's own
+  (a queue consumer has no port), and publishing is optional: `Info` defaults to
+  `never`.
 - **Unit tracking the runtimes do not implement.** `host.run` counts open
   units and hands each one an `AbortSignal`, which is what makes
   `DrainReport.abandoned` accurate without cooperation.
@@ -101,6 +106,13 @@ is a type error at the `start` call.
 - **Events, not a logger.** `building`, `serving`, `draining`, `drained`,
   `stopping`, `exited`, `teardownError`, `uncaught` — JSON to stderr by
   default, or your own `onEvent` sink.
+- **Every async surface is an `AsyncResult`**, including the infallible ones:
+  `AsyncResult<T, never>` is how this package spells "async, and cannot fail",
+  so `app.probePort()`, `clock.sleep(ms)` and friends all
+  await into a `Result`. The three exceptions are `runMain` (the boundary out of
+  the Result world), `UnitWork`'s `Promise<Result>` arm (it accepts your own
+  `async` handler) and `withApp`/`use` (a thrown assertion must reach the test
+  runner).
 
 ## Exit codes
 

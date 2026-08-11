@@ -148,7 +148,7 @@ describe("createUnitRegistry", () => {
 
   it("awaitIdle resolves immediately when nothing is in flight", async () => {
     const registry = createUnitRegistry();
-    await expect(registry.awaitIdle()).resolves.toBeUndefined();
+    await expect(registry.awaitIdle()).toBeOkWith(undefined);
   });
 
   it("awaitIdle resolves once the last unit settles", async () => {

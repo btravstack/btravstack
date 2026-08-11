@@ -1,4 +1,4 @@
-import { fromSafePromise, type AsyncResult } from "unthrown";
+import { allAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import type { Clock } from "./clock.js";
 import type { Serving } from "./runtime.js";
@@ -19,7 +19,9 @@ export type DrainReport = {
 };
 
 export type DrainArgs = {
-  readonly serving: Serving;
+  // `Serving<unknown>`, not `Serving`: the drain reads only `drain`/`stop`, and
+  // `info` is covariant, so this accepts a runtime publishing anything at all.
+  readonly serving: Serving<unknown>;
   readonly registry: UnitRegistry;
   readonly clock: Clock;
   readonly preDrainDelayMs: number;
@@ -49,6 +51,13 @@ export type DrainArgs = {
 //    `signal` as its own cue to return can't deadlock this past the
 //    deadline; `deadline` is aborted the instant the race settles, on
 //    either branch, so such a runtime is always released.
+//
+// Every `Result` the three awaited calls hand back is threaded, never dropped.
+// All three are typed `AsyncResult<void, never>`, and `never` empties the
+// *error* channel only — a `Defect` can still be present at runtime. `Serving`
+// is implemented by third-party runtimes, so a `drain` that throws internally
+// arrives here as a Defect, and discarding it would report a clean shutdown
+// that never happened.
 export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
   args.onUnready();
 
@@ -57,28 +66,37 @@ export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
 
   const deadline = new AbortController();
 
-  return fromSafePromise(
-    (async (): Promise<DrainReport> => {
-      await args.clock.sleep(args.preDrainDelayMs, args.skip);
+  return args.clock.sleep(args.preDrainDelayMs, args.skip).flatMap(() => {
+    const drainStopped = args.serving.drain(deadline.signal);
 
-      const drainStopped = args.serving.drain(deadline.signal);
-
-      await Promise.race([
-        Promise.all([drainStopped, args.registry.awaitIdle()]),
+    // An `AsyncResult` is a thenable, so racing the two branches yields
+    // whichever `Result` settles first — inspected below rather than dropped.
+    // `allAsync` is the pair's `Promise.all`, with a Defect from either side
+    // dominating.
+    return fromSafePromise(
+      Promise.race([
+        allAsync([drainStopped, args.registry.awaitIdle()]).discard(),
         args.clock.sleep(args.drainTimeoutMs, args.skip),
-      ]);
-
+      ]),
+    ).flatMap((raced) => {
+      // Aborted the instant the race settles, on either branch and whatever the
+      // winning `Result` carries — a runtime that treats `signal` as its cue to
+      // return is released on the defect path too. Sampling the counters stays
+      // in this same synchronous continuation, as it was when the whole tail
+      // followed a single `await`.
       deadline.abort();
 
-      const abandoned = args.registry.inFlight();
-      if (abandoned > 0) {
-        args.registry.abortAll();
-      }
+      return raced.map(() => {
+        const abandoned = args.registry.inFlight();
+        if (abandoned > 0) {
+          args.registry.abortAll();
+        }
 
-      // Monotonic, not `inFlightAtStart - abandoned`: that formula goes
-      // negative the moment a unit starts after `inFlightAtStart` was
-      // sampled and then closes before the deadline (see `DrainReport` above).
-      return { inFlightAtStart, completed: args.registry.closed() - closedAtStart, abandoned };
-    })(),
-  );
+        // Monotonic, not `inFlightAtStart - abandoned`: that formula goes
+        // negative the moment a unit starts after `inFlightAtStart` was
+        // sampled and then closes before the deadline (see `DrainReport` above).
+        return { inFlightAtStart, completed: args.registry.closed() - closedAtStart, abandoned };
+      });
+    });
+  });
 };

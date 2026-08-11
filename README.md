@@ -129,12 +129,12 @@ or whose failure takes the process down.
 ## The `Runtime` contract
 
 ```ts
-type Runtime<Needs extends AnyPort> = {
+type Runtime<Needs extends AnyPort, Info = never> = {
   readonly name: string;
   readonly needs: readonly Needs[];
   readonly start: (
     host: RuntimeHost<Needs>,
-  ) => AsyncResult<Serving, RuntimeStartFailed>;
+  ) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
 };
 
 type RuntimeHost<Needs extends AnyPort> = {
@@ -142,9 +142,10 @@ type RuntimeHost<Needs extends AnyPort> = {
   readonly run: RunUnit<Needs>;
 };
 
-type Serving = {
+type Serving<Info = never> = {
   readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
   readonly stop: () => AsyncResult<void, never>;
+  readonly info?: Info;
 };
 ```
 
@@ -161,6 +162,39 @@ deadline passes, so a runtime never does arithmetic on time.
 `Runtime`, `RuntimeHost` and `RunUnit` are parameterised by port **classes**
 (`Needs extends AnyPort`) but hand out `Context<InstanceType<Needs>>`, because
 `di` parameterises `Context<in R>` by port **instance** types.
+
+### What a runtime publishes about itself
+
+A runtime that binds `port: 0` knows which port it got, and nothing else does.
+`Serving.info` is the channel for that, and `RunningApp.runtimeInfo()` is where
+the caller reads it — so no runtime has to invent an `onListening` hook of its
+own.
+
+```ts
+type HttpInfo = { readonly port: number };
+
+const httpish: Runtime<typeof Greeter, HttpInfo> = {
+  name: "httpish",
+  needs: [Greeter],
+  start: () =>
+    OkAsync({
+      drain: () => OkAsync(),
+      stop: () => OkAsync(),
+      // Whatever the runtime actually bound. A queue consumer has no port and
+      // would publish `{ queue, prefetch }` instead — the shape is its own.
+      info: { port: 8080 },
+    }),
+};
+
+const app = start(AppModule, { runtime: httpish });
+const info = await app.runtimeInfo(); // Result<HttpInfo | undefined, never>
+```
+
+`Info` defaults to `never`, so publishing is **optional**: a runtime with
+nothing to say omits `info` and its type is unchanged. `runtimeInfo()` is
+`probePort()` one layer up — the same deferred, settled when the runtime starts
+serving and `undefined` on every route that never gets there, so it can never
+hang.
 
 ## The unit of work
 
@@ -192,6 +226,26 @@ belongs to the HTTP runtime, `Result` → ack/nack/DLQ to the AMQP runtime,
 Per-unit ports are not wired yet: `run` currently hands the work the
 _application_ `Context`. `RunUnit` is typed so a `Module.forkScope` call can
 land there without a signature change.
+
+## Every async surface is an `AsyncResult`
+
+Not only the fallible ones. `AsyncResult<T, never>` is how this package spells
+"async, and cannot fail" — exactly what `fromSafePromise` produces — so
+`app.probePort()`, `clock.sleep(ms)`, `clock.advance(ms)`,
+`registry.awaitIdle()`, `runtime.untilStarted()` and a probe server's `close()`
+all await into a `Result`. A caller never has to remember which async surfaces
+returned a `Result` and which returned a bare value.
+
+Three surfaces are deliberately outside it:
+
+- **`runMain`** returns `Promise<void>`. Its job is to _leave_ the Result world
+  and become a process exit code — it is the boundary.
+- **`UnitWork`'s `Promise<Result<T, E>>` arm**, which exists to accept your own
+  `async` handler.
+- **`withApp` and its `use` callback.** `use` is the test body: a thrown
+  assertion failure must reach the test runner, and an `AsyncResult` never
+  rejects — so wrapping it would turn a failing `expect` into a `Defect` you can
+  forget to unwrap, which is a green test that asserted nothing.
 
 ## Lifecycle
 
@@ -247,7 +301,7 @@ monotonic total precisely so it can never go negative.
 Liveness and readiness are process-level concerns, not transport-level ones, so
 the kernel runs its own `node:http` probe server on a separate port (default
 `9000`, `probes: false` to disable, `{ port: 0 }` to let the OS choose and read
-it back from `app.probePort()`):
+it back from `app.probePort()`, an `AsyncResult<number | undefined, never>`):
 
 | Route         | 200                                         | 503           |
 | ------------- | ------------------------------------------- | ------------- |

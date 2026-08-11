@@ -20,8 +20,8 @@ export type ExitReport = {
   readonly uptimeMs: number;
 };
 
-export type StartOptions<Needs extends AnyPort> = {
-  readonly runtime: Runtime<Needs>;
+export type StartOptions<Needs extends AnyPort, Info = never> = {
+  readonly runtime: Runtime<Needs, Info>;
   readonly clock?: Clock;
   readonly signals?: boolean;
   readonly probes?: { readonly port: number } | false;
@@ -30,7 +30,7 @@ export type StartOptions<Needs extends AnyPort> = {
   readonly onEvent?: EventSink;
 };
 
-export type RunningApp<E> = {
+export type RunningApp<E, Info = never> = {
   readonly exited: AsyncResult<ExitReport, E | RuntimeStartFailed>;
   readonly stop: () => void;
   readonly requestDrain: () => void;
@@ -53,7 +53,18 @@ export type RunningApp<E> = {
    * The point of it is `probes: { port: 0 }`: the OS picks the port, and this
    * is how the caller learns which one.
    */
-  readonly probePort: () => Promise<number | undefined>;
+  readonly probePort: () => AsyncResult<number | undefined, never>;
+  /**
+   * Whatever the runtime published about itself on `Serving.info`, once it is
+   * serving — `undefined` when the runtime publishes nothing, or when it never
+   * reached `serving` at all.
+   *
+   * The same deferred shape as `probePort()`, one layer up: `probePort` answers
+   * for the kernel's own probe server, this answers for the runtime. It is what
+   * a runtime binding an ephemeral port uses to tell the caller which port it
+   * got, instead of every such runtime inventing an `onListening` hook.
+   */
+  readonly runtimeInfo: () => AsyncResult<Info | undefined, never>;
 };
 
 // `Module<X, E, Scope>`, not `Module<X, E, never>`: `Needs` sits in covariant
@@ -69,13 +80,13 @@ export type RunningApp<E> = {
 // inference-bearing parameter makes TypeScript defer that parameter's
 // inference and can collapse `X` or `E` to `unknown`. Same shape, and the same
 // reasoning, as di's own UNSATISFIED DEPENDENCIES gate on `Module.scoped`.
-export const start = <X, E, Needs extends AnyPort>(
+export const start = <X, E, Needs extends AnyPort, Info = never>(
   module: Module<X, E, Scope>,
-  options: StartOptions<Needs>,
+  options: StartOptions<Needs, Info>,
   ...gate: [InstanceType<Needs>] extends [X]
     ? []
     : [error: "UNSATISFIED RUNTIME NEEDS", missing: Exclude<InstanceType<Needs>, X>]
-): RunningApp<E> => {
+): RunningApp<E, Info> => {
   void gate;
   const clock = options.clock ?? systemClock;
   const emit = safeSink(options.onEvent ?? stderrSink);
@@ -145,6 +156,10 @@ export const start = <X, E, Needs extends AnyPort>(
   // Settled exactly once, on every route out of the bind attempt — bound,
   // disabled, or failed — so `probePort()` can never hang.
   const probeBound = createDeferred<number | undefined>();
+  // The same shape one layer up, for the runtime: settled with `Serving.info`
+  // the moment the runtime is serving, and with `undefined` at both the
+  // failure sites below — so `runtimeInfo()` can never hang either.
+  const runtimePublished = createDeferred<Info | undefined>();
 
   emit({ type: "building" });
 
@@ -170,6 +185,7 @@ export const start = <X, E, Needs extends AnyPort>(
           .discard()
   ).tapFailure(() => {
     probeBound.resolve(undefined);
+    runtimePublished.resolve(undefined);
     tracker.advanceTo("stopping");
     disposeSignals();
     disposeUncaught();
@@ -180,7 +196,7 @@ export const start = <X, E, Needs extends AnyPort>(
   // `stop()`) and `"uncaught"` go straight to `stopping`, leaving
   // `ExitReport.drain` `undefined` — draining after an uncaught exception
   // risks completing in-flight work against corrupted state.
-  const runDrain = (serving: Serving): AsyncResult<DrainReport, never> => {
+  const runDrain = (serving: Serving<Info>): AsyncResult<DrainReport, never> => {
     tracker.advanceTo("draining");
     emit({ type: "draining", inFlight: registry.inFlight() });
 
@@ -196,7 +212,7 @@ export const start = <X, E, Needs extends AnyPort>(
   };
 
   const finish = (
-    serving: Serving,
+    serving: Serving<Info>,
     reason: ExitReport["reason"],
   ): AsyncResult<ExitReport, never> => {
     const drained: AsyncResult<DrainReport | undefined, never> =
@@ -252,8 +268,9 @@ export const start = <X, E, Needs extends AnyPort>(
 
         const host = { ctx: runtimeCtx, run };
 
-        return options.runtime.start(host).flatMap((serving: Serving) => {
+        return options.runtime.start(host).flatMap((serving: Serving<Info>) => {
           tracker.advanceTo("serving");
+          runtimePublished.resolve(serving.info);
 
           return fromSafePromise(shutdown.promise).flatMap((reason) => finish(serving, reason));
         });
@@ -270,6 +287,7 @@ export const start = <X, E, Needs extends AnyPort>(
       // without this the event stream just stops and `phase()` lies about an
       // application that has already exited.
     ).tapFailure(() => {
+      runtimePublished.resolve(undefined);
       tracker.advanceTo("stopping");
       disposeSignals();
       disposeUncaught();
@@ -284,6 +302,7 @@ export const start = <X, E, Needs extends AnyPort>(
     requestDrain: () => shutdown.resolve("signal"),
     phase: tracker.current,
     ready,
-    probePort: () => probeBound.promise,
+    probePort: () => fromSafePromise(probeBound.promise),
+    runtimeInfo: () => fromSafePromise(runtimePublished.promise),
   };
 };

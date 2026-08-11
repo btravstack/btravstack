@@ -8,7 +8,7 @@
 // `package.json`'s `exports` map points at.
 
 import { Module, Port, Provider, type AnyPort, type Context } from "@btravstack/di";
-import { Ok, OkAsync, P, type AsyncResult } from "unthrown";
+import { Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
 import { expectTypeOf } from "vitest";
 
 import {
@@ -73,15 +73,16 @@ await runMain(start(AppModule, { runtime: ticker }));
 // rather than merely compiled, so the README cannot drift from `runtime.ts`.
 // ---------------------------------------------------------------------------
 
-type ReadmeServing = {
+type ReadmeServing<Info = never> = {
   readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
   readonly stop: () => AsyncResult<void, never>;
+  readonly info?: Info;
 };
 
-type ReadmeRuntime<Needs extends AnyPort> = {
+type ReadmeRuntime<Needs extends AnyPort, Info = never> = {
   readonly name: string;
   readonly needs: readonly Needs[];
-  readonly start: (host: RuntimeHost<Needs>) => AsyncResult<Serving, RuntimeStartFailed>;
+  readonly start: (host: RuntimeHost<Needs>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
 };
 
 type ReadmeRuntimeHost<Needs extends AnyPort> = {
@@ -99,6 +100,30 @@ expectTypeOf<ReadmeServing>().toEqualTypeOf<Serving>();
 expectTypeOf<ReadmeRuntime<typeof Greeter>>().toEqualTypeOf<Runtime<typeof Greeter>>();
 expectTypeOf<ReadmeRuntimeHost<typeof Greeter>>().toEqualTypeOf<RuntimeHost<typeof Greeter>>();
 expectTypeOf<ReadmeDrainReport>().toEqualTypeOf<DrainReport>();
+
+// ---------------------------------------------------------------------------
+// "What a runtime publishes about itself" — root README.
+// ---------------------------------------------------------------------------
+
+type HttpInfo = { readonly port: number };
+
+const httpish: Runtime<typeof Greeter, HttpInfo> = {
+  name: "httpish",
+  needs: [Greeter],
+  start: () =>
+    OkAsync({
+      drain: () => OkAsync(),
+      stop: () => OkAsync(),
+      // Whatever the runtime actually bound. A queue consumer has no port and
+      // would publish `{ queue, prefetch }` instead — the shape is its own.
+      info: { port: 8080 },
+    }),
+};
+
+const app = start(AppModule, { runtime: httpish });
+const info = await app.runtimeInfo(); // Result<HttpInfo | undefined, never>
+
+expectTypeOf(info).toEqualTypeOf<Result<HttpInfo | undefined, never>>();
 
 // ---------------------------------------------------------------------------
 // "The unit of work" — root README.

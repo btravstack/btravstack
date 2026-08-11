@@ -18,11 +18,20 @@ import { start, type RunningApp, type StartOptions } from "./start.js";
  *   return await app.exited;
  * });
  * ```
+ *
+ * @remarks
+ * `use` and `withApp` both speak a bare `Promise`, not an `AsyncResult` — the
+ * one harness-shaped exception to this package's rule. `use` is the test body:
+ * a thrown assertion failure inside it must reach the test runner, and an
+ * `AsyncResult` never rejects, so converting either side would turn a failing
+ * `expect` into a `Defect` a caller can forget to unwrap — a green test that
+ * asserted nothing. `A` is the test author's own type and carries no error
+ * channel, so the wrapper would add no information either.
  */
-export const withApp = async <X, E, Needs extends AnyPort, A>(
+export const withApp = async <X, E, Needs extends AnyPort, A, Info = never>(
   module: Module<X, E, Scope>,
-  options: StartOptions<Needs>,
-  use: (app: RunningApp<E>) => Promise<A>,
+  options: StartOptions<Needs, Info>,
+  use: (app: RunningApp<E, Info>) => Promise<A>,
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
   ...gate: [InstanceType<Needs>] extends [X]
@@ -38,8 +47,8 @@ export const withApp = async <X, E, Needs extends AnyPort, A>(
   // already discharged.
   const boot = start as (
     module: Module<X, E, Scope>,
-    options: StartOptions<Needs>,
-  ) => RunningApp<E>;
+    options: StartOptions<Needs, Info>,
+  ) => RunningApp<E, Info>;
 
   const app = boot(module, { ...options, signals: false, probes: false });
 

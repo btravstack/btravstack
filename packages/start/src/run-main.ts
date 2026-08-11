@@ -56,8 +56,15 @@ const codeFor = (report: ExitReport): number => {
  * await runMain(start(AppModule, { runtime: httpRuntime }));
  * ```
  */
+// The one async surface in this package that returns a bare `Promise<void>`
+// rather than an `AsyncResult`, deliberately: its whole job is to LEAVE the
+// Result world and become a process exit code. It is the boundary, and a
+// top-level `await runMain(...)` in an entry point is the intended shape.
 export const runMain = async <E>(
-  app: RunningApp<E>,
+  // `RunningApp<E, unknown>`, not `RunningApp<E>`: `runMain` reads only
+  // `exited`, and `Info` is covariant, so this accepts an app whose runtime
+  // publishes anything at all.
+  app: RunningApp<E, unknown>,
   exit: (code: number) => void = (code) => {
     process.exitCode = code;
   },
