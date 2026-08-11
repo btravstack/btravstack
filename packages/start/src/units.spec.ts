@@ -77,13 +77,17 @@ describe("createUnitRegistry", () => {
 
   it("decrements even when the work throws", async () => {
     const registry = createUnitRegistry();
+    const boom = new Error("boom");
 
+    // Asserted with the cause, not a bare `toBeDefect()`: the thrown value is
+    // known here, and a bare assertion would also pass on a defect the
+    // registry minted for some other reason entirely.
     await expect(
       registry.run(meta, () => {
         // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test: a unit must be counted closed on the throw-to-defect path too
-        throw new Error("boom");
+        throw boom;
       }),
-    ).toBeDefect();
+    ).toBeDefectWith(boom);
     expect(registry.inFlight()).toBe(0);
   });
 
