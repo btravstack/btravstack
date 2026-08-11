@@ -235,6 +235,49 @@ Per-unit ports are not wired yet: `run` currently hands the work the
 _application_ `Context`. `RunUnit` is typed so a `Module.forkScope` call can
 land there without a signature change.
 
+### Two contracts a runtime owes
+
+Neither is checkable by the kernel, and building the first real runtime on this
+contract hit both.
+
+**Flush the response _inside_ the unit.** A unit is closed the instant its
+`Result` settles; an idle registry is what the drain waits for, and going idle
+is the kernel's permission to call `Serving.stop()`. So a runtime that resolves
+the unit and _then_ writes its response is racing `stop()` tearing the transport
+down. With a small body the write usually wins; with a large one it does not
+(measured with an 8 MB body: `UND_ERR_SOCKET: other side closed`). A unit is not
+"compute the answer" — it is "compute the answer **and get it out of the
+process**".
+
+```ts
+const serveOne = (
+  host: RuntimeHost<typeof Greeter>,
+  meta: UnitMeta,
+  send: (body: string) => Promise<void>,
+): AsyncResult<string, never> =>
+  // Flushed inside the work callback. Sending after `await host.run(...)`
+  // returns is the race: the unit is already closed by then.
+  host.run(meta, async (ctx, signal) => {
+    const body = signal.aborted ? "" : ctx.get(Greeter).greet("world");
+    await send(body);
+    return Ok(body);
+  });
+```
+
+**`UnitMeta.id` must be unique per unit**, unless you pass a `traceId` — that is
+what `traceId` defaults to. An HTTP runtime that submits the route template
+(`"POST /orders"`) as the id gives every request the same trace id, and the
+ambient record's whole purpose, telling one unit apart from another in a log
+line, is silently defeated. A route template is a `kind`, not an `id`; a broker
+message id or a queue job id is already unique and needs nothing more.
+
+The kernel cannot check this — it would have to remember every id it had ever
+seen. What it does guarantee is `UnitRecord.unitId`, minted per unit and always
+unique, so a reader that only needs to tell two units apart already has one.
+`traceId` is the **correlation** id, which is why it is the one a runtime may
+supply: it carries an id from _outside_ the process (a `traceparent` header, a
+message property) so a line logged here joins a trace that started elsewhere.
+
 ## Every async surface is an `AsyncResult`
 
 Not only the fallible ones. `AsyncResult<T, never>` is how this package spells

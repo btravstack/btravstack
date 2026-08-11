@@ -15,6 +15,28 @@ export const runWithUnit = <T>(record: UnitRecord, fn: () => T): T => storage.ru
 
 export const currentUnit = (): UnitRecord | undefined => storage.getStore();
 
+/**
+ * What a runtime says about one piece of work as it submits it. `kind` is the
+ * category (`"http"`, `"tick"`, `"job"`); `id` identifies **this** unit.
+ *
+ * @remarks
+ * **`id` must be unique per unit unless a `traceId` is supplied**, because
+ * `traceId` defaults to it. A runtime that passes a *category* as the id — an
+ * HTTP runtime using the route template `"POST /orders"` — gives every request
+ * the same trace id, and the ambient record's whole purpose, telling one unit
+ * apart from another in a log line, is silently defeated. A broker message id
+ * or a queue job id is already unique and needs nothing more; a route template
+ * is a `kind`, not an `id`.
+ *
+ * The kernel cannot check this — it would have to remember every id it had
+ * ever seen — so uniqueness is the runtime's to guarantee. What the kernel
+ * does guarantee is {@link UnitRecord}'s `unitId`, minted per unit and always
+ * unique: a reader that only needs to tell two units apart already has it.
+ * `traceId` is the **correlation** id, which is why it is the one a runtime
+ * may supply — it carries an id from *outside* the process (a `traceparent`
+ * header, a message property) so a line logged here joins a trace that started
+ * elsewhere.
+ */
 export type UnitMeta = {
   readonly kind: string;
   readonly id: string;

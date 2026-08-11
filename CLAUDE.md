@@ -292,6 +292,41 @@ turns off the uncaught handlers, at the cost of the signal-driven drain).
 Stated in both READMEs; found in Task 12's review, and it is the reason the
 `uncaught` row exists in the exit-code table at all.
 
+## Two contracts a runtime owes, and neither is checkable
+
+Both surfaced from building the first real runtime against this kernel, and
+both are silent when broken. They live in the `RunUnit` / `RuntimeHost` /
+`UnitMeta` TSDoc, in the root README's _"Two contracts a runtime owes"_ and in
+the package README's _"Writing a runtime"_ — four places that must stay in
+sync.
+
+**1. The response must be flushed INSIDE the unit.** A unit is closed the
+instant its `Result` settles; `registry.awaitIdle()` is what beat 3 of the
+drain races, and an idle registry is the kernel's permission to move on to
+`Serving.stop()`. A runtime that resolves the unit and _then_ writes to its
+client is racing `stop()` tearing the transport down — with a small body the
+write usually wins, with a large one it does not (proved with an 8 MB body:
+`UND_ERR_SOCKET: other side closed`). A unit is not "compute the answer", it is
+"compute the answer **and get it out of the process**". The kernel cannot
+enforce this: it sees a settled `Result`, and has no idea whether bytes are
+still in flight.
+
+**2. `UnitMeta.id` must be unique per unit, unless a `traceId` is supplied.**
+`traceId` defaults to `meta.id`, so a runtime passing a _category_ as the id —
+an HTTP runtime using the route template `"POST /orders"` — gives every request
+the same trace id, and the ambient record's whole purpose is silently defeated.
+`traceId` stays **optional** deliberately: `meta.id` genuinely IS a correct
+trace id whenever it is already unique per unit (a queue job id, a broker
+message id), which is the common case, and the kernel could not verify a
+required one either — it would have to remember every id ever seen, so the
+obligation would be syntactic, not checked, and `traceId: routeTemplate` would
+type just as well as the bug it replaces. The defect was the unstated contract,
+not the default. Note `UnitRecord.unitId` is minted per unit and always unique,
+so telling two units apart never needs `traceId`; `traceId` is the
+**correlation** id, which is why it is the one a runtime may supply — it
+carries an id from outside the process so a line logged here joins a trace that
+started elsewhere.
+
 ## Public surface
 
 `packages/start/src/index.ts` is the one place the API is decided. `testing.ts`
@@ -353,7 +388,9 @@ so a production bundle never pulls the fakes in.
   carrying `{ runtime, cause }`. A probe bind failure uses
   `runtime: "probes"`.
 - **`UnitMeta` / `UnitWork` / `UnitRegistry`** — `UnitMeta` is
-  `{ kind, id, traceId?, tenantId?, deadline? }`; `traceId` defaults to `id`.
+  `{ kind, id, traceId?, tenantId?, deadline? }`; `traceId` defaults to `id`,
+  which is why **`id` must be unique per unit** unless the runtime supplies one
+  (see _Two contracts a runtime owes_ above).
   `UnitWork` may return an `AsyncResult`, a `Promise<Result>` or a plain
   `Result` — the `Promise` arm is Thesis #6's second exception, since it exists
   to accept a caller's `async` handler. `UnitRegistry.awaitIdle()` returns

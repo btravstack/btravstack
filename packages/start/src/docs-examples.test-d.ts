@@ -145,6 +145,23 @@ const submitOne = (run: RunUnit<typeof Greeter>, meta: UnitMeta): AsyncResult<st
   run(meta, (ctx, signal) => (signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world"))));
 
 // ---------------------------------------------------------------------------
+// "Two contracts a runtime owes" — root README.
+// ---------------------------------------------------------------------------
+
+const serveOne = (
+  host: RuntimeHost<typeof Greeter>,
+  meta: UnitMeta,
+  send: (body: string) => Promise<void>,
+): AsyncResult<string, never> =>
+  // Flushed inside the work callback. Sending after `await host.run(...)`
+  // returns is the race: the unit is already closed by then.
+  host.run(meta, async (ctx, signal) => {
+    const body = signal.aborted ? "" : ctx.get(Greeter).greet("world");
+    await send(body);
+    return Ok(body);
+  });
+
+// ---------------------------------------------------------------------------
 // "Ambient carries data" — root README.
 // ---------------------------------------------------------------------------
 

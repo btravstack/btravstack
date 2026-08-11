@@ -122,6 +122,31 @@ is a type error at the `start` call.
   `async` handler) and `withApp`/`use` (a thrown assertion must reach the test
   runner).
 
+## Writing a runtime
+
+A runtime owns the transport and nothing else — the contract is `Runtime`,
+`RuntimeHost`, `RunUnit` and `Serving`, and the `ticker` above is a complete
+one. Two obligations come with it that the kernel **cannot check for you**, and
+building the first real runtime on this contract hit both.
+
+**Flush the response inside the unit.** A unit is closed the instant its
+`Result` settles; an idle registry is what the drain waits for, and going idle
+is the kernel's permission to call `Serving.stop()`. A runtime that resolves the
+unit and _then_ writes its response is racing `stop()` tearing the transport
+down — with a small body the write usually wins, with a large one it does not
+(measured with an 8 MB body: `UND_ERR_SOCKET: other side closed`). Do the write
+inside the `host.run(...)` callback and only settle the unit once it has
+flushed.
+
+**`UnitMeta.id` must be unique per unit** unless you pass a `traceId`, because
+`traceId` defaults to it. An HTTP runtime submitting the route template
+(`"POST /orders"`) as the id gives every request the same trace id, which
+silently defeats the point of the ambient record. A route template is a `kind`,
+not an `id`. `UnitRecord.unitId` is minted per unit and always unique, so
+telling two units apart never needs `traceId`; `traceId` is the **correlation**
+id, carrying an id from outside the process (a `traceparent` header, a message
+property) so a line logged here joins a trace that started elsewhere.
+
 ## Exit codes
 
 `runMain` sets `process.exitCode` and never calls `process.exit()`.
