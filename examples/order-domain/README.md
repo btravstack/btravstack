@@ -7,7 +7,8 @@ The entity is modelled with
 library built for exactly this layer.
 
 ```
-src/order.ts  the Order entity, its vocabulary, placeOrder, and the domain errors
+src/order.ts          the Order entity, its vocabulary, placeOrder, and the domain errors
+src/test-fixtures.ts  a placed Order, injected as a Vitest fixture
 ```
 
 ## What is deliberately absent

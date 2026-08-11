@@ -2,5 +2,8 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreExportsUsedInFile": true,
   "ignore": ["**/*.test-d.ts"],
-  "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"]
+  "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"],
+  "workspaces": {
+    "examples/order-api": { "entry": ["src/main.ts"] }
+  }
 }

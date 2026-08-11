@@ -5,10 +5,11 @@ rules into operations — "place an order", "find an order" — and declares, as
 `@btravstack/di` ports, what it needs the outside world to supply.
 
 ```
-src/ports.ts      OrderRepository, Logger, PlaceOrder, FindOrder
-src/use-cases.ts  the interactors, and their providers
-src/logger.ts     the Logger adapter — the one kernel touchpoint
-src/module.ts     ApplicationModule
+src/ports.ts          OrderRepository, Logger, PlaceOrder, FindOrder
+src/use-cases.ts      the interactors, and their providers
+src/logger.ts         the Logger adapter — the one kernel touchpoint
+src/module.ts         ApplicationModule
+src/test-fixtures.ts  the stub repository and TestModule, as Vitest fixtures
 ```
 
 ## The port is declared by the caller, not the adapter
@@ -43,8 +44,9 @@ it, and only then does the graph build.
 
 ## Testable with no infrastructure at all
 
-That hole is also why this layer's specs need no database. `src/place-order.spec.ts`
-provides a stub repository from a module declared in the spec file itself:
+That hole is also why this layer's specs need no database. `src/test-fixtures.ts`
+provides a stub repository from a module declared alongside the spec, and injects
+it as a Vitest fixture:
 
 ```ts
 const TestModule = Module("Test")({

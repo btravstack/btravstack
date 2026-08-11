@@ -583,10 +583,12 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
   `boundPort`), and a throw that **is the subject under test**
   (`events.spec.ts`'s throwing sink, `units.spec.ts`'s throwing unit,
   `run-main.spec.ts`'s defect, which has no public constructor to mint it any
-  other way). `no-get-or-throw` is switched off for the `*.spec.ts` glob through
-  an `overrides` entry — the exemption the rule's own diagnostic prescribes,
-  since `getOrThrow()` is the right tool in a test; it stays on everywhere
-  else, where nothing uses it. An unused `oxlint-disable` is itself a warning,
+  other way). `no-get-or-throw` is switched off for the `**/*.spec.ts` **and
+  `**/test-fixtures.ts`** globs through an `overrides` entry — the exemption the
+  rule's own diagnostic prescribes, since `getOrThrow()` is the right tool in a
+  test, and a fixture module is test code that merely does not end in
+  `.spec.ts` (see Test conventions); it stays on everywhere else, where nothing
+  uses it. An unused `oxlint-disable` is itself a warning,
   so do not add one pre-emptively.
 - **Pre-lifted constructors, not `.toAsync()` on a fresh literal.** `OkAsync(v)`
   / `ErrAsync(e)` / `OkAsync()` are what unthrown ships for this;
@@ -601,15 +603,98 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
 - Coverage thresholds are 100% lines/functions on `packages/start`, with
   `testing.ts` excluded (it is a re-export barrel).
-- **Test conventions.** `@unthrown/vitest`'s matchers are registered via
-  `setupFiles` (`toBeOk`, `toBeOkWith`, `toBeErrTagged`, …). Timing is asserted
-  through `createFakeClock`, never a real `setTimeout` — a kernel whose own
-  tests are slow gets tested badly. `*.test-d.ts` files are excluded from the
-  build, from oxlint and from knip; they are checked by `tsc -p
-tsconfig.test-d.json`, which `pnpm typecheck` runs.
+- Test mechanics: `@unthrown/vitest`'s matchers are registered via `setupFiles`
+  (`toBeOk`, `toBeOkWith`, `toBeErrTagged`, …). Timing is asserted through
+  `createFakeClock`, never a real `setTimeout` — a kernel whose own tests are
+  slow gets tested badly. `*.test-d.ts` files are excluded from the build, from
+  oxlint and from knip; they are checked by `tsc -p tsconfig.test-d.json`, which
+  `pnpm typecheck` runs. The structural rules are in **Test conventions** below.
 - Documentation drifts silently, and a sibling repo has already shipped a
   falsehood this way. When the public surface changes, update `CLAUDE.md`, both
   READMEs **and** `docs-examples.test-d.ts` in the same commit.
+
+## Test conventions
+
+Five rules, each with the reason it exists. They hold across `examples/`, which
+is the teaching surface and where the shape is read as advice. `packages/start`'s
+own 14 spec files still predate them — that sweep is deliberately deferred and
+reviewed separately (see Status), so a **new or rewritten** kernel spec follows
+these and an untouched one is not churned for it.
+
+1. **`describe` is the first statement a reader meets.** After the imports,
+   nothing but `describe`. A file that opens with 144 lines of helpers makes a
+   reader scroll past the scaffolding to reach the subject, and every one of
+   those helpers is invisible state a test silently depends on. What a test needs
+   should arrive **through its own parameter list**, so the dependency is written
+   down at the point of use.
+2. **Helpers are Vitest fixtures, injected via `test.extend`, and they live in a
+   sibling `src/test-fixtures.ts`.** The module exports an extended `it`, which
+   every spec in that package imports instead of vitest's own. Keeping the
+   `test.extend` block out of the spec is what makes rule 1 achievable — the
+   fixture bodies are themselves helpers, so leaving them above `describe` only
+   renames the problem. A shared module also lets several `describe` blocks (and
+   later, several spec files) draw on one set. Fixtures are **lazy**: a test that
+   does not name one never builds it, so an expensive fixture costs nothing in
+   the tests that ignore it.
+   Both `**/*.spec.ts` and `**/test-fixtures.ts` are in the `.oxlintrc.json`
+   `overrides` entry that switches `unthrown/no-get-or-throw` off, because a
+   fixture is test code and `getOrThrow()` is the right tool there.
+3. **Teardown belongs in the fixture, never in `try`/`finally`.** Everything
+   after `await use(value)` runs on **every** exit path, including a failing
+   assertion — which is precisely what the `finally` blocks were hand-rolling,
+   at the cost of a `try` around every test body and one more level of
+   indentation around the part that matters. An `expect` in fixture cleanup is
+   still a test failure attributed to that test (verified, not assumed), so the
+   guarantee a `finally` carried survives the move intact.
+4. **Every test body carries `// GIVEN`, `// WHEN`, `// THEN`.** They mark the
+   three phases so the assertion is not read as setup and the setup is not read
+   as the subject; a test that cannot be split into three is usually testing more
+   than one thing. These markers are **exempt from the sparse comment-density
+   rule** above — they are structure, not narration.
+5. **One deep `expect` per test, asserting once against one resource.** Not a
+   scatter of shallow assertions, and never an assertion that can decline to
+   run. The failure mode is concrete: `expect(r).toBeErr(); if (r.isErr()) {
+expect(r.error.code)… }` passes on the outer assertion alone the moment the
+   narrowing is false — every assertion inside silently does not run, and the
+   test still goes green. So does `descriptor?.writable`, and so does any
+   assertion reached through an `&&` guard. A single deep assertion has no such
+   hole: `await expect(call()).toBeErrWith(expect.objectContaining({ code:
+"CONFLICT", data: { id } }))` either matches or fails. In practice:
+   - Collapse several properties of one resource into one deep assertion, with
+     `@unthrown/vitest`'s matchers (`toBeOkWith`, `toBeErrWith`,
+     `toBeErrTagged`, `toBeDefectWith`) plus `expect.objectContaining` /
+     `expect.any` / `expect.not.stringContaining` where a partial or loose match
+     is genuinely wanted. To pin a **class** inside the same assertion, put
+     `constructor: TheClass` in the `objectContaining` — asymmetric matchers
+     read through the prototype chain, so it is `toBeInstanceOf` without a
+     second `expect` (verified: it rejects a structural impostor).
+     Where the facts are not properties of one object, assert a **projection**
+     of them (`expect({ livez, readyz, ready }).toEqual({ … })`).
+   - **Two resources means two tests**, not two assertions. The test count
+     rising is the expected outcome.
+   - The GIVEN phase asserts nothing. Chain the setup into the subject
+     (`repository.save(x).flatMap(() => repository.find(id))`) so a failed setup
+     surfaces in the one assertion instead of needing a guard assertion of its
+     own — which also keeps the setup's `Result` consumed rather than dropped.
+   - Waiting is not asserting: use `vi.waitUntil(() => …)` to synchronise on a
+     state, and assert that state in the test's one `expect`. `expect.poll` used
+     as a barrier reads as an assertion and is not one.
+   - Fixture teardown keeps its own `expect` (rule 3) — that is cleanup, not the
+     test's assertion.
+
+A sixth rule is about production code that tests keep honest:
+
+6. **Configuration is validated through a schema and returned as a value, never
+   `.parse()`d.** `examples/order-api/src/env.ts` is the shape: a schema over
+   `process.env` run through `@unthrown/standard-schema`'s `fromSchema`, whose
+   issues are the modeled `E`, folded by the entry point into a message and a
+   non-zero exit code. A schema's own `.parse()` **throws**, which
+   `unthrown/no-throw` bans and which would contradict the example it appears in.
+   The schema reads **strings** rather than `z.coerce.number()`: coercion is
+   `Number()` underneath, so `PORT=abc` binds `NaN` and `PORT=` binds the
+   ephemeral port `0` — the exact silent failure the module exists to remove.
+   Note `fromSchema` is **curried** — `fromSchema(schema)(input)`, not
+   `fromSchema(schema, input)`.
 
 ## Status
 
@@ -627,3 +712,13 @@ Deferred, deliberately:
 - Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed
   for it; the `Module.forkScope` call lands when the first runtime needs a
   per-request transaction.
+- Bringing `packages/start`'s **14 spec files / 93 tests** under the Test
+  conventions above. All 14 need the GIVEN/WHEN/THEN markers; **9** also carry a
+  helper preamble to lift into a `test-fixtures.ts` (`drain` 82 lines,
+  `invariants` 74, `with-app` 37, `probes` 30, `run-main` 28, `test-runtime` 21,
+  `start` 17, `units` 12, `process-handlers` 7 — the other five have only
+  imports above `describe`), and exactly **one** `try`/`finally` needs moving
+  into a fixture (`drain.spec.ts`). Held back deliberately: it is a large
+  mechanical sweep over the tests that guard the nine invariants, so the
+  regression risk is real and it wants its own review rather than riding along
+  with an examples change.

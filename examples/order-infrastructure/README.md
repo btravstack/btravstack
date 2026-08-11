@@ -8,6 +8,7 @@ prisma/schema.prisma            one Order model, UNIQUE on the business id
 src/database.ts                 the client, the OrderDatabase port, the acquire/release provider
 src/prisma-order-repository.ts  the adapter — where Prisma's errors become the domain's
 src/module.ts                   PersistenceModule
+src/test-fixtures.ts            the in-memory database and repository, as Vitest fixtures
 ```
 
 ## The translation is the point

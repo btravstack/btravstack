@@ -3,9 +3,10 @@
   "tasks": {
     "lint": { "dependsOn": ["^build"] },
     "format": {},
-    "typecheck": { "dependsOn": ["build"] },
-    "test:types": { "dependsOn": ["^build"] },
-    "test": { "dependsOn": ["^build"], "cache": false },
+    "generate": { "outputs": ["src/generated/**"] },
+    "typecheck": { "dependsOn": ["build", "^generate"] },
+    "test:types": { "dependsOn": ["^build", "^generate"] },
+    "test": { "dependsOn": ["^build", "^generate"], "cache": false },
     "dev": { "dependsOn": ["^build"], "cache": false, "persistent": true },
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] }
   }
