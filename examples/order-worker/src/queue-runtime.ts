@@ -44,7 +44,11 @@ type WorkerNeeds = typeof PlaceOrder | typeof Logger;
  *   exactly as the oRPC runtime reports a failed bind.
  * - `Serving.drain` stops *claiming*. Deliveries already in flight are the
  *   kernel's to time out, and the kernel's deadline signal has nothing to
- *   cancel here.
+ *   cancel here. A message not yet claimed stays in the queue **unsettled**,
+ *   and the drain does not wait for it: draining hands nothing back to a
+ *   broker, it stops taking more, and the next worker on the queue takes it.
+ *   So a producer awaiting that message's settlement — the convenience
+ *   `OrderQueue.publish` offers — waits forever.
  * - `Serving.stop` is the same act with nothing left to add: an in-memory queue
  *   has no connection to close.
  */

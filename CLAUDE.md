@@ -568,7 +568,7 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All five
-  workspaces run under the same six commands as the kernel — 57 specs plus two
+  workspaces run under the same six commands as the kernel — 59 specs plus two
   `needs-gate.test-d.ts` files — so an example that stops compiling, stops
   linting or stops passing fails CI exactly as `packages/start` would. They are
   also the only place a runtime with a **non-empty `needs`** meets a real

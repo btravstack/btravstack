@@ -42,10 +42,24 @@ export type Settlement =
 export type OrderQueue = {
   readonly name: string;
   /**
-   * Publishes a job and resolves when it **settles** — acked or dead-lettered,
-   * however many deliveries that took. An `AsyncResult`, like every other async
-   * surface in this stack, with an empty error channel: a settlement always
-   * arrives, because the worker's attempt budget is finite.
+   * Publishes a job and resolves when a **running worker settles** it — acked
+   * or dead-lettered, however many deliveries that took.
+   *
+   * That is a precondition, not a guarantee. The attempt budget bounds the
+   * retries of a job a worker has *claimed*; nothing bounds the wait for a
+   * claim. A job published with no worker running, or left in the queue when
+   * one stops or drains, is never settled and **awaiting it waits forever** —
+   * which is what a broker does with an unconsumed message, rather than a
+   * defect of this one. `queue-runtime.spec.ts` pins both halves.
+   *
+   * The empty error channel is honest about something narrower: publishing
+   * itself cannot fail, and a dead-letter is a settlement rather than an error.
+   *
+   * Resolving on the *consumer's* outcome is a deliberate test convenience: a
+   * real AMQP `publish` resolves on the broker's ack and the producer never
+   * learns how the message ended. It is what lets a spec be the producer half
+   * and assert the disposition in one `expect` — and it is why awaiting one is
+   * only ever safe under a serving worker.
    */
   readonly publish: (job: PlaceOrderJob) => AsyncResult<Settlement, never>;
   /** Consumer side: take the next delivery, or `undefined` if there is none. */

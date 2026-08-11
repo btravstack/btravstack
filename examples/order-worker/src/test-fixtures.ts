@@ -8,12 +8,12 @@ import {
   PlaceOrder,
 } from "@btravstack/start-example-order-application";
 import { OrderNotFound } from "@btravstack/start-example-order-domain";
-import { ErrAsync, fromSafePromise } from "unthrown";
+import { ErrAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { expect, test } from "vitest";
 
 import { OrderWorkerModule } from "./module.js";
 import { queueWorkerRuntime, type OrderWorkerInfo } from "./queue-runtime.js";
-import { createOrderQueue, type OrderQueue, type PlaceOrderJob } from "./queue.js";
+import { createOrderQueue, type OrderQueue, type PlaceOrderJob, type Settlement } from "./queue.js";
 
 type App<E> = RunningApp<E, OrderWorkerInfo>;
 
@@ -33,6 +33,30 @@ const jobOf = (id: string, orderId: string, quantity: number): PlaceOrderJob => 
   orderId,
   quantity,
 });
+
+/**
+ * Reports whether a publish settled within one macrotask turn.
+ *
+ * `publish` only resolves when a running worker settles the job, so awaiting
+ * one that nobody will claim hangs the test until Vitest's timeout — a broken
+ * suite where the fact under test is a legitimate state. The turn boundary is
+ * a bound rather than a guess: the delivery path is microtasks end to end, with
+ * no timer anywhere in it, so anything a serving worker was going to settle has
+ * settled by the time the immediate fires.
+ */
+const settledWithinATurn = (
+  published: AsyncResult<Settlement, never>,
+): Promise<"settled" | "unsettled"> =>
+  Promise.race([
+    published.match({
+      ok: () => "settled" as const,
+      errCases: (matcher) => matcher,
+      defect: () => "settled" as const,
+    }),
+    new Promise<"unsettled">((resolve) => {
+      setImmediate(() => resolve("unsettled"));
+    }),
+  ]);
 
 const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
   Module("StubPersistence")({
@@ -120,7 +144,13 @@ const gatedWorker = () => {
 };
 
 export type WorkerFixtures = {
-  /** The very queue the runtime consumes, so a spec is the producer half. */
+  /**
+   * The very queue the runtime consumes, so a spec is the producer half.
+   *
+   * A publish is awaited only under a `serve`d worker — that is the
+   * precondition `OrderQueue.publish` documents, and `settledWithinATurn` is
+   * how the two specs that go without one stay a failure instead of a hang.
+   */
   readonly queue: OrderQueue;
   /**
    * Starts an app on that queue and registers its shutdown. The teardown runs
@@ -130,6 +160,8 @@ export type WorkerFixtures = {
    */
   readonly serve: Serve;
   readonly aJob: typeof jobOf;
+  /** Races a publish against one macrotask turn — see `settledWithinATurn`. */
+  readonly withinATurn: typeof settledWithinATurn;
   readonly unmodelled: ReturnType<typeof unmodelledWorker>;
   readonly gate: ReturnType<typeof gatedWorker>;
   readonly tapped: ReturnType<typeof tappedWorker>;
@@ -166,6 +198,11 @@ export const it = test.extend<WorkerFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   aJob: async ({}, use) => {
     await use(jobOf);
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  withinATurn: async ({}, use) => {
+    await use(settledWithinATurn);
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

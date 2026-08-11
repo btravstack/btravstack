@@ -101,6 +101,34 @@ the message id becomes the `traceId` — which is exactly what `traceId` is for.
 It is the correlation id, minted outside this process, and holding it steady
 across attempts is what joins three deliveries into one trace.
 
+## A publish resolves on a **worker**, not on a broker
+
+`OrderQueue.publish` hands the producer the consumer's outcome:
+
+```ts
+await expect(queue.publish(aJob("job-1", "o-1", 2))).toBeOkWith({
+  jobId: "job-1",
+  outcome: "acked",
+  attempts: 1,
+});
+```
+
+That is a test convenience, and it carries a precondition worth stating: a real
+AMQP `publish` resolves on the **broker's** ack and the producer never learns
+how the message ended. Here it resolves when a **running worker settles** the
+job — so the attempt budget, which bounds the retries of a job a worker has
+claimed, says nothing about a job being claimed at all. Publish with no worker
+running, or leave a message behind when one drains, and the returned
+`AsyncResult` **never settles**: awaiting it waits forever.
+
+That is not a bug in the queue — it is what a broker does with an unconsumed
+message, and `Serving.drain` stopping at _claiming_ is the right shape (the
+next worker on the queue takes it). It is a bug waiting to happen in a spec, so
+two of them pin it, racing the publish against one macrotask turn rather than
+awaiting it: _"never settles a job published with no worker running"_ and
+_"leaves a job the drain never claimed unsettled, without waiting for it"_. Both
+fail in a millisecond instead of hanging until Vitest's timeout.
+
 ## `Serving.info` with no port in it
 
 ```ts
@@ -115,7 +143,7 @@ is which queue it is on and how many messages it will take at a time.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-worker test        # 7 runtime specs + 4 env specs
+pnpm --filter @btravstack/start-example-order-worker test        # 9 runtime specs + 4 env specs
 pnpm --filter @btravstack/start-example-order-worker test:types  # the needs gate
 ```
 

@@ -125,6 +125,55 @@ describe("queueWorkerRuntime", () => {
     ]);
   });
 
+  it("never settles a job published with no worker running", async ({
+    queue,
+    aJob,
+    withinATurn,
+  }) => {
+    // GIVEN a job published with nothing serving — no `serve`, so nothing will
+    // ever claim it
+    const published = queue.publish(aJob("job-1", "o-1", 1));
+
+    // WHEN it is given a full turn to settle
+    const outcome = await withinATurn(published);
+
+    // THEN it is still pending, which is the precondition `publish` documents:
+    // a settlement comes from a *worker*, and the attempt budget bounds the
+    // retries of a claimed job, not the wait for a claim. Awaiting it here
+    // would hang the suite — racing a turn is what makes it a failure instead
+    expect(outcome).toBe("unsettled");
+  });
+
+  it("leaves a job the drain never claimed unsettled, without waiting for it", async ({
+    serve,
+    queue,
+    aJob,
+    gate,
+    withinATurn,
+  }) => {
+    // GIVEN a worker at its concurrency limit — one delivery held open inside
+    // the repository, and a second job queued behind it
+    const app = serve(gate.worker);
+    const held = queue.publish(aJob("job-1", "o-1", 1));
+    await gate.arrived;
+    const queued = queue.publish(aJob("job-2", "o-2", 1));
+
+    // WHEN the drain runs to completion, the in-flight delivery released only
+    // once the phase moved
+    app.requestDrain();
+    await vi.waitUntil(() => app.phase() === "draining");
+    gate.release();
+    await vi.waitUntil(() => app.phase() === "exited");
+
+    // THEN the drain waited for the delivery it had claimed and not for the one
+    // it had not: `Serving.drain` stops claiming, so an unclaimed message stays
+    // in the queue for the next worker — and this producer waits forever
+    expect({ inFlight: await withinATurn(held), unclaimed: await withinATurn(queued) }).toEqual({
+      inFlight: "settled",
+      unclaimed: "unsettled",
+    });
+  });
+
   it("waits for the in-flight job while draining", async ({ serve, queue, aJob, gate }) => {
     // GIVEN a job held open inside the repository
     const app = serve(gate.worker);
