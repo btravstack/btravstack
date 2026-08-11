@@ -1,0 +1,36 @@
+{
+  "name": "@btravstack/start-example-order-api",
+  "private": true,
+  "description": "The transport layer of the clean-architecture example: an oRPC router over node:http, driven as a start Runtime",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:types": "tsc --noEmit -p tsconfig.test-d.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
+  },
+  "dependencies": {
+    "@btravstack/di": "catalog:",
+    "@btravstack/start": "workspace:*",
+    "@btravstack/start-example-order-application": "workspace:*",
+    "@btravstack/start-example-order-domain": "workspace:*",
+    "@btravstack/start-example-order-infrastructure": "workspace:*",
+    "@orpc/client": "catalog:",
+    "@orpc/contract": "catalog:",
+    "@orpc/server": "catalog:",
+    "@unthrown/orpc": "catalog:",
+    "unthrown": "catalog:"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

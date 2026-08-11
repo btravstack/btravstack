@@ -30,6 +30,15 @@ catalogs:
     '@commitlint/cli':
       specifier: 21.2.1
       version: 21.2.1
+    '@orpc/client':
+      specifier: 2.0.0-beta.23
+      version: 2.0.0-beta.23
+    '@orpc/contract':
+      specifier: 2.0.0-beta.23
+      version: 2.0.0-beta.23
+    '@orpc/server':
+      specifier: 2.0.0-beta.23
+      version: 2.0.0-beta.23
     '@prisma/adapter-better-sqlite3':
       specifier: 7.9.1
       version: 7.9.1
@@ -39,6 +48,9 @@ catalogs:
     '@types/node':
       specifier: 26.1.2
       version: 26.1.2
+    '@unthrown/orpc':
+      specifier: 0.1.2
+      version: 0.1.2
     '@unthrown/oxlint':
       specifier: 5.2.0
       version: 5.2.0
@@ -125,6 +137,55 @@ importers:
       turbo:
         specifier: 'catalog:'
         version: 2.10.8
+
+  examples/order-api:
+    dependencies:
+      '@btravstack/di':
+        specifier: 'catalog:'
+        version: 0.1.0(unthrown@5.2.0)
+      '@btravstack/start':
+        specifier: workspace:*
+        version: link:../../packages/start
+      '@btravstack/start-example-order-application':
+        specifier: workspace:*
+        version: link:../order-application
+      '@btravstack/start-example-order-domain':
+        specifier: workspace:*
+        version: link:../order-domain
+      '@btravstack/start-example-order-infrastructure':
+        specifier: workspace:*
+        version: link:../order-infrastructure
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.23
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.23
+      '@orpc/server':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.23
+      '@unthrown/orpc':
+        specifier: 'catalog:'
+        version: 0.1.2(@orpc/client@2.0.0-beta.23)(@orpc/server@2.0.0-beta.23)
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.2.0
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.2.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.1.2
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(yaml@2.9.0)
 
   examples/order-application:
     dependencies:
@@ -534,6 +595,28 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@orpc/client@2.0.0-beta.23':
+    resolution: {integrity: sha512-w9czJs6yWPNlyoDPRFvRJeQOBRHylGT3oCHa9kh0KbFXiHRE+qZNicUj4925lfX+sEI2Gktsew/62/R7hG1yPA==}
+
+  '@orpc/contract@2.0.0-beta.23':
+    resolution: {integrity: sha512-xbTWVfwlhBtGp/1gKm0KfU94mFRWqER4RnBDNuX3lrnJ0HPqLAkcGJTA8sPT1RvEooxrQ5zKtnRVZQx7FwiMaQ==}
+
+  '@orpc/server@2.0.0-beta.23':
+    resolution: {integrity: sha512-BLHEM86bi+9Ly51QaUXJbidE94+CZBnbH2BTFqDqGusA2lV8016W7dnPz618L5dqQ4BwoJ/GnARB0YapGb658A==}
+    peerDependencies:
+      crossws: '>=0.3.4'
+    peerDependenciesMeta:
+      crossws:
+        optional: true
+
+  '@orpc/shared@2.0.0-beta.23':
+    resolution: {integrity: sha512-eRLhcu8y+mYV8cdmMN1f48nfaTphRyaQWBPhyosRgi0TbkagJ2zbenyXWuS2i0uV8Ueq3JfL0IlSL4O4rzjjmA==}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.9.0'
+    peerDependenciesMeta:
+      '@opentelemetry/api':
+        optional: true
 
   '@oxc-parser/binding-android-arm-eabi@0.142.0':
     resolution: {integrity: sha512-ZiRGDutGsv1G6bL/ozy/koC0Sv39T1DqyoC4KD1DOy9ZoACm1O5UWhEK2c02Qdk+4lfLVkvFa/mQ0fm/4h1BtQ==}
@@ -1263,6 +1346,21 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
+  '@standardserver/core@0.6.0':
+    resolution: {integrity: sha512-Cb41o407LOpERtHwMqSDd0zeR6T78njHYNGzyrtyNFOWGnUG1+HGJI1PS12a1w3o3ZYn7OvZlKseiDUdcUkLqA==}
+
+  '@standardserver/fetch@0.6.0':
+    resolution: {integrity: sha512-zs43GbR8ntzv6ZaNPiiERa1EBfnplPnPyJPLPsxiihC1NRKexw5JOnWuXk2nhbP1rtoWJ2g16s+WNdxvA/N/iA==}
+
+  '@standardserver/node@0.6.0':
+    resolution: {integrity: sha512-jx59Ig+vHDDtFxUa+ppRa5dDk2z78XBcMFsCbzAoSqjezimzn6aQQEwwF1L7E4xnAq6ijhJ5apv6zuM0p6K1pw==}
+
+  '@standardserver/peer@0.6.0':
+    resolution: {integrity: sha512-FeyteqxAJRQR+v1RtFuDdYkgwpvQS583VdsH8kOSbRQjbIslfPjpXTZmC280H//Mv2EejOhWeS5Oy5nRuvQtxQ==}
+
+  '@standardserver/shared@0.6.0':
+    resolution: {integrity: sha512-pPn3XL6bUOHhT85zN20uFeoZjFdmdTabNvhOCXKRiW2zvzbuWDYyBqjcptjHXI4muamEFqOXiSLoqvh8Gjy+Ag==}
+
   '@turbo/darwin-64@2.10.8':
     resolution: {integrity: sha512-po+7rfJfUnFXjWlcoN2RwhErgzCdRtBc1T26vYPcywHlggmCQiQe1uWaE4j+BibI2uY9/2pDoFzMN0rmSaPFOw==}
     cpu: [x64]
@@ -1472,6 +1570,16 @@ packages:
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [win32]
+
+  '@unthrown/orpc@0.1.2':
+    resolution: {integrity: sha512-xAZ+E3OtjtfhGF9MHLbradU1fTBW5ZaeyZrFrzwxiB5S8GIhPDfUeF54tMjmTHg6pYbKfIZcpsh07k3g8PLlWg==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@orpc/client': ^2.0.0-beta
+      '@orpc/server': ^2.0.0-beta
+    peerDependenciesMeta:
+      '@orpc/server':
+        optional: true
 
   '@unthrown/oxlint@5.2.0':
     resolution: {integrity: sha512-rnycEJHQGoWM9N31CdVoWeqgatveuc3OgzKlT+RGzYfsoCsCxgMEWqz9PY1pVE9PA4J4boDo0LbxzfU6/bwmAw==}
@@ -1834,6 +1942,10 @@ packages:
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
+
+  cookie@2.0.1:
+    resolution: {integrity: sha512-yuToqVvRrj6pfDXREyQAAv8SkAEk/8GS3jQRTiUMm66TVtBYmqQeoEjL2Lmq8Rpo6271vH76InTChTitEAm65w==}
+    engines: {node: '>=22'}
 
   cosmiconfig-typescript-loader@6.3.0:
     resolution: {integrity: sha512-Akr82WH1Wfqatyiqpj8HDkO2o2KmJRu1FhKfSNJP3K4IdXwHfEyL7MOb62i1AGQVLtIQM+iCE9CGOtrfhR+mmA==}
@@ -2639,6 +2751,10 @@ packages:
   queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
 
+  radash@12.1.1:
+    resolution: {integrity: sha512-h36JMxKRqrAxVD8201FrCpyeNuUY9Y5zZwujr20fFO77tpUtGa6EZzfKw/3WaiBX95fq7+MpsuMLNdSnORAwSA==}
+    engines: {node: '>=14.18.0'}
+
   rc9@3.0.1:
     resolution: {integrity: sha512-gMDyleLWVE+i6Sgtc0QbbY6pEKqYs97NGi6isHQPqYlLemPoO8dxQ3uGi0f4NiP98c+jMW6cG1Kx9dDwfvqARQ==}
 
@@ -2826,6 +2942,10 @@ packages:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
 
+  tagged-tag@1.0.0:
+    resolution: {integrity: sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng==}
+    engines: {node: '>=20'}
+
   tar-fs@2.1.5:
     resolution: {integrity: sha512-OboTd8mmMhZDNPV+UjQcK9yKAatXu2aJ+r1w4im1Otd4M4fl2hwvdoXUxIYHFTHWK/3y3FarBP70v3vwmGlOxw==}
 
@@ -2907,6 +3027,10 @@ packages:
   turbo@2.10.8:
     resolution: {integrity: sha512-9+8YX5QOkGXzZxcIykTHgaooRHGMWO+jfdyRK0o+rN0U7hBIig2MrJ8r/aNzIPDPhdA73SGb0O+tIztaModTMg==}
     hasBin: true
+
+  type-fest@5.8.0:
+    resolution: {integrity: sha512-YGYEVz3Fm5iy/AybuA0oyNFq7H4CgQNfRp/qfe8nurE1kuCeNm3/vfm9X4Mtl+qLyaKJUh5xrFZwogr41SMjYA==}
+    engines: {node: '>=20'}
 
   typescript@7.0.2:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
@@ -3471,6 +3595,42 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
+  '@orpc/client@2.0.0-beta.23':
+    dependencies:
+      '@orpc/shared': 2.0.0-beta.23
+      '@standardserver/core': 0.6.0
+      '@standardserver/fetch': 0.6.0
+      '@standardserver/peer': 0.6.0
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+
+  '@orpc/contract@2.0.0-beta.23':
+    dependencies:
+      '@orpc/client': 2.0.0-beta.23
+      '@orpc/shared': 2.0.0-beta.23
+      '@standard-schema/spec': 1.1.0
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+
+  '@orpc/server@2.0.0-beta.23':
+    dependencies:
+      '@orpc/client': 2.0.0-beta.23
+      '@orpc/contract': 2.0.0-beta.23
+      '@orpc/shared': 2.0.0-beta.23
+      '@standardserver/core': 0.6.0
+      '@standardserver/fetch': 0.6.0
+      '@standardserver/node': 0.6.0
+      '@standardserver/peer': 0.6.0
+      cookie: 2.0.1
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+
+  '@orpc/shared@2.0.0-beta.23':
+    dependencies:
+      '@standardserver/shared': 0.6.0
+      radash: 12.1.1
+      type-fest: 5.8.0
+
   '@oxc-parser/binding-android-arm-eabi@0.142.0':
     optional: true
 
@@ -3915,6 +4075,28 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
+  '@standardserver/core@0.6.0':
+    dependencies:
+      '@standardserver/shared': 0.6.0
+
+  '@standardserver/fetch@0.6.0':
+    dependencies:
+      '@standardserver/core': 0.6.0
+      '@standardserver/shared': 0.6.0
+
+  '@standardserver/node@0.6.0':
+    dependencies:
+      '@standardserver/core': 0.6.0
+      '@standardserver/fetch': 0.6.0
+      '@standardserver/shared': 0.6.0
+
+  '@standardserver/peer@0.6.0':
+    dependencies:
+      '@standardserver/core': 0.6.0
+      '@standardserver/shared': 0.6.0
+
+  '@standardserver/shared@0.6.0': {}
+
   '@turbo/darwin-64@2.10.8':
     optional: true
 
@@ -4050,6 +4232,13 @@ snapshots:
 
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
+
+  '@unthrown/orpc@0.1.2(@orpc/client@2.0.0-beta.23)(@orpc/server@2.0.0-beta.23)':
+    dependencies:
+      '@orpc/client': 2.0.0-beta.23
+      unthrown: 5.2.0
+    optionalDependencies:
+      '@orpc/server': 2.0.0-beta.23
 
   '@unthrown/oxlint@5.2.0(oxlint@1.77.0)':
     dependencies:
@@ -4397,6 +4586,8 @@ snapshots:
       argue-cli: 3.1.0
 
   convert-source-map@2.0.0: {}
+
+  cookie@2.0.1: {}
 
   cosmiconfig-typescript-loader@6.3.0(@types/node@26.1.2)(cosmiconfig@9.0.2(typescript@7.0.2))(typescript@7.0.2):
     dependencies:
@@ -5158,6 +5349,8 @@ snapshots:
 
   queue-microtask@1.2.3: {}
 
+  radash@12.1.1: {}
+
   rc9@3.0.1:
     dependencies:
       defu: 6.1.7
@@ -5327,6 +5520,8 @@ snapshots:
     dependencies:
       has-flag: 4.0.0
 
+  tagged-tag@1.0.0: {}
+
   tar-fs@2.1.5:
     dependencies:
       chownr: 1.1.4
@@ -5403,6 +5598,10 @@ snapshots:
       '@turbo/linux-arm64': 2.10.8
       '@turbo/windows-64': 2.10.8
       '@turbo/windows-arm64': 2.10.8
+
+  type-fest@5.8.0:
+    dependencies:
+      tagged-tag: 1.0.0
 
   typescript@7.0.2:
     optionalDependencies:
