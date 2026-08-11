@@ -27,6 +27,12 @@ import { start, type RunningApp, type StartOptions } from "./start.js";
  * `expect` into a `Defect` a caller can forget to unwrap — a green test that
  * asserted nothing. `A` is the test author's own type and carries no error
  * channel, so the wrapper would add no information either.
+ *
+ * A **`Defect`** on `exited` is therefore rethrown, so that a shutdown that
+ * blew up fails the test even when `use` never looked at `exited`. A modeled
+ * `Err` is not: a startup failure is an outcome a test may legitimately be
+ * asserting. A test that wants to assert the defect itself calls `start`
+ * directly, the same escape hatch a test needing the real probe server uses.
  */
 export const withApp = async <X, E, Needs extends AnyPort, A, Info = never>(
   module: Module<X, E, Scope>,
@@ -52,12 +58,33 @@ export const withApp = async <X, E, Needs extends AnyPort, A, Info = never>(
 
   const app = boot(module, { ...options, signals: false, probes: false });
 
+  // `use`'s own failure is held rather than propagated straight away: the
+  // application must still be stopped, and its failure must not mask this one.
+  let thrownByUse: { readonly cause: unknown } | undefined;
+  let used!: A;
   try {
-    return await use(app);
-  } finally {
-    // Both are no-ops if `use` already drove the application to exit, and both
-    // are needed if it did not — including when `use` threw.
-    app.stop();
-    await app.exited;
+    used = await use(app);
+  } catch (cause) {
+    thrownByUse = { cause };
   }
+
+  // Both are no-ops if `use` already drove the application to exit, and both
+  // are needed if it did not — including when `use` threw.
+  app.stop();
+  const exit = await app.exited;
+
+  if (thrownByUse !== undefined) {
+    // oxlint-disable-next-line unthrown/no-throw -- rethrowing `use`'s own failure unchanged: a failed `expect` must reach the test runner as the throw it was, and it outranks anything the shutdown says
+    throw thrownByUse.cause;
+  }
+
+  // The `Result` this harness awaits is examined, not discarded: `exited`'s
+  // `never` empties the *error* channel only, and a `use` that never read
+  // `exited` would otherwise let a shutdown defect pass as a green test.
+  if (exit.isDefect()) {
+    // oxlint-disable-next-line unthrown/no-throw -- a defect is an unmodeled kernel failure and this is a test harness: the only way it reaches the test runner is as a throw
+    throw exit.cause;
+  }
+
+  return used;
 };

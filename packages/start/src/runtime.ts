@@ -10,6 +10,26 @@ export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
   override message = `the ${this.runtime} runtime failed to start`;
 }
 
+/**
+ * Submit one piece of work as a **unit**: the kernel counts it towards the
+ * drain, hands it an `AbortSignal` and an ambient record, and gives the work's
+ * own `Result` straight back — mapping that outcome to a transport is the
+ * runtime's job, never the kernel's.
+ *
+ * @remarks
+ * **Everything the client must receive has to be flushed INSIDE `work`, never
+ * after the returned `AsyncResult` settles.** A unit is closed the instant its
+ * `Result` settles; an idle registry is what the drain waits for, and going
+ * idle is its permission to call `Serving.stop()`. A runtime that resolves the
+ * unit and *then* writes its response is racing `stop()` tearing the transport
+ * down — with a small body the write usually wins, and with a large one it does
+ * not (measured with an 8 MB body: `UND_ERR_SOCKET: other side closed`). A unit
+ * is not "compute the answer", it is "compute the answer **and get it out of
+ * the process**".
+ *
+ * `UnitMeta.id` must be unique per unit unless a `traceId` is supplied — see
+ * {@link UnitMeta}.
+ */
 // `Context<InstanceType<Needs>>`, not `Context<Needs>`: di parameterises
 // `Context<in R>` by port *instance* types, while a runtime declares its needs
 // as port *classes* (`AnyPort` is `abstract new () => AnyPortInstance`).
@@ -19,6 +39,17 @@ export type RunUnit<Needs extends AnyPort> = <T, E>(
   work: (ctx: Context<InstanceType<Needs>>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
 ) => AsyncResult<T, E>;
 
+/**
+ * What a runtime is handed at `start`: the application services **and** the
+ * kernel's {@link RunUnit}. Handing it a bare `Context` would leave every
+ * runtime inventing its own unit tracking — the thing the kernel exists to own.
+ *
+ * @remarks
+ * The two contracts a runtime author owes, both easy to miss and neither
+ * checkable by the kernel: a unit's response must be flushed **inside** the
+ * work callback (see {@link RunUnit}), and `UnitMeta.id` must be unique per
+ * unit unless a `traceId` is supplied (see {@link UnitMeta}).
+ */
 export type RuntimeHost<Needs extends AnyPort> = {
   readonly ctx: Context<InstanceType<Needs>>;
   readonly run: RunUnit<Needs>;
