@@ -43,15 +43,26 @@ type RuntimeHost<Needs extends AnyPort> = {
   readonly ctx: Context<InstanceType<Needs>>;
   readonly run: RunUnit<Needs>;
 };
-type Serving = {
+type Serving<Info = never> = {
   readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
   readonly stop: () => AsyncResult<void, never>;
+  readonly info?: Info;
 };
 ```
 
-`needs: [SomePort]` gives `Needs = typeof SomePort`. `Serving.drain` returns void — the kernel owns drain accounting. `start(module, options, ...gate)` returns `RunningApp<E>` with `.exited`, `.stop()`, `.requestDrain()`, `.phase()`, `.ready()`, `.probePort()`.
+`needs: [SomePort]` gives `Needs = typeof SomePort`. `Serving.drain` returns void — the kernel owns drain accounting. `start(module, options, ...gate)` returns `RunningApp<E>` with `.exited`, `.stop()`, `.requestDrain()`, `.phase()`, `.ready()`, `.probePort()` and `.runtimeInfo()`.
 
-**Known kernel limitation, do not fight it:** there is no channel for a runtime's own bound address (`probePort()` exists only for probes). A runtime binding an ephemeral port must expose it itself — put an `onListening` callback or a `boundPort()` accessor on the runtime object, which is the example's own type. This is a recorded rough edge, not something to fix here.
+**API CORRECTIONS — this section was written before PRs #2 and #3 landed:**
+
+1. **A runtime's bound address now has a proper channel.** An earlier revision of this plan said there was none and told you to invent an `onListening` hook. That gap is closed: a runtime publishes structured information about itself via **`Serving.info`**, and the caller reads it with **`RunningApp.runtimeInfo()`**. Use it. Do NOT add a bespoke `onListening` callback or `boundPort()` accessor — that is exactly the reinvention the channel exists to prevent. `info` is optional, so a runtime with nothing to publish needs no ceremony.
+
+2. **Every async API returns `AsyncResult`, never a bare `Promise`.** `probePort()` is `AsyncResult<number | undefined, never>`, `runtimeInfo()` is `AsyncResult<Info | undefined, never>`, and `Clock.sleep`, `awaitIdle`, `untilStarted`, `advance` and `ProbeServer.close` are all `AsyncResult` too. Three documented exceptions remain: `runMain`, `UnitWork`'s `Promise<Result>` arm, and `withApp`.
+
+3. **Never await an `AsyncResult` and discard its `Result`.** `AsyncResult<T, never>` looks safe to drop because the error channel is `never`, but `never` means only the ERROR channel is empty — a `Defect` can still be present, and dropping it loses an unmodeled failure silently. This bug shipped in the kernel's own drain and was caught in review. `no-unhandled-result` cannot catch it, so it is on you.
+
+4. **Two runtime-authoring contracts, both learned the hard way:**
+   - `UnitMeta.traceId` defaults to `meta.id`, so **`id` must be unique per unit** if you do not supply a `traceId`. An HTTP runtime passing `"POST /orders"` gives every request the same trace id and silently defeats the ambient record.
+   - **Flush the response INSIDE the unit.** Responding after `await host.run(...)` returns races `stop()` destroying the socket — proven with an 8 MB body.
 
 ---
 

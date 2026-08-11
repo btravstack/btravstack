@@ -17,14 +17,18 @@ catalog:
   "@btravstack/tsconfig": 0.2.0
   "@changesets/cli": 2.31.1
   "@commitlint/cli": 21.2.1
+  "@prisma/adapter-better-sqlite3": 7.9.1
+  "@prisma/client": 7.9.1
   "@types/node": 26.1.2
   "@unthrown/oxlint": 5.2.0
+  "@unthrown/prisma": 0.2.0
   "@unthrown/standard-schema": 5.2.0
   "@unthrown/vitest": 5.2.0
   knip: 6.32.0
   lefthook: 2.1.10
   oxfmt: 0.62.0
   oxlint: 1.77.0
+  prisma: 7.9.1
   tsdown: 0.22.14
   turbo: 2.10.8
   typescript: 7.0.2
@@ -34,13 +38,27 @@ catalog:
   zod: 4.4.3
 
 allowBuilds:
+  # Prisma 7 is engine-less (WASM query compiler); nothing to build or download.
+  "@prisma/engines": false
+  # Native SQLite bindings for the persistence example's tests.
+  better-sqlite3: true
   esbuild: true
   lefthook: true
+  prisma: true
+
+peerDependencyRules:
+  ignoreMissing:
+    # React peers of `@prisma/studio-core`, pulled in transitively by the
+    # `prisma` CLI (v7 bundles Prisma Studio). We never run `prisma studio`.
+    - react
+    - react-dom
+    - "@types/react"
 
 minimumReleaseAgeExclude:
   - "@btravstack/di@0.1.0"
   - "@btravstack/entity@0.7.0"
   - "@unthrown/oxlint@5.2.0"
+  - "@unthrown/prisma@0.2.0"
   - "@unthrown/standard-schema@5.2.0"
   - "@unthrown/vitest@5.2.0"
   - "unthrown@5.2.0"
