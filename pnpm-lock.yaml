@@ -167,9 +167,15 @@ importers:
       '@unthrown/orpc':
         specifier: 'catalog:'
         version: 0.1.2(@orpc/client@2.0.0-beta.23)(@orpc/server@2.0.0-beta.23)
+      '@unthrown/standard-schema':
+        specifier: 'catalog:'
+        version: 5.2.0
       unthrown:
         specifier: 'catalog:'
         version: 5.2.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'

@@ -10,7 +10,8 @@ src/request-scope.ts  RequestModule — a scope forked per request over the appl
 src/orpc-runtime.ts   the Runtime: start / drain / stop
 src/client.ts         an AsyncResult client for the same contract
 src/module.ts         OrderApiModule — the composition root
-src/main.ts           the process: start + runMain
+src/env.ts            process.env validated through a schema, as a Result
+src/main.ts           the process: readEnv + start + runMain
 ```
 
 ## The two channels survive the wire
@@ -131,23 +132,41 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-api test  # 8 specs
+pnpm --filter @btravstack/start-example-order-api test  # 8 runtime specs + 4 env specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
 serialization, which is where the defect collapse to `INTERNAL_SERVER_ERROR`
 actually happens. No Docker, nothing to install.
 
-`src/main.ts` is the process itself:
+`src/main.ts` is the process itself — and it reads its configuration the same way
+it reads everything else, as a value:
 
 ```ts
-await runMain(
-  start(OrderApiModule, {
-    runtime: orpcRuntime({ port: 3000 }),
-    probes: { port: 9000 },
-  }),
-);
+await readEnv().match({
+  ok: (env) =>
+    runMain(
+      start(OrderApiModule, {
+        runtime: orpcRuntime({ port: env.PORT }),
+        probes: { port: env.PROBE_PORT },
+      }),
+    ),
+  errCases: (matcher) =>
+    matcher.with(P._, (issues) => abort(describeEnvIssues(issues))),
+  defect: (cause) =>
+    abort(`the environment could not be validated: ${String(cause)}`),
+});
 ```
+
+`src/env.ts` is where `PORT` and `PROBE_PORT` are validated. It goes through
+`@unthrown/standard-schema`'s `fromSchema` rather than a schema's own `.parse()`,
+because `.parse()` throws — which `unthrown/no-throw` bans, and which would
+contradict the example it appears in. The issues are the modeled `E`, folded
+above into a message and a non-zero exit code.
+
+The schema reads **strings**, not `z.coerce.number()`: coercion is `Number()`
+underneath, so `PORT=abc` would bind `NaN` and `PORT=` would bind `0`, the
+ephemeral port. A malformed value is a validation issue instead.
 
 It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there

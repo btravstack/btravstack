@@ -1,22 +1,39 @@
 import { runMain, start } from "@btravstack/start";
+import { P } from "unthrown";
 
+import { describeEnvIssues, readEnv, type Env } from "./env.js";
 import { OrderApiModule } from "./module.js";
 import { orpcRuntime } from "./orpc-runtime.js";
 
 /**
- * The whole process, in one expression: build the graph, serve it, and turn the
- * exit report into a process exit code. Nothing here catches anything — a
- * failure to start is a modeled `Err`, a bug is a `Defect`, and `runMain` maps
- * both onto exit codes.
+ * The whole process, in one expression: validate the environment, build the
+ * graph, serve it, and turn the exit report into a process exit code. Nothing
+ * here catches anything — a malformed environment is a modeled `Err`, a failure
+ * to start is the module's own `Err`, a bug is a `Defect`, and `runMain` maps
+ * the last two onto exit codes.
  *
  * Typechecked by the gate, not executed by it. The example packages are
  * source-only — no build step, `main` pointing straight at `src/` — so there is
  * no compiled entry for `node` to run, and every spec drives `start` directly.
  * This file is the shape a real entry point takes.
  */
-await runMain(
-  start(OrderApiModule, {
-    runtime: orpcRuntime({ port: Number(process.env["PORT"] ?? 3000) }),
-    probes: { port: Number(process.env["PROBE_PORT"] ?? 9000) },
-  }),
-);
+const serve = (env: Env): Promise<void> =>
+  runMain(
+    start(OrderApiModule, {
+      runtime: orpcRuntime({ port: env.PORT }),
+      probes: { port: env.PROBE_PORT },
+    }),
+  );
+
+/** sysexits(3) `EX_CONFIG`: the deployment is wrong, not the code. */
+const abort = (reason: string): void => {
+  process.stderr.write(`${reason}\n`);
+  process.exitCode = 78;
+};
+
+await readEnv().match({
+  ok: serve,
+  // oxlint-disable-next-line unthrown/no-catch-all-pattern -- `E` is the issues array: one type with no discriminant, so there is nothing to enumerate and the single arm IS the enumeration
+  errCases: (matcher) => matcher.with(P._, (issues) => abort(describeEnvIssues(issues))),
+  defect: (cause) => abort(`the environment could not be validated: ${String(cause)}`),
+});

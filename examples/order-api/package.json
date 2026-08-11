@@ -24,7 +24,9 @@
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
     "@unthrown/orpc": "catalog:",
-    "unthrown": "catalog:"
+    "@unthrown/standard-schema": "catalog:",
+    "unthrown": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@btravstack/tsconfig": "catalog:",
