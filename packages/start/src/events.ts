@@ -1,4 +1,4 @@
-import type { DrainReport } from "./drain-report.js";
+import type { DrainReport } from "./drain.js";
 
 export type KernelEvent =
   | { readonly type: "building" }

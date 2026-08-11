@@ -1,9 +1,22 @@
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
 import type { Clock } from "./clock.js";
-import type { DrainReport } from "./drain-report.js";
 import type { Serving } from "./runtime.js";
 import type { UnitRegistry } from "./units.js";
+
+export type DrainReport = {
+  /** Units in flight when the drain began. */
+  readonly inFlightAtStart: number;
+  /**
+   * Units that closed during the drain. Counted from a monotonic total, not
+   * `inFlightAtStart - abandoned` — it may exceed `inFlightAtStart` if
+   * in-flight work spawned more units during the drain. That is honest
+   * reporting, not a bug: the alternative formula can go negative.
+   */
+  readonly completed: number;
+  /** Units still open at the deadline. The exit-code decision reads this. */
+  readonly abandoned: number;
+};
 
 export type DrainArgs = {
   readonly serving: Serving;
@@ -64,7 +77,7 @@ export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
 
       // Monotonic, not `inFlightAtStart - abandoned`: that formula goes
       // negative the moment a unit starts after `inFlightAtStart` was
-      // sampled and then closes before the deadline (see `drain-report.ts`).
+      // sampled and then closes before the deadline (see `DrainReport` above).
       return { inFlightAtStart, completed: args.registry.closed() - closedAtStart, abandoned };
     })(),
   );

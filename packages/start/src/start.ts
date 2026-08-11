@@ -3,14 +3,12 @@ import { fromSafePromise, OkAsync, type AsyncResult } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
 import { createDeferred } from "./deferred.js";
-import type { DrainReport } from "./drain-report.js";
-import { drainApp } from "./drain.js";
+import { drainApp, type DrainReport } from "./drain.js";
 import { safeSink, stderrSink, type EventSink } from "./events.js";
 import { createPhaseTracker, type Phase } from "./phase.js";
 import { startProbeServer } from "./probes.js";
+import { installSignalHandlers, installUncaughtHandlers } from "./process-handlers.js";
 import type { RunUnit, Runtime, RuntimeStartFailed, Serving } from "./runtime.js";
-import { installSignalHandlers } from "./signals.js";
-import { installUncaughtHandlers } from "./uncaught.js";
 import { createUnitRegistry } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
