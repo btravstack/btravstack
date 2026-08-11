@@ -69,9 +69,11 @@ type Serving = {
 - Produces, from `order-domain`: type `Order`, and the domain errors `OrderNotFound`, `DuplicateOrder` (both `TaggedError`). No di, no ports — this layer knows nothing about wiring.
 - Produces, from `order-application`: ports `Logger`, `OrderRepository`, `PlaceOrder`, `FindOrder`; and `ApplicationModule`, which PROVIDES the use-case ports and DOES NOT provide `OrderRepository` (it is an unmet need the infrastructure module satisfies — that is the demonstration).
 
-- [ ] **Step 1: Add catalog entries**
+- [ ] **Step 1: No catalog entries yet**
 
-In `pnpm-workspace.yaml`'s `catalog:` block add, keeping alphabetical order:
+The oRPC and Prisma catalog entries are added by the task that FIRST CONSUMES them — Task 2 adds the Prisma four, Task 3 adds the oRPC four. Adding them here fails the gate: knip audits the pnpm catalog and reports `Unused catalog entries`, and suppressing that would need eight undocumented `ignoreDependencies` names (JSON forbids comments in this repo) that the later tasks would have to unwind one by one.
+
+The versions, for reference when each task needs them:
 
 ```yaml
 "@orpc/client": 2.0.0-beta.23
@@ -125,6 +127,19 @@ The `Logger` adapter reads `currentUnit()` from `@btravstack/start` fresh on eve
 - Consumes: `OrderRepository`, `Logger` ports and the domain errors from Tasks 1's packages.
 - Produces: `PersistenceModule`, providing `OrderRepository` backed by Prisma, and a `makeTestClient()` helper the spec uses.
 
+- [ ] **Step 0: Add the Prisma catalog entries**
+
+This task is the first consumer, so it owns them. Add to `pnpm-workspace.yaml`'s `catalog:`, alphabetically:
+
+```yaml
+"@prisma/adapter-better-sqlite3": 7.9.1
+"@prisma/client": 7.9.1
+"@unthrown/prisma": 0.2.0
+prisma: 7.9.1
+```
+
+All four must be consumed by this package by the end of the task, or knip will report them unused and fail the gate.
+
 - [ ] **Step 1: Schema and client generation**
 
 Copy the shape from `/Users/btravers/Projects/btravstack/unthrown/packages/prisma/prisma/schema.prisma` — SQLite provider, `driverAdapters` preview feature if that repo uses it, output path gitignored. One `Order` model with a UNIQUE constraint on the business id, because Task 2's most important assertion depends on a real unique-constraint violation.
@@ -164,6 +179,19 @@ Full six-command gate; confirm CI would still pass with no Docker. Commit `feat(
 **Interfaces:**
 
 - Produces: an oRPC contract and router, `orpcRuntime(options): Runtime<typeof OrderRouter>` (or whichever port it needs — it must be NON-EMPTY), and `src/index.ts` composing `ApplicationModule` + `PersistenceModule` and ending in `runMain`.
+
+- [ ] **Step 0: Add the oRPC catalog entries**
+
+This task is the first consumer, so it owns them. Add to `pnpm-workspace.yaml`'s `catalog:`, alphabetically:
+
+```yaml
+"@orpc/client": 2.0.0-beta.23
+"@orpc/contract": 2.0.0-beta.23
+"@orpc/server": 2.0.0-beta.23
+"@unthrown/orpc": 0.1.2
+```
+
+The beta pin is load-bearing: `@unthrown/orpc` peers on `^2.0.0-beta` while oRPC's `latest` dist-tag is the 1.x line, so an unpinned install resolves 1.15.0 and fails `strictPeerDependencies`. All four must be consumed by the end of the task or knip fails the gate.
 
 - [ ] **Step 1: Delete `examples/http-api`**
 
