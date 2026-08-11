@@ -1,9 +1,0 @@
-{
-  "extends": "@btravstack/tsconfig/base.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "types": ["node"]
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "src/**/*.test-d.ts"]
-}
