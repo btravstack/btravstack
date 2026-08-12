@@ -413,17 +413,23 @@ convention, not an enforcement.
 It sets `process.exitCode` and **never calls `process.exit()`**, so pending
 output is flushed and an embedding host keeps control of its own lifetime.
 
-| Code | Meaning                                                 |
-| ---- | ------------------------------------------------------- |
-| `0`  | exited cleanly, or drained with nothing abandoned       |
-| `1`  | startup failure (a modeled `Err`)                       |
-| `2`  | drained with work abandoned                             |
-| `70` | stopped by an uncaught exception or unhandled rejection |
-| `70` | a defect                                                |
+| Code | Meaning                                                     |
+| ---- | ----------------------------------------------------------- |
+| `0`  | exited cleanly, with nothing abandoned and teardown clean   |
+| `1`  | startup failure (a modeled `Err`)                           |
+| `2`  | drained with work abandoned, or exited with teardown errors |
+| `70` | stopped by an uncaught exception or unhandled rejection     |
+| `70` | a defect                                                    |
 
 The two `70`s are the same statement — sysexits(3)'s `EX_SOFTWARE`, an internal
 software error — reached through the two channels a bug can take. A crash takes
 precedence over abandoned work.
+
+`2` is the one code an operator reads as "we stopped, but not cleanly", and two
+facts earn it: work the drain ran out of time for, and a finaliser that failed
+on the way out. The second matters as much as the first — a connection pool that
+could not flush is exactly the shutdown an orchestrator must not be told
+succeeded — which is why a non-empty `ExitReport.teardownErrors` is never a `0`.
 
 ### Embedding without `runMain` — read this
 
@@ -561,10 +567,12 @@ complete one.
 ## Documentation
 
 See [`packages/start`](./packages/start) for the package README,
-[`examples/`](./examples) for a six-package clean-architecture application
+[`examples/`](./examples) for an eight-package clean-architecture application
 booted under three different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
-authoritative spec: the theses, the load-bearing invariants with the test that
-guards each, and the internal design notes.
+authoritative spec: the theses, the public surface and the conventions. The
+load-bearing invariants with the test that guards each, and the internal design
+notes, live in
+[`packages/start/CLAUDE.md`](./packages/start/CLAUDE.md).
 
 ## License
 

@@ -151,16 +151,19 @@ property) so a line logged here joins a trace that started elsewhere.
 
 `runMain` sets `process.exitCode` and never calls `process.exit()`.
 
-| Code | Meaning                                                 |
-| ---- | ------------------------------------------------------- |
-| `0`  | exited cleanly, or drained with nothing abandoned       |
-| `1`  | startup failure (a modeled `Err`)                       |
-| `2`  | drained with work abandoned                             |
-| `70` | stopped by an uncaught exception or unhandled rejection |
-| `70` | a defect                                                |
+| Code | Meaning                                                     |
+| ---- | ----------------------------------------------------------- |
+| `0`  | exited cleanly, with nothing abandoned and teardown clean   |
+| `1`  | startup failure (a modeled `Err`)                           |
+| `2`  | drained with work abandoned, or exited with teardown errors |
+| `70` | stopped by an uncaught exception or unhandled rejection     |
+| `70` | a defect                                                    |
 
 Both `70`s are sysexits(3)'s `EX_SOFTWARE`. A crash takes precedence over
 abandoned work.
+
+`2` means "we stopped, but not cleanly", and a failed finaliser earns it just as
+abandoned work does: a non-empty `ExitReport.teardownErrors` is never a `0`.
 
 ### Embedding without `runMain` — read this
 

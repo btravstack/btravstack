@@ -22,12 +22,19 @@ const EX_SOFTWARE = 70;
 // uncaught path skips the drain entirely, so `drain` is `undefined` here — but
 // the ordering is written out rather than left to depend on that.
 //
-// `2` is then the one code an operator reads as "we stopped, but not cleanly":
-// the drain ran out of time and some work never finished. A clean drain, or no
-// drain at all, is a `0`.
+// `2` is then the one code an operator reads as "we stopped, but not cleanly".
+// Two facts make a shutdown unclean, and both belong here: the drain ran out of
+// time and some work never finished, OR a finaliser failed on the way out. The
+// second is not cosmetic — a pool that could not flush is exactly the shutdown
+// an orchestrator must not be told succeeded — and the kernel already goes to
+// real trouble to keep those errors observable (the load-bearing array aliasing
+// in `start.ts`), which reporting `0` over them would waste.
+//
+// A clean drain with clean teardown, or no drain at all, is a `0`.
 const codeFor = (report: ExitReport): number => {
   if (report.reason === "uncaught") return EX_SOFTWARE;
-  return (report.drain?.abandoned ?? 0) > 0 ? 2 : 0;
+  const unclean = (report.drain?.abandoned ?? 0) > 0 || report.teardownErrors.length > 0;
+  return unclean ? 2 : 0;
 };
 
 /**
@@ -44,6 +51,7 @@ const codeFor = (report: ExitReport): number => {
  * | exited cleanly | `0` |
  * | startup failure (a modeled `Err`) | `1` |
  * | drained with work abandoned | `2` |
+ * | exited with teardown errors | `2` |
  * | stopped by an uncaught exception or unhandled rejection | `70` |
  * | a defect | `70` |
  *

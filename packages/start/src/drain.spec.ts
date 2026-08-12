@@ -227,11 +227,12 @@ describe("drainApp", () => {
     // this is the exact shape the reviewer reproduced ({ inFlightAtStart: 0,
     // completed: -1, abandoned: 1 }).
     //
-    // It is started before the pre-drain delay is released, not after: an
-    // idle registry makes `awaitIdle()` resolve at once, so beat 3's race
-    // would settle on its own and the window to register a unit inside it is
-    // a microtask wide. With the unit already open, only the deadline sleep
-    // can end the race, which is what the release below drives.
+    // It is started before the pre-drain delay is released so that it is
+    // already open when beat 3 sequences `awaitIdle()` behind the runtime's
+    // `drain`. That keeps the idle branch pending, leaving the deadline sleep
+    // as the only thing that can end the race — which is what the release
+    // below drives. (A unit opening *inside* that window is the neighbouring
+    // test, and is now waited for rather than abandoned.)
     void registry.run({ kind: "t", id: "late" }, async () => {
       await new Promise(() => {});
       return Ok("never");
@@ -243,6 +244,57 @@ describe("drainApp", () => {
 
     const result = await report;
     expect(result).toBeOkWith({ inFlightAtStart: 0, completed: 0, abandoned: 1 });
+  });
+
+  it("waits for a unit that opens while the runtime is still stopping accepting", async () => {
+    // GIVEN an idle registry and a runtime whose `drain` takes time to resolve —
+    // an HTTP server waiting out keep-alive connections is the motivating shape.
+    const registry = createUnitRegistry();
+    const { clock, sleeps } = controlledClock();
+    let releaseDrain!: () => void;
+
+    const report = drainApp({
+      serving: {
+        drain: () =>
+          fromSafePromise(
+            new Promise<void>((resolve) => {
+              releaseDrain = resolve;
+            }),
+          ),
+        stop: () => OkAsync(),
+      },
+      registry,
+      clock,
+      preDrainDelayMs: 0,
+      drainTimeoutMs: 20_000,
+      skip: new AbortController().signal,
+      onUnready: () => {},
+    });
+
+    // WHEN a unit opens after beat 3 began — the registry was idle when it did,
+    // so a one-shot `awaitIdle()` has already resolved — and settles well before
+    // the deadline sleep is ever released.
+    sleeps[0]?.();
+    await settle();
+
+    let releaseUnit!: (result: Result<string, never>) => void;
+    const unit = registry.run(
+      { kind: "t", id: "late" },
+      () =>
+        new Promise<Result<string, never>>((resolve) => {
+          releaseUnit = resolve;
+        }),
+    );
+
+    releaseDrain();
+    await settle();
+
+    releaseUnit(Ok("done"));
+    await unit;
+
+    // THEN the drain waited for it. Abandoning it would report failed work
+    // against a deadline that never fired, with the whole budget unspent.
+    expect(await report).toBeOkWith({ inFlightAtStart: 0, completed: 1, abandoned: 0 });
   });
 
   it("resolves both sleeps immediately when skip is already aborted", async () => {

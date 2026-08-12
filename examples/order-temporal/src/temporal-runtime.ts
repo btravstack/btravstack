@@ -71,7 +71,14 @@ export type OrderTemporalOptions = {
    * `drainTimeoutMs` passes (see `poll` below), whatever the worker is still
    * doing. Set this at or below `drainTimeoutMs` if you want the worker to have
    * finished forcing itself down by the time the kernel gives up on it.
-   * Default `30 seconds`.
+   *
+   * Default `15 seconds`, which keeps that advice true against the kernel's own
+   * `drainTimeoutMs` default of `20_000`. It matters most on the `stop()`-only
+   * path, where no kernel deadline is in play at all and this clock alone
+   * decides when `Serving.stop` returns: the previous `30 seconds` was both
+   * above the kernel default and equal to Kubernetes' default
+   * `terminationGracePeriodSeconds`, so a stuck activity meant SIGKILL rather
+   * than a clean exit. Raise them together, never one alone.
    */
   readonly forceAfter?: Duration;
 };
@@ -132,7 +139,7 @@ const createWorker = (
       activities: { placeOrder: { place: placeActivity(host) } },
     }),
     shutdownGraceTime: options.gracePeriod ?? "10 seconds",
-    shutdownForceTime: options.forceAfter ?? "30 seconds",
+    shutdownForceTime: options.forceAfter ?? "15 seconds",
   })
     .map((worker) => poll(worker, options.contract.taskQueue, namespace))
     .recoverDefect((cause) =>

@@ -67,6 +67,29 @@ describe("runMain", () => {
     expect(codes).toEqual([2]);
   });
 
+  it("exits 2 when a finaliser failed during teardown", async () => {
+    // GIVEN a shutdown that drained cleanly but whose finalisers did not — a
+    // connection pool that could not flush is the motivating case.
+    const codes: number[] = [];
+
+    // WHEN the outcome is turned into an exit code
+    await runMain(
+      appWith(
+        OkAsync({
+          ...clean,
+          drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 },
+          teardownErrors: [{ port: "Database", cause: new Error("pool did not flush") }],
+        }),
+      ),
+      (code) => codes.push(code),
+    );
+
+    // THEN it is not `0`. The kernel goes to real trouble to keep these errors
+    // observable (the load-bearing array aliasing in `start.ts`); reporting
+    // success for a shutdown that lost data would waste that entirely.
+    expect(codes).toEqual([2]);
+  });
+
   it("exits 70 when an uncaught exception stopped the application", async () => {
     const codes: number[] = [];
 

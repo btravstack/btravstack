@@ -1,9 +1,10 @@
 import { Module, Port, Provider } from "@btravstack/di";
-import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
+import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { createDeferred } from "./deferred.js";
 import type { KernelEvent } from "./events.js";
+import { createFakeClock } from "./fake-clock.js";
 import { RuntimeStartFailed, type Runtime, type RuntimeHost } from "./runtime.js";
 import { start } from "./start.js";
 import { testRuntime } from "./test-runtime.js";
@@ -42,6 +43,70 @@ describe("start", () => {
       expect.objectContaining({ reason: "runtimeStopped", teardownErrors: [] }),
     );
     expect(app.phase()).toBe("exited");
+  });
+
+  it("spends only what is left of preDrainDelayMs when the signal predates serving", async () => {
+    // GIVEN a shutdown requested while the graph is still building, and a
+    // construction that outlasts the whole pre-drain delay on its own
+    const clock = createFakeClock();
+    const runtime = testRuntime();
+    const built = createDeferred<void>();
+    const Slow = Module("Slow")({
+      provides: [
+        Provider(Greeting)({
+          make: () => fromSafePromise(built.promise).map(() => ({ text: "hello" })),
+        }),
+      ],
+      exports: [Greeting],
+    });
+
+    const app = start(Slow, {
+      runtime,
+      clock,
+      signals: false,
+      probes: false,
+      preDrainDelayMs: 5_000,
+      onEvent: () => {},
+    });
+
+    app.requestDrain();
+    await clock.advance(10_000);
+
+    // WHEN construction finally finishes and the buffered shutdown is observed
+    built.resolve(undefined);
+    await runtime.untilStarted();
+
+    // THEN the drain does not sit out a further 5s. The delay exists to cover
+    // Kubernetes' eventually-consistent endpoint removal after the signal; ten
+    // seconds of it have already passed, and paying it again can push the whole
+    // shutdown past `terminationGracePeriodSeconds` into a SIGKILL.
+    expect(await app.exited).toBeOkWith(
+      expect.objectContaining({
+        reason: "signal",
+        drain: { inFlightAtStart: 0, completed: 0, abandoned: 0 },
+      }),
+    );
+  });
+
+  it("aborts in-flight units when the exit skips the drain", async () => {
+    // GIVEN a serving application holding one unit open
+    const runtime = testRuntime();
+    const app = start(AppModule, { runtime, signals: false, probes: false });
+    await runtime.untilStarted();
+    const unit = runtime.submit();
+
+    // WHEN it is stopped, which takes the drain-skipping path. The unit is
+    // still open as the exit runs — settling it first would leave nothing to
+    // abort and the assertion below would pass against any implementation.
+    app.stop();
+    await app.exited;
+    unit.settle(Ok("done"));
+
+    // THEN the unit still got its cancellation cue. Skipping the drain is a
+    // decision not to WAIT for work, not a decision to let it run on
+    // unsupervised — which is exactly what the uncaught path's own rationale
+    // (in-flight work may be completing against corrupted state) demands.
+    expect(unit.signal.aborted).toBe(true);
   });
 
   it("reports a construction failure without wrapping the module's own error", async () => {

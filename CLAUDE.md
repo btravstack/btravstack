@@ -291,13 +291,22 @@ so a production bundle never pulls the fakes in.
 - **`Phase`** — `"building" | "starting" | "serving" | "draining" | "stopping" | "exited"`.
 - **`KernelEvent` / `EventSink` / `stderrSink`** — eight events: `building`,
   `serving`, `draining`, `drained`, `stopping`, `exited`, `teardownError`,
-  `uncaught`. `stderrSink` writes one JSON line per event.
+  `uncaught`. `stderrSink` writes one JSON line per event, normalising an
+  `Error` cause to `{ name, message, stack, cause }` — `JSON.stringify` skips
+  non-enumerable properties, so a bare one renders the two cause-carrying
+  events as `{"cause":{}}`. A cause it cannot serialise at all (a circular
+  object) falls back to `"[unserialisable]"` rather than throwing, since
+  `safeSink` would swallow the throw and the event would be reported nowhere.
 - **`runMain(app, exit?)`** — awaits `exited` and sets the exit code:
-  `0` clean (or drained with nothing abandoned), `1` a modeled startup `Err`,
-  `2` drained with work abandoned, `70` an uncaught exception/rejection, `70` a
-  defect. Both `70`s are sysexits(3)'s `EX_SOFTWARE`. **A crash outranks
-  abandoned work** — written out explicitly rather than left to depend on the
-  fact that the uncaught path skips the drain anyway.
+  `0` clean, `1` a modeled startup `Err`, `2` drained with work abandoned **or
+  exited with a non-empty `teardownErrors`**, `70` an uncaught
+  exception/rejection, `70` a defect. Both `70`s are sysexits(3)'s
+  `EX_SOFTWARE`. **A crash outranks abandoned work** — written out explicitly
+  rather than left to depend on the fact that the uncaught path skips the drain
+  anyway. `2` means "we stopped, but not cleanly", and a failed finaliser earns
+  it as much as abandoned work does: the kernel goes to real trouble to keep
+  those errors observable (the `teardownErrors` aliasing), which reporting `0`
+  over them would waste.
 - **`VERSION`**.
 
 There is **no** `Defect` construction, no `overrideProvider`, no accumulation of
@@ -336,10 +345,13 @@ checker already verifies.
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All eight
-  workspaces run under the same six commands as the kernel — 82 specs plus
-  three `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
+  workspaces run under the same six commands as the kernel — 84 specs plus
+  four `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
   example that stops compiling, stops linting or stops passing fails CI exactly
-  as `packages/start` would.
+  as `packages/start` would. Three of the four needs-gate files pin **`start`'s**
+  runtime-needs gate (`order-api`, `order-worker`, `order-temporal`); the fourth,
+  `order-application`'s, pins **di's** `UNSATISFIED DEPENDENCIES` gate on
+  `Module.scoped`. They are different gates and easy to conflate.
   They are also the only place a runtime with a **non-empty `needs`** meets a
   real module, which is what exercises `start`'s phantom rest-tuple gate and
   `RuntimeHost`'s `Context<InstanceType<Needs>>` end to end.
@@ -389,6 +401,15 @@ checker already verifies.
   otherwise. Do not add a dependency.
 - `declarationMap: false` — the published tarball has no `src/`, so maps would
   be dead ends.
+- **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
+  `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
+  an external package under `node_modules`, so this is the one convention here
+  the repo itself cannot show you. `import { x } from "./units"` fails
+  `pnpm typecheck` with TS2835.
+- The published package claims `engines: { node: ">=20" }` while the root claims
+  `>=22.19`. The divergence is **deliberate**: the root floor is the dev
+  toolchain's, the package's is a compatibility promise to consumers. Do not
+  align them for tidiness — raising the published floor is a breaking change.
 - **oxlint rules are binding: no `interface` (use `type`), no `any` (use
   `unknown`).** Genuine exceptions carry a targeted `oxlint-disable` **with a
   reason**. Two are structural: `units.ts`'s `UnitWork` return union
@@ -431,8 +452,11 @@ checker already verifies.
   oxlint and from knip; they are checked by `tsc -p tsconfig.test-d.json`, which
   `pnpm typecheck` runs. The structural rules are in **Test conventions** below.
 - Documentation drifts silently, and a sibling repo has already shipped a
-  falsehood this way. When the public surface changes, update `CLAUDE.md`, both
-  READMEs **and** `docs-examples.test-d.ts` in the same commit.
+  falsehood this way. When the public surface changes, update **this** file,
+  both READMEs **and** `docs-examples.test-d.ts` in the same commit — and when
+  the change is to `packages/start/src/` internals or the invariants guarding
+  them, `packages/start/CLAUDE.md` too. There are two `CLAUDE.md` files; naming
+  the wrong one is how the last drift happened.
 
 ## Test conventions
 

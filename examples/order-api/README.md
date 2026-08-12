@@ -66,9 +66,22 @@ treatment rather than a fallback.
 - **`start`** binds the socket and hands back a `Serving`. A bind failure is a
   modeled `Err(RuntimeStartFailed)`, never a throw.
 - **`Serving.drain(signal)`** stops _accepting_: it closes the listener and the
-  idle keep-alive connections, and leaves requests already in flight to run to
+  idle keep-alive connections, marks every response still open
+  `Connection: close`, and leaves requests already in flight to run to
   completion. The kernel's deadline signal has nothing to cancel here — the
   in-flight units are the kernel's to time out.
+
+  The `Connection: close` is the part that is easy to leave out and wrong to.
+  `closeIdleConnections()` reaches every connection that is **idle at that
+  instant** and no others, so a connection with a request in flight survives it
+  — and node will happily serve further requests down that one for the whole
+  drain window. Those are new kernel units the drain exists to stop admitting,
+  and ones the deadline then reports `abandoned`. Marking the response is what
+  actually retires the socket: node closes it once the response ends. A response
+  whose headers are already on the wire has no header left to change, so that
+  one has its socket ended on `finish` instead — the guarantee is "no reuse",
+  not "we caught the header in time".
+
 - **`Serving.stop()`** closes for good and **destroys** every remaining socket.
   `node:http`'s `close()` waits out keep-alive connections, so without the socket
   set the process would never exit.

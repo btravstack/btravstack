@@ -1,4 +1,4 @@
-import { allAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { fromSafePromise, type AsyncResult } from "unthrown";
 
 import type { Clock } from "./clock.js";
 import type { Serving } from "./runtime.js";
@@ -71,14 +71,21 @@ export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
 
     // An `AsyncResult` is a thenable, so racing the two branches yields
     // whichever `Result` settles first — inspected below rather than dropped.
-    // `allAsync` is the pair's `Promise.all`, with a Defect from either side
-    // dominating. The LOSING branch's `Result` is dropped, and that is the one
-    // drop here: when the timeout wins, the deadline has already decided the
-    // report and settled `exited`, so a `drain` that defects afterwards has no
-    // consumer left — and an `AsyncResult` never rejects, so nothing floats.
+    // The LOSING branch's `Result` is dropped, and that is the one drop here:
+    // when the timeout wins, the deadline has already decided the report and
+    // settled `exited`, so a `drain` that defects afterwards has no consumer
+    // left — and an `AsyncResult` never rejects, so nothing floats.
+    //
+    // `awaitIdle()` is SEQUENCED after `drainStopped`, not sampled alongside
+    // it: it answers about the registry at the instant it is *called*, so
+    // calling it here — in the same tick the runtime was told to stop
+    // accepting — would let a unit that opens while `drain` is still resolving
+    // go unwaited, then be aborted and reported abandoned with the whole
+    // budget unspent. A runtime whose `drain` resolves slowly (an HTTP server
+    // waiting out keep-alive connections) is exactly where that window is wide.
     return fromSafePromise(
       Promise.race([
-        allAsync([drainStopped, args.registry.awaitIdle()]).discard(),
+        drainStopped.flatMap(() => args.registry.awaitIdle()),
         args.clock.sleep(args.drainTimeoutMs, args.skip),
       ]),
     ).flatMap((raced) => {
