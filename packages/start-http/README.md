@@ -16,7 +16,7 @@ pnpm add @btravstack/start-http @btravstack/start @btravstack/di unthrown
 ```
 
 `@btravstack/start`, `@btravstack/di` and `unthrown` are peer dependencies —
-install all four packages together. Node `>=20`.
+install all three. Node `>=20`.
 
 Not yet published: this repository has not cut a release, so there is nothing
 on npm to install yet. The command above is what it will be once it has.
