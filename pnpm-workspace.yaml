@@ -25,6 +25,20 @@ catalog:
   "@orpc/server": 2.0.0-beta.23
   "@prisma/adapter-better-sqlite3": 7.9.1
   "@prisma/client": 7.9.1
+  # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
+  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.2.0. 8.x also
+  # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
+  # specs are built on. The exact beta is the contract until v8 goes stable.
+  "@temporal-contract/client": 8.0.0-beta.5
+  "@temporal-contract/contract": 8.0.0-beta.5
+  "@temporal-contract/testing": 8.0.0-beta.5
+  "@temporal-contract/worker": 8.0.0-beta.5
+  "@temporalio/activity": 1.22.0
+  "@temporalio/client": 1.22.0
+  "@temporalio/common": 1.22.0
+  "@temporalio/testing": 1.22.0
+  "@temporalio/worker": 1.22.0
+  "@temporalio/workflow": 1.22.0
   "@types/node": 26.1.2
   "@unthrown/oxlint": 5.2.0
   "@unthrown/orpc": 0.1.2
@@ -47,6 +61,9 @@ catalog:
 allowBuilds:
   # Prisma 7 is engine-less (WASM query compiler); nothing to build or download.
   "@prisma/engines": false
+  # Pulled in by @temporalio/*; both allowed upstream in temporal-contract.
+  "@swc/core": true
+  protobufjs: true
   # Native SQLite bindings for the persistence example's tests.
   better-sqlite3: true
   esbuild: true

@@ -1,11 +1,10 @@
 import type { Context } from "@btravstack/di";
+import { orderContract, type OrderView } from "@btravstack/start-example-order-api-contract";
 import { FindOrder, PlaceOrder } from "@btravstack/start-example-order-application";
 import type { Order } from "@btravstack/start-example-order-domain";
 import { implement } from "@orpc/server";
 import { handlerResult } from "@unthrown/orpc/server";
 import { P } from "unthrown";
-
-import { orderContract, type OrderView } from "./contract.js";
 
 /**
  * What every procedure is handed: the request's own di `Context`, seeded from

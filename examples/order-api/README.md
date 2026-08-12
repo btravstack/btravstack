@@ -1,10 +1,11 @@
 # `@btravstack/start` example: the order API layer
 
-The transport. An oRPC contract, a router, and a `Runtime` that serves them over
-`node:http` under the kernel's lifecycle.
+The transport. A router implementing
+[`order-api-contract`](../order-api-contract), and a `Runtime` that serves it
+over `node:http` under the kernel's lifecycle. The contract itself lives in its
+own package, because a client needs it and needs none of this.
 
 ```
-src/contract.ts       the oRPC contract — the wire shapes and the declared error codes
 src/router.ts         the implementation, and the one place a domain error becomes an ORPCError
 src/request-scope.ts  RequestModule — a scope forked per request over the application's
 src/orpc-runtime.ts   the Runtime: start / drain / stop
@@ -123,9 +124,11 @@ const client = createOrderApiClient("http://127.0.0.1:3000");
 const named = (await client.orders.place({ id, quantity })).match({
   ok: () => "placed",
   errCases: (matcher) =>
-    matcher
-      .with({ code: "INVALID_QUANTITY" }, (error) => error.code)
-      .with({ code: "CONFLICT" }, (error) => error.code),
+    matcher.with(
+      { code: "INVALID_QUANTITY" },
+      { code: "CONFLICT" },
+      (error) => error.code,
+    ),
   defect: () => "bug",
 });
 ```
@@ -137,7 +140,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-api test  # 15 runtime specs + 4 env specs
+pnpm --filter @btravstack/start-example-order-api test  # 15 runtime specs + 6 env specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
@@ -183,9 +186,24 @@ because `.parse()` throws — which `unthrown/no-throw` bans, and which would
 contradict the example it appears in. The issues are the modeled `E`, folded
 above into a message and a non-zero exit code.
 
-The schema reads **strings**, not `z.coerce.number()`: coercion is `Number()`
-underneath, so `PORT=abc` would bind `NaN` and `PORT=` would bind `0`, the
-ephemeral port. A malformed value is a validation issue instead.
+A port is a **non-empty string piped into a coercion**, never a bare
+`z.coerce.number()`:
+
+```ts
+z.string()
+  .trim()
+  .min(1)
+  .pipe(z.coerce.number<string>().int().min(0).max(65_535))
+  .default(fallback);
+```
+
+Coercion is `Number()` underneath, so `PORT=abc` would bind `NaN` and `PORT=`
+would bind `0`, the ephemeral port. The bounds catch the first — and every
+`PORT=3.5` or `PORT=99999` after it — but they cannot catch the second, because
+a port's `min` **is** `0` so that an ephemeral bind stays expressible. The
+non-empty string in front is what closes it: an empty value is a configuration
+error, not an absent one, and `.default(...)` applies only when the variable is
+genuinely missing. A malformed value is a validation issue instead.
 
 It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there

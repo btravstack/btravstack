@@ -561,8 +561,8 @@ complete one.
 ## Documentation
 
 See [`packages/start`](./packages/start) for the package README,
-[`examples/`](./examples) for a five-package clean-architecture application
-booted under two different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
+[`examples/`](./examples) for a six-package clean-architecture application
+booted under three different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
 authoritative spec: the theses, the load-bearing invariants with the test that
 guards each, and the internal design notes.
 

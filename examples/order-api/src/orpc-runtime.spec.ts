@@ -106,13 +106,13 @@ describe("orpcRuntime", () => {
     const invalid = await client.orders.place({ id: "o-2", quantity: 0 });
 
     // WHEN the channel is folded — the mirror of the `mapErrCases` that
-    // produced it, with no wildcard to fall back on
+    // produced it, with no wildcard to fall back on. Both codes are named and
+    // grouped into one arm because they share a handler, which is what a
+    // wildcard would look like if it were still a decision
     const named = invalid.match({
       ok: () => "WRONGLY ACCEPTED",
       errCases: (matcher) =>
-        matcher
-          .with({ code: "INVALID_QUANTITY" }, (error) => error.code)
-          .with({ code: "CONFLICT" }, (error) => error.code),
+        matcher.with({ code: "INVALID_QUANTITY" }, { code: "CONFLICT" }, (error) => error.code),
       defect: () => "defect",
     });
 

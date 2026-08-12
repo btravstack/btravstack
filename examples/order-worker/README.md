@@ -55,16 +55,19 @@ ctx
   .match({
     ok: () => ack,
     errCases: (matcher) =>
-      matcher
-        .with(P.tag("InvalidQuantity"), (error) => deadLetter(error._tag))
-        .with(P.tag("DuplicateOrder"), (error) => deadLetter(error._tag)),
+      matcher.with(P.tag("InvalidQuantity"), P.tag("DuplicateOrder"), (error) =>
+        deadLetter(error._tag),
+      ),
     defect: (cause) => retry(String(cause)),
   });
 ```
 
-Every case is named — this repo bans `P._`, and there is no `.otherwise()`. A
-new domain error is a compile error here **and** in `order-api/src/router.ts`,
-at the two places that have to decide what it means.
+Every case is named — this repo bans `P._`, and there is no `.otherwise()`. The
+two that share a handler are **grouped** into one arm rather than duplicated,
+which is what `no-catch-all-pattern` steers you toward instead of a wildcard;
+`error` stays the narrowed union of the two, so `error._tag` still names which
+one it was. A new domain error is a compile error here **and** in
+`order-api/src/router.ts`, at the two places that have to decide what it means.
 
 ## Acking is flushing
 
@@ -143,7 +146,7 @@ is which queue it is on and how many messages it will take at a time.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-worker test        # 9 runtime specs + 4 env specs
+pnpm --filter @btravstack/start-example-order-worker test        # 9 runtime specs + 6 env specs
 pnpm --filter @btravstack/start-example-order-worker test:types  # the needs gate
 ```
 

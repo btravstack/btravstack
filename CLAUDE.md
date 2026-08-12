@@ -20,10 +20,13 @@ throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
 pnpm workspace + turbo monorepo. `packages/start` is the single published
-package; `examples/` holds five private ones — a clean-architecture application
-(`order-domain` → `order-application` → `order-infrastructure`) booted under two
-different runtimes (`order-api`, `order-worker`). They are consumers, not
-fixtures: they are part of the gate, and `examples/README.md` is their index.
+package; `examples/` holds eight private ones — a clean-architecture application
+(`order-domain` → `order-application` → `order-infrastructure`) booted under
+three different runtimes (`order-api`, `order-worker`, `order-temporal`), with
+each transport's contract in a package of its own (`order-api-contract`,
+`order-temporal-contract`) because a client must be able to take a contract
+without the server. They are consumers, not fixtures: they are part of the gate,
+and `examples/README.md` is their index.
 
 ## Commands
 
@@ -63,11 +66,22 @@ hook). User-facing changes need a changeset.
    question of how two runtimes in one process share a drain deadline, or whose
    failure takes the process down. `StartOptions.runtime` is therefore a single
    value, not an array, and no future option should make it plural.
-   `examples/order-api` and `examples/order-worker` make this testable rather
-   than asserted: the same `ApplicationModule` + `PersistenceModule`
-   composition under two runtimes, with the same `DuplicateOrder` arriving as a
-   typed `CONFLICT` on one and as a dead-letter on the other — and neither
-   mapping anywhere near the kernel.
+   `examples/order-api`, `examples/order-worker` and `examples/order-temporal`
+   make this testable rather than asserted: the same `ApplicationModule` +
+   `PersistenceModule` composition under three runtimes, with the same
+   `DuplicateOrder` arriving as a typed `CONFLICT` on the first, a dead-letter
+   on the second and a `nonRetryable` typed contract error on the third — and
+   no mapping anywhere near the kernel. The third is also where
+   `Serving.drain` first meets a transport with real drain semantics of its
+   own: `worker.shutdown()` stops polling immediately and `run()` resolves only
+   once the in-flight activity has finished, so `drain` is a genuine wait
+   rather than the "stop accepting, nothing left to await" the other two are.
+   It is also the first runtime that has to **honour** the deadline
+   `AbortSignal` rather than merely note it: `run()` settles on Temporal's own
+   `shutdownForceTime`, so an activity that never finishes would hold
+   `Serving.stop` well past the kernel's `drainTimeoutMs` unless the signal is
+   raced against it — and `@temporalio/worker` exposes no public forced
+   shutdown to escalate to, so "stop waiting" is the escalation.
 
 2. **Ambient carries DATA. The DI `Context` carries CAPABILITIES.** The kernel
    opens one `AsyncLocalStorage` store per unit holding a small, fixed record —
@@ -567,13 +581,34 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
 
 ## Toolchain & conventions
 
-- **`examples/` is part of the gate, not a folder of illustrations.** All five
-  workspaces run under the same six commands as the kernel — 59 specs plus two
-  `needs-gate.test-d.ts` files — so an example that stops compiling, stops
-  linting or stops passing fails CI exactly as `packages/start` would. They are
-  also the only place a runtime with a **non-empty `needs`** meets a real
-  module, which is what exercises `start`'s phantom rest-tuple gate and
+- **`examples/` is part of the gate, not a folder of illustrations.** All eight
+  workspaces run under the same six commands as the kernel — 82 specs plus
+  three `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
+  example that stops compiling, stops linting or stops passing fails CI exactly
+  as `packages/start` would.
+  They are also the only place a runtime with a **non-empty `needs`** meets a
+  real module, which is what exercises `start`'s phantom rest-tuple gate and
   `RuntimeHost`'s `Context<InstanceType<Needs>>` end to end.
+- **`examples/order-temporal` is the one workspace whose suite needs the
+  network, and only on a cold cache.** It runs a real `@temporalio/worker`
+  Worker against `@temporalio/testing`'s **time-skipping test server** — a
+  64 MB local binary, not a container — so the whole Workflow-Task /
+  Activity-Task loop is exercised with **no Docker daemon**, which is the
+  objection that kept a real Temporal cluster out. The binary is fetched once,
+  keyed by the `@temporalio` SDK version, into
+  **`<repo>/.cache/temporal-test-server`** (gitignored) with **`ttl: "365d"`,
+  set in `src/test-fixtures.ts`. Both are deliberate: the SDK's defaults are
+  the OS temp directory — which CI wipes between jobs and macOS purges on its
+  own schedule — and a one-day ttl, so a developer running the suite twice in a
+  week downloads it twice. A cold cache with no network fails loudly at
+  `createTimeSkipping()`, naming the URL. Measured with Docker quit: **7.4 s
+  cold** (download included), **3.8–3.9 s warm** — the slowest package in the
+  repo and still under four seconds. **CI does not yet cache that directory**:
+  `.github/workflows/ci.yml` delegates wholly to
+  `btravstack/config`'s `ci-reusable.yml@workflows-v1`, and a caller cannot
+  inject an `actions/cache` step into a reusable workflow's jobs. Closing it
+  means adding a cache-path input there, not here; until then every test job
+  pays the ~3.5 s download.
 - **The Prisma client is generated at test time, and there is nothing to
   install.** `@btravstack/start-example-order-infrastructure`'s `test` and
   `typecheck` scripts both begin with `prisma generate`, writing a gitignored
@@ -586,6 +621,14 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
   range resolves 1.x and fails `strictPeerDependencies`. The exact beta is the
   contract until v2 goes stable; raise it deliberately, not on a bot bump.
+- **`temporal-contract` is pinned to an exact beta, for the same shape of
+  reason.** `@temporal-contract/{client,contract,testing,worker}` sit at
+  `8.0.0-beta.5` because the `latest` dist-tag is the **7.x** line, which peers
+  on `unthrown@^4` while this repo pins 5.2.0 — and 7.x ships neither the
+  `test-rig` nor the `workflow-bundle` subpath the Temporal example's specs are
+  built on. `testcontainers` is an **optional** peer of
+  `@temporal-contract/testing` and is deliberately not installed: the
+  Docker-free path is not merely unused here, it is unresolvable.
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
   dependencies — the dual-copy hazard is real for both (di's port identity and
   unthrown's `isResult` each compare across copies). `node:` builtins only
@@ -717,9 +760,23 @@ A sixth rule is about production code that tests keep honest:
    issues are the modeled `E`, folded by the entry point into a message and a
    non-zero exit code. A schema's own `.parse()` **throws**, which
    `unthrown/no-throw` bans and which would contradict the example it appears in.
-   The schema reads **strings** rather than `z.coerce.number()`: coercion is
-   `Number()` underneath, so `PORT=abc` binds `NaN` and `PORT=` binds the
-   ephemeral port `0` — the exact silent failure the module exists to remove.
+   A numeric variable is a **non-empty string piped into a coercion** —
+   `z.string().trim().min(1).pipe(z.coerce.number<string>().int().min(min).max(max)).default(f)`
+   — never a bare `z.coerce.number()`: coercion is `Number()` underneath, so
+   `PORT=abc` binds `NaN` and `PORT=` binds the ephemeral port `0` — the exact
+   silent failure the module exists to remove. The bounds catch the first (and
+   `3.5`, and out-of-range); they cannot catch the second, because a **port's
+   `min` is `0`** so that an ephemeral bind stays expressible, which is why the
+   string guard is not optional. An empty or whitespace-only value is a
+   configuration **error**, not an absent one — `.default(...)` applies only
+   when the variable is genuinely missing. Each of the three `env.ts` files
+   spells it the same way and each spec pins all seven cases (absent, `""`,
+   whitespace, `abc`, `3.5`, valid, out of range). The `<string>` type argument
+   is needed because `z.coerce.number()`'s input is `unknown`, which `.pipe`
+   will not accept from a `string`. The earlier digits-only regex plus
+   `.transform(Number)` was the over-built form of this; it was simplified in
+   the PR #7 review, and a bare `z.coerce.number()` was tried there and reverted
+   for the `min(0)` hole above.
    Note `fromSchema` is **curried** — `fromSchema(schema)(input)`, not
    `fromSchema(schema, input)`.
 
@@ -728,15 +785,27 @@ A sixth rule is about production code that tests keep honest:
 Shipped: the whole kernel — phase tracker, injectable clock, ambient record,
 unit registry, `Runtime` contract, `start`, draining, signals, uncaught
 handling, probes, `runMain`, the testing entry point, and the invariants suite.
-Plus the five `examples/` workspaces: the clean-architecture application and its
-**two** deployments, `order-api` (oRPC) and `order-worker` (an in-memory queue),
-which together are the proof of Thesis #1.
+Plus the eight `examples/` workspaces: the clean-architecture application and its
+**three** deployments, `order-api` (oRPC), `order-worker` (an in-memory queue)
+and `order-temporal` (a Temporal worker over `temporal-contract`), which
+together are the proof of Thesis #1 — and `order-api-contract` /
+`order-temporal-contract`, each transport's contract as a shared artifact both
+the server and any client can depend on, with a `layering.test-d.ts` proving it
+depends on neither.
 
 Deferred, deliberately:
 
 - `@btravstack/start-http`, `-amqp`, `-temporal` — the runtime implementations.
   **They do not exist**; the `Runtime` contract is the whole of what this
   package owes them. Do not write as though they ship.
+  `examples/order-temporal` is an _example_ of one, not `-temporal`: it is
+  `private`, application-specific (it names `PlaceOrder`), and models a single
+  contract rather than a general Temporal adapter.
+- **Caching the Temporal test-server binary in CI.** The path is stable and
+  gitignored; what is missing is the `actions/cache` step, which cannot be
+  written from `start`'s `ci.yml` while it delegates to
+  `btravstack/config`'s reusable workflow (see Toolchain & conventions). It
+  costs ~3.5 s per test job, not correctness.
 - The `@btravstack/oxlint` rule banning `currentUnit()` outside infrastructure
   adapters (Thesis #2) — it needs a way to identify an adapter.
 - Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed

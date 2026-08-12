@@ -8,11 +8,10 @@ import { z } from "zod";
  *
  * The non-empty string in front of the coercion is the load-bearing part.
  * Coercion is `Number()` underneath, and `Number("")` is `0` — so a bare
- * `CONCURRENCY=` would build a worker that consumes nothing at all, and a bare
- * `PROBE_PORT=` would bind the ephemeral port `0`, which `min(0)` cannot catch
- * because an ephemeral bind has to stay expressible. An empty value is a
- * configuration error, not an absent one: `.default(...)` applies only when the
- * variable is genuinely missing.
+ * `PROBE_PORT=` would bind the ephemeral port `0`, a probe endpoint nobody can
+ * find, and `min(0)` cannot catch it because an ephemeral bind has to stay
+ * expressible. An empty value is a configuration error, not an absent one:
+ * `.default(...)` applies only when the variable is genuinely missing.
  *
  * With that guard, the bounds handle the rest — `abc` is `NaN`, `3.5` is not an
  * integer, and anything outside `min`/`max` is out of range.
@@ -27,7 +26,13 @@ const wholeNumber = (fallback: number, min: number, max: number) =>
 
 const environment = z.object({
   PROBE_PORT: wholeNumber(9000, 0, 65_535),
-  CONCURRENCY: wholeNumber(1, 1, 64),
+  /** `host:port` of the Temporal frontend service. */
+  TEMPORAL_ADDRESS: z.string().min(1).default("127.0.0.1:7233"),
+  /**
+   * The namespace this worker polls in. Half of the pair the runtime publishes
+   * on `Serving.info`, and half of what decides which work it is ever handed.
+   */
+  TEMPORAL_NAMESPACE: z.string().min(1).default("default"),
 });
 
 /** The validated environment: every field present, typed, and in range. */

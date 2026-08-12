@@ -5,17 +5,23 @@ import { z } from "zod";
 /**
  * A port, read the way an environment variable actually arrives: as a string.
  *
- * `z.coerce.number()` would be shorter and wrong — it is `Number()` underneath,
- * so `PORT=abc` becomes `NaN` and `PORT=` becomes `0`, an ephemeral bind. A
- * digits-only string is the honest model, and anything else is a validation
- * issue rather than a number nobody asked for.
+ * The non-empty string in front of the coercion is the load-bearing part.
+ * Coercion is `Number()` underneath, and `Number("")` is `0` — so a bare
+ * `PORT=` would bind the ephemeral port `0` rather than be reported, and a
+ * port's `min` **is** `0` because an ephemeral bind has to stay expressible, so
+ * the bounds cannot catch it. An empty value is a configuration error, not an
+ * absent one: `.default(...)` applies only when the variable is genuinely
+ * missing.
+ *
+ * With that guard, the bounds handle the rest — `PORT=abc` is `NaN`,
+ * `PORT=3.5` is not an integer, `PORT=99999` is out of range.
  */
 const port = (fallback: number) =>
   z
     .string()
-    .regex(/^\d+$/u, "must be a whole number of decimal digits")
-    .transform(Number)
-    .pipe(z.int().min(0).max(65_535))
+    .trim()
+    .min(1)
+    .pipe(z.coerce.number<string>().int().min(0).max(65_535))
     .default(fallback);
 
 const environment = z.object({

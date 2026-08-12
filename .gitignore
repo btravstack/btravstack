@@ -19,3 +19,9 @@ coverage/
 # (run by its `test` / `typecheck` scripts). Ignored at the root so a checkout
 # predating the package cannot leave it visible and sweepable into a commit.
 **/src/generated/prisma/
+
+# The 64 MB Temporal time-skipping test server, downloaded on a cold cache by
+# the Temporal example's suite. Pinned here rather than left in the OS temp
+# directory so it survives across runs and is a stable path CI can cache.
+# See examples/order-temporal/README.md.
+.cache/
