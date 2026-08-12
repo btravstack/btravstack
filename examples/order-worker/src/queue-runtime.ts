@@ -85,8 +85,10 @@ const retry = (reason: string): Disposition => ({ kind: "retry", reason });
  * another delivery is a `Defect` — an unmodelled failure is the infrastructure
  * one, and infrastructure comes back.
  *
- * Every case is named. A new domain error is a compile error here, at the one
- * place that has to decide what happens to the message.
+ * Every case is named — grouped into one arm, not collapsed into a wildcard:
+ * both park the message, and `error._tag` is still the narrowed union of the two
+ * so the reason names which one it was. A new domain error is a compile error
+ * here, at the one place that has to decide what happens to the message.
  */
 const dispositionOf = (
   ctx: Context<InstanceType<WorkerNeeds>>,
@@ -99,9 +101,9 @@ const dispositionOf = (
       .match({
         ok: () => ack,
         errCases: (matcher) =>
-          matcher
-            .with(P.tag("InvalidQuantity"), (error) => deadLetter(error._tag))
-            .with(P.tag("DuplicateOrder"), (error) => deadLetter(error._tag)),
+          matcher.with(P.tag("InvalidQuantity"), P.tag("DuplicateOrder"), (error) =>
+            deadLetter(error._tag),
+          ),
         defect: (cause) => retry(String(cause)),
       }),
   );

@@ -124,9 +124,11 @@ const client = createOrderApiClient("http://127.0.0.1:3000");
 const named = (await client.orders.place({ id, quantity })).match({
   ok: () => "placed",
   errCases: (matcher) =>
-    matcher
-      .with({ code: "INVALID_QUANTITY" }, (error) => error.code)
-      .with({ code: "CONFLICT" }, (error) => error.code),
+    matcher.with(
+      { code: "INVALID_QUANTITY" },
+      { code: "CONFLICT" },
+      (error) => error.code,
+    ),
   defect: () => "bug",
 });
 ```

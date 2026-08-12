@@ -47,9 +47,9 @@ export const placeOrder = declareWorkflow({
             // has already exhausted the contract's retry policy. Handing the
             // wrapper straight back lets `propagateActivityFailure` re-raise
             // the failure underneath it, so the execution fails the way an
-            // untyped Temporal workflow would.
-            .with(P.tag(ACTIVITY_ERROR_TAG), (error) => error)
-            .with(P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) => error),
+            // untyped Temporal workflow would. Both machinery tags are named,
+            // grouped into one arm because they share a handler.
+            .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) => error),
         ),
     ),
 });

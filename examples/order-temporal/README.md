@@ -99,14 +99,21 @@ propagateActivityFailure(
         .with({ errorName: "OrderAlreadyPlaced" }, (e) =>
           context.errors.OrderAlreadyPlaced({ id: e.data.id }),
         )
-        .with(P.tag(ACTIVITY_ERROR_TAG), (e) => e)
-        .with(P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (e) => e),
+        .with(
+          P.tag(ACTIVITY_ERROR_TAG),
+          P.tag(ACTIVITY_CANCELLED_ERROR_TAG),
+          (e) => e,
+        ),
     ),
 );
 ```
 
 Every case is named at both — this repo bans `P._`, and there is no
-`.otherwise()`. A new domain error is a compile error in **both** files, plus
+`.otherwise()`. The two activity-machinery tags share a handler, so they are
+**grouped** into one arm rather than duplicated: grouping is what
+`no-catch-all-pattern` steers you toward instead of a wildcard, and it is still
+an enumeration — a third machinery tag would not compile. A new domain error is
+a compile error in **both** files, plus
 `order-api/src/router.ts` and `order-worker/src/queue-runtime.ts`: four places,
 each of which has to decide what it means.
 
