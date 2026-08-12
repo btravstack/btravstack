@@ -243,9 +243,6 @@ describe("drainApp", () => {
 
     const result = await report;
     expect(result).toBeOkWith({ inFlightAtStart: 0, completed: 0, abandoned: 1 });
-    if (result.isOk()) {
-      expect(result.value.completed).toBeGreaterThanOrEqual(0);
-    }
   });
 
   it("resolves both sleeps immediately when skip is already aborted", async () => {

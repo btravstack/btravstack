@@ -685,11 +685,30 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
 
 ## Test conventions
 
-Five rules, each with the reason it exists. They hold across `examples/`, which
-is the teaching surface and where the shape is read as advice. `packages/start`'s
-own 14 spec files still predate them — that sweep is deliberately deferred and
-reviewed separately (see Status), so a **new or rewritten** kernel spec follows
-these and an untouched one is not churned for it.
+Five rules, each with the reason it exists — binding at two different scopes,
+which is a decision rather than an accident.
+
+**Rules 4 and 5 are substantive and bind everywhere**, `packages/start`
+included. They are what stops an assertion silently declining to run: a
+conditional or optional-chained `expect` skips without failing the test, and a
+scatter of shallow assertions hides which one is load-bearing. That shape was
+caught three separate times in review, which is why it is a rule and not a
+preference.
+
+**Rules 1 to 3 are structural and bind `examples/`**, the teaching surface,
+where the shape of a spec is itself read as advice. The kernel's 14 spec files
+predate them and are **deliberately not swept**: they are mutation-verified, hold
+the package at 100% line and function coverage, and are the tests guarding the
+shipped invariants — restructuring them buys consistency while risking exactly
+the weakening rules 4 and 5 exist to prevent. A **new or rewritten** kernel spec
+follows all five; an untouched one is not churned for it.
+
+That split was measured, not assumed. An audit of the kernel's 93 tests found
+**one** conditional assertion — a redundant `isOk()` block re-checking a field
+the preceding deep `toBeOkWith` had already pinned exactly, since deleted —
+**zero** optional-chained assertions, and 1.77 expects per test against the 2.25
+the examples carried before their sweep. The substantive rules were already being
+kept; only the structural ones differ.
 
 1. **`describe` is the first statement a reader meets.** After the imports,
    nothing but `describe`. A file that opens with 144 lines of helpers makes a
@@ -811,13 +830,15 @@ Deferred, deliberately:
 - Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed
   for it; the `Module.forkScope` call lands when the first runtime needs a
   per-request transaction.
-- Bringing `packages/start`'s **14 spec files / 93 tests** under the Test
-  conventions above. All 14 need the GIVEN/WHEN/THEN markers; **9** also carry a
-  helper preamble to lift into a `test-fixtures.ts` (`drain` 82 lines,
-  `invariants` 74, `with-app` 37, `probes` 30, `run-main` 28, `test-runtime` 21,
-  `start` 17, `units` 12, `process-handlers` 7 — the other five have only
-  imports above `describe`), and exactly **one** `try`/`finally` needs moving
-  into a fixture (`drain.spec.ts`). Held back deliberately: it is a large
-  mechanical sweep over the tests that guard the nine invariants, so the
-  regression risk is real and it wants its own review rather than riding along
-  with an examples change.
+- ~~Bringing `packages/start`'s 14 spec files under the Test conventions.~~
+  **Closed by decision, not by doing it.** An audit of the 93 tests found the
+  substantive rules (4 and 5) already kept — one conditional assertion, since
+  deleted, and zero optional-chained ones — so the sweep would have been
+  structural only: GIVEN/WHEN/THEN markers on all 14, a helper preamble to lift
+  in 9 (`drain` 82 lines, `invariants` 74, `with-app` 37, `probes` 30,
+  `run-main` 28, `test-runtime` 21, `start` 17, `units` 12,
+  `process-handlers` 7), and one `try`/`finally` to move. Churning
+  mutation-verified tests that hold the package at 100% coverage, for
+  consistency alone, risks the very weakening those rules exist to prevent. The
+  scope split is recorded in Test conventions above; a new or rewritten kernel
+  spec still follows all five.
