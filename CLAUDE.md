@@ -582,7 +582,7 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All eight
-  workspaces run under the same six commands as the kernel — 75 specs plus
+  workspaces run under the same six commands as the kernel — 82 specs plus
   three `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
   example that stops compiling, stops linting or stops passing fails CI exactly
   as `packages/start` would.
@@ -760,17 +760,23 @@ A sixth rule is about production code that tests keep honest:
    issues are the modeled `E`, folded by the entry point into a message and a
    non-zero exit code. A schema's own `.parse()` **throws**, which
    `unthrown/no-throw` bans and which would contradict the example it appears in.
-   A numeric variable is `z.coerce.number().int().min(min).max(max).default(f)`.
-   Coercion is `Number()` underneath, which is a trap only **without** the
-   bounds behind it: with them, `abc` (`NaN`), `3.5` and an out-of-range value
-   are all validation issues rather than a number nobody asked for. The one
-   case the bounds cannot catch is an empty or whitespace-only value, which is
-   `0` — so a field whose `min` is `0` (a **port**, because an ephemeral bind
-   has to stay expressible) accepts `PORT=` as that bind, while any field whose
-   `min` is at least `1` rejects it. Written down in each `env.ts`, and
-   `order-api`'s spec names it at the one fixture it changed. The earlier
-   digits-only-string-then-`.pipe` construction was the over-built form of
-   this and was removed in the PR #7 review.
+   A numeric variable is a **non-empty string piped into a coercion** —
+   `z.string().trim().min(1).pipe(z.coerce.number<string>().int().min(min).max(max)).default(f)`
+   — never a bare `z.coerce.number()`: coercion is `Number()` underneath, so
+   `PORT=abc` binds `NaN` and `PORT=` binds the ephemeral port `0` — the exact
+   silent failure the module exists to remove. The bounds catch the first (and
+   `3.5`, and out-of-range); they cannot catch the second, because a **port's
+   `min` is `0`** so that an ephemeral bind stays expressible, which is why the
+   string guard is not optional. An empty or whitespace-only value is a
+   configuration **error**, not an absent one — `.default(...)` applies only
+   when the variable is genuinely missing. Each of the three `env.ts` files
+   spells it the same way and each spec pins all seven cases (absent, `""`,
+   whitespace, `abc`, `3.5`, valid, out of range). The `<string>` type argument
+   is needed because `z.coerce.number()`'s input is `unknown`, which `.pipe`
+   will not accept from a `string`. The earlier digits-only regex plus
+   `.transform(Number)` was the over-built form of this; it was simplified in
+   the PR #7 review, and a bare `z.coerce.number()` was tried there and reverted
+   for the `min(0)` hole above.
    Note `fromSchema` is **curried** — `fromSchema(schema)(input)`, not
    `fromSchema(schema, input)`.
 

@@ -6,15 +6,23 @@ import { z } from "zod";
  * A whole number, read the way an environment variable actually arrives: as a
  * string.
  *
- * The coercion is `Number()` underneath, which is only a trap **without** the
- * bounds that follow it: `PROBE_PORT=abc` is `NaN` and fails `int()`, and
- * `PROBE_PORT=3.5` fails it too. Note the one case the bounds cannot catch —
- * an empty or whitespace-only value is `0`, so a field whose `min` is `0`
- * accepts `PROBE_PORT=` as an ephemeral bind. Every field whose `min` is at
- * least `1` rejects it.
+ * The non-empty string in front of the coercion is the load-bearing part.
+ * Coercion is `Number()` underneath, and `Number("")` is `0` — so a bare
+ * `PROBE_PORT=` would bind the ephemeral port `0`, a probe endpoint nobody can
+ * find, and `min(0)` cannot catch it because an ephemeral bind has to stay
+ * expressible. An empty value is a configuration error, not an absent one:
+ * `.default(...)` applies only when the variable is genuinely missing.
+ *
+ * With that guard, the bounds handle the rest — `abc` is `NaN`, `3.5` is not an
+ * integer, and anything outside `min`/`max` is out of range.
  */
 const wholeNumber = (fallback: number, min: number, max: number) =>
-  z.coerce.number().int().min(min).max(max).default(fallback);
+  z
+    .string()
+    .trim()
+    .min(1)
+    .pipe(z.coerce.number<string>().int().min(min).max(max))
+    .default(fallback);
 
 const environment = z.object({
   PROBE_PORT: wholeNumber(9000, 0, 65_535),

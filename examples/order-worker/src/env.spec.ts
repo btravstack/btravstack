@@ -43,6 +43,34 @@ describe("readEnv", () => {
     ]);
   });
 
+  it("rejects a variable that is present but blank, rather than defaulting it", () => {
+    // GIVEN two variables set to whitespace — the shape `Number()` reads as
+    // `0`, which `PROBE_PORT`'s `min(0)` cannot catch because an ephemeral bind
+    // is legal
+    const source = { PROBE_PORT: "   ", CONCURRENCY: "\t\n" };
+
+    // WHEN it is validated
+    const env = readEnv(source);
+
+    // THEN both are configuration errors rather than absent variables: the
+    // default is for a variable nobody set, not one set to nothing
+    expect(env).toBeErrWith([
+      expect.objectContaining({ path: ["PROBE_PORT"] }),
+      expect.objectContaining({ path: ["CONCURRENCY"] }),
+    ]);
+  });
+
+  it("rejects a concurrency that is a number but not a whole one", () => {
+    // GIVEN a value `Number()` reads happily and no scheduler could use
+    const source = { CONCURRENCY: "3.5" };
+
+    // WHEN it is validated
+    const env = readEnv(source);
+
+    // THEN it is an issue rather than a silent truncation
+    expect(env).toBeErrWith([expect.objectContaining({ path: ["CONCURRENCY"] })]);
+  });
+
   it("rejects a concurrency no worker should be asked for", () => {
     // GIVEN a number that parses but that nothing sensible would run
     const source = { CONCURRENCY: "1000" };

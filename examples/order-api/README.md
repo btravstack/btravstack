@@ -140,7 +140,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-api test  # 15 runtime specs + 4 env specs
+pnpm --filter @btravstack/start-example-order-api test  # 15 runtime specs + 6 env specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
@@ -186,15 +186,24 @@ because `.parse()` throws — which `unthrown/no-throw` bans, and which would
 contradict the example it appears in. The issues are the modeled `E`, folded
 above into a message and a non-zero exit code.
 
-The schema is `z.coerce.number().int().min(0).max(65_535).default(fallback)`.
-Coercion is `Number()` underneath, and that is a trap only **without** the
-bounds behind it: `PORT=abc` is `NaN` and fails `int()`, `PORT=3.5` fails it
-too, `PORT=99999` fails `max()`. Each becomes a validation issue rather than a
-socket bound to a number nobody asked for. The one case the bounds cannot catch
-is an empty or whitespace-only value, which `Number()` makes `0` — and a port's
-`min` **is** `0`, because an ephemeral bind has to stay expressible. So `PORT=`
-binds an ephemeral port; a field whose `min` is at least `1`, like
-`order-worker`'s `CONCURRENCY`, has no such hole.
+A port is a **non-empty string piped into a coercion**, never a bare
+`z.coerce.number()`:
+
+```ts
+z.string()
+  .trim()
+  .min(1)
+  .pipe(z.coerce.number<string>().int().min(0).max(65_535))
+  .default(fallback);
+```
+
+Coercion is `Number()` underneath, so `PORT=abc` would bind `NaN` and `PORT=`
+would bind `0`, the ephemeral port. The bounds catch the first — and every
+`PORT=3.5` or `PORT=99999` after it — but they cannot catch the second, because
+a port's `min` **is** `0` so that an ephemeral bind stays expressible. The
+non-empty string in front is what closes it: an empty value is a configuration
+error, not an absent one, and `.default(...)` applies only when the variable is
+genuinely missing. A malformed value is a validation issue instead.
 
 It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there

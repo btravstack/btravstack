@@ -26,13 +26,9 @@ describe("readEnv", () => {
     expect(env).toBeOkWith({ PORT: 8080, PROBE_PORT: 0 });
   });
 
-  it("reports a malformed port as a value rather than binding what Number() made of it", () => {
-    // GIVEN the two shapes coercion mangles differently: one `Number()` turns
-    // into `NaN`, one into a perfectly good number that is not a port. Not
-    // `PROBE_PORT: ""` — a port's `min` is `0` so that an ephemeral bind stays
-    // expressible, and `Number("")` is `0`, so an empty value is accepted
-    // rather than reported (written down in `env.ts`)
-    const source = { PORT: "abc", PROBE_PORT: "3.5" };
+  it("reports a malformed port as a value rather than binding NaN", () => {
+    // GIVEN the values `Number()` would silently turn into `NaN` and `0`
+    const source = { PORT: "abc", PROBE_PORT: "" };
 
     // WHEN it is validated
     const env = readEnv(source);
@@ -44,6 +40,33 @@ describe("readEnv", () => {
       expect.objectContaining({ path: ["PORT"] }),
       expect.objectContaining({ path: ["PROBE_PORT"] }),
     ]);
+  });
+
+  it("rejects a port that is present but blank, rather than defaulting it", () => {
+    // GIVEN two variables set to whitespace — the shape `Number()` reads as
+    // `0`, which `min(0)` cannot catch because an ephemeral bind is legal
+    const source = { PORT: "   ", PROBE_PORT: "\t\n" };
+
+    // WHEN it is validated
+    const env = readEnv(source);
+
+    // THEN both are configuration errors rather than absent variables: the
+    // default is for a variable nobody set, not one set to nothing
+    expect(env).toBeErrWith([
+      expect.objectContaining({ path: ["PORT"] }),
+      expect.objectContaining({ path: ["PROBE_PORT"] }),
+    ]);
+  });
+
+  it("rejects a port that is a number but not a whole one", () => {
+    // GIVEN a value `Number()` reads happily and no socket could ever bind
+    const source = { PORT: "3.5" };
+
+    // WHEN it is validated
+    const env = readEnv(source);
+
+    // THEN it is an issue rather than a silent truncation
+    expect(env).toBeErrWith([expect.objectContaining({ path: ["PORT"] })]);
   });
 
   it("rejects a port outside the range a socket can take", () => {

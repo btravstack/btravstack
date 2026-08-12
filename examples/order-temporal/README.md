@@ -287,7 +287,7 @@ which work it will ever be handed.
 ## Running it — and the one thing this example needs that the others do not
 
 ```bash
-pnpm --filter @btravstack/start-example-order-temporal test        # 8 runtime specs + 4 env specs
+pnpm --filter @btravstack/start-example-order-temporal test        # 8 runtime specs + 7 env specs
 pnpm --filter @btravstack/start-example-order-temporal test:types  # the needs gate
 ```
 

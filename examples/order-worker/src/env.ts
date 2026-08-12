@@ -6,15 +6,24 @@ import { z } from "zod";
  * A whole number, read the way an environment variable actually arrives: as a
  * string.
  *
- * The coercion is `Number()` underneath, which is only a trap **without** the
- * bounds that follow it: `CONCURRENCY=abc` is `NaN` and fails `int()`, and
- * `CONCURRENCY=` is `0`, which fails `min(1)` — a worker that consumes nothing
- * at all never gets built. Note the one case the bounds cannot catch: a field
- * whose `min` is `0`, as `PROBE_PORT`'s is, accepts an empty value as the
- * ephemeral bind `0`.
+ * The non-empty string in front of the coercion is the load-bearing part.
+ * Coercion is `Number()` underneath, and `Number("")` is `0` — so a bare
+ * `CONCURRENCY=` would build a worker that consumes nothing at all, and a bare
+ * `PROBE_PORT=` would bind the ephemeral port `0`, which `min(0)` cannot catch
+ * because an ephemeral bind has to stay expressible. An empty value is a
+ * configuration error, not an absent one: `.default(...)` applies only when the
+ * variable is genuinely missing.
+ *
+ * With that guard, the bounds handle the rest — `abc` is `NaN`, `3.5` is not an
+ * integer, and anything outside `min`/`max` is out of range.
  */
 const wholeNumber = (fallback: number, min: number, max: number) =>
-  z.coerce.number().int().min(min).max(max).default(fallback);
+  z
+    .string()
+    .trim()
+    .min(1)
+    .pipe(z.coerce.number<string>().int().min(min).max(max))
+    .default(fallback);
 
 const environment = z.object({
   PROBE_PORT: wholeNumber(9000, 0, 65_535),

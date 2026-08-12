@@ -146,7 +146,7 @@ is which queue it is on and how many messages it will take at a time.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-worker test        # 9 runtime specs + 4 env specs
+pnpm --filter @btravstack/start-example-order-worker test        # 9 runtime specs + 6 env specs
 pnpm --filter @btravstack/start-example-order-worker test:types  # the needs gate
 ```
 

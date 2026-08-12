@@ -5,15 +5,24 @@ import { z } from "zod";
 /**
  * A port, read the way an environment variable actually arrives: as a string.
  *
- * The coercion is `Number()` underneath, which is only a trap **without** the
- * bounds that follow it: `PORT=abc` is `NaN` and fails `int()`, `PORT=3.5`
- * fails it too, and `PORT=99999` fails `max()`. The one case the bounds cannot
- * catch is an empty or whitespace-only value, which is `0` — and a port's `min`
- * **is** `0`, because `0` is the ephemeral bind the specs assert. So `PORT=`
- * binds an ephemeral port rather than being reported; a field whose `min` is at
- * least `1` (`order-worker`'s `CONCURRENCY`) has no such hole.
+ * The non-empty string in front of the coercion is the load-bearing part.
+ * Coercion is `Number()` underneath, and `Number("")` is `0` — so a bare
+ * `PORT=` would bind the ephemeral port `0` rather than be reported, and a
+ * port's `min` **is** `0` because an ephemeral bind has to stay expressible, so
+ * the bounds cannot catch it. An empty value is a configuration error, not an
+ * absent one: `.default(...)` applies only when the variable is genuinely
+ * missing.
+ *
+ * With that guard, the bounds handle the rest — `PORT=abc` is `NaN`,
+ * `PORT=3.5` is not an integer, `PORT=99999` is out of range.
  */
-const port = (fallback: number) => z.coerce.number().int().min(0).max(65_535).default(fallback);
+const port = (fallback: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .pipe(z.coerce.number<string>().int().min(0).max(65_535))
+    .default(fallback);
 
 const environment = z.object({
   PORT: port(3000),

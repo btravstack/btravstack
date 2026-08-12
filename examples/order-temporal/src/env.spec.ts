@@ -55,6 +55,41 @@ describe("readEnv", () => {
     ]);
   });
 
+  it("rejects a probe port that is present but empty, rather than defaulting it", () => {
+    // GIVEN the variable set to nothing — `Number("")` is `0`, which `min(0)`
+    // cannot catch because an ephemeral bind is legal
+    const source = { PROBE_PORT: "" };
+
+    // WHEN it is validated
+    const env = readEnv(source);
+
+    // THEN it is a configuration error rather than an absent variable: the
+    // default is for a variable nobody set, not one set to nothing
+    expect(env).toBeErrWith([expect.objectContaining({ path: ["PROBE_PORT"] })]);
+  });
+
+  it("rejects a probe port that is present but blank", () => {
+    // GIVEN whitespace, which `Number()` reads as `0` just as readily
+    const source = { PROBE_PORT: "   " };
+
+    // WHEN it is validated
+    const env = readEnv(source);
+
+    // THEN the guard trims before it measures, so this is the empty case
+    expect(env).toBeErrWith([expect.objectContaining({ path: ["PROBE_PORT"] })]);
+  });
+
+  it("rejects a probe port that is a number but not a whole one", () => {
+    // GIVEN a value `Number()` reads happily and no socket could ever bind
+    const source = { PROBE_PORT: "3.5" };
+
+    // WHEN it is validated
+    const env = readEnv(source);
+
+    // THEN it is an issue rather than a silent truncation
+    expect(env).toBeErrWith([expect.objectContaining({ path: ["PROBE_PORT"] })]);
+  });
+
   it("rejects a port number no socket could ever bind", () => {
     // GIVEN a number that parses but that nothing could listen on
     const source = { PROBE_PORT: "70000" };
