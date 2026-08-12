@@ -74,7 +74,12 @@ export type OrderQueue = {
 
 export const createOrderQueue = (name = "orders"): OrderQueue => {
   const pending: Delivery[] = [];
-  const settlements = new Map<string, (settlement: Settlement) => void>();
+  // Every waiter for an id, not the latest one. A message id is the producer's
+  // to mint, so two publishes can carry the same one before either settles —
+  // and a single-resolver map would silently overwrite the first, whose
+  // `AsyncResult` then never settles at all. An awaiting producer would hang
+  // with no error and no timeout, which is the worst shape a bug can take here.
+  const settlements = new Map<string, ((settlement: Settlement) => void)[]>();
   const listeners = new Set<() => void>();
 
   const notify = (): void => {
@@ -90,7 +95,7 @@ export const createOrderQueue = (name = "orders"): OrderQueue => {
         // `publish` returns — a worker already pumping picks it up on this
         // very tick.
         new Promise<Settlement>((resolve) => {
-          settlements.set(job.id, resolve);
+          settlements.set(job.id, [...(settlements.get(job.id) ?? []), resolve]);
           pending.push({ job, attempt: 1 });
           notify();
         }),
@@ -104,9 +109,9 @@ export const createOrderQueue = (name = "orders"): OrderQueue => {
     },
 
     settle: (settlement) => {
-      const resolve = settlements.get(settlement.jobId);
+      const waiters = settlements.get(settlement.jobId) ?? [];
       settlements.delete(settlement.jobId);
-      if (resolve !== undefined) resolve(settlement);
+      for (const resolve of waiters) resolve(settlement);
     },
 
     subscribe: (listener) => {

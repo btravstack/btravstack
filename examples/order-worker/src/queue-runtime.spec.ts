@@ -18,6 +18,31 @@ describe("queueWorkerRuntime", () => {
     });
   });
 
+  it("settles both publishes when a message id is reused while still pending", async ({
+    serve,
+    queue,
+    aJob,
+  }) => {
+    // GIVEN two concurrent publishes carrying the same message id — the
+    // duplicate this example's whole story is about, arriving on the producer
+    // side rather than the domain one
+    serve(OrderWorkerModule);
+
+    // WHEN both are sent before either settles — chaining them would let the
+    // first clear the map and hide the overwrite entirely
+    const first = queue.publish(aJob("job-1", "o-1", 2));
+    const second = queue.publish(aJob("job-1", "o-2", 2));
+    const both = first.flatMap((one) => second.map((two) => [one, two]));
+
+    // THEN neither producer is stranded. Keeping one resolver per id would let
+    // the second publish overwrite the first, whose `AsyncResult` then never
+    // settles — an awaiting producer hangs with no error and no timeout.
+    await expect(both).toBeOkWith([
+      expect.objectContaining({ jobId: "job-1" }),
+      expect.objectContaining({ jobId: "job-1" }),
+    ]);
+  });
+
   it("dead-letters the DuplicateOrder the API answers CONFLICT for", async ({
     serve,
     queue,

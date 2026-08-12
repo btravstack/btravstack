@@ -53,9 +53,12 @@ type ApiNeeds = typeof PlaceOrder | typeof FindOrder | typeof Logger;
  *   hands back a `Serving`. A bind failure is a modeled `Err(RuntimeStartFailed)`,
  *   never a throw.
  * - `Serving.drain` stops *accepting*: it closes the listener and the idle
- *   keep-alive connections, and leaves requests already in flight to run to
- *   completion. The kernel's deadline signal has nothing to cancel here — the
- *   in-flight units are the kernel's to time out.
+ *   keep-alive connections, marks every response still open `Connection: close`
+ *   — `closeIdleConnections()` cannot reach a connection with a request in
+ *   flight, and node would keep serving new requests down it — and leaves
+ *   requests already in flight to run to completion. The kernel's deadline
+ *   signal has nothing to cancel here — the in-flight units are the kernel's to
+ *   time out.
  * - `Serving.stop` closes for good and **destroys** every remaining socket.
  *   Without that, `close()` would wait out a keep-alive connection that has no
  *   request on it, and the process would never exit.
@@ -79,7 +82,26 @@ const listen = (
       // sockets is what lets `stop` destroy them instead of hanging.
       const sockets = new Set<Socket>();
 
+      // Responses still open, so the drain can mark them. `closeIdleConnections()`
+      // reaches every connection that is IDLE at that instant and no others — a
+      // connection with a request in flight survives it, and node happily serves
+      // further requests down that one for the whole drain window. Those are new
+      // kernel units the drain exists to stop admitting, and ones the deadline
+      // then abandons. `Connection: close` is what actually retires the socket:
+      // node closes it once the response ends, and a conforming client stops
+      // reusing it.
+      const inFlight = new Set<ServerResponse>();
+      let draining = false;
+
+      const closeAfterResponse = (response: ServerResponse): void => {
+        if (!response.headersSent) response.setHeader("Connection", "close");
+      };
+
       const server = createServer((request, response) => {
+        inFlight.add(response);
+        response.once("close", () => inFlight.delete(response));
+        if (draining) closeAfterResponse(response);
+
         // node's request callback returns `void`, so the unit's outcome is
         // FOLDED to a value here rather than dropped: `AsyncResult<T, never>`
         // has an empty *error* channel, but a `Defect` can still be present.
@@ -110,6 +132,13 @@ const listen = (
       });
 
       const stopAccepting = (): void => {
+        draining = true;
+        // The responses already in flight are marked HERE rather than in the
+        // request callback, which ran before the drain existed — they are
+        // precisely the ones holding a connection open past
+        // `closeIdleConnections()`.
+        for (const response of inFlight) closeAfterResponse(response);
+
         if (!server.listening) return;
         server.close();
         // An idle keep-alive connection is not in-flight work: leaving it open
@@ -121,10 +150,21 @@ const listen = (
         resolve(Err(new RuntimeStartFailed({ runtime: "orpc", cause })));
       };
 
+      // Permanent, and deliberately NOT `onBindError`: after the bind has
+      // settled, routing there could only resolve an already-settled deferred.
+      // But leaving the server with zero `'error'` listeners is worse —
+      // `net.Server` still emits `'error'` once listening (an accept failure
+      // such as `EMFILE` under fd exhaustion), and an unhandled `'error'`
+      // throws, which the kernel's `uncaughtException` handler turns into a
+      // whole-application teardown that skips the drain and exits 70. A
+      // transient accept fault must not cost the process.
+      const ignoreServingError = (): void => {};
+
       server.once("error", onBindError);
 
       server.listen(options.port, options.hostname ?? "127.0.0.1", () => {
         server.removeListener("error", onBindError);
+        server.on("error", ignoreServingError);
 
         const address = server.address();
         const port = typeof address === "object" && address !== null ? address.port : options.port;
@@ -201,12 +241,18 @@ const endWith = (
  * same trace id and silently defeat the ambient record. An inbound
  * `x-request-id` becomes the trace id — the correlation id is the one a caller
  * outside this process is entitled to choose.
+ *
+ * A blank one is not a choice, though: the kernel falls back to `meta.id` only
+ * when `traceId` is nullish, so `""` would win and hand every request from that
+ * caller the same empty id — the very defect passing a route template causes.
+ * An empty or whitespace-only header is treated as absent.
  */
 const metaFor = (request: IncomingMessage): UnitMeta => {
   const inbound = request.headers["x-request-id"];
+  const traceId = typeof inbound === "string" ? inbound.trim() : "";
   return {
     kind: "rpc",
     id: randomUUID(),
-    ...(typeof inbound === "string" ? { traceId: inbound } : {}),
+    ...(traceId === "" ? {} : { traceId }),
   };
 };
