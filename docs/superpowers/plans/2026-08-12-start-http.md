@@ -162,11 +162,12 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.spec.ts", "src/test-fixtures.ts"],
-      thresholds: { lines: 100, functions: 100 },
     },
   },
 });
 ```
+
+The 100% `thresholds` the spec requires are **not** set here. `Serving` obliges Task 2 to write `drain` and `stop` the moment it constructs one, but their tests cannot arrive until Tasks 3 and 8 — so thresholds from Task 1 would leave six consecutive commits red and make a genuine coverage regression indistinguishable from the expected one. Task 8 turns them on, once every path is reachable by a test.
 
 - [ ] **Step 4: Create a placeholder `packages/start-http/src/index.ts`**
 
@@ -1265,7 +1266,15 @@ for (const response of open) retire(response);
 Run: `cd packages/start-http && pnpm vitest run src/http-runtime.spec.ts`
 Expected: PASS, 10 tests.
 
-- [ ] **Step 6: Run the whole gate for the package**
+- [ ] **Step 6: Turn on the coverage thresholds**
+
+Every path the runtime has is now reachable by a test, so the spec's enforced coverage goes on here. In `packages/start-http/vitest.config.ts`, add to `coverage`:
+
+```ts
+      thresholds: { lines: 100, functions: 100 },
+```
+
+- [ ] **Step 7: Run the whole gate for the package**
 
 ```bash
 cd packages/start-http && pnpm test && pnpm typecheck
@@ -1274,7 +1283,7 @@ cd ../.. && pnpm lint && pnpm format --check && pnpm knip
 
 Expected: all pass, coverage 100% lines/functions. If a line is uncovered, add the missing test rather than lowering the threshold.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add packages/start-http
