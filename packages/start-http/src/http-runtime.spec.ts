@@ -13,4 +13,32 @@ describe("httpRuntime", () => {
     // THEN it is the real port, which is the entire reason `port: 0` is usable
     await expect(info).toBeOkWith({ port: expect.any(Number) });
   });
+
+  it("reports a port it cannot bind", async ({ occupied }) => {
+    // GIVEN a port already taken by another listener
+    // WHEN a runtime is asked to bind it
+    const exited = occupied.appOnTakenPort.exited;
+
+    // THEN the application never starts, and the failure is the kernel's own
+    // modeled error rather than an unmodelled defect
+    await expect(exited).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({ runtime: "http" }),
+    );
+  });
+
+  it("reports an out-of-range port as a modeled failure, not a defect", async ({ appOnPort }) => {
+    // GIVEN a port node rejects synchronously — `listen` validates the range
+    // itself and THROWS `ERR_SOCKET_BAD_PORT` rather than emitting `'error'`
+    // WHEN the runtime is asked to bind it
+    const exited = appOnPort(70_000).exited;
+
+    // THEN it lands in the declared error channel. A defect here would bypass
+    // `AsyncResult<Serving, RuntimeStartFailed>` and exit 70 where a startup
+    // failure exits 1.
+    await expect(exited).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({ runtime: "http" }),
+    );
+  });
 });

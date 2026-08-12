@@ -86,28 +86,38 @@ const listen = <Needs extends AnyPort>(
 
       server.once("error", onBindError);
 
-      server.listen(options.port, options.hostname ?? DEFAULT_HOSTNAME, () => {
-        server.removeListener("error", onBindError);
+      // `listen` validates the port SYNCHRONOUSLY and throws `ERR_SOCKET_BAD_PORT`
+      // rather than emitting `'error'` — for a non-integer and for anything
+      // outside 0..65535 alike. Uncaught, that throw escapes this executor,
+      // rejects the promise, and reaches the caller as a Defect, bypassing the
+      // `AsyncResult<Serving, RuntimeStartFailed>` this function declares.
+      try {
+        server.listen(options.port, options.hostname ?? DEFAULT_HOSTNAME, () => {
+          server.removeListener("error", onBindError);
 
-        const address = server.address();
-        const port = typeof address === "object" && address !== null ? address.port : options.port;
+          const address = server.address();
+          const port =
+            typeof address === "object" && address !== null ? address.port : options.port;
 
-        resolve(
-          Ok({
-            info: { port },
-            drain: (signal) => {
-              void signal;
-              stopAccepting();
-              return OkAsync();
-            },
-            stop: () => {
-              stopAccepting();
-              for (const socket of sockets) socket.destroy();
-              sockets.clear();
-              return fromSafePromise(closed);
-            },
-          }),
-        );
-      });
+          resolve(
+            Ok({
+              info: { port },
+              drain: (signal) => {
+                void signal;
+                stopAccepting();
+                return OkAsync();
+              },
+              stop: () => {
+                stopAccepting();
+                for (const socket of sockets) socket.destroy();
+                sockets.clear();
+                return fromSafePromise(closed);
+              },
+            }),
+          );
+        });
+      } catch (cause) {
+        onBindError(cause);
+      }
     }),
   ).flatMap((result) => result);

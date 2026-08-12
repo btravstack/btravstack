@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 
 import { Module, Port, Provider } from "@btravstack/di";
 import { start, type RunningApp } from "@btravstack/start";
@@ -28,6 +29,9 @@ export type HttpFixtures = {
   readonly serve: (
     handler?: HttpHandler<typeof Greeting>,
   ) => Promise<{ readonly app: App; readonly origin: string }>;
+  /** An app started on an explicit port, for the failure paths. Shut down by the fixture. */
+  readonly appOnPort: (port: number) => App;
+  readonly occupied: { readonly appOnTakenPort: App };
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -59,5 +63,38 @@ export const it = test.extend<HttpFixtures>({
       app.stop();
       await expect(app.exited).toBeOk();
     }
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  appOnPort: async ({}, use) => {
+    const started: App[] = [];
+
+    await use((port) => {
+      const app = start(AppModule, {
+        runtime: httpRuntime({ port, hostname: "127.0.0.1", needs: [Greeting], handler: noop }),
+        signals: false,
+        probes: false,
+        preDrainDelayMs: 0,
+        onEvent: () => {},
+      });
+      started.push(app);
+      return app;
+    });
+
+    for (const app of started) app.stop();
+  },
+
+  occupied: async ({ appOnPort }, use) => {
+    const blocker = createServer();
+    const port = await new Promise<number>((done) => {
+      blocker.listen(0, "127.0.0.1", () => {
+        const address = blocker.address();
+        done(typeof address === "object" && address !== null ? address.port : 0);
+      });
+    });
+
+    await use({ appOnTakenPort: appOnPort(port) });
+
+    blocker.close();
   },
 });
