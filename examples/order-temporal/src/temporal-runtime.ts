@@ -15,7 +15,7 @@ import { TypedWorker } from "@temporal-contract/worker/worker";
 import { activityInfo } from "@temporalio/activity";
 import type { Duration } from "@temporalio/common";
 import type { NativeConnection, WorkflowBundleWithSourceMap } from "@temporalio/worker";
-import { ErrAsync, P, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, P, fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
  * What the worker publishes about itself once it is polling, read back through
@@ -64,7 +64,14 @@ export type OrderTemporalOptions = {
   /**
    * The hard stop. After it, `run()` settles with a
    * `GracefulShutdownPeriodExpiredError` and in-flight work is abandoned where
-   * it stands — the backstop `Serving.stop` leans on. Default `30 seconds`.
+   * it stands.
+   *
+   * It is Temporal's **own** clock, not the kernel's, and the two are not the
+   * same deadline: the kernel releases this runtime the moment its
+   * `drainTimeoutMs` passes (see `poll` below), whatever the worker is still
+   * doing. Set this at or below `drainTimeoutMs` if you want the worker to have
+   * finished forcing itself down by the time the kernel gives up on it.
+   * Default `30 seconds`.
    */
   readonly forceAfter?: Duration;
 };
@@ -92,7 +99,9 @@ type TemporalNeeds = typeof PlaceOrder | typeof Logger;
  * - `Serving.drain` calls `worker.shutdown()`, which moves the worker to
  *   `DRAINING` immediately: polling for new Workflow and Activity Tasks stops
  *   at once, in-flight activities run to completion, and `run()` resolves when
- *   the last of them has. So the drain is a genuine wait, not a courtesy.
+ *   the last of them has. So the drain is a genuine wait, not a courtesy — and
+ *   it is bounded by the kernel's deadline signal rather than only by the
+ *   worker's own `forceAfter`.
  * - `Serving.stop` is the same call made idempotent. Once the worker has
  *   drained, `running` has already settled and awaiting it again returns at
  *   once; when `stop()` is the *only* call — the path a `stop()` that skipped
@@ -152,22 +161,65 @@ const poll = (
     if (worker.raw.getState() === "RUNNING") worker.shutdown();
   };
 
+  // The kernel's deadline, kept from `drain` so `stop` is released by the same
+  // abort. Without it the release would only be half done: `finish` calls
+  // `stop()` after the drain has already timed out, and a `stop` that started
+  // waiting on `running` all over again would put the worker's own
+  // `forceAfter` back in charge of when the process exits.
+  let deadline: AbortSignal | undefined;
+
+  const stopped = (): AsyncResult<void, never> =>
+    deadline === undefined ? running : releasedBy(deadline, running);
+
   return {
     info: { taskQueue, namespace },
-    // The kernel's deadline signal has nothing to cancel here: the worker keeps
-    // its own force-shutdown clock (`forceAfter`), and the in-flight activities
-    // are units the kernel is already timing out itself.
+    // `@temporalio/worker` 1.22 has no public forced-shutdown call —
+    // `Worker.forceShutdown$` is `protected` and `Runtime.shutdown()` is
+    // process-global — so the escalation available to a runtime is to stop
+    // waiting: the kernel is handed back its thread at its own deadline, and
+    // the worker is left to Temporal's `forceAfter` clock and to the entry
+    // point closing the connection underneath it.
     drain: (signal) => {
-      void signal;
+      deadline = signal;
       stopPolling();
-      return running;
+      return stopped();
     },
     stop: () => {
       stopPolling();
-      return running;
+      return stopped();
     },
   };
 };
+
+/**
+ * `running`, but no later than the kernel's drain deadline.
+ *
+ * `Serving.drain(signal)` is a contract, not a courtesy: the kernel races its
+ * timeout against the runtime having stopped and aborts `signal` the instant
+ * that race settles, precisely so a runtime that treats it as its cue to return
+ * can be released. A worker whose activity never finishes cannot honour it by
+ * waiting on `run()` — that resolves on Temporal's clock, not the kernel's.
+ *
+ * The losing branch's `Result` is dropped, and it is the one drop here: when
+ * the deadline wins, the kernel has already decided the report and settled
+ * `exited`, so the worker's eventual outcome has no consumer left — and an
+ * `AsyncResult` never rejects, so nothing floats. That is the same trade
+ * `drainApp` documents for its own race.
+ */
+const releasedBy = (
+  signal: AbortSignal,
+  running: AsyncResult<void, never>,
+): AsyncResult<void, never> =>
+  fromSafePromise(Promise.race([running, whenAborted(signal)])).flatMap((settled) => settled);
+
+const whenAborted = (signal: AbortSignal): AsyncResult<void, never> =>
+  signal.aborted
+    ? OkAsync()
+    : fromSafePromise(
+        new Promise<void>((resolve) => {
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        }),
+      );
 
 /**
  * The one activity, and the hinge of this whole example.

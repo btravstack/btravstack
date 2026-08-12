@@ -194,4 +194,34 @@ describe("temporalWorkerRuntime", () => {
       expect.objectContaining({ drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 } }),
     );
   });
+
+  it("releases the runtime at the kernel's deadline when an activity will not finish", async ({
+    serve,
+    gate,
+  }) => {
+    // GIVEN an activity held open with nothing to release it, and a drain
+    // budget of a tenth of a second — so `worker.run()` cannot settle inside
+    // it and the only way out is the deadline signal
+    const { app, client } = await serve(gate.module, { drainTimeoutMs: 100 });
+    const started = client.startWorkflow("placeOrder", {
+      workflowId: "wf-stuck-1",
+      args: { orderId: "o-1", quantity: 1 },
+    });
+    await gate.arrived;
+
+    // WHEN the drain runs out of time
+    app.requestDrain();
+    const askedAt = Date.now();
+    const report = await started.flatMap(() => app.exited);
+    const elapsedMs = Date.now() - askedAt;
+
+    // THEN the kernel's exit is not held hostage by a worker that cannot stop:
+    // the activity is reported abandoned and the process is released on the
+    // kernel's own deadline rather than on Temporal's 30-second `forceAfter`,
+    // which is what `Serving.drain(signal)` promises the kernel.
+    expect(report.map((exit) => ({ drain: exit.drain, promptly: elapsedMs < 5_000 }))).toBeOkWith({
+      drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 },
+      promptly: true,
+    });
+  });
 });

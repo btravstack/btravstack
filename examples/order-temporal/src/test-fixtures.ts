@@ -69,7 +69,17 @@ type Deployment<E> = {
   readonly client: ContractClient<OrderContract>;
 };
 
-type Serve = <E>(module: Module<TemporalPorts, E, Scope>) => Promise<Deployment<E>>;
+/**
+ * The kernel options a test may override. Only the drain budget so far — a test
+ * that strands an activity needs the deadline to arrive in milliseconds rather
+ * than in the default twenty seconds.
+ */
+type ServeOptions = { readonly drainTimeoutMs: number };
+
+type Serve = <E>(
+  module: Module<TemporalPorts, E, Scope>,
+  options?: ServeOptions,
+) => Promise<Deployment<E>>;
 
 const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
   Module("StubPersistence")({
@@ -190,7 +200,7 @@ export const it = createTimeSkippingTest({
     const workflowBundle = await bundleFor(fixturePath(import.meta.url, "workflows"));
     const shutdowns: (() => Promise<void>)[] = [];
 
-    const serve: Serve = async (module) => {
+    const serve: Serve = async (module, options) => {
       // A queue of this test's own: the environment is shared by every test in
       // the worker process, and two workers polling one queue would race for
       // each other's tasks.
@@ -205,6 +215,7 @@ export const it = createTimeSkippingTest({
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
+        ...options,
       });
 
       shutdowns.push(async () => {
@@ -237,6 +248,10 @@ export const it = createTimeSkippingTest({
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   gate: async ({}, use) => {
-    await use(gatedTemporal());
+    const gate = gatedTemporal();
+    await use(gate);
+    // Released on every exit path, so an activity a test deliberately stranded
+    // cannot outlive the test that stranded it.
+    gate.release();
   },
 });

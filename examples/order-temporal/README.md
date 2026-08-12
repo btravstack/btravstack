@@ -194,16 +194,22 @@ const stopPolling = (): void => {
   if (worker.raw.getState() === "RUNNING") worker.shutdown();
 };
 
+// The kernel's deadline, kept from `drain` so `stop` is released by it too.
+let deadline: AbortSignal | undefined;
+
+const stopped = (): AsyncResult<void, never> =>
+  deadline === undefined ? running : releasedBy(deadline, running);
+
 return {
   info: { taskQueue, namespace },
   drain: (signal) => {
-    void signal;
+    deadline = signal;
     stopPolling();
-    return running;
+    return stopped();
   },
   stop: () => {
     stopPolling();
-    return running;
+    return stopped();
   },
 };
 ```
@@ -232,14 +238,30 @@ Three details worth writing down:
   Cancellation is cooperative, so a `0` changes nothing for an activity that
   ignores the signal — but it would fight the kernel's own drain deadline for
   the same decision, and one component should own it.
-- **The kernel's deadline `AbortSignal` has nothing to cancel here.** The worker
-  keeps its own force-shutdown clock, and the in-flight activities are units the
-  kernel is already timing out itself.
+- **The kernel's deadline `AbortSignal` is honoured, because waiting on `run()`
+  alone cannot honour it.** `run()` settles on Temporal's clock —
+  `shutdownForceTime`, 30 seconds by default — so an activity that never
+  finishes would hold `stop()` well past the kernel's `drainTimeoutMs`, and the
+  kernel would have no way to release this runtime. `releasedBy` races `running`
+  against the signal, and the signal is kept so `stop()` is released by the same
+  abort; the losing branch's `Result` is dropped, exactly as `drainApp`
+  documents for its own race. `@temporalio/worker` 1.22 offers no public forced
+  shutdown to escalate to — `Worker.forceShutdown$` is `protected` and
+  `Runtime.shutdown()` is process-global — so what a runtime can do is stop
+  waiting, leaving the worker to `shutdownForceTime` and to the entry point
+  closing the connection underneath it.
 
-The spec asserts the payoff directly:
+The spec asserts both halves directly — the drain that completes:
 
 ```
 {"type":"drained","report":{"inFlightAtStart":1,"completed":1,"abandoned":0}}
+```
+
+and the drain that runs out of time, where the exit still arrives on the
+kernel's deadline rather than Temporal's:
+
+```
+{"type":"drained","report":{"inFlightAtStart":1,"completed":0,"abandoned":1}}
 ```
 
 ## `Serving.info` with no port and no queue in it
@@ -258,7 +280,7 @@ which work it will ever be handed.
 ## Running it — and the one thing this example needs that the others do not
 
 ```bash
-pnpm --filter @btravstack/start-example-order-temporal test        # 7 runtime specs + 4 env specs
+pnpm --filter @btravstack/start-example-order-temporal test        # 8 runtime specs + 4 env specs
 pnpm --filter @btravstack/start-example-order-temporal test:types  # the needs gate
 ```
 

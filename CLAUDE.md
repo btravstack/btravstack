@@ -76,6 +76,12 @@ hook). User-facing changes need a changeset.
    own: `worker.shutdown()` stops polling immediately and `run()` resolves only
    once the in-flight activity has finished, so `drain` is a genuine wait
    rather than the "stop accepting, nothing left to await" the other two are.
+   It is also the first runtime that has to **honour** the deadline
+   `AbortSignal` rather than merely note it: `run()` settles on Temporal's own
+   `shutdownForceTime`, so an activity that never finishes would hold
+   `Serving.stop` well past the kernel's `drainTimeoutMs` unless the signal is
+   raced against it — and `@temporalio/worker` exposes no public forced
+   shutdown to escalate to, so "stop waiting" is the escalation.
 
 2. **Ambient carries DATA. The DI `Context` carries CAPABILITIES.** The kernel
    opens one `AsyncLocalStorage` store per unit holding a small, fixed record —
@@ -576,7 +582,7 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All eight
-  workspaces run under the same six commands as the kernel — 74 specs plus
+  workspaces run under the same six commands as the kernel — 75 specs plus
   three `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
   example that stops compiling, stops linting or stops passing fails CI exactly
   as `packages/start` would.
