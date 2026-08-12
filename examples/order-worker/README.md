@@ -77,7 +77,7 @@ response inside the unit:
 ```ts
 host.run(metaFor(delivery), (ctx, _signal) =>
   dispositionOf(ctx, delivery.job).flatMap((disposition) =>
-    dispose(ctx.get(Logger), queue, delivery, maxAttempts, disposition),
+    dispose(ctx.get(Logger), queue, delivery, disposition),
   ),
 );
 ```

@@ -30,9 +30,13 @@ export type OrderApiInfo = { readonly port: number; readonly prefix: `/${string}
 export type OrderApiOptions = {
   /** `0` lets the OS pick — read the result back from `runtimeInfo()`. */
   readonly port: number;
-  readonly hostname?: string;
-  readonly prefix?: `/${string}`;
 };
+
+// Fixed rather than options: nothing in this example ever set them, so as
+// settings they demonstrated only that a `??` can have a right-hand side. A
+// real adapter would expose both; an example earns a knob by using it.
+const HOSTNAME = "127.0.0.1";
+const PREFIX = "/rpc" as const;
 
 /**
  * The ports this runtime resolves out of the application context. Non-empty on
@@ -75,7 +79,6 @@ const listen = (
 ): AsyncResult<Serving<OrderApiInfo>, RuntimeStartFailed> =>
   fromSafePromise(
     new Promise<Result<Serving<OrderApiInfo>, RuntimeStartFailed>>((resolve) => {
-      const prefix = options.prefix ?? "/rpc";
       const handler = new RPCHandler(orderRouter);
       // A `node:http` server's `close` waits for every connection to end, and a
       // keep-alive client holds one open long after its response. Tracking the
@@ -118,7 +121,7 @@ const listen = (
         // node's request callback returns `void`, so the unit's outcome is
         // FOLDED to a value here rather than dropped: `AsyncResult<T, never>`
         // has an empty *error* channel, but a `Defect` can still be present.
-        void dispatch(host, handler, prefix, request, response).match({
+        void dispatch(host, handler, PREFIX, request, response).match({
           ok: () => {},
           // Nothing can land in the error channel — the work below is typed
           // `AsyncResult<void, never>` — so the matcher has no case to name.
@@ -175,7 +178,7 @@ const listen = (
 
       server.once("error", onBindError);
 
-      server.listen(options.port, options.hostname ?? "127.0.0.1", () => {
+      server.listen(options.port, HOSTNAME, () => {
         server.removeListener("error", onBindError);
         server.on("error", ignoreServingError);
 
@@ -184,7 +187,7 @@ const listen = (
 
         resolve(
           Ok({
-            info: { port, prefix },
+            info: { port, prefix: PREFIX },
             drain: (signal) => {
               void signal;
               stopAccepting();

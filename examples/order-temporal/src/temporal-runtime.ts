@@ -13,7 +13,6 @@ import {
 } from "@temporal-contract/worker/activity";
 import { TypedWorker } from "@temporal-contract/worker/worker";
 import { activityInfo } from "@temporalio/activity";
-import type { Duration } from "@temporalio/common";
 import type { NativeConnection, WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import { ErrAsync, OkAsync, P, fromSafePromise, type AsyncResult } from "unthrown";
 
@@ -54,34 +53,36 @@ export type OrderTemporalOptions = {
   readonly connection: NativeConnection;
   readonly namespace?: string;
   readonly workflows: WorkflowSource;
-  /**
-   * How long an activity that is *cancellation-aware* gets to notice the
-   * shutdown. Set explicitly because Temporal's default is `0`, and cancelling
-   * the instant `drain` is called would fight the kernel's own drain deadline
-   * for the same decision. Default `10 seconds`.
-   */
-  readonly gracePeriod?: Duration;
-  /**
-   * The hard stop. After it, `run()` settles with a
-   * `GracefulShutdownPeriodExpiredError` and in-flight work is abandoned where
-   * it stands.
-   *
-   * It is Temporal's **own** clock, not the kernel's, and the two are not the
-   * same deadline: the kernel releases this runtime the moment its
-   * `drainTimeoutMs` passes (see `poll` below), whatever the worker is still
-   * doing. Set this at or below `drainTimeoutMs` if you want the worker to have
-   * finished forcing itself down by the time the kernel gives up on it.
-   *
-   * Default `15 seconds`, which keeps that advice true against the kernel's own
-   * `drainTimeoutMs` default of `20_000`. It matters most on the `stop()`-only
-   * path, where no kernel deadline is in play at all and this clock alone
-   * decides when `Serving.stop` returns: the previous `30 seconds` was both
-   * above the kernel default and equal to Kubernetes' default
-   * `terminationGracePeriodSeconds`, so a stuck activity meant SIGKILL rather
-   * than a clean exit. Raise them together, never one alone.
-   */
-  readonly forceAfter?: Duration;
 };
+
+/**
+ * How long an activity that is *cancellation-aware* gets to notice the
+ * shutdown. Set explicitly because Temporal's default is `0`, and cancelling
+ * the instant `drain` is called would fight the kernel's own drain deadline for
+ * the same decision.
+ */
+const SHUTDOWN_GRACE = "10 seconds";
+
+/**
+ * The hard stop. After it, `run()` settles with a
+ * `GracefulShutdownPeriodExpiredError` and in-flight work is abandoned where it
+ * stands.
+ *
+ * It is Temporal's **own** clock, not the kernel's, and the two are not the
+ * same deadline: the kernel releases this runtime the moment its
+ * `drainTimeoutMs` passes (see `poll` below), whatever the worker is still
+ * doing. Keeping it at or below `drainTimeoutMs` — whose kernel default is
+ * `20_000` — is what lets the worker finish forcing itself down before the
+ * kernel gives up on it.
+ *
+ * It matters most on the `stop()`-only path, where no kernel deadline is in
+ * play at all and this clock alone decides when `Serving.stop` returns: an
+ * earlier `30 seconds` was both above the kernel default and equal to
+ * Kubernetes' default `terminationGracePeriodSeconds`, so a stuck activity
+ * meant SIGKILL rather than a clean exit. Raise this and `drainTimeoutMs`
+ * together, never one alone.
+ */
+const SHUTDOWN_FORCE = "15 seconds";
 
 /**
  * The ports this runtime resolves out of the application context — the same two
@@ -108,12 +109,12 @@ type TemporalNeeds = typeof PlaceOrder | typeof Logger;
  *   at once, in-flight activities run to completion, and `run()` resolves when
  *   the last of them has. So the drain is a genuine wait, not a courtesy — and
  *   it is bounded by the kernel's deadline signal rather than only by the
- *   worker's own `forceAfter`.
+ *   worker's own `SHUTDOWN_FORCE`.
  * - `Serving.stop` is the same call made idempotent. Once the worker has
  *   drained, `running` has already settled and awaiting it again returns at
  *   once; when `stop()` is the *only* call — the path a `stop()` that skipped
- *   the drain takes — it is what shuts the worker down, with `forceAfter` as
- *   the ceiling.
+ *   the drain takes — it is what shuts the worker down, with `SHUTDOWN_FORCE`
+ *   as the ceiling.
  */
 export const temporalWorkerRuntime = (
   options: OrderTemporalOptions,
@@ -138,8 +139,8 @@ const createWorker = (
       contract: options.contract,
       activities: { placeOrder: { place: placeActivity(host) } },
     }),
-    shutdownGraceTime: options.gracePeriod ?? "10 seconds",
-    shutdownForceTime: options.forceAfter ?? "15 seconds",
+    shutdownGraceTime: SHUTDOWN_GRACE,
+    shutdownForceTime: SHUTDOWN_FORCE,
   })
     .map((worker) => poll(worker, options.contract.taskQueue, namespace))
     .recoverDefect((cause) =>
@@ -172,7 +173,7 @@ const poll = (
   // abort. Without it the release would only be half done: `finish` calls
   // `stop()` after the drain has already timed out, and a `stop` that started
   // waiting on `running` all over again would put the worker's own
-  // `forceAfter` back in charge of when the process exits.
+  // `SHUTDOWN_FORCE` back in charge of when the process exits.
   let deadline: AbortSignal | undefined;
 
   const stopped = (): AsyncResult<void, never> =>
@@ -184,7 +185,7 @@ const poll = (
     // `Worker.forceShutdown$` is `protected` and `Runtime.shutdown()` is
     // process-global — so the escalation available to a runtime is to stop
     // waiting: the kernel is handed back its thread at its own deadline, and
-    // the worker is left to Temporal's `forceAfter` clock and to the entry
+    // the worker is left to Temporal's `SHUTDOWN_FORCE` clock and to the entry
     // point closing the connection underneath it.
     drain: (signal) => {
       deadline = signal;
