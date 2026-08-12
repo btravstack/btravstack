@@ -539,11 +539,17 @@ it("reports a workflow bundle that will not build as a modeled failure", async (
 - [ ] **Step 3: Run and watch it fail**
 
 Run: `cd packages/start-temporal && pnpm vitest run src/temporal-runtime.spec.ts -t "will not build"`
-Expected: FAIL. Record precisely how — if `Worker.create` rejects and `fromPromise` already qualifies it, this may pass immediately, in which case **stop and report**: the test is then characterisation, not TDD, and the controller decides whether to keep it.
 
-- [ ] **Step 4: Ensure the qualification is right**
+**Expected: PASS.** Task 2 already wrote `fromPromise(..., qualify)` because the design demanded the declared error channel, so there is no red to watch here and pretending otherwise would be a fabricated TDD cycle. This is a **characterisation test**, and its value is as a regression guard — so prove it can catch the regression instead:
 
-`fromPromise(promise, qualify)` is already in Task 2's code. If Step 3 failed, the cause is either a missing `qualify` or a `fromSafePromise`. Make `createWorker` use `fromPromise` with `(cause) => new RuntimeStartFailed({ runtime: "temporal", cause })`.
+1. Temporarily change `createWorker`'s `fromPromise(Worker.create(...), qualify)` to `fromSafePromise(Worker.create(...))`.
+2. Re-run the filtered test. It must now **FAIL**, naming a `Defect` rather than `Err(RuntimeStartFailed)` — that is exactly the regression the test exists to catch, and it is the difference between `runMain` exiting 1 and exiting 70.
+3. Restore the original code and confirm it passes again.
+4. Record both runs verbatim. If step 2 does not fail, the test is not pinning the error channel — stop and report rather than committing it.
+
+- [ ] **Step 4: Title the test for what it is**
+
+No production change should be needed — Task 2's `fromPromise` is already correct. Name the test so it does not imply a cycle it did not have, and make the `// THEN` comment state what the guard protects: a `Defect` here would bypass the declared `AsyncResult<Serving, RuntimeStartFailed>` and turn a startup failure's exit code from 1 into 70.
 
 - [ ] **Step 5: Run and watch it pass**
 
@@ -1092,7 +1098,7 @@ not mapped here: `declareActivitiesHandler` already does it.
 **Known risks, with their fallbacks written in rather than left to be discovered.**
 
 1. **`workflowsPath` under vitest.** Task 2 points at a `.js` sibling; vitest's transform may not resolve it for the workflow bundler, which runs in its own worker. Fallback stated in the task: prebundle with `bundleFor` and report the change.
-2. **Task 3 may pass on arrival** if `fromPromise`'s qualification is already right from Task 2. The task says to stop and report rather than pretend a red happened — the `-http` plan shipped exactly that mistake and it took a review round to catch.
+2. **Task 3 passes on arrival by design.** Task 2's qualification is already correct, so the task is characterisation with a proof-of-bite step rather than a red-green cycle, and says so. The `-http` plan claimed a red it could not produce; this one does not.
 3. **Task 4 observes `UnitMeta` through a host proxy**, because `currentUnit()` exposes the kernel's `unitId` and not the meta's `id`. The proxy forwards to the real host and only records, so nothing is stubbed. A pre-flight scan caught the first draft asserting `expect.any(String)` while its title claimed the task token — if that assertion ever weakens back, it is testing nothing.
 4. **The `as never` casts** in `asActivities` and `activityUnits`. Both are real: `host.run` is generic in `T`/`E` and a heterogeneous activity record erases them. Each needs an inline reason or a better signature. If a reviewer can remove one, it should be removed.
 5. **100% coverage is a real constraint** and Task 7 enforces it. The `-http` plan wrongly declared one branch unreachable; the most likely candidates here are the `traceId` fallback to `activityId` (needs an activity started outside a workflow) and `whenAborted`'s already-aborted arm. Both look testable — check before believing otherwise.
