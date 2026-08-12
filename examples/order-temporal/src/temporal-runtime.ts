@@ -64,11 +64,11 @@ export type OrderTemporalOptions = {
 const SHUTDOWN_GRACE = "10 seconds";
 
 /**
- * The hard stop. After it, `run()` settles with a
- * `GracefulShutdownPeriodExpiredError` and in-flight work is abandoned where it
- * stands.
+ * What this runtime passes as Temporal's `shutdownForceTime`: the hard stop,
+ * after which `run()` settles with a `GracefulShutdownPeriodExpiredError` and
+ * in-flight work is abandoned where it stands.
  *
- * It is Temporal's **own** clock, not the kernel's, and the two are not the
+ * The clock is Temporal's **own**, not the kernel's, and the two are not the
  * same deadline: the kernel releases this runtime the moment its
  * `drainTimeoutMs` passes (see `poll` below), whatever the worker is still
  * doing. Keeping it at or below `drainTimeoutMs` — whose kernel default is
@@ -109,12 +109,12 @@ type TemporalNeeds = typeof PlaceOrder | typeof Logger;
  *   at once, in-flight activities run to completion, and `run()` resolves when
  *   the last of them has. So the drain is a genuine wait, not a courtesy — and
  *   it is bounded by the kernel's deadline signal rather than only by the
- *   worker's own `SHUTDOWN_FORCE`.
+ *   worker's own `shutdownForceTime`.
  * - `Serving.stop` is the same call made idempotent. Once the worker has
  *   drained, `running` has already settled and awaiting it again returns at
  *   once; when `stop()` is the *only* call — the path a `stop()` that skipped
- *   the drain takes — it is what shuts the worker down, with `SHUTDOWN_FORCE`
- *   as the ceiling.
+ *   the drain takes — it is what shuts the worker down, with Temporal's
+ *   `shutdownForceTime` as the ceiling.
  */
 export const temporalWorkerRuntime = (
   options: OrderTemporalOptions,
@@ -173,7 +173,7 @@ const poll = (
   // abort. Without it the release would only be half done: `finish` calls
   // `stop()` after the drain has already timed out, and a `stop` that started
   // waiting on `running` all over again would put the worker's own
-  // `SHUTDOWN_FORCE` back in charge of when the process exits.
+  // `shutdownForceTime` back in charge of when the process exits.
   let deadline: AbortSignal | undefined;
 
   const stopped = (): AsyncResult<void, never> =>
@@ -185,7 +185,8 @@ const poll = (
     // `Worker.forceShutdown$` is `protected` and `Runtime.shutdown()` is
     // process-global — so the escalation available to a runtime is to stop
     // waiting: the kernel is handed back its thread at its own deadline, and
-    // the worker is left to Temporal's `SHUTDOWN_FORCE` clock and to the entry
+    // the worker is left to Temporal's own `shutdownForceTime` clock — which
+    // this runtime sets from `SHUTDOWN_FORCE` — and to the entry
     // point closing the connection underneath it.
     drain: (signal) => {
       deadline = signal;
