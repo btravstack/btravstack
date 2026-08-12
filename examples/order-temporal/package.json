@@ -1,0 +1,44 @@
+{
+  "name": "@btravstack/start-example-order-temporal",
+  "private": true,
+  "description": "The third deployment of the clean-architecture example: the same application module, served by a Temporal worker whose activities are kernel units",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:types": "tsc --noEmit -p tsconfig.test-d.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
+  },
+  "dependencies": {
+    "@btravstack/di": "catalog:",
+    "@btravstack/start": "workspace:*",
+    "@btravstack/start-example-order-application": "workspace:*",
+    "@btravstack/start-example-order-domain": "workspace:*",
+    "@btravstack/start-example-order-infrastructure": "workspace:*",
+    "@temporal-contract/client": "catalog:",
+    "@temporal-contract/contract": "catalog:",
+    "@temporal-contract/worker": "catalog:",
+    "@temporalio/activity": "catalog:",
+    "@temporalio/client": "catalog:",
+    "@temporalio/common": "catalog:",
+    "@temporalio/worker": "catalog:",
+    "@temporalio/workflow": "catalog:",
+    "@unthrown/standard-schema": "catalog:",
+    "unthrown": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@temporal-contract/testing": "catalog:",
+    "@temporalio/testing": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
