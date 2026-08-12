@@ -105,6 +105,31 @@ export const start = <X, E, Needs extends AnyPort, Info = never>(
   // The second signal aborts this, cutting short whichever `drainApp` sleep
   // (pre-drain delay or drain timeout) is currently pending.
   const skipDrain = new AbortController();
+  // Stamped at the FIRST request — the one `createDeferred` keeps — so the
+  // pre-drain delay is measured from when the process was TOLD to stop, not
+  // from when the kernel got around to noticing.
+  //
+  // They are not the same instant: a signal landing mid-build is buffered until
+  // the runtime is serving, since nothing observes `shutdown.promise` until
+  // then. The delay exists to cover Kubernetes' eventually-consistent endpoint
+  // removal after the signal, and a slow construction has already served some or
+  // all of that purpose. Paying it again on top can push the whole shutdown past
+  // `terminationGracePeriodSeconds` and turn a graceful exit into a SIGKILL.
+  // Seeded with `startedAt` rather than left optional so the read needs no
+  // guard: `finish` runs only once `shutdown.promise` has settled, and
+  // `requestShutdown` is the only thing that settles it, so the seed is always
+  // overwritten before `runDrain` reads it. A `number | undefined` here would
+  // buy a branch that can never be taken.
+  let shutdownRequestedAt = startedAt;
+  let shutdownRequested = false;
+  const sinceShutdownRequested = (): number => clock.now() - shutdownRequestedAt;
+  const requestShutdown = (reason: ExitReport["reason"]): void => {
+    if (!shutdownRequested) {
+      shutdownRequested = true;
+      shutdownRequestedAt = clock.now();
+    }
+    shutdown.resolve(reason);
+  };
   // Forced false by the drain (before the runtime stops accepting new work)
   // and by an uncaught exception; never reset back to `true` — which is why
   // the setter takes no argument. Hoisted out of `runDrain` so the
@@ -137,7 +162,7 @@ export const start = <X, E, Needs extends AnyPort, Info = never>(
     options.signals === false
       ? () => {}
       : installSignalHandlers({
-          onFirst: () => shutdown.resolve("signal"),
+          onFirst: () => requestShutdown("signal"),
           onSecond: () => skipDrain.abort(),
         });
   const disposeUncaught =
@@ -147,7 +172,7 @@ export const start = <X, E, Needs extends AnyPort, Info = never>(
           emit({ type: "uncaught", cause });
           onUnready();
           skipDrain.abort();
-          shutdown.resolve("uncaught");
+          requestShutdown("uncaught");
         });
   // Reassigned once the probe server actually binds (see `probesStarted`
   // below); stays a no-op when probes are disabled or the bind never
@@ -222,7 +247,7 @@ export const start = <X, E, Needs extends AnyPort, Info = never>(
       serving,
       registry,
       clock,
-      preDrainDelayMs,
+      preDrainDelayMs: Math.max(0, preDrainDelayMs - sinceShutdownRequested()),
       drainTimeoutMs,
       skip: skipDrain.signal,
       onUnready,
@@ -233,6 +258,17 @@ export const start = <X, E, Needs extends AnyPort, Info = never>(
     serving: Serving<Info>,
     reason: ExitReport["reason"],
   ): AsyncResult<ExitReport, never> => {
+    // Skipping the drain is a decision not to WAIT for in-flight work, not a
+    // decision to leave it running unsupervised. `drainApp` aborts whatever is
+    // still open once its deadline passes; these two paths have no deadline, so
+    // they abort at once. `"uncaught"` needs it most — its whole reason for
+    // skipping the drain is that in-flight work may be completing against
+    // corrupted state, which not signalling that work would do nothing to stop.
+    // It is also what stops a unit holding a ref'd socket from keeping the event
+    // loop alive after the exit report, since `runMain` never calls
+    // `process.exit()`.
+    if (reason !== "signal") registry.abortAll();
+
     const drained: AsyncResult<DrainReport | undefined, never> =
       reason === "signal" ? runDrain(serving) : OkAsync<DrainReport | undefined>(undefined);
 
@@ -316,8 +352,8 @@ export const start = <X, E, Needs extends AnyPort, Info = never>(
 
   return {
     exited,
-    stop: () => shutdown.resolve("runtimeStopped"),
-    requestDrain: () => shutdown.resolve("signal"),
+    stop: () => requestShutdown("runtimeStopped"),
+    requestDrain: () => requestShutdown("signal"),
     phase: tracker.current,
     ready,
     probePort: () => fromSafePromise(probeBound.promise),

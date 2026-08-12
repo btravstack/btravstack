@@ -3,11 +3,12 @@ import type { Server } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
 // Capture the real `http.Server` instances `startProbeServer` creates, so the
-// "listener is removed after a successful bind" test can assert on the server
-// itself. This is the observable most directly tied to the fix (a stale
-// `once("error", ...)` listener swallowing a post-bind failure) without
-// exposing the raw server through the shipped `ProbeServer` type just for a
-// test. `vi.mock` is hoisted above the imports below by vitest's transform.
+// two error-listener tests can assert on the server itself. Its listener set is
+// the observable most directly tied to both halves of that contract — a stale
+// `once("error", ...)` swallowing a post-bind failure, and zero listeners
+// turning one into an unhandled throw — without exposing the raw server through
+// the shipped `ProbeServer` type just for a test. `vi.mock` is hoisted above the
+// imports below by vitest's transform.
 const createdServers: Server[] = [];
 vi.mock("node:http", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:http")>();
@@ -70,14 +71,55 @@ describe("startProbeServer", () => {
     await first.close();
   });
 
-  it("removes the bind-failure error listener once the bind succeeds", async () => {
+  it("reports an out-of-range port as a modeled failure, not a defect", async () => {
+    // GIVEN a port node rejects synchronously — `server.listen` validates the
+    // range itself and THROWS `ERR_SOCKET_BAD_PORT` rather than emitting
+    // `'error'`, so the throw escapes the executor and rejects the promise.
+    // `PROBE_PORT=70000` reaching this is the motivating case.
+
+    // WHEN the probe server is asked to bind it
+    const started = await startProbeServer({ port: 70_000, live: () => true, ready: () => true });
+
+    // THEN it arrives in the declared error channel. A defect here would bypass
+    // `AsyncResult<ProbeServer, RuntimeStartFailed>` entirely and exit 70 where
+    // a modeled startup failure exits 1.
+    expect(started).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({ runtime: "probes" }),
+    );
+  });
+
+  it("swaps the bind-failure error listener for one that outlives the bind", async () => {
+    // GIVEN a probe server that bound successfully
     const before = createdServers.length;
     const started = await startProbeServer({ port: 0, live: () => true, ready: () => true });
     const server = started.getOrThrow();
 
+    // WHEN its listener set is inspected
     const created = createdServers[createdServers.length - 1];
-    expect(createdServers.length).toBe(before + 1);
-    expect(created?.listenerCount("error")).toBe(0);
+
+    // THEN `onBindError` is gone — it could only resolve an already-settled
+    // deferred — but the server is not left with ZERO listeners, which would
+    // make any later `'error'` an unhandled EventEmitter throw.
+    expect({
+      created: createdServers.length - before,
+      listeners: created?.listenerCount("error"),
+    }).toEqual({ created: 1, listeners: 1 });
+
+    await server.close();
+  });
+
+  it("does not throw when the server emits an error after binding", async () => {
+    // GIVEN a bound probe server — `net.Server` still emits `'error'` after
+    // listening, on accept failures such as `EMFILE` under fd exhaustion.
+    const started = await startProbeServer({ port: 0, live: () => true, ready: () => true });
+    const server = started.getOrThrow();
+    const created = createdServers[createdServers.length - 1];
+
+    // WHEN one is emitted, and THEN it is absorbed. Unhandled, it would reach
+    // the kernel's `uncaughtException` handler and tear the whole application
+    // down over a transient fault in its health endpoint.
+    expect(() => created?.emit("error", new Error("accept"))).not.toThrow();
 
     await server.close();
   });

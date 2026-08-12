@@ -161,14 +161,24 @@ gate.
   the same problem and solves it the same way — by forwarding through a
   signature with the phantom tuple already discharged.
 
-- **`finish` skips the drain for every reason but `"signal"`.**
-  `reason === "signal" ? runDrain(serving) : OkAsync(undefined)`. `runtimeStopped` is
-  a deliberate stop with nothing to wait for; `"uncaught"` is deliberately
+- **`finish` skips the drain for every reason but `"signal"` — and aborts the
+  registry on exactly those paths.**
+  `reason === "signal" ? runDrain(serving) : OkAsync(undefined)`, preceded by
+  `if (reason !== "signal") registry.abortAll()`. `runtimeStopped` is a
+  deliberate stop with nothing to wait for; `"uncaught"` is deliberately
   harsher — after an uncaught throw the process state may be corrupt, so
   draining risks completing in-flight work **wrongly**, and half-finished
   correct work beats confidently-wrong finished work. Both leave
   `ExitReport.drain` `undefined`, which is what `runMain`'s
   `report.drain?.abandoned ?? 0` reads.
+  The `abortAll` is what makes that rationale true rather than merely stated:
+  skipping the drain is a decision not to **wait** for in-flight work, not a
+  decision to leave it running unsignalled — which would let it go on
+  completing against the very corrupted state the skip exists to avoid.
+  `drainApp` aborts what is still open at its deadline; these paths have no
+  deadline, so they abort at once. It also stops a unit holding a ref'd socket
+  from keeping the event loop alive after the report, since `runMain` never
+  calls `process.exit()`.
 
 - **The `teardownErrors` aliasing is load-bearing.** The array put on the
   `ExitReport` is the **same mutable array** `onTeardownError` pushes into. di
@@ -207,6 +217,48 @@ gate.
   to `Serving.drain` — and is aborted the instant the race settles, on either
   branch, so a runtime that treats it as its own cue to return is always
   released.
+
+- **`awaitIdle()` is sequenced behind the runtime's `drain`, never sampled
+  alongside it.** Beat 3 is
+  `drainStopped.flatMap(() => args.registry.awaitIdle())` raced against the
+  timeout — not `allAsync([drainStopped, awaitIdle()])`. `awaitIdle` answers
+  about the registry at the instant it is **called**, returning `OkAsync()`
+  outright when nothing is open, so calling it in the same tick the runtime was
+  told to stop accepting lets a unit that opens while `drain` is still resolving
+  go unwaited, then be aborted and reported `abandoned` with the entire budget
+  unspent. That window is wide for any runtime whose `drain` is a real wait — an
+  HTTP server closing out keep-alive connections is the motivating one — and
+  invisible to `testRuntime`, whose `drain` resolves synchronously. Guarded by
+  `drain.spec.ts` → _"waits for a unit that opens while the runtime is still
+  stopping accepting"_.
+
+- **The pre-drain delay is charged from when the shutdown was REQUESTED.**
+  `Math.max(0, preDrainDelayMs - sinceShutdownRequested())`, stamped by
+  `requestShutdown` at the first request — the one `createDeferred` keeps. A
+  signal landing mid-build is buffered, since nothing observes
+  `shutdown.promise` until `runtime.start` has resolved, so paying the delay in
+  full afterwards charges twice for a window the build already spent. Both
+  together can exceed `terminationGracePeriodSeconds` and turn a graceful exit
+  into a SIGKILL. Guarded by `start.spec.ts` → _"spends only what is left of
+  preDrainDelayMs when the signal predates serving"_.
+
+- **`startProbeServer` catches `listen`'s synchronous throw.** node validates
+  the port itself and throws `ERR_SOCKET_BAD_PORT` — for a non-integer and for
+  anything outside 0..65535 — rather than emitting `'error'`. Uncaught, that
+  throw escapes the `new Promise` executor and reaches the caller as a
+  **Defect**, bypassing the `AsyncResult<ProbeServer, RuntimeStartFailed>` the
+  function declares and exiting `70` where a modeled startup failure exits `1`.
+  `probes: { port: Number(process.env.PROBE_PORT) }` is how it arrives.
+
+- **A bound server keeps an `'error'` listener for life.** `onBindError` is
+  removed on success — it could only resolve an already-settled deferred — but
+  it is **replaced**, not merely deleted. `net.Server` still emits `'error'`
+  after listening (an accept failure such as `EMFILE`), and an unhandled
+  `'error'` throws, which the kernel's own `uncaughtException` handler would
+  turn into a whole-application teardown over a fault in the health endpoint.
+  The socket is `unref`'d and dispose-only, so the replacement ignores rather
+  than reports. `examples/order-api`'s runtime carries the same pair for the
+  same reason.
 
 - **`registry.closed()` is monotonic, and that is why the report is honest.**
   `completed` is `closed() - closedAtStart`. The obvious
