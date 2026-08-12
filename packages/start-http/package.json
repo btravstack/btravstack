@@ -49,8 +49,6 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@btravstack/di": "catalog:",
-    "@btravstack/start": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
