@@ -184,9 +184,15 @@ because `.parse()` throws — which `unthrown/no-throw` bans, and which would
 contradict the example it appears in. The issues are the modeled `E`, folded
 above into a message and a non-zero exit code.
 
-The schema reads **strings**, not `z.coerce.number()`: coercion is `Number()`
-underneath, so `PORT=abc` would bind `NaN` and `PORT=` would bind `0`, the
-ephemeral port. A malformed value is a validation issue instead.
+The schema is `z.coerce.number().int().min(0).max(65_535).default(fallback)`.
+Coercion is `Number()` underneath, and that is a trap only **without** the
+bounds behind it: `PORT=abc` is `NaN` and fails `int()`, `PORT=3.5` fails it
+too, `PORT=99999` fails `max()`. Each becomes a validation issue rather than a
+socket bound to a number nobody asked for. The one case the bounds cannot catch
+is an empty or whitespace-only value, which `Number()` makes `0` — and a port's
+`min` **is** `0`, because an ephemeral bind has to stay expressible. So `PORT=`
+binds an ephemeral port; a field whose `min` is at least `1`, like
+`order-worker`'s `CONCURRENCY`, has no such hole.
 
 It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there

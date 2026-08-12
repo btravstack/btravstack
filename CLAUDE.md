@@ -760,9 +760,17 @@ A sixth rule is about production code that tests keep honest:
    issues are the modeled `E`, folded by the entry point into a message and a
    non-zero exit code. A schema's own `.parse()` **throws**, which
    `unthrown/no-throw` bans and which would contradict the example it appears in.
-   The schema reads **strings** rather than `z.coerce.number()`: coercion is
-   `Number()` underneath, so `PORT=abc` binds `NaN` and `PORT=` binds the
-   ephemeral port `0` — the exact silent failure the module exists to remove.
+   A numeric variable is `z.coerce.number().int().min(min).max(max).default(f)`.
+   Coercion is `Number()` underneath, which is a trap only **without** the
+   bounds behind it: with them, `abc` (`NaN`), `3.5` and an out-of-range value
+   are all validation issues rather than a number nobody asked for. The one
+   case the bounds cannot catch is an empty or whitespace-only value, which is
+   `0` — so a field whose `min` is `0` (a **port**, because an ephemeral bind
+   has to stay expressible) accepts `PORT=` as that bind, while any field whose
+   `min` is at least `1` rejects it. Written down in each `env.ts`, and
+   `order-api`'s spec names it at the one fixture it changed. The earlier
+   digits-only-string-then-`.pipe` construction was the over-built form of
+   this and was removed in the PR #7 review.
    Note `fromSchema` is **curried** — `fromSchema(schema)(input)`, not
    `fromSchema(schema, input)`.
 

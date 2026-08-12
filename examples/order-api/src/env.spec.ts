@@ -26,9 +26,13 @@ describe("readEnv", () => {
     expect(env).toBeOkWith({ PORT: 8080, PROBE_PORT: 0 });
   });
 
-  it("reports a malformed port as a value rather than binding NaN", () => {
-    // GIVEN the values `Number()` would silently turn into `NaN` and `0`
-    const source = { PORT: "abc", PROBE_PORT: "" };
+  it("reports a malformed port as a value rather than binding what Number() made of it", () => {
+    // GIVEN the two shapes coercion mangles differently: one `Number()` turns
+    // into `NaN`, one into a perfectly good number that is not a port. Not
+    // `PROBE_PORT: ""` — a port's `min` is `0` so that an ephemeral bind stays
+    // expressible, and `Number("")` is `0`, so an empty value is accepted
+    // rather than reported (written down in `env.ts`)
+    const source = { PORT: "abc", PROBE_PORT: "3.5" };
 
     // WHEN it is validated
     const env = readEnv(source);

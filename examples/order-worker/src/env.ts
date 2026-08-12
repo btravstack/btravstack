@@ -6,18 +6,15 @@ import { z } from "zod";
  * A whole number, read the way an environment variable actually arrives: as a
  * string.
  *
- * `z.coerce.number()` would be shorter and wrong — it is `Number()` underneath,
- * so `CONCURRENCY=abc` becomes `NaN` and `CONCURRENCY=` becomes `0`, a worker
- * that consumes nothing at all. A digits-only string is the honest model, and
- * anything else is a validation issue rather than a number nobody asked for.
+ * The coercion is `Number()` underneath, which is only a trap **without** the
+ * bounds that follow it: `CONCURRENCY=abc` is `NaN` and fails `int()`, and
+ * `CONCURRENCY=` is `0`, which fails `min(1)` — a worker that consumes nothing
+ * at all never gets built. Note the one case the bounds cannot catch: a field
+ * whose `min` is `0`, as `PROBE_PORT`'s is, accepts an empty value as the
+ * ephemeral bind `0`.
  */
 const wholeNumber = (fallback: number, min: number, max: number) =>
-  z
-    .string()
-    .regex(/^\d+$/u, "must be a whole number of decimal digits")
-    .transform(Number)
-    .pipe(z.int().min(min).max(max))
-    .default(fallback);
+  z.coerce.number().int().min(min).max(max).default(fallback);
 
 const environment = z.object({
   PROBE_PORT: wholeNumber(9000, 0, 65_535),

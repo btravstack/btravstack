@@ -5,18 +5,15 @@ import { z } from "zod";
 /**
  * A port, read the way an environment variable actually arrives: as a string.
  *
- * `z.coerce.number()` would be shorter and wrong — it is `Number()` underneath,
- * so `PORT=abc` becomes `NaN` and `PORT=` becomes `0`, an ephemeral bind. A
- * digits-only string is the honest model, and anything else is a validation
- * issue rather than a number nobody asked for.
+ * The coercion is `Number()` underneath, which is only a trap **without** the
+ * bounds that follow it: `PORT=abc` is `NaN` and fails `int()`, `PORT=3.5`
+ * fails it too, and `PORT=99999` fails `max()`. The one case the bounds cannot
+ * catch is an empty or whitespace-only value, which is `0` — and a port's `min`
+ * **is** `0`, because `0` is the ephemeral bind the specs assert. So `PORT=`
+ * binds an ephemeral port rather than being reported; a field whose `min` is at
+ * least `1` (`order-worker`'s `CONCURRENCY`) has no such hole.
  */
-const port = (fallback: number) =>
-  z
-    .string()
-    .regex(/^\d+$/u, "must be a whole number of decimal digits")
-    .transform(Number)
-    .pipe(z.int().min(0).max(65_535))
-    .default(fallback);
+const port = (fallback: number) => z.coerce.number().int().min(0).max(65_535).default(fallback);
 
 const environment = z.object({
   PORT: port(3000),
