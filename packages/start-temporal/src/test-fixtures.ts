@@ -39,6 +39,7 @@ export type TemporalFixtures = {
     readonly client: Client;
     readonly taskQueue: string;
   }>;
+  readonly serveBroken: () => Promise<App>;
 };
 
 export const it = test.extend<TemporalFixtures>({
@@ -76,6 +77,41 @@ export const it = test.extend<TemporalFixtures>({
     for (const app of started) {
       app.stop();
       await expect(app.exited).toBeOk();
+    }
+    await env.teardown();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  serveBroken: async ({}, use) => {
+    const env = await TestWorkflowEnvironment.createTimeSkipping({
+      server: {
+        executable: { type: "cached-download", downloadDir, ttl: "365d" },
+      },
+    });
+    const started: App[] = [];
+
+    await use(() => {
+      const app = start(AppModule, {
+        runtime: temporalRuntime({
+          connection: env.nativeConnection,
+          taskQueue: nextTaskQueue(),
+          workflows: {
+            workflowsPath: fileURLToPath(new URL("./does-not-exist.js", import.meta.url)),
+          },
+          activities: defaultActivities,
+          needs: [Greeting],
+        }),
+        signals: false,
+        probes: false,
+        preDrainDelayMs: 0,
+        onEvent: () => {},
+      });
+      started.push(app);
+      return Promise.resolve(app);
+    });
+
+    for (const app of started) {
+      app.stop();
+      await expect(app.exited).toBeErr();
     }
     await env.teardown();
   },
