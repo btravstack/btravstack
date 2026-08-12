@@ -1,9 +1,10 @@
 # `@btravstack/start` example: the order API layer
 
 The transport. A router implementing
-[`order-api-contract`](../order-api-contract), and a `Runtime` that serves it
-over `node:http` under the kernel's lifecycle. The contract itself lives in its
-own package, because a client needs it and needs none of this.
+[`order-api-contract`](../order-api-contract), served over `node:http` under
+the kernel's lifecycle by [`@btravstack/start-http`](../../packages/start-http).
+The contract itself lives in its own package, because a client needs it and
+needs none of this.
 
 ```
 src/router.ts         the implementation, and the one place a domain error becomes an ORPCError

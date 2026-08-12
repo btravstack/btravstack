@@ -225,7 +225,15 @@ const answer = async (handled: PromiseLike<unknown>, response: ServerResponse): 
     await handled;
     end(response, 404, "NotFound");
   } catch {
-    end(response, 500, "InternalError");
+    // Guarded so a throw here cannot reject `answer`'s own promise: the call
+    // site drops it with `void`, and an unhandled rejection is exactly the
+    // whole-application teardown the permanent `'error'` listener above
+    // exists to prevent.
+    try {
+      end(response, 500, "InternalError");
+    } catch {
+      // nothing left to try; the response is already unusable
+    }
   }
 };
 

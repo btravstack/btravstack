@@ -126,16 +126,20 @@ All three are answering the same obligation — `UnitMeta.id` must be unique per
 unit, because `traceId` defaults to it — and all three land on "the attempt, not
 the logical thing", because a retry is a second unit and the same trace.
 
-## The only non-empty `needs` in the repo
+## The runtimes with a non-empty `needs`
 
 `order-api`'s `httpRuntime` call declares `[PlaceOrder, FindOrder, Logger]`,
 while `queueWorkerRuntime` and `temporalWorkerRuntime` each declare
 `[PlaceOrder, Logger]` — two of the three the module exports, because a runtime
-declares what _it_ needs. They are the **only runtimes in this repository with a
-non-empty `needs`**: the kernel's own `testRuntime` needs nothing, so `start`'s
-phantom rest-tuple gate — and `RuntimeHost`'s `Context<InstanceType<Needs>>`,
-where a runtime names port _classes_ while di parameterises contexts by port
-_instances_ — are exercised against a real module here and nowhere else.
+declares what _it_ needs. The kernel's own `testRuntime` needs nothing, so
+these three are what exercise `start`'s phantom rest-tuple gate and
+`RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
+_classes_ while di parameterises contexts by port _instances_ — against a real
+module here. `@btravstack/start-http`'s own `AppModule`/`Greeting` fixture
+(`packages/start-http/src/test-fixtures.ts`, driving its 12
+`http-runtime.spec.ts` specs) exercises the same runtime-side path a second
+way now. `examples/` stays the only place the gate is pinned by a **type
+test**: `start-http` ships no `*.test-d.ts`.
 
 All three directions are pinned, in `order-api/src/needs-gate.test-d.ts`,
 `order-worker/src/needs-gate.test-d.ts` and
