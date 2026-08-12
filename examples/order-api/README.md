@@ -1,10 +1,11 @@
 # `@btravstack/start` example: the order API layer
 
-The transport. An oRPC contract, a router, and a `Runtime` that serves them over
-`node:http` under the kernel's lifecycle.
+The transport. A router implementing
+[`order-api-contract`](../order-api-contract), and a `Runtime` that serves it
+over `node:http` under the kernel's lifecycle. The contract itself lives in its
+own package, because a client needs it and needs none of this.
 
 ```
-src/contract.ts       the oRPC contract — the wire shapes and the declared error codes
 src/router.ts         the implementation, and the one place a domain error becomes an ORPCError
 src/request-scope.ts  RequestModule — a scope forked per request over the application's
 src/orpc-runtime.ts   the Runtime: start / drain / stop

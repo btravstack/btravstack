@@ -1,16 +1,17 @@
 # Examples
 
-Six small packages that are **one application booted three ways**: a clean
+Seven small packages that are **one application booted three ways**: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
-queue worker and once as a Temporal worker — and, at the same time, exercising
-`@btravstack/start` end to end from a consumer's own workspace, `workspace:*`
-and all.
+queue worker and once as a Temporal worker, with each transport's contract in a
+package of its own — and, at the same time, exercising `@btravstack/start` end
+to end from a consumer's own workspace, `workspace:*` and all.
 
 | Package                                          | Layer     | Shows                                                                                                                                      |
 | ------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | [`order-domain`](./order-domain)                 | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.        |
 | [`order-application`](./order-application)       | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.           |
 | [`order-infrastructure`](./order-infrastructure) | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need. |
+| [`order-api-contract`](./order-api-contract)     | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.        |
 | [`order-api`](./order-api)                       | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                             |
 | [`order-worker`](./order-worker)                 | runtime   | The second deployment: an in-memory queue worker over the **same** composition, and `Result` → ack / retry / dead-letter.                  |
 | [`order-temporal`](./order-temporal)             | runtime   | The third deployment: a Temporal worker whose **activity is the kernel unit**, `Result` → typed contract error, and a drain that waits.    |
@@ -37,6 +38,34 @@ vocabulary — is declared by the caller that needs it, not by the database that
 happens to satisfy it. `ApplicationModule` therefore leaves that need **unmet**,
 which is not documentation but a type: `Module.scoped(ApplicationModule, …)`
 does not compile until an outer module provides one.
+
+## The contract tier, which depends on nothing and is depended upon
+
+A transport's contract is a **shared artifact**, so it is a package of its own:
+
+```
+    order-api            any client of the API
+        └──────────┬──────────┘
+                   ▼
+          order-api-contract          ← @orpc/contract, and nothing else
+```
+
+Both arrows point _at_ the contract and none point out of it. That is the whole
+of contract-first design: a client is entitled to the wire shapes and the
+declared error codes without the router that implements them, the di wiring
+behind it, the Prisma-backed repository behind that, or the kernel booting the
+lot. While the contract sat inside `order-api/src/contract.ts` no client could
+take one without the others.
+
+The rule is enforced by the compiler rather than by review:
+`order-api-contract/src/layering.test-d.ts` imports the transport package under
+a `@ts-expect-error`, so adding the implementation to the contract's
+dependencies makes the directive unused and fails `test:types` — the same shape
+`order-domain` uses to keep the application layer out of the domain.
+
+And the payoff is demonstrated rather than asserted: the contract package's own
+spec builds a real oRPC client from `RouterContractClient<typeof orderContract>`
+and drives it over a stub `fetch`, with nothing from `order-api` in scope.
 
 ## One application, three deployments
 
@@ -108,7 +137,7 @@ missing need.
 
 ## Why these are tests, not just illustrations
 
-Each package reads as application code, and each is covered by real specs — 70
+Each package reads as application code, and each is covered by real specs — 72
 of them, run by the repository's own `pnpm test`:
 
 ```sh

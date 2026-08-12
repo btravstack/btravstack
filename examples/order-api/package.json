@@ -17,11 +17,11 @@
   "dependencies": {
     "@btravstack/di": "catalog:",
     "@btravstack/start": "workspace:*",
+    "@btravstack/start-example-order-api-contract": "workspace:*",
     "@btravstack/start-example-order-application": "workspace:*",
     "@btravstack/start-example-order-domain": "workspace:*",
     "@btravstack/start-example-order-infrastructure": "workspace:*",
     "@orpc/client": "catalog:",
-    "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
     "@unthrown/orpc": "catalog:",
     "@unthrown/standard-schema": "catalog:",
