@@ -77,7 +77,10 @@ treatment rather than a fallback.
   — and node will happily serve further requests down that one for the whole
   drain window. Those are new kernel units the drain exists to stop admitting,
   and ones the deadline then reports `abandoned`. Marking the response is what
-  actually retires the socket: node closes it once the response ends.
+  actually retires the socket: node closes it once the response ends. A response
+  whose headers are already on the wire has no header left to change, so that
+  one has its socket ended on `finish` instead — the guarantee is "no reuse",
+  not "we caught the header in time".
 
 - **`Serving.stop()`** closes for good and **destroys** every remaining socket.
   `node:http`'s `close()` waits out keep-alive connections, so without the socket

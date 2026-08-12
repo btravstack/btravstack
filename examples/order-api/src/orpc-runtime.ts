@@ -94,7 +94,20 @@ const listen = (
       let draining = false;
 
       const closeAfterResponse = (response: ServerResponse): void => {
-        if (!response.headersSent) response.setHeader("Connection", "close");
+        if (!response.headersSent) {
+          response.setHeader("Connection", "close");
+          return;
+        }
+
+        // Headers are already on the wire: the client has been told keep-alive
+        // and there is no header left to change. Ending the socket once the
+        // response is out is what stops it being reused, so the guarantee above
+        // does not quietly weaken into "every response whose headers we caught
+        // in time". This router cannot currently reach it — `writeHead` and
+        // `end` sit adjacent in `endWith`, with no await between — but a
+        // streamed response would, and the contract should not rest on that.
+        const { socket } = response;
+        response.once("finish", () => void socket?.end());
       };
 
       const server = createServer((request, response) => {

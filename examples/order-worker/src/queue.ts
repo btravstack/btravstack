@@ -95,7 +95,13 @@ export const createOrderQueue = (name = "orders"): OrderQueue => {
         // `publish` returns — a worker already pumping picks it up on this
         // very tick.
         new Promise<Settlement>((resolve) => {
-          settlements.set(job.id, [...(settlements.get(job.id) ?? []), resolve]);
+          // Appended in place rather than rebuilt: reusing an id is the case
+          // this map now exists to support, and copying the array on each
+          // publish would make that path quadratic for no benefit.
+          const waiters = settlements.get(job.id);
+          if (waiters === undefined) settlements.set(job.id, [resolve]);
+          else waiters.push(resolve);
+
           pending.push({ job, attempt: 1 });
           notify();
         }),
