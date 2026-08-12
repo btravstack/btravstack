@@ -128,8 +128,8 @@ the logical thing", because a retry is a second unit and the same trace.
 
 ## The only non-empty `needs` in the repo
 
-`orpcRuntime` declares `[PlaceOrder, FindOrder, Logger]`, while
-`queueWorkerRuntime` and `temporalWorkerRuntime` each declare
+`order-api`'s `httpRuntime` call declares `[PlaceOrder, FindOrder, Logger]`,
+while `queueWorkerRuntime` and `temporalWorkerRuntime` each declare
 `[PlaceOrder, Logger]` — two of the three the module exports, because a runtime
 declares what _it_ needs. They are the **only runtimes in this repository with a
 non-empty `needs`**: the kernel's own `testRuntime` needs nothing, so `start`'s
@@ -145,7 +145,7 @@ missing need.
 
 ## Why these are tests, not just illustrations
 
-Each package reads as application code, and each is covered by real specs — 74
+Each package reads as application code, and each is covered by real specs — 83
 of them, run by the repository's own `pnpm test`:
 
 ```sh

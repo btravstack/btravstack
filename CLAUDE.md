@@ -19,8 +19,9 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/start` is the single published
-package; `examples/` holds eight private ones — a clean-architecture application
+pnpm workspace + turbo monorepo. `packages/` holds two published packages,
+`start` (the kernel) and `start-http` (the HTTP runtime); `examples/` holds
+eight private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three different runtimes (`order-api`, `order-worker`, `order-temporal`), with
 each transport's contract in a package of its own (`order-api-contract`,
@@ -88,8 +89,10 @@ hook). User-facing changes need a changeset.
    convention with no enforcement. Do not describe it as enforced.
 
 3. **The kernel never maps an outcome to a transport.** `Result` → HTTP status
-   belongs to `@btravstack/start-http`, `Result` → ack/nack/DLQ to
-   `-amqp`, `Result` → activity failure to `-temporal`. `RunUnit` is
+   belongs to the handler an application hands `@btravstack/start-http`
+   (oRPC, Hono, a bare function) — the package itself declines that mapping,
+   deliberately — `Result` → ack/nack/DLQ to `-amqp`, `Result` → activity
+   failure to `-temporal`. `RunUnit` is
    transparent to the work's own channels: whatever `Result` a handler produces
    is what the runtime receives back (`units.ts`'s `run` ends in
    `.flatMap((result) => result)` — it observes only that the unit _settled_).
@@ -345,7 +348,7 @@ checker already verifies.
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All eight
-  workspaces run under the same six commands as the kernel — 84 specs plus
+  workspaces run under the same six commands as the kernel — 83 specs plus
   four `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
   example that stops compiling, stops linting or stops passing fails CI exactly
   as `packages/start` would. Three of the four needs-gate files pin **`start`'s**
@@ -382,6 +385,12 @@ checker already verifies.
   tasks carry a `^generate` edge so a dependent workspace gets one too. The
   database is SQLite **in memory** with the schema applied by hand —
   deliberately no Docker, so `pnpm test` stays self-contained on any machine.
+- **`examples/order-api` consumes `@btravstack/start-http` rather than
+  hand-rolling a transport.** It supplies only `apiHandler` — the per-request
+  `Module.forkScope` and the oRPC router — and reads `port` back off
+  `Serving.info`; binding, the drain and the trace-id policy are the package's.
+  This is what makes the package's needs gate a real one: `httpRuntime<Needs>`
+  infers `Needs` from the `needs` array the same way a hand-rolled runtime did.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
@@ -579,6 +588,12 @@ A sixth rule is about production code that tests keep honest:
 Shipped: the whole kernel — phase tracker, injectable clock, ambient record,
 unit registry, `Runtime` contract, `start`, draining, signals, uncaught
 handling, probes, `runMain`, the testing entry point, and the invariants suite.
+Also `@btravstack/start-http`, the first runtime package — lifecycle only: it
+binds (publishing the real port on `Serving.info`), opens one kernel unit per
+request, drains by genuinely refusing new work and retiring busy keep-alive
+connections, and stops by destroying what is left. Routing, middleware and
+`Result` → HTTP status are deliberately not included — see its README's _"What
+it does not do"_ for why each is a non-goal rather than a gap.
 Plus the eight `examples/` workspaces: the clean-architecture application and its
 **three** deployments, `order-api` (oRPC), `order-worker` (an in-memory queue)
 and `order-temporal` (a Temporal worker over `temporal-contract`), which
@@ -589,7 +604,7 @@ depends on neither.
 
 Deferred, deliberately:
 
-- `@btravstack/start-http`, `-amqp`, `-temporal` — the runtime implementations.
+- `@btravstack/start-amqp`, `-temporal` — the runtime implementations.
   **They do not exist**; the `Runtime` contract is the whole of what this
   package owes them. Do not write as though they ship.
   `examples/order-temporal` is an _example_ of one, not `-temporal`: it is
@@ -605,25 +620,6 @@ Deferred, deliberately:
 - Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed
   for it; the `Module.forkScope` call lands when the first runtime needs a
   per-request transaction.
-- **A test for `examples/order-api`'s permanent server `'error'` listener.**
-  The fix ships guarded only by its kernel twin, `probes.spec.ts` →
-  _"does not throw when the server emits an error after binding"_ — the two are
-  the same two lines for the same reason. Testing the example's own copy needs
-  the raw `http.Server`, which means `vi.mock("node:http")` hoisted above the
-  spec's `describe` (`vi.spyOn` is not an option: node builtins fail with
-  `Cannot redefine property: createServer`). That breaks **Test conventions
-  rule 1** in the one workspace whose spec _shape_ is the teaching material, to
-  guard a mechanism already guarded elsewhere. Revisit if a second example
-  needs the same capture, at which point the mock is worth a shared fixture
-  rather than a one-off.
-- **Coverage of `closeAfterResponse`'s `headersSent` branch** in
-  `examples/order-api/src/orpc-runtime.ts`. It is unreachable through this
-  router — `endWith` puts `writeHead` and `end` adjacent with no await between,
-  and oRPC serialises these small bodies in one go — so no spec can reach it
-  without inventing a streamed route purely to be tested. It exists because the
-  drain's guarantee is "no reuse", not "no reuse where we caught the header in
-  time", and a streamed response _would_ reach it. Adding one is the trigger.
-  Examples carry no coverage threshold, so this costs nothing at the gate.
 - ~~Bringing `packages/start`'s 14 spec files under the Test conventions.~~
   **Closed by decision, not by doing it.** An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since
