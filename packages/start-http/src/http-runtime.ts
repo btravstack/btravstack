@@ -84,6 +84,14 @@ const listen = <Needs extends AnyPort>(
         resolve(Err(new RuntimeStartFailed({ runtime: "http", cause })));
       };
 
+      // Permanent, and deliberately NOT `onBindError`: once the bind has
+      // settled the deferred, routing a later error there could only resolve
+      // an already-settled promise. But leaving the server with ZERO
+      // `'error'` listeners is worse — an unhandled `'error'` throws, and the
+      // kernel's `uncaughtException` handler turns that into a
+      // whole-application teardown over a transient accept fault.
+      const ignoreServingError = (): void => {};
+
       server.once("error", onBindError);
 
       // `listen` validates the port SYNCHRONOUSLY and throws `ERR_SOCKET_BAD_PORT`
@@ -94,6 +102,7 @@ const listen = <Needs extends AnyPort>(
       try {
         server.listen(options.port, options.hostname ?? DEFAULT_HOSTNAME, () => {
           server.removeListener("error", onBindError);
+          server.on("error", ignoreServingError);
 
           const address = server.address();
           const port =

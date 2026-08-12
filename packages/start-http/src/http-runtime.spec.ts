@@ -1,8 +1,21 @@
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { capturedServers, it } from "./test-fixtures.js";
 
 describe("httpRuntime", () => {
+  it("does not throw when the server emits an error after binding", async ({ serve }) => {
+    // GIVEN a bound server — `net.Server` still emits `'error'` after listening,
+    // on accept failures such as `EMFILE` under fd exhaustion
+    await serve();
+    const server = capturedServers[capturedServers.length - 1];
+
+    // WHEN one is emitted
+    // THEN it is absorbed. Unhandled, it would reach the kernel's
+    // `uncaughtException` handler and tear the whole application down over a
+    // transient fault in the transport.
+    expect(() => server?.emit("error", new Error("accept"))).not.toThrow();
+  });
+
   it("publishes the port it actually bound", async ({ serve }) => {
     // GIVEN a runtime asked for an ephemeral port
     const { app } = await serve();

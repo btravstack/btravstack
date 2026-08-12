@@ -1,3 +1,25 @@
+import type { Server } from "node:http";
+
+import { vi } from "vitest";
+
+/**
+ * Capture the real `http.Server` instances the runtime creates, so the
+ * error-listener tests can assert on the server itself without exposing it
+ * through the shipped `Serving` type just for a test.
+ */
+export const capturedServers: Server[] = [];
+vi.mock("node:http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:http")>();
+  return {
+    ...actual,
+    createServer: (...args: Parameters<typeof actual.createServer>) => {
+      const server = actual.createServer(...args);
+      capturedServers.push(server);
+      return server;
+    },
+  };
+});
+
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 
@@ -86,6 +108,7 @@ export const it = test.extend<HttpFixtures>({
 
   occupied: async ({ appOnPort }, use) => {
     const blocker = createServer();
+    blocker.on("error", () => {});
     const port = await new Promise<number>((done) => {
       blocker.listen(0, "127.0.0.1", () => {
         const address = blocker.address();
