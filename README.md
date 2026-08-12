@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/public/logo.svg" alt="start" width="117" height="120" />
+
 # start
 
 **The application kernel for [TypeScript](https://www.typescriptlang.org/) —
