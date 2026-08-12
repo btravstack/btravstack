@@ -56,6 +56,12 @@ export type HttpFixtures = {
   readonly occupied: { readonly appOnTakenPort: App };
   /** The `http.Server` the runtime just created. Asserted here so a test body cannot pass on an empty capture. */
   readonly boundServer: () => Server;
+  /** A handler held open until `release()`, so a test can observe a unit in flight. */
+  readonly gate: {
+    readonly handler: HttpHandler<typeof Greeting>;
+    readonly arrived: Promise<void>;
+    readonly release: () => void;
+  };
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -130,5 +136,28 @@ export const it = test.extend<HttpFixtures>({
       assert.ok(server !== undefined, "the node:http mock did not intercept createServer");
       return server;
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  gate: async ({}, use) => {
+    let entered!: () => void;
+    const arrived = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let open!: () => void;
+    const held = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+
+    await use({
+      handler: (_request, response, _ctx, _signal) => {
+        entered();
+        return held.then(() => new Promise<void>((done) => response.end("late", () => done())));
+      },
+      arrived,
+      release: () => open(),
+    });
+
+    open();
   },
 });

@@ -1,4 +1,4 @@
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { it } from "./test-fixtures.js";
 
@@ -54,6 +54,31 @@ describe("httpRuntime", () => {
     await expect(exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "http" }),
+    );
+  });
+
+  it("keeps the unit open until the response is on the wire", async ({ serve, gate }) => {
+    // GIVEN a request whose handler is held open inside the application
+    const { app, origin } = await serve(gate.handler);
+    const inFlight = fetch(origin);
+    await gate.arrived;
+
+    // WHEN the drain begins while it is still unanswered, and the handler is
+    // released only once the phase has moved. `vi.waitUntil` synchronises rather
+    // than asserts — the drain samples `inFlightAtStart` in the same synchronous
+    // turn that advances the phase.
+    app.requestDrain();
+    await vi.waitUntil(() => app.phase() === "draining");
+    gate.release();
+    await inFlight;
+
+    // THEN the kernel counted it as one unit that COMPLETED. Closing the unit on
+    // the handler's promise instead would let a response still being written
+    // race `Serving.stop` tearing the socket down.
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({
+        drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 },
+      }),
     );
   });
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 
@@ -7,6 +8,7 @@ import {
   type Runtime,
   type RuntimeHost,
   type Serving,
+  type UnitMeta,
 } from "@btravstack/start";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
@@ -60,9 +62,29 @@ const listen = <Needs extends AnyPort>(
       // `stop` destroy them instead of hanging.
       const sockets = new Set<Socket>();
 
-      const server: Server = createServer((_request, response) => {
-        void host;
-        response.end();
+      const server: Server = createServer((request, response) => {
+        // The unit's `Result` is FOLDED to a value here rather than dropped:
+        // `AsyncResult<T, never>` has an empty *error* channel, but a `Defect`
+        // can still be present.
+        void host
+          .run(metaFor(request), (ctx, signal) => {
+            void answer(options.handler(request, response, ctx, signal));
+            // The unit's lifetime IS the response's. This is what makes the
+            // kernel's "flush inside the unit" contract structural rather than
+            // documented: there is no way to write late, because the unit is
+            // still open until the bytes are out.
+            return closedOf(response);
+          })
+          .match({
+            ok: () => {},
+            errCases: (matcher) => matcher,
+            // Reached only if the response machinery itself failed, which leaves
+            // nothing left to write. Killing the socket is the one remaining
+            // courtesy: a client that would otherwise hang gets a reset.
+            defect: (cause) => {
+              response.destroy(cause instanceof Error ? cause : undefined);
+            },
+          });
       });
 
       server.on("connection", (socket) => {
@@ -130,3 +152,29 @@ const listen = <Needs extends AnyPort>(
       }
     }),
   ).flatMap((result) => result);
+
+const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
+  fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
+
+/**
+ * `UnitMeta.traceId` defaults to `id`, so `id` is minted fresh per request and
+ * never taken from the route: a category there would give every request the same
+ * trace id and silently defeat the ambient record. An inbound `x-request-id`
+ * becomes the trace id.
+ */
+const metaFor = (request: IncomingMessage): UnitMeta => {
+  const inbound = request.headers["x-request-id"];
+  return {
+    kind: "http",
+    id: randomUUID(),
+    ...(typeof inbound === "string" ? { traceId: inbound } : {}),
+  };
+};
+
+const answer = async (handled: PromiseLike<unknown>): Promise<void> => {
+  try {
+    await handled;
+  } catch {
+    // Task 6 turns this into the 500 the client is owed.
+  }
+};
