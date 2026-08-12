@@ -217,7 +217,7 @@ describe("temporalWorkerRuntime", () => {
 
     // THEN the kernel's exit is not held hostage by a worker that cannot stop:
     // the activity is reported abandoned and the process is released on the
-    // kernel's own deadline rather than on Temporal's 30-second `forceAfter`,
+    // kernel's own deadline rather than on Temporal's own `shutdownForceTime`,
     // which is what `Serving.drain(signal)` promises the kernel.
     expect(report.map((exit) => ({ drain: exit.drain, promptly: elapsedMs < 5_000 }))).toBeOkWith({
       drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 },

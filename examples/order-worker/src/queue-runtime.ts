@@ -16,12 +16,17 @@ import type { Delivery, OrderQueue, PlaceOrderJob } from "./queue.js";
  */
 export type OrderWorkerInfo = { readonly queue: string; readonly concurrency: number };
 
+/**
+ * How many times a message may be delivered before it is parked. Fixed rather
+ * than an option: nothing here ever set it, and a knob no caller turns
+ * demonstrates only that `??` has a right-hand side.
+ */
+const MAX_ATTEMPTS = 3;
+
 export type QueueWorkerOptions = {
   readonly queue: OrderQueue;
   /** How many deliveries may be in flight at once. Default `1`. */
   readonly concurrency?: number;
-  /** How many times a message may be delivered before it is parked. Default `3`. */
-  readonly maxAttempts?: number;
 };
 
 /**
@@ -122,12 +127,11 @@ const dispose = (
   logger: ServiceOf<Logger>,
   queue: OrderQueue,
   delivery: Delivery,
-  maxAttempts: number,
   disposition: Disposition,
 ): AsyncResult<void, never> => {
   const { job, attempt } = delivery;
 
-  if (disposition.kind === "retry" && attempt < maxAttempts) {
+  if (disposition.kind === "retry" && attempt < MAX_ATTEMPTS) {
     logger.info(`job ${job.id} retried after attempt ${attempt}: ${disposition.reason}`);
     queue.requeue(delivery);
     return OkAsync();
@@ -146,11 +150,10 @@ const deliver = (
   host: RuntimeHost<WorkerNeeds>,
   queue: OrderQueue,
   delivery: Delivery,
-  maxAttempts: number,
 ): AsyncResult<void, never> =>
   host.run(metaFor(delivery), (ctx, _signal) =>
     dispositionOf(ctx, delivery.job).flatMap((disposition) =>
-      dispose(ctx.get(Logger), queue, delivery, maxAttempts, disposition),
+      dispose(ctx.get(Logger), queue, delivery, disposition),
     ),
   );
 
@@ -160,7 +163,6 @@ const consume = (
 ): Serving<OrderWorkerInfo> => {
   const { queue } = options;
   const concurrency = options.concurrency ?? 1;
-  const maxAttempts = options.maxAttempts ?? 3;
 
   let accepting = true;
   let inFlight = 0;
@@ -174,7 +176,7 @@ const consume = (
       // The unit's outcome is FOLDED to a value here rather than dropped:
       // `AsyncResult<T, never>` has an empty *error* channel, but a `Defect`
       // can still be present.
-      void deliver(host, queue, delivery, maxAttempts).match({
+      void deliver(host, queue, delivery).match({
         ok: () => released(),
         // Nothing can land in the error channel — a job's own failure became a
         // disposition inside the unit — so the matcher has no case to name.
