@@ -338,3 +338,13 @@ would race for each other's tasks.
 runtime is handed its transport rather than owning its lifetime — the same
 reason `order-worker`'s `main.ts` creates its queue. Like both siblings' it is
 typechecked by the gate rather than executed by it.
+
+It also **closes** it, in a `.finally` on `runMain`'s promise. Whoever opens it
+closes it: the runtime is handed a connection it did not open and has no claim
+on, and `src/test-fixtures.ts` is the proof — every test in the file boots a
+fresh worker against the _one_ `testEnv.nativeConnection` it shares, so a
+runtime closing what it was given would tear the environment down under the next
+test. `.finally` rather than a `flatTap` because an open `NativeConnection`
+holds the event loop, so the defect path is exactly the one that must still
+close it; and a close that fails is written to stderr rather than surfaced, so
+that teardown cannot rewrite the exit code `runMain` just set.
