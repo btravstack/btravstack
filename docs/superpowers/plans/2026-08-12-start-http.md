@@ -110,8 +110,6 @@ This is configuration, so it has no unit test; its verification is the gate itse
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@btravstack/di": "catalog:",
-    "@btravstack/start": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
@@ -129,6 +127,8 @@ This is configuration, so it has no unit test; its verification is the gate itse
   "engines": { "node": ">=20" }
 }
 ```
+
+`@btravstack/di` and `@btravstack/start` are **peer** dependencies here but deliberately **not** dev ones yet: nothing in the scaffold imports them, and `pnpm knip` fails the gate on an unused devDependency. Task 2 adds them in the same commit as the code that imports them, which keeps every commit on the branch green.
 
 `version` is `0.0.0` because changesets assigns the first real version. There is no `test:types` script and no `tsconfig.test-d.json`: this package ships no `*.test-d.ts` files, so `typecheck` is a plain `tsc --noEmit`.
 
@@ -208,6 +208,17 @@ git commit -m "chore(start-http): scaffold the package"
   - `HttpOptions<Needs>` = `{ port: number; hostname?: string; needs: readonly Needs[]; handler: HttpHandler<Needs> }`
   - `HttpHandler<Needs>` = `(request: IncomingMessage, response: ServerResponse, ctx: Context<InstanceType<Needs>>, signal: AbortSignal) => PromiseLike<unknown>`
   - Test fixture `it` with a `serve` fixture: `serve(handler?) => Promise<{ app, origin }>`
+
+- [ ] **Step 0: Add the two dev dependencies this task starts using**
+
+In `packages/start-http/package.json`, add to `devDependencies` (keeping the keys sorted):
+
+```json
+    "@btravstack/di": "catalog:",
+    "@btravstack/start": "workspace:*",
+```
+
+Then `pnpm install`. Task 1 left them out on purpose — `knip` fails on a devDependency nothing imports, and from this task onward both are imported.
 
 - [ ] **Step 1: Write `packages/start-http/src/test-fixtures.ts`**
 
