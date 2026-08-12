@@ -21,6 +21,7 @@
     "@btravstack/start-example-order-application": "workspace:*",
     "@btravstack/start-example-order-domain": "workspace:*",
     "@btravstack/start-example-order-infrastructure": "workspace:*",
+    "@btravstack/start-http": "workspace:*",
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
     "@unthrown/orpc": "catalog:",

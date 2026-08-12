@@ -8,7 +8,7 @@ own package, because a client needs it and needs none of this.
 ```
 src/router.ts         the implementation, and the one place a domain error becomes an ORPCError
 src/request-scope.ts  RequestModule — a scope forked per request over the application's
-src/orpc-runtime.ts   the Runtime: start / drain / stop
+src/handler.ts        apiHandler — the per-request forkScope, handed to httpRuntime
 src/client.ts         an AsyncResult client for the same contract
 src/module.ts         OrderApiModule — the composition root
 src/env.ts            process.env validated through a schema, as a Result
@@ -61,64 +61,36 @@ has to decide what a client sees. A `Defect` is never named: it has no code
 because it was never modelled, and collapsing it to a 500 is the correct
 treatment rather than a fallback.
 
-## The runtime's three methods
+## The transport is `@btravstack/start-http`
 
-- **`start`** binds the socket and hands back a `Serving`. A bind failure is a
-  modeled `Err(RuntimeStartFailed)`, never a throw.
-- **`Serving.drain(signal)`** stops _accepting_: it closes the listener and the
-  idle keep-alive connections, marks every response still open
-  `Connection: close`, and leaves requests already in flight to run to
-  completion. The kernel's deadline signal has nothing to cancel here — the
-  in-flight units are the kernel's to time out.
-
-  The `Connection: close` is the part that is easy to leave out and wrong to.
-  `closeIdleConnections()` reaches every connection that is **idle at that
-  instant** and no others, so a connection with a request in flight survives it
-  — and node will happily serve further requests down that one for the whole
-  drain window. Those are new kernel units the drain exists to stop admitting,
-  and ones the deadline then reports `abandoned`. Marking the response is what
-  actually retires the socket: node closes it once the response ends. A response
-  whose headers are already on the wire has no header left to change, so that
-  one has its socket ended on `finish` instead — the guarantee is "no reuse",
-  not "we caught the header in time".
-
-- **`Serving.stop()`** closes for good and **destroys** every remaining socket.
-  `node:http`'s `close()` waits out keep-alive connections, so without the socket
-  set the process would never exit.
-
-### `Serving.info`, not an `onListening` hook
-
-The runtime binds `port: 0` in every spec and publishes what it got:
-
-```ts
-const info = (await app.runtimeInfo()).get(); // { port, prefix }
-```
-
-`Serving.info` is the kernel's channel for exactly this, which is why there is
-no `onListening` callback and no `boundPort()` accessor to keep in sync.
+Binding the socket, one unit per request, the drain that retires a busy
+keep-alive connection, and the trace-id policy all live in
+[`@btravstack/start-http`](../../packages/start-http) now — see its README for
+the runtime contract and the guarantee it makes. This example supplies only
+`apiHandler`, the function the package calls once per request, and reads
+`port` back off `Serving.info` the same way any caller of the package does.
 
 ### One unit per call
 
 ```ts
-host.run(metaFor(request), (ctx, _signal) =>
+export const apiHandler = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  ctx: Context<InstanceType<ApiNeeds>>,
+): AsyncResult<unknown, never> =>
   Module.forkScope(ctx, RequestModule, (scope) =>
     fromSafePromise(
-      handler.handle(request, response, { prefix, context: { scope } }),
+      handler.handle(request, response, { prefix: PREFIX, context: { scope } }),
     ),
-  ),
-);
+  );
 ```
 
-Two things in there are easy to get wrong:
-
-- **`UnitMeta.id` is minted per request**, not set to the route. `traceId`
-  defaults to `id`, so a category there would give every request the same trace
-  id and silently defeat the ambient record. An inbound `x-request-id` becomes
-  the `traceId` — the correlation id is the one an outside caller may choose.
-- **The response is flushed inside the unit.** oRPC's `handle` resolves only
-  once the response has closed, so the unit stays open until the bytes are on
-  the wire. Returning first and writing afterwards races `stop()` destroying the
-  socket.
+The unit's lifetime **is** the response's: `@btravstack/start-http` keeps it
+open until the response completes, so there is no seam for a late write to
+land in. An unmatched or failing call is answered by the package itself
+(`404` NotFound / `500` InternalError), so there is nothing left here to
+dispatch or end by hand — `apiHandler` only has to fork the request scope and
+hand the request to oRPC.
 
 ### A request scope over the application scope
 
@@ -153,7 +125,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-api test  # 15 runtime specs + 6 env specs
+pnpm --filter @btravstack/start-example-order-api test  # 15 api specs + 6 env specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
@@ -182,7 +154,11 @@ await readEnv().match({
   ok: (env) =>
     runMain(
       start(OrderApiModule, {
-        runtime: orpcRuntime({ port: env.PORT }),
+        runtime: httpRuntime({
+          port: env.PORT,
+          needs: [PlaceOrder, FindOrder, Logger],
+          handler: apiHandler,
+        }),
         probes: { port: env.PROBE_PORT },
       }),
     ),

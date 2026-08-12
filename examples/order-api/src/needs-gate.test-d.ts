@@ -1,5 +1,5 @@
 /**
- * The compile-time half of the transport layer: `orpcRuntime` declares three
+ * The compile-time half of the transport layer: `httpRuntime` declares three
  * ports in `needs`, and `start`'s phantom rest-tuple gate turns a module that
  * does not export all three into a call-site arity error. Type-checked by this
  * package's `test:types` script, never executed.
@@ -18,11 +18,16 @@ import {
   PlaceOrder,
 } from "@btravstack/start-example-order-application";
 import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
+import { httpRuntime } from "@btravstack/start-http";
 
+import { apiHandler } from "./handler.js";
 import { OrderApiModule } from "./module.js";
-import { orpcRuntime } from "./orpc-runtime.js";
 
-const options = { runtime: orpcRuntime({ port: 0 }), signals: false, probes: false } as const;
+const options = {
+  runtime: httpRuntime({ port: 0, needs: [PlaceOrder, FindOrder, Logger], handler: apiHandler }),
+  signals: false,
+  probes: false,
+} as const;
 
 // Positive: the composition root exports all three ports the runtime needs, so
 // the gate collapses to an empty tuple and this is an ordinary two-argument call.

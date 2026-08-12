@@ -188,6 +188,9 @@ importers:
       '@btravstack/start-example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
+      '@btravstack/start-http':
+        specifier: workspace:*
+        version: link:../../packages/start-http
       '@orpc/client':
         specifier: 'catalog:'
         version: 2.0.0-beta.23
