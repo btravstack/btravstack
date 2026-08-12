@@ -54,6 +54,8 @@ export type HttpFixtures = {
   /** An app started on an explicit port, for the failure paths. Shut down by the fixture. */
   readonly appOnPort: (port: number) => App;
   readonly occupied: { readonly appOnTakenPort: App };
+  /** The `http.Server` the runtime just created. Asserted here so a test body cannot pass on an empty capture. */
+  readonly boundServer: () => Server;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -119,5 +121,14 @@ export const it = test.extend<HttpFixtures>({
     await use({ appOnTakenPort: appOnPort(port) });
 
     blocker.close();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  boundServer: async ({}, use) => {
+    await use(() => {
+      const server = capturedServers.at(-1);
+      assert.ok(server !== undefined, "the node:http mock did not intercept createServer");
+      return server;
+    });
   },
 });

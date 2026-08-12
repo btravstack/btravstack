@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import type { Server } from "node:http";
 
 import { describe, expect, it, vi } from "vitest";
@@ -23,6 +24,13 @@ vi.mock("node:http", async (importOriginal) => {
 });
 
 import { startProbeServer } from "./probes.js";
+
+/** The last captured `http.Server`, asserted here so a test body cannot pass on an empty capture. */
+const lastCreatedServer = (): Server => {
+  const server = createdServers.at(-1);
+  assert.ok(server !== undefined, "the node:http mock did not intercept createServer");
+  return server;
+};
 
 const get = async (port: number, path: string): Promise<{ status: number; body: string }> => {
   const response = await fetch(`http://127.0.0.1:${port}${path}`);
@@ -114,12 +122,11 @@ describe("startProbeServer", () => {
     // listening, on accept failures such as `EMFILE` under fd exhaustion.
     const started = await startProbeServer({ port: 0, live: () => true, ready: () => true });
     const server = started.getOrThrow();
-    const created = createdServers[createdServers.length - 1];
 
     // WHEN one is emitted, and THEN it is absorbed. Unhandled, it would reach
     // the kernel's `uncaughtException` handler and tear the whole application
     // down over a transient fault in its health endpoint.
-    expect(() => created?.emit("error", new Error("accept"))).not.toThrow();
+    expect(() => lastCreatedServer().emit("error", new Error("accept"))).not.toThrow();
 
     await server.close();
   });
