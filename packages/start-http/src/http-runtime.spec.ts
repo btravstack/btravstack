@@ -106,6 +106,23 @@ describe("httpRuntime", () => {
     expect(response.status).toBe(500);
   });
 
+  it("resets the connection when the handler throws before returning a promise", async ({
+    serve,
+  }) => {
+    // GIVEN a handler that throws synchronously — not a rejected promise, so
+    // there is nothing `answer`'s own try/catch can reach. The throw escapes
+    // the unit's work callback itself, which the kernel folds to a Defect.
+    const { origin } = await serve(() => {
+      // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test
+      throw new Error("boom");
+    });
+
+    // WHEN a request arrives
+    // THEN there is nothing left to write, so the one remaining courtesy —
+    // killing the socket — is what the client observes.
+    await expect(fetch(origin)).rejects.toThrow();
+  });
+
   it("adopts a non-blank x-request-id as the trace id", async ({ serve, traced }) => {
     // GIVEN a caller that supplies a correlation id
     const { origin } = await serve(traced.handler);
@@ -130,5 +147,53 @@ describe("httpRuntime", () => {
     // that caller the same empty id, defeating the ambient record exactly as a
     // route template would.
     expect(traced.seen()).toEqual([expect.not.stringMatching(/^$/u)]);
+  });
+
+  it("closes a keep-alive connection that was busy when the drain began", async ({
+    serve,
+    gate,
+    keepAlive,
+  }) => {
+    // GIVEN a keep-alive connection whose request is held open, so
+    // `closeIdleConnections()` cannot reach it
+    const { app, origin } = await serve(gate.handler);
+    const held = await keepAlive.call(origin);
+    await gate.arrived;
+
+    // WHEN the drain has genuinely stopped accepting, and the request then
+    // completes on that still-open connection
+    app.requestDrain();
+    await keepAlive.stoppedAccepting(origin);
+    gate.release();
+
+    // THEN the response tells the client the connection is finished. Left
+    // `keep-alive`, node serves further requests down it for the whole drain
+    // window — new units the drain exists to stop admitting, and ones the
+    // deadline then reports abandoned.
+    await expect(held.head()).resolves.toContain("Connection: close");
+  });
+
+  it("ends the socket after a response whose headers were already on the wire when the drain began", async ({
+    serve,
+    streamedGate,
+    keepAlive,
+  }) => {
+    // GIVEN a response that already flushed its headers before the drain
+    // begins — there is no `Connection` header left to change, so
+    // `retire`'s other branch has nothing to do
+    const { app, origin } = await serve(streamedGate.handler);
+    const held = await keepAlive.call(origin);
+    await streamedGate.arrived;
+
+    // WHEN the drain marks it while it is still open, and it completes on
+    // that same connection afterwards
+    app.requestDrain();
+    await keepAlive.stoppedAccepting(origin);
+    streamedGate.release();
+
+    // THEN node ends the socket once the response finishes anyway — the
+    // guarantee holds for a response caught mid-stream, not only one caught
+    // before its first byte
+    await expect(held.closed()).resolves.toBeUndefined();
   });
 });

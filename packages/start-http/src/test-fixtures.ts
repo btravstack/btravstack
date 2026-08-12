@@ -21,7 +21,9 @@ vi.mock("node:http", async (importOriginal) => {
 });
 
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { createServer } from "node:http";
+import { connect, type Socket } from "node:net";
 
 import { Module, Port, Provider } from "@btravstack/di";
 import { currentUnit, start, type RunningApp } from "@btravstack/start";
@@ -62,10 +64,36 @@ export type HttpFixtures = {
     readonly arrived: Promise<void>;
     readonly release: () => void;
   };
+  /**
+   * Like `gate`, except the handler flushes its headers before holding — the
+   * state a streamed response is in, and the one `retire`'s `headersSent`
+   * branch exists for. This package's own router never produces it
+   * (`writeHead` and `end` sit adjacent, with nothing async between), but a
+   * handler is free to.
+   */
+  readonly streamedGate: {
+    readonly handler: HttpHandler<typeof Greeting>;
+    readonly arrived: Promise<void>;
+    readonly release: () => void;
+  };
   /** A handler that records the ambient record the kernel opened for its unit. */
   readonly traced: {
     readonly handler: HttpHandler<typeof Greeting>;
     readonly seen: () => readonly (string | undefined)[];
+  };
+  /**
+   * A raw keep-alive connection held BUSY across a drain. `fetch` cannot express
+   * it: undici owns its pool, and `Connection` is hop-by-hop so it never reaches
+   * the `Response`. Busy is the point — `closeIdleConnections()` reaches every
+   * *idle* connection and no others.
+   */
+  readonly keepAlive: {
+    readonly call: (origin: string) => Promise<{
+      readonly head: () => Promise<string>;
+      /** Resolves once the raw socket itself closes — the observable a header can no longer carry once it is already on the wire. */
+      readonly closed: () => Promise<void>;
+    }>;
+    readonly stoppedAccepting: (origin: string) => Promise<void>;
   };
 };
 
@@ -167,6 +195,30 @@ export const it = test.extend<HttpFixtures>({
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
+  streamedGate: async ({}, use) => {
+    let entered!: () => void;
+    const arrived = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let open!: () => void;
+    const held = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+
+    await use({
+      handler: (_request, response, _ctx, _signal) => {
+        response.writeHead(200);
+        entered();
+        return held.then(() => new Promise<void>((done) => response.end("late", () => done())));
+      },
+      arrived,
+      release: () => open(),
+    });
+
+    open();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
   traced: async ({}, use) => {
     const seen: (string | undefined)[] = [];
     await use({
@@ -176,5 +228,51 @@ export const it = test.extend<HttpFixtures>({
       },
       seen: () => seen,
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  keepAlive: async ({}, use) => {
+    const opened: Socket[] = [];
+    const portOf = (origin: string): number => Number(new URL(origin).port);
+
+    await use({
+      call: async (origin) => {
+        const socket = connect(portOf(origin), "127.0.0.1");
+        // A raw socket with no `'error'` listener throws on reset, and the drain
+        // under test resets it by design.
+        socket.on("error", () => {});
+        opened.push(socket);
+        await once(socket, "connect");
+
+        let received = "";
+        const head = new Promise<string>((resolve) => {
+          socket.on("data", (chunk: Buffer) => {
+            received += chunk.toString("utf8");
+            const end = received.indexOf("\r\n\r\n");
+            if (end !== -1) resolve(received.slice(0, end));
+          });
+        });
+        const closed = once(socket, "close").then(() => undefined);
+
+        socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n");
+        return { head: () => head, closed: () => closed };
+      },
+      // A fresh connection being refused is the only honest observable: the phase
+      // moves to `"draining"` a tick before `stopAccepting` runs.
+      stoppedAccepting: async (origin) => {
+        const port = portOf(origin);
+        await vi.waitUntil(async () => {
+          const probe = connect(port, "127.0.0.1");
+          const refused = await new Promise<boolean>((resolve) => {
+            probe.once("connect", () => resolve(false));
+            probe.once("error", () => resolve(true));
+          });
+          probe.destroy();
+          return refused;
+        });
+      },
+    });
+
+    for (const socket of opened) socket.destroy();
   },
 });

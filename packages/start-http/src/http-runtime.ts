@@ -62,10 +62,36 @@ const listen = <Needs extends AnyPort>(
       // `stop` destroy them instead of hanging.
       const sockets = new Set<Socket>();
 
+      // Responses still open, so the drain can retire them.
+      // `closeIdleConnections()` reaches every connection IDLE at that instant
+      // and no others — one with a request in flight survives it, and node
+      // happily serves further requests down that one for the whole drain
+      // window. `Connection: close` is what actually retires the socket: node
+      // closes it once the response ends.
+      const open = new Set<ServerResponse>();
+      let draining = false;
+
+      const retire = (response: ServerResponse): void => {
+        if (!response.headersSent) {
+          response.setHeader("Connection", "close");
+          return;
+        }
+        // Headers already on the wire: no header left to change, so the socket
+        // is ended once the response is out. Keeps the guarantee "no reuse"
+        // rather than "no reuse where we caught the header in time".
+        const { socket } = response;
+        response.once("finish", () => void socket?.end());
+      };
+
       const server: Server = createServer((request, response) => {
+        open.add(response);
+        response.once("close", () => open.delete(response));
+        if (draining) retire(response);
         // The unit's `Result` is FOLDED to a value here rather than dropped:
         // `AsyncResult<T, never>` has an empty *error* channel, but a `Defect`
-        // can still be present.
+        // can still be present. `recoverDefect`, not `match`: `E` is
+        // statically `never` at this call site, so a `match`'s `errCases` arm
+        // would be an always-dead branch with no case to name.
         void host
           .run(metaFor(request), (ctx, signal) => {
             void answer(options.handler(request, response, ctx, signal), response);
@@ -75,15 +101,12 @@ const listen = <Needs extends AnyPort>(
             // still open until the bytes are out.
             return closedOf(response);
           })
-          .match({
-            ok: () => {},
-            errCases: (matcher) => matcher,
+          .recoverDefect((cause) => {
             // Reached only if the response machinery itself failed, which leaves
             // nothing left to write. Killing the socket is the one remaining
             // courtesy: a client that would otherwise hang gets a reset.
-            defect: (cause) => {
-              response.destroy(cause instanceof Error ? cause : undefined);
-            },
+            response.destroy(cause instanceof Error ? cause : undefined);
+            return Ok();
           });
       });
 
@@ -97,6 +120,11 @@ const listen = <Needs extends AnyPort>(
       });
 
       const stopAccepting = (): void => {
+        draining = true;
+        // Marked HERE rather than in the request callback, which ran before the
+        // drain existed — these are precisely the responses holding a connection
+        // open past `closeIdleConnections()`.
+        for (const response of open) retire(response);
         if (!server.listening) return;
         server.close();
         server.closeIdleConnections();
