@@ -2,11 +2,13 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { Module, Port, Provider } from "@btravstack/di";
-import { start, type RunningApp } from "@btravstack/start";
+import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start";
+import { activityInfo } from "@temporalio/activity";
 import type { Client } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { expect, test } from "vitest";
 
+import { asActivities } from "./activity-units.js";
 import { temporalRuntime, type TemporalInfo } from "./temporal-runtime.js";
 
 /**
@@ -33,13 +35,23 @@ const nextTaskQueue = (): string => `t-${(queueSeq += 1)}-${process.pid}`;
 
 const defaultActivities = { echo: (value: string) => Promise.resolve(value) };
 
+type ActivityBuilder = (
+  host: RuntimeHost<typeof Greeting>,
+) => Record<string, (...args: never[]) => unknown>;
+
 export type TemporalFixtures = {
-  readonly serve: (activities?: Record<string, (...args: never[]) => unknown>) => Promise<{
+  readonly serve: (build?: ActivityBuilder) => Promise<{
     readonly app: App;
     readonly client: Client;
     readonly taskQueue: string;
   }>;
   readonly serveBroken: () => Promise<App>;
+  /** Records the `UnitMeta` each attempt opens with, and the token it should carry. */
+  readonly recorder: {
+    readonly build: ActivityBuilder;
+    readonly seen: () => readonly UnitMeta[];
+    readonly taskToken: () => string;
+  };
 };
 
 export const it = test.extend<TemporalFixtures>({
@@ -52,7 +64,7 @@ export const it = test.extend<TemporalFixtures>({
     });
     const started: App[] = [];
 
-    await use(async (activities = defaultActivities) => {
+    await use(async (build) => {
       const taskQueue = nextTaskQueue();
       const app = start(AppModule, {
         runtime: temporalRuntime({
@@ -61,7 +73,7 @@ export const it = test.extend<TemporalFixtures>({
           workflows: {
             workflowsPath: fileURLToPath(new URL("./test-workflows.ts", import.meta.url)),
           },
-          activities,
+          activities: build ?? defaultActivities,
           needs: [Greeting],
         }),
         signals: false,
@@ -74,11 +86,17 @@ export const it = test.extend<TemporalFixtures>({
       return { app, client: env.client, taskQueue };
     });
 
-    for (const app of started) {
-      app.stop();
-      await expect(app.exited).toBeOk();
+    // `env.teardown()` must run even if an app assertion below throws —
+    // otherwise the time-skipping server process leaks (see git history for
+    // the carried finding this fixes).
+    try {
+      for (const app of started) {
+        app.stop();
+        await expect(app.exited).toBeOk();
+      }
+    } finally {
+      await env.teardown();
     }
-    await env.teardown();
   },
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   serveBroken: async ({}, use) => {
@@ -109,10 +127,44 @@ export const it = test.extend<TemporalFixtures>({
       return Promise.resolve(app);
     });
 
-    for (const app of started) {
-      app.stop();
-      await expect(app.exited).toBeErr();
+    // Same fix as `serve`: `env.teardown()` must run regardless of whether
+    // the assertion below throws.
+    try {
+      for (const app of started) {
+        app.stop();
+        await expect(app.exited).toBeErr();
+      }
+    } finally {
+      await env.teardown();
     }
-    await env.teardown();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  recorder: async ({}, use) => {
+    const seen: UnitMeta[] = [];
+    let token = "";
+
+    await use({
+      build: (host) => {
+        // Forwards to the real host; the only addition is the capture, so the
+        // unit, its ambient record and its accounting are all genuinely the
+        // kernel's. Observing `meta` here is the only way to assert it — the
+        // ambient record deliberately does not carry it.
+        const watched: RuntimeHost<typeof Greeting> = {
+          ctx: host.ctx,
+          run: (meta, work) => {
+            seen.push(meta);
+            return host.run(meta, work);
+          },
+        };
+        return asActivities(watched, {
+          echo: (_ctx, _signal, value: string) => {
+            token = activityInfo().base64TaskToken;
+            return Promise.resolve(value);
+          },
+        });
+      },
+      seen: () => seen,
+      taskToken: () => token,
+    });
   },
 });

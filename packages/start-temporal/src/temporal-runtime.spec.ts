@@ -33,4 +33,24 @@ describe("temporalRuntime", () => {
       expect.objectContaining({ runtime: "temporal" }),
     );
   });
+
+  it("opens one kernel unit per activity attempt", async ({ serve, recorder }) => {
+    // GIVEN an activity wrapped for the kernel
+    const { client, taskQueue } = await serve(recorder.build);
+
+    // WHEN a workflow drives one attempt
+    await client.workflow.execute("runEcho", {
+      taskQueue,
+      workflowId: "wf-unit-1",
+      args: ["x"],
+    });
+
+    // THEN the attempt ran inside a unit whose meta identifies it by
+    // Temporal's task token, with the workflow id as the correlation id —
+    // `id` must be unique per unit, and a workflow id is not: an activity is
+    // retried under the same execution.
+    expect(recorder.seen()).toEqual([
+      { kind: "activity", id: recorder.taskToken(), traceId: "wf-unit-1" },
+    ]);
+  });
 });

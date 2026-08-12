@@ -31,8 +31,15 @@ export type TemporalOptions<Needs extends AnyPort> = {
    * implementations with `asActivities`, or use the `activityUnits` middleware
    * with `temporal-contract`. The factory never wraps, which is what makes
    * double-wrapping impossible rather than something to detect.
+   *
+   * A function form is accepted because `asActivities` needs the
+   * `RuntimeHost` to open units against, and the host does not exist until
+   * `start` calls this runtime — so a caller building activities with it
+   * supplies a builder instead of an already-built record.
    */
-  readonly activities: Record<string, (...args: never[]) => unknown>;
+  readonly activities:
+    | Record<string, (...args: never[]) => unknown>
+    | ((host: RuntimeHost<Needs>) => Record<string, (...args: never[]) => unknown>);
   readonly needs: readonly Needs[];
   /** Temporal's `shutdownForceTime`. Default `15 seconds`. Keep it at or below the kernel's `drainTimeoutMs`. */
   readonly forceAfter?: Duration;
@@ -56,8 +63,9 @@ const createWorker = <Needs extends AnyPort>(
   host: RuntimeHost<Needs>,
   options: TemporalOptions<Needs>,
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
-  void host;
   const namespace = options.namespace ?? DEFAULT_NAMESPACE;
+  const activities =
+    typeof options.activities === "function" ? options.activities(host) : options.activities;
 
   return fromPromise(
     Worker.create({
@@ -65,7 +73,7 @@ const createWorker = <Needs extends AnyPort>(
       namespace,
       taskQueue: options.taskQueue,
       ...options.workflows,
-      activities: options.activities,
+      activities,
       shutdownGraceTime: options.gracePeriod ?? DEFAULT_GRACE,
       shutdownForceTime: options.forceAfter ?? DEFAULT_FORCE,
     }),
