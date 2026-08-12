@@ -81,4 +81,28 @@ describe("httpRuntime", () => {
       }),
     );
   });
+
+  it("answers 404 when the handler declines to respond", async ({ serve }) => {
+    // GIVEN a handler that resolves without writing — oRPC's `matched: false`
+    // path, which is how a router says "not mine"
+    const { origin } = await serve(() => Promise.resolve({ matched: false }));
+
+    // WHEN a request arrives
+    const response = await fetch(origin);
+
+    // THEN the client is answered rather than left hanging until the drain
+    // deadline, and the unit closes with it
+    expect(response.status).toBe(404);
+  });
+
+  it("answers 500 when the handler fails", async ({ serve }) => {
+    // GIVEN a handler whose promise rejects
+    const { origin } = await serve(() => Promise.reject(new Error("boom")));
+
+    // WHEN a request arrives
+    const response = await fetch(origin);
+
+    // THEN a failure cannot strand a unit either
+    expect(response.status).toBe(500);
+  });
 });

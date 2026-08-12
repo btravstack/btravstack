@@ -68,7 +68,7 @@ const listen = <Needs extends AnyPort>(
         // can still be present.
         void host
           .run(metaFor(request), (ctx, signal) => {
-            void answer(options.handler(request, response, ctx, signal));
+            void answer(options.handler(request, response, ctx, signal), response);
             // The unit's lifetime IS the response's. This is what makes the
             // kernel's "flush inside the unit" contract structural rather than
             // documented: there is no way to write late, because the unit is
@@ -171,10 +171,29 @@ const metaFor = (request: IncomingMessage): UnitMeta => {
   };
 };
 
-const answer = async (handled: PromiseLike<unknown>): Promise<void> => {
+/**
+ * The package's guarantee: every request produces exactly one completed
+ * response. A handler that declines (resolves without writing) gets a `404`; one
+ * that fails gets a `500`. Without this the response never ends, the client
+ * hangs, and the unit stays counted in flight until the drain deadline.
+ *
+ * An `AsyncResult` carrying an `Err` or a `Defect` RESOLVES rather than rejects,
+ * so it lands in the `404` branch. That is correct: this package does not map
+ * `Result` → status, and a handler that hands one back has not answered.
+ */
+const answer = async (handled: PromiseLike<unknown>, response: ServerResponse): Promise<void> => {
   try {
     await handled;
+    end(response, 404, "NotFound");
   } catch {
-    // Task 6 turns this into the 500 the client is owed.
+    end(response, 500, "InternalError");
   }
+};
+
+// Silent when the handler has already started writing: there is no status left
+// to set, and the response is the handler's to finish.
+const end = (response: ServerResponse, status: number, error: string): void => {
+  if (response.headersSent || response.writableEnded || response.destroyed) return;
+  response.writeHead(status, { "content-type": "application/json" });
+  response.end(JSON.stringify({ error }));
 };
