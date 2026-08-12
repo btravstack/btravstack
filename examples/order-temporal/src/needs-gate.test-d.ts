@@ -17,9 +17,9 @@ import {
   PlaceOrder,
 } from "@btravstack/start-example-order-application";
 import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
+import { orderContract } from "@btravstack/start-example-order-temporal-contract";
 import type { NativeConnection } from "@temporalio/worker";
 
-import { orderContract } from "./contract.js";
 import { OrderTemporalModule } from "./module.js";
 import { temporalWorkerRuntime } from "./temporal-runtime.js";
 

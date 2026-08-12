@@ -2,10 +2,11 @@
 
 The third deployment. The same application, the same persistence, the same
 composition — driven by a durable execution engine instead of an HTTP server or
-a queue.
+a queue. The contract it implements lives in
+[`order-temporal-contract`](../order-temporal-contract), because a client that
+starts these workflows needs it and needs none of this.
 
 ```
-src/contract.ts          the temporal-contract contract: one workflow, one activity, two declared errors
 src/workflows.ts         the workflow body, in its own module because the sandbox is bundled separately
 src/temporal-runtime.ts  the Runtime: start / drain / stop, and the activity that is the kernel unit
 src/module.ts            OrderTemporalModule — the composition root
@@ -49,7 +50,7 @@ rehydrated by name with its payload intact.
 
 The last column carries something the other two do not. Naming a failure here
 decides not only what the caller sees but **whether the platform retries it**:
-`contract.ts` declares both domain errors `nonRetryable`, so Temporal asks
+the contract declares both domain errors `nonRetryable`, so Temporal asks
 exactly once. An unmodelled failure stays unnamed and the contract's
 `retry.maximumAttempts` takes over — the platform doing for free what
 `order-worker` hand-rolls with an attempt budget, and the sharpest form of "a

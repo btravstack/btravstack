@@ -1,4 +1,3 @@
-export { orderContract, type OrderContract } from "./contract.js";
 export { OrderTemporalModule } from "./module.js";
 export {
   temporalWorkerRuntime,

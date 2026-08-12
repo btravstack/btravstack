@@ -11,6 +11,10 @@ import {
   PlaceOrder,
 } from "@btravstack/start-example-order-application";
 import { OrderNotFound } from "@btravstack/start-example-order-domain";
+import {
+  orderContract,
+  type OrderContract,
+} from "@btravstack/start-example-order-temporal-contract";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import { createTimeSkippingTest } from "@temporal-contract/testing/time-skipping";
 import {
@@ -23,7 +27,6 @@ import type { TestWorkflowEnvironment } from "@temporalio/testing";
 import { ErrAsync, fromSafePromise } from "unthrown";
 import { expect } from "vitest";
 
-import { orderContract, type OrderContract } from "./contract.js";
 import { OrderTemporalModule } from "./module.js";
 import { temporalWorkerRuntime, type OrderTemporalInfo } from "./temporal-runtime.js";
 

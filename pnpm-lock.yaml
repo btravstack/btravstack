@@ -376,12 +376,12 @@ importers:
       '@btravstack/start-example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
+      '@btravstack/start-example-order-temporal-contract':
+        specifier: workspace:*
+        version: link:../order-temporal-contract
       '@temporal-contract/client':
         specifier: 'catalog:'
         version: 8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.2.0)
-      '@temporal-contract/contract':
-        specifier: 'catalog:'
-        version: 8.0.0-beta.5(unthrown@5.2.0)
       '@temporal-contract/worker':
         specifier: 'catalog:'
         version: 8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.2.0)
@@ -428,6 +428,37 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.49.2)(yaml@2.9.0)
+
+  examples/order-temporal-contract:
+    dependencies:
+      '@temporal-contract/contract':
+        specifier: 'catalog:'
+        version: 8.0.0-beta.5(unthrown@5.2.0)
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.2.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.1.2
+      '@unthrown/standard-schema':
+        specifier: 'catalog:'
+        version: 5.2.0
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.2.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.49.2)(yaml@2.9.0)

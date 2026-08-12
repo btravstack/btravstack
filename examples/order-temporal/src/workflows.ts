@@ -1,3 +1,4 @@
+import { orderContract } from "@btravstack/start-example-order-temporal-contract";
 import {
   ACTIVITY_CANCELLED_ERROR_TAG,
   ACTIVITY_ERROR_TAG,
@@ -5,8 +6,6 @@ import {
   propagateActivityFailure,
 } from "@temporal-contract/worker/workflow";
 import { P } from "unthrown";
-
-import { orderContract } from "./contract.js";
 
 /**
  * The workflow, in its own module — and it has to be.

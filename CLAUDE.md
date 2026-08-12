@@ -20,13 +20,13 @@ throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
 pnpm workspace + turbo monorepo. `packages/start` is the single published
-package; `examples/` holds seven private ones — a clean-architecture application
+package; `examples/` holds eight private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
-three different runtimes (`order-api`, `order-worker`, `order-temporal`), with a
-transport's contract in a package of its own (`order-api-contract`) because a
-client must be able to take it without the server. They
-are consumers, not fixtures: they are part of the gate, and
-`examples/README.md` is their index.
+three different runtimes (`order-api`, `order-worker`, `order-temporal`), with
+each transport's contract in a package of its own (`order-api-contract`,
+`order-temporal-contract`) because a client must be able to take a contract
+without the server. They are consumers, not fixtures: they are part of the gate,
+and `examples/README.md` is their index.
 
 ## Commands
 
@@ -575,11 +575,11 @@ Source layout (`packages/start/src/`), one concept per file: `ambient.ts`
 
 ## Toolchain & conventions
 
-- **`examples/` is part of the gate, not a folder of illustrations.** All seven
-  workspaces run under the same six commands as the kernel — 72 specs plus
-  three `needs-gate.test-d.ts` files and two `layering.test-d.ts` ones — so an
-  example that stops compiling,
-  stops linting or stops passing fails CI exactly as `packages/start` would.
+- **`examples/` is part of the gate, not a folder of illustrations.** All eight
+  workspaces run under the same six commands as the kernel — 74 specs plus
+  three `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
+  example that stops compiling, stops linting or stops passing fails CI exactly
+  as `packages/start` would.
   They are also the only place a runtime with a **non-empty `needs`** meets a
   real module, which is what exercises `start`'s phantom rest-tuple gate and
   `RuntimeHost`'s `Context<InstanceType<Needs>>` end to end.
@@ -765,12 +765,13 @@ A sixth rule is about production code that tests keep honest:
 Shipped: the whole kernel — phase tracker, injectable clock, ambient record,
 unit registry, `Runtime` contract, `start`, draining, signals, uncaught
 handling, probes, `runMain`, the testing entry point, and the invariants suite.
-Plus the seven `examples/` workspaces: the clean-architecture application and its
+Plus the eight `examples/` workspaces: the clean-architecture application and its
 **three** deployments, `order-api` (oRPC), `order-worker` (an in-memory queue)
 and `order-temporal` (a Temporal worker over `temporal-contract`), which
-together are the proof of Thesis #1 — and `order-api-contract`, the oRPC
-contract as a shared artifact both the server and any client can depend on,
-with a `layering.test-d.ts` proving it depends on neither.
+together are the proof of Thesis #1 — and `order-api-contract` /
+`order-temporal-contract`, each transport's contract as a shared artifact both
+the server and any client can depend on, with a `layering.test-d.ts` proving it
+depends on neither.
 
 Deferred, deliberately:
 

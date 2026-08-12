@@ -1,9 +1,9 @@
 import { runMain, start } from "@btravstack/start";
+import { orderContract } from "@btravstack/start-example-order-temporal-contract";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 import { NativeConnection } from "@temporalio/worker";
 import { P, fromSafePromise, type AsyncResult } from "unthrown";
 
-import { orderContract } from "./contract.js";
 import { describeEnvIssues, readEnv, type Env } from "./env.js";
 import { OrderTemporalModule } from "./module.js";
 import { temporalWorkerRuntime } from "./temporal-runtime.js";

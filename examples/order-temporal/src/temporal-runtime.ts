@@ -6,6 +6,7 @@ import {
   type UnitMeta,
 } from "@btravstack/start";
 import { Logger, PlaceOrder } from "@btravstack/start-example-order-application";
+import type { OrderContract } from "@btravstack/start-example-order-temporal-contract";
 import {
   declareActivitiesHandler,
   type ActivityImplementationFor,
@@ -15,8 +16,6 @@ import { activityInfo } from "@temporalio/activity";
 import type { Duration } from "@temporalio/common";
 import type { NativeConnection, WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import { ErrAsync, P, type AsyncResult } from "unthrown";
-
-import type { OrderContract } from "./contract.js";
 
 /**
  * What the worker publishes about itself once it is polling, read back through
