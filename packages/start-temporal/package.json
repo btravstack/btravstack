@@ -50,12 +50,21 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@btravstack/di": "catalog:",
+    "@btravstack/start": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
+    "@temporalio/activity": "catalog:",
+    "@temporalio/client": "catalog:",
+    "@temporalio/common": "catalog:",
+    "@temporalio/testing": "catalog:",
+    "@temporalio/worker": "catalog:",
+    "@temporalio/workflow": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
+    "unthrown": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
