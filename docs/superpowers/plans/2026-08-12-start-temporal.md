@@ -224,7 +224,7 @@ git commit -m "chore(start-temporal): scaffold the package"
 
 - [ ] **Step 1: Add the dependencies this task imports**
 
-To `devDependencies` (keys sorted): `"@btravstack/di": "catalog:"`, `"@btravstack/start": "workspace:*"`, `"@temporalio/activity": "catalog:"`, `"@temporalio/client": "catalog:"`, `"@temporalio/common": "catalog:"`, `"@temporalio/testing": "catalog:"`, `"@temporalio/worker": "catalog:"`, `"@temporalio/workflow": "catalog:"`, `"unthrown": "catalog:"`. Then `pnpm install`.
+To `devDependencies` (keys sorted), and **only these** — `knip` fails the gate on an unused devDependency and a `knip.json` ignore is not an acceptable answer. `@temporalio/activity` is deliberately absent; Task 4 adds it with `metaFor`, the first code to import it. Add: `"@btravstack/di": "catalog:"`, `"@btravstack/start": "workspace:*"`, `"@temporalio/client": "catalog:"`, `"@temporalio/common": "catalog:"`, `"@temporalio/testing": "catalog:"`, `"@temporalio/worker": "catalog:"`, `"@temporalio/workflow": "catalog:"`, `"unthrown": "catalog:"`. Then `pnpm install`.
 
 If any is missing from the root `pnpm-workspace.yaml` catalog, add it there at the version `examples/order-temporal` already uses — do not introduce a second version of a Temporal package.
 
@@ -308,7 +308,7 @@ export const it = test.extend<TemporalFixtures>({
           taskQueue,
           workflows: {
             workflowsPath: fileURLToPath(
-              new URL("./test-workflows.js", import.meta.url),
+              new URL("./test-workflows.ts", import.meta.url),
             ),
           },
           activities,
@@ -333,7 +333,7 @@ export const it = test.extend<TemporalFixtures>({
 });
 ```
 
-`workflowsPath` points at the **built** `.js` — vitest resolves the TS through its own transform; if that fails, switch to `bundleFor`-style prebundling and say so in your report rather than weakening the test.
+`workflowsPath` points at the **`.ts` source**. Temporal's bundler `statSync`s the entrypoint with no extension aliasing and then compiles TypeScript through its own swc loader, so a `.js` path that does not exist on disk fails outright and no prebundling step is needed.
 
 - [ ] **Step 4: Write the failing test in `src/temporal-runtime.spec.ts`**
 
@@ -568,6 +568,10 @@ git commit -m "feat(start-temporal): model a worker that cannot start"
 - `asActivities<Needs extends AnyPort>(host: RuntimeHost<Needs>, impls: Record<string, ActivityImpl<Needs>>): Record<string, (...args: never[]) => unknown>`
 - `ActivityImpl<Needs>` = `(ctx: Context<InstanceType<Needs>>, signal: AbortSignal, ...args: never[]) => AsyncResult<unknown, unknown> | Promise<unknown> | unknown`
 - `metaFor(): UnitMeta` — module-private
+
+- [ ] **Step 0: Add `@temporalio/activity`**
+
+`"@temporalio/activity": "catalog:"` into `devDependencies` (keys sorted), then `pnpm install`. Task 2 deliberately left it out because nothing imported it and `knip` fails on an unused devDependency; `metaFor` below is the first code to import it.
 
 - [ ] **Step 1: Write the failing test**
 
