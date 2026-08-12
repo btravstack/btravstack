@@ -53,7 +53,6 @@
     "@btravstack/di": "catalog:",
     "@btravstack/start": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
-    "@temporalio/activity": "catalog:",
     "@temporalio/client": "catalog:",
     "@temporalio/common": "catalog:",
     "@temporalio/testing": "catalog:",

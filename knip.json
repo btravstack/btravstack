@@ -6,9 +6,6 @@
   "workspaces": {
     "examples/order-api": { "entry": ["src/main.ts"] },
     "examples/order-worker": { "entry": ["src/main.ts"] },
-    "examples/order-temporal": { "entry": ["src/main.ts"] },
-    "packages/start-temporal": {
-      "ignoreDependencies": ["@temporalio/activity"]
-    }
+    "examples/order-temporal": { "entry": ["src/main.ts"] }
   }
 }
