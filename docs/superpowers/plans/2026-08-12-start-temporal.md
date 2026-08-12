@@ -577,7 +577,7 @@ it("opens one kernel unit per activity attempt", async ({
   recorder,
 }) => {
   // GIVEN an activity wrapped for the kernel
-  const { client, taskQueue } = await serve(recorder.activities);
+  const { client, taskQueue } = await serve(recorder.build);
 
   // WHEN a workflow drives one attempt
   await client.workflow.execute("runEcho", {
@@ -586,44 +586,62 @@ it("opens one kernel unit per activity attempt", async ({
     args: ["x"],
   });
 
-  // THEN the work ran inside a unit, and the ambient record identifies the
-  // attempt by Temporal's task token with the workflow id as the correlation
-  // id — `id` must be unique per unit, and a workflow id is not: an activity
-  // is retried under the same execution.
+  // THEN the attempt ran inside a unit whose meta identifies it by Temporal's
+  // task token, with the workflow id as the correlation id — `id` must be
+  // unique per unit, and a workflow id is not: an activity is retried under
+  // the same execution.
   expect(recorder.seen()).toEqual([
-    { kind: "activity", id: expect.any(String), traceId: "wf-unit-1" },
+    { kind: "activity", id: recorder.taskToken(), traceId: "wf-unit-1" },
   ]);
 });
 ```
 
 - [ ] **Step 2: Add the `recorder` fixture to `src/test-fixtures.ts`**
 
+**`currentUnit()` cannot see `UnitMeta.id`.** It returns a `UnitRecord`, whose `unitId` is the kernel's own counter (`u1`, `u2`, …); only `traceId` survives from the meta. So the fixture observes the meta **on its way into the kernel**, through a proxy that records and forwards unchanged. The real unit still opens — nothing is stubbed.
+
 ```ts
-  /** An activity that records the ambient record the kernel opened for it. */
+  /** Records the `UnitMeta` each attempt opens with, and the token it should carry. */
   readonly recorder: {
-    readonly activities: Record<string, (...args: never[]) => unknown>;
-    readonly seen: () => readonly unknown[];
+    readonly build: (host: RuntimeHost<typeof Greeting>) => Record<string, (...args: never[]) => unknown>;
+    readonly seen: () => readonly UnitMeta[];
+    readonly taskToken: () => string;
   };
 ```
 
 ```ts
   // oxlint-disable-next-line no-empty-pattern -- see above
   recorder: async ({}, use) => {
-    const seen: unknown[] = [];
+    const seen: UnitMeta[] = [];
+    let token = "";
+
     await use({
-      activities: {
-        echo: (value: string) => {
-          const unit = currentUnit();
-          seen.push(unit && { kind: "activity", id: unit.unitId, traceId: unit.traceId });
-          return Promise.resolve(value);
-        },
+      build: (host) => {
+        // Forwards to the real host; the only addition is the capture, so the
+        // unit, its ambient record and its accounting are all genuinely the
+        // kernel's. Observing `meta` here is the only way to assert it — the
+        // ambient record deliberately does not carry it.
+        const watched: RuntimeHost<typeof Greeting> = {
+          ctx: host.ctx,
+          run: (meta, work) => {
+            seen.push(meta);
+            return host.run(meta, work);
+          },
+        };
+        return asActivities(watched, {
+          echo: (_ctx, _signal, value: string) => {
+            token = activityInfo().base64TaskToken;
+            return Promise.resolve(value);
+          },
+        });
       },
       seen: () => seen,
+      taskToken: () => token,
     });
   },
 ```
 
-Import `currentUnit` from `@btravstack/start`. **Note the shape:** `currentUnit()` returns a `UnitRecord`, whose `unitId` is the kernel's own minted id — the task token goes into `UnitMeta.id`, which the record does not expose. So this fixture records `traceId` faithfully and `id` only as "some string". If the test needs to pin the task token exactly, assert it inside the activity instead and report that you changed the approach.
+Import `UnitMeta` and `RuntimeHost` from `@btravstack/start`, `activityInfo` from `@temporalio/activity`, and `asActivities` from `./activity-units.js`.
 
 - [ ] **Step 3: Run and watch it fail**
 
@@ -1071,6 +1089,6 @@ not mapped here: `declareActivitiesHandler` already does it.
 
 1. **`workflowsPath` under vitest.** Task 2 points at a `.js` sibling; vitest's transform may not resolve it for the workflow bundler, which runs in its own worker. Fallback stated in the task: prebundle with `bundleFor` and report the change.
 2. **Task 3 may pass on arrival** if `fromPromise`'s qualification is already right from Task 2. The task says to stop and report rather than pretend a red happened — the `-http` plan shipped exactly that mistake and it took a review round to catch.
-3. **Task 4's `recorder` fixture cannot see `UnitMeta.id`** — `currentUnit()` exposes the kernel's `unitId`, not the meta's `id`. The task names this and offers asserting inside the activity instead. Do not let the test quietly assert something weaker than the task's title claims.
+3. **Task 4 observes `UnitMeta` through a host proxy**, because `currentUnit()` exposes the kernel's `unitId` and not the meta's `id`. The proxy forwards to the real host and only records, so nothing is stubbed. A pre-flight scan caught the first draft asserting `expect.any(String)` while its title claimed the task token — if that assertion ever weakens back, it is testing nothing.
 4. **The `as never` casts** in `asActivities` and `activityUnits`. Both are real: `host.run` is generic in `T`/`E` and a heterogeneous activity record erases them. Each needs an inline reason or a better signature. If a reviewer can remove one, it should be removed.
 5. **100% coverage is a real constraint** and Task 7 enforces it. The `-http` plan wrongly declared one branch unreachable; the most likely candidates here are the `traceId` fallback to `activityId` (needs an activity started outside a workflow) and `whenAborted`'s already-aborted arm. Both look testable — check before believing otherwise.
