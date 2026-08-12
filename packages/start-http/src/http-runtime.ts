@@ -102,11 +102,16 @@ const listen = <Needs extends AnyPort>(
             return closedOf(response);
           })
           .recoverDefect((cause) => {
-            // Reached only if the response machinery itself failed, which leaves
-            // nothing left to write. Killing the socket is the one remaining
-            // courtesy: a client that would otherwise hang gets a reset.
-            response.destroy(cause instanceof Error ? cause : undefined);
-            return Ok();
+            // `destroy` is the last courtesy left when the response machinery
+            // itself failed: a client that would otherwise hang gets a reset.
+            // Guarded so this callback cannot throw — `recoverDefect` would wrap
+            // a throw here into a FRESH defect, and the `void` below would drop it.
+            try {
+              response.destroy(cause instanceof Error ? cause : undefined);
+            } catch {
+              // nothing left to try; the socket is already unusable
+            }
+            return OkAsync();
           });
       });
 
