@@ -11,8 +11,8 @@ import { PersistenceModule } from "@btravstack/start-example-order-infrastructur
  * The composition root, and the only file in the example that knows both halves
  * exist. `ApplicationModule` leaves `OrderRepository` unmet; `PersistenceModule`
  * provides it. Importing both is what closes di's arity gate — and the three
- * ports re-exported here are exactly what `orpcRuntime` declares as its needs,
- * which closes the kernel's.
+ * ports re-exported here are exactly what `main.ts` declares as `httpRuntime`'s
+ * needs, which closes the kernel's.
  *
  * `PersistenceModule`'s database provider is resourceful, so this module carries
  * a `Scope` need that only `Module.scoped` discharges — which is what `start`

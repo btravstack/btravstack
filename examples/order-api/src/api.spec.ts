@@ -5,7 +5,7 @@ import { describe, expect, vi } from "vitest";
 import { OrderApiModule } from "./module.js";
 import { it } from "./test-fixtures.js";
 
-describe("orpcRuntime", () => {
+describe("order-api", () => {
   it("carries a real oRPC call through to the DI-wired use case", async ({ serve, clientFor }) => {
     // GIVEN the real composition root, served on an ephemeral port
     const client = await clientFor(serve(OrderApiModule));
@@ -44,7 +44,7 @@ describe("orpcRuntime", () => {
     const info = app.runtimeInfo();
 
     // THEN the port it actually got is readable, with no hook of its own
-    await expect(info).toBeOkWith({ port: expect.any(Number), prefix: "/rpc" });
+    await expect(info).toBeOkWith({ port: expect.any(Number) });
   });
 
   it("turns a domain Err into a typed, inferable CONFLICT — a value, not a thrown 500", async ({
@@ -210,49 +210,6 @@ describe("orpcRuntime", () => {
 
     // THEN the call ran to completion
     await expect(inFlight).toBeOkWith({ id: "o-1", quantity: 1 });
-  });
-
-  it("keeps its own minted trace id when x-request-id arrives empty", async ({
-    serve,
-    tapped,
-    keepAlive,
-  }) => {
-    // GIVEN a caller that sends the correlation header but leaves it blank
-    const app = serve(tapped.api);
-    const held = await keepAlive.call(app, { "x-request-id": "" });
-
-    // WHEN the call has been served
-    await held.head();
-
-    // THEN the unit kept the id it minted. `traceId` falls back to `meta.id`
-    // only when it is nullish, and `""` is not — so an empty header would win
-    // and every request from that caller would log the same blank id, defeating
-    // the ambient record exactly as a route template would.
-    expect(tapped.traces()).toEqual([expect.not.stringContaining("[]")]);
-  });
-
-  it("closes a keep-alive connection that was busy when the drain began", async ({
-    serve,
-    gate,
-    keepAlive,
-  }) => {
-    // GIVEN a keep-alive connection whose call is held open inside the
-    // repository, so `closeIdleConnections()` cannot reach it
-    const app = serve(gate.api);
-    const held = await keepAlive.call(app);
-    await gate.arrived;
-
-    // WHEN the drain has genuinely stopped accepting, and the call then
-    // completes on that still-open connection
-    app.requestDrain();
-    await keepAlive.stoppedAccepting(app);
-    gate.release();
-
-    // THEN the response tells the client the connection is finished. Left
-    // `keep-alive`, node serves further requests down it for the whole drain
-    // window — new kernel units the drain exists to stop admitting, and ones
-    // that are then abandoned at a deadline they never had time to meet.
-    await expect(held.head()).resolves.toContain("Connection: close");
   });
 
   it("counts the finished call as completed in the drain report", async ({

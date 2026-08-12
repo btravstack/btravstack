@@ -257,8 +257,8 @@ gate.
   `'error'` throws, which the kernel's own `uncaughtException` handler would
   turn into a whole-application teardown over a fault in the health endpoint.
   The socket is `unref`'d and dispose-only, so the replacement ignores rather
-  than reports. `examples/order-api`'s runtime carries the same pair for the
-  same reason.
+  than reports. `@btravstack/start-http`'s `httpRuntime` carries the same pair
+  for the same reason.
 
 - **`registry.closed()` is monotonic, and that is why the report is honest.**
   `completed` is `closed() - closedAtStart`. The obvious

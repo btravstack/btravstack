@@ -1,9 +1,11 @@
 import { runMain, start } from "@btravstack/start";
+import { FindOrder, Logger, PlaceOrder } from "@btravstack/start-example-order-application";
+import { httpRuntime } from "@btravstack/start-http";
 import { P } from "unthrown";
 
 import { describeEnvIssues, readEnv, type Env } from "./env.js";
+import { apiHandler } from "./handler.js";
 import { OrderApiModule } from "./module.js";
-import { orpcRuntime } from "./orpc-runtime.js";
 
 /**
  * The whole process, in one expression: validate the environment, build the
@@ -20,7 +22,11 @@ import { orpcRuntime } from "./orpc-runtime.js";
 const serve = (env: Env): Promise<void> =>
   runMain(
     start(OrderApiModule, {
-      runtime: orpcRuntime({ port: env.PORT }),
+      runtime: httpRuntime({
+        port: env.PORT,
+        needs: [PlaceOrder, FindOrder, Logger],
+        handler: apiHandler,
+      }),
       probes: { port: env.PROBE_PORT },
     }),
   );

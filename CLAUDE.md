@@ -19,8 +19,9 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/start` is the single published
-package; `examples/` holds eight private ones — a clean-architecture application
+pnpm workspace + turbo monorepo. `packages/` holds two published packages,
+`start` (the kernel) and `start-http` (the HTTP runtime); `examples/` holds
+eight private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three different runtimes (`order-api`, `order-worker`, `order-temporal`), with
 each transport's contract in a package of its own (`order-api-contract`,
@@ -88,8 +89,10 @@ hook). User-facing changes need a changeset.
    convention with no enforcement. Do not describe it as enforced.
 
 3. **The kernel never maps an outcome to a transport.** `Result` → HTTP status
-   belongs to `@btravstack/start-http`, `Result` → ack/nack/DLQ to
-   `-amqp`, `Result` → activity failure to `-temporal`. `RunUnit` is
+   belongs to the handler an application hands `@btravstack/start-http`
+   (oRPC, Hono, a bare function) — the package itself declines that mapping,
+   deliberately — `Result` → ack/nack/DLQ to `-amqp`, `Result` → activity
+   failure to `-temporal`. `RunUnit` is
    transparent to the work's own channels: whatever `Result` a handler produces
    is what the runtime receives back (`units.ts`'s `run` ends in
    `.flatMap((result) => result)` — it observes only that the unit _settled_).
@@ -342,19 +345,51 @@ checker already verifies.
   stopped and rethrown unchanged, so a shutdown defect can never mask the
   assertion that actually failed.
 
+### `@btravstack/start-http`
+
+- **`httpRuntime(options)` → `Runtime<Needs, HttpInfo>`** — binds `node:http`,
+  one kernel unit per request. `HttpOptions<Needs>` — `port` (required; `0`
+  lets the OS pick, read back via `runtimeInfo()`), `hostname` (default
+  `0.0.0.0` — a pod, not a laptop), `needs`, `handler`. `HttpInfo` is
+  `{ port }`, published on `Serving.info` once bound.
+- **`HttpHandler<Needs>`** —
+  `(request, response, ctx: Context<InstanceType<Needs>>, signal) => PromiseLike<unknown>`.
+  Returns the handled-or-not signal, not the response body: the package
+  decides `404` (resolved without writing) or `500` (rejected before writing)
+  from it, and never double-writes once headers are on the wire.
+- **The guarantee**: the unit's lifetime **is** the response's — it does not
+  close until the response's `'close'` event fires — so there is no seam for a
+  late write to land in, and `id: randomUUID()` is minted per request (a
+  non-blank inbound `x-request-id` becomes `traceId`), so the two contracts a
+  runtime owes (see above) are structural here rather than left to a caller's
+  care.
+- **Drain**: `stopAccepting` retires every open response — an unsent header
+  gets `Connection: close`, a sent one ends its socket on `'finish'` — and
+  `stop()` destroys what is still open. `closeIdleConnections()` alone would
+  miss a response with a request in flight; that is why retirement is tracked
+  per-response rather than left to it.
+- **Not included, deliberately**: routing, middleware, `Result` → HTTP status,
+  HTTPS, HTTP/2 — see the package README's _"What it does not do"_ for why
+  each is a non-goal.
+- Peer dependencies: `@btravstack/start`, `@btravstack/di`, `unthrown`.
+
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All eight
-  workspaces run under the same six commands as the kernel — 84 specs plus
+  workspaces run under the same six commands as the kernel — 83 specs plus
   four `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
   example that stops compiling, stops linting or stops passing fails CI exactly
   as `packages/start` would. Three of the four needs-gate files pin **`start`'s**
   runtime-needs gate (`order-api`, `order-worker`, `order-temporal`); the fourth,
   `order-application`'s, pins **di's** `UNSATISFIED DEPENDENCIES` gate on
   `Module.scoped`. They are different gates and easy to conflate.
-  They are also the only place a runtime with a **non-empty `needs`** meets a
-  real module, which is what exercises `start`'s phantom rest-tuple gate and
-  `RuntimeHost`'s `Context<InstanceType<Needs>>` end to end.
+  A runtime with a **non-empty `needs`** meeting a real module now exercises
+  `start`'s phantom rest-tuple gate and `RuntimeHost`'s
+  `Context<InstanceType<Needs>>` in two places: here, and in
+  `packages/start-http/src/test-fixtures.ts`'s `Greeting` port / `AppModule`,
+  driven by its 12 `http-runtime.spec.ts` specs. `examples/` stays the only
+  place the gate is pinned by a **type test** — `start-http` ships no
+  `*.test-d.ts`.
 - **`examples/order-temporal` is the one workspace whose suite needs the
   network, and only on a cold cache.** It runs a real `@temporalio/worker`
   Worker against `@temporalio/testing`'s **time-skipping test server** — a
@@ -382,6 +417,12 @@ checker already verifies.
   tasks carry a `^generate` edge so a dependent workspace gets one too. The
   database is SQLite **in memory** with the schema applied by hand —
   deliberately no Docker, so `pnpm test` stays self-contained on any machine.
+- **`examples/order-api` consumes `@btravstack/start-http` rather than
+  hand-rolling a transport.** It supplies only `apiHandler` — the per-request
+  `Module.forkScope` and the oRPC router — and reads `port` back off
+  `Serving.info`; binding, the drain and the trace-id policy are the package's.
+  This is what makes the package's needs gate a real one: `httpRuntime<Needs>`
+  infers `Needs` from the `needs` array the same way a hand-rolled runtime did.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
@@ -396,20 +437,21 @@ checker already verifies.
   `@temporal-contract/testing` and is deliberately not installed: the
   Docker-free path is not merely unused here, it is unresolvable.
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
-  dependencies — the dual-copy hazard is real for both (di's port identity and
-  unthrown's `isResult` each compare across copies). `node:` builtins only
-  otherwise. Do not add a dependency.
-- `declarationMap: false` — the published tarball has no `src/`, so maps would
-  be dead ends.
+  dependencies of `start` — the dual-copy hazard is real for both (di's port
+  identity and unthrown's `isResult` each compare across copies). `start-http`
+  peers on both of those plus `@btravstack/start` itself, for the same reason.
+  `node:` builtins only otherwise. Do not add a dependency.
+- `declarationMap: false` on both published packages — the published tarball
+  has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- The published package claims `engines: { node: ">=20" }` while the root claims
-  `>=22.19`. The divergence is **deliberate**: the root floor is the dev
-  toolchain's, the package's is a compatibility promise to consumers. Do not
-  align them for tidiness — raising the published floor is a breaking change.
+- Both published packages claim `engines: { node: ">=20" }` while the root
+  claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
+  toolchain's, a package's is a compatibility promise to consumers. Do not
+  align them for tidiness — raising a published floor is a breaking change.
 - **oxlint rules are binding: no `interface` (use `type`), no `any` (use
   `unknown`).** Genuine exceptions carry a targeted `oxlint-disable` **with a
   reason**. Two are structural: `units.ts`'s `UnitWork` return union
@@ -579,6 +621,12 @@ A sixth rule is about production code that tests keep honest:
 Shipped: the whole kernel — phase tracker, injectable clock, ambient record,
 unit registry, `Runtime` contract, `start`, draining, signals, uncaught
 handling, probes, `runMain`, the testing entry point, and the invariants suite.
+Also `@btravstack/start-http`, the first runtime package — lifecycle only: it
+binds (publishing the real port on `Serving.info`), opens one kernel unit per
+request, drains by genuinely refusing new work and retiring busy keep-alive
+connections, and stops by destroying what is left. Routing, middleware and
+`Result` → HTTP status are deliberately not included — see its README's _"What
+it does not do"_ for why each is a non-goal rather than a gap.
 Plus the eight `examples/` workspaces: the clean-architecture application and its
 **three** deployments, `order-api` (oRPC), `order-worker` (an in-memory queue)
 and `order-temporal` (a Temporal worker over `temporal-contract`), which
@@ -589,7 +637,7 @@ depends on neither.
 
 Deferred, deliberately:
 
-- `@btravstack/start-http`, `-amqp`, `-temporal` — the runtime implementations.
+- `@btravstack/start-amqp`, `-temporal` — the runtime implementations.
   **They do not exist**; the `Runtime` contract is the whole of what this
   package owes them. Do not write as though they ship.
   `examples/order-temporal` is an _example_ of one, not `-temporal`: it is
@@ -605,25 +653,13 @@ Deferred, deliberately:
 - Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed
   for it; the `Module.forkScope` call lands when the first runtime needs a
   per-request transaction.
-- **A test for `examples/order-api`'s permanent server `'error'` listener.**
-  The fix ships guarded only by its kernel twin, `probes.spec.ts` →
-  _"does not throw when the server emits an error after binding"_ — the two are
-  the same two lines for the same reason. Testing the example's own copy needs
-  the raw `http.Server`, which means `vi.mock("node:http")` hoisted above the
-  spec's `describe` (`vi.spyOn` is not an option: node builtins fail with
-  `Cannot redefine property: createServer`). That breaks **Test conventions
-  rule 1** in the one workspace whose spec _shape_ is the teaching material, to
-  guard a mechanism already guarded elsewhere. Revisit if a second example
-  needs the same capture, at which point the mock is worth a shared fixture
-  rather than a one-off.
-- **Coverage of `closeAfterResponse`'s `headersSent` branch** in
-  `examples/order-api/src/orpc-runtime.ts`. It is unreachable through this
-  router — `endWith` puts `writeHead` and `end` adjacent with no await between,
-  and oRPC serialises these small bodies in one go — so no spec can reach it
-  without inventing a streamed route purely to be tested. It exists because the
-  drain's guarantee is "no reuse", not "no reuse where we caught the header in
-  time", and a streamed response _would_ reach it. Adding one is the trigger.
-  Examples carry no coverage threshold, so this costs nothing at the gate.
+- **A `docs-examples.test-d.ts` for `start-http`.** `packages/start`'s exists
+  precisely so its two READMEs cannot drift from `runtime.ts` / `drain-report.ts`
+  without failing `pnpm typecheck`; `packages/start-http/README.md`'s code
+  samples have no such gate and are compiled by nothing. Deliberately not built
+  in this wave — one package's worth of samples did not yet justify the
+  harness. Add it the next time a `start-http` README sample is found to have
+  drifted, the same way this gap itself was found.
 - ~~Bringing `packages/start`'s 14 spec files under the Test conventions.~~
   **Closed by decision, not by doing it.** An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since

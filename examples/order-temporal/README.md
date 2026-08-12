@@ -277,7 +277,8 @@ kernel's deadline rather than Temporal's:
 const info = (await app.runtimeInfo()).get(); // { taskQueue: "orders", namespace: "default" }
 ```
 
-`order-api` publishes `{ port, prefix }` on the same channel and `order-worker`
+`order-api` publishes `{ port }` — `@btravstack/start-http`'s own `HttpInfo`,
+since the runtime is the package's now — and `order-worker` publishes
 `{ queue, concurrency }`. No two of the three shapes share a field, which is
 exactly why `Info` is the runtime's own type parameter rather than anything the
 kernel models. A Temporal worker's identity **is** its task queue and namespace:

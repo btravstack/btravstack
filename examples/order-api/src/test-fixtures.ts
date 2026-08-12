@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { once } from "node:events";
-import { connect, type Socket } from "node:net";
 
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { start, type RunningApp } from "@btravstack/start";
@@ -12,14 +10,15 @@ import {
   PlaceOrder,
 } from "@btravstack/start-example-order-application";
 import { placeOrder, type Order } from "@btravstack/start-example-order-domain";
+import { httpRuntime, type HttpInfo } from "@btravstack/start-http";
 import { fromSafePromise, OkAsync } from "unthrown";
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
+import { apiHandler, type ApiNeeds } from "./handler.js";
 import { OrderApiModule } from "./module.js";
-import { orpcRuntime, type OrderApiInfo } from "./orpc-runtime.js";
 
-type App<E> = RunningApp<E, OrderApiInfo>;
+type App<E> = RunningApp<E, HttpInfo>;
 
 /**
  * `X` is pinned to the three ports the runtime declares rather than left
@@ -27,7 +26,7 @@ type App<E> = RunningApp<E, OrderApiInfo>;
  * site, and no proof is available inside a helper generic in the module's own
  * exports.
  */
-type ApiPorts = PlaceOrder | FindOrder | Logger;
+type ApiPorts = InstanceType<ApiNeeds>;
 
 type ServeOptions = {
   readonly drainTimeoutMs?: number;
@@ -134,80 +133,6 @@ const portOf = async <E>(app: App<E>): Promise<number> => {
   return info.port;
 };
 
-/**
- * A raw keep-alive connection, so a spec can hold one **busy** across a drain.
- *
- * `fetch` cannot express either half: undici owns its connection pool, and
- * `Connection` is hop-by-hop so it never reaches the `Response` — nor will
- * `fetch` send a header with an empty value, which one spec here is entirely
- * about. And busy is the point: `server.closeIdleConnections()` reaches every
- * *idle* connection and no others, so a busy one is the only population that
- * can still be served after the drain.
- */
-const keepAliveOf = () => {
-  const opened: Socket[] = [];
-
-  return {
-    /**
-     * Sends one `orders.find` call down a fresh keep-alive connection and hands
-     * back its response head. Pair it with `gate` so the spec knows the call has
-     * genuinely reached the repository — and the connection is therefore busy —
-     * before the drain starts.
-     */
-    call: async <E>(app: App<E>, headers: Readonly<Record<string, string>> = {}) => {
-      const socket = connect(await portOf(app), "127.0.0.1");
-      // A raw socket with no `'error'` listener throws on reset, and a drain
-      // resets it by design.
-      socket.on("error", () => {});
-      opened.push(socket);
-      await once(socket, "connect");
-
-      let received = "";
-      const head = new Promise<string>((resolve) => {
-        socket.on("data", (chunk: Buffer) => {
-          received += chunk.toString("utf8");
-          const end = received.indexOf("\r\n\r\n");
-          if (end !== -1) resolve(received.slice(0, end));
-        });
-      });
-
-      const body = '{"json":{"id":"o-1"}}';
-      // Written raw because `fetch` will not send a header with an empty value,
-      // which is precisely the input one of these specs is about.
-      const extra = Object.entries(headers)
-        .map(([name, value]) => `${name}: ${value}\r\n`)
-        .join("");
-      socket.write(
-        `POST /rpc/orders/find HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
-          `Content-Type: application/json\r\nContent-Length: ${body.length}\r\n` +
-          `Connection: keep-alive\r\n${extra}\r\n${body}`,
-      );
-
-      return { head: () => head };
-    },
-    /**
-     * Resolves once the listener is genuinely closed, which is what `drain`
-     * promises. A fresh connection being refused is the only honest observable —
-     * the phase moves to `"draining"` a tick before `stopAccepting` runs.
-     */
-    stoppedAccepting: async <E>(app: App<E>): Promise<void> => {
-      const port = await portOf(app);
-      await vi.waitUntil(async () => {
-        const probe = connect(port, "127.0.0.1");
-        const refused = await new Promise<boolean>((resolve) => {
-          probe.once("connect", () => resolve(false));
-          probe.once("error", () => resolve(true));
-        });
-        probe.destroy();
-        return refused;
-      });
-    },
-    closeAll: (): void => {
-      for (const socket of opened) socket.destroy();
-    },
-  };
-};
-
 export type ApiFixtures = {
   /**
    * Starts an app and registers its shutdown. The teardown runs even when the
@@ -221,7 +146,6 @@ export type ApiFixtures = {
   readonly unmodelled: ReturnType<typeof unmodelledApi>;
   readonly gate: ReturnType<typeof gatedApi>;
   readonly tapped: ReturnType<typeof tappedApi>;
-  readonly keepAlive: ReturnType<typeof keepAliveOf>;
 };
 
 /**
@@ -238,7 +162,12 @@ export const it = test.extend<ApiFixtures>({
 
     const serve: Serve = (module, options) => {
       const app = start(module, {
-        runtime: orpcRuntime({ port: 0 }),
+        runtime: httpRuntime({
+          port: 0,
+          hostname: "127.0.0.1",
+          needs: [PlaceOrder, FindOrder, Logger],
+          handler: apiHandler,
+        }),
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
@@ -288,12 +217,5 @@ export const it = test.extend<ApiFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   tapped: async ({}, use) => {
     await use(tappedApi());
-  },
-
-  // oxlint-disable-next-line no-empty-pattern -- see above
-  keepAlive: async ({}, use) => {
-    const keepAlive = keepAliveOf();
-    await use(keepAlive);
-    keepAlive.closeAll();
   },
 });

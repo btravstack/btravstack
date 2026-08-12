@@ -43,8 +43,9 @@ const AppModule = Module("App")({
 });
 
 // A runtime owns the transport; the kernel owns the lifecycle. This one is a
-// timer, so the sample stays self-contained — `@btravstack/start-http` and its
-// siblings are not written yet.
+// timer, so the sample stays self-contained — no published runtime models a
+// timer, and `@btravstack/start-http` would pull in a real dependency this
+// sample doesn't need.
 const ticker: Runtime<typeof Greeter> = {
   name: "ticker",
   needs: [Greeter],

@@ -188,6 +188,9 @@ importers:
       '@btravstack/start-example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
+      '@btravstack/start-http':
+        specifier: workspace:*
+        version: link:../../packages/start-http
       '@orpc/client':
         specifier: 'catalog:'
         version: 2.0.0-beta.23
@@ -511,6 +514,39 @@ importers:
       '@btravstack/di':
         specifier: 'catalog:'
         version: 0.1.0(unthrown@5.2.0)
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.2.0
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.1.2
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 4.1.10(vitest@4.1.10)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(oxc-resolver@11.24.2)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.2.0
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.49.2)(yaml@2.9.0)
+
+  packages/start-http:
+    devDependencies:
+      '@btravstack/di':
+        specifier: 'catalog:'
+        version: 0.1.0(unthrown@5.2.0)
+      '@btravstack/start':
+        specifier: workspace:*
+        version: link:../start
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0

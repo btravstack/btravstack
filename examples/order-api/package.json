@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/start-example-order-api",
   "private": true,
-  "description": "The transport layer of the clean-architecture example: an oRPC router over node:http, driven as a start Runtime",
+  "description": "The transport layer of the clean-architecture example: an oRPC router served over node:http by @btravstack/start-http",
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "type": "module",
@@ -21,6 +21,7 @@
     "@btravstack/start-example-order-application": "workspace:*",
     "@btravstack/start-example-order-domain": "workspace:*",
     "@btravstack/start-example-order-infrastructure": "workspace:*",
+    "@btravstack/start-http": "workspace:*",
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
     "@unthrown/orpc": "catalog:",
