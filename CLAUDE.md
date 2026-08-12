@@ -605,6 +605,25 @@ Deferred, deliberately:
 - Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed
   for it; the `Module.forkScope` call lands when the first runtime needs a
   per-request transaction.
+- **A test for `examples/order-api`'s permanent server `'error'` listener.**
+  The fix ships guarded only by its kernel twin, `probes.spec.ts` →
+  _"does not throw when the server emits an error after binding"_ — the two are
+  the same two lines for the same reason. Testing the example's own copy needs
+  the raw `http.Server`, which means `vi.mock("node:http")` hoisted above the
+  spec's `describe` (`vi.spyOn` is not an option: node builtins fail with
+  `Cannot redefine property: createServer`). That breaks **Test conventions
+  rule 1** in the one workspace whose spec _shape_ is the teaching material, to
+  guard a mechanism already guarded elsewhere. Revisit if a second example
+  needs the same capture, at which point the mock is worth a shared fixture
+  rather than a one-off.
+- **Coverage of `closeAfterResponse`'s `headersSent` branch** in
+  `examples/order-api/src/orpc-runtime.ts`. It is unreachable through this
+  router — `endWith` puts `writeHead` and `end` adjacent with no await between,
+  and oRPC serialises these small bodies in one go — so no spec can reach it
+  without inventing a streamed route purely to be tested. It exists because the
+  drain's guarantee is "no reuse", not "no reuse where we caught the header in
+  time", and a streamed response _would_ reach it. Adding one is the trigger.
+  Examples carry no coverage threshold, so this costs nothing at the gate.
 - ~~Bringing `packages/start`'s 14 spec files under the Test conventions.~~
   **Closed by decision, not by doing it.** An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since
