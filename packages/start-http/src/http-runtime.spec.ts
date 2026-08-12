@@ -105,4 +105,30 @@ describe("httpRuntime", () => {
     // THEN a failure cannot strand a unit either
     expect(response.status).toBe(500);
   });
+
+  it("adopts a non-blank x-request-id as the trace id", async ({ serve, traced }) => {
+    // GIVEN a caller that supplies a correlation id
+    const { origin } = await serve(traced.handler);
+
+    // WHEN it makes a request
+    await fetch(origin, { headers: { "x-request-id": " abc-123 " } });
+
+    // THEN the id crossed the process boundary, trimmed, so a line logged here
+    // joins a trace that started elsewhere
+    expect(traced.seen()).toEqual(["abc-123"]);
+  });
+
+  it("keeps its own minted trace id when x-request-id is blank", async ({ serve, traced }) => {
+    // GIVEN a caller that sends the header but leaves it empty
+    const { origin } = await serve(traced.handler);
+
+    // WHEN it makes a request
+    await fetch(origin, { headers: { "x-request-id": "" } });
+
+    // THEN the minted id wins. `traceId` falls back to `meta.id` only when
+    // nullish, and `""` is not — so a blank header would hand every request from
+    // that caller the same empty id, defeating the ambient record exactly as a
+    // route template would.
+    expect(traced.seen()).toEqual([expect.not.stringMatching(/^$/u)]);
+  });
 });

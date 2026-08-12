@@ -24,7 +24,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 
 import { Module, Port, Provider } from "@btravstack/di";
-import { start, type RunningApp } from "@btravstack/start";
+import { currentUnit, start, type RunningApp } from "@btravstack/start";
 import { expect, test } from "vitest";
 
 import { httpRuntime, type HttpHandler, type HttpInfo } from "./http-runtime.js";
@@ -61,6 +61,11 @@ export type HttpFixtures = {
     readonly handler: HttpHandler<typeof Greeting>;
     readonly arrived: Promise<void>;
     readonly release: () => void;
+  };
+  /** A handler that records the ambient record the kernel opened for its unit. */
+  readonly traced: {
+    readonly handler: HttpHandler<typeof Greeting>;
+    readonly seen: () => readonly (string | undefined)[];
   };
 };
 
@@ -159,5 +164,17 @@ export const it = test.extend<HttpFixtures>({
     });
 
     open();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  traced: async ({}, use) => {
+    const seen: (string | undefined)[] = [];
+    await use({
+      handler: (_request, response, _ctx, _signal) => {
+        seen.push(currentUnit()?.traceId);
+        return new Promise<void>((done) => response.end("ok", () => done()));
+      },
+      seen: () => seen,
+    });
   },
 });

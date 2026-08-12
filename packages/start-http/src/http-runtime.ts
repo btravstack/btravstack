@@ -161,13 +161,19 @@ const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
  * never taken from the route: a category there would give every request the same
  * trace id and silently defeat the ambient record. An inbound `x-request-id`
  * becomes the trace id.
+ *
+ * Only a NON-BLANK header is adopted: the kernel falls back to `meta.id` when
+ * `traceId` is nullish, and `""` is not, so an empty header would win and hand
+ * a caller's every request the same blank id — defeating the ambient record
+ * exactly as a route template would.
  */
 const metaFor = (request: IncomingMessage): UnitMeta => {
   const inbound = request.headers["x-request-id"];
+  const traceId = typeof inbound === "string" ? inbound.trim() : "";
   return {
     kind: "http",
     id: randomUUID(),
-    ...(typeof inbound === "string" ? { traceId: inbound } : {}),
+    ...(traceId === "" ? {} : { traceId }),
   };
 };
 
