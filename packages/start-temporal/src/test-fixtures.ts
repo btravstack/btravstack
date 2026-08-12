@@ -6,6 +6,7 @@ import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravs
 import { activityInfo } from "@temporalio/activity";
 import type { Client } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
+import { OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
 import { asActivities } from "./activity-units.js";
@@ -159,7 +160,7 @@ export const it = test.extend<TemporalFixtures>({
         return asActivities(watched, {
           echo: (_ctx, _signal, value: string) => {
             token = activityInfo().base64TaskToken;
-            return Promise.resolve(value);
+            return OkAsync(value);
           },
         });
       },

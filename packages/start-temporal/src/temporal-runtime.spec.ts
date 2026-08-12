@@ -1,5 +1,7 @@
+import { OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
+import { asActivities } from "./activity-units.js";
 import { it } from "./test-fixtures.js";
 
 describe("temporalRuntime", () => {
@@ -52,5 +54,23 @@ describe("temporalRuntime", () => {
     expect(recorder.seen()).toEqual([
       { kind: "activity", id: recorder.taskToken(), traceId: "wf-unit-1" },
     ]);
+  });
+
+  it("hands the workflow the activity's value, not the Result wrapping it", async ({ serve }) => {
+    // GIVEN an activity returning Ok
+    const { client, taskQueue } = await serve((host) =>
+      asActivities(host, { echo: (_ctx, _signal, value: string) => OkAsync(value) }),
+    );
+
+    // WHEN a workflow awaits it
+    const result = await client.workflow.execute("runEcho", {
+      taskQueue,
+      workflowId: "wf-unwrap-1",
+      args: ["hello"],
+    });
+
+    // THEN it receives the value itself — returning the AsyncResult unwrapped
+    // would give the workflow a Result object instead
+    expect(result).toBe("hello");
   });
 });

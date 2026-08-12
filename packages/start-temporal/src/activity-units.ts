@@ -1,12 +1,23 @@
 import type { AnyPort, Context } from "@btravstack/di";
 import type { RuntimeHost, UnitMeta } from "@btravstack/start";
 import { activityInfo } from "@temporalio/activity";
+import { P, type AsyncResult } from "unthrown";
 
+/**
+ * An activity implementation, Result-first like the rest of this stack.
+ * Returning a plain promise is a type error on purpose: the kernel's `UnitWork`
+ * requires a Result-bearing return, and a non-Result reaching `units.ts`'s
+ * `.flatMap((result) => result)` becomes a `Defect` rather than a value.
+ */
 export type ActivityImpl<Needs extends AnyPort> = (
   ctx: Context<InstanceType<Needs>>,
   signal: AbortSignal,
   ...args: never[]
-) => unknown;
+  // A heterogeneous `impls` record erases each implementation's own error
+  // type, so there is no concrete domain error to name in this boundary
+  // type — `asActivities` is what turns every `Err`/`Defect` into a throw.
+  // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- see above
+) => AsyncResult<unknown, unknown>;
 
 /**
  * `UnitMeta.id` must be unique per unit, and a workflow id is **not** one: an
@@ -29,6 +40,13 @@ const metaFor = (): UnitMeta => {
   };
 };
 
+// The activity boundary IS the edge of the Result world: Temporal signals
+// failure by throwing, and its retry policy reads the thrown cause.
+const raise = (cause: unknown): never => {
+  // oxlint-disable-next-line unthrown/no-throw -- see above
+  throw cause;
+};
+
 /**
  * Wrap plain implementations so each attempt becomes one kernel unit. The
  * `temporal-contract` path uses `activityUnits` instead; both produce a record
@@ -41,11 +59,25 @@ export const asActivities = <Needs extends AnyPort>(
   Object.fromEntries(
     Object.entries(impls).map(([name, impl]) => [
       name,
-      (...args: never[]) =>
+      async (...args: never[]) =>
+        // THE BOUNDARY. Temporal expects a value or a throw, and an
+        // `AsyncResult` is a thenable — returned as-is, Temporal would await
+        // it and hand the workflow a `Result` OBJECT instead of the
+        // activity's output. So the Result is eliminated here: `Ok` unwraps
+        // to the value, `Err` and `Defect` throw their cause.
+        //
         // `host.run`'s work callback is generic in `T`/`E`; a heterogeneous
-        // `impls` record erases both, so `impl`'s `unknown` return cannot be
-        // shown to satisfy `AsyncResult<T, E> | Promise<Result<T, E>> |
-        // Result<T, E>` without naming T/E, which this record cannot do.
-        host.run(metaFor(), (ctx, signal) => impl(ctx, signal, ...args) as never),
+        // `impls` record erases both, so `impl`'s return cannot be shown to
+        // satisfy `AsyncResult<T, E> | Promise<Result<T, E>> | Result<T, E>`
+        // without naming T/E, which this record cannot do.
+        (await host.run(metaFor(), (ctx, signal) => impl(ctx, signal, ...args) as never)).match({
+          ok: (value: unknown) => value,
+          // Generic `E`: a heterogeneous activity record erases the error
+          // type, so no arm list can prove exhaustiveness and the catch-all
+          // is the only arm that can terminate the match.
+          // oxlint-disable-next-line unthrown/no-catch-all-pattern -- generic `E`, see above
+          errCases: (matcher) => matcher.with(P._, (error: unknown) => raise(error)),
+          defect: (cause: unknown) => raise(cause),
+        }),
     ]),
   );
