@@ -1,3 +1,8 @@
+> **SUPERSEDED 2026-08-13** by `docs/superpowers/plans/2026-08-13-start-temporal-middleware.md`.
+> Tasks 1–3 of this plan are done and reviewed clean. Tasks 4–9 described a
+> two-integration package; the raw `@temporalio/worker` path no longer exists, so
+> they no longer apply. Do not work from this document.
+
 # `@btravstack/start-temporal` Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
