@@ -805,7 +805,7 @@ const server: Server = createServer((request, response) => {
   // can still be present.
   void host
     .run(metaFor(request), (ctx, signal) => {
-      void answer(options.handler(request, response, ctx, signal), response);
+      void answer(options.handler(request, response, ctx, signal));
       // The unit's lifetime IS the response's. This is what makes the
       // kernel's "flush inside the unit" contract structural rather than
       // documented: there is no way to write late, because the unit is
@@ -840,30 +840,29 @@ const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
  * `UnitMeta.traceId` defaults to `id`, so `id` is minted fresh per request and
  * never taken from the route: a category there would give every request the same
  * trace id and silently defeat the ambient record. An inbound `x-request-id`
- * becomes the trace id — but only a non-blank one, because the kernel falls back
- * to `meta.id` when `traceId` is nullish and `""` is not, so an empty header
- * would win and hand a caller's every request the same blank id.
+ * becomes the trace id.
  */
 const metaFor = (request: IncomingMessage): UnitMeta => {
   const inbound = request.headers["x-request-id"];
-  const traceId = typeof inbound === "string" ? inbound.trim() : "";
   return {
     kind: "http",
     id: randomUUID(),
-    ...(traceId === "" ? {} : { traceId }),
+    ...(typeof inbound === "string" ? { traceId: inbound } : {}),
   };
 };
 ```
 
-For this task `answer` is a stub that awaits the handler and does nothing else — Task 6 gives it the fallback:
+Task 7 hardens `metaFor` against a blank header, driven by its own failing test. **Do not add that guard here** — it would leave Task 7 with nothing to fail.
+
+For this task `answer` only keeps a rejecting handler from becoming an unhandled rejection; Task 6 gives it the response and the fallback:
 
 ```ts
-const answer = async (
-  handled: PromiseLike<unknown>,
-  response: ServerResponse,
-): Promise<void> => {
-  void response;
-  await handled;
+const answer = async (handled: PromiseLike<unknown>): Promise<void> => {
+  try {
+    await handled;
+  } catch {
+    // Task 6 turns this into the 500 the client is owed.
+  }
 };
 ```
 
@@ -925,7 +924,13 @@ it("answers 500 when the handler fails", async ({ serve }) => {
 Run: `cd packages/start-http && pnpm vitest run src/http-runtime.spec.ts -t "answers"`
 Expected: both hang and fail on the 5s test timeout — nothing ends the response, which is precisely the defect.
 
-- [ ] **Step 3: Give `answer` the fallback**
+- [ ] **Step 3: Give `answer` the response and the fallback**
+
+`answer` gains its second parameter here, where there is finally something to do with it. Update the call site in the `createServer` callback too:
+
+```ts
+void answer(options.handler(request, response, ctx, signal), response);
+```
 
 ```ts
 /**
@@ -985,7 +990,7 @@ git commit -m "feat(start-http): always answer, so a request cannot strand a uni
 - Consumes: `metaFor` behaviour from Task 5 (already implemented)
 - Produces: a `traced` fixture exposing the `UnitRecord` seen inside the unit
 
-`metaFor` was written in Task 5; this task proves both halves of its contract. Write the tests first and confirm they pass for the right reason — if either fails, `metaFor` is wrong.
+Task 5 left `metaFor` taking `x-request-id` verbatim. The first test below therefore passes immediately — it pins behaviour that already exists, which is fine because it is the half Task 5 deliberately built. **The second must FAIL**, and hardening `metaFor` is this task's implementation step.
 
 - [ ] **Step 1: Add the `traced` fixture to `src/test-fixtures.ts`**
 
@@ -1049,20 +1054,45 @@ it("keeps its own minted trace id when x-request-id is blank", async ({
 });
 ```
 
-- [ ] **Step 3: Run and confirm both pass**
+- [ ] **Step 3: Run and watch the blank-header test fail**
+
+Run: `cd packages/start-http && pnpm vitest run src/http-runtime.spec.ts -t "x-request-id"`
+Expected: the non-blank test PASSES; the blank one FAILS, because `""` is not nullish so it wins over the minted id.
+
+- [ ] **Step 4: Harden `metaFor`**
+
+```ts
+/**
+ * …existing doc comment, plus:
+ *
+ * Only a NON-BLANK header is adopted: the kernel falls back to `meta.id` when
+ * `traceId` is nullish, and `""` is not, so an empty header would win and hand
+ * a caller's every request the same blank id — defeating the ambient record
+ * exactly as a route template would.
+ */
+const metaFor = (request: IncomingMessage): UnitMeta => {
+  const inbound = request.headers["x-request-id"];
+  const traceId = typeof inbound === "string" ? inbound.trim() : "";
+  return {
+    kind: "http",
+    id: randomUUID(),
+    ...(traceId === "" ? {} : { traceId }),
+  };
+};
+```
+
+- [ ] **Step 5: Run and watch both pass**
 
 Run: `cd packages/start-http && pnpm vitest run src/http-runtime.spec.ts`
 Expected: PASS, 9 tests.
 
-If the blank-header test fails, `metaFor` is missing the `trim()`/`=== ""` guard — fix `http-runtime.ts`, not the test.
-
 > `fetch` will not send a header with an empty value in every runtime. If the blank-header test cannot make node's `fetch` emit `x-request-id:`, replace it with a raw socket using the `keepAlive` fixture from Task 8 and reorder the two tasks.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add packages/start-http
-git commit -m "test(start-http): pin both halves of the trace-id contract"
+git commit -m "feat(start-http): ignore a blank x-request-id"
 ```
 
 ---
