@@ -312,7 +312,6 @@ so a production bundle never pulls the fakes in.
   it as much as abandoned work does: the kernel goes to real trouble to keep
   those errors observable (the `teardownErrors` aliasing), which reporting `0`
   over them would waste.
-- **`VERSION`**.
 
 There is **no** `Defect` construction, no `overrideProvider`, no accumulation of
 runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
@@ -577,7 +576,7 @@ caught three separate times in review, which is why it is a rule and not a
 preference.
 
 **Rules 1 to 3 are structural and bind `examples/`**, the teaching surface,
-where the shape of a spec is itself read as advice. The kernel's 14 spec files
+where the shape of a spec is itself read as advice. The kernel's 13 spec files
 predate them and are **deliberately not swept**: they are mutation-verified, hold
 the package at 100% line and function coverage, and are the tests guarding the
 shipped invariants — restructuring them buys consistency while risking exactly
@@ -728,11 +727,11 @@ Deferred, deliberately:
   nothing. Deliberately not built — two packages' worth of samples still did
   not justify the harness. Add it the next time one of those samples is found
   to have drifted, the same way this gap itself was found.
-- ~~Bringing `packages/start`'s 14 spec files under the Test conventions.~~
+- ~~Bringing `packages/start`'s 13 spec files under the Test conventions.~~
   **Closed by decision, not by doing it.** An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since
   deleted, and zero optional-chained ones — so the sweep would have been
-  structural only: GIVEN/WHEN/THEN markers on all 14, a helper preamble to lift
+  structural only: GIVEN/WHEN/THEN markers on all 13, a helper preamble to lift
   in 9 (`drain` 82 lines, `invariants` 74, `with-app` 37, `probes` 30,
   `run-main` 28, `test-runtime` 21, `start` 17, `units` 12,
   `process-handlers` 7), and one `try`/`finally` to move. Churning
