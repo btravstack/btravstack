@@ -6,7 +6,7 @@ import {
   type RuntimeHost,
   type Serving,
 } from "@btravstack/start";
-import { ErrAsync, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
 export type AmqpInfo = { readonly queues: readonly string[] };
@@ -104,5 +104,55 @@ const consume = (worker: TypedAmqpWorker<never>, queues: readonly string[]): Ser
   const beginClose = (): AsyncResult<void, never> =>
     (closing ??= worker.close({ drainTimeoutMs: null }));
 
-  return { info: { queues }, drain: () => beginClose(), stop: () => beginClose() };
+  // The kernel's deadline, kept from `drain` so `stop` is released by the same
+  // abort. `drainTimeoutMs: null` is deliberate: the library's own
+  // DEFAULT_DRAIN_TIMEOUT_MS is 30s and would sit ABOVE the kernel's 20s
+  // default, quietly winning. One deadline in the process, and it is the
+  // kernel's.
+  let deadline: AbortSignal | undefined;
+  const stopped = (): AsyncResult<void, never> =>
+    deadline === undefined ? beginClose() : releasedBy(deadline, beginClose());
+
+  return {
+    info: { queues },
+    drain: (signal) => {
+      deadline = signal;
+      return stopped();
+    },
+    stop: () => stopped(),
+  };
 };
+
+/**
+ * `closing`, but no later than the kernel's drain deadline.
+ *
+ * `Serving.drain(signal)` is a contract, not a courtesy: the kernel aborts
+ * `signal` the instant its own timeout wins, precisely so a runtime that treats
+ * it as its cue to return can be released. A delivery whose handler never
+ * finishes cannot honour that by waiting on `close()`, which settles on the
+ * library's own drain clock rather than the kernel's.
+ *
+ * The losing branch's `Result` is dropped, and it is the one drop in this
+ * package: when the deadline wins, the kernel has already decided the report
+ * and settled `exited`, so the worker's eventual close has no consumer left —
+ * and an `AsyncResult` never rejects, so nothing floats. Losing here is
+ * cheaper than it is for `-temporal` or `-http`: the un-acked deliveries are
+ * redelivered by the broker, so abandonment loses nothing and repeats
+ * something — where an abandoned HTTP response is an answer nobody gets and an
+ * abandoned Temporal activity is a platform retry. It is the same trade the
+ * kernel's own `drainApp` documents for its race.
+ */
+const releasedBy = (
+  signal: AbortSignal,
+  closing: AsyncResult<void, never>,
+): AsyncResult<void, never> =>
+  fromSafePromise(Promise.race([closing, whenAborted(signal)])).flatMap((settled) => settled);
+
+const whenAborted = (signal: AbortSignal): AsyncResult<void, never> =>
+  signal.aborted
+    ? OkAsync()
+    : fromSafePromise(
+        new Promise<void>((resolve) => {
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        }),
+      );

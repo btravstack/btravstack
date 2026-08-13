@@ -11,7 +11,7 @@ import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { declareHandler } from "@amqp-contract/worker";
 import { Module, Port, Provider } from "@btravstack/di";
 import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start";
-import { OkAsync } from "unthrown";
+import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, type TestAPI } from "vitest";
 import { z } from "zod";
 
@@ -100,6 +100,43 @@ const seamOf = () => {
   };
 };
 
+/**
+ * A handler that never finishes until `release()` is called, and whose
+ * `arrived` promise reports the moment the delivery reached it. Both drain
+ * specs turn on knowing a unit is genuinely in flight before the drain
+ * starts — polling a wall clock instead would be the flake. Built on the same
+ * `declareHandler` + `messageUnits` shape as `seam`, minus the recording proxy
+ * `seam` needs and this does not.
+ */
+const gatedHandler = () => {
+  let entered!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  const echoHandler = declareHandler<
+    typeof echoContract,
+    "echo",
+    MessageUnitContext<typeof Greeting>
+  >(echoContract, "echo", () => {
+    entered();
+    return fromSafePromise(held.then(() => undefined));
+  });
+
+  return {
+    build: (host: RuntimeHost<typeof Greeting>): BuiltHandlers => ({
+      handlers: { echo: echoHandler },
+      middleware: messageUnits<typeof Greeting>(host),
+    }),
+    arrived,
+    release: () => release(),
+  };
+};
+
 export type AmqpFixtures = {
   readonly serve: (
     build: (host: RuntimeHost<typeof Greeting>) => BuiltHandlers,
@@ -107,6 +144,7 @@ export type AmqpFixtures = {
   ) => Promise<App>;
   readonly serveBroken: () => Promise<App>;
   readonly seam: ReturnType<typeof seamOf>;
+  readonly gate: ReturnType<typeof gatedHandler>;
 };
 
 // Annotated explicitly: TS2883 otherwise refuses to name the inferred type,
@@ -180,5 +218,11 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   seam: async ({}, use) => {
     await use(seamOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  gate: async ({}, use) => {
+    const handler = gatedHandler();
+    await use(handler);
+    handler.release();
   },
 });

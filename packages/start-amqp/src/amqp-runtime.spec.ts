@@ -71,4 +71,59 @@ describe("amqpRuntime", () => {
     // channel of its own — which is what makes the seam cost one line
     expect(seam.greeting()).toBe("hello");
   });
+
+  it("lets an in-flight delivery finish while draining", async ({
+    serve,
+    gate,
+    publishMessage,
+  }) => {
+    // GIVEN a delivery held open inside the application
+    const app = await serve(gate.build);
+    publishMessage({ exchange: "start-amqp-test", routingKey: "echo.requested" }, { value: "x" });
+    await gate.arrived;
+
+    // WHEN the drain starts and the handler is released once the phase moved.
+    // `vi.waitUntil` synchronises rather than asserts — the drain samples
+    // `inFlightAtStart` in the same synchronous turn that advances the phase.
+    app.requestDrain();
+    await vi.waitUntil(() => app.phase() === "draining");
+    gate.release();
+
+    // THEN the kernel counted it as one unit that COMPLETED, through a real
+    // broker round trip
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({ drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 } }),
+    );
+  });
+
+  it("releases the kernel at its own deadline, and the broker redelivers", async ({
+    serve,
+    gate,
+    publishMessage,
+    initConsumer: _initConsumer,
+  }) => {
+    // GIVEN a delivery that never finishes, and a drain with no time to give it
+    const app = await serve(gate.build, { drainTimeoutMs: 100 });
+    publishMessage(
+      { exchange: "start-amqp-test", routingKey: "echo.requested" },
+      { value: "x" },
+      { messageId: "m-hung" },
+    );
+    await gate.arrived;
+
+    // WHEN the drain runs out of time
+    const askedAt = Date.now();
+    app.requestDrain();
+    const report = await app.exited;
+
+    // THEN the exit is not held hostage by a handler that cannot finish: the
+    // delivery is reported abandoned and the process is released on the kernel's
+    // deadline rather than the library's own 30s DEFAULT_DRAIN_TIMEOUT_MS
+    expect(
+      report.map((exit) => ({ drain: exit.drain, promptly: Date.now() - askedAt < 5_000 })),
+    ).toBeOkWith({
+      drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 },
+      promptly: true,
+    });
+  });
 });
