@@ -18,6 +18,7 @@
     "@btravstack/di": "catalog:",
     "@btravstack/start": "workspace:*",
     "@btravstack/start-example-order-application": "workspace:*",
+    "@btravstack/start-example-order-config": "workspace:*",
     "@btravstack/start-example-order-domain": "workspace:*",
     "@btravstack/start-example-order-infrastructure": "workspace:*",
     "@unthrown/standard-schema": "catalog:",

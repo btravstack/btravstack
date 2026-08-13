@@ -15,23 +15,6 @@ import {
 import type { NativeConnection } from "@temporalio/worker";
 import { P } from "unthrown";
 
-export type OrderTemporalOptions = {
-  /**
-   * The contract, and with it the task queue this worker polls. Specs scope a
-   * per-test queue with `withTaskQueue`, so the queue is read off the contract
-   * rather than passed separately.
-   */
-  readonly contract: OrderContract;
-  /**
-   * An open connection to the Temporal service. Handed in rather than opened
-   * here, exactly as the queue runtime is handed its broker: `main.ts` builds
-   * one from the environment, and a spec passes the test environment's.
-   */
-  readonly connection: NativeConnection;
-  readonly namespace?: string;
-  readonly workflows: WorkflowSource;
-};
-
 /**
  * How long an activity that is *cancellation-aware* gets to notice the
  * shutdown. Set explicitly because Temporal's default is `0`, and cancelling
@@ -83,18 +66,37 @@ type TemporalNeeds = typeof PlaceOrder | typeof Logger;
  * still resolving, so writing it bare would leave `context` empty inside the
  * implementation below.
  */
-export const temporalWorkerRuntime = (
-  options: OrderTemporalOptions,
-): Runtime<TemporalNeeds, TemporalInfo> =>
+export const temporalWorkerRuntime = ({
+  contract,
+  ...transport
+}: {
+  /**
+   * The contract, and with it the task queue this worker polls. Specs scope a
+   * per-test queue with `withTaskQueue`, so the queue is read off the contract
+   * rather than passed separately.
+   */
+  readonly contract: OrderContract;
+  /**
+   * An open connection to the Temporal service. Handed in rather than opened
+   * here, exactly as the queue runtime is handed its broker: `main.ts` builds
+   * one from the environment, and a spec passes the test environment's.
+   */
+  readonly connection: NativeConnection;
+  readonly namespace?: string;
+  readonly workflows: WorkflowSource;
+}): Runtime<TemporalNeeds, TemporalInfo> =>
+  // `...transport` rather than three named fields: `connection`, `namespace`
+  // and `workflows` are the package's own options under the package's own
+  // names, and spreading them keeps `namespace` optional instead of
+  // reintroducing it as `string | undefined`, which `exactOptionalPropertyTypes`
+  // would reject.
   temporalRuntime({
-    connection: options.connection,
-    taskQueue: options.contract.taskQueue,
-    ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
-    workflows: options.workflows,
+    ...transport,
+    taskQueue: contract.taskQueue,
     needs: [PlaceOrder, Logger],
     activities: (host) =>
       declareActivitiesHandler({
-        contract: options.contract,
+        contract,
         middleware: activityUnits<TemporalNeeds>(host),
         activities: { placeOrder: { place: placeActivity } },
       }),

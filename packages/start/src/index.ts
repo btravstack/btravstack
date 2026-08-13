@@ -1,5 +1,3 @@
-export const VERSION = "0.1.0";
-
 export { systemClock } from "./clock.js";
 export type { Clock } from "./clock.js";
 export type { DrainReport } from "./drain.js";

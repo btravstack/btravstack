@@ -1,27 +1,28 @@
 # Examples
 
-Eight small packages that are **one application booted three ways**: a clean
+Nine small packages that are **one application booted three ways**: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
 queue worker and once as a Temporal worker, with each transport's contract in a
 package of its own — and, at the same time, exercising `@btravstack/start` end
 to end from a consumer's own workspace, `workspace:*` and all.
 
-| Package                                                | Layer     | Shows                                                                                                                                               |
-| ------------------------------------------------------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                 |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.                    |
-| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need.          |
-| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                 |
-| [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                                      |
-| [`order-worker`](./order-worker)                       | runtime   | The second deployment: an in-memory queue worker over the **same** composition, and `Result` → ack / retry / dead-letter.                           |
-| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, one activity, two declared `nonRetryable` errors — read by the worker, the sandbox and the client. |
-| [`order-temporal`](./order-temporal)                   | runtime   | The third deployment: `@btravstack/start-temporal` driving a Temporal worker, one unit per **activity attempt**, `Result` → typed contract error.   |
+| Package                                                | Layer     | Shows                                                                                                                                                             |
+| ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                               |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.                                  |
+| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need.                        |
+| [`order-config`](./order-config)                       | config    | The one environment-variable idiom the three deployments share: a non-empty string piped into a coercion, validated as a value, with the seven cases pinned once. |
+| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                               |
+| [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                                                    |
+| [`order-worker`](./order-worker)                       | runtime   | The second deployment: an in-memory queue worker over the **same** composition, and `Result` → ack / retry / dead-letter.                                         |
+| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, one activity, two declared `nonRetryable` errors — read by the worker, the sandbox and the client.               |
+| [`order-temporal`](./order-temporal)                   | runtime   | The third deployment: `@btravstack/start-temporal` driving a Temporal worker, one unit per **activity attempt**, `Result` → typed contract error.                 |
 
 ## The layering, and which way the arrows point
 
 ```
   order-api        order-worker      order-temporal   ← one runtime each; one process each
-       └────────────────┬─────────────────┘
+       └────────────────┼─────────────────┘  ─────▶ order-config  ← how all three read the environment
                         ▼
              order-infrastructure                    ← Prisma, SQLite, P-codes
                         │  provides OrderRepository
