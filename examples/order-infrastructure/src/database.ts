@@ -9,6 +9,22 @@ import { PrismaClient } from "./generated/prisma/client.ts";
  * The example's database is SQLite held in memory, so it is born empty and its
  * tables are created by hand — no migration engine, no file on disk, nothing to
  * clean up between runs.
+ *
+ * **Why not a real Prisma migration run before start**, which is what a
+ * deployment with a durable database would do: there is nothing here to
+ * migrate. The database is created empty by `openDatabase` and ceases to exist
+ * when the process does, so it has no prior version to move *from*; the
+ * datasource in `schema.prisma` deliberately declares no `url` (the driver
+ * adapter supplies the connection at runtime), and `prisma migrate` needs one;
+ * and these example packages are never executed as processes — `main.ts` is
+ * typechecked, and every spec drives `start` directly — so there is no
+ * "before application start" for a migration step to occupy.
+ *
+ * The cost of the shortcut is real, though: this array and `schema.prisma` are
+ * two sources of truth for one shape, and a model added to the schema alone
+ * still compiles (the generated client's types come from the schema) while the
+ * table quietly does not exist. `schema-drift.spec.ts` is what closes that —
+ * it reads the schema and fails if any model has no table.
  */
 const DDL = [
   `CREATE TABLE "Order" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "orderId" TEXT NOT NULL, "quantity" INTEGER NOT NULL)`,

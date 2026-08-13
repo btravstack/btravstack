@@ -171,7 +171,7 @@ missing need.
 
 ## Why these are tests, not just illustrations
 
-Each package reads as application code, and each is covered by real specs — 79
+Each package reads as application code, and each is covered by real specs — 80
 of them, run by the repository's own `pnpm test`:
 
 ```sh
