@@ -57,7 +57,7 @@ catalog:
   "@types/node": 26.1.2
   "@unthrown/oxlint": 5.2.0
   "@unthrown/orpc": 0.1.2
-  "@unthrown/prisma": 0.2.0
+  "@unthrown/prisma": 0.3.2
   "@unthrown/standard-schema": 5.5.0
   "@unthrown/vitest": 5.5.0
   knip: 6.32.0
@@ -103,7 +103,7 @@ minimumReleaseAgeExclude:
   - "@btravstack/di@0.1.0"
   - "@btravstack/entity@0.7.0"
   - "@unthrown/oxlint@5.2.0"
-  - "@unthrown/prisma@0.2.0"
+  - "@unthrown/prisma@0.3.2"
   - "@unthrown/standard-schema@5.5.0"
   - "@unthrown/vitest@5.5.0"
   - "unthrown@5.5.0"
