@@ -10,8 +10,8 @@ src/env.spec.ts  the seven cases, against the fragments themselves
 
 ## Why a package rather than a copy in each deployment
 
-`order-api`, `order-worker` and `order-temporal-worker` each validate `process.env`
-through a schema and return it as a `Result`. That much is the point, and each
+`order-api`, `order-amqp-worker` and `order-temporal-worker` each validate
+`process.env` through a schema and return it as a `Result`. That much is the point, and each
 keeps its own schema: its variables, its defaults, its bounds. What they were
 also each keeping was the _fragment_ —
 

@@ -24,8 +24,9 @@ pnpm workspace + turbo monorepo. `packages/` holds four published packages,
 Temporal worker runtime) and `start-amqp` (the AMQP consumer runtime);
 `examples/` holds ten private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
-four different runtimes (`order-api`, `order-worker`, `order-temporal-worker`,
-`order-amqp-worker`), with each transport's contract in a package of its own
+three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
+each doing what its transport is for — answering, orchestrating,
+broadcasting — with each transport's contract in a package of its own
 (`order-api-contract`, `order-temporal-contract`, `order-amqp-contract`)
 because a client must be able to take a contract without the server. They are
 consumers, not fixtures: they are part of the gate, and `examples/README.md`

@@ -47,8 +47,15 @@ export const startOutboxRelay = (
     let wake: (() => void) | undefined;
     const sleep = (): Promise<void> =>
       new Promise((resolve) => {
-        wake = resolve;
-        setTimeout(resolve, pollMs);
+        // The timer is cleared on an early wake and `unref`ed besides: a
+        // stray timeout would keep the event loop alive past `stop()` for up
+        // to `pollMs`, and an idle relay must not pin the process on its own.
+        const timer = setTimeout(resolve, pollMs);
+        timer.unref();
+        wake = () => {
+          clearTimeout(timer);
+          resolve();
+        };
       });
 
     const sweep = async (): Promise<void> => {

@@ -80,12 +80,26 @@ describe("the fulfillment saga", () => {
     const { client } = await serve(noShipping.module);
 
     // WHEN the workflow runs
-    await expect(
-      client.executeWorkflow("fulfillOrder", {
+    const outcome = await client
+      .executeWorkflow("fulfillOrder", {
         workflowId: "wf-ship-1",
         args: { orderId: "o-3", quantity: 1 },
-      }),
-    ).toBeErr();
+      })
+      .match({
+        ok: () => "WRONGLY FULFILLED",
+        // THEN the refusal reaches the client typed, after the compensation —
+        // any other failure here is a different bug, and this fold names it
+        errCases: (matcher) =>
+          matcher
+            .with({ errorName: "ShippingUnavailable" }, (error) => `no-shipping:${error.data.id}`)
+            .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
+            .with({ errorName: "OrderAlreadyPlaced" }, () => "WRONG ERROR")
+            .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
+            .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
+            .with(...tagPatterns(WORKFLOW_RESULT_ERROR_TAGS), (error) => `result:${error._tag}`),
+        defect: () => "DEFECT",
+      });
+    expect(outcome).toBe("no-shipping:o-3");
 
     // THEN the reservation was released — the walk-back reached the earlier
     // step, not just the placement
