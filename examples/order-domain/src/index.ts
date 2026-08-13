@@ -1,3 +1,4 @@
+export { OutOfStock, ShippingUnavailable } from "./fulfillment.js";
 export {
   DuplicateOrder,
   InvalidQuantity,

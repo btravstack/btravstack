@@ -3,7 +3,7 @@ import { test, type TestAPI } from "vitest";
 
 import { orderContract, type OrderContract } from "./contract.js";
 
-type PlacementPayload = typeof orderContract.consumers.placeOrder.message.payload;
+type ChangedPayload = typeof orderContract.consumers.orderChanged.message.payload;
 
 export type ContractFixtures = {
   /** The contract itself, as any worker or publisher would take it. */
@@ -13,7 +13,7 @@ export type ContractFixtures = {
    * `Result` — what a caller holding nothing but this package can check a
    * payload with before it ever reaches a worker.
    */
-  readonly validate: ReturnType<typeof fromSchema<PlacementPayload>>;
+  readonly validate: ReturnType<typeof fromSchema<ChangedPayload>>;
 };
 
 export const it: TestAPI<ContractFixtures> = test.extend<ContractFixtures>({
@@ -24,6 +24,6 @@ export const it: TestAPI<ContractFixtures> = test.extend<ContractFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   validate: async ({}, use) => {
     // `fromSchema` is CURRIED — it takes the schema and hands back the validator.
-    await use(fromSchema(orderContract.consumers.placeOrder.message.payload));
+    await use(fromSchema(orderContract.consumers.orderChanged.message.payload));
   },
 });

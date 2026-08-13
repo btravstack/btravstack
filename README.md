@@ -582,8 +582,8 @@ lines done well.
 ## Documentation
 
 See [`packages/start-core`](./packages/start-core) for the package README,
-[`examples/`](./examples) for an eleven-package clean-architecture application
-booted under four different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
+[`examples/`](./examples) for a ten-package clean-architecture application
+booted under three runtimes, each doing what its transport is for: answering (HTTP), orchestrating (Temporal), broadcasting (AMQP), and [`CLAUDE.md`](./CLAUDE.md) for the
 authoritative spec: the theses, the public surface and the conventions. The
 load-bearing invariants with the test that guards each, and the internal design
 notes, live in

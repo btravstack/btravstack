@@ -9,6 +9,6 @@
  */
 
 // @ts-expect-error — the contract must not be able to reach the worker that
-// implements it: order-temporal-contract does not depend on order-temporal, so
+// implements it: order-temporal-contract does not depend on order-temporal-worker, so
 // the specifier does not resolve.
-import type {} from "@btravstack/start-example-order-temporal";
+import type {} from "@btravstack/start-example-order-temporal-worker";

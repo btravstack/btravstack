@@ -25,6 +25,7 @@ const stubRepository = Provider(OrderRepository)({
         const row = rows.get(id);
         return row === undefined ? ErrAsync(new OrderNotFound({ id })) : OkAsync(row);
       },
+      remove: (id: string) => (rows.delete(id) ? OkAsync() : ErrAsync(new OrderNotFound({ id }))),
     };
   },
 });

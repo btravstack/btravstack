@@ -13,6 +13,7 @@ catalog:
   # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
   # this repo pins 5.5.0. The exact beta is the contract until v3 goes stable;
   # raise it deliberately, not on a bot bump.
+  "@amqp-contract/client": 3.0.0-beta.6
   "@amqp-contract/contract": 3.0.0-beta.6
   "@amqp-contract/testing": 3.0.0-beta.6
   "@amqp-contract/worker": 3.0.0-beta.6

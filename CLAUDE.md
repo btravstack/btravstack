@@ -22,10 +22,11 @@ throws to callers: every fallible operation returns an
 pnpm workspace + turbo monorepo. `packages/` holds four published packages,
 `start` (the kernel), `start-http` (the HTTP runtime), `start-temporal` (the
 Temporal worker runtime) and `start-amqp` (the AMQP consumer runtime);
-`examples/` holds eleven private ones — a clean-architecture application
+`examples/` holds ten private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
-four different runtimes (`order-api`, `order-worker`, `order-temporal`,
-`order-amqp`), with each transport's contract in a package of its own
+three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
+each doing what its transport is for — answering, orchestrating,
+broadcasting — with each transport's contract in a package of its own
 (`order-api-contract`, `order-temporal-contract`, `order-amqp-contract`)
 because a client must be able to take a contract without the server. They are
 consumers, not fixtures: they are part of the gate, and `examples/README.md`
@@ -57,7 +58,7 @@ hook). User-facing changes need a changeset.
    question of how two runtimes in one process share a drain deadline, or whose
    failure takes the process down. `StartOptions.runtime` is therefore a single
    value, not an array, and no future option should make it plural.
-   `examples/order-api`, `examples/order-worker` and `examples/order-temporal`
+   `examples/order-api`, `examples/order-worker` and `examples/order-temporal-worker`
    make this testable rather than asserted: the same `ApplicationModule` +
    `PersistenceModule` composition under three runtimes, with the same
    `DuplicateOrder` arriving as a typed `CONFLICT` on the first, a dead-letter
@@ -370,12 +371,12 @@ the code.
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All
-  eleven workspaces run under the same six commands as the kernel — 93 specs
-  plus five `needs-gate.test-d.ts` files and four `layering.test-d.ts` ones —
+  ten workspaces run under the same six commands as the kernel — 86 specs
+  plus four `needs-gate.test-d.ts` files and four `layering.test-d.ts` ones —
   so an example that stops compiling, stops linting or stops passing fails CI
-  exactly as `packages/start-core` would. Four of the five needs-gate files pin
-  **`start`'s** runtime-needs gate (`order-api`, `order-worker`,
-  `order-temporal`, `order-amqp`); the fifth, `order-application`'s, pins
+  exactly as `packages/start-core` would. Three of the four needs-gate files pin
+  **`start`'s** runtime-needs gate (`order-api`, `order-temporal-worker`,
+  `order-amqp-worker`); the fourth, `order-application`'s, pins
   **di's** `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`. They are
   different gates and easy to conflate.
   A runtime with a **non-empty `needs`** meeting a real module now exercises
@@ -385,7 +386,7 @@ the code.
   driven by its 12 `http-runtime.spec.ts` specs. `examples/` stays the only
   place the gate is pinned by a **type test** — `start-http` ships no
   `*.test-d.ts`.
-- **`examples/order-temporal` is the one workspace whose suite needs the
+- **`examples/order-temporal-worker` is the one workspace whose suite needs the
   network, and only on a cold cache.** It runs a real `@temporalio/worker`
   Worker against `@temporalio/testing`'s **time-skipping test server** — a
   64 MB local binary, not a container — so the whole Workflow-Task /
@@ -406,14 +407,14 @@ the code.
   inject an `actions/cache` step into a reusable workflow's jobs. Closing it
   means adding a cache-path input there, not here; until then every test job
   pays the ~3.5 s download.
-- **`packages/start-amqp` and `examples/order-amqp` are the two workspaces
+- **`packages/start-amqp` and `examples/order-amqp-worker` are the two workspaces
   whose suites need a Docker daemon**, per the integration-test rule below.
   `@amqp-contract/testing` boots one real RabbitMQ container per vitest run
   (`globalSetup`) — the retry/dead-letter routing this package leans on is the
   broker's own behaviour, not something an in-memory fake or a local binary
   could stand in for. Measured on this machine: `packages/start-amqp`
-  **17.6 s cold** (image pull included), **7.3–8.0 s warm**; `examples/order-amqp`
-  **15.5 s cold**, **4.8–5.6 s warm** — both slower than `order-temporal`'s
+  **17.6 s cold** (image pull included), **7.3–8.0 s warm**; `examples/order-amqp-worker`
+  **15.5 s cold**, **4.8–5.6 s warm** — both slower than `order-temporal-worker`'s
   network-cache case, and cold only on a machine that has never pulled
   `rabbitmq:4.2.1-management-alpine` before.
 - **The Prisma client is generated at test time, and there is nothing to
@@ -439,7 +440,7 @@ the code.
   server), a container when neither does (a broker). State the cost in the
   workspace's README, since a suite that needs a daemon is a fact a contributor
   discovers the hard way otherwise.
-- **`examples/order-temporal` consumes `@btravstack/start-temporal`**, the same
+- **`examples/order-temporal-worker` consumes `@btravstack/start-temporal`**, the same
   way `order-api` consumes `-http`: it supplies the contract, the two ports its
   activity resolves and the `mapErrCases` triage, and reads `{ taskQueue,
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
@@ -641,8 +642,8 @@ A sixth rule is about production code that tests keep honest:
    deployments, and its spec pins all seven cases (absent, `""`, whitespace,
    `abc`, `3.5`, valid, out of range) **once**. Each deployment's own `env.ts`
    is then its variables and their defaults, and its own spec pins what is
-   genuinely its own — `order-worker`'s `CONCURRENCY` bound differs from a
-   port's, and `order-temporal`'s two string variables have an emptiness rule
+   genuinely its own — `order-amqp-worker`'s `OUTBOX_POLL_MS` bound differs from a
+   port's, and `order-temporal-worker`'s two string variables have an emptiness rule
    of their own. Triplicating the fragment was the earlier shape; it was cut
    in the audit that also deleted this repo's planning documents. The `<string>` type argument
    is needed because `z.coerce.number()`'s input is `unknown`, which `.pipe`

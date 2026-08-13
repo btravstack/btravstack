@@ -90,6 +90,7 @@ const unmodelledApi = () =>
   apiWith({
     save: (order) => OkAsync(order),
     find: () => fromSafePromise(Promise.reject(new Error("the database is on fire"))),
+    remove: () => OkAsync(),
   });
 
 /**
@@ -115,6 +116,7 @@ const gatedApi = () => {
         entered();
         return fromSafePromise(held.then(() => anOrder(id, 1)));
       },
+      remove: () => OkAsync(),
     }),
     arrived,
     release: () => release(),

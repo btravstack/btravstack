@@ -22,6 +22,7 @@ const Wired = Module("Wired")({
       value: {
         save: (order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
         find: (id: string) => ErrAsync(new OrderNotFound({ id })),
+        remove: (id: string) => ErrAsync(new OrderNotFound({ id })),
       },
     }),
   ],
