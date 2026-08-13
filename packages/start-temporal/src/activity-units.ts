@@ -50,12 +50,17 @@ export const activityUnits =
   (_invocation, next) =>
     // The one cast in the package, and it is what buys a consumer the
     // one-line seam: `declareActivitiesHandler` infers the injected context
-    // from this middleware's *own* signature, and it infers nothing at all
-    // from a generic one — so the failure channel cannot be a type parameter
-    // here. It is declared `never` on the way out and `unknown` on the way in,
-    // which is this middleware's honest claim: it contributes no failure of
-    // its own, and the union the chain actually carries is
-    // `declareActivitiesHandler`'s to name, not ours.
+    // from this middleware's *own* signature and infers nothing at all from a
+    // generic one, so the failure channel cannot be a type parameter here.
+    //
+    // The `never` is not a claim that nothing fails — whatever `next` produces
+    // is passed back untouched. It is the only channel that TYPES: the value
+    // must be assignable to the `ApplicationFailure | ContractError` union
+    // `temporal-contract` names and this package deliberately does not import,
+    // `AsyncResult` is covariant in its error, and `unknown` on the way out is
+    // therefore rejected outright (verified). `unknown` on the way in and
+    // `never` on the way out is the widest accepted / narrowest offered pair,
+    // and `declareActivitiesHandler` re-widens it on the other side.
     host.run(metaFor(), (ctx) => next({ context: { ctx } })) as AsyncResult<unknown, never>;
 
 /**

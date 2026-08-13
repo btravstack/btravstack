@@ -159,7 +159,7 @@ export type TemporalFixtures = {
     readonly client: Client;
     readonly taskQueue: string;
   }>;
-  readonly serveBroken: () => Promise<App>;
+  readonly serveBroken: (build?: ActivityBuilder) => Promise<App>;
   readonly contractSeam: ReturnType<typeof contractSeamOf>;
   readonly gate: ReturnType<typeof gateOf>;
 };
@@ -218,15 +218,22 @@ export const it = test.extend<TemporalFixtures>({
     });
     const started: App[] = [];
 
-    await use(() => {
+    // A builder that throws is served against a workflow module that exists, so
+    // the failure under test is the only one available.
+    await use((build) => {
       const app = start(AppModule, {
         runtime: temporalRuntime({
           connection: env.nativeConnection,
           taskQueue: nextTaskQueue(),
           workflows: {
-            workflowsPath: fileURLToPath(new URL("./does-not-exist.js", import.meta.url)),
+            workflowsPath: fileURLToPath(
+              new URL(
+                build === undefined ? "./does-not-exist.js" : "./test-workflows.ts",
+                import.meta.url,
+              ),
+            ),
           },
-          activities: defaultActivities,
+          activities: build ?? defaultActivities,
           needs: [Greeting],
         }),
         signals: false,

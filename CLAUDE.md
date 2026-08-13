@@ -389,7 +389,11 @@ checker already verifies.
 - **`activities`** is a **builder** — `(host: RuntimeHost<Needs>) => Record<…>`
   — because the middleware needs the host and the host does not exist until
   `start` calls the runtime. The package never wraps what it returns, which is
-  what makes double-wrapping impossible rather than something to detect.
+  what makes double-wrapping impossible rather than something to detect. It is
+  called **inside** the qualified chain (`fromThrowable`), not before it:
+  `declareActivitiesHandler` throws on a contract it cannot satisfy, and that
+  throw is a startup failure like any other — `Err(RuntimeStartFailed)`, exit
+  `1`, not a `Defect` and exit `70`.
 - **`activityUnits(host)` → `ActivityMiddleware<Needs>`** — the one line a
   `temporal-contract` user adds, in `declareActivitiesHandler`'s `middleware`
   slot. It opens one kernel unit per activity **attempt** (`id` is the base64

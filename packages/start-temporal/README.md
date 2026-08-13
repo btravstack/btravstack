@@ -60,7 +60,10 @@ consumer who does not use it never sees it in their dependency graph.
 needs the `RuntimeHost` to open units against, and the host does not exist
 until `start` calls the runtime. The package never wraps what the builder
 returns, which is what makes double-wrapping impossible rather than something
-to detect.
+to detect — and it calls the builder **inside** its own error qualifier, so a
+`declareActivitiesHandler` that throws on a contract it cannot satisfy is
+`Err(RuntimeStartFailed)` like any other startup failure rather than a
+`Defect`.
 
 **Pass the type argument** to `activityUnits` — or hoist the call into a
 `const` — whenever an implementation reads `context.ctx`. TypeScript infers the

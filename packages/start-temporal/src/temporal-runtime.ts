@@ -11,7 +11,7 @@ import {
   type NativeConnection,
   type WorkflowBundleWithSourceMap,
 } from "@temporalio/worker";
-import { OkAsync, fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
+import { OkAsync, fromPromise, fromSafePromise, fromThrowable, type AsyncResult } from "unthrown";
 
 /** What the worker publishes once it is polling, read back through `RunningApp.runtimeInfo()`. */
 export type TemporalInfo = {
@@ -64,25 +64,41 @@ export const temporalRuntime = <Needs extends AnyPort>(
   start: (host: RuntimeHost<Needs>) => createWorker(host, options),
 });
 
+const startFailed = (cause: unknown): RuntimeStartFailed =>
+  new RuntimeStartFailed({ runtime: "temporal", cause });
+
 const createWorker = <Needs extends AnyPort>(
   host: RuntimeHost<Needs>,
   options: TemporalOptions<Needs>,
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
   const namespace = options.namespace ?? DEFAULT_NAMESPACE;
-  const activities = options.activities(host);
 
-  return fromPromise(
-    Worker.create({
-      connection: options.connection,
-      namespace,
-      taskQueue: options.taskQueue,
-      ...options.workflows,
-      activities,
-      shutdownGraceTime: options.gracePeriod ?? DEFAULT_GRACE,
-      shutdownForceTime: options.forceAfter ?? DEFAULT_FORCE,
-    }),
-    (cause) => new RuntimeStartFailed({ runtime: "temporal", cause }),
-  ).map((worker) => poll(worker, options.taskQueue, namespace));
+  // The builder runs INSIDE the qualifier rather than before it.
+  // `declareActivitiesHandler` throws on a contract it cannot satisfy — two
+  // implementations for one activity name, an implementation the contract does
+  // not declare — and calling it outside would put that throw on the defect
+  // channel, where it is `runMain`'s exit 70 instead of the 1 a modeled startup
+  // failure earns.
+  return fromThrowable(
+    options.activities,
+    startFailed,
+  )(host)
+    .toAsync()
+    .flatMap((activities) =>
+      fromPromise(
+        Worker.create({
+          connection: options.connection,
+          namespace,
+          taskQueue: options.taskQueue,
+          ...options.workflows,
+          activities,
+          shutdownGraceTime: options.gracePeriod ?? DEFAULT_GRACE,
+          shutdownForceTime: options.forceAfter ?? DEFAULT_FORCE,
+        }),
+        startFailed,
+      ),
+    )
+    .map((worker) => poll(worker, options.taskQueue, namespace));
 };
 
 const poll = (worker: Worker, taskQueue: string, namespace: string): Serving<TemporalInfo> => {

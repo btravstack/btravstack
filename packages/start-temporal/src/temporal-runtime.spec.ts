@@ -34,6 +34,26 @@ describe("temporalRuntime", () => {
     );
   });
 
+  it("reports an activities builder that throws as Err, not a defect", async ({ serveBroken }) => {
+    // GIVEN a builder that throws the way `declareActivitiesHandler` does on a
+    // contract it cannot satisfy — two implementations for one activity name,
+    // or an implementation the contract never declared
+    const app = await serveBroken(() => {
+      // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test; `declareActivitiesHandler` has no Result-returning form to mint it with
+      throw new Error("two implementations for one activity name");
+    });
+
+    // WHEN the application is started
+    // THEN the builder's throw lands in the kernel's modeled channel rather
+    // than on the defect one, which is the difference between `runMain`
+    // exiting 1 and exiting 70. It is the reason `options.activities(host)` is
+    // called inside `fromThrowable` rather than before the qualified chain.
+    await expect(app.exited).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({ runtime: "temporal" }),
+    );
+  });
+
   it("opens one kernel unit per activity attempt", async ({ serve, contractSeam }) => {
     // GIVEN activities declared through temporal-contract with the middleware
     const { client, taskQueue } = await serve(contractSeam.build);
