@@ -22,7 +22,7 @@ throws to callers: every fallible operation returns an
 pnpm workspace + turbo monorepo. `packages/` holds three published packages,
 `start` (the kernel), `start-http` (the HTTP runtime) and `start-temporal` (the
 Temporal worker runtime); `examples/` holds
-eight private ones — a clean-architecture application
+nine private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three different runtimes (`order-api`, `order-worker`, `order-temporal`), with
 each transport's contract in a package of its own (`order-api-contract`,
@@ -432,8 +432,8 @@ checker already verifies.
 
 ## Toolchain & conventions
 
-- **`examples/` is part of the gate, not a folder of illustrations.** All eight
-  workspaces run under the same six commands as the kernel — 83 specs plus
+- **`examples/` is part of the gate, not a folder of illustrations.** All nine
+  workspaces run under the same six commands as the kernel — 81 specs plus
   four `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
   example that stops compiling, stops linting or stops passing fails CI exactly
   as `packages/start` would. Three of the four needs-gate files pin **`start`'s**
@@ -668,9 +668,15 @@ A sixth rule is about production code that tests keep honest:
    `min` is `0`** so that an ephemeral bind stays expressible, which is why the
    string guard is not optional. An empty or whitespace-only value is a
    configuration **error**, not an absent one — `.default(...)` applies only
-   when the variable is genuinely missing. Each of the three `env.ts` files
-   spells it the same way and each spec pins all seven cases (absent, `""`,
-   whitespace, `abc`, `3.5`, valid, out of range). The `<string>` type argument
+   when the variable is genuinely missing. The fragment is
+   `examples/order-config`'s `wholeNumber` / `port`, shared by all three
+   deployments, and its spec pins all seven cases (absent, `""`, whitespace,
+   `abc`, `3.5`, valid, out of range) **once**. Each deployment's own `env.ts`
+   is then its variables and their defaults, and its own spec pins what is
+   genuinely its own — `order-worker`'s `CONCURRENCY` bound differs from a
+   port's, and `order-temporal`'s two string variables have an emptiness rule
+   of their own. Triplicating the fragment was the earlier shape; it was cut
+   in the audit that also deleted this repo's planning documents. The `<string>` type argument
    is needed because `z.coerce.number()`'s input is `unknown`, which `.pipe`
    will not accept from a `string`. The earlier digits-only regex plus
    `.transform(Number)` was the over-built form of this; it was simplified in
@@ -696,14 +702,15 @@ under the kernel's lifecycle, one unit per activity attempt through a
 at its **own** deadline rather than Temporal's `shutdownForceTime`. `Result` →
 activity failure is deliberately not mapped there either — `declareActivitiesHandler`
 already owns it.
-Plus the eight `examples/` workspaces: the clean-architecture application and its
+Plus the nine `examples/` workspaces: the clean-architecture application and its
 **three** deployments, `order-api` (oRPC over `@btravstack/start-http`),
 `order-worker` (an in-memory queue) and `order-temporal`
 (`@btravstack/start-temporal` over `temporal-contract`), which
 together are the proof of Thesis #1 — and `order-api-contract` /
 `order-temporal-contract`, each transport's contract as a shared artifact both
 the server and any client can depend on, with a `layering.test-d.ts` proving it
-depends on neither.
+depends on neither — plus `order-config`, the one environment-variable idiom all
+three deployments read their configuration through.
 
 Deferred, deliberately:
 

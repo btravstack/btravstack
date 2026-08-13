@@ -574,7 +574,7 @@ the lifecycle underneath a real transport is not forty lines done well.
 ## Documentation
 
 See [`packages/start`](./packages/start) for the package README,
-[`examples/`](./examples) for an eight-package clean-architecture application
+[`examples/`](./examples) for a nine-package clean-architecture application
 booted under three different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
 authoritative spec: the theses, the public surface and the conventions. The
 load-bearing invariants with the test that guards each, and the internal design
