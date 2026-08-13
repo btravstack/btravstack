@@ -17,9 +17,6 @@ describe("amqpRuntime", () => {
     await expect(info).toBeOkWith({ queues: ["start-amqp-echo"] });
   });
 
-  // `TypedAmqpWorker.create`'s own `connectTimeoutMs` default (30s) is what
-  // this test waits out — see the comment in `test-fixtures.ts`'s
-  // `serveBroken` — hence the raised per-test timeout below.
   it("reports a broker that will not answer as Err, not a defect", async ({ serveBroken }) => {
     // GIVEN a URL nothing is listening on
     const app = await serveBroken();
@@ -34,5 +31,5 @@ describe("amqpRuntime", () => {
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "amqp" }),
     );
-  }, 35_000);
+  });
 });

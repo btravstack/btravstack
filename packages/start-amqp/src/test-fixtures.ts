@@ -97,18 +97,16 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
         // A port nothing listens on: amqp-connection-manager retries the
         // connect on its own reconnect clock regardless of the failure mode
         // (ECONNREFUSED included — it is built for HA, not for failing fast),
-        // so `TypedAmqpWorker.create` only settles once its own
-        // `connectTimeoutMs` (a `CreateWorkerOptions` field distinct from
-        // `connectionOptions`, and not part of `AmqpOptions`'s surface here)
-        // gives up at its 30s default and reports the DEFECT the runtime
-        // recovers. Nothing shortens that from this task's option surface, so
-        // the test below is given a timeout to match rather than a broker
-        // that fails fast.
+        // so `TypedAmqpWorker.create` only settles once `connectTimeoutMs`
+        // gives up and reports the DEFECT the runtime recovers. Set short so
+        // this test fails fast instead of waiting out the library's 30s
+        // default.
         runtime: amqpRuntime({
           urls: ["amqp://127.0.0.1:1"],
           contract: echoContract,
           handlers: () => ({ echo: () => OkAsync(undefined) }),
           needs: [Greeting],
+          connectTimeoutMs: 2_000,
         }),
         signals: false,
         probes: false,

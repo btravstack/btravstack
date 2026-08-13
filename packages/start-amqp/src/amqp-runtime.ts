@@ -26,6 +26,13 @@ export type AmqpOptions<Needs extends AnyPort> = {
   readonly needs: readonly Needs[];
   readonly connectionOptions?: Record<string, unknown>;
   readonly defaultConsumerOptions?: Record<string, unknown>;
+  /**
+   * How long `create` waits for the connection before failing. Passed straight
+   * through — it is a top-level `CreateWorkerOptions` field, NOT nested under
+   * `connectionOptions`, where setting it is silently inert. Without it an
+   * unreachable broker takes the library's 30s default to report.
+   */
+  readonly connectTimeoutMs?: number;
 };
 
 export const amqpRuntime = <Needs extends AnyPort>(
@@ -74,6 +81,9 @@ const createWorker = <Needs extends AnyPort>(
     ...(options.defaultConsumerOptions === undefined
       ? {}
       : { defaultConsumerOptions: options.defaultConsumerOptions }),
+    ...(options.connectTimeoutMs === undefined
+      ? {}
+      : { connectTimeoutMs: options.connectTimeoutMs }),
   })
     .map((worker) => consume(worker, queuesOf(options.contract)))
     // `create` reports a connection failure on the DEFECT channel with a
