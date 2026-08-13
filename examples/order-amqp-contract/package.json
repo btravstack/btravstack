@@ -1,0 +1,30 @@
+{
+  "name": "@btravstack/start-example-order-amqp-contract",
+  "private": true,
+  "description": "The AMQP contract of the clean-architecture example: the queue, the retry/dead-letter policy and the message shared by the worker that consumes it and any publisher",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:types": "tsc --noEmit -p tsconfig.test-d.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
+  },
+  "dependencies": {
+    "@amqp-contract/contract": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/standard-schema": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "typescript": "catalog:",
+    "unthrown": "catalog:",
+    "vitest": "catalog:"
+  }
+}
