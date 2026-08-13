@@ -20,6 +20,5 @@ import { PersistenceModule } from "@btravstack/start-example-order-infrastructur
  */
 export const OrderApiModule = Module("OrderApi")({
   imports: [ApplicationModule, PersistenceModule],
-  provides: [],
   exports: [PlaceOrder, FindOrder, Logger],
 });

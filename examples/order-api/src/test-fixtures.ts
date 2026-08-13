@@ -51,7 +51,6 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
 const apiWith = (repository: ServiceOf<OrderRepository>) =>
   Module("StubApi")({
     imports: [ApplicationModule, persistenceOf(repository)],
-    provides: [],
     exports: [PlaceOrder, FindOrder, Logger],
   });
 

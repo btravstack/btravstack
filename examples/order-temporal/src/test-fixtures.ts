@@ -96,7 +96,6 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
 const temporalWith = (repository: ServiceOf<OrderRepository>) =>
   Module("StubTemporal")({
     imports: [ApplicationModule, persistenceOf(repository)],
-    provides: [],
     exports: [PlaceOrder, FindOrder, Logger],
   });
 

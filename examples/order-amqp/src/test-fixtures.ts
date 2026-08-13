@@ -51,7 +51,6 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
 const amqpWith = (repository: ServiceOf<OrderRepository>) =>
   Module("StubAmqp")({
     imports: [ApplicationModule, persistenceOf(repository)],
-    provides: [],
     exports: [PlaceOrder, FindOrder, Logger],
   });
 

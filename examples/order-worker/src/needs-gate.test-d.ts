@@ -38,7 +38,6 @@ const _wired = start(OrderWorkerModule, options);
 // is handed.
 const PartialWorker = Module("PartialWorker")({
   imports: [ApplicationModule, PersistenceModule],
-  provides: [],
   exports: [PlaceOrder, FindOrder],
 });
 

@@ -72,7 +72,6 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
 const workerWith = (repository: ServiceOf<OrderRepository>) =>
   Module("StubWorker")({
     imports: [ApplicationModule, persistenceOf(repository)],
-    provides: [],
     exports: [PlaceOrder, FindOrder, Logger],
   });
 
