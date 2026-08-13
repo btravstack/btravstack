@@ -15,6 +15,11 @@ coverage/
 # Agent scratch: SDD ledger, briefs, reports, review packages
 .superpowers/
 
+# Planning documents. They were tracked while the kernel was being built from a
+# committed spec; CLAUDE.md is the authoritative one now and the plans it
+# outlived live in git history. Ignored so they cannot grow back.
+docs/superpowers/
+
 # Generated Prisma client, minted by the persistence example's `generate` script
 # (run by its `test` / `typecheck` scripts). Ignored at the root so a checkout
 # predating the package cannot leave it visible and sweepable into a commit.
