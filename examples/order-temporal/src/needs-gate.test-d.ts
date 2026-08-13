@@ -47,7 +47,6 @@ const _wired = start(OrderTemporalModule, options);
 // is handed.
 const PartialTemporal = Module("PartialTemporal")({
   imports: [ApplicationModule, PersistenceModule],
-  provides: [],
   exports: [PlaceOrder, FindOrder],
 });
 

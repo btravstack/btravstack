@@ -21,6 +21,5 @@ import { PersistenceModule } from "@btravstack/start-example-order-infrastructur
  */
 export const OrderWorkerModule = Module("OrderWorker")({
   imports: [ApplicationModule, PersistenceModule],
-  provides: [],
   exports: [PlaceOrder, FindOrder, Logger],
 });

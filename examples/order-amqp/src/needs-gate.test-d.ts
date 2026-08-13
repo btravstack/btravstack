@@ -39,7 +39,6 @@ const _wired = start(OrderAmqpModule, options);
 // is handed.
 const PartialAmqp = Module("PartialAmqp")({
   imports: [ApplicationModule, PersistenceModule],
-  provides: [],
   exports: [PlaceOrder, FindOrder],
 });
 

@@ -38,7 +38,6 @@ const _wired = start(OrderApiModule, options);
 // is handed.
 const PartialApi = Module("PartialApi")({
   imports: [ApplicationModule, PersistenceModule],
-  provides: [],
   exports: [PlaceOrder, FindOrder],
 });
 

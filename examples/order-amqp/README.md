@@ -25,7 +25,6 @@ src/test-fixtures.ts   serve / tapped / unmodelled / gate, as Vitest fixtures, a
 ```ts
 export const OrderAmqpModule = Module("OrderAmqp")({
   imports: [ApplicationModule, PersistenceModule],
-  provides: [],
   exports: [PlaceOrder, FindOrder, Logger],
 });
 ```

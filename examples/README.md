@@ -91,7 +91,6 @@ publisher makes before sending a message.
 
 ```ts
 imports: [ApplicationModule, PersistenceModule],
-provides: [],
 exports: [PlaceOrder, FindOrder, Logger],
 ```
 
