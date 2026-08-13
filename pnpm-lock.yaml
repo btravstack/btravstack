@@ -100,11 +100,11 @@ catalogs:
       specifier: 0.2.0
       version: 0.2.0
     '@unthrown/standard-schema':
-      specifier: 5.2.0
-      version: 5.2.0
+      specifier: 5.5.0
+      version: 5.5.0
     '@unthrown/vitest':
-      specifier: 5.2.0
-      version: 5.2.0
+      specifier: 5.5.0
+      version: 5.5.0
     '@vitest/coverage-v8':
       specifier: 4.1.10
       version: 4.1.10
@@ -133,8 +133,8 @@ catalogs:
       specifier: 7.0.2
       version: 7.0.2
     unthrown:
-      specifier: 5.2.0
-      version: 5.2.0
+      specifier: 5.5.0
+      version: 5.5.0
     vitest:
       specifier: 4.1.10
       version: 4.1.10
@@ -184,10 +184,10 @@ importers:
     dependencies:
       '@amqp-contract/worker':
         specifier: 'catalog:'
-        version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.2.0)
+        version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.5.0)
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/start':
         specifier: workspace:*
         version: link:../../packages/start
@@ -214,10 +214,10 @@ importers:
         version: 1.9.1
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -233,7 +233,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -258,16 +258,16 @@ importers:
         version: 26.1.2
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
@@ -276,7 +276,7 @@ importers:
     dependencies:
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/start':
         specifier: workspace:*
         version: link:../../packages/start
@@ -309,10 +309,10 @@ importers:
         version: 0.1.2(@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1))
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -325,7 +325,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -353,13 +353,13 @@ importers:
         version: 0.1.2(@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1))
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
@@ -368,7 +368,7 @@ importers:
     dependencies:
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/start':
         specifier: workspace:*
         version: link:../../packages/start
@@ -377,7 +377,7 @@ importers:
         version: link:../order-domain
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -387,7 +387,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -399,7 +399,7 @@ importers:
     dependencies:
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -412,13 +412,13 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
@@ -427,10 +427,10 @@ importers:
     dependencies:
       '@btravstack/entity':
         specifier: 'catalog:'
-        version: 0.7.0(@unthrown/standard-schema@5.2.0)(unthrown@5.2.0)(zod@4.4.3)
+        version: 0.7.0(@unthrown/standard-schema@5.5.0)(unthrown@5.5.0)(zod@4.4.3)
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -443,10 +443,10 @@ importers:
         version: 26.1.2
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -458,7 +458,7 @@ importers:
     dependencies:
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/start-example-order-application':
         specifier: workspace:*
         version: link:../order-application
@@ -476,7 +476,7 @@ importers:
         version: 0.2.0(@prisma/client@7.9.1(prisma@7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2))
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -486,7 +486,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       prisma:
         specifier: 'catalog:'
         version: 7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2)
@@ -501,7 +501,7 @@ importers:
     dependencies:
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/start':
         specifier: workspace:*
         version: link:../../packages/start
@@ -525,10 +525,10 @@ importers:
         version: link:../../packages/start-temporal
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.2.0)
+        version: 8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.5.0)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.2.0)
+        version: 8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.5.0)
       '@temporalio/client':
         specifier: 'catalog:'
         version: 1.22.0
@@ -540,10 +540,10 @@ importers:
         version: 1.22.0
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -553,7 +553,7 @@ importers:
         version: 0.2.0
       '@temporal-contract/testing':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(@temporal-contract/client@8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.2.0))(@temporal-contract/contract@8.0.0-beta.5(unthrown@5.2.0))(@temporal-contract/worker@8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.2.0))(@temporalio/client@1.22.0)(@temporalio/testing@1.22.0)(@temporalio/worker@1.22.0)(testcontainers@12.0.4)(unthrown@5.2.0)(vitest@4.1.10)
+        version: 8.0.0-beta.5(@temporal-contract/client@8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.5.0))(@temporal-contract/contract@8.0.0-beta.5(unthrown@5.5.0))(@temporal-contract/worker@8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.5.0))(@temporalio/client@1.22.0)(@temporalio/testing@1.22.0)(@temporalio/worker@1.22.0)(testcontainers@12.0.4)(unthrown@5.5.0)(vitest@4.1.10)
       '@temporalio/testing':
         specifier: 'catalog:'
         version: 1.22.0
@@ -562,7 +562,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -574,7 +574,7 @@ importers:
     dependencies:
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(unthrown@5.2.0)
+        version: 8.0.0-beta.5(unthrown@5.5.0)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -587,16 +587,16 @@ importers:
         version: 26.1.2
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
@@ -605,7 +605,7 @@ importers:
     dependencies:
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/start':
         specifier: workspace:*
         version: link:../../packages/start
@@ -623,10 +623,10 @@ importers:
         version: link:../order-infrastructure
       '@unthrown/standard-schema':
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -639,7 +639,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -651,7 +651,7 @@ importers:
     devDependencies:
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0
@@ -660,7 +660,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.10(vitest@4.1.10)
@@ -672,7 +672,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
@@ -687,10 +687,10 @@ importers:
         version: 3.0.0-beta.6(vitest@4.1.10)
       '@amqp-contract/worker':
         specifier: 'catalog:'
-        version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.2.0)
+        version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.5.0)
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/start':
         specifier: workspace:*
         version: link:../start
@@ -705,7 +705,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.10(vitest@4.1.10)
@@ -717,7 +717,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
@@ -729,7 +729,7 @@ importers:
     devDependencies:
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/start':
         specifier: workspace:*
         version: link:../start
@@ -741,7 +741,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.10(vitest@4.1.10)
@@ -753,7 +753,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
@@ -762,7 +762,7 @@ importers:
     devDependencies:
       '@btravstack/di':
         specifier: 'catalog:'
-        version: 0.1.0(unthrown@5.2.0)
+        version: 0.1.0(unthrown@5.5.0)
       '@btravstack/start':
         specifier: workspace:*
         version: link:../start
@@ -771,10 +771,10 @@ importers:
         version: 0.2.0
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(unthrown@5.2.0)
+        version: 8.0.0-beta.5(unthrown@5.5.0)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.2.0)
+        version: 8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.5.0)
       '@temporalio/activity':
         specifier: 'catalog:'
         version: 1.22.0
@@ -798,7 +798,7 @@ importers:
         version: 26.1.2
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.10(vitest@4.1.10)
@@ -810,7 +810,7 @@ importers:
         version: 7.0.2
       unthrown:
         specifier: 'catalog:'
-        version: 5.2.0
+        version: 5.5.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
@@ -2499,19 +2499,15 @@ packages:
     peerDependencies:
       '@prisma/client': ^7
 
-  '@unthrown/standard-schema@5.2.0':
-    resolution: {integrity: sha512-x8PX5ueWpmSKCJYlaWNkYacns/7BJxTBTeuBuFsyfUtySWygN4KCJ+kSwVYj3VQm59F4tqNpJaBFe+BdxaCSfA==}
-    engines: {node: '>=20'}
-
   '@unthrown/standard-schema@5.5.0':
     resolution: {integrity: sha512-BrPZH4y3PXi0n1Y4dUYVg+a+g5Vxqsxgeyss0Dy6SMUY8nT4ihaOGgNkTc4Mxz/enSfOyu1wbpA+TSxFrwbMnA==}
     engines: {node: '>=20'}
 
-  '@unthrown/vitest@5.2.0':
-    resolution: {integrity: sha512-h46E4U76L4aEchccnHpbmB4FSNDELPYRWGxI40if9CVbZ+ko5698O5kWtwUfQSgGPGWqcKAqREDgWb/tDo4efg==}
+  '@unthrown/vitest@5.5.0':
+    resolution: {integrity: sha512-ZDGw9fIJsYDieZRC3BidtgsCPYj6ZNdVdfrPro90RDgwmwMn2y6dAJDdpoWjAPQhKryUSbz5HAlx8+aUVFBmPQ==}
     engines: {node: '>=20'}
     peerDependencies:
-      unthrown: ^5.2.0
+      unthrown: ^5.5.0
       vitest: ^4
 
   '@visx/curve@4.0.1-alpha.0':
@@ -2811,8 +2807,8 @@ packages:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
     engines: {node: '>=8'}
 
-  ansi-regex@6.2.2:
-    resolution: {integrity: sha512-Bq3SmSpyFHaWjPk8If9yc6svM8c56dB5BAtW4Qbw5jHTwwXXcTLoRMkpDJp6VL0XzlWaCHTXrkFURMYmD0sLqg==}
+  ansi-regex@6.3.0:
+    resolution: {integrity: sha512-WpDfL7NO6j7tH88IDBNVdUJxDh9nmCteAVW9dsep846XdwF4naCBK+/tGLX3KJgcpgMRXCFlTM2hKGoK9FsdrQ==}
     engines: {node: '>=12'}
 
   ansi-styles@4.3.0:
@@ -4560,10 +4556,6 @@ packages:
     resolution: {integrity: sha512-rBJeI5CXAlmy1pV+617WB9J63U6XcazHHF2f2dbJix4XzpUF0RS3Zbj0FGIOCAva5P/d/GBOYaACQ1w+0azUkg==}
     engines: {node: '>= 4.0.0'}
 
-  unthrown@5.2.0:
-    resolution: {integrity: sha512-x6evkZlJpE9MyTeLexoJcvNMypw19ceB8UMdxYjou78m4hcIJx3D6NTd/oLBfh62RdqC51LelzhEQo3GpVWvQg==}
-    engines: {node: '>=20'}
-
   unthrown@5.5.0:
     resolution: {integrity: sha512-d7YrMTcdquXpo0QQxRxUqB39iiU2KAtwezf/cuJf8HukEfSAUcfPOgzGk2G4lafx3INMlLhj5+lTwvu94eeLVw==}
     engines: {node: '>=20'}
@@ -4773,12 +4765,12 @@ snapshots:
     dependencies:
       '@standard-schema/spec': 1.1.0
 
-  '@amqp-contract/core@3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.2.0)':
+  '@amqp-contract/core@3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.5.0)':
     dependencies:
       '@amqp-contract/contract': 3.0.0-beta.6
       amqp-connection-manager: 5.0.0(amqplib@2.0.1)
       amqplib: 2.0.1
-      unthrown: 5.2.0
+      unthrown: 5.5.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
@@ -4793,13 +4785,13 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@amqp-contract/worker@3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.2.0)':
+  '@amqp-contract/worker@3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.5.0)':
     dependencies:
       '@amqp-contract/contract': 3.0.0-beta.6
-      '@amqp-contract/core': 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.2.0)
+      '@amqp-contract/core': 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.5.0)
       '@standard-schema/spec': 1.1.0
       '@unthrown/standard-schema': 5.5.0
-      unthrown: 5.2.0
+      unthrown: 5.5.0
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
@@ -4833,14 +4825,14 @@ snapshots:
       '@commitlint/cli': 21.2.1(@types/node@26.1.2)(conventional-commits-parser@7.1.2)(typescript@7.0.2)
       '@commitlint/config-conventional': 21.2.0
 
-  '@btravstack/di@0.1.0(unthrown@5.2.0)':
+  '@btravstack/di@0.1.0(unthrown@5.5.0)':
     dependencies:
-      unthrown: 5.2.0
+      unthrown: 5.5.0
 
-  '@btravstack/entity@0.7.0(@unthrown/standard-schema@5.2.0)(unthrown@5.2.0)(zod@4.4.3)':
+  '@btravstack/entity@0.7.0(@unthrown/standard-schema@5.5.0)(unthrown@5.5.0)(zod@4.4.3)':
     dependencies:
-      '@unthrown/standard-schema': 5.2.0
-      unthrown: 5.2.0
+      '@unthrown/standard-schema': 5.5.0
+      unthrown: 5.5.0
       zod: 4.4.3
 
   '@btravstack/lefthook@0.1.1(lefthook@2.1.10)':
@@ -5955,41 +5947,41 @@ snapshots:
     dependencies:
       '@swc/counter': 0.1.3
 
-  '@temporal-contract/client@8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.2.0)':
+  '@temporal-contract/client@8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.5.0)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      '@temporal-contract/contract': 8.0.0-beta.5(unthrown@5.2.0)
+      '@temporal-contract/contract': 8.0.0-beta.5(unthrown@5.5.0)
       '@temporalio/client': 1.22.0
       '@temporalio/common': 1.22.0
-      unthrown: 5.2.0
+      unthrown: 5.5.0
 
-  '@temporal-contract/contract@8.0.0-beta.5(unthrown@5.2.0)':
+  '@temporal-contract/contract@8.0.0-beta.5(unthrown@5.5.0)':
     dependencies:
       '@standard-schema/spec': 1.1.0
     optionalDependencies:
-      unthrown: 5.2.0
+      unthrown: 5.5.0
 
-  '@temporal-contract/testing@8.0.0-beta.5(@temporal-contract/client@8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.2.0))(@temporal-contract/contract@8.0.0-beta.5(unthrown@5.2.0))(@temporal-contract/worker@8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.2.0))(@temporalio/client@1.22.0)(@temporalio/testing@1.22.0)(@temporalio/worker@1.22.0)(testcontainers@12.0.4)(unthrown@5.2.0)(vitest@4.1.10)':
+  '@temporal-contract/testing@8.0.0-beta.5(@temporal-contract/client@8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.5.0))(@temporal-contract/contract@8.0.0-beta.5(unthrown@5.5.0))(@temporal-contract/worker@8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.5.0))(@temporalio/client@1.22.0)(@temporalio/testing@1.22.0)(@temporalio/worker@1.22.0)(testcontainers@12.0.4)(unthrown@5.5.0)(vitest@4.1.10)':
     dependencies:
-      '@temporal-contract/client': 8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.2.0)
-      '@temporal-contract/contract': 8.0.0-beta.5(unthrown@5.2.0)
-      '@temporal-contract/worker': 8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.2.0)
+      '@temporal-contract/client': 8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.5.0)
+      '@temporal-contract/contract': 8.0.0-beta.5(unthrown@5.5.0)
+      '@temporal-contract/worker': 8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.5.0)
       '@temporalio/client': 1.22.0
       '@temporalio/testing': 1.22.0
       '@temporalio/worker': 1.22.0
-      unthrown: 5.2.0
+      unthrown: 5.5.0
       vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
     optionalDependencies:
       testcontainers: 12.0.4
 
-  '@temporal-contract/worker@8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.2.0)':
+  '@temporal-contract/worker@8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.5.0)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      '@temporal-contract/contract': 8.0.0-beta.5(unthrown@5.2.0)
+      '@temporal-contract/contract': 8.0.0-beta.5(unthrown@5.5.0)
       '@temporalio/common': 1.22.0
       '@temporalio/worker': 1.22.0
       '@temporalio/workflow': 1.22.0
-      unthrown: 5.2.0
+      unthrown: 5.5.0
 
   '@temporalio/activity@1.22.0':
     dependencies:
@@ -6272,7 +6264,7 @@ snapshots:
   '@unthrown/orpc@0.1.2(@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1))':
     dependencies:
       '@orpc/client': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
-      unthrown: 5.2.0
+      unthrown: 5.5.0
     optionalDependencies:
       '@orpc/server': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
 
@@ -6284,21 +6276,16 @@ snapshots:
   '@unthrown/prisma@0.2.0(@prisma/client@7.9.1(prisma@7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2))':
     dependencies:
       '@prisma/client': 7.9.1(prisma@7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2)
-      unthrown: 5.2.0
-
-  '@unthrown/standard-schema@5.2.0':
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      unthrown: 5.2.0
+      unthrown: 5.5.0
 
   '@unthrown/standard-schema@5.5.0':
     dependencies:
       '@standard-schema/spec': 1.1.0
       unthrown: 5.5.0
 
-  '@unthrown/vitest@5.2.0(unthrown@5.2.0)(vitest@4.1.10)':
+  '@unthrown/vitest@5.5.0(unthrown@5.5.0)(vitest@4.1.10)':
     dependencies:
-      unthrown: 5.2.0
+      unthrown: 5.5.0
       vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   '@visx/curve@4.0.1-alpha.0':
@@ -6616,7 +6603,7 @@ snapshots:
 
   ansi-regex@5.0.1: {}
 
-  ansi-regex@6.2.2: {}
+  ansi-regex@6.3.0: {}
 
   ansi-styles@4.3.0:
     dependencies:
@@ -7319,7 +7306,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 26.2.0
+      '@types/node': 26.1.2
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -7831,7 +7818,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
-      '@types/node': 26.2.0
+      '@types/node': 26.1.2
       long: 5.3.2
 
   pump@3.0.4:
@@ -8098,7 +8085,7 @@ snapshots:
 
   strip-ansi@7.2.0:
     dependencies:
-      ansi-regex: 6.2.2
+      ansi-regex: 6.3.0
 
   strip-bom@3.0.0: {}
 
@@ -8323,8 +8310,6 @@ snapshots:
       fs-monkey: 1.1.0
 
   universalify@0.1.2: {}
-
-  unthrown@5.2.0: {}
 
   unthrown@5.5.0: {}
 
