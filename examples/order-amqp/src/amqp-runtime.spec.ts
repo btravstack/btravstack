@@ -66,14 +66,17 @@ describe("orderAmqpRuntime", () => {
     ]);
   });
 
-  it("lets the broker retry an unmodelled failure, up to the contract's own budget", async ({
+  it("lets the broker retry a Defect recovered into a RetryableError, up to the contract's own budget", async ({
     serve,
     unmodelled,
     publishMessage,
     initConsumer,
   }) => {
-    // GIVEN a repository whose failure nobody modelled, so it is a `Defect`,
-    // and the dead-letter exchange it eventually lands on once retries run out
+    // GIVEN a repository whose failure nobody modelled, so it is a `Defect` —
+    // which this branch's doctrine says the broker does NOT retry on its own.
+    // The four attempts below happen only because `placeHandler`'s
+    // `recoverDefect` turns it into a `RetryableError` first, and the
+    // dead-letter exchange it eventually lands on once retries run out
     await serve(unmodelled.module);
     const waitForParked = await initConsumer("orders-dlx", "order-placements");
 
