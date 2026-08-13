@@ -36,7 +36,7 @@ describe("the shared environment fragments", () => {
 
     // THEN it survives — which is exactly why `min(0)` cannot be the guard
     // against a blank value, and why the non-empty string in front of the
-    // coercion is
+    // coercion has to be that guard instead
     expect(env).toBeOkWith({ PORT: 0, CONCURRENCY: 1 });
   });
 
