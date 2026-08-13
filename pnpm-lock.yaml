@@ -6,7 +6,13 @@ settings:
 
 catalogs:
   default:
+    '@amqp-contract/contract':
+      specifier: 3.0.0-beta.6
+      version: 3.0.0-beta.6
     '@amqp-contract/testing':
+      specifier: 3.0.0-beta.6
+      version: 3.0.0-beta.6
+    '@amqp-contract/worker':
       specifier: 3.0.0-beta.6
       version: 3.0.0-beta.6
     '@btravstack/commitlint':
@@ -33,6 +39,9 @@ catalogs:
     '@commitlint/cli':
       specifier: 21.2.1
       version: 21.2.1
+    '@opentelemetry/api':
+      specifier: 1.9.1
+      version: 1.9.1
     '@orpc/client':
       specifier: 2.0.0-beta.23
       version: 2.0.0-beta.23
@@ -199,13 +208,13 @@ importers:
         version: link:../../packages/start-http
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.23
+        version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       '@orpc/server':
         specifier: 'catalog:'
-        version: 2.0.0-beta.23
+        version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       '@unthrown/orpc':
         specifier: 'catalog:'
-        version: 0.1.2(@orpc/client@2.0.0-beta.23)(@orpc/server@2.0.0-beta.23)
+        version: 0.1.2(@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1))
       '@unthrown/standard-schema':
         specifier: 'catalog:'
         version: 5.2.0
@@ -230,26 +239,26 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   examples/order-api-contract:
     dependencies:
       '@orpc/contract':
         specifier: 'catalog:'
-        version: 2.0.0-beta.23
+        version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0
       '@orpc/client':
         specifier: 'catalog:'
-        version: 2.0.0-beta.23
+        version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.1.2
       '@unthrown/orpc':
         specifier: 'catalog:'
-        version: 0.1.2(@orpc/client@2.0.0-beta.23)(@orpc/server@2.0.0-beta.23)
+        version: 0.1.2(@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1))
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.2.0(unthrown@5.2.0)(vitest@4.1.10)
@@ -261,7 +270,7 @@ importers:
         version: 5.2.0
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   examples/order-application:
     dependencies:
@@ -292,7 +301,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   examples/order-config:
     dependencies:
@@ -320,7 +329,7 @@ importers:
         version: 5.2.0
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   examples/order-domain:
     dependencies:
@@ -351,7 +360,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   examples/order-infrastructure:
     dependencies:
@@ -394,7 +403,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   examples/order-temporal:
     dependencies:
@@ -467,7 +476,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   examples/order-temporal-contract:
     dependencies:
@@ -498,7 +507,7 @@ importers:
         version: 5.2.0
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   examples/order-worker:
     dependencies:
@@ -544,7 +553,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   packages/start:
     devDependencies:
@@ -574,16 +583,31 @@ importers:
         version: 5.2.0
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   packages/start-amqp:
     devDependencies:
+      '@amqp-contract/contract':
+        specifier: 'catalog:'
+        version: 3.0.0-beta.6
       '@amqp-contract/testing':
         specifier: 'catalog:'
         version: 3.0.0-beta.6(vitest@4.1.10)
+      '@amqp-contract/worker':
+        specifier: 'catalog:'
+        version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.2.0)
+      '@btravstack/di':
+        specifier: 'catalog:'
+        version: 0.1.0(unthrown@5.2.0)
+      '@btravstack/start':
+        specifier: workspace:*
+        version: link:../start
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
       '@types/node':
         specifier: 'catalog:'
         version: 26.1.2
@@ -599,9 +623,15 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.2.0
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
 
   packages/start-http:
     devDependencies:
@@ -634,7 +664,7 @@ importers:
         version: 5.2.0
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   packages/start-temporal:
     devDependencies:
@@ -691,18 +721,38 @@ importers:
         version: 5.2.0
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
 
 packages:
 
+  '@amqp-contract/contract@3.0.0-beta.6':
+    resolution: {integrity: sha512-9eDFKrdUo2MfM0tB4vJTmvK2wgEXmJYi2iCX0MsMG1yLESL4w4iXp9cHg+RypicHsHlhOg8wjcRHGkLEtj7KoA==}
+    engines: {node: '>=22.19'}
+
+  '@amqp-contract/core@3.0.0-beta.6':
+    resolution: {integrity: sha512-5IKWooJIeY3DvdfJCc01uXk+XAX6KfyyaQOsQS7fGFyNOTHGF6MOnGr5n6Dyq97JgR/NThZjaA+Kn6gbJ+0kdg==}
+    engines: {node: '>=22.19'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.0.0
+      unthrown: ^5.0.0
+    peerDependenciesMeta:
+      '@opentelemetry/api':
+        optional: true
+
   '@amqp-contract/testing@3.0.0-beta.6':
     resolution: {integrity: sha512-ddacQlqGJbwyh6QohCDFZTZ4/IF3W+1+MeVKPDhw++YwCGWBYZIAYB1AC/w6Lx0oO+u7YwLqkISrhE3ZtfwM5Q==}
     engines: {node: '>=22.19'}
     peerDependencies:
       vitest: ^4
+
+  '@amqp-contract/worker@3.0.0-beta.6':
+    resolution: {integrity: sha512-izzTHWMHZ46DFJ6uEsIdDEjr+U0ix9Llrn+iKSpvxU+pPsv3hblOpFtJSbYNdsEhwLLiypeYW1b7kuQQfLzmxA==}
+    engines: {node: '>=22.19'}
+    peerDependencies:
+      unthrown: ^5.0.0
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -1128,6 +1178,10 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@opentelemetry/api@1.9.1':
+    resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
+    engines: {node: '>=8.0.0'}
 
   '@orpc/client@2.0.0-beta.23':
     resolution: {integrity: sha512-w9czJs6yWPNlyoDPRFvRJeQOBRHylGT3oCHa9kh0KbFXiHRE+qZNicUj4925lfX+sEI2Gktsew/62/R7hG1yPA==}
@@ -2357,6 +2411,10 @@ packages:
     resolution: {integrity: sha512-x8PX5ueWpmSKCJYlaWNkYacns/7BJxTBTeuBuFsyfUtySWygN4KCJ+kSwVYj3VQm59F4tqNpJaBFe+BdxaCSfA==}
     engines: {node: '>=20'}
 
+  '@unthrown/standard-schema@5.5.0':
+    resolution: {integrity: sha512-BrPZH4y3PXi0n1Y4dUYVg+a+g5Vxqsxgeyss0Dy6SMUY8nT4ihaOGgNkTc4Mxz/enSfOyu1wbpA+TSxFrwbMnA==}
+    engines: {node: '>=20'}
+
   '@unthrown/vitest@5.2.0':
     resolution: {integrity: sha512-h46E4U76L4aEchccnHpbmB4FSNDELPYRWGxI40if9CVbZ+ko5698O5kWtwUfQSgGPGWqcKAqREDgWb/tDo4efg==}
     engines: {node: '>=20'}
@@ -2642,6 +2700,12 @@ packages:
 
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
+
+  amqp-connection-manager@5.0.0:
+    resolution: {integrity: sha512-88yQzqa5RSBgnLl504XjvCQJ7d+osskdwvg35Lwm1LRbfLjNU9p7SQUMSP82BB7mseiq9tIUPJ3HE3eXQbpjEw==}
+    engines: {node: '>=10.0.0', npm: '>5.0.0'}
+    peerDependencies:
+      amqplib: '*'
 
   amqplib@2.0.1:
     resolution: {integrity: sha512-a3P2MgfCf9nzVis12VxWEn0dS6hcqve7dlEAhXDtIWR27BlhtMkILOc+H9aeHjDi6i6r94dYKc2Kx2OFe3avvg==}
@@ -3943,6 +4007,9 @@ packages:
     resolution: {integrity: sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==}
     engines: {node: '>= 0.6.0'}
 
+  promise-breaker@6.0.0:
+    resolution: {integrity: sha512-BthzO9yTPswGf7etOBiHCVuugs2N01/Q/94dIPls48z2zCmrnDptUUZzfIb+41xq0MnYZ/BzmOd6ikDR4ibNZA==}
+
   proper-lockfile@4.1.2:
     resolution: {integrity: sha512-TjNPblN4BwAWMXU8s9AEz4JmQxnD1NNL7bNOY/AKUzyamc379FWASUhc/K1pL2noVb+XmZKLL68cjzLsiOAMaA==}
 
@@ -4405,6 +4472,10 @@ packages:
     resolution: {integrity: sha512-x6evkZlJpE9MyTeLexoJcvNMypw19ceB8UMdxYjou78m4hcIJx3D6NTd/oLBfh62RdqC51LelzhEQo3GpVWvQg==}
     engines: {node: '>=20'}
 
+  unthrown@5.5.0:
+    resolution: {integrity: sha512-d7YrMTcdquXpo0QQxRxUqB39iiU2KAtwezf/cuJf8HukEfSAUcfPOgzGk2G4lafx3INMlLhj5+lTwvu94eeLVw==}
+    engines: {node: '>=20'}
+
   update-browserslist-db@1.3.1:
     resolution: {integrity: sha512-ZZ61DsRsOnakl74HAmp3oSN4aXUmEWXf+i/yv0h7tIBfICc3VdrFErQKUUKPgu3AMsTUMbcongALEN4l6GSUrQ==}
     hasBin: true
@@ -4606,16 +4677,39 @@ packages:
 
 snapshots:
 
+  '@amqp-contract/contract@3.0.0-beta.6':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+
+  '@amqp-contract/core@3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.2.0)':
+    dependencies:
+      '@amqp-contract/contract': 3.0.0-beta.6
+      amqp-connection-manager: 5.0.0(amqplib@2.0.1)
+      amqplib: 2.0.1
+      unthrown: 5.2.0
+    optionalDependencies:
+      '@opentelemetry/api': 1.9.1
+
   '@amqp-contract/testing@3.0.0-beta.6(vitest@4.1.10)':
     dependencies:
       amqplib: 2.0.1
       testcontainers: 12.0.4
-      vitest: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
       - react-native-b4a
       - supports-color
+
+  '@amqp-contract/worker@3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.2.0)':
+    dependencies:
+      '@amqp-contract/contract': 3.0.0-beta.6
+      '@amqp-contract/core': 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.2.0)
+      '@standard-schema/spec': 1.1.0
+      '@unthrown/standard-schema': 5.5.0
+      unthrown: 5.2.0
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
 
   '@babel/code-frame@7.29.7':
     dependencies:
@@ -5180,28 +5274,30 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
-  '@orpc/client@2.0.0-beta.23':
+  '@opentelemetry/api@1.9.1': {}
+
+  '@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@orpc/shared': 2.0.0-beta.23
+      '@orpc/shared': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       '@standardserver/core': 0.6.0
       '@standardserver/fetch': 0.6.0
       '@standardserver/peer': 0.6.0
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@orpc/contract@2.0.0-beta.23':
+  '@orpc/contract@2.0.0-beta.23(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@orpc/client': 2.0.0-beta.23
-      '@orpc/shared': 2.0.0-beta.23
+      '@orpc/client': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
+      '@orpc/shared': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       '@standard-schema/spec': 1.1.0
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@orpc/server@2.0.0-beta.23':
+  '@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@orpc/client': 2.0.0-beta.23
-      '@orpc/contract': 2.0.0-beta.23
-      '@orpc/shared': 2.0.0-beta.23
+      '@orpc/client': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
+      '@orpc/contract': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
+      '@orpc/shared': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       '@standardserver/core': 0.6.0
       '@standardserver/fetch': 0.6.0
       '@standardserver/node': 0.6.0
@@ -5210,11 +5306,13 @@ snapshots:
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@orpc/shared@2.0.0-beta.23':
+  '@orpc/shared@2.0.0-beta.23(@opentelemetry/api@1.9.1)':
     dependencies:
       '@standardserver/shared': 0.6.0
       radash: 12.1.1
       type-fest: 5.8.0
+    optionalDependencies:
+      '@opentelemetry/api': 1.9.1
 
   '@oxc-parser/binding-android-arm-eabi@0.142.0':
     optional: true
@@ -5788,7 +5886,7 @@ snapshots:
       '@temporalio/testing': 1.22.0
       '@temporalio/worker': 1.22.0
       unthrown: 5.2.0
-      vitest: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
     optionalDependencies:
       testcontainers: 12.0.4
 
@@ -6079,12 +6177,12 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@unthrown/orpc@0.1.2(@orpc/client@2.0.0-beta.23)(@orpc/server@2.0.0-beta.23)':
+  '@unthrown/orpc@0.1.2(@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@orpc/client': 2.0.0-beta.23
+      '@orpc/client': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       unthrown: 5.2.0
     optionalDependencies:
-      '@orpc/server': 2.0.0-beta.23
+      '@orpc/server': 2.0.0-beta.23(@opentelemetry/api@1.9.1)
 
   '@unthrown/oxlint@5.2.0(oxlint@1.77.0)':
     dependencies:
@@ -6101,10 +6199,15 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       unthrown: 5.2.0
 
+  '@unthrown/standard-schema@5.5.0':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      unthrown: 5.5.0
+
   '@unthrown/vitest@5.2.0(unthrown@5.2.0)(vitest@4.1.10)':
     dependencies:
       unthrown: 5.2.0
-      vitest: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   '@visx/curve@4.0.1-alpha.0':
     dependencies:
@@ -6191,7 +6294,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -6409,6 +6512,11 @@ snapshots:
       fast-uri: 3.1.5
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
+
+  amqp-connection-manager@5.0.0(amqplib@2.0.1):
+    dependencies:
+      amqplib: 2.0.1
+      promise-breaker: 6.0.0
 
   amqplib@2.0.1: {}
 
@@ -7601,6 +7709,8 @@ snapshots:
 
   process@0.11.10: {}
 
+  promise-breaker@6.0.0: {}
+
   proper-lockfile@4.1.2:
     dependencies:
       graceful-fs: 4.2.11
@@ -8124,6 +8234,8 @@ snapshots:
 
   unthrown@5.2.0: {}
 
+  unthrown@5.5.0: {}
+
   update-browserslist-db@1.3.1(browserslist@4.28.8):
     dependencies:
       browserslist: 4.28.8
@@ -8154,7 +8266,7 @@ snapshots:
       terser: 5.50.0
       yaml: 2.9.0
 
-  vitest@4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0):
+  vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0):
     dependencies:
       '@vitest/expect': 4.1.10
       '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@26.1.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))
@@ -8177,6 +8289,7 @@ snapshots:
       vite: 8.2.1(@types/node@26.1.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      '@opentelemetry/api': 1.9.1
       '@types/node': 26.1.2
       '@vitest/coverage-v8': 4.1.10(vitest@4.1.10)
     transitivePeerDependencies:

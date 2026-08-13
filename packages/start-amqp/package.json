@@ -50,14 +50,21 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@amqp-contract/contract": "catalog:",
     "@amqp-contract/testing": "catalog:",
+    "@amqp-contract/worker": "catalog:",
+    "@btravstack/di": "catalog:",
+    "@btravstack/start": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
+    "@opentelemetry/api": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "unthrown": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
   },
   "peerDependencies": {
     "@btravstack/di": "^0.1.0",
