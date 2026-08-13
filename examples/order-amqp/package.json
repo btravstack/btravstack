@@ -17,8 +17,8 @@
   "dependencies": {
     "@amqp-contract/worker": "catalog:",
     "@btravstack/di": "catalog:",
-    "@btravstack/start-core": "workspace:*",
     "@btravstack/start-amqp": "workspace:*",
+    "@btravstack/start-core": "workspace:*",
     "@btravstack/start-example-order-amqp-contract": "workspace:*",
     "@btravstack/start-example-order-application": "workspace:*",
     "@btravstack/start-example-order-config": "workspace:*",

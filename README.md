@@ -38,7 +38,12 @@ The kernel itself has no runtime dependencies beyond `node:` builtins.
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
-import { runMain, start, type Runtime, type Serving } from "@btravstack/start-core";
+import {
+  runMain,
+  start,
+  type Runtime,
+  type Serving,
+} from "@btravstack/start-core";
 import { Ok, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{

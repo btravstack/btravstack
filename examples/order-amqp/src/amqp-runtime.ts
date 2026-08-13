@@ -1,11 +1,11 @@
 import { declareHandler, NonRetryableError, RetryableError } from "@amqp-contract/worker";
-import type { Runtime } from "@btravstack/start-core";
 import {
   amqpRuntime,
   messageUnits,
   type AmqpInfo,
   type MessageUnitContext,
 } from "@btravstack/start-amqp";
+import type { Runtime } from "@btravstack/start-core";
 import type { OrderContract } from "@btravstack/start-example-order-amqp-contract";
 import { Logger, PlaceOrder } from "@btravstack/start-example-order-application";
 import { ErrAsync, P } from "unthrown";
