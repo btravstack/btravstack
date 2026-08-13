@@ -1,0 +1,14 @@
+// The declaration-emit gate. `TS4020` and friends are raised by the
+// *declaration emitter*, so the package's ordinary `tsc --noEmit` pass cannot
+// see them: `noEmit` has to come back off and the emitter has to actually run.
+// `src/emit-guards.ts` is the fixture it exists for — see that file's header.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true,
+    "outDir": "./node_modules/.emit-check"
+  }
+}

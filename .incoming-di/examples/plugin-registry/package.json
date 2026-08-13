@@ -1,0 +1,27 @@
+{
+  "name": "@btravstack/di-example-plugin-registry",
+  "private": true,
+  "description": "Multi-binding with @btravstack/di: a Port.many health-check registry fed independently by two modules, collected and run together at the composition root",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@btravstack/di": "workspace:*",
+    "unthrown": "catalog:"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

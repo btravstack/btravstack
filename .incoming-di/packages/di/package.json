@@ -1,0 +1,70 @@
+{
+  "name": "@btravstack/di",
+  "version": "0.1.0",
+  "description": "A module-based dependency-injection container for TypeScript: ports as the vocabulary an application defines, providers bound at one edge, and modules that declare their imports and exports",
+  "keywords": [
+    "container",
+    "dependency-injection",
+    "di",
+    "hexagonal-architecture",
+    "inversion-of-control",
+    "ports-and-adapters",
+    "typescript",
+    "unthrown"
+  ],
+  "homepage": "https://github.com/btravstack/di#readme",
+  "bugs": {
+    "url": "https://github.com/btravstack/di/issues"
+  },
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/btravstack/di.git",
+    "directory": "packages/di"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts --format cjs,esm --dts --watch",
+    "test": "vitest run",
+    "test:types": "tsc --noEmit -p tsconfig.test-d.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unthrown": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "unthrown": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

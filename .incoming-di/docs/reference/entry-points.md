@@ -1,0 +1,139 @@
+---
+title: Entry points
+description: "Module.build, Module.scoped and Module.forkScope — signatures, the UNSATISFIED DEPENDENCIES gate, ScopedOptions, and Context, precisely."
+---
+
+# Entry points
+
+Three functions turn a module declaration into running services. They differ
+in one thing: what they do about scopes — and therefore which graphs the type
+system lets each accept.
+
+## The gate
+
+Every entry point carries the same compile-time gate, as a conditional rest
+parameter: when the module's remaining `Needs` (after the exclusions each
+entry point is entitled to) is `never`, the gate is the empty tuple and the
+call is ordinary; when it is not, two required parameters appear —
+`error: "UNSATISFIED DEPENDENCIES", missing: N` — and the call is an arity
+error naming exactly what is missing. There is no way to supply the phantom
+arguments; the fix is always to satisfy the need.
+
+## `Module.build(module)`
+
+```ts
+const built: AsyncResult<Context<X>, E> = Module.build(App);
+```
+
+Checks the graph, constructs every provider in dependency order, resolves to
+the built [`Context`](#context). For modules with **no unmet needs at all**:
+the gate excludes nothing, so `Scope` in `Needs` — any resourceful provider,
+any `onStop` hook, anywhere in the tree — makes the call refuse to compile.
+`build` opens no scope and runs no teardown; that is exactly why it may not
+accept a graph that would need one.
+
+The `Context` it resolves to has no scope behind it — appropriate for
+services that live as long as the process.
+
+## `Module.scoped(module, use, options?)`
+
+```ts
+const result: AsyncResult<A, E | E2> = Module.scoped(
+  App,
+  (ctx) => useIt(ctx),
+  options,
+);
+```
+
+The resourceful counterpart. Opens a scope, builds the graph, hands the
+`Context<X>` to `use`, and **closes the scope before its own result
+settles** — on `use` succeeding, on `use` failing, and on construction
+failing partway (releasing whatever was acquired before the failure).
+
+- The gate is computed from `Exclude<Needs, Scope>`: `Scope` is the one need
+  this entry point discharges, by actually opening a scope. Every other unmet
+  need still gates.
+- The error channel is `E | E2` — construction failures and `use`'s own
+  failures share the result.
+- A non-resourceful module is fine here too; a scope with nothing registered
+  closes trivially.
+
+The `Context` must not outlive the callback — after `use` settles, acquired
+resources are released. Do what needs services **inside** `use`.
+
+## `Module.forkScope(parent, module, use, options?)`
+
+```ts
+const result: AsyncResult<A, E | E2> = Module.forkScope(
+  appCtx,
+  RequestModule,
+  (ctx) => handle(ctx.get(Transaction)),
+);
+```
+
+A short-lived scope layered over an **already-built** parent `Context` — the
+per-request pattern. Constructs only `module`'s providers, seeded with the
+parent's services; `use` receives a `Context<PParent | X>` carrying both.
+
+- The gate is computed from `Exclude<Needs, PParent | Scope>`: the request
+  module may depend on anything the parent already provides — that is the
+  point of forking over a built parent — and `Scope` is discharged by the
+  fresh scope this call opens. Anything neither satisfies still gates.
+- Closing the fork releases **only what the fork acquired**: the parent's
+  finalisers were registered on the parent's scope, not this one. The parent
+  stays up for sibling forks and for whatever follows.
+- Forks nest: a fork's `use` may fork again over the context it received.
+
+## `ScopedOptions`
+
+Accepted by `Module.scoped` and `Module.forkScope`:
+
+```ts
+type ScopedOptions = {
+  readonly onTeardownError?: (portId: string, cause: unknown) => void;
+};
+```
+
+Called once per finaliser (`release` or `onStop`) that fails during scope
+close, tagged with the failing provider's port id. Failures are reported and
+**swallowed**: teardown continues past them, and the entry point's own result
+is never changed by one — a failed close must not mask the failure that
+triggered the unwind. The default reporter writes to `console.error`. A
+throwing reporter is itself swallowed; there is nowhere left to report a
+broken reporter to.
+
+## `Context`
+
+What entry points hand back or pass to callbacks:
+
+```ts
+const service = ctx.get(SomePort); // typed exactly as the port declared
+```
+
+- **`ctx.get(port)`** — returns the constructed service. Only ports in the
+  context's channel — the module's `Exports` (plus the parent's, in a fork) —
+  compile; everything else is unnameable. On a
+  [set port](/reference/ports#port-many-id-member), returns every accumulated
+  contribution.
+- **`Context.empty()`** — a context with nothing in it. Useful as a typed
+  starting point in tests.
+
+A `Context` is immutable and read-only from the outside: `get` is its entire
+public surface. Services construct once per build; every `get` returns the
+same instance.
+
+## Construction order and failure
+
+Shared by all three entry points:
+
+1. The provider tree is flattened (de-duplicated by reference — a diamond
+   constructs once) and [checked](/reference/wiring-defects); nothing has run
+   yet if a check fails.
+2. Providers are grouped into dependency levels. Each level constructs
+   **concurrently**; levels run strictly in order.
+3. On a failure, siblings already in flight settle, then the build stops —
+   later levels never start. Within a level, the failure reported is the
+   first in **declaration order**, deterministically. Under a scope,
+   everything acquired so far is then released.
+4. `onStart` hooks fire only after the whole graph is built, in declaration
+   order.
