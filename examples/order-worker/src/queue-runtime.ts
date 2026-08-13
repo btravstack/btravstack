@@ -1,5 +1,5 @@
 import type { Context, ServiceOf } from "@btravstack/di";
-import type { Runtime, RuntimeHost, Serving, UnitMeta } from "@btravstack/start";
+import type { Runtime, RuntimeHost, Serving, UnitMeta } from "@btravstack/start-core";
 import { Logger, PlaceOrder } from "@btravstack/start-example-order-application";
 import { OkAsync, P, fromSafePromise, type AsyncResult } from "unthrown";
 

@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order API contract
+# `@btravstack/start-core` example: the order API contract
 
 The oRPC contract — the wire shapes and the declared error codes — in a package
 of its own, depending on `@orpc/contract` and nothing else.

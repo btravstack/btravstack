@@ -1,9 +1,9 @@
-# packages/start
+# packages/start-core
 
 The kernel's internals. The root `CLAUDE.md` is still the authoritative spec
 for what this package **is** — the thesis, the public surface and the
 conventions live there; this file holds the two sections that only matter when
-you are editing `packages/start` itself. Both are load-bearing: keep them in
+you are editing `packages/start-core` itself. Both are load-bearing: keep them in
 sync with the code in the same commit.
 
 ## Load-bearing runtime invariants (tests must guard these)
@@ -139,7 +139,7 @@ gate.
 
 ## Internal design (don't break these)
 
-`packages/start/src/` is one concept per file.
+`packages/start-core/src/` is one concept per file.
 
 - **The needs check is a trailing phantom rest tuple, not a conditional on an
   inference-bearing parameter.**

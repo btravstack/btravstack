@@ -2,7 +2,7 @@
 "@btravstack/start-temporal": minor
 ---
 
-The Temporal worker runtime for `@btravstack/start`.
+The Temporal worker runtime for `@btravstack/start-core`.
 
 `temporalRuntime({ connection, taskQueue, workflows, activities, needs })` runs a
 Temporal worker under the kernel's lifecycle: one unit per activity attempt, and

@@ -7,7 +7,7 @@ boot a [`@btravstack/di`](https://github.com/btravstack/di) module into a runnin
 process, and stop it again without losing work.**
 
 [![CI](https://github.com/btravstack/start/actions/workflows/ci.yml/badge.svg)](https://github.com/btravstack/start/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fstart.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/start)
+[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fstart.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/start-core)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -28,7 +28,7 @@ never calls `process.exit`.
 ## Install
 
 ```sh
-pnpm add @btravstack/start @btravstack/di unthrown
+pnpm add @btravstack/start-core @btravstack/di unthrown
 ```
 
 `@btravstack/di` and `unthrown` are **peer dependencies** — install all three.
@@ -38,7 +38,7 @@ The kernel itself has no runtime dependencies beyond `node:` builtins.
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
-import { runMain, start, type Runtime, type Serving } from "@btravstack/start";
+import { runMain, start, type Runtime, type Serving } from "@btravstack/start-core";
 import { Ok, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{
@@ -99,7 +99,7 @@ await runMain(start(AppModule, { runtime: ticker }));
 `start` call, not a boot-time crash.
 
 Every code sample on this page is compiled by
-[`packages/start/src/docs-examples.test-d.ts`](./packages/start/src/docs-examples.test-d.ts),
+[`packages/start-core/src/docs-examples.test-d.ts`](./packages/start-core/src/docs-examples.test-d.ts),
 so a sample that stops compiling fails the build.
 
 ## What it is not
@@ -502,7 +502,7 @@ swallowed: a broken reporter must not take the process down mid-shutdown.
 
 ## Testing
 
-`@btravstack/start/testing` ships the deterministic half of the lifecycle.
+`@btravstack/start-core/testing` ships the deterministic half of the lifecycle.
 
 ```ts
 const drainTest = async (): Promise<void> => {
@@ -576,13 +576,13 @@ lines done well.
 
 ## Documentation
 
-See [`packages/start`](./packages/start) for the package README,
+See [`packages/start-core`](./packages/start-core) for the package README,
 [`examples/`](./examples) for an eleven-package clean-architecture application
 booted under four different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
 authoritative spec: the theses, the public surface and the conventions. The
 load-bearing invariants with the test that guards each, and the internal design
 notes, live in
-[`packages/start/CLAUDE.md`](./packages/start/CLAUDE.md).
+[`packages/start-core/CLAUDE.md`](./packages/start-core/CLAUDE.md).
 
 ## License
 

@@ -1,7 +1,7 @@
 # @btravstack/start-temporal
 
 **The Temporal worker runtime for
-[`@btravstack/start`](https://github.com/btravstack/start): one unit per
+[`@btravstack/start-core`](https://github.com/btravstack/start): one unit per
 activity attempt, and a drain that releases the kernel at the kernel's
 deadline.**
 
@@ -17,7 +17,7 @@ this is a package rather than per-application code.
 ## Install
 
 ```sh
-pnpm add @btravstack/start-temporal @btravstack/start @btravstack/di unthrown \
+pnpm add @btravstack/start-temporal @btravstack/start-core @btravstack/di unthrown \
   @temporalio/worker @temporalio/activity @temporalio/common
 ```
 

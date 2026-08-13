@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order API layer
+# `@btravstack/start-core` example: the order API layer
 
 The transport. A router implementing
 [`order-api-contract`](../order-api-contract), served over `node:http` under

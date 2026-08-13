@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order Temporal worker
+# `@btravstack/start-core` example: the order Temporal worker
 
 The third deployment. The same application, the same persistence, the same
 composition — driven by a durable execution engine instead of an HTTP server or

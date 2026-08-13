@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order worker
+# `@btravstack/start-core` example: the order worker
 
 The second deployment. The same application, the same persistence, the same
 composition — consumed off a queue instead of served over HTTP.

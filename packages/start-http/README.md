@@ -1,6 +1,6 @@
 # @btravstack/start-http
 
-**The HTTP runtime for [`@btravstack/start`](https://github.com/btravstack/start):
+**The HTTP runtime for [`@btravstack/start-core`](https://github.com/btravstack/start):
 one unit per request, and a drain that actually stops accepting.**
 
 Routing and middleware are solved by oRPC, Hono, Express and half a dozen
@@ -12,10 +12,10 @@ and nothing a router already does better.
 ## Install
 
 ```sh
-pnpm add @btravstack/start-http @btravstack/start @btravstack/di unthrown
+pnpm add @btravstack/start-http @btravstack/start-core @btravstack/di unthrown
 ```
 
-`@btravstack/start`, `@btravstack/di` and `unthrown` are peer dependencies —
+`@btravstack/start-core`, `@btravstack/di` and `unthrown` are peer dependencies —
 install all three. Node `>=20`.
 
 Not yet published: this repository has not cut a release, so there is nothing
@@ -117,7 +117,7 @@ hang.
 
 ## Writing a runtime
 
-`@btravstack/start` states two obligations a runtime owes that the kernel
+`@btravstack/start-core` states two obligations a runtime owes that the kernel
 cannot check for you (see its README's own _Writing a runtime_ section). This
 package exists to discharge both on the caller's behalf, so an application
 built on it gets them for free rather than having to get them right by hand:

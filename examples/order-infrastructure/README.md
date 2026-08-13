@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order infrastructure layer
+# `@btravstack/start-core` example: the order infrastructure layer
 
 The adapter side. This layer speaks Prisma, SQLite and P-codes, and its job is
 to make sure none of that vocabulary reaches the layers above it.

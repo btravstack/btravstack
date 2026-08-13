@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order AMQP worker
+# `@btravstack/start-core` example: the order AMQP worker
 
 The fourth deployment. The same application, the same persistence, the same
 composition — driven by a real message broker instead of an HTTP server, an

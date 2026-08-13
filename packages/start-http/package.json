@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/start-http",
   "version": "0.0.0",
-  "description": "The HTTP runtime for @btravstack/start: one unit per request, and a drain that actually stops accepting",
+  "description": "The HTTP runtime for @btravstack/start-core: one unit per request, and a drain that actually stops accepting",
   "keywords": [
     "graceful-shutdown",
     "http",
@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "@btravstack/di": "catalog:",
-    "@btravstack/start": "workspace:*",
+    "@btravstack/start-core": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
@@ -62,7 +62,7 @@
   },
   "peerDependencies": {
     "@btravstack/di": "^0.1.0",
-    "@btravstack/start": "workspace:^",
+    "@btravstack/start-core": "workspace:^",
     "unthrown": "^5.0.0"
   },
   "engines": {

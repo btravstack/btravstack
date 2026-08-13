@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order AMQP contract
+# `@btravstack/start-core` example: the order AMQP contract
 
 The AMQP contract — one exchange, one queue with a dead-letter exchange and a
 retry policy, one message, one publisher, one consumer — in a package of its

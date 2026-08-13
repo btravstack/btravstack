@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { start, type RunningApp } from "@btravstack/start";
+import { start, type RunningApp } from "@btravstack/start-core";
 import {
   ApplicationModule,
   FindOrder,

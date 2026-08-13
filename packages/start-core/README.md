@@ -1,9 +1,9 @@
-# @btravstack/start
+# @btravstack/start-core
 
 **The application kernel: boot a [`@btravstack/di`](https://github.com/btravstack/di)
 module into a running process, and stop it again without losing work.**
 
-[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fstart.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/start)
+[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fstart.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/start-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 `di` proves an application's wiring before the process exists. `start` owns
@@ -15,7 +15,7 @@ nothing about HTTP, AMQP or Temporal, it never throws, and it never calls
 ## Install
 
 ```sh
-pnpm add @btravstack/start @btravstack/di unthrown
+pnpm add @btravstack/start-core @btravstack/di unthrown
 ```
 
 `@btravstack/di` and `unthrown` are **peer dependencies** — install all three.
@@ -26,7 +26,7 @@ Node `>=20`.
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
-import { runMain, start, type Runtime, type Serving } from "@btravstack/start";
+import { runMain, start, type Runtime, type Serving } from "@btravstack/start-core";
 import { Ok, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{
@@ -193,7 +193,7 @@ together — the other way out, at the cost of no signal-driven drain.)
 
 ## Testing
 
-`@btravstack/start/testing` ships `createFakeClock`, `testRuntime` and
+`@btravstack/start-core/testing` ships `createFakeClock`, `testRuntime` and
 `withApp`.
 
 ```ts

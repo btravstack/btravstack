@@ -4,7 +4,7 @@ import {
   type Runtime,
   type RuntimeHost,
   type Serving,
-} from "@btravstack/start";
+} from "@btravstack/start-core";
 import type { Duration } from "@temporalio/common";
 import {
   Worker,

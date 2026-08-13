@@ -9,7 +9,7 @@
  * against the same application graph at the `start(...)` call site.
  */
 import { Module } from "@btravstack/di";
-import { start } from "@btravstack/start";
+import { start } from "@btravstack/start-core";
 import {
   ApplicationModule,
   FindOrder,

@@ -59,5 +59,5 @@ with the code in the same commit, and with `README.md` — the package ships no
   downstream, and `createContext` runs once per activity execution. That last
   point is what makes the per-unit context ride through the library's own
   channel rather than a channel this package invented.
-- Peer dependencies: `@btravstack/start`, `@btravstack/di`, `unthrown`,
+- Peer dependencies: `@btravstack/start-core`, `@btravstack/di`, `unthrown`,
   `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`.

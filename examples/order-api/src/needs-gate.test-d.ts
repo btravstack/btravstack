@@ -10,7 +10,7 @@
  * *classes* while di parameterises `Context` by port *instances*.
  */
 import { Module } from "@btravstack/di";
-import { start } from "@btravstack/start";
+import { start } from "@btravstack/start-core";
 import {
   ApplicationModule,
   FindOrder,

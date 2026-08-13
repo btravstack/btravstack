@@ -2,7 +2,7 @@
 "@btravstack/start-http": minor
 ---
 
-The HTTP runtime for `@btravstack/start`.
+The HTTP runtime for `@btravstack/start-core`.
 
 `httpRuntime({ port, needs, handler })` owns an HTTP server's lifecycle and
 nothing else: it binds (publishing the real port on `Serving.info`, so

@@ -26,7 +26,7 @@ import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
 import { Module, Port, Provider } from "@btravstack/di";
-import { currentUnit, start, type RunningApp } from "@btravstack/start";
+import { currentUnit, start, type RunningApp } from "@btravstack/start-core";
 import { expect, test } from "vitest";
 
 import { httpRuntime, type HttpHandler, type HttpInfo } from "./http-runtime.js";

@@ -108,5 +108,5 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   transport. `retry: { mode: "ttl-backoff", maxRetries: 3 }` also means
   **four** total attempts (first plus three retries), not the same count as
   Temporal's `maximumAttempts: 3`.
-- Peer dependencies: `@btravstack/start`, `@btravstack/di`, `unthrown`,
+- Peer dependencies: `@btravstack/start-core`, `@btravstack/di`, `unthrown`,
   `@amqp-contract/worker`, `@opentelemetry/api`.

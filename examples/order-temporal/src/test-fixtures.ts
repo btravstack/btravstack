@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { start, type RunningApp } from "@btravstack/start";
+import { start, type RunningApp } from "@btravstack/start-core";
 import {
   ApplicationModule,
   FindOrder,

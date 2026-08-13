@@ -7,7 +7,7 @@ reasoning behind them. Keep it in sync with the code as the package evolves
 
 ## What this is
 
-`@btravstack/start` — the application kernel. It boots a
+`@btravstack/start-core` — the application kernel. It boots a
 [`@btravstack/di`](https://github.com/btravstack/di) module into a running
 process with one runtime, drains in-flight work on SIGTERM, and closes the
 application scope on every path. It owns three things — the lifecycle state
@@ -174,11 +174,11 @@ hook). User-facing changes need a changeset.
 
 ## Kernel internals
 
-Two sections live in `packages/start/CLAUDE.md`, which loads only when you work
+Two sections live in `packages/start-core/CLAUDE.md`, which loads only when you work
 under that directory: **Load-bearing runtime invariants (tests must guard
 these)** — each invariant with the test that guards it — and **Internal design
 (don't break these)**. Read them before changing anything in
-`packages/start/src/`, and update them in the same commit as the code.
+`packages/start-core/src/`, and update them in the same commit as the code.
 
 ## A known footgun: `start` without `runMain` exits 0 after a crash
 
@@ -233,11 +233,11 @@ started elsewhere.
 
 ## Public surface
 
-`packages/start/src/index.ts` is the one place the API is decided. `testing.ts`
-is a second entry point (`@btravstack/start/testing`), kept out of the main one
+`packages/start-core/src/index.ts` is the one place the API is decided. `testing.ts`
+is a second entry point (`@btravstack/start-core/testing`), kept out of the main one
 so a production bundle never pulls the fakes in.
 
-### `@btravstack/start`
+### `@btravstack/start-core`
 
 - **`start(module, options)` → `RunningApp<E>`** — the entry point. Takes a
   `Module<X, E, Scope>` (not `Module<X, E, never>`: `Needs` is covariant on
@@ -330,7 +330,7 @@ runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
 adapter is composing a different module, which di already documents and the type
 checker already verifies.
 
-### `@btravstack/start/testing`
+### `@btravstack/start-core/testing`
 
 - **`testRuntime(name?)`** — an in-memory `Runtime<never, TestRuntimeInfo>` plus
   `started()`, `untilStarted()` (an `AsyncResult<void, never>`), `accepting()`,
@@ -363,7 +363,7 @@ checker already verifies.
 Their public surfaces live in `packages/start-http/CLAUDE.md`,
 `packages/start-temporal/CLAUDE.md` and `packages/start-amqp/CLAUDE.md`, which
 load only when you work under those directories — the same split
-`packages/start/CLAUDE.md` already uses for the kernel's internals. Read the
+`packages/start-core/CLAUDE.md` already uses for the kernel's internals. Read the
 one you are changing before you change it, and update it in the same commit as
 the code.
 
@@ -373,7 +373,7 @@ the code.
   eleven workspaces run under the same six commands as the kernel — 93 specs
   plus five `needs-gate.test-d.ts` files and four `layering.test-d.ts` ones —
   so an example that stops compiling, stops linting or stops passing fails CI
-  exactly as `packages/start` would. Four of the five needs-gate files pin
+  exactly as `packages/start-core` would. Four of the five needs-gate files pin
   **`start`'s** runtime-needs gate (`order-api`, `order-worker`,
   `order-temporal`, `order-amqp`); the fifth, `order-application`'s, pins
   **di's** `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`. They are
@@ -467,7 +467,7 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
   dependencies of `start` — the dual-copy hazard is real for both (di's port
   identity and unthrown's `isResult` each compare across copies). `start-http`
-  peers on both of those plus `@btravstack/start` itself, for the same reason.
+  peers on both of those plus `@btravstack/start-core` itself, for the same reason.
   `node:` builtins only otherwise. Do not add a dependency.
 - `declarationMap: false` on all four published packages — the published
   tarball has no `src/`, so maps would be dead ends.
@@ -513,7 +513,7 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   a plausible "simplification" (the `teardownErrors` aliasing, the `ready()`
   latch, the monotonic `completed`), which is what the surviving comments are.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
-- Coverage thresholds are 100% lines/functions on `packages/start`, with
+- Coverage thresholds are 100% lines/functions on `packages/start-core`, with
   `testing.ts` excluded (it is a re-export barrel).
 - Test mechanics: `@unthrown/vitest`'s matchers are registered via `setupFiles`
   (`toBeOk`, `toBeOkWith`, `toBeErrTagged`, …). Timing is asserted through
@@ -524,8 +524,8 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
 - Documentation drifts silently, and a sibling repo has already shipped a
   falsehood this way. When the public surface changes, update **this** file,
   both READMEs **and** `docs-examples.test-d.ts` in the same commit — and when
-  the change is to `packages/start/src/` internals or the invariants guarding
-  them, `packages/start/CLAUDE.md` too — and for a runtime package, its own:
+  the change is to `packages/start-core/src/` internals or the invariants guarding
+  them, `packages/start-core/CLAUDE.md` too — and for a runtime package, its own:
   `packages/start-http/CLAUDE.md`, `packages/start-temporal/CLAUDE.md` or
   `packages/start-amqp/CLAUDE.md`, whichever is where that package's public
   surface lives. There are **five** `CLAUDE.md` files; naming the wrong one is
@@ -536,7 +536,7 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
 Five rules, each with the reason it exists — binding at two different scopes,
 which is a decision rather than an accident.
 
-**Rules 4 and 5 are substantive and bind everywhere**, `packages/start`
+**Rules 4 and 5 are substantive and bind everywhere**, `packages/start-core`
 included. They are what stops an assertion silently declining to run: a
 conditional or optional-chained `expect` skips without failing the test, and a
 scatter of shallow assertions hides which one is load-bearing. That shape was
@@ -666,14 +666,14 @@ A sixth rule is about production code that tests keep honest:
   for it; the `Module.forkScope` call lands when the first runtime needs a
   per-request transaction.
 - **A `docs-examples.test-d.ts` for `start-http`, `start-temporal` and
-  `start-amqp`.** `packages/start`'s exists precisely so its two READMEs
+  `start-amqp`.** `packages/start-core`'s exists precisely so its two READMEs
   cannot drift from `runtime.ts` / `drain-report.ts` without failing `pnpm
 typecheck`; the three runtime packages' README samples have no such gate
   and are compiled by nothing. Deliberately not built — three packages' worth
   of samples still did not justify the harness. Add it the next time one of
   those samples is found to have drifted, the same way this gap itself was
   found.
-- ~~Bringing `packages/start`'s 13 spec files under the Test conventions.~~
+- ~~Bringing `packages/start-core`'s 13 spec files under the Test conventions.~~
   **Closed by decision, not by doing it.** An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since
   deleted, and zero optional-chained ones — so the sweep would have been

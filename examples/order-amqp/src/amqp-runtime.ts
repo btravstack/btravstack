@@ -1,5 +1,5 @@
 import { declareHandler, NonRetryableError, RetryableError } from "@amqp-contract/worker";
-import type { Runtime } from "@btravstack/start";
+import type { Runtime } from "@btravstack/start-core";
 import {
   amqpRuntime,
   messageUnits,

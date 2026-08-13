@@ -1,7 +1,7 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { start, type RunningApp } from "@btravstack/start";
+import { start, type RunningApp } from "@btravstack/start-core";
 import type { AmqpInfo } from "@btravstack/start-amqp";
 import { orderContract } from "@btravstack/start-example-order-amqp-contract";
 import {

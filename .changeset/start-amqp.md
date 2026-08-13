@@ -2,7 +2,7 @@
 "@btravstack/start-amqp": minor
 ---
 
-The AMQP consumer runtime for `@btravstack/start`.
+The AMQP consumer runtime for `@btravstack/start-core`.
 
 `amqpRuntime({ urls, contract, handlers, needs })` runs an `amqp-contract`
 worker under the kernel's lifecycle: one unit per delivery, and a drain where

@@ -1,4 +1,4 @@
-import type { Runtime } from "@btravstack/start";
+import type { Runtime } from "@btravstack/start-core";
 import { Logger, PlaceOrder } from "@btravstack/start-example-order-application";
 import type { OrderContract } from "@btravstack/start-example-order-temporal-contract";
 import {

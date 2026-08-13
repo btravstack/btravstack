@@ -1,7 +1,7 @@
 # @btravstack/start-amqp
 
 **The AMQP consumer runtime for
-[`@btravstack/start`](https://github.com/btravstack/start): one unit per
+[`@btravstack/start-core`](https://github.com/btravstack/start): one unit per
 delivery, and a drain with exactly one deadline — the kernel's own.**
 
 It runs an [`amqp-contract`](https://github.com/btravstack/amqp-contract)
@@ -14,7 +14,7 @@ clock in the process.
 ## Install
 
 ```sh
-pnpm add @btravstack/start-amqp @btravstack/start @btravstack/di unthrown \
+pnpm add @btravstack/start-amqp @btravstack/start-core @btravstack/di unthrown \
   @amqp-contract/worker @opentelemetry/api
 ```
 
