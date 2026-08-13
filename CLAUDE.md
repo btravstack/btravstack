@@ -484,10 +484,10 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   falsehood this way. When the public surface changes, update **this** file,
   both READMEs **and** `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/start/src/` internals or the invariants guarding
-  them, `packages/start/CLAUDE.md` too — and for a runtime package, its own
-  `packages/start-{http,temporal}/CLAUDE.md`, which is where that package's
-  public surface lives. There are **four** `CLAUDE.md` files; naming the wrong
-  one is how the last drift happened.
+  them, `packages/start/CLAUDE.md` too — and for a runtime package, its own:
+  `packages/start-http/CLAUDE.md` or `packages/start-temporal/CLAUDE.md`, which
+  is where that package's public surface lives. There are **four** `CLAUDE.md`
+  files; naming the wrong one is how the last drift happened.
 
 ## Test conventions
 
