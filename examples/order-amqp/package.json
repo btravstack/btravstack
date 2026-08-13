@@ -1,0 +1,40 @@
+{
+  "name": "@btravstack/start-example-order-amqp",
+  "private": true,
+  "description": "The fourth deployment of the clean-architecture example: the same application module, served by an AMQP consumer whose deliveries are kernel units",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:types": "tsc --noEmit -p tsconfig.test-d.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
+  },
+  "dependencies": {
+    "@amqp-contract/worker": "catalog:",
+    "@btravstack/di": "catalog:",
+    "@btravstack/start": "workspace:*",
+    "@btravstack/start-amqp": "workspace:*",
+    "@btravstack/start-example-order-amqp-contract": "workspace:*",
+    "@btravstack/start-example-order-application": "workspace:*",
+    "@btravstack/start-example-order-config": "workspace:*",
+    "@btravstack/start-example-order-domain": "workspace:*",
+    "@btravstack/start-example-order-infrastructure": "workspace:*",
+    "@opentelemetry/api": "catalog:",
+    "@unthrown/standard-schema": "catalog:",
+    "unthrown": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@amqp-contract/testing": "catalog:",
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
