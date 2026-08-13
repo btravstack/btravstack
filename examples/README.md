@@ -95,8 +95,8 @@ nothing could. What differs is what each transport is **for**:
   in order and compensates in reverse when one answers a permanent no —
   orchestration, which needs a durable owner.
 - **`order-amqp-worker`** tells everyone what happened: every committed write
-  leaves an `order.placed` event through a transactional outbox — broadcast,
-  which needs no addressee at all.
+  leaves an event through a transactional outbox — and a cancellation leaves
+  a tombstone — broadcast, which needs no addressee at all.
 
 The use cases return a `Result`, and what a `Result` means to a transport is
 the transport's business — **the same `Err` becomes different outcomes** where
@@ -171,7 +171,7 @@ missing need.
 
 ## Why these are tests, not just illustrations
 
-Each package reads as application code, and each is covered by real specs — 80
+Each package reads as application code, and each is covered by real specs — 86
 of them, run by the repository's own `pnpm test`:
 
 ```sh

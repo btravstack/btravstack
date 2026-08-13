@@ -14,11 +14,13 @@ import type { AsyncResult } from "unthrown";
  * adapter, because the use cases own the shape they need — the direction that
  * keeps the dependency arrow pointing inwards.
  *
- * `save` promises more than a row: every successful write also leaves an
- * `order.placed` entry in the outbox, atomically — the write and the fact of
- * the write commit or roll back together. `remove` is the compensation arm the
- * fulfillment saga leans on; deleting what does not exist is `OrderNotFound`,
- * a value, so a duplicate compensation is inert rather than a crash.
+ * Both write paths promise more than a row: `save` also leaves an event in
+ * the outbox and `remove` leaves a **tombstone**, each atomically — the write
+ * and the fact of the write commit or roll back together, so a subscriber can
+ * never miss either. `remove` is the compensation arm the fulfillment saga
+ * leans on; deleting what does not exist is `OrderNotFound`, a value, so a
+ * duplicate compensation is inert rather than a crash (and writes no second
+ * tombstone).
  */
 export class OrderRepository extends Port("OrderRepository")<{
   readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
@@ -26,11 +28,22 @@ export class OrderRepository extends Port("OrderRepository")<{
   readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
 }> {}
 
-/** One row of the outbox: the fact that an order was placed, awaiting broadcast. */
-export type OrderPlacedEvent = {
+/**
+ * One event awaiting broadcast — the envelope every subscriber reads.
+ *
+ * `kind` says what sort of thing changed, `subjectId` says which one, and
+ * `payload` says what it now is. A **null payload is the tombstone**: the last
+ * word about a subject, saying it is gone. That is the whole vocabulary a
+ * reader needs to rebuild state — the first event for a subject creates it,
+ * later ones with a payload replace it, and the null one deletes it — and it
+ * is why `id`, the outbox sequence, is the order the relay must publish in.
+ */
+export type OrderEvent = {
   readonly id: number;
-  readonly orderId: string;
-  readonly quantity: number;
+  readonly kind: "order";
+  readonly subjectId: string;
+  readonly occurredAt: Date;
+  readonly payload: { readonly quantity: number } | null;
 };
 
 /**
@@ -42,7 +55,7 @@ export type OrderPlacedEvent = {
  * not answer is a defect, not a domain outcome.
  */
 export class Outbox extends Port("Outbox")<{
-  readonly pending: (limit: number) => AsyncResult<readonly OrderPlacedEvent[], never>;
+  readonly pending: (limit: number) => AsyncResult<readonly OrderEvent[], never>;
   readonly markPublished: (ids: readonly number[]) => AsyncResult<void, never>;
 }> {}
 

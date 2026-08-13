@@ -1,9 +1,10 @@
 # `@btravstack/start-core` example: the order broadcast worker
 
 **What AMQP is for: telling everyone what happened.** This deployment
-broadcasts a fact — `order.placed` — to whoever cares to listen, and it gets
-that fact onto the wire without ever letting "the order committed" and "the
-event was sent" disagree: the **transactional outbox** pattern, end to end.
+broadcasts a **change stream** — every write to an order, as a fact on the
+wire — and it gets those facts out without ever letting "the order committed"
+and "the event was sent" disagree: the **transactional outbox** pattern, end
+to end.
 The consuming half is served by
 [`@btravstack/start-amqp`](../../packages/start-amqp) the way `order-api` is
 served by `@btravstack/start-http`; the contract lives in
@@ -28,7 +29,7 @@ the fact of it is lost — the failure mode the naive `save(); publish();`
 sequence carries by construction.
 
 **The relay** is `src/outbox-relay.ts`: an infinite sweep — pull pending rows
-in commit order, `publish("orderPlaced", …)` each to the `orders` exchange,
+in commit order, `publish("orderChanged", …)` each to the `orders` exchange,
 mark what the broker confirmed. It is deliberately **at-least-once**: a crash
 between publish and mark re-publishes on the next sweep, a broker outage
 leaves rows pending and the sweep after the outage drains them. What is never
@@ -87,8 +88,9 @@ fragment's bounds would not.
 The suite runs against a **real RabbitMQ** in a testcontainer (Docker
 required): a write placed through the application's own `PlaceOrder` crosses
 the outbox, the broker and the queue, and comes back as the consumer's
-notification — commit order preserved, outbox drained, and the same event
-delivered to a subscriber this contract never heard of.
+notification — commit order preserved, outbox drained, a cancellation
+arriving as a tombstone behind its placement, and the same event delivered to
+a subscriber this contract never heard of.
 
 ```bash
 pnpm --filter @btravstack/start-example-order-amqp-worker test        # broadcast e2e + env specs

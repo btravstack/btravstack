@@ -63,6 +63,26 @@ describe("the broadcast deployment", () => {
       ]);
   });
 
+  it("broadcasts the cancellation as a tombstone, after the placement", async ({
+    serve,
+    tapped,
+  }) => {
+    // GIVEN a served app and a placed order
+    await serve(tapped.module);
+    const { placeOrder, repository } = tapped.services();
+    await expect(placeOrder.execute("o-6", 2)).toBeOk();
+
+    // WHEN the order is cancelled — the write path the saga's compensation uses
+    await expect(repository.remove("o-6")).toBeOk();
+
+    // THEN the subscriber hears both words about the subject, in order: what
+    // it was, then that it is gone. Without the tombstone a reader keeping its
+    // own copy would hold a cancelled order forever.
+    await expect
+      .poll(() => notifications(tapped.services().logger.lines()), { timeout: 5_000 })
+      .toEqual(["order o-6 placed — notifying (2 items)", "order o-6 is gone — notifying"]);
+  });
+
   it("is a broadcast: a subscriber this repo never heard of receives it too", async ({
     serve,
     tapped,
@@ -72,7 +92,7 @@ describe("the broadcast deployment", () => {
     // a foreign subscriber: its own queue, bound to the same exchange,
     // declared by nothing in this contract
     await serve(tapped.module);
-    const waitForMessages = await initConsumer("orders", "order.placed");
+    const waitForMessages = await initConsumer("orders", "order.changed");
 
     // WHEN an order is placed
     await expect(tapped.services().placeOrder.execute("o-5", 4)).toBeOk();
@@ -80,6 +100,11 @@ describe("the broadcast deployment", () => {
     // THEN the foreign queue receives the same fact the notifier does — the
     // publisher addressed an exchange, never a consumer
     const [message] = await waitForMessages({ count: 1, timeoutMs: 5_000 });
-    expect(JSON.parse(String(message?.content))).toEqual({ orderId: "o-5", quantity: 4 });
+    expect(JSON.parse(String(message?.content))).toEqual({
+      kind: "order",
+      id: "o-5",
+      occurredAt: expect.any(String),
+      payload: { quantity: 4 },
+    });
   });
 });

@@ -20,11 +20,19 @@ model Order {
 }
 
 // The transactional outbox: one row per fact worth broadcasting, written in
-// the same transaction as the write it describes. `publishedAt` is the relay's
-// bookkeeping — NULL means pending.
+// the same transaction as the write it describes.
+//
+// The row IS the event envelope — `kind` (which sort of thing changed),
+// `subjectId` (which one, and the key a reader compacts on), `occurredAt`, and
+// `payload`. A NULL payload is the **tombstone**: the last word about a
+// subject, saying it is gone. `id` is the sequence the relay publishes in, so
+// a reader sees a subject's create before its tombstone. `publishedAt` is the
+// relay's own bookkeeping — NULL means pending.
 model OutboxMessage {
   id          Int       @id @default(autoincrement())
-  orderId     String
-  quantity    Int
+  kind        String
+  subjectId   String
+  payload     String?
+  occurredAt  DateTime  @default(now())
   publishedAt DateTime?
 }

@@ -60,7 +60,7 @@ export const orderAmqpRuntime = ({
     ...transport,
     contract: orderContract,
     needs: [Outbox, Logger],
-    handlers: () => ({ orderPlaced: notifyHandler(orderContract) }),
+    handlers: () => ({ orderChanged: notifyHandler(orderContract) }),
     middleware: (host) => messageUnits<AmqpNeeds>(host),
   });
 
@@ -84,16 +84,24 @@ export const orderAmqpRuntime = ({
  * would write, reacting to a fact somebody else committed. It has no domain
  * errors to triage: notifying is a `Logger.info` here, and a real notifier's
  * failures would be retryable infrastructure, not answers about the order.
+ *
+ * The `payload === null` branch is the whole point of the envelope: one
+ * handler, one stream, and a reader that keeps its own copy of a subject
+ * upserts on a payload and drops on a tombstone. There is no second message
+ * type to declare, subscribe to, or keep ordered against this one.
  */
 const notifyHandler = (contract: OrderContract) =>
-  declareHandler<OrderContract, "orderPlaced", MessageUnitContext<AmqpNeeds>>(
+  declareHandler<OrderContract, "orderChanged", MessageUnitContext<AmqpNeeds>>(
     contract,
-    "orderPlaced",
+    "orderChanged",
     (message, _raw, { context }) => {
+      const { id, payload } = message.payload;
       context.ctx
         .get(Logger)
         .info(
-          `order ${message.payload.orderId} placed — notifying (${message.payload.quantity} items)`,
+          payload === null
+            ? `order ${id} is gone — notifying`
+            : `order ${id} placed — notifying (${payload.quantity} items)`,
         );
       return OkAsync();
     },

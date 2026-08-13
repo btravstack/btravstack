@@ -17,11 +17,34 @@ const parked = defineExchange("orders-dlx", { type: "direct" });
  * asked to do anything, and the publisher does not know who is listening.
  * That is what separates this deployment from the Temporal one: AMQP carries
  * announcements, orchestration carries intent.
+ *
+ * The envelope is the whole vocabulary a reader needs to rebuild state:
+ * `kind` is what sort of thing changed, `id` is which one — the key a reader
+ * keys its own copy on — and `payload` is what it now is. **A null payload is
+ * the tombstone**, the last word about a subject, saying it is gone. So the
+ * first event for an id creates, later ones with a payload replace, and the
+ * null one deletes; a subscriber needs no other event types and no schema
+ * change when a fourth verb shows up.
+ *
+ * `occurredAt` is an ISO string rather than a `Date` because JSON has no date
+ * type and the wire is JSON — the shape has to be one that survives the trip.
  */
-const orderPlaced = defineMessage(z.object({ orderId: z.string(), quantity: z.number() }));
+const orderChanged = defineMessage(
+  z.object({
+    kind: z.literal("order"),
+    id: z.string(),
+    occurredAt: z.string(),
+    payload: z.object({ quantity: z.number() }).nullable(),
+  }),
+);
 
-const orderPlacedEvent = defineEventPublisher(orders, orderPlaced, {
-  routingKey: "order.placed",
+/**
+ * One routing key for every change, not one per verb: a reader that compacts
+ * by `id` needs a subject's create and its tombstone in **one ordered
+ * stream**, and two routing keys are two queues and no order between them.
+ */
+const orderChangedEvent = defineEventPublisher(orders, orderChanged, {
+  routingKey: "order.changed",
 });
 
 /**
@@ -56,8 +79,8 @@ const notifications = defineQueue("order-notifications", {
  * notifier) as one checkable artifact.
  */
 export const orderContract = defineContract({
-  publishers: { orderPlaced: orderPlacedEvent },
-  consumers: { orderPlaced: defineEventConsumer(orderPlacedEvent, notifications) },
+  publishers: { orderChanged: orderChangedEvent },
+  consumers: { orderChanged: defineEventConsumer(orderChangedEvent, notifications) },
 });
 
 export type OrderContract = typeof orderContract;

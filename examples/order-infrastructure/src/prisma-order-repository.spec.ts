@@ -25,6 +25,31 @@ describe("the Prisma OrderRepository", () => {
     expect(roundTripped).toBeOkWith({ id: "o-1", quantity: 3 });
   });
 
+  it("deletes the one row the unique key names", async ({ repository, anOrder }) => {
+    // GIVEN a stored order
+    // WHEN it is removed and then looked for — chained, so a failed removal
+    // cannot be mistaken for a successful one
+    const afterRemoval = await repository
+      .save(anOrder("o-1", 3))
+      .flatMap(() => repository.remove("o-1"))
+      .flatMap(() => repository.find("o-1"));
+
+    // THEN it is gone: `orderId` carries the UNIQUE index, so this is a
+    // single-row `delete`, not a batch whose count has to be interpreted
+    expect(afterRemoval).toBeErrTagged("OrderNotFound", { id: "o-1" });
+  });
+
+  it("answers OrderNotFound when there is nothing to remove", async ({ repository }) => {
+    // GIVEN a fresh database
+    // WHEN a placement that never landed is compensated — what a re-run of the
+    // saga's `cancelPlacement` does
+    const removal = await repository.remove("o-absent");
+
+    // THEN Prisma's P2025 arrives as the domain's own value, so the
+    // compensation can ignore it on purpose rather than crash on a throw
+    expect(removal).toBeErrTagged("OrderNotFound", { id: "o-absent" });
+  });
+
   it("translates a real unique-constraint violation into DuplicateOrder", async ({
     repository,
     anOrder,

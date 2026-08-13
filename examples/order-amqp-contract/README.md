@@ -1,8 +1,9 @@
 # `@btravstack/start-core` example: the order AMQP contract
 
-The AMQP contract — one exchange, one broadcast event, one subscriber queue
-with a dead-letter exchange and a retry policy — in a package of its own,
-depending on `@amqp-contract/contract` and `zod`.
+The AMQP contract — one exchange, one change-stream event (`kind`, `id`,
+`occurredAt`, `payload`, where a null payload is the **tombstone**), one
+subscriber queue with a dead-letter exchange and a retry policy — in a package
+of its own, depending on `@amqp-contract/contract` and `zod`.
 
 ```
 src/contract.ts        the contract: exchange, queue, retry/dead-letter policy, message, publisher, consumer
@@ -13,13 +14,13 @@ src/test-fixtures.ts   the contract itself, and its message schema as a validato
 ## Why it is not part of `order-amqp-worker`
 
 A contract is a **shared artifact**. Two parties read this file: the worker
-whose relay publishes `order.placed` and whose consumer reads
+whose relay publishes `order.changed` and whose consumer reads
 `order-notifications`, and any _other_ service that wants to subscribe to the
 broadcast — neither wants a di container, a Prisma-backed repository or the
 kernel.
 
 ```
-   order-amqp-worker          any subscriber to order.placed
+   order-amqp-worker          any subscriber to order.changed
          └──────────┬──────────┘
                     ▼
        order-amqp-contract     ← @amqp-contract/contract and zod, nothing else
@@ -34,7 +35,7 @@ because the directive stops being used.
 
 `defineEventConsumer` derives the queue's binding from the publisher it
 consumes, so `defineContract` needs a publisher entry — and here the repo
-genuinely ships both sides: `orderPlacedEvent` is what the outbox relay
+genuinely ships both sides: `orderChangedEvent` is what the outbox relay
 publishes, and the `order-notifications` consumer is one subscriber among
 however many bind their own queues to the same exchange.
 

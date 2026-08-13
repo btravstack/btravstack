@@ -80,7 +80,12 @@ export const startOutboxRelay = (
           const published: number[] = [];
           for (const event of events) {
             await client
-              .publish("orderPlaced", { orderId: event.orderId, quantity: event.quantity })
+              .publish("orderChanged", {
+                kind: event.kind,
+                id: event.subjectId,
+                occurredAt: event.occurredAt.toISOString(),
+                payload: event.payload,
+              })
               .match({
                 ok: () => {
                   published.push(event.id);

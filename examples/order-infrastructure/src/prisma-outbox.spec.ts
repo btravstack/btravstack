@@ -10,8 +10,11 @@ describe("the transactional outbox", () => {
     const events = await repository.save(anOrder("o-1", 3)).flatMap(() => outbox.pending(10));
 
     // THEN the fact of the write is already in the outbox — no second call,
-    // no second chance to forget
-    expect(events).toBeOkWith([expect.objectContaining({ orderId: "o-1", quantity: 3 })]);
+    // no second chance to forget — carrying a payload, which is what makes it
+    // a create-or-replace for its subject
+    expect(events).toBeOkWith([
+      expect.objectContaining({ kind: "order", subjectId: "o-1", payload: { quantity: 3 } }),
+    ]);
   });
 
   it("leaves no event behind when the write rolls back", async ({
@@ -30,7 +33,9 @@ describe("the transactional outbox", () => {
 
     // THEN only the first placement's event exists — the duplicate's outbox
     // row rolled back with its order row
-    expect(events).toBeOkWith([expect.objectContaining({ orderId: "o-1", quantity: 1 })]);
+    expect(events).toBeOkWith([
+      expect.objectContaining({ subjectId: "o-1", payload: { quantity: 1 } }),
+    ]);
   });
 
   it("marks published events so the relay never re-reads them", async ({
@@ -53,6 +58,38 @@ describe("the transactional outbox", () => {
     const rest = await outbox.markPublished([first.id]).flatMap(() => outbox.pending(10));
 
     // THEN only the second remains pending
-    expect(rest).toBeOkWith([expect.objectContaining({ orderId: "o-2" })]);
+    expect(rest).toBeOkWith([expect.objectContaining({ subjectId: "o-2" })]);
+  });
+
+  it("appends a tombstone when the order is removed", async ({ repository, outbox, anOrder }) => {
+    // GIVEN a placed order
+    // WHEN it is removed
+    const events = await repository
+      .save(anOrder("o-1", 3))
+      .flatMap(() => repository.remove("o-1"))
+      .flatMap(() => outbox.pending(10));
+
+    // THEN the log carries both words about the subject, in order: what it
+    // was, then that it is gone. A null payload IS the deletion — a reader
+    // that keeps its own copy drops it here, and needs no second event type
+    expect(events).toBeOkWith([
+      expect.objectContaining({ subjectId: "o-1", payload: { quantity: 3 } }),
+      expect.objectContaining({ subjectId: "o-1", payload: null }),
+    ]);
+  });
+
+  it("appends no tombstone when there was nothing to remove", async ({ repository, outbox }) => {
+    // GIVEN a fresh database
+    // WHEN a placement that never landed is compensated — a re-run of the
+    // saga's `cancelPlacement`
+    const events = await repository
+      .remove("o-absent")
+      .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined))
+      .flatMap(() => outbox.pending(10));
+
+    // THEN nothing was announced: the delete failed inside the transaction, so
+    // the tombstone rolled back with it. A compensation that ran twice cannot
+    // tell the world twice.
+    expect(events).toBeOkWith([]);
   });
 });

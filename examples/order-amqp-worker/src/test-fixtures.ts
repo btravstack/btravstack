@@ -3,7 +3,12 @@ import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import type { AmqpInfo } from "@btravstack/start-amqp";
 import { start, type RunningApp } from "@btravstack/start-core";
-import { Logger, Outbox, PlaceOrder } from "@btravstack/start-example-order-application";
+import {
+  Logger,
+  OrderRepository,
+  Outbox,
+  PlaceOrder,
+} from "@btravstack/start-example-order-application";
 import { expect, type TestAPI } from "vitest";
 
 import { orderAmqpRuntime } from "./amqp-runtime.js";
@@ -17,7 +22,7 @@ type App<E> = RunningApp<E, AmqpInfo>;
  * call site, and no proof is available inside a helper generic in the module's
  * own exports. The runtime needs two of them; `PlaceOrder` is the writer's.
  */
-type AmqpPorts = PlaceOrder | Outbox | Logger;
+type AmqpPorts = PlaceOrder | OrderRepository | Outbox | Logger;
 
 type ServeOptions = { readonly drainTimeoutMs: number };
 
@@ -33,6 +38,7 @@ type Serve = <E>(module: Module<AmqpPorts, E, Scope>, options?: ServeOptions) =>
  */
 class ServicesTap extends Port("ServicesTap")<{
   readonly placeOrder: ServiceOf<PlaceOrder>;
+  readonly repository: ServiceOf<OrderRepository>;
   readonly outbox: ServiceOf<Outbox>;
   readonly logger: ServiceOf<Logger>;
 }> {}
@@ -44,14 +50,14 @@ const tappedAmqp = () => {
     module: Module("TappedAmqp")({
       imports: [OrderAmqpModule],
       provides: [
-        Provider(ServicesTap)([PlaceOrder, Outbox, Logger], {
-          sync: (placeOrder, outbox, logger) => {
-            services = { placeOrder, outbox, logger };
+        Provider(ServicesTap)([PlaceOrder, OrderRepository, Outbox, Logger], {
+          sync: (placeOrder, repository, outbox, logger) => {
+            services = { placeOrder, repository, outbox, logger };
             return services;
           },
         }),
       ],
-      exports: [PlaceOrder, Outbox, Logger],
+      exports: [PlaceOrder, OrderRepository, Outbox, Logger],
     }),
     services: (): ServiceOf<ServicesTap> => {
       // oxlint-disable-next-line unthrown/no-throw -- a fixture misused before `serve` is a broken test, and the loudest possible answer is the right one

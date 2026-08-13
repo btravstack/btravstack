@@ -24,7 +24,24 @@ export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
     db.outboxMessage
       .tryFindMany({ where: { publishedAt: null }, orderBy: { id: "asc" }, take: limit })
       .map((rows) =>
-        rows.map((row) => ({ id: row.id, orderId: row.orderId, quantity: row.quantity })),
+        rows.map((row) => ({
+          id: row.id,
+          // The column is a `string`; the port's `kind` is the union of the
+          // kinds this application emits, and `save`/`remove` are the only
+          // writers. A row carrying anything else was not written by this
+          // code, so the narrowing is a claim the adapter is entitled to make.
+          kind: row.kind as "order",
+          subjectId: row.subjectId,
+          occurredAt: row.occurredAt,
+          // A NULL payload is the tombstone, and it stays null all the way to
+          // the wire. `JSON.parse` on a row this code wrote cannot fail; if it
+          // somehow does, the throw becomes a Defect — which is the honest
+          // channel for "the database contains something impossible".
+          payload:
+            row.payload === null
+              ? null
+              : (JSON.parse(row.payload) as { readonly quantity: number }),
+        })),
       )
       .mapErrCases((matcher, defect) => matcher.with(P.tag("DriverError"), (e) => defect(e))),
 

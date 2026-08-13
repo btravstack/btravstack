@@ -7,5 +7,5 @@ export {
   PlaceOrder,
   ShippingService,
   StockService,
-  type OrderPlacedEvent,
+  type OrderEvent,
 } from "./ports.js";

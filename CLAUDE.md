@@ -371,7 +371,7 @@ the code.
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All
-  ten workspaces run under the same six commands as the kernel — 80 specs
+  ten workspaces run under the same six commands as the kernel — 86 specs
   plus four `needs-gate.test-d.ts` files and four `layering.test-d.ts` ones —
   so an example that stops compiling, stops linting or stops passing fails CI
   exactly as `packages/start-core` would. Three of the four needs-gate files pin
