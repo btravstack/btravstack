@@ -96,13 +96,15 @@ describe("amqpRuntime", () => {
     );
   });
 
-  it("releases the kernel at its own deadline, and the broker redelivers", async ({
+  it("releases the kernel at its own deadline, not the library's own close timeout", async ({
     serve,
     gate,
     publishMessage,
-    initConsumer: _initConsumer,
   }) => {
-    // GIVEN a delivery that never finishes, and a drain with no time to give it
+    // GIVEN a delivery that never finishes, and a drain with no time to give it.
+    // `beginClose` passes `drainTimeoutMs: null`, so `worker.close()` itself
+    // waits for this handler INDEFINITELY in the background — it is still
+    // running, unreleased, when this test's assertion fires below.
     const app = await serve(gate.build, { drainTimeoutMs: 100 });
     publishMessage(
       { exchange: "start-amqp-test", routingKey: "echo.requested" },
@@ -111,14 +113,27 @@ describe("amqpRuntime", () => {
     );
     await gate.arrived;
 
-    // WHEN the drain runs out of time
+    // WHEN the drain runs out of time. The kernel calls `drain(signal)` once
+    // and, unconditionally, `stop()` again right after — and by the second
+    // call `signal` is already aborted, since `drain.ts` aborts it the instant
+    // its own race settles. That second call is `whenAborted`'s already-aborted
+    // arm: `beginClose()`'s `closing` is still pending (the handler above is
+    // still stuck), so if that arm regressed to always waiting for a fresh
+    // `'abort'` event, this test would hang rather than settle promptly.
     const askedAt = Date.now();
     app.requestDrain();
     const report = await app.exited;
 
     // THEN the exit is not held hostage by a handler that cannot finish: the
-    // delivery is reported abandoned and the process is released on the kernel's
-    // deadline rather than the library's own 30s DEFAULT_DRAIN_TIMEOUT_MS
+    // delivery is reported abandoned and the process is released on the
+    // kernel's own deadline rather than the library's own 30s
+    // DEFAULT_DRAIN_TIMEOUT_MS. Redelivery is a real property of the broker
+    // once the connection actually drops — see `releasedBy`'s TSDoc — but this
+    // package's own `close()` call keeps waiting for this very handler in the
+    // background (this test's `gate` fixture releases it in teardown, and the
+    // library then acks it normally), so an unacked-message round trip is not
+    // something this same-process test can observe; only the kernel's own
+    // prompt release is.
     expect(
       report.map((exit) => ({ drain: exit.drain, promptly: Date.now() - askedAt < 5_000 })),
     ).toBeOkWith({
