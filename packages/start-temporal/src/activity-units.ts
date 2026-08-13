@@ -1,5 +1,62 @@
-import type { UnitMeta } from "@btravstack/start";
+import type { AnyPort, Context } from "@btravstack/di";
+import type { RuntimeHost, UnitMeta } from "@btravstack/start";
 import { activityInfo } from "@temporalio/activity";
+import type { AsyncResult } from "unthrown";
+
+/** What the middleware injects downstream: the application context, and nothing else. */
+export type ActivityUnitContext<Needs extends AnyPort> = {
+  readonly ctx: Context<InstanceType<Needs>>;
+};
+
+/**
+ * The shape of `temporal-contract`'s `ActivityMiddleware`, declared here rather
+ * than imported. Structural typing makes the two compatible, and it keeps
+ * `temporal-contract` out of this package's peer range — a consumer who does
+ * not use it should never see it in their dependency graph.
+ */
+export type ActivityMiddleware<Needs extends AnyPort> = (
+  invocation: {
+    readonly activityName: string;
+    readonly workflowName: string | undefined;
+    readonly input: unknown;
+    readonly context: Record<never, never>;
+  },
+  next: (patch?: {
+    readonly input?: unknown;
+    readonly context?: ActivityUnitContext<Needs>;
+    // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- the chain's failure union is `temporal-contract`'s to name; this package is transparent to it and must accept whatever arrives
+  }) => AsyncResult<unknown, unknown>,
+) => AsyncResult<unknown, never>;
+
+/**
+ * Open one kernel unit per activity attempt, and hand the application context
+ * downstream through `temporal-contract`'s own context channel — which is
+ * per-invocation, so a future per-unit `forkScope` lands here without an API
+ * change.
+ *
+ * There is deliberately no `Result`-unwrapping boundary: `declareActivitiesHandler`
+ * owns the mapping from a settled `Result` to an activity failure, and the
+ * kernel maps nothing to a transport.
+ *
+ * **Pass the type argument** — `activityUnits<typeof PlaceOrder | typeof Logger>(host)`
+ * — whenever an activity implementation reads `context.ctx`. TypeScript infers
+ * the injected context from the middleware's type, and it infers nothing from a
+ * generic call it is still resolving: written bare and inline, the
+ * implementations see an empty context. Hoisting the call into a `const` works
+ * too; the type argument is the shorter of the two.
+ */
+export const activityUnits =
+  <Needs extends AnyPort>(host: RuntimeHost<Needs>): ActivityMiddleware<Needs> =>
+  (_invocation, next) =>
+    // The one cast in the package, and it is what buys a consumer the
+    // one-line seam: `declareActivitiesHandler` infers the injected context
+    // from this middleware's *own* signature, and it infers nothing at all
+    // from a generic one — so the failure channel cannot be a type parameter
+    // here. It is declared `never` on the way out and `unknown` on the way in,
+    // which is this middleware's honest claim: it contributes no failure of
+    // its own, and the union the chain actually carries is
+    // `declareActivitiesHandler`'s to name, not ours.
+    host.run(metaFor(), (ctx) => next({ context: { ctx } })) as AsyncResult<unknown, never>;
 
 /**
  * `UnitMeta.id` must be unique per unit, and a workflow id is **not** one: an
@@ -13,7 +70,7 @@ import { activityInfo } from "@temporalio/activity";
  * retry so all attempts join up in a log. An activity with no workflow falls
  * back to the activity id, itself stable across that activity's attempts.
  */
-export const metaFor = (): UnitMeta => {
+const metaFor = (): UnitMeta => {
   const info = activityInfo();
   return {
     kind: "activity",

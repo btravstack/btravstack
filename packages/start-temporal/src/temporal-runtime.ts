@@ -19,18 +19,26 @@ export type TemporalInfo = {
   readonly namespace: string;
 };
 
+/**
+ * Where the workflow sandbox's code comes from. Two arms because the two
+ * callers genuinely differ: a process points at the module and lets Temporal
+ * bundle it, while a spec hands over a bundle it built and memoised once —
+ * bundling per test is the most expensive thing a suite does.
+ */
+export type WorkflowSource =
+  | { readonly workflowsPath: string }
+  | { readonly workflowBundle: WorkflowBundleWithSourceMap };
+
 export type TemporalOptions<Needs extends AnyPort> = {
   readonly connection: NativeConnection;
   readonly taskQueue: string;
   readonly namespace?: string;
-  readonly workflows:
-    | { readonly workflowsPath: string }
-    | { readonly workflowBundle: WorkflowBundleWithSourceMap };
+  readonly workflows: WorkflowSource;
   /**
-   * Activities as Temporal will see them — already final. Built with the
-   * `activityUnits` middleware from `temporal-contract`. The factory never
-   * wraps, which is what makes double-wrapping impossible rather than
-   * something to detect.
+   * Activities as Temporal will see them — already final. Built through
+   * `temporal-contract`'s `declareActivitiesHandler` with this package's
+   * `activityUnits` in the middleware slot. The factory never wraps, which is
+   * what makes double-wrapping impossible rather than something to detect.
    *
    * A builder rather than an already-built record because `activityUnits`
    * needs the `RuntimeHost` to open units against, and the host does not
@@ -94,16 +102,62 @@ const poll = (worker: Worker, taskQueue: string, namespace: string): Serving<Tem
     if (worker.getState() === "RUNNING") worker.shutdown();
   };
 
+  // The kernel's deadline, kept from `drain` so `stop` is released by the same
+  // abort. Without it the release is only half done: `finish` calls `stop()`
+  // after the drain has already timed out, and a `stop` that started waiting on
+  // `running` all over again would put Temporal's `shutdownForceTime` back in
+  // charge of when the process exits.
+  let deadline: AbortSignal | undefined;
+
+  const stopped = (): AsyncResult<void, never> =>
+    deadline === undefined ? running : releasedBy(deadline, running);
+
   return {
     info: { taskQueue, namespace },
+    // `@temporalio/worker` has no public forced-shutdown call —
+    // `Worker.forceShutdown$` is `protected` and `Runtime.shutdown()` is
+    // process-global — so the escalation available to a runtime is to stop
+    // waiting: the kernel gets its thread back at its own deadline, and the
+    // worker is left winding down on Temporal's `shutdownForceTime` clock
+    // until the process exits.
     drain: (signal) => {
-      void signal;
+      deadline = signal;
       stopPolling();
-      return OkAsync();
+      return stopped();
     },
     stop: () => {
       stopPolling();
-      return running;
+      return stopped();
     },
   };
 };
+
+/**
+ * `running`, but no later than the kernel's drain deadline.
+ *
+ * `Serving.drain(signal)` is a contract, not a courtesy: the kernel aborts
+ * `signal` the instant its own timeout wins, precisely so a runtime that treats
+ * it as its cue to return can be released. A worker whose activity never
+ * finishes cannot honour that by waiting on `run()`, which settles on Temporal's
+ * clock rather than the kernel's.
+ *
+ * The losing branch's `Result` is dropped, and it is the one drop in this
+ * package: when the deadline wins, the kernel has already decided the report and
+ * settled `exited`, so the worker's eventual outcome has no consumer left — and
+ * an `AsyncResult` never rejects, so nothing floats. It is the same trade the
+ * kernel's own `drainApp` documents for its race.
+ */
+const releasedBy = (
+  signal: AbortSignal,
+  running: AsyncResult<void, never>,
+): AsyncResult<void, never> =>
+  fromSafePromise(Promise.race([running, whenAborted(signal)])).flatMap((settled) => settled);
+
+const whenAborted = (signal: AbortSignal): AsyncResult<void, never> =>
+  signal.aborted
+    ? OkAsync()
+    : fromSafePromise(
+        new Promise<void>((resolve) => {
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        }),
+      );

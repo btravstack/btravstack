@@ -2,11 +2,17 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { Module, Port, Provider } from "@btravstack/di";
-import { start, type RunningApp, type RuntimeHost } from "@btravstack/start";
+import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start";
+import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
+import { declareActivitiesHandler } from "@temporal-contract/worker/activity";
+import { activityInfo } from "@temporalio/activity";
 import type { Client } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
+import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
+import { z } from "zod";
 
+import { activityUnits } from "./activity-units.js";
 import { temporalRuntime, type TemporalInfo } from "./temporal-runtime.js";
 
 /**
@@ -39,13 +45,123 @@ const defaultActivities: ActivityBuilder = () => ({
   echo: (value: string) => Promise.resolve(value),
 });
 
+/**
+ * The smallest contract that exercises the seam: one workflow, one activity,
+ * whose flat runtime name is what `test-workflows.ts` proxies.
+ */
+const echoContract = defineContract({
+  taskQueue: "echo",
+  workflows: {
+    runEcho: defineWorkflow({
+      input: z.string(),
+      output: z.string(),
+      idempotency: "allow-duplicate",
+      activities: {
+        echo: defineActivity({
+          input: z.string(),
+          output: z.string(),
+          activityOptions: { startToCloseTimeout: "30 seconds", retry: { maximumAttempts: 1 } },
+        }),
+      },
+    }),
+  },
+});
+
+/**
+ * Activities declared the way a consumer declares them — through
+ * `declareActivitiesHandler`, with `activityUnits` as the one line added — plus
+ * a **recording proxy** over the host.
+ *
+ * The proxy is what makes the meta assertable: `currentUnit()` exposes the
+ * kernel's own `unitId` counter, not the `UnitMeta` the runtime passed, so
+ * reading it back through the ambient record could only ever assert
+ * `expect.any(String)` — which would test nothing.
+ */
+const contractSeamOf = () => {
+  const seen: UnitMeta[] = [];
+  let taskToken = "";
+  let greeting = "";
+
+  return {
+    build: (host: RuntimeHost<typeof Greeting>) => {
+      const watched: RuntimeHost<typeof Greeting> = {
+        ctx: host.ctx,
+        run: (meta, work) => {
+          seen.push(meta);
+          return host.run(meta, work);
+        },
+      };
+
+      return declareActivitiesHandler({
+        contract: echoContract,
+        middleware: activityUnits<typeof Greeting>(watched),
+        activities: {
+          runEcho: {
+            echo: (value, { context }) => {
+              taskToken = activityInfo().base64TaskToken;
+              greeting = context.ctx.get(Greeting).text;
+              return OkAsync(value);
+            },
+          },
+        },
+      });
+    },
+    seen: (): readonly UnitMeta[] => seen,
+    taskToken: (): string => taskToken,
+    greeting: (): string => greeting,
+  };
+};
+
+/**
+ * The same wiring, but the activity resolves only once `release()` is called
+ * and reports its arrival through `arrived`. The drain specs turn on knowing a
+ * unit is genuinely in flight before the drain starts — polling a wall clock
+ * instead would be the flake.
+ */
+const gateOf = () => {
+  let entered!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  return {
+    build: (host: RuntimeHost<typeof Greeting>) =>
+      declareActivitiesHandler({
+        contract: echoContract,
+        middleware: activityUnits(host),
+        activities: {
+          runEcho: {
+            echo: (value) => {
+              entered();
+              return fromSafePromise(held.then(() => value));
+            },
+          },
+        },
+      }),
+    arrived,
+    release: (): void => release(),
+  };
+};
+
+/** The kernel options a test may override — only the drain budget, so far. */
+type ServeOptions = { readonly drainTimeoutMs: number };
+
 export type TemporalFixtures = {
-  readonly serve: (build?: ActivityBuilder) => Promise<{
+  readonly serve: (
+    build?: ActivityBuilder,
+    options?: ServeOptions,
+  ) => Promise<{
     readonly app: App;
     readonly client: Client;
     readonly taskQueue: string;
   }>;
   readonly serveBroken: () => Promise<App>;
+  readonly contractSeam: ReturnType<typeof contractSeamOf>;
+  readonly gate: ReturnType<typeof gateOf>;
 };
 
 export const it = test.extend<TemporalFixtures>({
@@ -58,7 +174,7 @@ export const it = test.extend<TemporalFixtures>({
     });
     const started: App[] = [];
 
-    await use(async (build) => {
+    await use(async (build, options) => {
       const taskQueue = nextTaskQueue();
       const app = start(AppModule, {
         runtime: temporalRuntime({
@@ -74,6 +190,7 @@ export const it = test.extend<TemporalFixtures>({
         probes: false,
         preDrainDelayMs: 0,
         onEvent: () => {},
+        ...options,
       });
       started.push(app);
       await app.runtimeInfo();
@@ -131,5 +248,17 @@ export const it = test.extend<TemporalFixtures>({
     } finally {
       await env.teardown();
     }
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  contractSeam: async ({}, use) => {
+    await use(contractSeamOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  gate: async ({}, use) => {
+    const gate = gateOf();
+    await use(gate);
+    // Released on every exit path, so an activity a test deliberately stranded
+    // cannot outlive the test that stranded it.
+    gate.release();
   },
 });
