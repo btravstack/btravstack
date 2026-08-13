@@ -553,21 +553,23 @@ verifies.
 ## The runtime map
 
 The `Runtime` contract is the whole of what this package owes the transports.
-[`@btravstack/start-http`](./packages/start-http) has shipped: bind, one unit
-per request, a drain that retires busy keep-alive connections, stop — routing,
-middleware and `Result` → HTTP status are deliberately not included, see its
-README's _"What it does not do"_. The rest are planned, not published:
+Two have shipped. [`@btravstack/start-http`](./packages/start-http): bind, one
+unit per request, a drain that retires busy keep-alive connections, stop —
+routing, middleware and `Result` → HTTP status are deliberately not included,
+see its README's _"What it does not do"_.
+[`@btravstack/start-temporal`](./packages/start-temporal): a Temporal worker,
+one unit per activity attempt, and a drain that releases the kernel at the
+kernel's deadline rather than Temporal's `shutdownForceTime`. The rest are
+planned, not published:
 
-| Planned package              | Would own                                          |
-| ---------------------------- | -------------------------------------------------- |
-| `@btravstack/start-amqp`     | the consumer runtime, over `amqp-contract`         |
-| `@btravstack/start-temporal` | the worker runtime, over `temporal-contract`       |
-| an observability package     | logger and OpenTelemetry, binding to `KernelEvent` |
+| Planned package          | Would own                                          |
+| ------------------------ | -------------------------------------------------- |
+| `@btravstack/start-amqp` | the consumer runtime, over `amqp-contract`         |
+| an observability package | logger and OpenTelemetry, binding to `KernelEvent` |
 
-Until one lands, a runtime for `-amqp` or `-temporal` is roughly forty lines —
-the `ticker` above is a complete one. `@btravstack/start-http` is not: it
-exists because the lifecycle underneath a real transport is not forty lines
-done well.
+Until it lands, a runtime for `-amqp` is roughly forty lines — the `ticker`
+above is a complete one. The two shipped packages are not: they exist because
+the lifecycle underneath a real transport is not forty lines done well.
 
 ## Documentation
 
