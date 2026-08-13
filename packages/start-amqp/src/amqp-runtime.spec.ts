@@ -1,12 +1,15 @@
 import { OkAsync } from "unthrown";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { it } from "./test-fixtures.js";
 
 describe("amqpRuntime", () => {
   it("publishes the queues it drains", async ({ serve }) => {
     // GIVEN a worker consuming the test contract's one queue
-    const app = await serve(() => ({ echo: () => OkAsync(undefined) }));
+    const app = await serve(() => ({
+      handlers: { echo: () => OkAsync(undefined) },
+      middleware: undefined,
+    }));
 
     // WHEN the kernel is asked what the runtime published about itself
     const info = app.runtimeInfo();
@@ -31,5 +34,41 @@ describe("amqpRuntime", () => {
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "amqp" }),
     );
+  });
+
+  it("opens one kernel unit per delivery", async ({ serve, seam, publishMessage }) => {
+    // GIVEN a worker whose handler runs inside the middleware
+    await serve(seam.build);
+
+    // WHEN one message is published with an id of the publisher's own
+    publishMessage(
+      { exchange: "start-amqp-test", routingKey: "echo.requested" },
+      { value: "x" },
+      { messageId: "m-1" },
+    );
+    await vi.waitUntil(() => seam.seen().length === 1);
+
+    // THEN the delivery ran inside a unit whose id is minted here — a delivery
+    // tag restarts at 1 after a reconnect and cannot carry the kernel's
+    // uniqueness rule — and whose traceId is the publisher's message id,
+    // stable across every redelivery
+    expect(seam.seen()).toEqual([{ kind: "delivery", id: expect.any(String), traceId: "m-1" }]);
+  });
+
+  it("injects the application context through the contract's own channel", async ({
+    serve,
+    seam,
+    publishMessage,
+  }) => {
+    // GIVEN the same wiring
+    await serve(seam.build);
+
+    // WHEN one message is delivered
+    publishMessage({ exchange: "start-amqp-test", routingKey: "echo.requested" }, { value: "x" });
+    await vi.waitUntil(() => seam.greeting() !== "");
+
+    // THEN the handler reached the DI graph without the package inventing a
+    // channel of its own — which is what makes the seam cost one line
+    expect(seam.greeting()).toBe("hello");
   });
 });

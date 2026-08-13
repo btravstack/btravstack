@@ -8,13 +8,15 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
+import { declareHandler } from "@amqp-contract/worker";
 import { Module, Port, Provider } from "@btravstack/di";
-import { start, type RunningApp, type RuntimeHost } from "@btravstack/start";
+import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start";
 import { OkAsync } from "unthrown";
 import { expect, type TestAPI } from "vitest";
 import { z } from "zod";
 
 import { amqpRuntime, type AmqpInfo } from "./amqp-runtime.js";
+import { messageUnits, type MessageMiddleware, type MessageUnitContext } from "./message-units.js";
 
 const echoExchange = defineExchange("start-amqp-test");
 const echoDlx = defineExchange("start-amqp-test-dlx", { type: "direct" });
@@ -47,12 +49,64 @@ type App = RunningApp<never, AmqpInfo>;
 
 type ServeOptions = { readonly drainTimeoutMs: number };
 
+type BuiltHandlers = {
+  readonly handlers: Record<string, unknown>;
+  readonly middleware?: MessageMiddleware<typeof Greeting> | undefined;
+};
+
+/**
+ * Handlers declared the way a consumer declares them — through
+ * `declareHandler`, with `messageUnits` as the one line added — plus a
+ * **recording proxy** over the host.
+ *
+ * The proxy is what makes the meta assertable: `currentUnit()` exposes the
+ * kernel's own `unitId` counter, not the `UnitMeta` the runtime passed, so
+ * reading it back through the ambient record could only ever assert
+ * `expect.any(String)` — which would test nothing.
+ */
+const seamOf = () => {
+  const seen: UnitMeta[] = [];
+  let greeting = "";
+
+  // The type argument is required, not stylistic: `declareHandler` infers
+  // `TContext` from the handler function it is passed, and a call with
+  // nothing to infer from defaults it to `EmptyContext`, leaving
+  // `context.ctx` untyped — the same trap `messageUnits` documents below.
+  const echoHandler = declareHandler<
+    typeof echoContract,
+    "echo",
+    MessageUnitContext<typeof Greeting>
+  >(echoContract, "echo", (_message, _raw, { context }) => {
+    greeting = context.ctx.get(Greeting).text;
+    return OkAsync(undefined);
+  });
+
+  return {
+    build: (host: RuntimeHost<typeof Greeting>): BuiltHandlers => {
+      const watched: RuntimeHost<typeof Greeting> = {
+        ctx: host.ctx,
+        run: (meta, work) => {
+          seen.push(meta);
+          return host.run(meta, work);
+        },
+      };
+      return {
+        handlers: { echo: echoHandler },
+        middleware: messageUnits<typeof Greeting>(watched),
+      };
+    },
+    seen: (): readonly UnitMeta[] => seen,
+    greeting: (): string => greeting,
+  };
+};
+
 export type AmqpFixtures = {
   readonly serve: (
-    build: (host: RuntimeHost<typeof Greeting>) => Record<string, unknown>,
+    build: (host: RuntimeHost<typeof Greeting>) => BuiltHandlers,
     options?: ServeOptions,
   ) => Promise<App>;
   readonly serveBroken: () => Promise<App>;
+  readonly seam: ReturnType<typeof seamOf>;
 };
 
 // Annotated explicitly: TS2883 otherwise refuses to name the inferred type,
@@ -67,7 +121,8 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
         runtime: amqpRuntime({
           urls: [amqpConnectionUrl],
           contract: echoContract,
-          handlers: build,
+          handlers: (host) => build(host).handlers,
+          middleware: (host) => build(host).middleware,
           needs: [Greeting],
         }),
         signals: false,
@@ -121,5 +176,9 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       app.stop();
       await expect(app.exited).toBeErr();
     }
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  seam: async ({}, use) => {
+    await use(seamOf());
   },
 });
