@@ -1,5 +1,4 @@
 import { runMain, start } from "@btravstack/start-core";
-import { orderContract } from "@btravstack/start-example-order-amqp-contract";
 import { P } from "unthrown";
 
 import { orderAmqpRuntime } from "./amqp-runtime.js";
@@ -21,7 +20,6 @@ const work = (env: Env): Promise<void> =>
   runMain(
     start(OrderAmqpModule, {
       runtime: orderAmqpRuntime({
-        contract: orderContract,
         urls: [env.AMQP_URL],
         relay: { pollMs: env.OUTBOX_POLL_MS },
       }),

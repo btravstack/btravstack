@@ -6,7 +6,7 @@ import {
   type MessageUnitContext,
 } from "@btravstack/start-amqp";
 import type { Runtime } from "@btravstack/start-core";
-import type { OrderContract } from "@btravstack/start-example-order-amqp-contract";
+import { orderContract, type OrderContract } from "@btravstack/start-example-order-amqp-contract";
 import { Logger, Outbox } from "@btravstack/start-example-order-application";
 import { OkAsync } from "unthrown";
 
@@ -38,24 +38,29 @@ type AmqpNeeds = typeof Outbox | typeof Logger;
  * new work", and the relay's work is outbound — pending rows it has not
  * published yet are *safer* published during the drain window than abandoned
  * to the next boot. It stops at `stop`, before the consumer's transport goes.
+ *
+ * The contract is **imported, not a parameter**: this deployment implements
+ * exactly one, and every caller would pass the same `orderContract` constant.
+ * (`order-temporal-worker`'s runtime does take one, because its specs pass a
+ * genuinely different value — `withTaskQueue(orderContract, …)` scopes each
+ * test to its own task queue. Here the specs get their isolation from a
+ * per-test vhost in the URL, so nothing varies and the parameter would be
+ * ceremony.)
  */
 export const orderAmqpRuntime = ({
-  contract,
   relay,
   ...transport
 }: {
-  /** The contract: the exchange the relay publishes to, the queue this worker consumes. */
-  readonly contract: OrderContract;
-  /** The broker URLs `TypedAmqpWorker` connects to — it owns the connection. */
+  /** The broker URLs the worker and the relay both connect to. */
   readonly urls: readonly string[];
-  /** The relay's own knobs; its client shares the broker but not the connection. */
+  /** The relay's own knobs. */
   readonly relay: Pick<RelayOptions, "pollMs">;
 }): Runtime<AmqpNeeds, AmqpInfo> => {
   const consumer = amqpRuntime({
     ...transport,
-    contract,
+    contract: orderContract,
     needs: [Outbox, Logger],
-    handlers: () => ({ orderPlaced: notifyHandler(contract) }),
+    handlers: () => ({ orderPlaced: notifyHandler(orderContract) }),
     middleware: (host) => messageUnits<AmqpNeeds>(host),
   });
 
@@ -64,7 +69,7 @@ export const orderAmqpRuntime = ({
     needs: consumer.needs,
     start: (host) =>
       consumer.start(host).flatMap((serving) =>
-        startOutboxRelay(host.ctx, contract, { urls: transport.urls, pollMs: relay.pollMs }).map(
+        startOutboxRelay(host.ctx, { urls: transport.urls, pollMs: relay.pollMs }).map(
           (running) => ({
             ...serving,
             stop: () => running.stop().flatMap(() => serving.stop()),

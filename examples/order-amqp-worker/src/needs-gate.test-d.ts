@@ -11,7 +11,6 @@
  */
 import { Module } from "@btravstack/di";
 import { start } from "@btravstack/start-core";
-import { orderContract } from "@btravstack/start-example-order-amqp-contract";
 import { ApplicationModule, Logger, PlaceOrder } from "@btravstack/start-example-order-application";
 import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
 
@@ -20,7 +19,6 @@ import { OrderAmqpModule } from "./module.js";
 
 const options = {
   runtime: orderAmqpRuntime({
-    contract: orderContract,
     urls: ["amqp://127.0.0.1:5672"],
     relay: { pollMs: 200 },
   }),

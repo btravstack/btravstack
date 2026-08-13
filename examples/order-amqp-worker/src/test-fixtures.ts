@@ -3,7 +3,6 @@ import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import type { AmqpInfo } from "@btravstack/start-amqp";
 import { start, type RunningApp } from "@btravstack/start-core";
-import { orderContract } from "@btravstack/start-example-order-amqp-contract";
 import { Logger, Outbox, PlaceOrder } from "@btravstack/start-example-order-application";
 import { expect, type TestAPI } from "vitest";
 
@@ -83,7 +82,6 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     const serve: Serve = async (module, options) => {
       const app = start(module, {
         runtime: orderAmqpRuntime({
-          contract: orderContract,
           urls: [amqpConnectionUrl],
           // Tight on purpose: the specs wait on real broker round trips, and
           // a production-sized idle sleep would be most of every test's clock.

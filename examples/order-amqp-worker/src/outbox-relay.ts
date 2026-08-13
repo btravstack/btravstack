@@ -1,6 +1,6 @@
 import { TypedAmqpClient } from "@amqp-contract/client";
 import type { Context } from "@btravstack/di";
-import type { OrderContract } from "@btravstack/start-example-order-amqp-contract";
+import { orderContract } from "@btravstack/start-example-order-amqp-contract";
 import { Logger, Outbox } from "@btravstack/start-example-order-application";
 import { P, fromSafePromise, type AsyncResult } from "unthrown";
 
@@ -33,13 +33,29 @@ const BATCH = 32;
  * validation error → the row cannot ever serialize, a bug worth a log line,
  * left pending so it stays visible; a defect (broker down, mid-flight close)
  * → logged, left pending, retried next sweep.
+ *
+ * **Why the client is created here rather than injected as a port, and why
+ * this is not a di provider.** A transport connection is a *runtime* concern
+ * in this repo, configured from the environment in `main.ts`: `start-amqp`
+ * creates its own `TypedAmqpWorker` inside `Runtime.start` from the same
+ * `urls`, and `order-temporal-worker`'s `main.ts` opens its `NativeConnection`
+ * the same way. Only `OrderDatabase` is a resourceful provider, because the
+ * *application* depends on it — the repository cannot be built without one.
+ * Nothing in the application graph depends on this publisher, and a provider
+ * exists to be resolved by someone.
+ *
+ * It is not a second connection, either: `@amqp-contract/core`'s
+ * `ConnectionManagerSingleton` pools by URL and reference-counts leases, so
+ * this client and the consumer's worker share one TCP connection and
+ * `client.close()` releases a lease rather than closing the socket. What the
+ * relay *does* take from di is everything the application owns — `Outbox` and
+ * `Logger`, resolved from `ctx` — which is the boundary that matters.
  */
 export const startOutboxRelay = (
   ctx: Context<InstanceType<RelayNeeds>>,
-  contract: OrderContract,
   { urls, pollMs }: RelayOptions,
 ): AsyncResult<{ readonly stop: () => AsyncResult<void, never> }, never> =>
-  TypedAmqpClient.create({ contract, urls: [...urls] }).map((client) => {
+  TypedAmqpClient.create({ contract: orderContract, urls: [...urls] }).map((client) => {
     const outbox = ctx.get(Outbox);
     const logger = ctx.get(Logger);
 

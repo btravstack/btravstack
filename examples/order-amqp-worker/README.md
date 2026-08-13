@@ -40,6 +40,22 @@ would. It is intentionally the least interesting part: a broadcast's
 publisher does not know it exists, and the spec proves that by binding a
 _foreign_ queue to the same exchange and receiving the same event.
 
+## Where the relay lives, and what it takes from di
+
+The relay resolves `Outbox` and `Logger` from the application context — the
+boundary that matters — but creates its own `TypedAmqpClient` rather than
+receiving one as a port, and is not itself a di provider. Both are deliberate:
+a transport connection is a **runtime** concern in this repo (configured from
+the environment in `main.ts`, exactly as `start-amqp` creates its worker and
+`order-temporal-worker` opens its `NativeConnection`), while a di provider
+holds something the _application_ depends on — which is why `OrderDatabase` is
+one and this publisher is not. Nothing in the graph resolves the relay, and a
+provider exists to be resolved.
+
+It is not a second connection either: `@amqp-contract/core` pools by URL and
+reference-counts leases, so the relay's client and the consumer's worker share
+one TCP connection, and `close()` releases a lease rather than the socket.
+
 ## Where the relay lives
 
 `orderAmqpRuntime` layers the relay onto the runtime `start-amqp` hands back:
