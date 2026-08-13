@@ -30,3 +30,7 @@ docs/superpowers/
 # directory so it survives across runs and is a stable path CI can cache.
 # See examples/order-temporal-worker/README.md.
 .cache/
+
+# The scratch database `prisma migrate` reaches for when DATABASE_URL is unset.
+# The migrations it writes are committed; the database it applies them to is not.
+**/.migrate.db

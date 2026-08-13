@@ -17,7 +17,7 @@ const modelsInSchema = (): readonly string[] =>
     ).matchAll(/^model\s+(\w+)\s*\{/gm),
   ].map((match) => match[1] ?? "");
 
-describe("the hand-written DDL", () => {
+describe("the committed migrations", () => {
   it("creates a table for every model the schema declares", async ({ db }) => {
     // GIVEN the models `schema.prisma` declares — the source the generated
     // client's types are built from
@@ -29,11 +29,12 @@ describe("the hand-written DDL", () => {
       "SELECT name FROM sqlite_master WHERE type = 'table'",
     );
 
-    // THEN every model has its table. `openDatabase`'s `DDL` and the schema
-    // are two sources of truth for one shape — this is what stops them
-    // drifting, because a model added to the schema alone still *compiles*
-    // (the client's types come from the schema) and only fails when a query
-    // reaches the missing table at runtime.
+    // THEN every model has its table. The migrations are generated from this
+    // schema, so the two agree by construction — what this pins is that they
+    // were *regenerated*: editing the schema without running
+    // `prisma migrate dev` leaves the client's types (which come from the
+    // schema) describing a column no migration ever created, and nothing else
+    // in the gate would notice until a query reached it.
     expect(tables.map((table) => table.name)).toEqual(expect.arrayContaining([...models]));
   });
 });

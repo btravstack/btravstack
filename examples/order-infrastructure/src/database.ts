@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { Port, Provider } from "@btravstack/di";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { unthrownPrisma } from "@unthrown/prisma";
@@ -6,31 +9,39 @@ import { fromSafePromise, type AsyncResult } from "unthrown";
 import { PrismaClient } from "./generated/prisma/client.ts";
 
 /**
- * The example's database is SQLite held in memory, so it is born empty and its
- * tables are created by hand — no migration engine, no file on disk, nothing to
- * clean up between runs.
+ * The migrations, as `prisma migrate dev` generated them and as they are
+ * committed — the single source of truth for this schema's shape.
  *
- * **Why not a real Prisma migration run before start**, which is what a
- * deployment with a durable database would do: there is nothing here to
- * migrate. The database is created empty by `openDatabase` and ceases to exist
- * when the process does, so it has no prior version to move *from*; the
- * datasource in `schema.prisma` deliberately declares no `url` (the driver
- * adapter supplies the connection at runtime), and `prisma migrate` needs one;
- * and these example packages are never executed as processes — `main.ts` is
- * typechecked, and every spec drives `start` directly — so there is no
- * "before application start" for a migration step to occupy.
- *
- * The cost of the shortcut is real, though: this array and `schema.prisma` are
- * two sources of truth for one shape, and a model added to the schema alone
- * still compiles (the generated client's types come from the schema) while the
- * table quietly does not exist. `schema-drift.spec.ts` is what closes that —
- * it reads the schema and fails if any model has no table.
+ * A deployment with a durable database runs `pnpm db:migrate`
+ * (`prisma migrate deploy`) **before the process starts**, which is what the
+ * `db:migrate` turbo task exists for; the application never migrates itself at
+ * boot. This example's database cannot be reached that way — it is SQLite held
+ * *in memory*, born empty inside `openDatabase` and gone when the process is,
+ * so no external command can prepare it — so the same committed SQL is applied
+ * here instead. That is the point: tests run the exact statements a deployment
+ * runs, rather than a hand-kept copy that can drift from the schema.
  */
-const DDL = [
-  `CREATE TABLE "Order" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "orderId" TEXT NOT NULL, "quantity" INTEGER NOT NULL)`,
-  `CREATE UNIQUE INDEX "Order_orderId_key" ON "Order"("orderId")`,
-  `CREATE TABLE "OutboxMessage" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "kind" TEXT NOT NULL, "subjectId" TEXT NOT NULL, "payload" TEXT, "occurredAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "publishedAt" DATETIME)`,
-];
+const MIGRATIONS_DIR = fileURLToPath(new URL("../prisma/migrations/", import.meta.url));
+
+const migrations = (): readonly string[] =>
+  readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    // Prisma names migration directories with a leading timestamp, so
+    // lexicographic order IS chronological order — the order they must be
+    // applied in, and the order `migrate deploy` applies them in.
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((entry) => readFileSync(`${MIGRATIONS_DIR}${entry.name}/migration.sql`, "utf8"));
+
+/**
+ * One migration file holds several statements; better-sqlite3's `exec` (which
+ * `$executeRawUnsafe` reaches) takes one at a time, so the file is split on
+ * `;` and the empty tail dropped. Comments survive fine — SQLite parses them.
+ */
+const statementsOf = (migration: string): readonly string[] =>
+  migration
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
 
 const createClient = () =>
   new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: ":memory:" }) }).$extends(
@@ -48,7 +59,7 @@ export type OrderDatabaseClient = ReturnType<typeof createClient>;
 export class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
 
 /**
- * Opens a fresh in-memory database with the schema applied.
+ * Opens a fresh in-memory database with every committed migration applied.
  *
  * `AsyncResult`, not a bare `Promise`: this is an exported async surface, and
  * the rule the rest of the stack follows is that every one of them returns a
@@ -61,7 +72,9 @@ export const openDatabase = (): AsyncResult<OrderDatabaseClient, never> =>
   fromSafePromise(
     (async () => {
       const db = createClient();
-      for (const statement of DDL) await db.$executeRawUnsafe(statement);
+      for (const migration of migrations()) {
+        for (const statement of statementsOf(migration)) await db.$executeRawUnsafe(statement);
+      }
       return db;
     })(),
   );
