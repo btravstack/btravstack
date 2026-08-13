@@ -70,12 +70,20 @@ export const messageUnits =
  *
  * The publisher's `messageId` becomes the `traceId`: minted outside this
  * process and stable across every redelivery, which is what `traceId` is for.
+ * `correlationId` is the fallback for an RPC-shaped message.
+ *
+ * Only a NON-BLANK id is adopted, and the trim is load-bearing rather than
+ * tidy: `??` guards nullish alone, and `""` is not nullish, so a publisher
+ * that sets `messageId: ""` — or a broker that hands one through — would give
+ * every delivery the same blank trace id and defeat the ambient record
+ * exactly as a category-as-id would. `-http` refuses a blank `x-request-id`
+ * for the same reason.
  */
 const metaFor = (raw: RawDelivery): UnitMeta => {
   const id = randomUUID();
-  return {
-    kind: "delivery",
-    id,
-    traceId: raw.properties.messageId ?? raw.properties.correlationId ?? id,
-  };
+  const inbound = [raw.properties.messageId, raw.properties.correlationId]
+    .map((value) => value?.trim() ?? "")
+    .find((value) => value !== "");
+
+  return { kind: "delivery", id, traceId: inbound ?? id };
 };

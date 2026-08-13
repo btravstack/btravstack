@@ -95,6 +95,35 @@ describe("amqpRuntime", () => {
     expect(seam.seen()).toEqual([{ kind: "delivery", id: expect.any(String), traceId: "m-1" }]);
   });
 
+  it("refuses a blank message id rather than tracing every delivery to it", async ({
+    serve,
+    seam,
+    publishMessage,
+  }) => {
+    // GIVEN the same wiring
+    await serve(seam.build);
+
+    // WHEN a publisher sets a messageId that is present but blank
+    publishMessage(
+      { exchange: "start-amqp-test", routingKey: "echo.requested" },
+      { value: "x" },
+      { messageId: "   " },
+    );
+    await vi.waitUntil(() => seam.seen().length === 1);
+
+    // THEN the unit traces to its own minted id instead. `traceId` defaults to
+    // `meta.id` only when it is NULLISH, and `""` is not — so a blank id
+    // adopted here would hand every delivery the same trace and defeat the
+    // ambient record, which is the same trap `-http` refuses a blank
+    // `x-request-id` to avoid.
+    expect(
+      seam.seen().map((meta) => ({
+        blank: meta.traceId?.trim() === "",
+        tracesToUnit: meta.traceId === meta.id,
+      })),
+    ).toEqual([{ blank: false, tracesToUnit: true }]);
+  });
+
   it("injects the application context through the contract's own channel", async ({
     serve,
     seam,
