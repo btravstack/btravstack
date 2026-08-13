@@ -7,7 +7,7 @@ boot a [`@btravstack/di`](https://github.com/btravstack/di) module into a runnin
 process, and stop it again without losing work.**
 
 [![CI](https://github.com/btravstack/start/actions/workflows/ci.yml/badge.svg)](https://github.com/btravstack/start/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fstart.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/start-core)
+[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fstart-core.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/start-core)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 

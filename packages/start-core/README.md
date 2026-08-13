@@ -3,7 +3,7 @@
 **The application kernel: boot a [`@btravstack/di`](https://github.com/btravstack/di)
 module into a running process, and stop it again without losing work.**
 
-[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fstart.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/start-core)
+[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fstart-core.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/start-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 `di` proves an application's wiring before the process exists. `start` owns
