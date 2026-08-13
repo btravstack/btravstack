@@ -6,7 +6,7 @@ import {
   type AmqpInfo,
   type MessageUnitContext,
 } from "@btravstack/start-amqp";
-import { orderContract, type OrderContract } from "@btravstack/start-example-order-amqp-contract";
+import type { OrderContract } from "@btravstack/start-example-order-amqp-contract";
 import { Logger, PlaceOrder } from "@btravstack/start-example-order-application";
 import { ErrAsync, P } from "unthrown";
 
@@ -46,7 +46,13 @@ export const orderAmqpRuntime = ({
     ...transport,
     contract,
     needs: [PlaceOrder, Logger],
-    handlers: () => ({ placeOrder: placeHandler }),
+    // `placeHandler(contract)` rather than a pre-built constant: `contract` is
+    // what every caller passes in (`main.ts`, the needs-gate type test), and
+    // building the handler from that parameter — the same way `-temporal`'s
+    // `activities` builder threads its own `contract` into
+    // `declareActivitiesHandler` — is what makes it load-bearing rather than
+    // a decorative pass-through to the module's own top-level `orderContract`.
+    handlers: () => ({ placeOrder: placeHandler(contract) }),
     middleware: (host) => messageUnits<AmqpNeeds>(host),
   });
 
@@ -80,21 +86,21 @@ export const orderAmqpRuntime = ({
  * explicitly, or "infrastructure comes back" would be false on this transport
  * alone.
  */
-const placeHandler = declareHandler<
-  typeof orderContract,
-  "placeOrder",
-  MessageUnitContext<AmqpNeeds>
->(orderContract, "placeOrder", (message, _raw, { context }) =>
-  context.ctx
-    .get(PlaceOrder)
-    .execute(message.payload.orderId, message.payload.quantity)
-    .map(() => undefined)
-    .mapErrCases((matcher) =>
-      matcher.with(
-        P.tag("InvalidQuantity"),
-        P.tag("DuplicateOrder"),
-        (error) => new NonRetryableError(error._tag, error),
-      ),
-    )
-    .recoverDefect((cause) => ErrAsync(new RetryableError("placing the order failed", cause))),
-);
+const placeHandler = (contract: OrderContract) =>
+  declareHandler<OrderContract, "placeOrder", MessageUnitContext<AmqpNeeds>>(
+    contract,
+    "placeOrder",
+    (message, _raw, { context }) =>
+      context.ctx
+        .get(PlaceOrder)
+        .execute(message.payload.orderId, message.payload.quantity)
+        .map(() => undefined)
+        .mapErrCases((matcher) =>
+          matcher.with(
+            P.tag("InvalidQuantity"),
+            P.tag("DuplicateOrder"),
+            (error) => new NonRetryableError(error._tag, error),
+          ),
+        )
+        .recoverDefect((cause) => ErrAsync(new RetryableError("placing the order failed", cause))),
+  );

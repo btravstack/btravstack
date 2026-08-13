@@ -63,27 +63,33 @@ but what the platform does next.
 ## The triage, and the real signature it turned on
 
 ```ts
-const placeHandler = declareHandler<
-  typeof orderContract,
-  "placeOrder",
-  MessageUnitContext<AmqpNeeds>
->(orderContract, "placeOrder", (message, _raw, { context }) =>
-  context.ctx
-    .get(PlaceOrder)
-    .execute(message.payload.orderId, message.payload.quantity)
-    .map(() => undefined)
-    .mapErrCases((matcher) =>
-      matcher.with(
-        P.tag("InvalidQuantity"),
-        P.tag("DuplicateOrder"),
-        (error) => new NonRetryableError(error._tag, error),
-      ),
-    )
-    .recoverDefect((cause) =>
-      ErrAsync(new RetryableError("placing the order failed", cause)),
-    ),
-);
+const placeHandler = (contract: OrderContract) =>
+  declareHandler<OrderContract, "placeOrder", MessageUnitContext<AmqpNeeds>>(
+    contract,
+    "placeOrder",
+    (message, _raw, { context }) =>
+      context.ctx
+        .get(PlaceOrder)
+        .execute(message.payload.orderId, message.payload.quantity)
+        .map(() => undefined)
+        .mapErrCases((matcher) =>
+          matcher.with(
+            P.tag("InvalidQuantity"),
+            P.tag("DuplicateOrder"),
+            (error) => new NonRetryableError(error._tag, error),
+          ),
+        )
+        .recoverDefect((cause) =>
+          ErrAsync(new RetryableError("placing the order failed", cause)),
+        ),
+  );
 ```
+
+Built from the `contract` `orderAmqpRuntime` itself is handed, rather than
+from the module's own top-level `orderContract` — the same reason
+`-temporal`'s `activities` builder threads its own `contract` into
+`declareActivitiesHandler` — so the parameter is load-bearing rather than a
+decorative pass-through.
 
 Both `InvalidQuantity` and `DuplicateOrder` collapse into the **same** arm,
 unlike Temporal's two separate `errors.InvalidQuantity` / `errors.OrderAlreadyPlaced`
@@ -123,15 +129,17 @@ separates `declareHandler` from the middleware slot entirely. **Both** need
 their type arguments given explicitly:
 
 ```ts
-declareHandler<typeof orderContract, "placeOrder", MessageUnitContext<AmqpNeeds>>(...)
+declareHandler<OrderContract, "placeOrder", MessageUnitContext<AmqpNeeds>>(...)
 middleware: (host) => messageUnits<AmqpNeeds>(host)
 ```
 
 Leave either bare and TypeScript infers `EmptyContext` from the call it is
 still resolving, and `context.ctx` silently stops existing inside the handler
-— caught once already, in `packages/start-amqp`'s own suite, and the reason
-this package's runtime file mirrors that shape exactly rather than reaching
-for `declareActivitiesHandler`'s one-generic convenience.
+— caught twice already, in `packages/start-amqp`'s own suite (once for
+`messageUnits`, once for `declareHandler` — a second, independent generic
+call `-temporal`'s single `declareActivitiesHandler` never needed), and the
+reason this package's runtime file mirrors that shape exactly rather than
+reaching for `declareActivitiesHandler`'s one-generic convenience.
 
 ## The delivery is the unit, and one line is what makes it one
 
