@@ -9,6 +9,13 @@ packages:
   - examples/*
 
 catalog:
+  # `@amqp-contract/{contract,testing,worker}` v3 are still in beta and their
+  # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
+  # this repo pins 5.5.0. The exact beta is the contract until v3 goes stable;
+  # raise it deliberately, not on a bot bump.
+  "@amqp-contract/contract": 3.0.0-beta.6
+  "@amqp-contract/testing": 3.0.0-beta.6
+  "@amqp-contract/worker": 3.0.0-beta.6
   "@btravstack/commitlint": 0.1.0
   "@btravstack/di": 0.1.0
   "@btravstack/entity": 0.7.0
@@ -17,6 +24,14 @@ catalog:
   "@btravstack/tsconfig": 0.2.0
   "@changesets/cli": 2.31.1
   "@commitlint/cli": 21.2.1
+  # `@amqp-contract/core`'s telemetry module (pulled in by
+  # `@amqp-contract/worker`) has a static, unconditional `import
+  # "@opentelemetry/api"` despite declaring the peer `optional` in its own
+  # package.json — the ESM build does not actually honour the optionality, so
+  # anything that imports `@amqp-contract/worker` fails to load at all without
+  # this installed. Not a `devDependency` alone: a real consumer of
+  # `@btravstack/start-amqp` hits the same load failure.
+  "@opentelemetry/api": 1.9.1
   # oRPC v2 is still in beta and its `latest` dist-tag is the 1.x line, while
   # `@unthrown/orpc` peers on `^2.0.0-beta` — an unpinned range resolves 1.x
   # and fails `strictPeerDependencies`. The exact beta is the contract.
@@ -26,7 +41,7 @@ catalog:
   "@prisma/adapter-better-sqlite3": 7.9.1
   "@prisma/client": 7.9.1
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
-  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.2.0. 8.x also
+  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.5.0. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
   # specs are built on. The exact beta is the contract until v8 goes stable.
   "@temporal-contract/client": 8.0.0-beta.5
@@ -43,8 +58,8 @@ catalog:
   "@unthrown/oxlint": 5.2.0
   "@unthrown/orpc": 0.1.2
   "@unthrown/prisma": 0.2.0
-  "@unthrown/standard-schema": 5.2.0
-  "@unthrown/vitest": 5.2.0
+  "@unthrown/standard-schema": 5.5.0
+  "@unthrown/vitest": 5.5.0
   knip: 6.32.0
   lefthook: 2.1.10
   oxfmt: 0.62.0
@@ -53,7 +68,7 @@ catalog:
   tsdown: 0.22.14
   turbo: 2.10.8
   typescript: 7.0.2
-  unthrown: 5.2.0
+  unthrown: 5.5.0
   "@vitest/coverage-v8": 4.1.10
   vitest: 4.1.10
   zod: 4.4.3
@@ -69,6 +84,8 @@ allowBuilds:
   esbuild: true
   lefthook: true
   prisma: true
+  cpu-features: false
+  ssh2: false
 
 peerDependencyRules:
   ignoreMissing:
@@ -79,10 +96,14 @@ peerDependencyRules:
     - "@types/react"
 
 minimumReleaseAgeExclude:
+  - "@amqp-contract/contract@3.0.0-beta.6"
+  - "@amqp-contract/core@3.0.0-beta.6"
+  - "@amqp-contract/testing@3.0.0-beta.6"
+  - "@amqp-contract/worker@3.0.0-beta.6"
   - "@btravstack/di@0.1.0"
   - "@btravstack/entity@0.7.0"
   - "@unthrown/oxlint@5.2.0"
   - "@unthrown/prisma@0.2.0"
-  - "@unthrown/standard-schema@5.2.0"
-  - "@unthrown/vitest@5.2.0"
-  - "unthrown@5.2.0"
+  - "@unthrown/standard-schema@5.5.0"
+  - "@unthrown/vitest@5.5.0"
+  - "unthrown@5.5.0"

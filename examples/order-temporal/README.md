@@ -258,12 +258,12 @@ rather than a container — the whole worker loop, real Workflow Tasks and real
 Activity Tasks, with the Docker daemon quit.
 
 **But it does need the network once.** That binary is 64 MB, downloaded on
-first use and keyed by the `@temporalio` SDK version. Every other example in
-this repository is entirely self-contained; this one is not, and the trade was
-accepted deliberately because the alternative — `testcontainers` against a real
-Temporal cluster — needs a **network pull _and_ a daemon**, which is the
-objection that keeps Docker out of this repo in the first place. A cold cache
-with no network fails loudly at environment creation, naming the URL.
+first use and keyed by the `@temporalio` SDK version. The alternative —
+`testcontainers` against a real Temporal cluster — is allowed here (see
+`CLAUDE.md`'s integration-test rule, and `order-amqp`, which does exactly that
+for a broker); it is simply slower for the same coverage, needing a **network
+pull _and_ a daemon** where this needs a pull alone. A cold cache with no
+network fails loudly at environment creation, naming the URL.
 
 Two things keep that cost to once:
 
@@ -279,7 +279,7 @@ purges on its own schedule. `ttl` is a year rather than the default one day, so
 a developer who runs the suite on Monday and again on Wednesday does not
 download it twice.
 
-Measured on this machine, Docker quit:
+Measured on this machine, with no container running:
 
 |                                      | Wall clock    |
 | ------------------------------------ | ------------- |

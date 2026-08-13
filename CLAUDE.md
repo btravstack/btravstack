@@ -19,16 +19,17 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds three published packages,
-`start` (the kernel), `start-http` (the HTTP runtime) and `start-temporal` (the
-Temporal worker runtime); `examples/` holds
-nine private ones — a clean-architecture application
+pnpm workspace + turbo monorepo. `packages/` holds four published packages,
+`start` (the kernel), `start-http` (the HTTP runtime), `start-temporal` (the
+Temporal worker runtime) and `start-amqp` (the AMQP consumer runtime);
+`examples/` holds eleven private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
-three different runtimes (`order-api`, `order-worker`, `order-temporal`), with
-each transport's contract in a package of its own (`order-api-contract`,
-`order-temporal-contract`) because a client must be able to take a contract
-without the server. They are consumers, not fixtures: they are part of the gate,
-and `examples/README.md` is their index.
+four different runtimes (`order-api`, `order-worker`, `order-temporal`,
+`order-amqp`), with each transport's contract in a package of its own
+(`order-api-contract`, `order-temporal-contract`, `order-amqp-contract`)
+because a client must be able to take a contract without the server. They are
+consumers, not fixtures: they are part of the gate, and `examples/README.md`
+is their index.
 
 ## Commands
 
@@ -93,8 +94,19 @@ hook). User-facing changes need a changeset.
 3. **The kernel never maps an outcome to a transport.** `Result` → HTTP status
    belongs to the handler an application hands `@btravstack/start-http`
    (oRPC, Hono, a bare function) — the package itself declines that mapping,
-   deliberately — `Result` → ack/nack/DLQ to `-amqp`, `Result` → activity
-   failure to `-temporal`. `RunUnit` is
+   deliberately — `Result` → activity failure to `-temporal`, likewise. `-amqp`
+   declines it too, and more starkly: `Result` → ack/nack/DLQ is a **three-way**
+   split between `amqp-contract`'s own dispatch and the handler, not something
+   either package owns outright. A modeled `RetryableError`/`NonRetryableError`
+   is routed by the library against the queue's `retry` config; a `Defect` is
+   **not** — it is nacked once, immediately, straight to the dead-letter queue,
+   never touching that budget — so a handler that wants "infrastructure comes
+   back" has to recover its own `Defect`s into a `RetryableError` explicitly, or
+   an infrastructure failure is parked on the first attempt exactly like a
+   permanent domain error. The claim that survives across all three transports
+   is only that the _kernel_ maps nothing; what each transport's own mapping
+   looks like is the transport's own business, sometimes split further still.
+   `RunUnit` is
    transparent to the work's own channels: whatever `Result` a handler produces
    is what the runtime receives back (`units.ts`'s `run` ends in
    `.flatMap((result) => result)` — it observes only that the unit _settled_).
@@ -346,24 +358,26 @@ checker already verifies.
   stopped and rethrown unchanged, so a shutdown defect can never mask the
   assertion that actually failed.
 
-### `@btravstack/start-http` and `@btravstack/start-temporal`
+### `@btravstack/start-http`, `@btravstack/start-temporal` and `@btravstack/start-amqp`
 
-Their public surfaces live in `packages/start-http/CLAUDE.md` and
-`packages/start-temporal/CLAUDE.md`, which load only when you work under those
-directories — the same split `packages/start/CLAUDE.md` already uses for the
-kernel's internals. Read the one you are changing before you change it, and
-update it in the same commit as the code.
+Their public surfaces live in `packages/start-http/CLAUDE.md`,
+`packages/start-temporal/CLAUDE.md` and `packages/start-amqp/CLAUDE.md`, which
+load only when you work under those directories — the same split
+`packages/start/CLAUDE.md` already uses for the kernel's internals. Read the
+one you are changing before you change it, and update it in the same commit as
+the code.
 
 ## Toolchain & conventions
 
-- **`examples/` is part of the gate, not a folder of illustrations.** All nine
-  workspaces run under the same six commands as the kernel — 81 specs plus
-  four `needs-gate.test-d.ts` files and three `layering.test-d.ts` ones — so an
-  example that stops compiling, stops linting or stops passing fails CI exactly
-  as `packages/start` would. Three of the four needs-gate files pin **`start`'s**
-  runtime-needs gate (`order-api`, `order-worker`, `order-temporal`); the fourth,
-  `order-application`'s, pins **di's** `UNSATISFIED DEPENDENCIES` gate on
-  `Module.scoped`. They are different gates and easy to conflate.
+- **`examples/` is part of the gate, not a folder of illustrations.** All
+  eleven workspaces run under the same six commands as the kernel — 93 specs
+  plus five `needs-gate.test-d.ts` files and four `layering.test-d.ts` ones —
+  so an example that stops compiling, stops linting or stops passing fails CI
+  exactly as `packages/start` would. Four of the five needs-gate files pin
+  **`start`'s** runtime-needs gate (`order-api`, `order-worker`,
+  `order-temporal`, `order-amqp`); the fifth, `order-application`'s, pins
+  **di's** `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`. They are
+  different gates and easy to conflate.
   A runtime with a **non-empty `needs`** meeting a real module now exercises
   `start`'s phantom rest-tuple gate and `RuntimeHost`'s
   `Context<InstanceType<Needs>>` in two places: here, and in
@@ -375,15 +389,16 @@ update it in the same commit as the code.
   network, and only on a cold cache.** It runs a real `@temporalio/worker`
   Worker against `@temporalio/testing`'s **time-skipping test server** — a
   64 MB local binary, not a container — so the whole Workflow-Task /
-  Activity-Task loop is exercised with **no Docker daemon**, which is the
-  objection that kept a real Temporal cluster out. The binary is fetched once,
+  Activity-Task loop is exercised without starting one. A container would be
+  allowed (see the integration-test rule below); this is simply cheaper and
+  faster for the same coverage. The binary is fetched once,
   keyed by the `@temporalio` SDK version, into
   **`<repo>/.cache/temporal-test-server`** (gitignored) with **`ttl: "365d"`,
   set in `src/test-fixtures.ts`. Both are deliberate: the SDK's defaults are
   the OS temp directory — which CI wipes between jobs and macOS purges on its
   own schedule — and a one-day ttl, so a developer running the suite twice in a
   week downloads it twice. A cold cache with no network fails loudly at
-  `createTimeSkipping()`, naming the URL. Measured with Docker quit: **7.4 s
+  `createTimeSkipping()`, naming the URL. Measured with no container running: **7.4 s
   cold** (download included), **3.8–3.9 s warm** — the slowest package in the
   repo and still under four seconds. **CI does not yet cache that directory**:
   `.github/workflows/ci.yml` delegates wholly to
@@ -391,13 +406,34 @@ update it in the same commit as the code.
   inject an `actions/cache` step into a reusable workflow's jobs. Closing it
   means adding a cache-path input there, not here; until then every test job
   pays the ~3.5 s download.
+- **`packages/start-amqp` and `examples/order-amqp` are the two workspaces
+  whose suites need a Docker daemon**, per the integration-test rule below.
+  `@amqp-contract/testing` boots one real RabbitMQ container per vitest run
+  (`globalSetup`) — the retry/dead-letter routing this package leans on is the
+  broker's own behaviour, not something an in-memory fake or a local binary
+  could stand in for. Measured on this machine: `packages/start-amqp`
+  **17.6 s cold** (image pull included), **7.3–8.0 s warm**; `examples/order-amqp`
+  **15.5 s cold**, **4.8–5.6 s warm** — both slower than `order-temporal`'s
+  network-cache case, and cold only on a machine that has never pulled
+  `rabbitmq:4.2.1-management-alpine` before.
 - **The Prisma client is generated at test time, and there is nothing to
   install.** `@btravstack/start-example-order-infrastructure`'s `test` and
   `typecheck` scripts both begin with `prisma generate`, writing a gitignored
   client into `src/generated`, and turbo's `test` / `typecheck` / `test:types`
   tasks carry a `^generate` edge so a dependent workspace gets one too. The
-  database is SQLite **in memory** with the schema applied by hand —
-  deliberately no Docker, so `pnpm test` stays self-contained on any machine.
+  database is SQLite **in memory** with the schema applied by hand, because it
+  is faster and simpler than a container for a repository test — not because a
+  container was forbidden. See the integration-test rule below.
+- **An integration test may boot its real dependency with Docker and
+  testcontainers.** A suite that needs a broker, a database or a service starts
+  one; there is no rule against a daemon, and a hand-written double that fakes
+  the thing under test would prove less than the container does. What is still
+  true is the preference underneath: reach for the cheapest fixture that tests
+  the real behaviour — in memory when the behaviour is the library's (SQLite for
+  a repository), a local binary when one exists (Temporal's time-skipping
+  server), a container when neither does (a broker). State the cost in the
+  workspace's README, since a suite that needs a daemon is a fact a contributor
+  discovers the hard way otherwise.
 - **`examples/order-temporal` consumes `@btravstack/start-temporal`**, the same
   way `order-api` consumes `-http`: it supplies the contract, the two ports its
   activity resolves and the `mapErrCases` triage, and reads `{ taskQueue,
@@ -421,21 +457,21 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   on `unthrown@^4` while this repo pins 5.2.0 — and 7.x ships neither the
   `test-rig` nor the `workflow-bundle` subpath the Temporal example's specs are
   built on. `testcontainers` is an **optional** peer of
-  `@temporal-contract/testing` and is deliberately not installed: the
-  Docker-free path is not merely unused here, it is unresolvable.
+  `@temporal-contract/testing` and is not installed, because the time-skipping
+  server is what that example uses — not because containers are unwelcome.
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
   dependencies of `start` — the dual-copy hazard is real for both (di's port
   identity and unthrown's `isResult` each compare across copies). `start-http`
   peers on both of those plus `@btravstack/start` itself, for the same reason.
   `node:` builtins only otherwise. Do not add a dependency.
-- `declarationMap: false` on both published packages — the published tarball
-  has no `src/`, so maps would be dead ends.
+- `declarationMap: false` on all four published packages — the published
+  tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- Both published packages claim `engines: { node: ">=20" }` while the root
+- All four published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -485,9 +521,10 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   both READMEs **and** `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/start/src/` internals or the invariants guarding
   them, `packages/start/CLAUDE.md` too — and for a runtime package, its own:
-  `packages/start-http/CLAUDE.md` or `packages/start-temporal/CLAUDE.md`, which
-  is where that package's public surface lives. There are **four** `CLAUDE.md`
-  files; naming the wrong one is how the last drift happened.
+  `packages/start-http/CLAUDE.md`, `packages/start-temporal/CLAUDE.md` or
+  `packages/start-amqp/CLAUDE.md`, whichever is where that package's public
+  surface lives. There are **five** `CLAUDE.md` files; naming the wrong one is
+  how the last drift happened.
 
 ## Test conventions
 
@@ -613,9 +650,6 @@ A sixth rule is about production code that tests keep honest:
 
 ## Deferred, deliberately
 
-- `@btravstack/start-amqp` — the consumer runtime. **It does not exist**; the
-  `Runtime` contract is the whole of what this package owes it. Do not write as
-  though it ships.
 - **Caching the Temporal test-server binary in CI.** The path is stable and
   gitignored; what is missing is the `actions/cache` step, which cannot be
   written from `start`'s `ci.yml` while it delegates to
@@ -626,13 +660,14 @@ A sixth rule is about production code that tests keep honest:
 - Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed
   for it; the `Module.forkScope` call lands when the first runtime needs a
   per-request transaction.
-- **A `docs-examples.test-d.ts` for `start-http` and `start-temporal`.**
-  `packages/start`'s exists precisely so its two READMEs cannot drift from
-  `runtime.ts` / `drain-report.ts` without failing `pnpm typecheck`; the two
-  runtime packages' README samples have no such gate and are compiled by
-  nothing. Deliberately not built — two packages' worth of samples still did
-  not justify the harness. Add it the next time one of those samples is found
-  to have drifted, the same way this gap itself was found.
+- **A `docs-examples.test-d.ts` for `start-http`, `start-temporal` and
+  `start-amqp`.** `packages/start`'s exists precisely so its two READMEs
+  cannot drift from `runtime.ts` / `drain-report.ts` without failing `pnpm
+typecheck`; the three runtime packages' README samples have no such gate
+  and are compiled by nothing. Deliberately not built — three packages' worth
+  of samples still did not justify the harness. Add it the next time one of
+  those samples is found to have drifted, the same way this gap itself was
+  found.
 - ~~Bringing `packages/start`'s 13 spec files under the Test conventions.~~
   **Closed by decision, not by doing it.** An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since
