@@ -1,4 +1,4 @@
-import { runMain, start } from "@btravstack/start";
+import { runMain, start } from "@btravstack/start-core";
 import { P } from "unthrown";
 
 import { describeEnvIssues, readEnv, type Env } from "./env.js";

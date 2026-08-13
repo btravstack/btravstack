@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { Module, Port, Provider } from "@btravstack/di";
-import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start";
+import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start-core";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
 import { declareActivitiesHandler } from "@temporal-contract/worker/activity";
 import { activityInfo } from "@temporalio/activity";

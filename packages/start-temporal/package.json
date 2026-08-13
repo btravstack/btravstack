@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/start-temporal",
   "version": "0.0.0",
-  "description": "The Temporal worker runtime for @btravstack/start: one unit per activity attempt, and a drain that honours the kernel's deadline",
+  "description": "The Temporal worker runtime for @btravstack/start-core: one unit per activity attempt, and a drain that honours the kernel's deadline",
   "keywords": [
     "graceful-shutdown",
     "lifecycle",
@@ -51,7 +51,7 @@
   },
   "devDependencies": {
     "@btravstack/di": "catalog:",
-    "@btravstack/start": "workspace:*",
+    "@btravstack/start-core": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@temporal-contract/contract": "catalog:",
     "@temporal-contract/worker": "catalog:",
@@ -72,7 +72,7 @@
   },
   "peerDependencies": {
     "@btravstack/di": "^0.1.0",
-    "@btravstack/start": "workspace:^",
+    "@btravstack/start-core": "workspace:^",
     "@temporalio/activity": "^1.22.0",
     "@temporalio/common": "^1.22.0",
     "@temporalio/worker": "^1.22.0",

@@ -9,7 +9,7 @@ import {
   type RuntimeHost,
   type Serving,
   type UnitMeta,
-} from "@btravstack/start";
+} from "@btravstack/start-core";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */

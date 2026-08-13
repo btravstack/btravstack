@@ -1,5 +1,5 @@
 ---
-"@btravstack/start": minor
+"@btravstack/start-core": minor
 ---
 
 Remove the `VERSION` export.

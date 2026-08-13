@@ -10,7 +10,7 @@ import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { declareHandler, type WorkerInferHandlers } from "@amqp-contract/worker";
 import { Module, Port, Provider } from "@btravstack/di";
-import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start";
+import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start-core";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { expect, type TestAPI } from "vitest";
 import { z } from "zod";

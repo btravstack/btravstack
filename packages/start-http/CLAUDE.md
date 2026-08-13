@@ -32,4 +32,4 @@ the same commit, and with `README.md` — the package ships no
 - **Not included, deliberately**: routing, middleware, `Result` → HTTP status,
   HTTPS, HTTP/2 — see the package README's _"What it does not do"_ for why
   each is a non-goal.
-- Peer dependencies: `@btravstack/start`, `@btravstack/di`, `unthrown`.
+- Peer dependencies: `@btravstack/start-core`, `@btravstack/di`, `unthrown`.

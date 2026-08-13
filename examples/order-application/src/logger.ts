@@ -1,5 +1,5 @@
 import { Provider } from "@btravstack/di";
-import { currentUnit } from "@btravstack/start";
+import { currentUnit } from "@btravstack/start-core";
 
 import { Logger } from "./ports.js";
 

@@ -1,5 +1,5 @@
 import type { AnyPort, Context } from "@btravstack/di";
-import type { RuntimeHost, UnitMeta } from "@btravstack/start";
+import type { RuntimeHost, UnitMeta } from "@btravstack/start-core";
 import { activityInfo } from "@temporalio/activity";
 import type { AsyncResult } from "unthrown";
 

@@ -1,9 +1,9 @@
-// Every code sample the root `README.md` and `packages/start/README.md` ship,
+// Every code sample the root `README.md` and `packages/start-core/README.md` ship,
 // compiled. A sample that stops compiling fails `pnpm typecheck`.
 //
 // The one deliberate divergence from the published text: the samples import
-// from `./index.js` / `./testing.js` where a reader imports `@btravstack/start`
-// and `@btravstack/start/testing`. The package cannot resolve its own name from
+// from `./index.js` / `./testing.js` where a reader imports `@btravstack/start-core`
+// and `@btravstack/start-core/testing`. The package cannot resolve its own name from
 // inside its own source tree, and those two specifiers are exactly what
 // `package.json`'s `exports` map points at.
 

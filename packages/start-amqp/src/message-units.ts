@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AnyPort, Context } from "@btravstack/di";
-import type { RuntimeHost, UnitMeta } from "@btravstack/start";
+import type { RuntimeHost, UnitMeta } from "@btravstack/start-core";
 import type { AsyncResult } from "unthrown";
 
 /** What the middleware injects downstream: the application context, and nothing else. */

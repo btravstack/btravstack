@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order Temporal contract
+# `@btravstack/start-core` example: the order Temporal contract
 
 The Temporal contract — one workflow, one activity, and the two errors a caller
 may branch on — in a package of its own, depending on

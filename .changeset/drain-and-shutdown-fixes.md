@@ -1,5 +1,5 @@
 ---
-"@btravstack/start": minor
+"@btravstack/start-core": minor
 ---
 
 Seven shutdown-path fixes found by a full review of the kernel. Five change

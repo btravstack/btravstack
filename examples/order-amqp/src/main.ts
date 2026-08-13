@@ -1,4 +1,4 @@
-import { runMain, start } from "@btravstack/start";
+import { runMain, start } from "@btravstack/start-core";
 import { orderContract } from "@btravstack/start-example-order-amqp-contract";
 import { P } from "unthrown";
 

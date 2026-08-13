@@ -1,5 +1,5 @@
 {
-  "name": "@btravstack/start",
+  "name": "@btravstack/start-core",
   "version": "0.1.0",
   "description": "The application kernel: boot a di module into a running process, and stop it without losing work",
   "keywords": [
@@ -21,7 +21,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/btravstack/start.git",
-    "directory": "packages/start"
+    "directory": "packages/start-core"
   },
   "files": [
     "dist"

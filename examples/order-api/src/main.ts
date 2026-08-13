@@ -1,4 +1,4 @@
-import { runMain, start } from "@btravstack/start";
+import { runMain, start } from "@btravstack/start-core";
 import { FindOrder, Logger, PlaceOrder } from "@btravstack/start-example-order-application";
 import { httpRuntime } from "@btravstack/start-http";
 import { P } from "unthrown";

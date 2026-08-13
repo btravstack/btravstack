@@ -5,7 +5,7 @@ import {
   type Runtime,
   type RuntimeHost,
   type Serving,
-} from "@btravstack/start";
+} from "@btravstack/start-core";
 import { ErrAsync, OkAsync, fromSafePromise, fromThrowable, type AsyncResult } from "unthrown";
 
 import type { MessageMiddleware, MessageUnitContext } from "./message-units.js";

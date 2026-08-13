@@ -4,7 +4,7 @@ Eleven small packages that are **one application booted four ways**: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
 queue worker, once as a Temporal worker and once as an AMQP consumer, with each
 transport's contract in a package of its own — and, at the same time,
-exercising `@btravstack/start` end to end from a consumer's own workspace,
+exercising `@btravstack/start-core` end to end from a consumer's own workspace,
 `workspace:*` and all.
 
 | Package                                                | Layer     | Shows                                                                                                                                                            |
@@ -65,7 +65,7 @@ booting the lot. The api and temporal contracts sat inside
 `order-api/src/contract.ts` and `order-temporal/src/contract.ts` before being
 extracted, so no client could take one without the others until then;
 `order-amqp-contract` started as its own package from the outset, the same
-shape without the detour. None of the three depends on `@btravstack/start`, on
+shape without the detour. None of the three depends on `@btravstack/start-core`, on
 `@btravstack/di`, or on any other example — the transports depend on **them**.
 
 The rule is enforced by the compiler rather than by review: each contract

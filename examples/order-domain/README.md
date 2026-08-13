@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order domain
+# `@btravstack/start-core` example: the order domain
 
 The innermost layer. It holds the vocabulary — an `Order`, the rule that a
 quantity must be positive, and the three failures the rest of the system names.
@@ -13,7 +13,7 @@ src/test-fixtures.ts  a placed Order, injected as a Vitest fixture
 
 ## What is deliberately absent
 
-No `@btravstack/di`, no `@btravstack/start`, no ports. A port describes what a
+No `@btravstack/di`, no `@btravstack/start-core`, no ports. A port describes what a
 use case needs from the outside world, which is a question this layer does not
 ask; ports live one layer out, in `@btravstack/start-example-order-application`.
 The `dependencies` block of `package.json` is the whole statement:

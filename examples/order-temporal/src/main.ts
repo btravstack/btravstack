@@ -1,4 +1,4 @@
-import { runMain, start } from "@btravstack/start";
+import { runMain, start } from "@btravstack/start-core";
 import { orderContract } from "@btravstack/start-example-order-temporal-contract";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 import { NativeConnection } from "@temporalio/worker";

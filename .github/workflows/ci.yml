@@ -26,7 +26,7 @@ jobs:
       # pnpm 11 needs `node:sqlite`, which Node 20 does not have. That floor is
       # declared, not proven.
       node-versions: '["", "22.19", "24", "26"]'
-      # The reusable default appends `--coverage`; packages/start already runs
+      # The reusable default appends `--coverage`; packages/start-core already runs
       # `vitest run --coverage` (with 100% thresholds), and the root script is
       # `turbo run test`, which would take the extra flags as its own.
       test-command: "pnpm test"

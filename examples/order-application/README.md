@@ -1,4 +1,4 @@
-# `@btravstack/start` example: the order application layer
+# `@btravstack/start-core` example: the order application layer
 
 The use cases, and the ports they need to run. This layer turns the domain's
 rules into operations — "place an order", "find an order" — and declares, as
@@ -61,10 +61,10 @@ the log line — with no Prisma, no HTTP and no kernel booted.
 
 ## The single kernel touchpoint
 
-`src/logger.ts` imports exactly one thing from `@btravstack/start`:
+`src/logger.ts` imports exactly one thing from `@btravstack/start-core`:
 
 ```ts
-import { currentUnit } from "@btravstack/start";
+import { currentUnit } from "@btravstack/start-core";
 ```
 
 One `Logger` is constructed per scope, but the kernel opens a _unit_ per request

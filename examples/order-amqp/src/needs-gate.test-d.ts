@@ -10,7 +10,7 @@
  * `start(...)` call site.
  */
 import { Module } from "@btravstack/di";
-import { start } from "@btravstack/start";
+import { start } from "@btravstack/start-core";
 import { orderContract } from "@btravstack/start-example-order-amqp-contract";
 import {
   ApplicationModule,
