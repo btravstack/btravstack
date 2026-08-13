@@ -19,7 +19,6 @@ src/test-fixtures.ts   serve / queue / gate / tapped, as Vitest fixtures
 ```ts
 export const OrderWorkerModule = Module("OrderWorker")({
   imports: [ApplicationModule, PersistenceModule],
-  provides: [],
   exports: [PlaceOrder, FindOrder, Logger],
 });
 ```

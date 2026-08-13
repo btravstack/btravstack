@@ -25,7 +25,6 @@ different name:
 ```ts
 export const OrderTemporalModule = Module("OrderTemporal")({
   imports: [ApplicationModule, PersistenceModule],
-  provides: [],
   exports: [PlaceOrder, FindOrder, Logger],
 });
 ```
