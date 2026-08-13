@@ -1,4 +1,4 @@
-import { TypedAmqpWorker } from "@amqp-contract/worker";
+import { TypedAmqpWorker, type WorkerInferHandlers } from "@amqp-contract/worker";
 import type { AnyPort } from "@btravstack/di";
 import {
   RuntimeStartFailed,
@@ -6,23 +6,39 @@ import {
   type RuntimeHost,
   type Serving,
 } from "@btravstack/start";
-import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise, fromThrowable, type AsyncResult } from "unthrown";
+
+import type { MessageMiddleware, MessageUnitContext } from "./message-units.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
 export type AmqpInfo = { readonly queues: readonly string[] };
 
-export type AmqpOptions<Needs extends AnyPort> = {
+/**
+ * The contract type `TypedAmqpWorker.create` accepts, extracted rather than
+ * imported by name — the same technique `contract`'s own type used before this
+ * package parameterised on it, kept as the upper bound `AmqpOptions` and
+ * `queuesOf` now share.
+ */
+type AnyAmqpContract = Parameters<typeof TypedAmqpWorker.create>[0]["contract"];
+
+export type AmqpOptions<TContract extends AnyAmqpContract, Needs extends AnyPort> = {
   readonly urls: readonly string[];
-  readonly contract: Parameters<typeof TypedAmqpWorker.create>[0]["contract"];
+  readonly contract: TContract;
   /**
-   * Handlers as the worker will see them — already final. Built through
-   * `amqp-contract`'s `declareHandler`/`declareHandlers`, with this package's
-   * `messageUnits` in the middleware slot. A builder rather than a finished
-   * record because the middleware needs the `RuntimeHost`, which does not
-   * exist until `start` calls this runtime.
+   * Handlers as the worker will see them — already final, and checked against
+   * the contract: `WorkerInferHandlers<TContract, MessageUnitContext<Needs>>`
+   * rejects a typo'd or missing key at compile time, the same guarantee
+   * `-temporal`'s `declareActivitiesHandler` gets from validating the whole
+   * record in one call. Built through `amqp-contract`'s
+   * `declareHandler`/`declareHandlers`, with this package's `messageUnits` in
+   * the middleware slot. A builder rather than a finished record because the
+   * middleware needs the `RuntimeHost`, which does not exist until `start`
+   * calls this runtime.
    */
-  readonly handlers: (host: RuntimeHost<Needs>) => Record<string, unknown>;
-  readonly middleware?: (host: RuntimeHost<Needs>) => unknown;
+  readonly handlers: (
+    host: RuntimeHost<Needs>,
+  ) => WorkerInferHandlers<TContract, MessageUnitContext<Needs>>;
+  readonly middleware?: (host: RuntimeHost<Needs>) => MessageMiddleware<Needs>;
   readonly needs: readonly Needs[];
   readonly connectionOptions?: Record<string, unknown>;
   readonly defaultConsumerOptions?: Record<string, unknown>;
@@ -35,62 +51,66 @@ export type AmqpOptions<Needs extends AnyPort> = {
   readonly connectTimeoutMs?: number;
 };
 
-export const amqpRuntime = <Needs extends AnyPort>(
-  options: AmqpOptions<Needs>,
+export const amqpRuntime = <TContract extends AnyAmqpContract, Needs extends AnyPort>(
+  options: AmqpOptions<TContract, Needs>,
 ): Runtime<Needs, AmqpInfo> => ({
   name: "amqp",
   needs: options.needs,
   start: (host: RuntimeHost<Needs>) => createWorker(host, options),
 });
 
+const startFailed = (cause: unknown): RuntimeStartFailed =>
+  new RuntimeStartFailed({ runtime: "amqp", cause });
+
 /**
  * Every queue the contract's consumers and RPCs drain, sorted and
  * de-duplicated. Derived rather than configured, so `Serving.info` cannot
  * disagree with what the worker actually consumes.
  */
-const queuesOf = (contract: AmqpOptions<AnyPort>["contract"]): readonly string[] =>
+const queuesOf = (contract: AnyAmqpContract): readonly string[] =>
   [
     ...new Set(
       Object.values({ ...contract.consumers, ...contract.rpcs }).map((entry) => entry.queue.name),
     ),
   ].sort();
 
-const createWorker = <Needs extends AnyPort>(
+const createWorker = <TContract extends AnyAmqpContract, Needs extends AnyPort>(
   host: RuntimeHost<Needs>,
-  options: AmqpOptions<Needs>,
+  options: AmqpOptions<TContract, Needs>,
 ): AsyncResult<Serving<AmqpInfo>, RuntimeStartFailed> =>
-  TypedAmqpWorker.create({
-    contract: options.contract,
-    handlers: options.handlers(host),
-    ...(options.middleware === undefined
-      ? {}
-      : {
-          // `AmqpOptions.middleware` returns `unknown`, deliberately: this
-          // task's public surface never imports `@amqp-contract/worker`'s
-          // `WorkerMiddleware` type (same reasoning as `contract` above, and
-          // Task 3's `messageUnits` is the one caller that actually produces
-          // one). The cast is confined to this boundary.
-          middleware: options.middleware(host) as NonNullable<
-            Parameters<typeof TypedAmqpWorker.create>[0]["middleware"]
-          >,
-        }),
-    urls: [...options.urls],
-    ...(options.connectionOptions === undefined
-      ? {}
-      : { connectionOptions: options.connectionOptions }),
-    ...(options.defaultConsumerOptions === undefined
-      ? {}
-      : { defaultConsumerOptions: options.defaultConsumerOptions }),
-    ...(options.connectTimeoutMs === undefined
-      ? {}
-      : { connectTimeoutMs: options.connectTimeoutMs }),
-  })
+  // The builders run INSIDE the qualifier rather than before it. `handlers`
+  // and `middleware` are consumer-supplied closures — `declareHandler` throws
+  // on a contract it cannot satisfy, the same way `-temporal`'s
+  // `declareActivitiesHandler` does — and that throw is a startup failure like
+  // any other: `Err(RuntimeStartFailed)`, exit 1, not a `Defect` and exit 70.
+  fromThrowable(
+    () => ({ handlers: options.handlers(host), middleware: options.middleware?.(host) }),
+    startFailed,
+  )()
+    .toAsync()
+    .flatMap(({ handlers, middleware }) =>
+      TypedAmqpWorker.create({
+        contract: options.contract,
+        handlers,
+        ...(middleware === undefined ? {} : { middleware }),
+        urls: [...options.urls],
+        ...(options.connectionOptions === undefined
+          ? {}
+          : { connectionOptions: options.connectionOptions }),
+        ...(options.defaultConsumerOptions === undefined
+          ? {}
+          : { defaultConsumerOptions: options.defaultConsumerOptions }),
+        ...(options.connectTimeoutMs === undefined
+          ? {}
+          : { connectTimeoutMs: options.connectTimeoutMs }),
+      }),
+    )
     .map((worker) => consume(worker, queuesOf(options.contract)))
     // `create` reports a connection failure on the DEFECT channel with a
     // `TechnicalError` cause — never a modeled `Err`. This is the one place
     // where that is a *startup* failure rather than an unmodelled one, and
     // moving it back is what keeps `runMain`'s exit code 1 rather than 70.
-    .recoverDefect((cause) => ErrAsync(new RuntimeStartFailed({ runtime: "amqp", cause })));
+    .recoverDefect((cause) => ErrAsync(startFailed(cause)));
 
 const consume = (worker: TypedAmqpWorker<never>, queues: readonly string[]): Serving<AmqpInfo> => {
   // `close()` is the whole of this worker's shutdown — cancel every consumer,

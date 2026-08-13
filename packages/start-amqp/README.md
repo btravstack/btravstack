@@ -74,7 +74,14 @@ left for the next consumer to find the same way.
 
 `handlers` is a builder rather than a finished record, for the same reason
 `-temporal`'s `activities` is: `messageUnits` needs the `RuntimeHost` to open
-units against, and the host does not exist until `start` calls the runtime.
+units against, and the host does not exist until `start` calls the runtime. Its
+return type is `WorkerInferHandlers<TContract, MessageUnitContext<Needs>>`,
+checked against the `contract` passed alongside it — a typo'd key or a missing
+one is a compile error rather than a defect on the first delivery. Both
+`handlers` and `middleware` builders are called **inside** `createWorker`'s
+qualified chain, not before it: a throw from either — `declareHandler` on a
+contract it cannot satisfy, say — is a startup failure like any other,
+`Err(RuntimeStartFailed)` and exit `1`, not a `Defect` and exit `70`.
 
 ## What it owns, and what it declines
 

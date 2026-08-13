@@ -10,9 +10,9 @@ with the code in the same commit, and with `README.md` — the package ships no
 
 - **`amqpRuntime(options)` → `Runtime<Needs, AmqpInfo>`** — runs an
   `@amqp-contract/worker` `TypedAmqpWorker` under the kernel's lifecycle.
-  `AmqpOptions<Needs>` — `urls`, `contract` (typed off
-  `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, never imported by
-  name), `handlers`, `middleware`, `needs`, `connectionOptions`,
+  `AmqpOptions<TContract, Needs>` — `urls`, `contract: TContract` (`TContract`
+  bounded by `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, never
+  imported by name), `handlers`, `middleware`, `needs`, `connectionOptions`,
   `defaultConsumerOptions`, `connectTimeoutMs` (a top-level
   `CreateWorkerOptions` field, **not** nested under `connectionOptions`, where
   setting it is silently inert — an unreachable broker takes the library's 30s
@@ -21,18 +21,32 @@ with the code in the same commit, and with `README.md` — the package ships no
 - **`queuesOf`** derives `AmqpInfo.queues` from `contract.consumers` and
   `contract.rpcs` — sorted, de-duplicated, never a separate option — so
   `Serving.info` cannot disagree with what the worker actually consumes.
-- **`handlers`** is a **builder** — `(host: RuntimeHost<Needs>) => Record<…>`
+- **`handlers`** is a **builder** —
+  `(host: RuntimeHost<Needs>) => WorkerInferHandlers<TContract, MessageUnitContext<Needs>>`
   — because `messageUnits` needs the host and the host does not exist until
-  `start` calls the runtime. The package never wraps what it returns, which is
-  what makes double-wrapping impossible rather than something to detect.
-  `TypedAmqpWorker.create` reports a connection failure on the **defect**
-  channel with a `TechnicalError` cause — never a modeled `Err` — and
-  `createWorker` calls it inside `.recoverDefect(...)`, turning that defect
-  into `Err(RuntimeStartFailed({ runtime: "amqp", cause }))`. Dropping that
-  `recoverDefect` is the one-line regression that turns every unreachable
-  broker into `runMain` exit `70` where a startup failure earns `1`
-  (`amqp-runtime.spec.ts`'s `"reports a broker that will not answer as Err,
-not a defect"` guards it).
+  `start` calls the runtime. Checked against the contract, not erased to
+  `Record<string, unknown>`: a typo'd key or a missing one is a compile error
+  here rather than a defect on the first delivery (`amqp-runtime.test-d.ts`
+  pins both directions). `middleware`, when supplied, is typed
+  `(host: RuntimeHost<Needs>) => MessageMiddleware<Needs>` — the package's own
+  structural type, not `unknown` — though the field itself stays optional, so
+  a handler reading `context.ctx` while no `middleware` builder is configured
+  at all is still a gap the type cannot close. The package never wraps what
+  either builder returns, which is what makes double-wrapping impossible
+  rather than something to detect. Both builders are called **inside** the
+  qualified chain (`fromThrowable`), not before it: `declareHandler` throws on
+  a contract it cannot satisfy, and that throw is a startup failure like any
+  other — `Err(RuntimeStartFailed)`, exit `1`, not a `Defect` and exit `70`
+  (`amqp-runtime.spec.ts`'s `"reports a throwing handlers builder as Err, not
+a defect"` and `"...middleware builder..."` guard it, mutation-verified).
+  `TypedAmqpWorker.create` itself reports a connection failure on the
+  **defect** channel with a `TechnicalError` cause — never a modeled `Err` —
+  and `createWorker` calls it inside `.recoverDefect(...)`, turning that
+  defect into `Err(RuntimeStartFailed({ runtime: "amqp", cause }))`. Dropping
+  that `recoverDefect` is the one-line regression that turns every
+  unreachable broker into `runMain` exit `70` where a startup failure earns
+  `1` (`amqp-runtime.spec.ts`'s `"reports a broker that will not answer as
+Err, not a defect"` guards it).
 - **`messageUnits(host)` → `MessageMiddleware<Needs>`** — the one line a
   consumer adds to the `middleware` slot. It opens one kernel unit per
   **delivery** (`id` a minted `randomUUID()`, `traceId` the publisher's
@@ -46,6 +60,9 @@ not a defect"` guards it).
   `declareActivitiesHandler`, `amqp-contract` splits the handler from the
   middleware into **two independent generic calls**, so `declareHandler<...>`
   needs the same treatment; leaving either bare defaults it to `EmptyContext`.
+  Caught **twice** in this package's own development, once for each call —
+  stated in the README's worked example rather than left for the next
+  consumer to find the same way.
 - **A delivery tag is not a valid unit id.** Tags are per-**channel** and
   restart at `1` after a reconnect, which `amqp-connection-manager` performs
   silently underneath this worker — the one identifier that looks unique per

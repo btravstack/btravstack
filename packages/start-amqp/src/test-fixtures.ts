@@ -8,14 +8,14 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import { declareHandler } from "@amqp-contract/worker";
+import { declareHandler, type WorkerInferHandlers } from "@amqp-contract/worker";
 import { Module, Port, Provider } from "@btravstack/di";
 import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start";
-import { OkAsync, fromSafePromise } from "unthrown";
+import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { expect, type TestAPI } from "vitest";
 import { z } from "zod";
 
-import { amqpRuntime, type AmqpInfo } from "./amqp-runtime.js";
+import { amqpRuntime, type AmqpInfo, type AmqpOptions } from "./amqp-runtime.js";
 import { messageUnits, type MessageMiddleware, type MessageUnitContext } from "./message-units.js";
 
 const echoExchange = defineExchange("start-amqp-test");
@@ -50,9 +50,20 @@ type App = RunningApp<never, AmqpInfo>;
 type ServeOptions = { readonly drainTimeoutMs: number };
 
 type BuiltHandlers = {
-  readonly handlers: Record<string, unknown>;
+  readonly handlers: WorkerInferHandlers<typeof echoContract, MessageUnitContext<typeof Greeting>>;
   readonly middleware?: MessageMiddleware<typeof Greeting> | undefined;
 };
+
+/**
+ * The middleware slot's identity when a test deliberately leaves it unset —
+ * `next()` unchanged, exactly what `TypedAmqpWorker.create` does on its own
+ * when no `middleware` key is passed at all. `AmqpOptions.middleware`'s
+ * builder, once supplied, must always produce a real `MessageMiddleware`
+ * (Blocker D closed the `unknown` hole that let it produce nothing), so a
+ * `BuiltHandlers` that omits one still needs something to hand `amqpRuntime`.
+ */
+const passthroughMiddleware: MessageMiddleware<typeof Greeting> = (_args, next) =>
+  next() as AsyncResult<unknown, never>;
 
 /**
  * Handlers declared the way a consumer declares them — through
@@ -143,6 +154,18 @@ export type AmqpFixtures = {
     options?: ServeOptions,
   ) => Promise<App>;
   readonly serveBroken: () => Promise<App>;
+  /**
+   * Starts a worker whose `handlers` or `middleware` builder throws — never
+   * dialling the broker at all, since a throwing builder is qualified before
+   * `TypedAmqpWorker.create` runs. Synchronous, unlike `serve`/`serveBroken`:
+   * there is no `runtimeInfo()` to await, because the runtime never reaches
+   * serving.
+   */
+  readonly serveFailingBuild: (
+    overrides: Partial<
+      Pick<AmqpOptions<typeof echoContract, typeof Greeting>, "handlers" | "middleware">
+    >,
+  ) => App;
   readonly seam: ReturnType<typeof seamOf>;
   readonly gate: ReturnType<typeof gatedHandler>;
 };
@@ -160,7 +183,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
           urls: [amqpConnectionUrl],
           contract: echoContract,
           handlers: (host) => build(host).handlers,
-          middleware: (host) => build(host).middleware,
+          middleware: (host) => build(host).middleware ?? passthroughMiddleware,
           needs: [Greeting],
         }),
         signals: false,
@@ -208,6 +231,37 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       });
       started.push(app);
       return Promise.resolve(app);
+    });
+
+    for (const app of started) {
+      app.stop();
+      await expect(app.exited).toBeErr();
+    }
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  serveFailingBuild: async ({}, use) => {
+    const started: App[] = [];
+
+    await use((overrides) => {
+      const app = start(AppModule, {
+        // A port nothing listens on, and — unlike `serveBroken` — never
+        // dialled: `handlers`/`middleware` are qualified before
+        // `TypedAmqpWorker.create` ever runs, so a throw in either never
+        // reaches the connection attempt at all.
+        runtime: amqpRuntime({
+          urls: ["amqp://127.0.0.1:1"],
+          contract: echoContract,
+          handlers: () => ({ echo: () => OkAsync(undefined) }),
+          needs: [Greeting],
+          ...overrides,
+        }),
+        signals: false,
+        probes: false,
+        preDrainDelayMs: 0,
+        onEvent: () => {},
+      });
+      started.push(app);
+      return app;
     });
 
     for (const app of started) {

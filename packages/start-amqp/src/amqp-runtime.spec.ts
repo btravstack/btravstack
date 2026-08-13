@@ -36,6 +36,46 @@ describe("amqpRuntime", () => {
     );
   });
 
+  it("reports a throwing handlers builder as Err, not a defect", async ({ serveFailingBuild }) => {
+    // GIVEN a `handlers` builder that throws instead of returning a record —
+    // a typo'd `declareHandler` call, say — the same class of startup failure
+    // `-temporal`'s `activities` builder guards
+    const app = serveFailingBuild({
+      handlers: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test: a builder that throws instead of returning
+        throw new Error("boom");
+      },
+    });
+
+    // WHEN the application is started
+    // THEN the throw is a startup failure like any other: the kernel's own
+    // modeled Err, not an unmodelled Defect that would exit 70 instead of 1
+    await expect(app.exited).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({ runtime: "amqp" }),
+    );
+  });
+
+  it("reports a throwing middleware builder as Err, not a defect", async ({
+    serveFailingBuild,
+  }) => {
+    // GIVEN a `middleware` builder that throws instead of returning one
+    const app = serveFailingBuild({
+      middleware: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test: a builder that throws instead of returning
+        throw new Error("boom");
+      },
+    });
+
+    // WHEN the application is started
+    // THEN the same modeled Err as a throwing `handlers` builder — both
+    // builders are qualified inside the same `fromThrowable`
+    await expect(app.exited).toBeErrTagged(
+      "RuntimeStartFailed",
+      expect.objectContaining({ runtime: "amqp" }),
+    );
+  });
+
   it("opens one kernel unit per delivery", async ({ serve, seam, publishMessage }) => {
     // GIVEN a worker whose handler runs inside the middleware
     await serve(seam.build);
