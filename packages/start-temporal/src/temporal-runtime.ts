@@ -27,19 +27,16 @@ export type TemporalOptions<Needs extends AnyPort> = {
     | { readonly workflowsPath: string }
     | { readonly workflowBundle: WorkflowBundleWithSourceMap };
   /**
-   * Activities as Temporal will see them — already final. Wrap plain
-   * implementations with `asActivities`, or use the `activityUnits` middleware
-   * with `temporal-contract`. The factory never wraps, which is what makes
-   * double-wrapping impossible rather than something to detect.
+   * Activities as Temporal will see them — already final. Built with the
+   * `activityUnits` middleware from `temporal-contract`. The factory never
+   * wraps, which is what makes double-wrapping impossible rather than
+   * something to detect.
    *
-   * A function form is accepted because `asActivities` needs the
-   * `RuntimeHost` to open units against, and the host does not exist until
-   * `start` calls this runtime — so a caller building activities with it
-   * supplies a builder instead of an already-built record.
+   * A builder rather than an already-built record because `activityUnits`
+   * needs the `RuntimeHost` to open units against, and the host does not
+   * exist until `start` calls this runtime.
    */
-  readonly activities:
-    | Record<string, (...args: never[]) => unknown>
-    | ((host: RuntimeHost<Needs>) => Record<string, (...args: never[]) => unknown>);
+  readonly activities: (host: RuntimeHost<Needs>) => Record<string, (...args: never[]) => unknown>;
   readonly needs: readonly Needs[];
   /** Temporal's `shutdownForceTime`. Default `15 seconds`. Keep it at or below the kernel's `drainTimeoutMs`. */
   readonly forceAfter?: Duration;
@@ -64,8 +61,7 @@ const createWorker = <Needs extends AnyPort>(
   options: TemporalOptions<Needs>,
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
   const namespace = options.namespace ?? DEFAULT_NAMESPACE;
-  const activities =
-    typeof options.activities === "function" ? options.activities(host) : options.activities;
+  const activities = options.activities(host);
 
   return fromPromise(
     Worker.create({

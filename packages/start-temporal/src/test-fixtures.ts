@@ -2,14 +2,11 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { Module, Port, Provider } from "@btravstack/di";
-import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/start";
-import { activityInfo } from "@temporalio/activity";
+import { start, type RunningApp, type RuntimeHost } from "@btravstack/start";
 import type { Client } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
-import { OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
-import { asActivities } from "./activity-units.js";
 import { temporalRuntime, type TemporalInfo } from "./temporal-runtime.js";
 
 /**
@@ -34,11 +31,13 @@ type App = RunningApp<never, TemporalInfo>;
 let queueSeq = 0;
 const nextTaskQueue = (): string => `t-${(queueSeq += 1)}-${process.pid}`;
 
-const defaultActivities = { echo: (value: string) => Promise.resolve(value) };
-
 type ActivityBuilder = (
   host: RuntimeHost<typeof Greeting>,
 ) => Record<string, (...args: never[]) => unknown>;
+
+const defaultActivities: ActivityBuilder = () => ({
+  echo: (value: string) => Promise.resolve(value),
+});
 
 export type TemporalFixtures = {
   readonly serve: (build?: ActivityBuilder) => Promise<{
@@ -47,12 +46,6 @@ export type TemporalFixtures = {
     readonly taskQueue: string;
   }>;
   readonly serveBroken: () => Promise<App>;
-  /** Records the `UnitMeta` each attempt opens with, and the token it should carry. */
-  readonly recorder: {
-    readonly build: ActivityBuilder;
-    readonly seen: () => readonly UnitMeta[];
-    readonly taskToken: () => string;
-  };
 };
 
 export const it = test.extend<TemporalFixtures>({
@@ -138,34 +131,5 @@ export const it = test.extend<TemporalFixtures>({
     } finally {
       await env.teardown();
     }
-  },
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  recorder: async ({}, use) => {
-    const seen: UnitMeta[] = [];
-    let token = "";
-
-    await use({
-      build: (host) => {
-        // Forwards to the real host; the only addition is the capture, so the
-        // unit, its ambient record and its accounting are all genuinely the
-        // kernel's. Observing `meta` here is the only way to assert it — the
-        // ambient record deliberately does not carry it.
-        const watched: RuntimeHost<typeof Greeting> = {
-          ctx: host.ctx,
-          run: (meta, work) => {
-            seen.push(meta);
-            return host.run(meta, work);
-          },
-        };
-        return asActivities(watched, {
-          echo: (_ctx, _signal, value: string) => {
-            token = activityInfo().base64TaskToken;
-            return OkAsync(value);
-          },
-        });
-      },
-      seen: () => seen,
-      taskToken: () => token,
-    });
   },
 });
