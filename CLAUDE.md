@@ -375,15 +375,16 @@ update it in the same commit as the code.
   network, and only on a cold cache.** It runs a real `@temporalio/worker`
   Worker against `@temporalio/testing`'s **time-skipping test server** — a
   64 MB local binary, not a container — so the whole Workflow-Task /
-  Activity-Task loop is exercised with **no Docker daemon**, which is the
-  objection that kept a real Temporal cluster out. The binary is fetched once,
+  Activity-Task loop is exercised without starting one. A container would be
+  allowed (see the integration-test rule below); this is simply cheaper and
+  faster for the same coverage. The binary is fetched once,
   keyed by the `@temporalio` SDK version, into
   **`<repo>/.cache/temporal-test-server`** (gitignored) with **`ttl: "365d"`,
   set in `src/test-fixtures.ts`. Both are deliberate: the SDK's defaults are
   the OS temp directory — which CI wipes between jobs and macOS purges on its
   own schedule — and a one-day ttl, so a developer running the suite twice in a
   week downloads it twice. A cold cache with no network fails loudly at
-  `createTimeSkipping()`, naming the URL. Measured with Docker quit: **7.4 s
+  `createTimeSkipping()`, naming the URL. Measured with no container running: **7.4 s
   cold** (download included), **3.8–3.9 s warm** — the slowest package in the
   repo and still under four seconds. **CI does not yet cache that directory**:
   `.github/workflows/ci.yml` delegates wholly to
@@ -396,8 +397,19 @@ update it in the same commit as the code.
   `typecheck` scripts both begin with `prisma generate`, writing a gitignored
   client into `src/generated`, and turbo's `test` / `typecheck` / `test:types`
   tasks carry a `^generate` edge so a dependent workspace gets one too. The
-  database is SQLite **in memory** with the schema applied by hand —
-  deliberately no Docker, so `pnpm test` stays self-contained on any machine.
+  database is SQLite **in memory** with the schema applied by hand, because it
+  is faster and simpler than a container for a repository test — not because a
+  container was forbidden. See the integration-test rule below.
+- **An integration test may boot its real dependency with Docker and
+  testcontainers.** A suite that needs a broker, a database or a service starts
+  one; there is no rule against a daemon, and a hand-written double that fakes
+  the thing under test would prove less than the container does. What is still
+  true is the preference underneath: reach for the cheapest fixture that tests
+  the real behaviour — in memory when the behaviour is the library's (SQLite for
+  a repository), a local binary when one exists (Temporal's time-skipping
+  server), a container when neither does (a broker). State the cost in the
+  workspace's README, since a suite that needs a daemon is a fact a contributor
+  discovers the hard way otherwise.
 - **`examples/order-temporal` consumes `@btravstack/start-temporal`**, the same
   way `order-api` consumes `-http`: it supplies the contract, the two ports its
   activity resolves and the `mapErrCases` triage, and reads `{ taskQueue,
@@ -421,8 +433,8 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   on `unthrown@^4` while this repo pins 5.2.0 — and 7.x ships neither the
   `test-rig` nor the `workflow-bundle` subpath the Temporal example's specs are
   built on. `testcontainers` is an **optional** peer of
-  `@temporal-contract/testing` and is deliberately not installed: the
-  Docker-free path is not merely unused here, it is unresolvable.
+  `@temporal-contract/testing` and is not installed, because the time-skipping
+  server is what that example uses — not because containers are unwelcome.
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
   dependencies of `start` — the dual-copy hazard is real for both (di's port
   identity and unthrown's `isResult` each compare across copies). `start-http`
