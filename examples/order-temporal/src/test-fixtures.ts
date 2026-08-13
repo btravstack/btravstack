@@ -15,6 +15,7 @@ import {
   orderContract,
   type OrderContract,
 } from "@btravstack/start-example-order-temporal-contract";
+import type { TemporalInfo } from "@btravstack/start-temporal";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import { createTimeSkippingTest } from "@temporal-contract/testing/time-skipping";
 import {
@@ -28,7 +29,7 @@ import { ErrAsync, fromSafePromise } from "unthrown";
 import { expect } from "vitest";
 
 import { OrderTemporalModule } from "./module.js";
-import { temporalWorkerRuntime, type OrderTemporalInfo } from "./temporal-runtime.js";
+import { temporalWorkerRuntime } from "./temporal-runtime.js";
 
 /**
  * The time-skipping server binary, cached where **we** decide rather than in the
@@ -53,7 +54,7 @@ const downloadDir = fileURLToPath(
 // keeps the fixture's failure mode "no network" rather than "no directory".
 mkdirSync(downloadDir, { recursive: true });
 
-type App<E> = RunningApp<E, OrderTemporalInfo>;
+type App<E> = RunningApp<E, TemporalInfo>;
 
 /**
  * `X` is pinned to the three ports the composition roots export rather than

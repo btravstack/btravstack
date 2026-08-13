@@ -382,19 +382,16 @@ importers:
       '@btravstack/start-example-order-temporal-contract':
         specifier: workspace:*
         version: link:../order-temporal-contract
+      '@btravstack/start-temporal':
+        specifier: workspace:*
+        version: link:../../packages/start-temporal
       '@temporal-contract/client':
         specifier: 'catalog:'
         version: 8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.2.0)
       '@temporal-contract/worker':
         specifier: 'catalog:'
         version: 8.0.0-beta.5(@temporalio/common@1.22.0)(@temporalio/worker@1.22.0)(@temporalio/workflow@1.22.0)(unthrown@5.2.0)
-      '@temporalio/activity':
-        specifier: 'catalog:'
-        version: 1.22.0
       '@temporalio/client':
-        specifier: 'catalog:'
-        version: 1.22.0
-      '@temporalio/common':
         specifier: 'catalog:'
         version: 1.22.0
       '@temporalio/worker':
