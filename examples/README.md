@@ -1,28 +1,31 @@
 # Examples
 
-Nine small packages that are **one application booted three ways**: a clean
+Eleven small packages that are **one application booted four ways**: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
-queue worker and once as a Temporal worker, with each transport's contract in a
-package of its own — and, at the same time, exercising `@btravstack/start` end
-to end from a consumer's own workspace, `workspace:*` and all.
+queue worker, once as a Temporal worker and once as an AMQP consumer, with each
+transport's contract in a package of its own — and, at the same time,
+exercising `@btravstack/start` end to end from a consumer's own workspace,
+`workspace:*` and all.
 
-| Package                                                | Layer     | Shows                                                                                                                                                             |
-| ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                               |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.                                  |
-| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need.                        |
-| [`order-config`](./order-config)                       | config    | The one environment-variable idiom the three deployments share: a non-empty string piped into a coercion, validated as a value, with the seven cases pinned once. |
-| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                               |
-| [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                                                    |
-| [`order-worker`](./order-worker)                       | runtime   | The second deployment: an in-memory queue worker over the **same** composition, and `Result` → ack / retry / dead-letter.                                         |
-| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, one activity, two declared `nonRetryable` errors — read by the worker, the sandbox and the client.               |
-| [`order-temporal`](./order-temporal)                   | runtime   | The third deployment: `@btravstack/start-temporal` driving a Temporal worker, one unit per **activity attempt**, `Result` → typed contract error.                 |
+| Package                                                | Layer     | Shows                                                                                                                                                            |
+| ------------------------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                              |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.                                 |
+| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need.                       |
+| [`order-config`](./order-config)                       | config    | The one environment-variable idiom the four deployments share: a non-empty string piped into a coercion, validated as a value, with the seven cases pinned once. |
+| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                              |
+| [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                                                   |
+| [`order-worker`](./order-worker)                       | runtime   | The second deployment: an in-memory queue worker over the **same** composition, and `Result` → ack / retry / dead-letter.                                        |
+| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, one activity, two declared `nonRetryable` errors — read by the worker, the sandbox and the client.              |
+| [`order-temporal`](./order-temporal)                   | runtime   | The third deployment: `@btravstack/start-temporal` driving a Temporal worker, one unit per **activity attempt**, `Result` → typed contract error.                |
+| [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one queue with a retry/dead-letter policy, one message — read by the worker and by any publisher.                   |
+| [`order-amqp`](./order-amqp)                           | runtime   | The fourth deployment: `@btravstack/start-amqp` driving a real RabbitMQ worker, one unit per **delivery**, `Result` → `RetryableError` / `NonRetryableError`.    |
 
 ## The layering, and which way the arrows point
 
 ```
-  order-api        order-worker      order-temporal   ← one runtime each; one process each
-       └────────────────┼─────────────────┘  ─────▶ order-config  ← how all three read the environment
+  order-api        order-worker      order-temporal      order-amqp   ← one runtime each; one process each
+       └────────────────┼─────────────────┼──────────────────┘  ─────▶ order-config  ← how all four read the environment
                         ▼
              order-infrastructure                    ← Prisma, SQLite, P-codes
                         │  provides OrderRepository
@@ -47,21 +50,23 @@ A transport's contract is a **shared artifact**, so each one is a package of its
 own:
 
 ```
-   order-api      any API client        order-temporal   any workflow client
-       └──────────────┬───────┘              └───────────────┬───────┘
-                      ▼                                      ▼
-            order-api-contract                    order-temporal-contract
-            ← @orpc/contract                      ← @temporal-contract/contract, zod
+   order-api      any API client        order-temporal   any workflow client        order-amqp     any publisher
+       └──────────────┬───────┘              └───────────────┬───────┘                  └────────────┬────────┘
+                      ▼                                      ▼                                        ▼
+            order-api-contract                    order-temporal-contract                    order-amqp-contract
+            ← @orpc/contract                      ← @temporal-contract/contract, zod         ← @amqp-contract/contract, zod
 ```
 
 Every arrow points _at_ a contract and none points out of one. That is the whole
 of contract-first design: a client is entitled to the wire shapes and the
 declared errors without the router or activity that implements them, the di
 wiring behind it, the Prisma-backed repository behind that, or the kernel
-booting the lot. While the contracts sat inside `order-api/src/contract.ts` and
-`order-temporal/src/contract.ts`, no client could take one without the others.
-Neither package depends on `@btravstack/start`, on `@btravstack/di`, or on any
-other example — the transports depend on **them**.
+booting the lot. The api and temporal contracts sat inside
+`order-api/src/contract.ts` and `order-temporal/src/contract.ts` before being
+extracted, so no client could take one without the others until then;
+`order-amqp-contract` started as its own package from the outset, the same
+shape without the detour. None of the three depends on `@btravstack/start`, on
+`@btravstack/di`, or on any other example — the transports depend on **them**.
 
 The rule is enforced by the compiler rather than by review: each contract
 package's `src/layering.test-d.ts` imports its transport package under a
@@ -74,12 +79,15 @@ spec builds a real oRPC client from `RouterContractClient<typeof orderContract>`
 and drives it over a stub `fetch`, with nothing from `order-api` in scope;
 `order-temporal-contract`'s runs the workflow's input schema as a validator
 returning a `Result`, which is the check a caller makes before starting an
-execution — and all a Temporal client can do without a running service.
+execution — all a Temporal client can do without a running service.
+`order-amqp-contract`'s runs the placement message's own payload schema the
+same way, with no worker, no connection and no broker in scope — the check a
+publisher makes before sending a message.
 
-## One application, three deployments
+## One application, four deployments
 
-`OrderApiModule`, `OrderWorkerModule` and `OrderTemporalModule` are the same
-three lines:
+`OrderApiModule`, `OrderWorkerModule`, `OrderTemporalModule` and
+`OrderAmqpModule` are the same three lines:
 
 ```ts
 imports: [ApplicationModule, PersistenceModule],
@@ -92,48 +100,59 @@ and nothing could: the use cases return a `Result`, and what a `Result` means to
 a transport is the transport's business. The kernel's headline claim — several
 runtime _kinds_, one per process, over the same module — is proved here rather
 than asserted, and the sharpest form of the proof is that **the same `Err`
-becomes three different outcomes**:
+becomes four different outcomes**:
 
-| unthrown               | `order-api`             | `order-worker`              | `order-temporal`                        |
-| ---------------------- | ----------------------- | --------------------------- | --------------------------------------- |
-| `Ok(order)`            | the procedure's output  | **ack**                     | the workflow's output                   |
-| `Err(InvalidQuantity)` | `INVALID_QUANTITY`      | **dead-letter**             | `InvalidQuantity`, **non-retryable**    |
-| `Err(DuplicateOrder)`  | `CONFLICT`              | **dead-letter**             | `OrderAlreadyPlaced`, **non-retryable** |
-| `Defect`               | `INTERNAL_SERVER_ERROR` | **retry**, then dead-letter | **retried by the platform**, then fails |
+| unthrown               | `order-api`             | `order-worker`              | `order-temporal`                        | `order-amqp`                                             |
+| ---------------------- | ----------------------- | --------------------------- | --------------------------------------- | -------------------------------------------------------- |
+| `Ok(order)`            | the procedure's output  | **ack**                     | the workflow's output                   | **ack**                                                  |
+| `Err(InvalidQuantity)` | `INVALID_QUANTITY`      | **dead-letter**             | `InvalidQuantity`, **non-retryable**    | `NonRetryableError`, **parked**                          |
+| `Err(DuplicateOrder)`  | `CONFLICT`              | **dead-letter**             | `OrderAlreadyPlaced`, **non-retryable** | `NonRetryableError`, **parked**                          |
+| `Defect`               | `INTERNAL_SERVER_ERROR` | **retry**, then dead-letter | **retried by the platform**, then fails | `RetryableError`, **retried by the broker**, then parked |
 
-The kernel appears in none of the three columns. `RunUnit` hands a runtime the
+The kernel appears in none of the four columns. `RunUnit` hands a runtime the
 work's own `Result` and stays out of what it means.
 
-The fourth column carries something the other two do not. Naming a failure on a
-Temporal contract decides not only what the caller sees but **whether the
-platform retries it** — both domain errors are declared `nonRetryable`, so
-Temporal asks exactly once, while an unmodelled failure stays unnamed and the
-retry policy takes over. `order-worker` hand-rolls that distinction with an
-attempt budget; on Temporal it is a line of contract.
+The fourth and fifth columns carry something the second and third do not.
+Naming a failure on a Temporal contract decides not only what the caller sees
+but **whether the platform retries it** — both domain errors are declared
+`nonRetryable`, so Temporal asks exactly once, while an unmodelled failure
+stays unnamed and the retry policy takes over. `order-worker` hand-rolls that
+distinction with an attempt budget; on Temporal it is a line of contract, and
+on AMQP it is too, in the broker's own vocabulary: `order-placements`'s
+`retry: { mode: "ttl-backoff", maxRetries: 3 }` is contract configuration the
+broker itself enforces, not a runtime constant. The count means something
+different, though — `maxRetries: 3` is retries **on top of** the first
+attempt, so an unmodelled failure is attempted **four** times in total before
+it is parked, not the three `maximumAttempts: 3` names on Temporal.
 
 ## What each runtime calls a "unit"
 
-The three deployments disagree about what one piece of work is, and the kernel
+The four deployments disagree about what one piece of work is, and the kernel
 does not care — which is the point of `RunUnit` being parameterised by nothing
 but `UnitMeta`:
 
-|                  | one unit is              | `id`                   | `traceId`                         |
-| ---------------- | ------------------------ | ---------------------- | --------------------------------- |
-| `order-api`      | one HTTP request         | a fresh `randomUUID()` | an inbound `x-request-id`, if any |
-| `order-worker`   | one **delivery**         | `job#attempt`          | the message id                    |
-| `order-temporal` | one **activity attempt** | Temporal's task token  | the workflow id                   |
+|                  | one unit is              | `id`                    | `traceId`                         |
+| ---------------- | ------------------------ | ----------------------- | --------------------------------- |
+| `order-api`      | one HTTP request         | a fresh `randomUUID()`  | an inbound `x-request-id`, if any |
+| `order-worker`   | one **delivery**         | `job#attempt`           | the message id                    |
+| `order-temporal` | one **activity attempt** | Temporal's task token   | the workflow id                   |
+| `order-amqp`     | one **delivery**         | a minted `randomUUID()` | the publisher's `messageId`       |
 
-All three are answering the same obligation — `UnitMeta.id` must be unique per
-unit, because `traceId` defaults to it — and all three land on "the attempt, not
+All four are answering the same obligation — `UnitMeta.id` must be unique per
+unit, because `traceId` defaults to it — and all four land on "the attempt, not
 the logical thing", because a retry is a second unit and the same trace.
+`order-worker` and `order-amqp` agree on what a unit _is_ — one delivery — and
+disagree on how to name it: a queue job id is already unique per attempt, a
+delivery tag is not (see `order-amqp`'s own README for why), so one mints and
+the other does not.
 
 ## The runtimes with a non-empty `needs`
 
 `order-api`'s `httpRuntime` call declares `[PlaceOrder, FindOrder, Logger]`,
-while `queueWorkerRuntime` and `temporalWorkerRuntime` each declare
-`[PlaceOrder, Logger]` — two of the three the module exports, because a runtime
-declares what _it_ needs. The kernel's own `testRuntime` needs nothing, so
-these three are what exercise `start`'s phantom rest-tuple gate and
+while `queueWorkerRuntime`, `temporalWorkerRuntime` and `orderAmqpRuntime` each
+declare `[PlaceOrder, Logger]` — two of the three the module exports, because a
+runtime declares what _it_ needs. The kernel's own `testRuntime` needs nothing,
+so these four are what exercise `start`'s phantom rest-tuple gate and
 `RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
 _classes_ while di parameterises contexts by port _instances_ — against a real
 module here. `@btravstack/start-http`'s own `AppModule`/`Greeting` fixture
@@ -142,15 +161,15 @@ module here. `@btravstack/start-http`'s own `AppModule`/`Greeting` fixture
 way now. `examples/` stays the only place the gate is pinned by a **type
 test**: `start-http` ships no `*.test-d.ts`.
 
-All three directions are pinned, in `order-api/src/needs-gate.test-d.ts`,
-`order-worker/src/needs-gate.test-d.ts` and
-`order-temporal/src/needs-gate.test-d.ts`: the wired call is an ordinary
+All four directions are pinned, in `order-api/src/needs-gate.test-d.ts`,
+`order-worker/src/needs-gate.test-d.ts`, `order-temporal/src/needs-gate.test-d.ts`
+and `order-amqp/src/needs-gate.test-d.ts`: the wired call is an ordinary
 two-argument one, and a module one port short fails on **arity**, naming the
 missing need.
 
 ## Why these are tests, not just illustrations
 
-Each package reads as application code, and each is covered by real specs — 83
+Each package reads as application code, and each is covered by real specs — 93
 of them, run by the repository's own `pnpm test`:
 
 ```sh
@@ -174,10 +193,16 @@ test server is a local binary rather than a container, and where neither exists 
 Two suites need more than a checkout. `order-temporal` needs **network access on
 a cold cache** to fetch that 64 MB binary once (cached at
 `<repo>/.cache/temporal-test-server`, gitignored, with a year-long ttl), which
-costs about 3.5 s, once. `order-amqp` needs a **Docker daemon**, because a real
-RabbitMQ is the only honest way to test a drain that hands un-acked deliveries
-back to a broker. See
+costs about 3.5 s, once — see
 [`order-temporal`'s README](./order-temporal#running-it--and-the-one-thing-this-example-needs-that-the-others-do-not).
+`order-amqp` needs a **Docker daemon**, because a real RabbitMQ is the only
+honest way to test a drain against a live broker connection and real
+acknowledgement — what an abandoned delivery costs once the kernel's own
+deadline passes is _not_ redelivery, only the release of a report; the broker
+only redelivers once the connection itself drops, which happens when the
+process actually dies, and that is not something a same-process suite can
+observe. See
+[`order-amqp`'s README](./order-amqp#what-abandonment-costs).
 
 Where a guarantee is compile-time only — an unmet port, a runtime's `needs` —
 the assertion is a `@ts-expect-error` in a `*.test-d.ts` file, checked by `tsc`

@@ -553,29 +553,32 @@ verifies.
 ## The runtime map
 
 The `Runtime` contract is the whole of what this package owes the transports.
-Two have shipped. [`@btravstack/start-http`](./packages/start-http): bind, one
+Three have shipped. [`@btravstack/start-http`](./packages/start-http): bind, one
 unit per request, a drain that retires busy keep-alive connections, stop —
 routing, middleware and `Result` → HTTP status are deliberately not included,
 see its README's _"What it does not do"_.
 [`@btravstack/start-temporal`](./packages/start-temporal): a Temporal worker,
 one unit per activity attempt, and a drain that releases the kernel at the
-kernel's deadline rather than Temporal's `shutdownForceTime`. The rest are
-planned, not published:
+kernel's deadline rather than Temporal's `shutdownForceTime`.
+[`@btravstack/start-amqp`](./packages/start-amqp): an `amqp-contract` worker,
+one unit per delivery, and a drain with exactly one deadline — the library is
+told to wait forever, so there is no second timeout to keep in sync at all.
+The rest are planned, not published:
 
 | Planned package          | Would own                                          |
 | ------------------------ | -------------------------------------------------- |
-| `@btravstack/start-amqp` | the consumer runtime, over `amqp-contract`         |
 | an observability package | logger and OpenTelemetry, binding to `KernelEvent` |
 
-Until it lands, a runtime for `-amqp` is roughly forty lines — the `ticker`
-above is a complete one. The two shipped packages are not: they exist because
-the lifecycle underneath a real transport is not forty lines done well.
+The `ticker` runtime above is a complete one, in roughly forty lines. The
+three shipped packages are not: they exist because the lifecycle underneath a
+real transport — a listener, a worker, a broker connection — is not forty
+lines done well.
 
 ## Documentation
 
 See [`packages/start`](./packages/start) for the package README,
-[`examples/`](./examples) for a nine-package clean-architecture application
-booted under three different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
+[`examples/`](./examples) for an eleven-package clean-architecture application
+booted under four different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
 authoritative spec: the theses, the public surface and the conventions. The
 load-bearing invariants with the test that guards each, and the internal design
 notes, live in
