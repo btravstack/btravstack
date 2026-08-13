@@ -11,8 +11,8 @@
   },
   "scripts": {
     "generate": "prisma generate",
-    "test": "prisma generate && vitest run",
-    "typecheck": "prisma generate && tsc --noEmit"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@btravstack/di": "catalog:",
