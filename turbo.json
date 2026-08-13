@@ -4,9 +4,9 @@
     "lint": { "dependsOn": ["^build"] },
     "format": {},
     "generate": { "outputs": ["src/generated/**"] },
-    "typecheck": { "dependsOn": ["build", "^generate"] },
-    "test:types": { "dependsOn": ["^build", "^generate"] },
-    "test": { "dependsOn": ["^build", "^generate"], "cache": false },
+    "typecheck": { "dependsOn": ["build", "generate", "^generate"] },
+    "test:types": { "dependsOn": ["^build", "generate", "^generate"] },
+    "test": { "dependsOn": ["^build", "generate", "^generate"], "cache": false },
     "dev": { "dependsOn": ["^build"], "cache": false, "persistent": true },
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] }
   }

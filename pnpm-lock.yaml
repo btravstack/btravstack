@@ -97,8 +97,8 @@ catalogs:
       specifier: 5.2.0
       version: 5.2.0
     '@unthrown/prisma':
-      specifier: 0.2.0
-      version: 0.2.0
+      specifier: 0.3.2
+      version: 0.3.2
     '@unthrown/standard-schema':
       specifier: 5.5.0
       version: 5.5.0
@@ -473,7 +473,7 @@ importers:
         version: 7.9.1(prisma@7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2)
       '@unthrown/prisma':
         specifier: 'catalog:'
-        version: 0.2.0(@prisma/client@7.9.1(prisma@7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2))
+        version: 0.3.2(@prisma/client@7.9.1(prisma@7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2))
       unthrown:
         specifier: 'catalog:'
         version: 5.5.0
@@ -2493,8 +2493,8 @@ packages:
     peerDependencies:
       oxlint: ^1.69.0
 
-  '@unthrown/prisma@0.2.0':
-    resolution: {integrity: sha512-qadjU3fhS1X61I68EssAKQt1Xqp+h8E3nSfy5lVhs+lXtauzewaxC+oJfbJgU/yb/KMlP+Ht1uwB+bywvnrSJA==}
+  '@unthrown/prisma@0.3.2':
+    resolution: {integrity: sha512-fD29HUfZiBRPVgLTuDdcHD0qPtzQDzy/NfS51kkUD8MVbQ378LF1gzAvs6W7fkZRGr/B5Y8B/zc8qhDsa6EM7A==}
     engines: {node: '>=20.19'}
     peerDependencies:
       '@prisma/client': ^7
@@ -6273,7 +6273,7 @@ snapshots:
       '@oxlint/plugins': 1.78.0
       oxlint: 1.77.0
 
-  '@unthrown/prisma@0.2.0(@prisma/client@7.9.1(prisma@7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2))':
+  '@unthrown/prisma@0.3.2(@prisma/client@7.9.1(prisma@7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2))':
     dependencies:
       '@prisma/client': 7.9.1(prisma@7.9.1(@types/react@19.2.18)(better-sqlite3@12.11.1)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2)
       unthrown: 5.5.0

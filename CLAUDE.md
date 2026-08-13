@@ -417,10 +417,15 @@ the code.
   network-cache case, and cold only on a machine that has never pulled
   `rabbitmq:4.2.1-management-alpine` before.
 - **The Prisma client is generated at test time, and there is nothing to
-  install.** `@btravstack/start-example-order-infrastructure`'s `test` and
-  `typecheck` scripts both begin with `prisma generate`, writing a gitignored
-  client into `src/generated`, and turbo's `test` / `typecheck` / `test:types`
-  tasks carry a `^generate` edge so a dependent workspace gets one too. The
+  install.** `@btravstack/start-example-order-infrastructure`'s `generate`
+  script writes a gitignored client into `src/generated`, and turbo's `test` /
+  `typecheck` / `test:types` tasks carry **both** a `generate` and a
+  `^generate` edge — the first so the workspace's own client exists, the second
+  so a dependent workspace gets one too. The scripts themselves do **not** call
+  `prisma generate`: they did until 2026-08-13, and on a cold cache turbo ran
+  the `generate` task and the script's inline copy **concurrently**, which
+  fails with `EEXIST: mkdir …/generated/prisma/models`. One generator, ordered
+  by the task graph, is what makes that impossible rather than rare. The
   database is SQLite **in memory** with the schema applied by hand, because it
   is faster and simpler than a container for a repository test — not because a
   container was forbidden. See the integration-test rule below.
