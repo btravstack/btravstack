@@ -402,7 +402,7 @@ the code.
   cold** (download included), **3.8–3.9 s warm** — the slowest package in the
   repo and still under four seconds. **CI does not yet cache that directory**:
   `.github/workflows/ci.yml` delegates wholly to
-  `btravstack/config`'s `ci-reusable.yml@workflows-v1`, and a caller cannot
+  `btravstack/tools`'s `ci-reusable.yml@workflows-v1`, and a caller cannot
   inject an `actions/cache` step into a reusable workflow's jobs. Closing it
   means adding a cache-path input there, not here; until then every test job
   pays the ~3.5 s download.
@@ -658,7 +658,7 @@ A sixth rule is about production code that tests keep honest:
 - **Caching the Temporal test-server binary in CI.** The path is stable and
   gitignored; what is missing is the `actions/cache` step, which cannot be
   written from `start`'s `ci.yml` while it delegates to
-  `btravstack/config`'s reusable workflow (see Toolchain & conventions). It
+  `btravstack/tools`'s reusable workflow (see Toolchain & conventions). It
   costs ~3.5 s per test job, not correctness.
 - The `@btravstack/oxlint` rule banning `currentUnit()` outside infrastructure
   adapters (Thesis #2) — it needs a way to identify an adapter.

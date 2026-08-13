@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: btravstack/config/.github/workflows/ci-reusable.yml@workflows-v1
+    uses: btravstack/tools/.github/workflows/ci-reusable.yml@workflows-v1
     with:
       # "" uses .node-version (the dev version). 22.19 is the ROOT package's
       # engines floor. 24 and 26 cover the current LTS and the live release
