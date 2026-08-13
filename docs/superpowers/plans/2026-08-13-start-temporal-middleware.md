@@ -118,6 +118,10 @@ git commit -m "refactor(start-temporal): drop the raw worker path"
   ```
 - `activityUnits<Needs extends AnyPort>(host: RuntimeHost<Needs>): ActivityMiddleware<Needs>`
 
+- [ ] **Step 0: Remove the transient `knip` entry**
+
+Task 1 added `"packages/start-temporal": { "entry": ["src/activity-units.ts"] }` to `knip.json`, because after the revert nothing imported that file until this task. It declares an entry point that is not one, so **delete it** as soon as `index.ts` exports `activityUnits` — and confirm `knip` still passes with no `packages/start-temporal` key at all. Leaving it would permanently blind `knip` to dead code in that file.
+
 - [ ] **Step 1: Add `@temporal-contract/worker` as a devDependency**
 
 `"@temporal-contract/worker": "catalog:"` — **devDependency only**, keys sorted. It must never reach `peerDependencies`. Then `pnpm install`.
