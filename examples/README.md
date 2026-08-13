@@ -202,7 +202,7 @@ deadline passes is _not_ redelivery, only the release of a report; the broker
 only redelivers once the connection itself drops, which happens when the
 process actually dies, and that is not something a same-process suite can
 observe. See
-[`order-amqp`'s README](./order-amqp#what-abandonment-costs).
+[`@btravstack/start-amqp`'s README](../packages/start-amqp/README.md#what-abandonment-costs).
 
 Where a guarantee is compile-time only — an unmet port, a runtime's `needs` —
 the assertion is a `@ts-expect-error` in a `*.test-d.ts` file, checked by `tsc`

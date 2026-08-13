@@ -55,7 +55,11 @@ not a defect"` guards it).
   survives.
 - **`amqp-contract` is not a peer.** `@amqp-contract/worker` **is** — the
   package's one value import (`TypedAmqpWorker`) lives here, and bundling it
-  cost 344 KB of dist before it moved to peer (1.61 KB after).
+  cost two orders of magnitude of dist size: 344 KB, measured at the commit
+  where it was still bundled, against **~5 KB** peered (`pnpm --filter
+@btravstack/start-amqp build`'s own report — re-measure rather than trust
+  this number, since it moves with the package's own surface, not with the
+  peer boundary).
   `@opentelemetry/api` is a peer transitively, because `@amqp-contract/worker`
   itself peers on it. `@amqp-contract/contract` stays a devDependency only —
   used to type this package's own tests, never appearing in the published
