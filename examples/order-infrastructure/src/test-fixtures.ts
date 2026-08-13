@@ -1,9 +1,14 @@
 import type { ServiceOf } from "@btravstack/di";
-import type { OrderRepository } from "@btravstack/start-example-order-application";
+import type { Outbox, OrderRepository } from "@btravstack/start-example-order-application";
 import { placeOrder, type Order } from "@btravstack/start-example-order-domain";
 import { test } from "vitest";
 
-import { openDatabase, prismaOrderRepository, type OrderDatabaseClient } from "./index.js";
+import {
+  openDatabase,
+  prismaOrderRepository,
+  prismaOutbox,
+  type OrderDatabaseClient,
+} from "./index.js";
 
 export type PersistenceFixtures = {
   /**
@@ -13,6 +18,7 @@ export type PersistenceFixtures = {
    */
   readonly db: OrderDatabaseClient;
   readonly repository: ServiceOf<OrderRepository>;
+  readonly outbox: ServiceOf<Outbox>;
   readonly anOrder: (id: string, quantity: number) => Order;
 };
 
@@ -29,6 +35,10 @@ export const it = test.extend<PersistenceFixtures>({
 
   repository: async ({ db }, use) => {
     await use(prismaOrderRepository(db));
+  },
+
+  outbox: async ({ db }, use) => {
+    await use(prismaOutbox(db));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

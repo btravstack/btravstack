@@ -18,3 +18,13 @@ model Order {
   orderId  String @unique
   quantity Int
 }
+
+// The transactional outbox: one row per fact worth broadcasting, written in
+// the same transaction as the write it describes. `publishedAt` is the relay's
+// bookkeeping — NULL means pending.
+model OutboxMessage {
+  id          Int       @id @default(autoincrement())
+  orderId     String
+  quantity    Int
+  publishedAt DateTime?
+}

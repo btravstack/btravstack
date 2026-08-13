@@ -13,20 +13,21 @@ const orderView = z.object({ id: z.string(), quantity: z.number() });
 /** The payload every declared error carries — which order it was about. */
 const orderRef = z.object({ id: z.string() });
 
+const orderInput = z.object({ orderId: z.string(), quantity: z.number() });
+
 /**
- * The activity: one call into the application layer.
- *
- * Its `errors` map is the transport half of the errors-as-values story, and it
- * carries something neither oRPC nor a queue expresses natively —
- * **`nonRetryable`**. A modeled domain failure is a permanent answer, so
- * declaring it here is what stops Temporal's retry policy asking the same
- * impossible thing five more times. Anything NOT declared here is retried
- * according to `activityOptions.retry`, which is exactly the treatment a
- * `Defect` deserves: an unmodelled failure is the infrastructure one, and
- * infrastructure comes back.
+ * The forward steps: three calls into the application layer, one external
+ * service each. Their `errors` maps are the transport half of the
+ * errors-as-values story, and they carry something neither oRPC nor a queue
+ * expresses natively — **`nonRetryable`**. A modeled domain failure is a
+ * permanent answer, so declaring it here is what stops Temporal's retry
+ * policy asking the same impossible thing five more times. Anything NOT
+ * declared is retried according to `activityOptions.retry`, which is exactly
+ * the treatment a `Defect` deserves: an unmodelled failure is the
+ * infrastructure one, and infrastructure comes back.
  */
 const place = defineActivity({
-  input: z.object({ orderId: z.string(), quantity: z.number() }),
+  input: orderInput,
   output: orderView,
   errors: {
     InvalidQuantity: { data: orderRef, nonRetryable: true },
@@ -38,25 +39,81 @@ const place = defineActivity({
   },
 });
 
+const reserveStock = defineActivity({
+  input: orderInput,
+  output: z.void(),
+  errors: {
+    OutOfStock: { data: orderRef, nonRetryable: true },
+  },
+  activityOptions: {
+    startToCloseTimeout: "1 minute",
+    retry: { maximumAttempts: 3, initialInterval: "10 milliseconds" },
+  },
+});
+
+const arrangeShipping = defineActivity({
+  input: z.object({ orderId: z.string() }),
+  output: z.void(),
+  errors: {
+    ShippingUnavailable: { data: orderRef, nonRetryable: true },
+  },
+  activityOptions: {
+    startToCloseTimeout: "1 minute",
+    retry: { maximumAttempts: 3, initialInterval: "10 milliseconds" },
+  },
+});
+
 /**
- * The workflow re-declares the same two errors, and that is not duplication.
+ * The compensations. No `errors` map on either: compensation is the saga
+ * *un-deciding*, and a step that could answer "no" would leave the saga stuck
+ * half-done. Whatever infrastructure trouble they hit is undeclared — so
+ * Temporal retries it until it works, which is precisely the durability the
+ * whole example runs on this platform to get.
+ */
+const releaseStock = defineActivity({
+  input: z.object({ orderId: z.string() }),
+  output: z.void(),
+  activityOptions: {
+    startToCloseTimeout: "1 minute",
+    retry: { maximumAttempts: 5, initialInterval: "10 milliseconds" },
+  },
+});
+
+const cancelPlacement = defineActivity({
+  input: z.object({ orderId: z.string() }),
+  output: z.void(),
+  activityOptions: {
+    startToCloseTimeout: "1 minute",
+    retry: { maximumAttempts: 5, initialInterval: "10 milliseconds" },
+  },
+});
+
+/**
+ * The workflow: an orchestration, which is what Temporal is *for*. Place,
+ * reserve, ship — and when a later step answers a permanent no, walk back the
+ * earlier ones before answering the caller. The walk-back is the part no
+ * single service can own, because it spans services; a durable workflow is
+ * the one place the whole journey exists as code.
  *
- * A contract error declared on an **activity** is rehydrated inside the
+ * The workflow re-declares the domain errors, and that is not duplication. A
+ * contract error declared on an **activity** is rehydrated inside the
  * *workflow* — it never reaches the client on its own. A contract error
  * declared on the **workflow** is rehydrated at the *client*. So a domain
  * failure that a caller is entitled to branch on has to be named at both
- * boundaries, which is Temporal's version of the triage `order-api` performs
- * once in `router.ts`. `workflows.ts` is where the hand-off happens.
+ * boundaries. `workflows.ts` is where the hand-off — and the compensation —
+ * happens.
  */
-const placeOrder = defineWorkflow({
-  input: z.object({ orderId: z.string(), quantity: z.number() }),
+const fulfillOrder = defineWorkflow({
+  input: orderInput,
   output: orderView,
   idempotency: "allow-duplicate",
   errors: {
     InvalidQuantity: { data: orderRef, nonRetryable: true },
     OrderAlreadyPlaced: { data: orderRef, nonRetryable: true },
+    OutOfStock: { data: orderRef, nonRetryable: true },
+    ShippingUnavailable: { data: orderRef, nonRetryable: true },
   },
-  activities: { place },
+  activities: { place, reserveStock, arrangeShipping, releaseStock, cancelPlacement },
 });
 
 /**
@@ -69,7 +126,7 @@ const placeOrder = defineWorkflow({
  */
 export const orderContract = defineContract({
   taskQueue: "orders",
-  workflows: { placeOrder },
+  workflows: { fulfillOrder },
 });
 
 export type OrderContract = typeof orderContract;

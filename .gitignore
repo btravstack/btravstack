@@ -28,5 +28,5 @@ docs/superpowers/
 # The 64 MB Temporal time-skipping test server, downloaded on a cold cache by
 # the Temporal example's suite. Pinned here rather than left in the OS temp
 # directory so it survives across runs and is a stable path CI can cache.
-# See examples/order-temporal/README.md.
+# See examples/order-temporal-worker/README.md.
 .cache/

@@ -5,7 +5,6 @@
   "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"],
   "workspaces": {
     "examples/order-api": { "entry": ["src/main.ts"] },
-    "examples/order-worker": { "entry": ["src/main.ts"] },
-    "examples/order-temporal": { "entry": ["src/main.ts"] }
+    "examples/order-temporal-worker": { "entry": ["src/main.ts"] }
   }
 }

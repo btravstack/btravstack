@@ -3,16 +3,16 @@ import { describe, expect } from "vitest";
 import { it } from "./test-fixtures.js";
 
 describe("orderContract", () => {
-  it("routes placements through a queue that parks what it cannot retry", ({ contract }) => {
+  it("routes the broadcast through a queue that parks what it cannot retry", ({ contract }) => {
     // GIVEN the contract as any worker or publisher would take it
     // WHEN its queue is read
-    const queue = contract.queues["order-placements"];
+    const queue = contract.queues["order-notifications"];
 
     // THEN the retry budget and the parking bay are the contract's, not a
     // constant in some deployment's runtime
     expect(queue).toEqual(
       expect.objectContaining({
-        name: "order-placements",
+        name: "order-notifications",
         deadLetter: expect.objectContaining({
           exchange: expect.objectContaining({ name: "orders-dlx" }),
         }),
@@ -21,11 +21,18 @@ describe("orderContract", () => {
     );
   });
 
-  it("validates a placement payload from the contract alone", ({ validate }) => {
+  it("names the event as a fact, not a command", ({ contract }) => {
+    // GIVEN the publisher any relay would take
+    // WHEN its routing key is read
+    // THEN it announces something that happened — past tense, no addressee
+    expect(contract.publishers.orderPlaced.routingKey).toBe("order.placed");
+  });
+
+  it("validates a broadcast payload from the contract alone", ({ validate }) => {
     // GIVEN the contract's own schema, and nothing else — no worker, no
     // connection, no broker
 
-    // WHEN a caller checks the payload it is about to publish
+    // WHEN a relay checks the payload it is about to publish
     // THEN it is accepted, in the shape the wire will carry
     expect(validate({ orderId: "o-1", quantity: 2 })).toBeOkWith({ orderId: "o-1", quantity: 2 });
   });

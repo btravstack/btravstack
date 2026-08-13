@@ -30,9 +30,11 @@ adapter in between:
 | `Err(error)` | a returned `ORPCError`  |
 | `Defect`     | `INTERNAL_SERVER_ERROR` |
 
-None of it is the kernel's doing — which is what [`order-worker`](../order-worker)
-demonstrates by folding the very same `Result` into ack / retry / dead-letter
-over the very same composition root.
+None of it is the kernel's doing — which is what
+[`order-temporal-worker`](../order-temporal-worker) demonstrates by folding the
+very same `Result` into typed contract errors over the very same composition
+root, and [`order-amqp-worker`](../order-amqp-worker) by never folding it at a
+consumer at all — its writes broadcast facts instead.
 
 `handlerResult` performs that elimination, and the `mapErrCases` in front of it
 is the triage point — the boundary where the application's vocabulary stops:

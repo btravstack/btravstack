@@ -10,7 +10,7 @@ src/env.spec.ts  the seven cases, against the fragments themselves
 
 ## Why a package rather than a copy in each deployment
 
-`order-api`, `order-worker` and `order-temporal` each validate `process.env`
+`order-api`, `order-worker` and `order-temporal-worker` each validate `process.env`
 through a schema and return it as a `Result`. That much is the point, and each
 keeps its own schema: its variables, its defaults, its bounds. What they were
 also each keeping was the _fragment_ —
@@ -43,8 +43,8 @@ integer, `99999` is out of range.
 ## What each deployment still owns
 
 Its variables, their defaults, and whatever is genuinely its own — so
-`order-worker`'s spec pins that `CONCURRENCY=0` is rejected where a port's own
-bounds would allow it, and `order-temporal`'s pins that a blank
+`order-amqp-worker`'s spec pins that `OUTBOX_POLL_MS=0` is rejected where a port's
+own bounds would allow it, and `order-temporal-worker`'s pins that a blank
 `TEMPORAL_NAMESPACE` is an error rather than a default. Those are facts about a
 deployment, not about the fragment.
 
