@@ -9,10 +9,10 @@ packages:
   - examples/*
 
 catalog:
-  # `@amqp-contract/testing` v3 is still in beta and its `latest` dist-tag is
-  # the 2.4.0 line, which peers on `unthrown@^4` while this repo pins 5.2.0.
-  # The exact beta is the contract until v3 goes stable; raise it deliberately,
-  # not on a bot bump.
+  # `@amqp-contract/{contract,testing,worker}` v3 are still in beta and their
+  # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
+  # this repo pins 5.2.0. The exact beta is the contract until v3 goes stable;
+  # raise it deliberately, not on a bot bump.
   "@amqp-contract/contract": 3.0.0-beta.6
   "@amqp-contract/testing": 3.0.0-beta.6
   "@amqp-contract/worker": 3.0.0-beta.6
@@ -96,8 +96,10 @@ peerDependencyRules:
     - "@types/react"
 
 minimumReleaseAgeExclude:
+  - "@amqp-contract/contract@3.0.0-beta.6"
   - "@amqp-contract/core@3.0.0-beta.6"
   - "@amqp-contract/testing@3.0.0-beta.6"
+  - "@amqp-contract/worker@3.0.0-beta.6"
   - "@btravstack/di@0.1.0"
   - "@btravstack/entity@0.7.0"
   - "@unthrown/oxlint@5.2.0"
@@ -107,5 +109,3 @@ minimumReleaseAgeExclude:
   - "@unthrown/vitest@5.2.0"
   - "unthrown@5.2.0"
   - "unthrown@5.5.0"
-  - "@amqp-contract/contract@3.0.0-beta.6"
-  - "@amqp-contract/worker@3.0.0-beta.6"
