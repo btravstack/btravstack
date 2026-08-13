@@ -1,11 +1,13 @@
 # Examples
 
-Eleven small packages that are **one application booted four ways**: a clean
-architecture split across four layers, deployed once as an oRPC API, once as a
-queue worker, once as a Temporal worker and once as an AMQP consumer, with each
-transport's contract in a package of its own — and, at the same time,
-exercising `@btravstack/start` end to end from a consumer's own workspace,
-`workspace:*` and all.
+Two example families share this directory. Eleven packages are **one
+application booted four ways**: a clean architecture split across four layers,
+deployed once as an oRPC API, once as a queue worker, once as a Temporal
+worker and once as an AMQP consumer, with each transport's contract in a
+package of its own — and, at the same time, exercising `@btravstack/start` end
+to end from a consumer's own workspace, `workspace:*` and all. Three more —
+[the di examples](#the-di-examples) below — exercise `@btravstack/di` on its
+own, one job each.
 
 | Package                                                | Layer     | Shows                                                                                                                                                            |
 | ------------------------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -210,3 +212,23 @@ rather than executed.
 
 Nothing here is published: every package is `"private": true` and depends on the
 kernel via `workspace:*`.
+
+## The di examples
+
+Three packages, each showing a different job `@btravstack/di` does on its
+own — no kernel, no runtime — and, at the same time, exercising the library
+end to end from a consumer's own workspace.
+
+| Package                                        | Shows                                                                                                                                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`hexagonal-order-api`](./hexagonal-order-api) | The core story: ports named by the application, a private internal beside a public surface, and one application module composed against a production adapter and an in-memory one. |
+| [`request-scope`](./request-scope)             | Lifetime management: a pool acquired once under `Module.scoped`, and a `Module.forkScope`'d transaction per request over the built parent.                                         |
+| [`plugin-registry`](./plugin-registry)         | Multi-binding: a `Port.many` set port fed by contributions from two independent modules, collected and run together.                                                               |
+
+The same rules as the order family: each `src/index.ts` reads as application
+code, each spec asserts real behaviour (release order, set-port accumulation),
+and compile-time-only guarantees live in `*.test-d.ts` — see
+`hexagonal-order-api/src/index.test-d.ts`, which also runs declaration emit
+under both the repo's TypeScript and a consumer's stable one. Every package
+declares `unthrown` itself, because it is a peer of the library, not a
+transitive.

@@ -50,7 +50,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@btravstack/di": "catalog:",
+    "@btravstack/di": "workspace:^",
     "@btravstack/start": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@temporal-contract/contract": "catalog:",

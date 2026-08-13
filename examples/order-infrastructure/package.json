@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@btravstack/di": "catalog:",
+    "@btravstack/di": "workspace:*",
     "@btravstack/start-example-order-application": "workspace:*",
     "@btravstack/start-example-order-domain": "workspace:*",
     "@prisma/adapter-better-sqlite3": "catalog:",

@@ -577,12 +577,15 @@ lines done well.
 ## Documentation
 
 See [`packages/start`](./packages/start) for the package README,
-[`examples/`](./examples) for an eleven-package clean-architecture application
-booted under four different runtimes, and [`CLAUDE.md`](./CLAUDE.md) for the
-authoritative spec: the theses, the public surface and the conventions. The
-load-bearing invariants with the test that guards each, and the internal design
-notes, live in
-[`packages/start/CLAUDE.md`](./packages/start/CLAUDE.md).
+[`packages/di`](./packages/di) for the DI container the kernel boots (merged
+into this repo from the former `btravstack/di` repository, history included —
+still published separately as `@btravstack/di`, with its VitePress + TypeDoc
+site in [`docs/`](./docs)), [`examples/`](./examples) for an eleven-package
+clean-architecture application booted under four different runtimes plus di's
+three consumer examples, and [`CLAUDE.md`](./CLAUDE.md) for the authoritative
+spec: the theses, the public surface and the conventions. The load-bearing
+invariants with the test that guards each, and the internal design notes, live
+in [`packages/start/CLAUDE.md`](./packages/start/CLAUDE.md).
 
 ## License
 

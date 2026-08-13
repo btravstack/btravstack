@@ -1,0 +1,39 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreExportsUsedInFile": true,
+
+  // Type-level behaviour lives in `*.test-d.ts`, checked by its own tsc pass
+  // and deliberately kept out of the main one, out of oxlint and out of knip.
+  // Nothing imports them — that is the design — so knip reads them as dead
+  // files. `packages/di/src/type-assert.ts` rides along in the same list, not
+  // just the glob: its only export, `Equal`, exists purely for `*.test-d.ts`
+  // files to import, and those files are the ones just excluded — with them
+  // gone from knip's project, nothing left in scope imports `Equal`.
+  "ignore": ["**/*.test-d.ts", "**/type-assert.ts"],
+
+  // Config packages knip cannot trace, each verified referenced:
+  // `@btravstack/oxlint` from `.oxlintrc.json`'s `extends`,
+  // `@btravstack/lefthook` from `lefthook.yml`'s `extends`, and
+  // `@btravstack/typedoc` plus `typedoc-plugin-markdown` from
+  // `docs/typedoc.json`. Knip resolves none of these config formats, so it
+  // reads all four as unused devDependencies.
+  "ignoreDependencies": [
+    "@btravstack/lefthook",
+    "@btravstack/oxlint",
+    "@btravstack/typedoc",
+    "typedoc-plugin-markdown",
+  ],
+
+  "workspaces": {
+    "examples/hexagonal-order-api": {
+      // `emit-guards.ts` is deliberately imported by nothing. It exists to be
+      // COMPILED: it is the declaration-emit fixture that keeps TS4020 from
+      // coming back, and its assertions are `@ts-expect-error` directives with
+      // no runtime moment. Naming it an entry is what stops knip reporting the
+      // guard as dead code and someone helpfully deleting it. `src/index.ts` is
+      // not listed: it is already the package entry.
+      "entry": ["src/emit-guards.ts"],
+      "project": ["src/**/*.ts"],
+    },
+  },
+}

@@ -7,29 +7,33 @@ reasoning behind them. Keep it in sync with the code as the package evolves
 
 ## What this is
 
-`@btravstack/start` — the application kernel. It boots a
-[`@btravstack/di`](https://github.com/btravstack/di) module into a running
-process with one runtime, drains in-flight work on SIGTERM, and closes the
-application scope on every path. It owns three things — the lifecycle state
-machine, the unit-of-work registry, and the `Runtime` contract — and knows
-nothing about HTTP, AMQP or Temporal.
+`@btravstack/start` — the application kernel. It boots a `@btravstack/di`
+module into a running process with one runtime, drains in-flight work on
+SIGTERM, and closes the application scope on every path. It owns three
+things — the lifecycle state machine, the unit-of-work registry, and the
+`Runtime` contract — and knows nothing about HTTP, AMQP or Temporal.
 
 `di` proves the wiring before the process exists. `start` owns **when** an
 already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds four published packages,
-`start` (the kernel), `start-http` (the HTTP runtime), `start-temporal` (the
-Temporal worker runtime) and `start-amqp` (the AMQP consumer runtime);
-`examples/` holds eleven private ones — a clean-architecture application
+pnpm workspace + turbo monorepo. `packages/` holds five published packages:
+`di` (the module-based DI container the kernel boots — merged in from the
+former `btravstack/di` repo, history included; still published as
+`@btravstack/di` and still a **peer** of the other four), `start` (the
+kernel), `start-http` (the HTTP runtime), `start-temporal` (the Temporal
+worker runtime) and `start-amqp` (the AMQP consumer runtime).
+`examples/` holds fourteen private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 four different runtimes (`order-api`, `order-worker`, `order-temporal`,
 `order-amqp`), with each transport's contract in a package of its own
 (`order-api-contract`, `order-temporal-contract`, `order-amqp-contract`)
-because a client must be able to take a contract without the server. They are
-consumers, not fixtures: they are part of the gate, and `examples/README.md`
-is their index.
+because a client must be able to take a contract without the server, plus
+di's three consumer examples (`hexagonal-order-api`, `request-scope`,
+`plugin-registry`). They are consumers, not fixtures: they are part of the
+gate, and `examples/README.md` is their index. `docs/` is the VitePress +
+TypeDoc site for `packages/di` (deployed by `deploy-docs.yml`).
 
 ## Commands
 
@@ -468,8 +472,11 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   dependencies of `start` — the dual-copy hazard is real for both (di's port
   identity and unthrown's `isResult` each compare across copies). `start-http`
   peers on both of those plus `@btravstack/start` itself, for the same reason.
-  `node:` builtins only otherwise. Do not add a dependency.
-- `declarationMap: false` on all four published packages — the published
+  `node:` builtins only otherwise. Do not add a dependency. di living in this
+  repo changes none of that: the kernel packages reference it as
+  `workspace:^` in devDependencies, and the published peer range stays
+  `^0.1.0` — a consumer still installs `@btravstack/di` themselves.
+- `declarationMap: false` on all five published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
@@ -528,7 +535,8 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   them, `packages/start/CLAUDE.md` too — and for a runtime package, its own:
   `packages/start-http/CLAUDE.md`, `packages/start-temporal/CLAUDE.md` or
   `packages/start-amqp/CLAUDE.md`, whichever is where that package's public
-  surface lives. There are **five** `CLAUDE.md` files; naming the wrong one is
+  surface lives. `packages/di/CLAUDE.md` plays the same role for the DI
+  container. There are **six** `CLAUDE.md` files; naming the wrong one is
   how the last drift happened.
 
 ## Test conventions

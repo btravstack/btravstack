@@ -1,29 +1,10 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## What this is
+# packages/di
 
 `@btravstack/di` — a module-based dependency-injection container for TypeScript. Ports are the vocabulary an application defines, providers bind them at one edge, modules declare `imports`/`exports`. Every wiring mistake the type system can catch is a compile error; what it can't (cycles, duplicate providers) surfaces as a defect before any factory runs. Nothing throws to callers: every fallible operation returns an [`unthrown`](https://github.com/btravstack/unthrown) `Result` (peer dependency).
 
-pnpm workspace + turbo monorepo: `packages/di` is the single published package; `examples/*` are private consumer packages that double as end-to-end tests.
+Merged into this repo from the former `btravstack/di` repository, history included; still published as `@btravstack/di`, and still a **peer** dependency of the four `start` packages that consume it. The root `CLAUDE.md` owns the repo-wide gate and conventions; this file holds only what is di's own. di's consumer examples live in `examples/hexagonal-order-api`, `examples/request-scope` and `examples/plugin-registry`, and its VitePress + TypeDoc site is the `docs/` workspace.
 
-## Commands
-
-Node `>=22.19` (root `engines` floor; `.node-version` pins the exact dev version), pnpm `11.7.0` (via `corepack enable`). `pnpm install` at the root. The published package separately claims `>=20` — see CONTRIBUTING.md for what each of the three numbers means.
-
-The gate — every change must keep all of these green (CI runs the same set):
-
-```sh
-pnpm format --check   # oxfmt (run without --check to auto-fix)
-pnpm lint             # oxlint (incl. unthrown/* rules)
-pnpm typecheck        # tsc, incl. type-level *.test-d.ts tests
-pnpm test             # vitest, library + examples
-pnpm knip             # dead code / unused deps
-pnpm build            # tsdown dual CJS/ESM + d.ts
-```
-
-Root scripts fan out through turbo; `test`/`typecheck` depend on `build`, so turbo builds first automatically. To scope to one package, run inside it, e.g.:
+To scope a run to this package, run inside it, e.g.:
 
 ```sh
 cd packages/di
@@ -31,8 +12,6 @@ pnpm vitest run src/build.spec.ts          # one test file
 pnpm vitest run -t "releases in reverse"   # one test by name
 pnpm test:types                            # type-level tests only (tsc -p tsconfig.test-d.json)
 ```
-
-Commits follow Conventional Commits (commitlint via a lefthook `commit-msg` hook). User-facing changes need a changeset (`pnpm changeset`); internal-only changes (tests, CI, refactors) don't.
 
 ## Architecture
 

@@ -8,6 +8,10 @@
     "test:types": { "dependsOn": ["^build", "generate", "^generate"] },
     "test": { "dependsOn": ["^build", "generate", "^generate"], "cache": false },
     "dev": { "dependsOn": ["^build"], "cache": false, "persistent": true },
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] }
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "@btravstack/di-docs#build": {
+      "inputs": ["$TURBO_DEFAULT$", "../packages/di/src/**"],
+      "outputs": [".vitepress/dist/**", "api/di/**"]
+    }
   }
 }

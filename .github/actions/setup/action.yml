@@ -1,0 +1,31 @@
+name: "Setup Node.js and pnpm"
+description: "Setup Node.js and pnpm, install dependencies"
+
+# CI and Release call btravstack/config's reusable workflows, which do their own
+# setup. This composite is kept for parity with the sibling btravstack repos,
+# for any workflow in this repo that runs its own steps and needs the same
+# toolchain.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: .node-version
+        cache: pnpm
+
+    - name: Setup Turbo Cache
+      uses: actions/cache@v4
+      with:
+        path: .turbo
+        key: ${{ runner.os }}-turbo-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-turbo-
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

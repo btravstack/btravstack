@@ -12,15 +12,15 @@
     "typescript",
     "unthrown"
   ],
-  "homepage": "https://github.com/btravstack/di#readme",
+  "homepage": "https://github.com/btravstack/start#readme",
   "bugs": {
-    "url": "https://github.com/btravstack/di/issues"
+    "url": "https://github.com/btravstack/start/issues"
   },
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/btravstack/di.git",
+    "url": "https://github.com/btravstack/start.git",
     "directory": "packages/di"
   },
   "files": [

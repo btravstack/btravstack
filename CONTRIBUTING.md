@@ -1,10 +1,10 @@
-# Contributing to @btravstack/di
+# Contributing
 
-Thanks for your interest in improving `@btravstack/di`. This is a small,
-focused library — the guiding principle is **one concept = one name**, and the
-surface is meant to stay small enough that the library can be "done".
-Contributions that sharpen the existing design are more welcome than ones that
-grow it.
+Thanks for your interest in improving `@btravstack/start` and
+`@btravstack/di`. These are small, focused libraries — the guiding principle
+is **one concept = one name**, and each surface is meant to stay small enough
+that the library can be "done". Contributions that sharpen the existing design
+are more welcome than ones that grow it.
 
 ## Prerequisites
 
@@ -14,8 +14,8 @@ grow it.
 ## Getting started
 
 ```sh
-git clone https://github.com/btravstack/di.git
-cd di
+git clone https://github.com/btravstack/start.git
+cd start
 pnpm install
 ```
 
