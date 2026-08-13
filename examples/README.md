@@ -15,7 +15,7 @@ to end from a consumer's own workspace, `workspace:*` and all.
 | [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                                      |
 | [`order-worker`](./order-worker)                       | runtime   | The second deployment: an in-memory queue worker over the **same** composition, and `Result` → ack / retry / dead-letter.                           |
 | [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, one activity, two declared `nonRetryable` errors — read by the worker, the sandbox and the client. |
-| [`order-temporal`](./order-temporal)                   | runtime   | The third deployment: a Temporal worker whose **activity is the kernel unit**, `Result` → typed contract error, and a drain that waits.             |
+| [`order-temporal`](./order-temporal)                   | runtime   | The third deployment: `@btravstack/start-temporal` driving a Temporal worker, one unit per **activity attempt**, `Result` → typed contract error.   |
 
 ## The layering, and which way the arrows point
 

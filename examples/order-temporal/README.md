@@ -2,13 +2,15 @@
 
 The third deployment. The same application, the same persistence, the same
 composition — driven by a durable execution engine instead of an HTTP server or
-a queue. The contract it implements lives in
+a queue, and served by
+[`@btravstack/start-temporal`](../../packages/start-temporal) the way
+`order-api` is served by `@btravstack/start-http`. The contract it implements lives in
 [`order-temporal-contract`](../order-temporal-contract), because a client that
 starts these workflows needs it and needs none of this.
 
 ```
 src/workflows.ts         the workflow body, in its own module because the sandbox is bundled separately
-src/temporal-runtime.ts  the Runtime: start / drain / stop, and the activity that is the kernel unit
+src/temporal-runtime.ts  the runtime's application half: the contract, the needs, and the activity implementation
 src/module.ts            OrderTemporalModule — the composition root
 src/env.ts               process.env validated through a schema, as a Result
 src/main.ts              the process: readEnv + connect + start + runMain
@@ -66,7 +68,7 @@ named at both boundaries — where `order-api` triages once in `router.ts`.
 Boundary one, in `src/temporal-runtime.ts` — the domain's vocabulary stops here:
 
 ```ts
-ctx
+context.ctx
   .get(PlaceOrder)
   .execute(args.orderId, args.quantity)
   .map((order) => ({ id: order.id, quantity: order.quantity }))
@@ -144,21 +146,30 @@ await client.executeWorkflow("placeOrder", { workflowId, args }).match({
 });
 ```
 
-## The activity is the unit
+## The activity is the unit, and one line is what makes it one
 
 A Temporal worker polls two kinds of task. Workflow code runs in a
 deterministic V8 sandbox and may not touch a database, a clock or a di
 container; the **activity** is where the process leaves that sandbox and reaches
-real services. So the activity is where a kernel unit belongs, and the
-activity implementations are built **inside** `Runtime.start`, closing over the
-`RuntimeHost` the kernel handed over:
+real services. So the activity is where a kernel unit belongs — and since
+`@btravstack/start-temporal` shipped, opening it is one line of middleware
+rather than a wrapper this package writes:
 
 ```ts
-const placeActivity =
-  (host: RuntimeHost<TemporalNeeds>): ActivityImplementationFor<OrderContract, "placeOrder", "place"> =>
-  (args, { errors }) =>
-    host.run(metaFor(), (ctx, _signal) => /* … */);
+activities: (host) =>
+  declareActivitiesHandler({
+    contract: options.contract,
+    middleware: activityUnits<TemporalNeeds>(host),
+    activities: { placeOrder: { place: placeActivity } },
+  }),
 ```
+
+`activityUnits` opens the unit and injects the application context through
+`temporal-contract`'s own per-invocation channel, which is why `placeActivity`
+reads `context.ctx` and never sees the `RuntimeHost` at all. The type argument
+is not decoration: TypeScript infers the injected context from the middleware's
+type and infers nothing from a generic call it is still resolving, so bare and
+inline it would leave `context` empty.
 
 That is also why `needs` is `[PlaceOrder, Logger]` rather than empty: the
 activity resolves both out of the application context, and `start`'s phantom
@@ -166,15 +177,10 @@ rest-tuple gate proves the module exports them before anything runs.
 
 ## A task token is the unit; the workflow id is the trace
 
+The package mints the meta, and this is what it mints:
+
 ```ts
-const metaFor = (): UnitMeta => {
-  const info = activityInfo();
-  return {
-    kind: "activity",
-    id: info.base64TaskToken,
-    traceId: info.workflowExecution?.workflowId ?? info.activityId,
-  };
-};
+{ kind: "activity", id: info.base64TaskToken, traceId: info.workflowExecution?.workflowId ?? info.activityId }
 ```
 
 `UnitMeta.id` must be unique per unit, and the obvious candidate — the workflow
@@ -192,34 +198,8 @@ and stable across every retry so all three attempts join up in the log.
 ## Draining is real here
 
 This is the first runtime in the repository where `Serving.drain` meets a
-transport with genuine drain semantics of its own, and the two line up exactly:
-
-```ts
-const running = worker.run();
-
-const stopPolling = (): void => {
-  if (worker.raw.getState() === "RUNNING") worker.shutdown();
-};
-
-// The kernel's deadline, kept from `drain` so `stop` is released by it too.
-let deadline: AbortSignal | undefined;
-
-const stopped = (): AsyncResult<void, never> =>
-  deadline === undefined ? running : releasedBy(deadline, running);
-
-return {
-  info: { taskQueue, namespace },
-  drain: (signal) => {
-    deadline = signal;
-    stopPolling();
-    return stopped();
-  },
-  stop: () => {
-    stopPolling();
-    return stopped();
-  },
-};
-```
+transport with genuine drain semantics of its own, and it is exactly why
+`@btravstack/start-temporal` is a package rather than code that lives here.
 
 `worker.shutdown()` moves the worker to `DRAINING` **immediately**: polling for
 new Workflow and Activity Tasks stops at once, in-flight activities run to
@@ -228,35 +208,15 @@ completion, and `run()` resolves when the last of them has. So `drain` is
 `order-api`'s and `order-worker`'s drains stop accepting and have nothing left
 to wait for.
 
-`stop` is the same call made idempotent. After a drain, `running` has already
-settled and awaiting it again returns at once; on the `stop()`-without-drain
-path it is what shuts the worker down, with `shutdownForceTime` as the ceiling.
-`stopPolling` guards on `getState()` because `shutdown()` on a worker that is
-not `RUNNING` throws Temporal's `IllegalStateError`, and `stop` always runs
-after `drain` on the signal path.
-
-Three details worth writing down:
-
-- **`running` is held, not dropped.** `TypedWorker.run()` is
-  `AsyncResult<void, never>`, and an empty _error_ channel is not an empty
-  _defect_ channel — a worker that dies mid-run reports a `TechnicalError` on the
-  defect channel. Both methods hand it back to the kernel, which consumes it.
-- **`shutdownGraceTime` is set explicitly** because Temporal's default is `0`.
-  Cancellation is cooperative, so a `0` changes nothing for an activity that
-  ignores the signal — but it would fight the kernel's own drain deadline for
-  the same decision, and one component should own it.
-- **The kernel's deadline `AbortSignal` is honoured, because waiting on `run()`
-  alone cannot honour it.** `run()` settles on Temporal's clock —
-  `shutdownForceTime`, 30 seconds by default — so an activity that never
-  finishes would hold `stop()` well past the kernel's `drainTimeoutMs`, and the
-  kernel would have no way to release this runtime. `releasedBy` races `running`
-  against the signal, and the signal is kept so `stop()` is released by the same
-  abort; the losing branch's `Result` is dropped, exactly as `drainApp`
-  documents for its own race. `@temporalio/worker` 1.22 offers no public forced
-  shutdown to escalate to — `Worker.forceShutdown$` is `protected` and
-  `Runtime.shutdown()` is process-global — so what a runtime can do is stop
-  waiting, leaving the worker to `shutdownForceTime` and to the entry point
-  closing the connection underneath it.
+The wait is raced against the kernel's deadline signal, because waiting on
+`run()` alone cannot honour it: `run()` settles on Temporal's own
+`shutdownForceTime`, so an activity that never finishes would hold `stop()`
+well past the kernel's `drainTimeoutMs`. `@temporalio/worker` offers no public
+forced shutdown to escalate to, so the escalation is to stop waiting — the
+kernel gets its thread back on time and the worker keeps winding down
+underneath. The package's README explains the mechanism; what this package
+does is pass `forceAfter`/`gracePeriod` (15 s and 10 s), both at or below the
+kernel's `drainTimeoutMs` default of 20 s.
 
 The spec asserts both halves directly — the drain that completes:
 
@@ -292,7 +252,7 @@ pnpm --filter @btravstack/start-example-order-temporal test        # 8 runtime s
 pnpm --filter @btravstack/start-example-order-temporal test:types  # the needs gate
 ```
 
-**No Docker.** A real `TypedWorker` polls a real task queue against
+**No Docker.** A real `@temporalio/worker` Worker polls a real task queue against
 `@temporalio/testing`'s time-skipping test server, which is a local binary
 rather than a container — the whole worker loop, real Workflow Tasks and real
 Activity Tasks, with the Docker daemon quit.

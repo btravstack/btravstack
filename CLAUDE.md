@@ -19,8 +19,9 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds two published packages,
-`start` (the kernel) and `start-http` (the HTTP runtime); `examples/` holds
+pnpm workspace + turbo monorepo. `packages/` holds three published packages,
+`start` (the kernel), `start-http` (the HTTP runtime) and `start-temporal` (the
+Temporal worker runtime); `examples/` holds
 eight private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three different runtimes (`order-api`, `order-worker`, `order-temporal`), with
@@ -62,7 +63,8 @@ hook). User-facing changes need a changeset.
    on the second and a `nonRetryable` typed contract error on the third — and
    no mapping anywhere near the kernel. The third is also where
    `Serving.drain` first meets a transport with real drain semantics of its
-   own: `worker.shutdown()` stops polling immediately and `run()` resolves only
+   own — which is why that half now lives in `@btravstack/start-temporal`, the
+   package the example consumes: `worker.shutdown()` stops polling immediately and `run()` resolves only
    once the in-flight activity has finished, so `drain` is a genuine wait
    rather than the "stop accepting, nothing left to await" the other two are.
    It is also the first runtime that has to **honour** the deadline
@@ -373,6 +375,58 @@ checker already verifies.
   each is a non-goal.
 - Peer dependencies: `@btravstack/start`, `@btravstack/di`, `unthrown`.
 
+### `@btravstack/start-temporal`
+
+- **`temporalRuntime(options)` → `Runtime<Needs, TemporalInfo>`** — runs a
+  `@temporalio/worker` Worker under the kernel's lifecycle.
+  `TemporalOptions<Needs>` — `connection` (a `NativeConnection` the caller
+  opened, and therefore closes), `taskQueue`, `namespace` (default
+  `"default"`), `workflows` (a `WorkflowSource`: `{ workflowsPath }` or
+  `{ workflowBundle }`), `activities`, `needs`, `forceAfter` (Temporal's
+  `shutdownForceTime`, default `15 seconds`) and `gracePeriod`
+  (`shutdownGraceTime`, default `10 seconds`). `TemporalInfo` is
+  `{ taskQueue, namespace }`, published on `Serving.info` once polling.
+- **`activities`** is a **builder** — `(host: RuntimeHost<Needs>) => Record<…>`
+  — because the middleware needs the host and the host does not exist until
+  `start` calls the runtime. The package never wraps what it returns, which is
+  what makes double-wrapping impossible rather than something to detect.
+- **`activityUnits(host)` → `ActivityMiddleware<Needs>`** — the one line a
+  `temporal-contract` user adds, in `declareActivitiesHandler`'s `middleware`
+  slot. It opens one kernel unit per activity **attempt** (`id` is the base64
+  task token, `traceId` the workflow id) and injects
+  `ActivityUnitContext<Needs>` — `{ ctx }` — through `temporal-contract`'s own
+  per-invocation channel, which is why the deferred per-unit `forkScope` will
+  land without an API change. **Pass the type argument** (or hoist the call)
+  when an implementation reads `context.ctx`: TypeScript infers the injected
+  context from the middleware's type and infers nothing from a generic call it
+  is still resolving.
+- **`temporal-contract` is a devDependency, never a peer.**
+  `ActivityMiddleware` is declared **structurally** in `activity-units.ts`, so a
+  consumer who does not use `temporal-contract` never inherits it. That
+  declaration carries the package's one cast and one `oxlint-disable`
+  (`unthrown/no-ambiguous-error-type`): the chain's failure union is
+  `temporal-contract`'s to name, and a middleware generic in that channel is one
+  TypeScript infers nothing from.
+- **The drain is the reason the package exists.** `Serving.drain` calls
+  `worker.shutdown()` then waits on `run()` **raced against the kernel's
+  deadline signal**, and keeps the signal so `stop()` is released by the same
+  abort. `@temporalio/worker` exposes no public forced shutdown
+  (`Worker.forceShutdown$` is `protected`, `Runtime.shutdown()` is
+  process-global), so stopping the wait is the only escalation: the kernel is
+  released on time, the work is reported `abandoned`, and the worker keeps
+  winding down on Temporal's clock until the process exits.
+- **Not included, deliberately**: `Result` → activity failure, which
+  `declareActivitiesHandler` already owns. Doing it twice is what the removal of
+  the raw-worker path was about.
+- **`temporal-contract` needed no modification at all** to host this.
+  `CreateWorkerOptions` is already `Omit<WorkerOptions, …>`, the handler's
+  output is flat, middleware's `next({ context })` augments what flows
+  downstream, and `createContext` runs once per activity execution. That last
+  point is what makes the per-unit context ride through the library's own
+  channel rather than a channel this package invented.
+- Peer dependencies: `@btravstack/start`, `@btravstack/di`, `unthrown`,
+  `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`.
+
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All eight
@@ -417,6 +471,12 @@ checker already verifies.
   tasks carry a `^generate` edge so a dependent workspace gets one too. The
   database is SQLite **in memory** with the schema applied by hand —
   deliberately no Docker, so `pnpm test` stays self-contained on any machine.
+- **`examples/order-temporal` consumes `@btravstack/start-temporal`**, the same
+  way `order-api` consumes `-http`: it supplies the contract, the two ports its
+  activity resolves and the `mapErrCases` triage, and reads `{ taskQueue,
+namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
+  attempt and the deadline race are the package's. It is the second place the
+  package's needs gate is a real one.
 - **`examples/order-api` consumes `@btravstack/start-http` rather than
   hand-rolling a transport.** It supplies only `apiHandler` — the per-request
   `Module.forkScope` and the oRPC router — and reads `port` back off
@@ -627,9 +687,16 @@ request, drains by genuinely refusing new work and retiring busy keep-alive
 connections, and stops by destroying what is left. Routing, middleware and
 `Result` → HTTP status are deliberately not included — see its README's _"What
 it does not do"_ for why each is a non-goal rather than a gap.
+And `@btravstack/start-temporal`, the second: a `@temporalio/worker` Worker
+under the kernel's lifecycle, one unit per activity attempt through a
+`temporal-contract` `ActivityMiddleware`, and a drain that releases the kernel
+at its **own** deadline rather than Temporal's `shutdownForceTime`. `Result` →
+activity failure is deliberately not mapped there either — `declareActivitiesHandler`
+already owns it.
 Plus the eight `examples/` workspaces: the clean-architecture application and its
-**three** deployments, `order-api` (oRPC), `order-worker` (an in-memory queue)
-and `order-temporal` (a Temporal worker over `temporal-contract`), which
+**three** deployments, `order-api` (oRPC over `@btravstack/start-http`),
+`order-worker` (an in-memory queue) and `order-temporal`
+(`@btravstack/start-temporal` over `temporal-contract`), which
 together are the proof of Thesis #1 — and `order-api-contract` /
 `order-temporal-contract`, each transport's contract as a shared artifact both
 the server and any client can depend on, with a `layering.test-d.ts` proving it
@@ -637,12 +704,9 @@ depends on neither.
 
 Deferred, deliberately:
 
-- `@btravstack/start-amqp`, `-temporal` — the runtime implementations.
-  **They do not exist**; the `Runtime` contract is the whole of what this
-  package owes them. Do not write as though they ship.
-  `examples/order-temporal` is an _example_ of one, not `-temporal`: it is
-  `private`, application-specific (it names `PlaceOrder`), and models a single
-  contract rather than a general Temporal adapter.
+- `@btravstack/start-amqp` — the consumer runtime. **It does not exist**; the
+  `Runtime` contract is the whole of what this package owes it. Do not write as
+  though it ships.
 - **Caching the Temporal test-server binary in CI.** The path is stable and
   gitignored; what is missing is the `actions/cache` step, which cannot be
   written from `start`'s `ci.yml` while it delegates to
@@ -653,13 +717,13 @@ Deferred, deliberately:
 - Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed
   for it; the `Module.forkScope` call lands when the first runtime needs a
   per-request transaction.
-- **A `docs-examples.test-d.ts` for `start-http`.** `packages/start`'s exists
-  precisely so its two READMEs cannot drift from `runtime.ts` / `drain-report.ts`
-  without failing `pnpm typecheck`; `packages/start-http/README.md`'s code
-  samples have no such gate and are compiled by nothing. Deliberately not built
-  in this wave — one package's worth of samples did not yet justify the
-  harness. Add it the next time a `start-http` README sample is found to have
-  drifted, the same way this gap itself was found.
+- **A `docs-examples.test-d.ts` for `start-http` and `start-temporal`.**
+  `packages/start`'s exists precisely so its two READMEs cannot drift from
+  `runtime.ts` / `drain-report.ts` without failing `pnpm typecheck`; the two
+  runtime packages' README samples have no such gate and are compiled by
+  nothing. Deliberately not built — two packages' worth of samples still did
+  not justify the harness. Add it the next time one of those samples is found
+  to have drifted, the same way this gap itself was found.
 - ~~Bringing `packages/start`'s 14 spec files under the Test conventions.~~
   **Closed by decision, not by doing it.** An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since

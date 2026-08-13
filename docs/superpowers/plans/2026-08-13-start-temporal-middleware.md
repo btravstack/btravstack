@@ -2,6 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Done (2026-08-13).** All seven tasks shipped, plus one the plan did not
+> have: `examples/order-temporal` now consumes the package instead of
+> hand-rolling its own runtime. Two deviations, both forced by the library's
+> actual types: `declareActivitiesHandler` takes a **single** `middleware`, not
+> an array, and `activityUnits` needs its type argument (or a hoisted `const`)
+> wherever an implementation reads `context.ctx` — TypeScript infers the
+> injected context from the middleware's own type and infers nothing from a
+> generic call it is still resolving, which is also why the middleware's failure
+> channel is `unknown` in and `never` out with one cast rather than a type
+> parameter.
+
 **Supersedes:** `docs/superpowers/plans/2026-08-12-start-temporal.md`. That plan's Tasks 1–3 are **done and reviewed clean** (`5e90b29`, `ea987e8`, `5710164`); its Tasks 4–9 described a two-integration package and no longer apply. Do not work from it.
 
 **Goal:** Finish `@btravstack/start-temporal` as a **`temporal-contract`-only** runtime — one kernel unit per activity attempt through an `ActivityMiddleware`, and a drain that releases the kernel at its own deadline rather than Temporal's.
