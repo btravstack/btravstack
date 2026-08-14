@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreExportsUsedInFile": true,
-  "ignore": ["**/*.test-d.ts", "**/type-assert.ts"],
+  "ignore": ["**/*.test-d.ts", "**/type-assert.ts", "vitest.shared.ts"],
   "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"],
   "workspaces": {
     "examples/hexagonal-order-api": {

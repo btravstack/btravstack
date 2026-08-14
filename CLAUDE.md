@@ -64,12 +64,14 @@ hook). User-facing changes need a changeset.
    question of how two runtimes in one process share a drain deadline, or whose
    failure takes the process down. `StartOptions.runtime` is therefore a single
    value, not an array, and no future option should make it plural.
-   `examples/order-api`, `examples/order-worker` and `examples/order-temporal-worker`
+   `examples/order-api`, `examples/order-temporal-worker` and
+   `examples/order-amqp-worker`
    make this testable rather than asserted: the same `ApplicationModule` +
    `PersistenceModule` composition under three runtimes, with the same
-   `DuplicateOrder` arriving as a typed `CONFLICT` on the first, a dead-letter
-   on the second and a `nonRetryable` typed contract error on the third — and
-   no mapping anywhere near the kernel. The third is also where
+   `DuplicateOrder` arriving as a typed `CONFLICT` on the first, a
+   `nonRetryable` typed contract error on the second and a dead-letter on the
+   third — and
+   no mapping anywhere near the kernel. The second is also where
    `Serving.drain` first meets a transport with real drain semantics of its
    own — which is why that half now lives in `@btravstack/temporal`, the
    package the example consumes: `worker.shutdown()` stops polling immediately and `run()` resolves only
