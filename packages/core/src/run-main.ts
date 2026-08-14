@@ -112,15 +112,22 @@ export const awaitExit = async <E>(
 // rather than an `AsyncResult`, deliberately: its whole job is to LEAVE the
 // Result world and become a process exit code. It is the boundary, and a
 // top-level `await runMain(...)` in an entry point is the intended shape.
-export const runMain = async <X, E, Needs extends AnyPort, Info = never>(
+export const runMain = async <
+  X,
+  E,
+  Needs extends AnyPort,
+  Info = never,
+  UnitX = never,
+  UnitNeeds = never,
+>(
   module: Module<X, E, Scope>,
-  options: StartOptions<Needs, Info>,
+  options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
   exit: (code: number) => void = (code) => {
     process.exitCode = code;
   },
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: RuntimeNeedsGate<Needs, X>
+  ...gate: RuntimeNeedsGate<Needs, X, UnitX, UnitNeeds>
 ): Promise<void> => {
   void gate;
 
@@ -129,7 +136,7 @@ export const runMain = async <X, E, Needs extends AnyPort, Info = never>(
   // parameters — the same reason `withApp` discharges the tuple the same way.
   const boot = start as (
     module: Module<X, E, Scope>,
-    options: StartOptions<Needs, Info>,
+    options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
   ) => RunningApp<E, Info>;
 
   await awaitExit(boot(module, options), exit);

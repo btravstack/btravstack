@@ -17,6 +17,7 @@ import { expect, test } from "vitest";
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { apiHandler, type ApiNeeds } from "./handler.js";
 import { OrderApiModule } from "./module.js";
+import { RequestModule } from "./request-scope.js";
 
 type App<E> = RunningApp<E, HttpInfo>;
 
@@ -169,6 +170,7 @@ export const it = test.extend<ApiFixtures>({
           needs: [PlaceOrder, FindOrder, Logger],
           handler: apiHandler,
         }),
+        unit: RequestModule,
         signals: false,
         probes: false,
         preDrainDelayMs: 0,

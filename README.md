@@ -115,15 +115,15 @@ process starts.
 
 `di` proves the graph before the process exists, so `start` does not wire.
 
-|                    | NestJS                                                 | `di` + `start`                                          |
-| ------------------ | ------------------------------------------------------ | ------------------------------------------------------- |
-| Wiring declared by | decorators + metadata reflection                       | explicit `Module`/`Provider` values                     |
-| Missing dependency | boot-time exception                                    | compile error                                           |
-| Module privacy     | enforced at runtime                                    | compile error                                           |
-| Cycles             | `forwardRef()`                                         | detected pre-construction, as a defect                  |
-| Request scope      | request-scoped providers bubble up the injection chain | `forkScope` — parent services seeded, not reconstructed |
-| Lifecycle hooks    | 5 interfaces + `enableShutdownHooks()`                 | `onStart`/`onStop` per provider; `start` owns signals   |
-| Failures           | thrown                                                 | `Result`                                                |
+|                    | NestJS                                                 | `di` + `start`                                        |
+| ------------------ | ------------------------------------------------------ | ----------------------------------------------------- |
+| Wiring declared by | decorators + metadata reflection                       | explicit `Module`/`Provider` values                   |
+| Missing dependency | boot-time exception                                    | compile error                                         |
+| Module privacy     | enforced at runtime                                    | compile error                                         |
+| Cycles             | `forwardRef()`                                         | detected pre-construction, as a defect                |
+| Request scope      | request-scoped providers bubble up the injection chain | `StartOptions.unit` — forked per unit by the kernel   |
+| Lifecycle hooks    | 5 interfaces + `enableShutdownHooks()`                 | `onStart`/`onStop` per provider; `start` owns signals |
+| Failures           | thrown                                                 | `Result`                                              |
 
 The accepted cost is that there is **no auto-discovery**: the provider and its
 dependency array are written out, and that array is what buys the compile-time
@@ -243,9 +243,12 @@ bare function — `@btravstack/http` itself declines that mapping),
 `Result` → ack/nack/DLQ to the AMQP runtime, `Result` → activity failure to
 the Temporal runtime. The kernel hands back the `Result` and stays out of it.
 
-Per-unit ports are not wired yet: `run` currently hands the work the
-_application_ `Context`. `RunUnit` is typed so a `Module.forkScope` call can
-land there without a signature change.
+Per-unit ports come from `StartOptions.unit`: a module the kernel forks around
+every unit — built as the unit opens, torn down (while the unit's ambient
+record is still open) as it closes, reading anything the application context
+carries. Unit work receives the forked `Context`, so a request-scoped provider
+reaches a handler with no `Module.forkScope` in sight; without the option, the
+work receives the application `Context` as before.
 
 ### Two contracts a runtime owes
 

@@ -6,6 +6,7 @@ import { P } from "unthrown";
 import { describeEnvIssues, readEnv, type Env } from "./env.js";
 import { apiHandler } from "./handler.js";
 import { OrderApiModule } from "./module.js";
+import { RequestModule } from "./request-scope.js";
 
 /**
  * The whole process, in one expression: validate the environment, build the
@@ -26,6 +27,10 @@ const serve = (env: Env): Promise<void> =>
       needs: [PlaceOrder, FindOrder, Logger],
       handler: apiHandler,
     }),
+    // Forked around every request by the kernel: `RequestSpan` is built as the
+    // request opens and torn down as it closes, reading `Logger` out of the
+    // application scope. The handler never sees the fork happen.
+    unit: RequestModule,
     probes: { port: env.PROBE_PORT },
   });
 

@@ -112,6 +112,14 @@ is a type error at the call.
 - **Unit tracking the runtimes do not implement.** `host.run` counts open
   units and hands each one an `AbortSignal`, which is what makes
   `DrainReport.abandoned` accurate without cooperation.
+- **A per-unit scope no handler manages.** Pass a module as
+  `StartOptions.unit` and the kernel forks it around every unit: built as the
+  unit opens, torn down — while the unit's ambient record is still open — as
+  it closes, reading anything the application context carries. Unit work
+  receives the forked `Context`, so a request-scoped provider reaches a
+  handler with no `Module.forkScope` in sight. Its error channel is `never` by
+  design: a construction failure at unit scope rides the unit's defect path,
+  which every runtime already answers.
 - **An ambient record, not an ambient container.** One `AsyncLocalStorage`
   store per unit holding `{ unitId, traceId, tenantId, deadline }` — data,
   never capabilities. Read it with `currentUnit()`.

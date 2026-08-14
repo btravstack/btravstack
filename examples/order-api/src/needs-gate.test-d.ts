@@ -22,6 +22,7 @@ import { httpRuntime } from "@btravstack/http";
 
 import { apiHandler } from "./handler.js";
 import { OrderApiModule } from "./module.js";
+import { RequestModule } from "./request-scope.js";
 
 const options = {
   runtime: httpRuntime({ port: 0, needs: [PlaceOrder, FindOrder, Logger], handler: apiHandler }),
@@ -45,3 +46,16 @@ const PartialApi = Module("PartialApi")({
 // and the call fails on arity.
 // @ts-expect-error — UNSATISFIED RUNTIME NEEDS: the module does not export Logger.
 const _missingLogger = start(PartialApi, options);
+
+// Positive: a `unit` module rides the same gate — `RequestModule` needs
+// `Logger`, which the composition root exports, so the fork the kernel opens
+// per request is proven satisfiable here, at the call site.
+const _withUnit = start(OrderApiModule, { ...options, unit: RequestModule });
+
+// Negative, the OTHER direction: the unit module's own needs must be covered
+// by the module's exports (or `Scope`, which the fork opens). `PartialApi`
+// does not export `Logger`, so this fails both halves of the gate — the
+// runtime half is checked first and names the error, but the call is rejected
+// either way, which is what this pin holds.
+// @ts-expect-error — the module does not export Logger, for the runtime or for RequestModule.
+const _unitOverPartial = start(PartialApi, { ...options, unit: RequestModule });

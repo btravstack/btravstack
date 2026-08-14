@@ -273,12 +273,19 @@ gate.
   the inner `Result` is unwrapped — and there is no cause a `qualify` could
   triage into a modeled error.
 
-- **`RunUnit` is typed for a per-unit fork it does not yet perform.** `start`
-  builds `run` as `(meta, work) => registry.run(meta, (signal) => work(runtimeCtx, signal))`
-  — an **annotation**, not an assertion, so a future divergence from `RunUnit` is
-  reported here rather than absorbed. When the `unit` module lands, the
-  `Module.forkScope` call goes exactly there, replacing `runtimeCtx` with the
-  fork's context; no signature changes.
+- **The `unit` module forks INSIDE `registry.run`, and both halves of that
+  placement are load-bearing** (`unit-module.spec.ts` guards them). Inside
+  `registry.run`'s work means the fork's teardown runs while the unit's
+  ambient record is still open — a span's `onStop` logs under the request's
+  own trace id — and the unit is not counted closed until the scope is, so a
+  drain waits for unit teardown too. `run` stays an **annotation** against
+  `RunUnit` (a divergence is reported, not absorbed); with no `unit` option
+  the work receives `runtimeCtx` exactly as before, zero overhead. The
+  `forkScope` call goes through a discharged-signature cast — the same move
+  `withApp` and `runMain` make on `start` — because the fork's gates are
+  proven by `start`'s rest tuple at the call site and invisible in a body
+  where `X`, `Needs` and `UnitX` are unresolved. The work's return union is
+  normalised by an `async` wrapper exactly as `registry.run` does it.
 
 - **`options.signals === false` disables the uncaught handlers too.** One flag,
   two handler families, because both are process-global and a test harness needs

@@ -82,6 +82,28 @@ const ticker: Runtime<typeof Greeter> = {
 await runMain(AppModule, { runtime: ticker });
 
 // ---------------------------------------------------------------------------
+// "Per-unit ports" — both READMEs and the root CLAUDE.md. `StartOptions.unit`
+// is forked around every unit; its needs must be covered by the module's
+// exports (or `Scope`, which `onStop` adds and the fork opens).
+// ---------------------------------------------------------------------------
+
+class TickSpan extends Port("TickSpan")<{ readonly finish: () => void }> {}
+
+const TickModule = Module("Tick")({
+  provides: [
+    Provider(TickSpan)([Greeter], {
+      sync: (greeter) => ({
+        finish: () => process.stderr.write(`${greeter.greet("span")}\n`),
+      }),
+      onStop: (span) => span.finish(),
+    }),
+  ],
+  exports: [TickSpan],
+});
+
+await runMain(AppModule, { runtime: ticker, unit: TickModule });
+
+// ---------------------------------------------------------------------------
 // "The Runtime contract" — root README. Asserted equal to the shipped types
 // rather than merely compiled, so the README cannot drift from `runtime.ts`.
 // ---------------------------------------------------------------------------

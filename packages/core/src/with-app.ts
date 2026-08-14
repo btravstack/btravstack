@@ -34,13 +34,21 @@ import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from
  * asserting. A test that wants to assert the defect itself calls `start`
  * directly, the same escape hatch a test needing the real probe server uses.
  */
-export const withApp = async <X, E, Needs extends AnyPort, A, Info = never>(
+export const withApp = async <
+  X,
+  E,
+  Needs extends AnyPort,
+  A,
+  Info = never,
+  UnitX = never,
+  UnitNeeds = never,
+>(
   module: Module<X, E, Scope>,
-  options: StartOptions<Needs, Info>,
+  options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
   use: (app: RunningApp<E, Info>) => Promise<A>,
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: RuntimeNeedsGate<Needs, X>
+  ...gate: RuntimeNeedsGate<Needs, X, UnitX, UnitNeeds>
 ): Promise<A> => {
   void gate;
 
@@ -51,7 +59,7 @@ export const withApp = async <X, E, Needs extends AnyPort, A, Info = never>(
   // already discharged.
   const boot = start as (
     module: Module<X, E, Scope>,
-    options: StartOptions<Needs, Info>,
+    options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
   ) => RunningApp<E, Info>;
 
   const app = boot(module, { ...options, signals: false, probes: false });

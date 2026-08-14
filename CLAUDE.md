@@ -259,7 +259,19 @@ so a production bundle never pulls the fakes in.
   whose `acquire`/`release` provider adds `Scope` — the single need
   `Module.scoped` discharges itself). Followed by the phantom `...gate` rest
   tuple that makes the runtime's needs a compile-time check.
-- **`StartOptions<Needs, Info>`** — `runtime` (required); `clock`
+- **`StartOptions<Needs, Info, UnitX, UnitNeeds>`** — `runtime` (required);
+  `unit` (a `Module<UnitX, never, UnitNeeds>` the kernel forks around **every
+  unit**: built as the unit opens, torn down as it closes — while the unit's
+  ambient record is still open — reading anything the application context
+  carries; this is what makes a per-request scope transparent, so no handler
+  ever calls `Module.forkScope` itself. Its error channel is pinned to `never`
+  — a construction failure at unit scope has no modeled channel and rides the
+  unit's defect path, which every runtime already answers. The gate checks
+  both directions at the call site: runtime `needs` may draw on `UnitX`, and
+  `UnitNeeds` must be covered by the module's exports or `Scope`. One caveat:
+  `RuntimeHost.ctx` is the **application** context, so a unit-provided port
+  exists only inside unit work — resolving one at runtime startup is a
+  defect); `clock`
   (default `systemClock`); `signals` (default `true`; **`false` disables the
   SIGTERM/SIGINT handlers _and_ the uncaught ones together**); `probes`
   (default `{ port: 9000 }`, or `false`); `preDrainDelayMs` (`5_000`);
@@ -465,8 +477,9 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. It is the second place the
   package's needs gate is a real one.
 - **`examples/order-api` consumes `@btravstack/http` rather than
-  hand-rolling a transport.** It supplies only `apiHandler` — the per-request
-  `Module.forkScope` and the oRPC router — and reads `port` back off
+  hand-rolling a transport.** It supplies only `apiHandler` — the oRPC router,
+  no scope management — plus `RequestModule` as `StartOptions.unit`, so the
+  per-request fork is the kernel's; and it reads `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the package's.
   This is what makes the package's needs gate a real one: `httpRuntime<Needs>`
   infers `Needs` from the `needs` array the same way a hand-rolled runtime did.
@@ -686,9 +699,6 @@ A sixth rule is about production code that tests keep honest:
   costs ~3.5 s per test job, not correctness.
 - The `@btravstack/oxlint` rule banning `currentUnit()` outside infrastructure
   adapters (Thesis #2) — it needs a way to identify an adapter.
-- Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed
-  for it; the `Module.forkScope` call lands when the first runtime needs a
-  per-request transaction.
 - **A `docs-examples.test-d.ts` for `@btravstack/http`, `@btravstack/temporal` and
   `@btravstack/amqp`.** `packages/core`'s exists precisely so its two READMEs
   cannot drift from `runtime.ts` / `drain-report.ts` without failing `pnpm

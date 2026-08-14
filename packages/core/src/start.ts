@@ -20,8 +20,26 @@ export type ExitReport = {
   readonly uptimeMs: number;
 };
 
-export type StartOptions<Needs extends AnyPort, Info = never> = {
+export type StartOptions<Needs extends AnyPort, Info = never, UnitX = never, UnitNeeds = never> = {
   readonly runtime: Runtime<Needs, Info>;
+  /**
+   * A module forked around **every unit**: its providers are constructed when
+   * a unit opens and torn down when it closes, reading anything the
+   * application context already carries. This is what makes a per-request
+   * scope transparent — the runtime's unit work simply receives the forked
+   * context, and no handler ever calls `Module.forkScope` itself.
+   *
+   * The error channel is pinned to `never`: a unit is already inside the
+   * running application, so a construction failure here has no modeled
+   * channel to land in — it becomes the unit's defect, which each runtime
+   * already answers (an HTTP 500, a dead-letter). Its unmet needs must be
+   * covered by the module's exports (or `Scope`, which the fork opens);
+   * `start`'s gate checks that at the call site.
+   *
+   * Teardown runs while the unit is still open, so a finaliser that logs does
+   * it under the unit's own trace id.
+   */
+  readonly unit?: Module<UnitX, never, UnitNeeds>;
   readonly clock?: Clock;
   readonly signals?: boolean;
   readonly probes?: { readonly port: number } | false;
@@ -76,10 +94,20 @@ export type RunningApp<E, Info = never> = {
  * parameter makes TypeScript defer that parameter's inference and can collapse
  * `X` or `E` to `unknown`. Same shape, and the same reasoning, as di's own
  * UNSATISFIED DEPENDENCIES gate on `Module.scoped`.
+ *
+ * With a `unit` module in play it checks both directions of the fork: the
+ * runtime's needs may draw on the unit's exports as well as the module's —
+ * unit work receives the forked context — and the unit module's own needs
+ * must be covered by the module's exports or `Scope`, which is `forkScope`'s
+ * own gate stated at `start`'s call site, where the parent is actually known.
  */
-export type RuntimeNeedsGate<Needs extends AnyPort, X> = [InstanceType<Needs>] extends [X]
-  ? []
-  : [error: "UNSATISFIED RUNTIME NEEDS", missing: Exclude<InstanceType<Needs>, X>];
+export type RuntimeNeedsGate<Needs extends AnyPort, X, UnitX = never, UnitNeeds = never> = [
+  InstanceType<Needs>,
+] extends [X | UnitX]
+  ? [Exclude<UnitNeeds, X | Scope>] extends [never]
+    ? []
+    : [error: "UNSATISFIED UNIT NEEDS", missing: Exclude<UnitNeeds, X | Scope>]
+  : [error: "UNSATISFIED RUNTIME NEEDS", missing: Exclude<InstanceType<Needs>, X | UnitX>];
 
 // `Module<X, E, Scope>`, not `Module<X, E, never>`: `Needs` sits in covariant
 // position on `Module`, so this accepts a module with no needs at all *and* the
@@ -87,10 +115,10 @@ export type RuntimeNeedsGate<Needs extends AnyPort, X> = [InstanceType<Needs>] e
 // need `Module.scoped` discharges by opening the scope itself. A module with a
 // genuine unmet dependency is rejected here, as di's own gate would reject it.
 // The `gate` rest parameter is a phantom: it never carries a runtime argument.
-export const start = <X, E, Needs extends AnyPort, Info = never>(
+export const start = <X, E, Needs extends AnyPort, Info = never, UnitX = never, UnitNeeds = never>(
   module: Module<X, E, Scope>,
-  options: StartOptions<Needs, Info>,
-  ...gate: RuntimeNeedsGate<Needs, X>
+  options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
+  ...gate: RuntimeNeedsGate<Needs, X, UnitX, UnitNeeds>
 ): RunningApp<E, Info> => {
   void gate;
   const clock = options.clock ?? systemClock;
@@ -317,13 +345,38 @@ export const start = <X, E, Needs extends AnyPort, Info = never>(
 
         // The registry counts and aborts; it knows nothing about contexts. The
         // kernel is what closes over `runtimeCtx` and hands a runtime the
-        // two-argument `RunUnit` its handlers expect. When the `unit` module
-        // lands (deferred, see the end of this plan), the `Module.forkScope`
-        // call goes exactly here, replacing `runtimeCtx` with the fork's context.
+        // two-argument `RunUnit` its handlers expect.
         // An annotation, not an assertion: a future divergence between this
         // adapter and `RunUnit` is reported here rather than absorbed.
+        //
+        // With a `unit` module, every unit runs inside a scope forked over the
+        // application context — constructed as the unit opens, torn down as it
+        // closes, INSIDE `registry.run`, so teardown still sees the unit's
+        // ambient record and the unit is not counted closed until the scope
+        // is. The fork's own gates are proven by `start`'s rest tuple at the
+        // call site; they are invisible in this body, where `X`, `Needs` and
+        // `UnitX` are unresolved type parameters, so the forwarding call goes
+        // through a signature with the phantom tuple already discharged — the
+        // same move `withApp` and `runMain` make on `start` itself. The
+        // work's return union (`AsyncResult | Promise<Result> | Result`) is
+        // normalised by an `async` wrapper exactly as `registry.run` does it.
+        const unit = options.unit;
         const run: RunUnit<Needs> = (meta, work) =>
-          registry.run(meta, (signal) => work(runtimeCtx, signal));
+          registry.run(meta, (signal) => {
+            if (unit === undefined) return work(runtimeCtx, signal);
+
+            const fork = Module.forkScope as <T, Err>(
+              parent: Context<X>,
+              module: Module<UnitX, never, UnitNeeds>,
+              use: (forked: Context<X | UnitX>) => AsyncResult<T, Err>,
+            ) => AsyncResult<T, Err>;
+
+            return fork(ctx, unit, (forked) =>
+              fromSafePromise(
+                (async () => await work(forked as Context<InstanceType<Needs>>, signal))(),
+              ).flatMap((result) => result),
+            ) as ReturnType<typeof work>;
+          });
 
         const host = { ctx: runtimeCtx, run };
 

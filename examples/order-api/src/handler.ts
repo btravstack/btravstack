@@ -1,20 +1,19 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { Module, type Context } from "@btravstack/di";
+import type { Context } from "@btravstack/di";
 import type { FindOrder, Logger, PlaceOrder } from "@btravstack/example-order-application";
 import { RPCHandler } from "@orpc/server/node";
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
-import { RequestModule } from "./request-scope.js";
 import { orderRouter, type ApiContext } from "./router.js";
 
 /**
- * The ports this handler resolves out of the application context. Non-empty on
- * purpose: it is what makes `start`'s arity gate mean something — a module that
- * does not export all three fails to compile at the `start(...)` call, before
- * anything runs. `Logger` is not read here directly; the per-request scope
- * forked below needs it, and a fork can only reach what the parent context
- * carries.
+ * The ports this handler resolves out of the context it is handed. Non-empty
+ * on purpose: it is what makes `start`'s arity gate mean something — a module
+ * that does not export all three fails to compile at the `start(...)` call,
+ * before anything runs. `Logger` is not read here directly; the per-request
+ * `RequestModule` (see `StartOptions.unit` in `main.ts`) needs it, and a fork
+ * can only reach what the parent context carries.
  */
 export type ApiNeeds = typeof PlaceOrder | typeof FindOrder | typeof Logger;
 
@@ -23,9 +22,9 @@ export const PREFIX = "/rpc" as const;
 const handler = new RPCHandler(orderRouter);
 
 /**
- * The application scope belongs to the kernel and holds the database; this
- * layers a per-request scope over it, so a request-scoped provider is torn down
- * with the request and the parent's services are seeded, not rebuilt.
+ * The context arriving here is already the request's own: `main.ts` passes
+ * `RequestModule` as `StartOptions.unit`, so the kernel forks a scope around
+ * every unit and this handler never manages one — it routes.
  *
  * The response is flushed inside this callback because `@btravstack/http`
  * keeps the unit open until the response completes — the obligation the kernel
@@ -38,11 +37,9 @@ export const apiHandler = (
   response: ServerResponse,
   ctx: Context<InstanceType<ApiNeeds>>,
 ): AsyncResult<unknown, never> =>
-  Module.forkScope(ctx, RequestModule, (scope) =>
-    fromSafePromise(
-      handler.handle(request, response, {
-        prefix: PREFIX,
-        context: { scope } satisfies ApiContext,
-      }),
-    ),
+  fromSafePromise(
+    handler.handle(request, response, {
+      prefix: PREFIX,
+      context: { scope: ctx } satisfies ApiContext,
+    }),
   );

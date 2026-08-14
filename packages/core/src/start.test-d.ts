@@ -53,3 +53,52 @@ const needsNothing: Runtime<never> = {
   start: () => OkAsync(serving),
 };
 expectTypeOf(start(AppModule, { runtime: needsNothing })).toEqualTypeOf<RunningApp<never>>();
+
+// The unit half of the gate, isolated: the runtime's needs are satisfied, so
+// only the unit module's unmet `Clock` can be what rejects the call.
+class Span extends Port("GateSpan")<{ readonly note: string }> {}
+
+const ClockyUnit = Module("ClockyUnit")({
+  provides: [
+    Provider(Span)([Clock], {
+      sync: (clock) => ({ note: `${clock.now()}` }),
+      onStop: () => {},
+    }),
+  ],
+  exports: [Span],
+});
+
+// @ts-expect-error -- UNSATISFIED UNIT NEEDS: the unit module reads `Clock`, which the module does not export
+start(AppModule, { runtime: needsGreeting, unit: ClockyUnit });
+
+// The same escape hatch as the runtime half, naming the unit error literal —
+// which is also what pins WHICH branch of the gate rejected the call above.
+start(
+  AppModule,
+  { runtime: needsGreeting, unit: ClockyUnit },
+  "UNSATISFIED UNIT NEEDS",
+  new Clock(),
+);
+
+// A runtime may draw a need from the unit module's exports: `Span` is nowhere
+// in `AppModule`, and the fork is what puts it in front of unit work — so
+// with a unit module whose own needs the module covers, the gate collapses to
+// an ordinary two-argument call.
+const GreetingSpanUnit = Module("GreetingSpanUnit")({
+  provides: [
+    Provider(Span)([Greeting], {
+      sync: (greeting) => ({ note: greeting.text }),
+      onStop: () => {},
+    }),
+  ],
+  exports: [Span],
+});
+
+const needsSpan: Runtime<typeof Span> = {
+  name: "needs-span",
+  needs: [Span],
+  start: () => OkAsync(serving),
+};
+expectTypeOf(start(AppModule, { runtime: needsSpan, unit: GreetingSpanUnit })).toEqualTypeOf<
+  RunningApp<never>
+>();
