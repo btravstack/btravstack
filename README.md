@@ -7,7 +7,7 @@ boot a [`@btravstack/di`](https://github.com/btravstack/di) module into a runnin
 process, and stop it again without losing work.**
 
 [![CI](https://github.com/btravstack/start/actions/workflows/ci.yml/badge.svg)](https://github.com/btravstack/start/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fstart-core.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/start-core)
+[![npm version](https://img.shields.io/npm/v/%40btravstack%2Fcore.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/core)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -28,7 +28,7 @@ never calls `process.exit`.
 ## Install
 
 ```sh
-pnpm add @btravstack/start-core @btravstack/di unthrown
+pnpm add @btravstack/core @btravstack/di unthrown
 ```
 
 `@btravstack/di` and `unthrown` are **peer dependencies** — install all three.
@@ -38,12 +38,7 @@ The kernel itself has no runtime dependencies beyond `node:` builtins.
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
-import {
-  runMain,
-  start,
-  type Runtime,
-  type Serving,
-} from "@btravstack/start-core";
+import { runMain, start, type Runtime, type Serving } from "@btravstack/core";
 import { Ok, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{
@@ -59,7 +54,7 @@ const AppModule = Module("App")({
 
 // A runtime owns the transport; the kernel owns the lifecycle. This one is a
 // timer, so the sample stays self-contained — no published runtime models a
-// timer, and `@btravstack/start-http` would pull in a real dependency this
+// timer, and `@btravstack/http` would pull in a real dependency this
 // sample doesn't need.
 const ticker: Runtime<typeof Greeter> = {
   name: "ticker",
@@ -104,7 +99,7 @@ await runMain(start(AppModule, { runtime: ticker }));
 `start` call, not a boot-time crash.
 
 Every code sample on this page is compiled by
-[`packages/start-core/src/docs-examples.test-d.ts`](./packages/start-core/src/docs-examples.test-d.ts),
+[`packages/core/src/docs-examples.test-d.ts`](./packages/core/src/docs-examples.test-d.ts),
 so a sample that stops compiling fails the build.
 
 ## What it is not
@@ -240,7 +235,7 @@ is accurate without any cooperation from the runtime.
 
 **The kernel never maps an outcome to a transport.** `Result` → HTTP status
 belongs to the handler an application hands the HTTP runtime (oRPC, Hono, a
-bare function — `@btravstack/start-http` itself declines that mapping),
+bare function — `@btravstack/http` itself declines that mapping),
 `Result` → ack/nack/DLQ to the AMQP runtime, `Result` → activity failure to
 the Temporal runtime. The kernel hands back the `Result` and stays out of it.
 
@@ -507,7 +502,7 @@ swallowed: a broken reporter must not take the process down mid-shutdown.
 
 ## Testing
 
-`@btravstack/start-core/testing` ships the deterministic half of the lifecycle.
+`@btravstack/core/testing` ships the deterministic half of the lifecycle.
 
 ```ts
 const drainTest = async (): Promise<void> => {
@@ -558,14 +553,14 @@ verifies.
 ## The runtime map
 
 The `Runtime` contract is the whole of what this package owes the transports.
-Three have shipped. [`@btravstack/start-http`](./packages/start-http): bind, one
+Three have shipped. [`@btravstack/http`](./packages/http): bind, one
 unit per request, a drain that retires busy keep-alive connections, stop —
 routing, middleware and `Result` → HTTP status are deliberately not included,
 see its README's _"What it does not do"_.
-[`@btravstack/start-temporal`](./packages/start-temporal): a Temporal worker,
+[`@btravstack/temporal`](./packages/temporal): a Temporal worker,
 one unit per activity attempt, and a drain that releases the kernel at the
 kernel's deadline rather than Temporal's `shutdownForceTime`.
-[`@btravstack/start-amqp`](./packages/start-amqp): an `amqp-contract` worker,
+[`@btravstack/amqp`](./packages/amqp): an `amqp-contract` worker,
 one unit per delivery, and a drain with exactly one deadline — the library is
 told to wait forever, so there is no second timeout to keep in sync at all.
 The rest are planned, not published:
@@ -581,13 +576,13 @@ lines done well.
 
 ## Documentation
 
-See [`packages/start-core`](./packages/start-core) for the package README,
+See [`packages/core`](./packages/core) for the package README,
 [`examples/`](./examples) for a ten-package clean-architecture application
 booted under three runtimes, each doing what its transport is for: answering (HTTP), orchestrating (Temporal), broadcasting (AMQP), and [`CLAUDE.md`](./CLAUDE.md) for the
 authoritative spec: the theses, the public surface and the conventions. The
 load-bearing invariants with the test that guards each, and the internal design
 notes, live in
-[`packages/start-core/CLAUDE.md`](./packages/start-core/CLAUDE.md).
+[`packages/core/CLAUDE.md`](./packages/core/CLAUDE.md).
 
 ## License
 

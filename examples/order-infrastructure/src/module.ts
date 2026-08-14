@@ -1,5 +1,5 @@
 import { Module } from "@btravstack/di";
-import { OrderRepository, Outbox } from "@btravstack/start-example-order-application";
+import { OrderRepository, Outbox } from "@btravstack/example-order-application";
 
 import { orderDatabaseProvider } from "./database.js";
 import { orderRepositoryProvider } from "./prisma-order-repository.js";

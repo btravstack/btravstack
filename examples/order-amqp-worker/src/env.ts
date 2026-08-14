@@ -1,4 +1,4 @@
-import { describeEnvIssues, port, wholeNumber } from "@btravstack/start-example-order-config";
+import { describeEnvIssues, port, wholeNumber } from "@btravstack/example-order-config";
 import { fromSchema, type SchemaIssues } from "@unthrown/standard-schema";
 import type { Result } from "unthrown";
 import { z } from "zod";

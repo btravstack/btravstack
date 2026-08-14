@@ -1,5 +1,5 @@
 import { Module, type ServiceOf } from "@btravstack/di";
-import { OrderRepository } from "@btravstack/start-example-order-application";
+import { OrderRepository } from "@btravstack/example-order-application";
 import { describe, expect } from "vitest";
 
 import { PersistenceModule } from "./index.js";

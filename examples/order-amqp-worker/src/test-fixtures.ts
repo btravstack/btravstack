@@ -1,14 +1,9 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
+import type { AmqpInfo } from "@btravstack/amqp";
+import { start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import type { AmqpInfo } from "@btravstack/start-amqp";
-import { start, type RunningApp } from "@btravstack/start-core";
-import {
-  Logger,
-  OrderRepository,
-  Outbox,
-  PlaceOrder,
-} from "@btravstack/start-example-order-application";
+import { Logger, OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { expect, type TestAPI } from "vitest";
 
 import { orderAmqpRuntime } from "./amqp-runtime.js";

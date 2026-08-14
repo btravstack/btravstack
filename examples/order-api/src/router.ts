@@ -1,7 +1,7 @@
 import type { Context } from "@btravstack/di";
-import { orderContract, type OrderView } from "@btravstack/start-example-order-api-contract";
-import { FindOrder, PlaceOrder } from "@btravstack/start-example-order-application";
-import type { Order } from "@btravstack/start-example-order-domain";
+import { orderContract, type OrderView } from "@btravstack/example-order-api-contract";
+import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
+import type { Order } from "@btravstack/example-order-domain";
 import { implement } from "@orpc/server";
 import { handlerResult } from "@unthrown/orpc/server";
 import { P } from "unthrown";

@@ -1,5 +1,5 @@
 {
-  "name": "@btravstack/start-example-order-temporal-contract",
+  "name": "@btravstack/example-order-temporal-contract",
   "private": true,
   "description": "The Temporal contract of the clean-architecture example: the workflow, the activity and the errors a caller may branch on, shared by the worker that implements it and any client that starts it",
   "license": "MIT",

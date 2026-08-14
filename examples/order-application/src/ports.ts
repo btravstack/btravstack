@@ -6,7 +6,7 @@ import type {
   OrderNotFound,
   OutOfStock,
   ShippingUnavailable,
-} from "@btravstack/start-example-order-domain";
+} from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
 
 /**

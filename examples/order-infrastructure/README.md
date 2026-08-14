@@ -1,4 +1,4 @@
-# `@btravstack/start-core` example: the order infrastructure layer
+# `@btravstack/core` example: the order infrastructure layer
 
 The adapter side. This layer speaks Prisma, SQLite and P-codes, and its job is
 to make sure none of that vocabulary reaches the layers above it.
@@ -20,7 +20,7 @@ src/test-fixtures.ts            the in-memory database and repository, as Vitest
 A deployment with a durable database runs them **before the process starts**:
 
 ```bash
-DATABASE_URL="file:./orders.db" pnpm --filter @btravstack/start-example-order-infrastructure db:migrate
+DATABASE_URL="file:./orders.db" pnpm --filter @btravstack/example-order-infrastructure db:migrate
 # or, from the root, for every workspace that has migrations:
 pnpm turbo run db:migrate
 ```
@@ -141,5 +141,5 @@ query come back as a defect.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-infrastructure test  # 6 specs
+pnpm --filter @btravstack/example-order-infrastructure test  # 6 specs
 ```

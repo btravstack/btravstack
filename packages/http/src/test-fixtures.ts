@@ -1,0 +1,278 @@
+import type { Server } from "node:http";
+
+import { vi } from "vitest";
+
+/**
+ * Capture the real `http.Server` instances the runtime creates, so the
+ * error-listener tests can assert on the server itself without exposing it
+ * through the shipped `Serving` type just for a test.
+ */
+export const capturedServers: Server[] = [];
+vi.mock("node:http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:http")>();
+  return {
+    ...actual,
+    createServer: (...args: Parameters<typeof actual.createServer>) => {
+      const server = actual.createServer(...args);
+      capturedServers.push(server);
+      return server;
+    },
+  };
+});
+
+import assert from "node:assert/strict";
+import { once } from "node:events";
+import { createServer } from "node:http";
+import { connect, type Socket } from "node:net";
+
+import { currentUnit, start, type RunningApp } from "@btravstack/core";
+import { Module, Port, Provider } from "@btravstack/di";
+import { expect, test } from "vitest";
+
+import { httpRuntime, type HttpHandler, type HttpInfo } from "./http-runtime.js";
+
+/** A port so the runtime's `needs` are non-empty, which is what makes the gate mean something. */
+export class Greeting extends Port("Greeting")<{ readonly text: string }> {}
+
+const AppModule = Module("App")({
+  provides: [Provider(Greeting)({ value: { text: "hello" } })],
+  exports: [Greeting],
+});
+
+type App = RunningApp<never, HttpInfo>;
+
+const noop: HttpHandler<typeof Greeting> = (_request, response, _ctx, _signal) =>
+  new Promise<void>((done) => response.end("ok", () => done()));
+
+export type HttpFixtures = {
+  /**
+   * Starts an app on an ephemeral port and registers its shutdown. Teardown runs
+   * on every exit path, including a failing assertion, and keeps the assertion a
+   * `finally` used to carry: the app exited `Ok`.
+   */
+  readonly serve: (
+    handler?: HttpHandler<typeof Greeting>,
+  ) => Promise<{ readonly app: App; readonly origin: string }>;
+  /** An app started on an explicit port, for the failure paths. Shut down by the fixture. */
+  readonly appOnPort: (port: number) => App;
+  readonly occupied: { readonly appOnTakenPort: App };
+  /** The `http.Server` the runtime just created. Asserted here so a test body cannot pass on an empty capture. */
+  readonly boundServer: () => Server;
+  /** A handler held open until `release()`, so a test can observe a unit in flight. */
+  readonly gate: {
+    readonly handler: HttpHandler<typeof Greeting>;
+    readonly arrived: Promise<void>;
+    readonly release: () => void;
+  };
+  /**
+   * Like `gate`, except the handler flushes its headers before holding — the
+   * state a streamed response is in, and the one `retire`'s `headersSent`
+   * branch exists for. This package's own router never produces it
+   * (`writeHead` and `end` sit adjacent, with nothing async between), but a
+   * handler is free to.
+   */
+  readonly streamedGate: {
+    readonly handler: HttpHandler<typeof Greeting>;
+    readonly arrived: Promise<void>;
+    readonly release: () => void;
+  };
+  /** A handler that records the ambient record the kernel opened for its unit. */
+  readonly traced: {
+    readonly handler: HttpHandler<typeof Greeting>;
+    readonly seen: () => readonly (string | undefined)[];
+  };
+  /**
+   * A raw keep-alive connection held BUSY across a drain. `fetch` cannot express
+   * it: undici owns its pool, and `Connection` is hop-by-hop so it never reaches
+   * the `Response`. Busy is the point — `closeIdleConnections()` reaches every
+   * *idle* connection and no others.
+   */
+  readonly keepAlive: {
+    readonly call: (origin: string) => Promise<{
+      readonly head: () => Promise<string>;
+      /** Resolves once the raw socket itself closes — the observable a header can no longer carry once it is already on the wire. */
+      readonly closed: () => Promise<void>;
+    }>;
+    readonly stoppedAccepting: (origin: string) => Promise<void>;
+  };
+};
+
+export const it = test.extend<HttpFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  serve: async ({}, use) => {
+    const started: App[] = [];
+
+    await use(async (handler = noop) => {
+      const app = start(AppModule, {
+        runtime: httpRuntime({
+          port: 0,
+          hostname: "127.0.0.1",
+          needs: [Greeting],
+          handler,
+        }),
+        signals: false,
+        probes: false,
+        preDrainDelayMs: 0,
+        onEvent: () => {},
+      });
+      started.push(app);
+
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return { app, origin: `http://127.0.0.1:${info.port}` };
+    });
+
+    for (const app of started) {
+      app.stop();
+      await expect(app.exited).toBeOk();
+    }
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  appOnPort: async ({}, use) => {
+    const started: App[] = [];
+
+    await use((port) => {
+      const app = start(AppModule, {
+        runtime: httpRuntime({ port, hostname: "127.0.0.1", needs: [Greeting], handler: noop }),
+        signals: false,
+        probes: false,
+        preDrainDelayMs: 0,
+        onEvent: () => {},
+      });
+      started.push(app);
+      return app;
+    });
+
+    for (const app of started) app.stop();
+  },
+
+  occupied: async ({ appOnPort }, use) => {
+    const blocker = createServer();
+    blocker.on("error", () => {});
+    const port = await new Promise<number>((done) => {
+      blocker.listen(0, "127.0.0.1", () => {
+        const address = blocker.address();
+        done(typeof address === "object" && address !== null ? address.port : 0);
+      });
+    });
+
+    await use({ appOnTakenPort: appOnPort(port) });
+
+    blocker.close();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  boundServer: async ({}, use) => {
+    await use(() => {
+      const server = capturedServers.at(-1);
+      assert.ok(server !== undefined, "the node:http mock did not intercept createServer");
+      return server;
+    });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  gate: async ({}, use) => {
+    let entered!: () => void;
+    const arrived = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let open!: () => void;
+    const held = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+
+    await use({
+      handler: (_request, response, _ctx, _signal) => {
+        entered();
+        return held.then(() => new Promise<void>((done) => response.end("late", () => done())));
+      },
+      arrived,
+      release: () => open(),
+    });
+
+    open();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  streamedGate: async ({}, use) => {
+    let entered!: () => void;
+    const arrived = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let open!: () => void;
+    const held = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+
+    await use({
+      handler: (_request, response, _ctx, _signal) => {
+        response.writeHead(200);
+        entered();
+        return held.then(() => new Promise<void>((done) => response.end("late", () => done())));
+      },
+      arrived,
+      release: () => open(),
+    });
+
+    open();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  traced: async ({}, use) => {
+    const seen: (string | undefined)[] = [];
+    await use({
+      handler: (_request, response, _ctx, _signal) => {
+        seen.push(currentUnit()?.traceId);
+        return new Promise<void>((done) => response.end("ok", () => done()));
+      },
+      seen: () => seen,
+    });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  keepAlive: async ({}, use) => {
+    const opened: Socket[] = [];
+    const portOf = (origin: string): number => Number(new URL(origin).port);
+
+    await use({
+      call: async (origin) => {
+        const socket = connect(portOf(origin), "127.0.0.1");
+        // A raw socket with no `'error'` listener throws on reset, and the drain
+        // under test resets it by design.
+        socket.on("error", () => {});
+        opened.push(socket);
+        await once(socket, "connect");
+
+        let received = "";
+        const head = new Promise<string>((resolve) => {
+          socket.on("data", (chunk: Buffer) => {
+            received += chunk.toString("utf8");
+            const end = received.indexOf("\r\n\r\n");
+            if (end !== -1) resolve(received.slice(0, end));
+          });
+        });
+        const closed = once(socket, "close").then(() => undefined);
+
+        socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n");
+        return { head: () => head, closed: () => closed };
+      },
+      // A fresh connection being refused is the only honest observable: the phase
+      // moves to `"draining"` a tick before `stopAccepting` runs.
+      stoppedAccepting: async (origin) => {
+        const port = portOf(origin);
+        await vi.waitUntil(async () => {
+          const probe = connect(port, "127.0.0.1");
+          const refused = await new Promise<boolean>((resolve) => {
+            probe.once("connect", () => resolve(false));
+            probe.once("error", () => resolve(true));
+          });
+          probe.destroy();
+          return refused;
+        });
+      },
+    });
+
+    for (const socket of opened) socket.destroy();
+  },
+});

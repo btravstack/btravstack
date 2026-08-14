@@ -1,4 +1,4 @@
-# `@btravstack/start-core` example: the order fulfillment worker
+# `@btravstack/core` example: the order fulfillment worker
 
 **What Temporal is for: owning a journey.** This deployment orchestrates a
 **fulfillment saga** — place the order, reserve the stock, arrange the
@@ -6,8 +6,8 @@ shipping — and when a later step answers a permanent no, it walks the earlier
 steps back before answering the caller. The walk-back spans services no one of
 which can own it; a durable workflow is the one place the whole journey exists
 as code, and survives the process that started it. The worker is served by
-[`@btravstack/start-temporal`](../../packages/start-temporal) the way
-`order-api` is served by `@btravstack/start-http`; the contract lives in
+[`@btravstack/temporal`](../../packages/temporal) the way
+`order-api` is served by `@btravstack/http`; the contract lives in
 [`order-temporal-contract`](../order-temporal-contract), because a client that
 starts these workflows needs it and needs none of this.
 
@@ -81,8 +81,8 @@ saga fulfills, both refusals compensate, and the duplicate-order answer
 arrives at the client as a typed contract error it can branch on by name.
 
 ```bash
-pnpm --filter @btravstack/start-example-order-temporal-worker test        # the saga + env specs
-pnpm --filter @btravstack/start-example-order-temporal-worker typecheck   # the needs gate
+pnpm --filter @btravstack/example-order-temporal-worker test        # the saga + env specs
+pnpm --filter @btravstack/example-order-temporal-worker typecheck   # the needs gate
 ```
 
 ## What this deployment deliberately is not

@@ -1,3 +1,4 @@
+import { start } from "@btravstack/core";
 /**
  * The compile-time half of the transport layer: `httpRuntime` declares three
  * ports in `needs`, and `start`'s phantom rest-tuple gate turns a module that
@@ -10,15 +11,14 @@
  * *classes* while di parameterises `Context` by port *instances*.
  */
 import { Module } from "@btravstack/di";
-import { start } from "@btravstack/start-core";
 import {
   ApplicationModule,
   FindOrder,
   Logger,
   PlaceOrder,
-} from "@btravstack/start-example-order-application";
-import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
-import { httpRuntime } from "@btravstack/start-http";
+} from "@btravstack/example-order-application";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { httpRuntime } from "@btravstack/http";
 
 import { apiHandler } from "./handler.js";
 import { OrderApiModule } from "./module.js";

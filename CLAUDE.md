@@ -7,7 +7,7 @@ reasoning behind them. Keep it in sync with the code as the package evolves
 
 ## What this is
 
-`@btravstack/start-core` — the application kernel. It boots a
+`@btravstack/core` — the application kernel. It boots a
 [`@btravstack/di`](https://github.com/btravstack/di) module into a running
 process with one runtime, drains in-flight work on SIGTERM, and closes the
 application scope on every path. It owns three things — the lifecycle state
@@ -20,8 +20,8 @@ throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
 pnpm workspace + turbo monorepo. `packages/` holds four published packages,
-`start` (the kernel), `start-http` (the HTTP runtime), `start-temporal` (the
-Temporal worker runtime) and `start-amqp` (the AMQP consumer runtime);
+`core` (the kernel), `http` (the HTTP runtime), `temporal` (the
+Temporal worker runtime) and `amqp` (the AMQP consumer runtime);
 `examples/` holds ten private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
@@ -65,7 +65,7 @@ hook). User-facing changes need a changeset.
    on the second and a `nonRetryable` typed contract error on the third — and
    no mapping anywhere near the kernel. The third is also where
    `Serving.drain` first meets a transport with real drain semantics of its
-   own — which is why that half now lives in `@btravstack/start-temporal`, the
+   own — which is why that half now lives in `@btravstack/temporal`, the
    package the example consumes: `worker.shutdown()` stops polling immediately and `run()` resolves only
    once the in-flight activity has finished, so `drain` is a genuine wait
    rather than the "stop accepting, nothing left to await" the other two are.
@@ -93,9 +93,9 @@ hook). User-facing changes need a changeset.
    convention with no enforcement. Do not describe it as enforced.
 
 3. **The kernel never maps an outcome to a transport.** `Result` → HTTP status
-   belongs to the handler an application hands `@btravstack/start-http`
+   belongs to the handler an application hands `@btravstack/http`
    (oRPC, Hono, a bare function) — the package itself declines that mapping,
-   deliberately — `Result` → activity failure to `-temporal`, likewise. `-amqp`
+   deliberately — `Result` → activity failure to `@btravstack/temporal`, likewise. `@btravstack/amqp`
    declines it too, and more starkly: `Result` → ack/nack/DLQ is a **three-way**
    split between `amqp-contract`'s own dispatch and the handler, not something
    either package owns outright. A modeled `RetryableError`/`NonRetryableError`
@@ -175,11 +175,11 @@ hook). User-facing changes need a changeset.
 
 ## Kernel internals
 
-Two sections live in `packages/start-core/CLAUDE.md`, which loads only when you work
+Two sections live in `packages/core/CLAUDE.md`, which loads only when you work
 under that directory: **Load-bearing runtime invariants (tests must guard
 these)** — each invariant with the test that guards it — and **Internal design
 (don't break these)**. Read them before changing anything in
-`packages/start-core/src/`, and update them in the same commit as the code.
+`packages/core/src/`, and update them in the same commit as the code.
 
 ## A known footgun: `start` without `runMain` exits 0 after a crash
 
@@ -234,11 +234,11 @@ started elsewhere.
 
 ## Public surface
 
-`packages/start-core/src/index.ts` is the one place the API is decided. `testing.ts`
-is a second entry point (`@btravstack/start-core/testing`), kept out of the main one
+`packages/core/src/index.ts` is the one place the API is decided. `testing.ts`
+is a second entry point (`@btravstack/core/testing`), kept out of the main one
 so a production bundle never pulls the fakes in.
 
-### `@btravstack/start-core`
+### `@btravstack/core`
 
 - **`start(module, options)` → `RunningApp<E>`** — the entry point. Takes a
   `Module<X, E, Scope>` (not `Module<X, E, never>`: `Needs` is covariant on
@@ -331,7 +331,7 @@ runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
 adapter is composing a different module, which di already documents and the type
 checker already verifies.
 
-### `@btravstack/start-core/testing`
+### `@btravstack/core/testing`
 
 - **`testRuntime(name?)`** — an in-memory `Runtime<never, TestRuntimeInfo>` plus
   `started()`, `untilStarted()` (an `AsyncResult<void, never>`), `accepting()`,
@@ -359,12 +359,12 @@ checker already verifies.
   stopped and rethrown unchanged, so a shutdown defect can never mask the
   assertion that actually failed.
 
-### `@btravstack/start-http`, `@btravstack/start-temporal` and `@btravstack/start-amqp`
+### `@btravstack/http`, `@btravstack/temporal` and `@btravstack/amqp`
 
-Their public surfaces live in `packages/start-http/CLAUDE.md`,
-`packages/start-temporal/CLAUDE.md` and `packages/start-amqp/CLAUDE.md`, which
+Their public surfaces live in `packages/http/CLAUDE.md`,
+`packages/temporal/CLAUDE.md` and `packages/amqp/CLAUDE.md`, which
 load only when you work under those directories — the same split
-`packages/start-core/CLAUDE.md` already uses for the kernel's internals. Read the
+`packages/core/CLAUDE.md` already uses for the kernel's internals. Read the
 one you are changing before you change it, and update it in the same commit as
 the code.
 
@@ -374,7 +374,7 @@ the code.
   ten workspaces run under the same six commands as the kernel — 86 specs
   plus four `needs-gate.test-d.ts` files and four `layering.test-d.ts` ones —
   so an example that stops compiling, stops linting or stops passing fails CI
-  exactly as `packages/start-core` would. Three of the four needs-gate files pin
+  exactly as `packages/core` would. Three of the four needs-gate files pin
   **`start`'s** runtime-needs gate (`order-api`, `order-temporal-worker`,
   `order-amqp-worker`); the fourth, `order-application`'s, pins
   **di's** `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`. They are
@@ -382,9 +382,9 @@ the code.
   A runtime with a **non-empty `needs`** meeting a real module now exercises
   `start`'s phantom rest-tuple gate and `RuntimeHost`'s
   `Context<InstanceType<Needs>>` in two places: here, and in
-  `packages/start-http/src/test-fixtures.ts`'s `Greeting` port / `AppModule`,
+  `packages/http/src/test-fixtures.ts`'s `Greeting` port / `AppModule`,
   driven by its 12 `http-runtime.spec.ts` specs. `examples/` stays the only
-  place the gate is pinned by a **type test** — `start-http` ships no
+  place the gate is pinned by a **type test** — `@btravstack/http` ships no
   `*.test-d.ts`.
 - **`examples/order-temporal-worker` is the one workspace whose suite needs the
   network, and only on a cold cache.** It runs a real `@temporalio/worker`
@@ -407,18 +407,18 @@ the code.
   inject an `actions/cache` step into a reusable workflow's jobs. Closing it
   means adding a cache-path input there, not here; until then every test job
   pays the ~3.5 s download.
-- **`packages/start-amqp` and `examples/order-amqp-worker` are the two workspaces
+- **`packages/amqp` and `examples/order-amqp-worker` are the two workspaces
   whose suites need a Docker daemon**, per the integration-test rule below.
   `@amqp-contract/testing` boots one real RabbitMQ container per vitest run
   (`globalSetup`) — the retry/dead-letter routing this package leans on is the
   broker's own behaviour, not something an in-memory fake or a local binary
-  could stand in for. Measured on this machine: `packages/start-amqp`
+  could stand in for. Measured on this machine: `packages/amqp`
   **17.6 s cold** (image pull included), **7.3–8.0 s warm**; `examples/order-amqp-worker`
   **15.5 s cold**, **4.8–5.6 s warm** — both slower than `order-temporal-worker`'s
   network-cache case, and cold only on a machine that has never pulled
   `rabbitmq:4.2.1-management-alpine` before.
 - **The Prisma client is generated at test time, and there is nothing to
-  install.** `@btravstack/start-example-order-infrastructure`'s `generate`
+  install.** `@btravstack/example-order-infrastructure`'s `generate`
   script writes a gitignored client into `src/generated`, and turbo's `test` /
   `typecheck` / `test:types` tasks carry **both** a `generate` and a
   `^generate` edge — the first so the workspace's own client exists, the second
@@ -440,13 +440,13 @@ the code.
   server), a container when neither does (a broker). State the cost in the
   workspace's README, since a suite that needs a daemon is a fact a contributor
   discovers the hard way otherwise.
-- **`examples/order-temporal-worker` consumes `@btravstack/start-temporal`**, the same
-  way `order-api` consumes `-http`: it supplies the contract, the two ports its
+- **`examples/order-temporal-worker` consumes `@btravstack/temporal`**, the same
+  way `order-api` consumes `@btravstack/http`: it supplies the contract, the two ports its
   activity resolves and the `mapErrCases` triage, and reads `{ taskQueue,
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. It is the second place the
   package's needs gate is a real one.
-- **`examples/order-api` consumes `@btravstack/start-http` rather than
+- **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport.** It supplies only `apiHandler` — the per-request
   `Module.forkScope` and the oRPC router — and reads `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the package's.
@@ -466,9 +466,9 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   `@temporal-contract/testing` and is not installed, because the time-skipping
   server is what that example uses — not because containers are unwelcome.
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
-  dependencies of `start` — the dual-copy hazard is real for both (di's port
-  identity and unthrown's `isResult` each compare across copies). `start-http`
-  peers on both of those plus `@btravstack/start-core` itself, for the same reason.
+  dependencies of `@btravstack/core` — the dual-copy hazard is real for both (di's port
+  identity and unthrown's `isResult` each compare across copies). `@btravstack/http`
+  peers on both of those plus `@btravstack/core` itself, for the same reason.
   `node:` builtins only otherwise. Do not add a dependency.
 - `declarationMap: false` on all four published packages — the published
   tarball has no `src/`, so maps would be dead ends.
@@ -514,7 +514,7 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   a plausible "simplification" (the `teardownErrors` aliasing, the `ready()`
   latch, the monotonic `completed`), which is what the surviving comments are.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
-- Coverage thresholds are 100% lines/functions on `packages/start-core`, with
+- Coverage thresholds are 100% lines/functions on `packages/core`, with
   `testing.ts` excluded (it is a re-export barrel).
 - Test mechanics: `@unthrown/vitest`'s matchers are registered via `setupFiles`
   (`toBeOk`, `toBeOkWith`, `toBeErrTagged`, …). Timing is asserted through
@@ -525,10 +525,10 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
 - Documentation drifts silently, and a sibling repo has already shipped a
   falsehood this way. When the public surface changes, update **this** file,
   both READMEs **and** `docs-examples.test-d.ts` in the same commit — and when
-  the change is to `packages/start-core/src/` internals or the invariants guarding
-  them, `packages/start-core/CLAUDE.md` too — and for a runtime package, its own:
-  `packages/start-http/CLAUDE.md`, `packages/start-temporal/CLAUDE.md` or
-  `packages/start-amqp/CLAUDE.md`, whichever is where that package's public
+  the change is to `packages/core/src/` internals or the invariants guarding
+  them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
+  `packages/http/CLAUDE.md`, `packages/temporal/CLAUDE.md` or
+  `packages/amqp/CLAUDE.md`, whichever is where that package's public
   surface lives. There are **five** `CLAUDE.md` files; naming the wrong one is
   how the last drift happened.
 
@@ -537,7 +537,7 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
 Five rules, each with the reason it exists — binding at two different scopes,
 which is a decision rather than an accident.
 
-**Rules 4 and 5 are substantive and bind everywhere**, `packages/start-core`
+**Rules 4 and 5 are substantive and bind everywhere**, `packages/core`
 included. They are what stops an assertion silently declining to run: a
 conditional or optional-chained `expect` skips without failing the test, and a
 scatter of shallow assertions hides which one is load-bearing. That shape was
@@ -666,15 +666,15 @@ A sixth rule is about production code that tests keep honest:
 - Per-unit ports: the `unit` module wired into `run`'s fork. `RunUnit` is typed
   for it; the `Module.forkScope` call lands when the first runtime needs a
   per-request transaction.
-- **A `docs-examples.test-d.ts` for `start-http`, `start-temporal` and
-  `start-amqp`.** `packages/start-core`'s exists precisely so its two READMEs
+- **A `docs-examples.test-d.ts` for `@btravstack/http`, `@btravstack/temporal` and
+  `@btravstack/amqp`.** `packages/core`'s exists precisely so its two READMEs
   cannot drift from `runtime.ts` / `drain-report.ts` without failing `pnpm
 typecheck`; the three runtime packages' README samples have no such gate
   and are compiled by nothing. Deliberately not built — three packages' worth
   of samples still did not justify the harness. Add it the next time one of
   those samples is found to have drifted, the same way this gap itself was
   found.
-- ~~Bringing `packages/start-core`'s 13 spec files under the Test conventions.~~
+- ~~Bringing `packages/core`'s 13 spec files under the Test conventions.~~
   **Closed by decision, not by doing it.** An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since
   deleted, and zero optional-chained ones — so the sweep would have been

@@ -10,4 +10,4 @@
 // @ts-expect-error — the contract must not be able to reach the server that
 // implements it: order-api-contract does not depend on order-api, so the
 // specifier does not resolve.
-import type {} from "@btravstack/start-example-order-api";
+import type {} from "@btravstack/example-order-api";

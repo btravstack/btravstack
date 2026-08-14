@@ -1,4 +1,4 @@
-# `@btravstack/start-core` example: the order application layer
+# `@btravstack/core` example: the order application layer
 
 The use cases, and the ports they need to run. This layer turns the domain's
 rules into operations — "place an order", "find an order" — and declares, as
@@ -61,10 +61,10 @@ the log line — with no Prisma, no HTTP and no kernel booted.
 
 ## The single kernel touchpoint
 
-`src/logger.ts` imports exactly one thing from `@btravstack/start-core`:
+`src/logger.ts` imports exactly one thing from `@btravstack/core`:
 
 ```ts
-import { currentUnit } from "@btravstack/start-core";
+import { currentUnit } from "@btravstack/core";
 ```
 
 One `Logger` is constructed per scope, but the kernel opens a _unit_ per request
@@ -80,6 +80,6 @@ HTTP server or a worker.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-application test        # 5 specs
-pnpm --filter @btravstack/start-example-order-application test:types  # the needs gate
+pnpm --filter @btravstack/example-order-application test        # 5 specs
+pnpm --filter @btravstack/example-order-application test:types  # the needs gate
 ```

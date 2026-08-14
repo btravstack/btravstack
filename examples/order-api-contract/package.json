@@ -1,5 +1,5 @@
 {
-  "name": "@btravstack/start-example-order-api-contract",
+  "name": "@btravstack/example-order-api-contract",
   "private": true,
   "description": "The oRPC contract of the clean-architecture example: the wire shapes and the declared error codes, shared by the server that implements it and any client that calls it",
   "license": "MIT",

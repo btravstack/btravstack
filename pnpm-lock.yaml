@@ -222,25 +222,25 @@ importers:
       '@amqp-contract/worker':
         specifier: 'catalog:'
         version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.5.0)
+      '@btravstack/amqp':
+        specifier: workspace:*
+        version: link:../../packages/amqp
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@btravstack/di':
         specifier: 'catalog:'
         version: 0.1.0(unthrown@5.5.0)
-      '@btravstack/start-amqp':
-        specifier: workspace:*
-        version: link:../../packages/start-amqp
-      '@btravstack/start-core':
-        specifier: workspace:*
-        version: link:../../packages/start-core
-      '@btravstack/start-example-order-amqp-contract':
+      '@btravstack/example-order-amqp-contract':
         specifier: workspace:*
         version: link:../order-amqp-contract
-      '@btravstack/start-example-order-application':
+      '@btravstack/example-order-application':
         specifier: workspace:*
         version: link:../order-application
-      '@btravstack/start-example-order-config':
+      '@btravstack/example-order-config':
         specifier: workspace:*
         version: link:../order-config
-      '@btravstack/start-example-order-infrastructure':
+      '@btravstack/example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
       '@opentelemetry/api':
@@ -277,30 +277,30 @@ importers:
 
   examples/order-api:
     dependencies:
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@btravstack/di':
         specifier: 'catalog:'
         version: 0.1.0(unthrown@5.5.0)
-      '@btravstack/start-core':
-        specifier: workspace:*
-        version: link:../../packages/start-core
-      '@btravstack/start-example-order-api-contract':
+      '@btravstack/example-order-api-contract':
         specifier: workspace:*
         version: link:../order-api-contract
-      '@btravstack/start-example-order-application':
+      '@btravstack/example-order-application':
         specifier: workspace:*
         version: link:../order-application
-      '@btravstack/start-example-order-config':
+      '@btravstack/example-order-config':
         specifier: workspace:*
         version: link:../order-config
-      '@btravstack/start-example-order-domain':
+      '@btravstack/example-order-domain':
         specifier: workspace:*
         version: link:../order-domain
-      '@btravstack/start-example-order-infrastructure':
+      '@btravstack/example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
-      '@btravstack/start-http':
+      '@btravstack/http':
         specifier: workspace:*
-        version: link:../../packages/start-http
+        version: link:../../packages/http
       '@orpc/client':
         specifier: 'catalog:'
         version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
@@ -369,13 +369,13 @@ importers:
 
   examples/order-application:
     dependencies:
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@btravstack/di':
         specifier: 'catalog:'
         version: 0.1.0(unthrown@5.5.0)
-      '@btravstack/start-core':
-        specifier: workspace:*
-        version: link:../../packages/start-core
-      '@btravstack/start-example-order-domain':
+      '@btravstack/example-order-domain':
         specifier: workspace:*
         version: link:../order-domain
       unthrown:
@@ -462,10 +462,10 @@ importers:
       '@btravstack/di':
         specifier: 'catalog:'
         version: 0.1.0(unthrown@5.5.0)
-      '@btravstack/start-example-order-application':
+      '@btravstack/example-order-application':
         specifier: workspace:*
         version: link:../order-application
-      '@btravstack/start-example-order-domain':
+      '@btravstack/example-order-domain':
         specifier: workspace:*
         version: link:../order-domain
       '@prisma/adapter-better-sqlite3':
@@ -533,30 +533,30 @@ importers:
 
   examples/order-temporal-worker:
     dependencies:
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@btravstack/di':
         specifier: 'catalog:'
         version: 0.1.0(unthrown@5.5.0)
-      '@btravstack/start-core':
-        specifier: workspace:*
-        version: link:../../packages/start-core
-      '@btravstack/start-example-order-application':
+      '@btravstack/example-order-application':
         specifier: workspace:*
         version: link:../order-application
-      '@btravstack/start-example-order-config':
+      '@btravstack/example-order-config':
         specifier: workspace:*
         version: link:../order-config
-      '@btravstack/start-example-order-domain':
+      '@btravstack/example-order-domain':
         specifier: workspace:*
         version: link:../order-domain
-      '@btravstack/start-example-order-infrastructure':
+      '@btravstack/example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
-      '@btravstack/start-example-order-temporal-contract':
+      '@btravstack/example-order-temporal-contract':
         specifier: workspace:*
         version: link:../order-temporal-contract
-      '@btravstack/start-temporal':
+      '@btravstack/temporal':
         specifier: workspace:*
-        version: link:../../packages/start-temporal
+        version: link:../../packages/temporal
       '@temporal-contract/client':
         specifier: 'catalog:'
         version: 8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.5.0)
@@ -604,7 +604,7 @@ importers:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
-  packages/start-amqp:
+  packages/amqp:
     devDependencies:
       '@amqp-contract/contract':
         specifier: 'catalog:'
@@ -615,12 +615,12 @@ importers:
       '@amqp-contract/worker':
         specifier: 'catalog:'
         version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.5.0)
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
       '@btravstack/di':
         specifier: 'catalog:'
         version: 0.1.0(unthrown@5.5.0)
-      '@btravstack/start-core':
-        specifier: workspace:*
-        version: link:../start-core
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0
@@ -652,7 +652,7 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
 
-  packages/start-core:
+  packages/core:
     devDependencies:
       '@btravstack/di':
         specifier: 'catalog:'
@@ -682,14 +682,14 @@ importers:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
-  packages/start-http:
+  packages/http:
     devDependencies:
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
       '@btravstack/di':
         specifier: 'catalog:'
         version: 0.1.0(unthrown@5.5.0)
-      '@btravstack/start-core':
-        specifier: workspace:*
-        version: link:../start-core
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0
@@ -715,14 +715,14 @@ importers:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
 
-  packages/start-temporal:
+  packages/temporal:
     devDependencies:
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
       '@btravstack/di':
         specifier: 'catalog:'
         version: 0.1.0(unthrown@5.5.0)
-      '@btravstack/start-core':
-        specifier: workspace:*
-        version: link:../start-core
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0

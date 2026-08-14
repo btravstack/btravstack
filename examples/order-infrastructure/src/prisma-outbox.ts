@@ -1,5 +1,5 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
-import { Outbox } from "@btravstack/start-example-order-application";
+import { Outbox } from "@btravstack/example-order-application";
 import { P } from "unthrown";
 
 import { OrderDatabase, type OrderDatabaseClient } from "./database.js";

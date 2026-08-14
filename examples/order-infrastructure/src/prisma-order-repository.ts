@@ -1,6 +1,6 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
-import { OrderRepository } from "@btravstack/start-example-order-application";
-import { DuplicateOrder, Order, OrderNotFound } from "@btravstack/start-example-order-domain";
+import { OrderRepository } from "@btravstack/example-order-application";
+import { DuplicateOrder, Order, OrderNotFound } from "@btravstack/example-order-domain";
 import { Err, P, type Result } from "unthrown";
 
 import { OrderDatabase, type OrderDatabaseClient } from "./database.js";

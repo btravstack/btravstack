@@ -4,8 +4,8 @@ import {
   FindOrder,
   Logger,
   PlaceOrder,
-} from "@btravstack/start-example-order-application";
-import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
+} from "@btravstack/example-order-application";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 
 /**
  * The composition root, and the only file in the example that knows both halves

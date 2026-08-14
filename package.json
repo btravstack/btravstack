@@ -1,5 +1,5 @@
 {
-  "name": "@btravstack/start-root",
+  "name": "@btravstack/root",
   "private": true,
   "description": "The application kernel: boot a di module into a running process, and stop it without losing work",
   "license": "MIT",

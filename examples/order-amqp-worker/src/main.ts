@@ -1,4 +1,4 @@
-import { runMain, start } from "@btravstack/start-core";
+import { runMain, start } from "@btravstack/core";
 import { P } from "unthrown";
 
 import { orderAmqpRuntime } from "./amqp-runtime.js";

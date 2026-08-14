@@ -4,7 +4,7 @@ Eleven small packages that are **one application booted four ways**: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
 queue worker, once as a Temporal worker and once as an AMQP consumer, with each
 transport's contract in a package of its own — and, at the same time,
-exercising `@btravstack/start-core` end to end from a consumer's own workspace,
+exercising `@btravstack/core` end to end from a consumer's own workspace,
 `workspace:*` and all.
 
 | Package                                                | Layer     | Shows                                                                                                                                                             |
@@ -16,9 +16,9 @@ exercising `@btravstack/start-core` end to end from a consumer's own workspace,
 | [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                               |
 | [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                                                    |
 | [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client.           |
-| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: a fulfillment saga on `@btravstack/start-temporal` — place, reserve, ship, and compensation in reverse on a permanent no.       |
+| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: a fulfillment saga on `@btravstack/temporal` — place, reserve, ship, and compensation in reverse on a permanent no.             |
 | [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, one subscriber queue with a retry/dead-letter policy — read by the relay and by any subscriber.           |
-| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: a transactional outbox relayed onto RabbitMQ by `@btravstack/start-amqp`'s worker — every committed write becomes an event.         |
+| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: a transactional outbox relayed onto RabbitMQ by `@btravstack/amqp`'s worker — every committed write becomes an event.               |
 
 ## The layering, and which way the arrows point
 
@@ -64,7 +64,7 @@ booting the lot. The api and temporal contracts sat inside
 `order-api/src/contract.ts` and `order-temporal-worker/src/contract.ts` before being
 extracted, so no client could take one without the others until then;
 `order-amqp-contract` started as its own package from the outset, the same
-shape without the detour. None of the three depends on `@btravstack/start-core`, on
+shape without the detour. None of the three depends on `@btravstack/core`, on
 `@btravstack/di`, or on any other example — the transports depend on **them**.
 
 The rule is enforced by the compiler rather than by review: each contract
@@ -157,11 +157,11 @@ runtime declares what _it_ needs. The kernel's own `testRuntime` needs nothing,
 so these four are what exercise `start`'s phantom rest-tuple gate and
 `RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
 _classes_ while di parameterises contexts by port _instances_ — against a real
-module here. `@btravstack/start-http`'s own `AppModule`/`Greeting` fixture
-(`packages/start-http/src/test-fixtures.ts`, driving its 12
+module here. `@btravstack/http`'s own `AppModule`/`Greeting` fixture
+(`packages/http/src/test-fixtures.ts`, driving its 12
 `http-runtime.spec.ts` specs) exercises the same runtime-side path a second
 way now. `examples/` stays the only place the gate is pinned by a **type
-test**: `start-http` ships no `*.test-d.ts`.
+test**: `@btravstack/http` ships no `*.test-d.ts`.
 
 All three directions are pinned, in `order-api/src/needs-gate.test-d.ts`,
 `order-temporal-worker/src/needs-gate.test-d.ts`
@@ -204,7 +204,7 @@ deadline passes is _not_ redelivery, only the release of a report; the broker
 only redelivers once the connection itself drops, which happens when the
 process actually dies, and that is not something a same-process suite can
 observe. See
-[`@btravstack/start-amqp`'s README](../packages/start-amqp/README.md#what-abandonment-costs).
+[`@btravstack/amqp`'s README](../packages/amqp/README.md#what-abandonment-costs).
 
 Where a guarantee is compile-time only — an unmet port, a runtime's `needs` —
 the assertion is a `@ts-expect-error` in a `*.test-d.ts` file, checked by `tsc`

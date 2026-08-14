@@ -1,5 +1,5 @@
 import { Module, Port, Provider } from "@btravstack/di";
-import { Logger } from "@btravstack/start-example-order-application";
+import { Logger } from "@btravstack/example-order-application";
 
 /**
  * A service that exists for the length of one request and is torn down with it.

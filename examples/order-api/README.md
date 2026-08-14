@@ -1,8 +1,8 @@
-# `@btravstack/start-core` example: the order API layer
+# `@btravstack/core` example: the order API layer
 
 The transport. A router implementing
 [`order-api-contract`](../order-api-contract), served over `node:http` under
-the kernel's lifecycle by [`@btravstack/start-http`](../../packages/start-http).
+the kernel's lifecycle by [`@btravstack/http`](../../packages/http).
 The contract itself lives in its own package, because a client needs it and
 needs none of this.
 
@@ -64,11 +64,11 @@ has to decide what a client sees. A `Defect` is never named: it has no code
 because it was never modelled, and collapsing it to a 500 is the correct
 treatment rather than a fallback.
 
-## The transport is `@btravstack/start-http`
+## The transport is `@btravstack/http`
 
 Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, and the trace-id policy all live in
-[`@btravstack/start-http`](../../packages/start-http) now — see its README for
+[`@btravstack/http`](../../packages/http) now — see its README for
 the runtime contract and the guarantee it makes. This example supplies only
 `apiHandler`, the function the package calls once per request, and reads
 `port` back off `Serving.info` the same way any caller of the package does.
@@ -88,7 +88,7 @@ export const apiHandler = (
   );
 ```
 
-The unit's lifetime **is** the response's: `@btravstack/start-http` keeps it
+The unit's lifetime **is** the response's: `@btravstack/http` keeps it
 open until the response completes, so there is no seam for a late write to
 land in. An unmatched or failing call is answered by the package itself
 (`404` NotFound / `500` InternalError), so there is nothing left here to
@@ -128,7 +128,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-api test  # 15 api specs + 6 env specs
+pnpm --filter @btravstack/example-order-api test  # 15 api specs + 6 env specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON

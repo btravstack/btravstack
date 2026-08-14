@@ -1,5 +1,5 @@
 {
-  "name": "@btravstack/start-example-order-amqp-contract",
+  "name": "@btravstack/example-order-amqp-contract",
   "private": true,
   "description": "The AMQP contract of the clean-architecture example: the queue, the retry/dead-letter policy and the message shared by the worker that consumes it and any publisher",
   "license": "MIT",

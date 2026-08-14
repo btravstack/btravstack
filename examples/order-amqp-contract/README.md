@@ -1,4 +1,4 @@
-# `@btravstack/start-core` example: the order AMQP contract
+# `@btravstack/core` example: the order AMQP contract
 
 The AMQP contract — one exchange, one change-stream event (`kind`, `id`,
 `occurredAt`, `payload`, where a null payload is the **tombstone**), one
@@ -27,7 +27,7 @@ kernel.
 ```
 
 `src/layering.test-d.ts` is that sentence as a compile error: it imports
-`@btravstack/start-example-order-amqp-worker` under a `@ts-expect-error`, so the day
+`@btravstack/example-order-amqp-worker` under a `@ts-expect-error`, so the day
 this package gains a dependency on the worker it describes, `test:types` fails
 because the directive stops being used.
 

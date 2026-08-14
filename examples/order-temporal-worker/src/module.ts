@@ -6,8 +6,8 @@ import {
   PlaceOrder,
   ShippingService,
   StockService,
-} from "@btravstack/start-example-order-application";
-import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
+} from "@btravstack/example-order-application";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 
 import { FulfillmentModule } from "./fulfillment.js";
 

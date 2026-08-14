@@ -1,5 +1,5 @@
 {
-  "name": "@btravstack/start-example-order-infrastructure",
+  "name": "@btravstack/example-order-infrastructure",
   "private": true,
   "description": "The outermost layer of the clean-architecture example: a Prisma-backed OrderRepository and the PersistenceModule that closes the application's one unmet need",
   "license": "MIT",
@@ -17,8 +17,8 @@
   },
   "dependencies": {
     "@btravstack/di": "catalog:",
-    "@btravstack/start-example-order-application": "workspace:*",
-    "@btravstack/start-example-order-domain": "workspace:*",
+    "@btravstack/example-order-application": "workspace:*",
+    "@btravstack/example-order-domain": "workspace:*",
     "@prisma/adapter-better-sqlite3": "catalog:",
     "@prisma/client": "catalog:",
     "@unthrown/prisma": "catalog:",

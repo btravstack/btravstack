@@ -1,5 +1,5 @@
 {
-  "name": "@btravstack/start-example-order-domain",
+  "name": "@btravstack/example-order-domain",
   "private": true,
   "description": "The innermost layer of the clean-architecture example: the Order entity, its invariant and the domain errors, modelled with @btravstack/entity",
   "license": "MIT",

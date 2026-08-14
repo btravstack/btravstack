@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { Module, type Context } from "@btravstack/di";
-import type { FindOrder, Logger, PlaceOrder } from "@btravstack/start-example-order-application";
+import type { FindOrder, Logger, PlaceOrder } from "@btravstack/example-order-application";
 import { RPCHandler } from "@orpc/server/node";
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
@@ -27,7 +27,7 @@ const handler = new RPCHandler(orderRouter);
  * layers a per-request scope over it, so a request-scoped provider is torn down
  * with the request and the parent's services are seeded, not rebuilt.
  *
- * The response is flushed inside this callback because `@btravstack/start-http`
+ * The response is flushed inside this callback because `@btravstack/http`
  * keeps the unit open until the response completes — the obligation the kernel
  * cannot check is discharged by the package, not by this code being careful.
  * An unmatched or failing call is answered by the package itself (`404`/`500`),

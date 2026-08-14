@@ -1,5 +1,5 @@
 import { Module, Provider } from "@btravstack/di";
-import { Logger, ShippingService, StockService } from "@btravstack/start-example-order-application";
+import { Logger, ShippingService, StockService } from "@btravstack/example-order-application";
 import { OkAsync } from "unthrown";
 
 /**

@@ -31,7 +31,7 @@ catalog:
   # package.json — the ESM build does not actually honour the optionality, so
   # anything that imports `@amqp-contract/worker` fails to load at all without
   # this installed. Not a `devDependency` alone: a real consumer of
-  # `@btravstack/start-amqp` hits the same load failure.
+  # `@btravstack/amqp` hits the same load failure.
   "@opentelemetry/api": 1.9.1
   # oRPC v2 is still in beta and its `latest` dist-tag is the 1.x line, while
   # `@unthrown/orpc` peers on `^2.0.0-beta` — an unpinned range resolves 1.x
