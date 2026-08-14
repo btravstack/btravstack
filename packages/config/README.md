@@ -15,7 +15,7 @@ value — this package deliberately keeps them apart.
 ## Declaring a port and its env adapter
 
 ```ts
-import { Config } from "@btravstack/config";
+import { Config, type ValueOf } from "@btravstack/config";
 import { Port } from "@btravstack/di";
 import { z } from "zod";
 

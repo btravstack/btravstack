@@ -12,10 +12,14 @@ const isAdapter = (module: AnyModule): module is AnyConfigAdapter => CONFIG_ADAP
 export const collect = (module: AnyModule): readonly AnyConfigAdapter[] => {
   const seen = new Set<AnyModule>();
   const adapters: AnyConfigAdapter[] = [];
+  // A cursor rather than `shift()`: the walk must stay breadth-first so
+  // adapters come back in declaration order — which is the order
+  // `describeIssues` promises an operator — and an index keeps that order
+  // without re-indexing the array on every step.
   const queue: AnyModule[] = [module];
 
-  while (queue.length > 0) {
-    const current = queue.shift();
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const current = queue[cursor];
     if (current === undefined || seen.has(current)) continue;
     seen.add(current);
     if (isAdapter(current)) adapters.push(current);
