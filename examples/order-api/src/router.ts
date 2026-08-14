@@ -3,7 +3,7 @@ import { orderContract, type OrderView } from "@btravstack/example-order-api-con
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
 import { implement } from "@orpc/server";
-import { handlerResult } from "@unthrown/orpc/server";
+import "@unthrown/orpc/extensions/result";
 import { P } from "unthrown";
 
 /**
@@ -22,7 +22,8 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * The transport boundary, and the only place in this example where a domain
  * error becomes something else.
  *
- * `handlerResult` eliminates the `Result`: `Ok` is the output, an `Err` holding
+ * `.result(...)` — `@unthrown/orpc`'s builder extension, patched in by the
+ * import above — eliminates the `Result`: `Ok` is the output, an `Err` holding
  * an `ORPCError` is *returned* (so oRPC marks it inferable and the client gets
  * it typed), and a `Defect` rethrows its cause onto oRPC's own defect path,
  * where it collapses to `INTERNAL_SERVER_ERROR`. The `mapErrCases` in between is
@@ -32,35 +33,31 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  */
 export const orderRouter = os.router({
   orders: {
-    place: os.orders.place.handler(
-      handlerResult(({ context, errors }, input) =>
-        context.scope
-          .get(PlaceOrder)
-          .execute(input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({ message: error.message, data: { id: error.id } }),
-              ),
-          ),
-      ),
-    ),
-    find: os.orders.find.handler(
-      handlerResult(({ context, errors }, input) =>
-        context.scope
-          .get(FindOrder)
-          .execute(input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+    place: os.orders.place.result(({ context, errors }, input) =>
+      context.scope
+        .get(PlaceOrder)
+        .execute(input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({ message: error.message, data: { id: error.id } }),
             ),
+        ),
+    ),
+    find: os.orders.find.result(({ context, errors }, input) =>
+      context.scope
+        .get(FindOrder)
+        .execute(input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
           ),
-      ),
+        ),
     ),
   },
 });

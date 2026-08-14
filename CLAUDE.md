@@ -477,9 +477,13 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. It is the second place the
   package's needs gate is a real one.
 - **`examples/order-api` consumes `@btravstack/http` rather than
-  hand-rolling a transport.** It supplies only `apiHandler` — the oRPC router,
-  no scope management — plus `RequestModule` as `StartOptions.unit`, so the
-  per-request fork is the kernel's; and it reads `port` back off
+  hand-rolling a transport, and its HTTP stack is deliberately ONE way: Hono +
+  oRPC + `@unthrown/orpc`.** The surface itself is a di-provided service —
+  `ApiModule` provides the `ApiHandler` port (a Hono app with oRPC's fetch
+  adapter mounted, built by a provider, never a module-level singleton), the
+  runtime's handler resolves it in one line, and `RequestModule` rides
+  `StartOptions.unit` so the per-request fork is the kernel's. The router uses
+  `@unthrown/orpc`'s `.result()` builder extension. It reads `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the package's.
   This is what makes the package's needs gate a real one: `httpRuntime<Needs>`
   infers `Needs` from the `needs` array the same way a hand-rolled runtime did.

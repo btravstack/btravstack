@@ -15,19 +15,20 @@ import { fromSafePromise, OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
-import { apiHandler, type ApiNeeds } from "./handler.js";
+import { ApiHandler, ApiModule, type ApiNeeds } from "./handler.js";
 import { OrderApiModule } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
 type App<E> = RunningApp<E, HttpInfo>;
 
 /**
- * `X` is pinned to the three ports the runtime declares rather than left
+ * `X` is pinned to the ports every stub composition exports rather than left
  * generic: `start`'s needs gate is a phantom rest parameter proven at the call
  * site, and no proof is available inside a helper generic in the module's own
- * exports.
+ * exports. `Logger` rides along for the gate's OTHER half — `RequestModule`,
+ * passed as `StartOptions.unit`, reads it out of the parent scope.
  */
-type ApiPorts = InstanceType<ApiNeeds>;
+type ApiPorts = InstanceType<ApiNeeds> | Logger;
 
 type ServeOptions = {
   readonly drainTimeoutMs?: number;
@@ -51,8 +52,8 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
  */
 const apiWith = (repository: ServiceOf<OrderRepository>) =>
   Module("StubApi")({
-    imports: [ApplicationModule, persistenceOf(repository)],
-    exports: [PlaceOrder, FindOrder, Logger],
+    imports: [ApplicationModule, persistenceOf(repository), ApiModule],
+    exports: [ApiHandler, PlaceOrder, FindOrder, Logger],
   });
 
 /**
@@ -76,7 +77,7 @@ const tappedApi = () => {
           },
         }),
       ],
-      exports: [PlaceOrder, FindOrder, Logger],
+      exports: [ApiHandler, PlaceOrder, FindOrder, Logger],
     }),
     traces: (): readonly string[] => read().map((line) => line.slice(0, line.indexOf("]") + 1)),
   };
@@ -167,8 +168,8 @@ export const it = test.extend<ApiFixtures>({
         runtime: httpRuntime({
           port: 0,
           hostname: "127.0.0.1",
-          needs: [PlaceOrder, FindOrder, Logger],
-          handler: apiHandler,
+          needs: [ApiHandler, PlaceOrder, FindOrder],
+          handler: (request, response, ctx) => ctx.get(ApiHandler)(request, response, ctx),
         }),
         unit: RequestModule,
         signals: false,

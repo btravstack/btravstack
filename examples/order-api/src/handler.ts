@@ -1,45 +1,79 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import type { Context } from "@btravstack/di";
-import type { FindOrder, Logger, PlaceOrder } from "@btravstack/example-order-application";
-import { RPCHandler } from "@orpc/server/node";
+import { Module, Port, Provider, type Context } from "@btravstack/di";
+import type { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
+import { getRequestListener } from "@hono/node-server";
+import { RPCHandler } from "@orpc/server/fetch";
+import { Hono } from "hono";
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
 import { orderRouter, type ApiContext } from "./router.js";
 
-/**
- * The ports this handler resolves out of the context it is handed. Non-empty
- * on purpose: it is what makes `start`'s arity gate mean something — a module
- * that does not export all three fails to compile at the `start(...)` call,
- * before anything runs. `Logger` is not read here directly; the per-request
- * `RequestModule` (see `StartOptions.unit` in `main.ts`) needs it, and a fork
- * can only reach what the parent context carries.
- */
-export type ApiNeeds = typeof PlaceOrder | typeof FindOrder | typeof Logger;
-
 export const PREFIX = "/rpc" as const;
 
-const handler = new RPCHandler(orderRouter);
+/**
+ * The HTTP surface as a service: `(request, response, scope)` — the node pair
+ * `@btravstack/http` hands over, plus the request's own di `Context`, already
+ * forked by the kernel (`StartOptions.unit`). The handler flushes the response
+ * before its `AsyncResult` settles, which is the one obligation the runtime's
+ * unit-per-request design needs from it.
+ */
+export class ApiHandler extends Port("ApiHandler")<
+  (
+    request: IncomingMessage,
+    response: ServerResponse,
+    scope: Context<PlaceOrder | FindOrder>,
+  ) => AsyncResult<unknown, never>
+> {}
 
 /**
- * The context arriving here is already the request's own: `main.ts` passes
- * `RequestModule` as `StartOptions.unit`, so the kernel forks a scope around
- * every unit and this handler never manages one — it routes.
- *
- * The response is flushed inside this callback because `@btravstack/http`
- * keeps the unit open until the response completes — the obligation the kernel
- * cannot check is discharged by the package, not by this code being careful.
- * An unmatched or failing call is answered by the package itself (`404`/`500`),
- * so there is nothing left here to dispatch or end by hand.
+ * What the runtime resolves out of the request context: the HTTP surface
+ * itself, plus the use cases its procedures read. Non-empty on purpose: it is
+ * what makes `start`'s arity gate mean something — a module that does not
+ * export all three fails to compile at the `runMain(...)` call, before
+ * anything runs.
  */
-export const apiHandler = (
-  request: IncomingMessage,
-  response: ServerResponse,
-  ctx: Context<InstanceType<ApiNeeds>>,
-): AsyncResult<unknown, never> =>
-  fromSafePromise(
-    handler.handle(request, response, {
-      prefix: PREFIX,
-      context: { scope: ctx } satisfies ApiContext,
+export type ApiNeeds = typeof ApiHandler | typeof PlaceOrder | typeof FindOrder;
+
+/**
+ * The transport wiring lives in the graph, not at module scope: the Hono app
+ * and the oRPC handler are built by a provider, so they exist because the
+ * composition root said so, ordered with everything else the graph constructs
+ * — nothing about the HTTP surface is a free-floating singleton.
+ *
+ * Hono owns routing and the fetch idiom; oRPC's fetch adapter is mounted
+ * under `PREFIX`, handed the request's scope through Hono's `Bindings` — so
+ * every procedure reads its use cases out of the request's own di context. An
+ * unmatched path falls through to Hono's 404; a defect inside a procedure is
+ * oRPC's own `INTERNAL_SERVER_ERROR` collapse. `getRequestListener` bridges
+ * the node pair the runtime hands over onto `app.fetch`, per request, because
+ * the scope it must carry is per-request too.
+ */
+export const ApiModule = Module("Api")({
+  provides: [
+    Provider(ApiHandler)({
+      sync: () => {
+        const rpc = new RPCHandler(orderRouter);
+
+        const app = new Hono<{ Bindings: ApiContext }>();
+        app.all(`${PREFIX}/*`, async (c, next) => {
+          const { matched, response } = await rpc.handle(c.req.raw, {
+            prefix: PREFIX,
+            context: c.env,
+          });
+          if (matched) return response;
+          return next();
+        });
+
+        return (request, response, scope) =>
+          fromSafePromise(
+            getRequestListener((raw) => app.fetch(raw, { scope } satisfies ApiContext))(
+              request,
+              response,
+            ),
+          );
+      },
     }),
-  );
+  ],
+  exports: [ApiHandler],
+});

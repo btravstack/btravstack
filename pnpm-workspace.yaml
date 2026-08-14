@@ -35,6 +35,8 @@ catalog:
   # oRPC v2 is still in beta and its `latest` dist-tag is the 1.x line, while
   # `@unthrown/orpc` peers on `^2.0.0-beta` — an unpinned range resolves 1.x
   # and fails `strictPeerDependencies`. The exact beta is the contract.
+  "@hono/node-server": 2.1.1
+  hono: 4.13.2
   "@orpc/client": 2.0.0-beta.23
   "@orpc/contract": 2.0.0-beta.23
   "@orpc/server": 2.0.0-beta.23
@@ -114,3 +116,4 @@ minimumReleaseAgeExclude:
   - "@unthrown/standard-schema@5.5.0"
   - "@unthrown/vitest@5.5.0"
   - "unthrown@5.5.0"
+  - "@hono/node-server@2.1.1"

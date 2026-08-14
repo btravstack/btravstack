@@ -1,19 +1,22 @@
 # `@btravstack/core` example: the order API layer
 
 The transport. A router implementing
-[`order-api-contract`](../order-api-contract), served over `node:http` under
-the kernel's lifecycle by [`@btravstack/http`](../../packages/http).
+[`order-api-contract`](../order-api-contract), mounted on [Hono](https://hono.dev)
+and served under the kernel's lifecycle by
+[`@btravstack/http`](../../packages/http). One stack, all of it in the graph:
+Hono owns routing, oRPC owns the contract, `@unthrown/orpc` owns the `Result`
+bridge, and the whole HTTP surface is a di-provided service.
 The contract itself lives in its own package, because a client needs it and
 needs none of this.
 
 ```
 src/router.ts         the implementation, and the one place a domain error becomes an ORPCError
-src/request-scope.ts  RequestModule — a scope forked per request over the application's
-src/handler.ts        apiHandler — the per-request forkScope, handed to httpRuntime
+src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
+src/handler.ts        ApiModule — the Hono app and the oRPC handler, provided as the ApiHandler port
 src/client.ts         an AsyncResult client for the same contract
 src/module.ts         OrderApiModule — the composition root
 src/env.ts            process.env validated through a schema, as a Result
-src/main.ts           the process: readEnv + start + runMain
+src/main.ts           the process: readEnv + runMain
 src/test-fixtures.ts  serve / clientFor / gate / tapped, as Vitest fixtures
 ```
 
@@ -36,7 +39,8 @@ very same `Result` into typed contract errors over the very same composition
 root, and [`order-amqp-worker`](../order-amqp-worker) by never folding it at a
 consumer at all — its writes broadcast facts instead.
 
-`handlerResult` performs that elimination, and the `mapErrCases` in front of it
+`.result(...)` — `@unthrown/orpc`'s builder extension — performs that
+elimination, and the `mapErrCases` inside it
 is the triage point — the boundary where the application's vocabulary stops:
 
 ```ts
@@ -69,40 +73,37 @@ treatment rather than a fallback.
 Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, and the trace-id policy all live in
 [`@btravstack/http`](../../packages/http) now — see its README for
-the runtime contract and the guarantee it makes. This example supplies only
-`apiHandler`, the function the package calls once per request, and reads
-`port` back off `Serving.info` the same way any caller of the package does.
+the runtime contract and the guarantee it makes. This example supplies the
+`ApiHandler` **port** — the Hono app with oRPC's fetch adapter mounted under
+`/rpc`, built by `ApiModule`'s provider, so even the transport wiring exists
+because the composition root said so — and reads `port` back off
+`Serving.info` the same way any caller of the package does. The runtime's
+handler is one line: resolve the port, call it.
 
 ### One unit per call
 
 ```ts
-export const apiHandler = (
-  request: IncomingMessage,
-  response: ServerResponse,
-  ctx: Context<InstanceType<ApiNeeds>>,
-): AsyncResult<unknown, never> =>
-  Module.forkScope(ctx, RequestModule, (scope) =>
-    fromSafePromise(
-      handler.handle(request, response, { prefix: PREFIX, context: { scope } }),
-    ),
-  );
+handler: (request, response, ctx) => ctx.get(ApiHandler)(request, response, ctx),
 ```
 
-The unit's lifetime **is** the response's: `@btravstack/http` keeps it
-open until the response completes, so there is no seam for a late write to
-land in. An unmatched or failing call is answered by the package itself
-(`404` NotFound / `500` InternalError), so there is nothing left here to
-dispatch or end by hand — `apiHandler` only has to fork the request scope and
-hand the request to oRPC.
+The `ctx` arriving per request is already the request's own — the kernel forked
+it (see below) — and it flows into oRPC as the procedure context, so every
+procedure reads its use cases out of the request's di scope. The unit's
+lifetime **is** the response's: `@btravstack/http` keeps it open until the
+response completes, so there is no seam for a late write to land in. An
+unmatched path is Hono's 404; a defect inside a procedure is oRPC's own
+`INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or end by hand.
 
 ### A request scope over the application scope
 
 The application scope is opened once, by the kernel, and holds the database.
 Opening another per request would give every request its own empty in-memory
-database — so the runtime **forks**: `Module.forkScope` layers a short-lived
-scope over the one already built, and a request-scoped provider reads what the
-parent constructed instead of rebuilding it. `RequestSpan`'s `onStop` runs while
-the unit is still open, which is what gives its line the request's own trace id.
+database — so the **kernel forks**: `RequestModule`, passed as
+`StartOptions.unit`, is layered as a short-lived scope over the one already
+built, per request, and a request-scoped provider reads what the parent
+constructed instead of rebuilding it. `RequestSpan`'s `onStop` runs while the
+unit is still open, which is what gives its line the request's own trace id —
+and no handler code manages any of it.
 
 ## The client half
 
@@ -155,16 +156,16 @@ it reads everything else, as a value:
 ```ts
 await readEnv().match({
   ok: (env) =>
-    runMain(
-      start(OrderApiModule, {
-        runtime: httpRuntime({
-          port: env.PORT,
-          needs: [PlaceOrder, FindOrder, Logger],
-          handler: apiHandler,
-        }),
-        probes: { port: env.PROBE_PORT },
+    runMain(OrderApiModule, {
+      runtime: httpRuntime({
+        port: env.PORT,
+        needs: [ApiHandler, PlaceOrder, FindOrder],
+        handler: (request, response, ctx) =>
+          ctx.get(ApiHandler)(request, response, ctx),
       }),
-    ),
+      unit: RequestModule,
+      probes: { port: env.PROBE_PORT },
+    }),
   errCases: (matcher) =>
     matcher.with(P._, (issues) => abort(describeEnvIssues(issues))),
   defect: (cause) =>

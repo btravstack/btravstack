@@ -1,9 +1,10 @@
 import { start } from "@btravstack/core";
 /**
  * The compile-time half of the transport layer: `httpRuntime` declares three
- * ports in `needs`, and `start`'s phantom rest-tuple gate turns a module that
- * does not export all three into a call-site arity error. Type-checked by this
- * package's `test:types` script, never executed.
+ * ports in `needs` — the HTTP surface itself among them — and `start`'s
+ * phantom rest-tuple gate turns a module that does not export all three into a
+ * call-site arity error. Type-checked by this package's `test:types` script,
+ * never executed.
  *
  * This is the only place in the repo where a runtime with a NON-EMPTY `needs`
  * meets a real module, so it is also what exercises `RuntimeHost`'s
@@ -11,21 +12,20 @@ import { start } from "@btravstack/core";
  * *classes* while di parameterises `Context` by port *instances*.
  */
 import { Module } from "@btravstack/di";
-import {
-  ApplicationModule,
-  FindOrder,
-  Logger,
-  PlaceOrder,
-} from "@btravstack/example-order-application";
+import { ApplicationModule, FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { httpRuntime } from "@btravstack/http";
 
-import { apiHandler } from "./handler.js";
+import { ApiHandler, ApiModule } from "./handler.js";
 import { OrderApiModule } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
 const options = {
-  runtime: httpRuntime({ port: 0, needs: [PlaceOrder, FindOrder, Logger], handler: apiHandler }),
+  runtime: httpRuntime({
+    port: 0,
+    needs: [ApiHandler, PlaceOrder, FindOrder],
+    handler: (request, response, ctx) => ctx.get(ApiHandler)(request, response, ctx),
+  }),
   signals: false,
   probes: false,
 } as const;
@@ -34,18 +34,17 @@ const options = {
 // the gate collapses to an empty tuple and this is an ordinary two-argument call.
 const _wired = start(OrderApiModule, options);
 
-// The same graph, one port short: `Logger` is provided (the interactors depend
-// on it) but not exported, so it is not in the application context the runtime
-// is handed.
-const PartialApi = Module("PartialApi")({
+// The same graph, one port short: `ApiModule` is not imported, so the HTTP
+// surface the runtime resolves is not in the application context.
+const HandlerlessApi = Module("HandlerlessApi")({
   imports: [ApplicationModule, PersistenceModule],
   exports: [PlaceOrder, FindOrder],
 });
 
 // Negative: the gate becomes a required two-element tuple naming the unmet need,
 // and the call fails on arity.
-// @ts-expect-error — UNSATISFIED RUNTIME NEEDS: the module does not export Logger.
-const _missingLogger = start(PartialApi, options);
+// @ts-expect-error — UNSATISFIED RUNTIME NEEDS: the module does not export ApiHandler.
+const _missingHandler = start(HandlerlessApi, options);
 
 // Positive: a `unit` module rides the same gate — `RequestModule` needs
 // `Logger`, which the composition root exports, so the fork the kernel opens
@@ -53,9 +52,13 @@ const _missingLogger = start(PartialApi, options);
 const _withUnit = start(OrderApiModule, { ...options, unit: RequestModule });
 
 // Negative, the OTHER direction: the unit module's own needs must be covered
-// by the module's exports (or `Scope`, which the fork opens). `PartialApi`
-// does not export `Logger`, so this fails both halves of the gate — the
-// runtime half is checked first and names the error, but the call is rejected
-// either way, which is what this pin holds.
-// @ts-expect-error — the module does not export Logger, for the runtime or for RequestModule.
-const _unitOverPartial = start(PartialApi, { ...options, unit: RequestModule });
+// by the module's exports (or `Scope`, which the fork opens). This composition
+// satisfies every runtime need — `ApiModule` is imported — but does not export
+// `Logger`, so only the unit half of the gate can be what rejects the call.
+const UnloggedApi = Module("UnloggedApi")({
+  imports: [ApplicationModule, PersistenceModule, ApiModule],
+  exports: [ApiHandler, PlaceOrder, FindOrder],
+});
+
+// @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.
+const _unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });

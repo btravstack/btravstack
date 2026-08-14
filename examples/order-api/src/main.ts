@@ -1,10 +1,10 @@
 import { runMain } from "@btravstack/core";
-import { FindOrder, Logger, PlaceOrder } from "@btravstack/example-order-application";
+import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import { httpRuntime } from "@btravstack/http";
 import { P } from "unthrown";
 
 import { describeEnvIssues, readEnv, type Env } from "./env.js";
-import { apiHandler } from "./handler.js";
+import { ApiHandler } from "./handler.js";
 import { OrderApiModule } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
@@ -24,8 +24,10 @@ const serve = (env: Env): Promise<void> =>
   runMain(OrderApiModule, {
     runtime: httpRuntime({
       port: env.PORT,
-      needs: [PlaceOrder, FindOrder, Logger],
-      handler: apiHandler,
+      // The HTTP surface is itself a service: the runtime resolves it out of
+      // the request's context along with the use cases it serves.
+      needs: [ApiHandler, PlaceOrder, FindOrder],
+      handler: (request, response, ctx) => ctx.get(ApiHandler)(request, response, ctx),
     }),
     // Forked around every request by the kernel: `RequestSpan` is built as the
     // request opens and torn down as it closes, reading `Logger` out of the

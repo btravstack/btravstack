@@ -23,10 +23,12 @@
     "@btravstack/example-order-domain": "workspace:*",
     "@btravstack/example-order-infrastructure": "workspace:*",
     "@btravstack/http": "workspace:*",
+    "@hono/node-server": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
     "@unthrown/orpc": "catalog:",
     "@unthrown/standard-schema": "catalog:",
+    "hono": "catalog:",
     "unthrown": "catalog:",
     "zod": "catalog:"
   },

@@ -84,7 +84,9 @@ await runMain(AppModule, { runtime: ticker });
 // ---------------------------------------------------------------------------
 // "Per-unit ports" — both READMEs and the root CLAUDE.md. `StartOptions.unit`
 // is forked around every unit; its needs must be covered by the module's
-// exports (or `Scope`, which `onStop` adds and the fork opens).
+// exports, or by `Scope` — which `onStop` puts in the unit module's NEEDS,
+// and which the fork discharges by opening a scope, as `Module.forkScope`
+// always does.
 // ---------------------------------------------------------------------------
 
 class TickSpan extends Port("TickSpan")<{ readonly finish: () => void }> {}
