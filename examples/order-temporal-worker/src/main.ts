@@ -1,4 +1,4 @@
-import { runMain, start } from "@btravstack/core";
+import { runMain } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 import { NativeConnection } from "@temporalio/worker";
@@ -38,23 +38,22 @@ const work = (env: Env): AsyncResult<void, never> =>
   fromSafePromise(NativeConnection.connect({ address: env.TEMPORAL_ADDRESS })).flatMap(
     (connection) =>
       fromSafePromise(
-        runMain(
-          start(OrderTemporalModule, {
-            runtime: temporalWorkerRuntime({
-              contract: orderContract,
-              connection,
-              namespace: env.TEMPORAL_NAMESPACE,
-              workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
-            }),
-            probes: { port: env.PROBE_PORT },
+        runMain(OrderTemporalModule, {
+          runtime: temporalWorkerRuntime({
+            contract: orderContract,
+            connection,
+            namespace: env.TEMPORAL_NAMESPACE,
+            workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
           }),
+          probes: { port: env.PROBE_PORT },
+        })
           // `.finally`, not a `flatTap`: an open `NativeConnection` holds the
           // event loop, so a startup that ends in a defect is exactly the path
           // that must still close it. `runMain`'s bare `Promise` is the one
           // place a native combinator belongs — it is the documented boundary
           // where the Result world ends — and `close` never rejects, so the
           // exit code `runMain` just set survives.
-        ).finally(() => close(connection)),
+          .finally(() => close(connection)),
       ),
   );
 

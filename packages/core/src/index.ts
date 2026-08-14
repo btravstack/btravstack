@@ -8,6 +8,12 @@ export { runMain } from "./run-main.js";
 export { RuntimeStartFailed } from "./runtime.js";
 export type { RunUnit, Runtime, RuntimeHost, Serving } from "./runtime.js";
 export { start } from "./start.js";
-export type { ExitReport, RunningApp, StartOptions, TeardownError } from "./start.js";
+export type {
+  ExitReport,
+  RunningApp,
+  RuntimeNeedsGate,
+  StartOptions,
+  TeardownError,
+} from "./start.js";
 export { currentUnit } from "./units.js";
 export type { UnitMeta, UnitRecord, UnitRegistry, UnitWork } from "./units.js";

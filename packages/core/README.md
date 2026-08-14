@@ -77,12 +77,15 @@ const ticker: Runtime<typeof Greeter> = {
   },
 };
 
-await runMain(start(AppModule, { runtime: ticker }));
+await runMain(AppModule, { runtime: ticker });
 ```
 
+`runMain` is the front door — boot the module, await the exit, set the process
+exit code, one call. `start` is the same boot returning the `RunningApp`
+instead of deciding the process's fate; it is what tests and embedders use.
 The runtime's declared `needs` are checked against the module's exports at
 compile time: booting `ticker` against a module that does not export `Greeter`
-is a type error at the `start` call.
+is a type error at the call.
 
 ## What you get
 

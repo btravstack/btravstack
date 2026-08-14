@@ -1,6 +1,13 @@
+import type { AnyPort, Module, Scope } from "@btravstack/di";
 import { P } from "unthrown";
 
-import type { ExitReport, RunningApp } from "./start.js";
+import {
+  start,
+  type ExitReport,
+  type RunningApp,
+  type RuntimeNeedsGate,
+  type StartOptions,
+} from "./start.js";
 
 // sysexits(3)'s `EX_SOFTWARE`: an internal software error. A defect is exactly
 // that — a failure nobody modelled — so it gets its own code rather than
@@ -38,8 +45,43 @@ const codeFor = (report: ExitReport): number => {
 };
 
 /**
- * Wait for an application to exit and turn its outcome into a process exit
- * code — the one sanctioned place this package decides a process's fate.
+ * The exit-code half of `runMain`, on its own so the code table can be
+ * asserted against hand-built reports without booting a kernel. Exported for
+ * `run-main.spec.ts` only — not part of the public surface (`index.ts` does
+ * not re-export it). An embedder that will not use `runMain` folds
+ * `ExitReport` into a code itself; this is not the API for that, the README's
+ * embedding section is.
+ */
+export const awaitExit = async <E>(
+  // `RunningApp<E, unknown>`, not `RunningApp<E>`: only `exited` is read, and
+  // `Info` is covariant, so this accepts an app whose runtime publishes
+  // anything at all.
+  app: RunningApp<E, unknown>,
+  exit: (code: number) => void,
+): Promise<void> => {
+  const result = await app.exited;
+
+  exit(
+    result.match({
+      ok: codeFor,
+      // `E` is the application's own error type, still unresolved here, so no
+      // arm list can prove exhaustiveness against it and the catch-all is the
+      // only arm that can terminate the match — the generic-`E` case the
+      // wildcard is kept for. Every modeled startup failure means the same
+      // thing to the operating system anyway: the process never came up.
+      // oxlint-disable-next-line unthrown/no-catch-all-pattern -- generic `E`: the catch-all is the only arm that can terminate a match over an unresolved type parameter
+      errCases: (matcher) => matcher.with(P._, () => 1),
+      defect: () => EX_SOFTWARE,
+    }),
+  );
+};
+
+/**
+ * Boot a module and turn its outcome into a process exit code — the front
+ * door, and the one sanctioned place this package decides a process's fate.
+ * `start` composed with the wait for `exited`: use `start` instead when the
+ * `RunningApp` itself is wanted (a test, an embedder, a dev runner booting
+ * two applications — none of which may claim `process.exitCode`).
  *
  * `exit` is injectable and defaults to setting `process.exitCode`: `runMain`
  * never calls `process.exit()`, so pending output is flushed, an embedding
@@ -61,35 +103,34 @@ const codeFor = (report: ExitReport): number => {
  *
  * @example
  * ```ts
- * await runMain(start(AppModule, { runtime: httpRuntime }));
+ * await runMain(AppModule, {
+ *   runtime: httpRuntime({ port: 3000, needs: [Greeting], handler }),
+ * });
  * ```
  */
 // The one async surface in this package that returns a bare `Promise<void>`
 // rather than an `AsyncResult`, deliberately: its whole job is to LEAVE the
 // Result world and become a process exit code. It is the boundary, and a
 // top-level `await runMain(...)` in an entry point is the intended shape.
-export const runMain = async <E>(
-  // `RunningApp<E, unknown>`, not `RunningApp<E>`: `runMain` reads only
-  // `exited`, and `Info` is covariant, so this accepts an app whose runtime
-  // publishes anything at all.
-  app: RunningApp<E, unknown>,
+export const runMain = async <X, E, Needs extends AnyPort, Info = never>(
+  module: Module<X, E, Scope>,
+  options: StartOptions<Needs, Info>,
   exit: (code: number) => void = (code) => {
     process.exitCode = code;
   },
+  // The same phantom gate `start` carries, for the same reason: it makes the
+  // runtime's declared needs a compile-time check at *this* call site.
+  ...gate: RuntimeNeedsGate<Needs, X>
 ): Promise<void> => {
-  const result = await app.exited;
+  void gate;
 
-  exit(
-    result.match({
-      ok: codeFor,
-      // `E` is the application's own error type, still unresolved here, so no
-      // arm list can prove exhaustiveness against it and the catch-all is the
-      // only arm that can terminate the match — the generic-`E` case the
-      // wildcard is kept for. Every modeled startup failure means the same
-      // thing to the operating system anyway: the process never came up.
-      // oxlint-disable-next-line unthrown/no-catch-all-pattern -- generic `E`: the catch-all is the only arm that can terminate a match over an unresolved type parameter
-      errCases: (matcher) => matcher.with(P._, () => 1),
-      defect: () => EX_SOFTWARE,
-    }),
-  );
+  // The gate above proves the needs at the call site, but that proof is not
+  // visible inside a body where `X` and `Needs` are still unresolved type
+  // parameters — the same reason `withApp` discharges the tuple the same way.
+  const boot = start as (
+    module: Module<X, E, Scope>,
+    options: StartOptions<Needs, Info>,
+  ) => RunningApp<E, Info>;
+
+  await awaitExit(boot(module, options), exit);
 };

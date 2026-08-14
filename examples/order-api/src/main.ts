@@ -1,4 +1,4 @@
-import { runMain, start } from "@btravstack/core";
+import { runMain } from "@btravstack/core";
 import { FindOrder, Logger, PlaceOrder } from "@btravstack/example-order-application";
 import { httpRuntime } from "@btravstack/http";
 import { P } from "unthrown";
@@ -20,16 +20,14 @@ import { OrderApiModule } from "./module.js";
  * This file is the shape a real entry point takes.
  */
 const serve = (env: Env): Promise<void> =>
-  runMain(
-    start(OrderApiModule, {
-      runtime: httpRuntime({
-        port: env.PORT,
-        needs: [PlaceOrder, FindOrder, Logger],
-        handler: apiHandler,
-      }),
-      probes: { port: env.PROBE_PORT },
+  runMain(OrderApiModule, {
+    runtime: httpRuntime({
+      port: env.PORT,
+      needs: [PlaceOrder, FindOrder, Logger],
+      handler: apiHandler,
     }),
-  );
+    probes: { port: env.PROBE_PORT },
+  });
 
 /** sysexits(3) `EX_CONFIG`: the deployment is wrong, not the code. */
 const abort = (reason: string): void => {

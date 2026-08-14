@@ -1,9 +1,9 @@
 import { Module, Port, Provider } from "@btravstack/di";
-import { ErrAsync, OkAsync } from "unthrown";
+import { Err, ErrAsync, OkAsync } from "unthrown";
 import { describe, expect, it, vi } from "vitest";
 
 import { createFakeClock } from "./fake-clock.js";
-import { runMain } from "./run-main.js";
+import { awaitExit, runMain } from "./run-main.js";
 import { start, type ExitReport } from "./start.js";
 import { testRuntime } from "./test-runtime.js";
 
@@ -14,9 +14,10 @@ const clean: ExitReport = {
   uptimeMs: 1,
 };
 
-// The kernel's own machinery is irrelevant here: `runMain` reads exactly one
-// thing off a `RunningApp`, so a stub carrying only `exited` is the honest
-// fixture.
+// The kernel's own machinery is irrelevant to the code table: `awaitExit`
+// reads exactly one thing off a `RunningApp`, so a stub carrying only
+// `exited` is the honest fixture. The public `runMain` — which boots the
+// kernel for real — is driven at the end of the suite.
 const appWith = (exited: unknown) => ({ exited, stop: () => {}, phase: () => "exited" }) as never;
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
@@ -26,11 +27,26 @@ const AppModule = Module("App")({
   exports: [Greeting],
 });
 
+const FailingModule = Module("Failing")({
+  provides: [Provider(Greeting)({ make: () => Err("no-config" as const) })],
+  exports: [Greeting],
+});
+
+// `runMain` boots for real, so every call needs the harness options a spec
+// always passes to `start` — fresh each time, since a `testRuntime` is
+// stateful across starts.
+const quiet = () => ({
+  runtime: testRuntime(),
+  signals: false as const,
+  probes: false as const,
+  onEvent: () => {},
+});
+
 describe("runMain", () => {
   it("exits 0 on a clean report", async () => {
     const codes: number[] = [];
 
-    await runMain(appWith(OkAsync(clean)), (code) => codes.push(code));
+    await awaitExit(appWith(OkAsync(clean)), (code) => codes.push(code));
 
     expect(codes).toEqual([0]);
   });
@@ -38,7 +54,7 @@ describe("runMain", () => {
   it("exits 0 when the drain finished with nothing abandoned", async () => {
     const codes: number[] = [];
 
-    await runMain(
+    await awaitExit(
       appWith(
         OkAsync({
           ...clean,
@@ -54,7 +70,7 @@ describe("runMain", () => {
   it("exits 2 when work was abandoned", async () => {
     const codes: number[] = [];
 
-    await runMain(
+    await awaitExit(
       appWith(
         OkAsync({
           ...clean,
@@ -73,7 +89,7 @@ describe("runMain", () => {
     const codes: number[] = [];
 
     // WHEN the outcome is turned into an exit code
-    await runMain(
+    await awaitExit(
       appWith(
         OkAsync({
           ...clean,
@@ -96,7 +112,7 @@ describe("runMain", () => {
     // Installing an `uncaughtException` handler suppresses Node's own default
     // exit code of 1, so without this row a crashed process would report
     // success to its orchestrator.
-    await runMain(appWith(OkAsync({ ...clean, reason: "uncaught" })), (code) => codes.push(code));
+    await awaitExit(appWith(OkAsync({ ...clean, reason: "uncaught" })), (code) => codes.push(code));
 
     expect(codes).toEqual([70]);
   });
@@ -107,7 +123,7 @@ describe("runMain", () => {
     // The uncaught path skips the drain, so a report carrying both is not
     // reachable today — the precedence is asserted so it stays deliberate
     // rather than an accident of the order the conditions happen to be in.
-    await runMain(
+    await awaitExit(
       appWith(
         OkAsync({
           ...clean,
@@ -124,7 +140,7 @@ describe("runMain", () => {
   it("exits 1 on a startup failure", async () => {
     const codes: number[] = [];
 
-    await runMain(appWith(ErrAsync("no-config")), (code) => codes.push(code));
+    await awaitExit(appWith(ErrAsync("no-config")), (code) => codes.push(code));
 
     expect(codes).toEqual([1]);
   });
@@ -132,7 +148,7 @@ describe("runMain", () => {
   it("exits 70 on a defect", async () => {
     const codes: number[] = [];
 
-    await runMain(
+    await awaitExit(
       appWith(
         OkAsync(clean).map(() => {
           // oxlint-disable-next-line unthrown/no-throw -- a `Defect` has no public constructor by design, so a throw caught by a combinator's throw-to-defect net is the only way to hand `runMain` the defect this row asserts
@@ -145,30 +161,53 @@ describe("runMain", () => {
     expect(codes).toEqual([70]);
   });
 
+  // The rows above pin the code table through `awaitExit`; the rest drive the
+  // public `runMain`, which boots the kernel itself. A module whose provider
+  // fails is the cheapest deterministic outcome: `start`'s build stops there,
+  // the runtime never starts, and `exited` settles without a clock or a
+  // signal in sight.
+  it("boots the module it is given and maps its startup failure to 1", async () => {
+    // GIVEN a module whose only provider fails to construct
+    const codes: number[] = [];
+
+    // WHEN the process is run through the front door
+    await runMain(FailingModule, quiet(), (code) => codes.push(code));
+
+    // THEN the modeled Err came back out as the startup exit code — proof the
+    // module and options actually reached `start`
+    expect(codes).toEqual([1]);
+  });
+
   it("sets process.exitCode when no exit callback is supplied", async () => {
+    // GIVEN the default exit sink
     const previous = process.exitCode;
 
-    await runMain(appWith(OkAsync(clean)));
+    // WHEN runMain is called without one
+    await runMain(FailingModule, quiet());
 
-    expect(process.exitCode).toBe(0);
+    // THEN the code landed on process.exitCode itself
+    expect(process.exitCode).toBe(1);
     process.exitCode = previous;
   });
 
   it("never calls process.exit", async () => {
-    const codes: number[] = [];
+    // GIVEN a spy that would catch the one call this package must never make
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
 
-    await runMain(appWith(OkAsync(clean)), (code) => codes.push(code));
+    // WHEN a whole boot-and-exit cycle runs
+    await runMain(FailingModule, quiet(), () => {});
 
+    // THEN the fate was decided through the exit sink alone
     expect(exitSpy).not.toHaveBeenCalled();
     exitSpy.mockRestore();
   });
 
-  // Every case above feeds `runMain` a hand-built report. This one drives a
-  // real application all the way to an abandoned-work drain, so the `2` is
-  // produced by the kernel rather than asserted against a fixture — the whole
-  // chain, from a unit left open at the deadline through `DrainReport` and
-  // `ExitReport` to the exit code.
+  // This one drives a real application all the way to an abandoned-work
+  // drain, so the `2` is produced by the kernel rather than asserted against
+  // a fixture — the whole chain, from a unit left open at the deadline
+  // through `DrainReport` and `ExitReport` to the exit code. It holds the
+  // `RunningApp` to drive the drain, which is exactly the case `start` +
+  // `awaitExit` exist for.
   it("yields 2 from a real application whose drain abandoned work", async () => {
     const codes: number[] = [];
     const clock = createFakeClock();
@@ -188,7 +227,7 @@ describe("runMain", () => {
     await clock.advance(5_000);
     await clock.advance(20_000);
 
-    await runMain(app, (code) => codes.push(code));
+    await awaitExit(app, (code) => codes.push(code));
 
     expect(await app.exited).toBeOkWith(
       expect.objectContaining({ drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 } }),

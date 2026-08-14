@@ -1,6 +1,6 @@
 import type { AnyPort, Module, Scope } from "@btravstack/di";
 
-import { start, type RunningApp, type StartOptions } from "./start.js";
+import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from "./start.js";
 
 /**
  * Start an application, hand it to `use`, and stop it again — whatever `use`
@@ -40,9 +40,7 @@ export const withApp = async <X, E, Needs extends AnyPort, A, Info = never>(
   use: (app: RunningApp<E, Info>) => Promise<A>,
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: [InstanceType<Needs>] extends [X]
-    ? []
-    : [error: "UNSATISFIED RUNTIME NEEDS", missing: Exclude<InstanceType<Needs>, X>]
+  ...gate: RuntimeNeedsGate<Needs, X>
 ): Promise<A> => {
   void gate;
 
