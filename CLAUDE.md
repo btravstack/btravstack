@@ -26,15 +26,15 @@ runtime). `di` was its own repository until it was merged here **with its
 history**; it is the one package that depends on nothing else in this
 workspace, and the dependency runs `core` → `di`, never back. Its own spec is
 `packages/di/CLAUDE.md`.
-`examples/` holds thirteen private ones — a clean-architecture application
+`examples/` holds eleven private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
 each doing what its transport is for — answering, orchestrating,
 broadcasting — with each transport's contract in a package of its own
 (`order-api-contract`, `order-temporal-contract`, `order-amqp-contract`)
 because a client must be able to take a contract without the server, plus the
-container's own three (`hexagonal-order-api`, `request-scope`,
-`plugin-registry`), which compose a `Module` and never call `start`. They are
+container's own `hexagonal-order-api`, which composes a `Module` and never calls
+`start`. They are
 consumers, not fixtures: they are part of the gate, and `examples/README.md`
 is their index.
 
@@ -382,7 +382,7 @@ the code.
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All
-  thirteen workspaces run under the same six commands as the kernel — 94 specs
+  eleven workspaces run under the same six commands as the kernel — 89 specs
   plus four `needs-gate.test-d.ts` files, four `layering.test-d.ts` ones and
   `hexagonal-order-api`'s `index.test-d.ts` —
   so an example that stops compiling, stops linting or stops passing fails CI

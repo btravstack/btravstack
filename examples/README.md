@@ -1,7 +1,6 @@
 # Examples
 
-Thirteen small packages in two families, none of them published, all of them in
-the gate.
+Eleven small packages, none of them published, all of them in the gate.
 
 The **`order-*` ten** are one application booted three ways: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
@@ -9,10 +8,9 @@ Temporal worker and once as an AMQP consumer, with each transport's contract in 
 package of its own — and, at the same time, exercising `@btravstack/core` end to
 end from a consumer's own workspace, `workspace:*` and all.
 
-The **other three** came with `@btravstack/di` and are the container's own: they
-compose a `Module` and never call `start`, which is what keeps them tests of the
-wiring rather than of the lifecycle. They are listed under
-[The container's three](#the-containers-three) below.
+The **eleventh**, [`hexagonal-order-api`](#the-containers-one), came with
+`@btravstack/di` and is the container's own: it composes a `Module` and never
+calls `start`.
 
 | Package                                                | Layer     | Shows                                                                                                                                                             |
 | ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -220,21 +218,29 @@ rather than executed.
 Nothing here is published: every package is `"private": true` and depends on the
 kernel via `workspace:*`.
 
-## The container's three
+## The container's one
 
-These came in with `@btravstack/di` when it was merged into this repository, and
-they are about wiring rather than lifecycle: each composes a `Module` and asserts
-what the container did, without booting a process.
+[`hexagonal-order-api`](./hexagonal-order-api) came in with `@btravstack/di` when
+it was merged into this repository, and it is about wiring rather than lifecycle:
+it composes a `Module` and asserts what the container did, without booting a
+process — ports named by the application, a private internal beside a public
+surface, and one application module composed against a production adapter and an
+in-memory one.
 
-| Package                                        | Shows                                                                                                                                                                              |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`hexagonal-order-api`](./hexagonal-order-api) | The core story: ports named by the application, a private internal beside a public surface, and one application module composed against a production adapter and an in-memory one. |
-| [`request-scope`](./request-scope)             | Lifetime management: a pool acquired once under `Module.scoped`, and a `Module.forkScope`'d transaction per request over the built parent.                                         |
-| [`plugin-registry`](./plugin-registry)         | Multi-binding: a `Port.many` set port fed by contributions from two independent modules, collected and run together.                                                               |
+It is here for a second reason, and that one is load-bearing: it is the only
+workspace in the repository that compiles **twice**. Its `typecheck` emits
+declarations under the catalog's `typescript` and re-checks them under
+`typescript-consumer` (5.9.3), because a published package has to be readable by
+the stable line and the two emitters do not agree on everything.
+`src/emit-guards.ts` is the fixture that keeps TS4020 — an unnameable private
+type leaking into an emitted `.d.ts` — from coming back, and it is imported by
+nothing on purpose: it exists to be compiled.
 
-`hexagonal-order-api` is also the one workspace in the repository that compiles
-**twice**: its `typecheck` emits declarations under the catalog's `typescript` and
-re-checks them under `typescript-consumer` (5.9.3), because a published package
-has to be readable by the stable line and the two emitters do not agree on
-everything. `src/emit-guards.ts` is the fixture that keeps TS4020 from coming
-back, and it is imported by nothing on purpose — it exists to be compiled.
+Two siblings came with it and were dropped in the same merge. `request-scope`
+(a pool under `Module.scoped`, a transaction forked per request) is covered by
+`packages/di/src/fork.spec.ts` and, in a real application, by
+[`order-api`](./order-api)'s own per-request scope; `plugin-registry` (a
+`Port.many` set port fed by two modules) is covered by
+`packages/di/src/many.spec.ts`. Neither asserted anything the container's own
+suite did not already pin, and an example that proves nothing new is an
+illustration — which is what this directory is not.

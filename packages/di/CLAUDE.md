@@ -85,14 +85,17 @@ of unnameable private types (the TS4020 class of bug). It is the only workspace
 here that compiles twice, and the only reason the `typescript-consumer` catalog
 entry exists.
 
-### The three examples that came with it
+### The one example that came with it
 
-`examples/hexagonal-order-api`, `examples/plugin-registry` and
-`examples/request-scope` exercise the container from a real consumer workspace
-(`workspace:*`, own `unthrown` dep since it's a peer) and predate the kernel —
-they boot a `Module` and never call `start`, which is what makes them the
-container's own tests rather than the framework's. The `order-*` examples are the
-kernel's; both families are in the same gate.
+`examples/hexagonal-order-api` exercises the container from a real consumer
+workspace (`workspace:*`, own `unthrown` dep since it's a peer) and predates the
+kernel — it composes a `Module` and never calls `start`, which is what makes it
+the container's own test rather than the framework's. It survived the merge on
+the declaration-emit guard above; `plugin-registry` and `request-scope` did not,
+because `many.spec.ts` and `fork.spec.ts` already pin what they asserted (and
+`order-api` forks a real per-request scope besides). If a set-port or
+forked-scope example is ever wanted again, write it from those specs rather than
+restoring a workspace whose tests were duplicates.
 
 ## Binding design rules
 
