@@ -7,8 +7,8 @@ reasoning behind them. Keep it in sync with the code as the package evolves
 
 ## What this is
 
-`@btravstack/core` — the application kernel. It boots a
-[`@btravstack/di`](https://github.com/btravstack/di) module into a running
+`@btravstack/core` — the application kernel. It boots a `@btravstack/di` module
+into a running
 process with one runtime, drains in-flight work on SIGTERM, and closes the
 application scope on every path. It owns three things — the lifecycle state
 machine, the unit-of-work registry, and the `Runtime` contract — and knows
@@ -19,16 +19,22 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds four published packages,
-`core` (the kernel), `http` (the HTTP runtime), `temporal` (the
-Temporal worker runtime) and `amqp` (the AMQP consumer runtime);
-`examples/` holds ten private ones — a clean-architecture application
+pnpm workspace + turbo monorepo. `packages/` holds five published packages,
+`di` (the container), `core` (the kernel), `http` (the HTTP runtime),
+`temporal` (the Temporal worker runtime) and `amqp` (the AMQP consumer
+runtime). `di` was its own repository until it was merged here **with its
+history**; it is the one package that depends on nothing else in this
+workspace, and the dependency runs `core` → `di`, never back. Its own spec is
+`packages/di/CLAUDE.md`.
+`examples/` holds eleven private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
 each doing what its transport is for — answering, orchestrating,
 broadcasting — with each transport's contract in a package of its own
 (`order-api-contract`, `order-temporal-contract`, `order-amqp-contract`)
-because a client must be able to take a contract without the server. They are
+because a client must be able to take a contract without the server, plus the
+container's own `hexagonal-order-api`, which composes a `Module` and never calls
+`start`. They are
 consumers, not fixtures: they are part of the gate, and `examples/README.md`
 is their index.
 
@@ -180,6 +186,11 @@ under that directory: **Load-bearing runtime invariants (tests must guard
 these)** — each invariant with the test that guards it — and **Internal design
 (don't break these)**. Read them before changing anything in
 `packages/core/src/`, and update them in the same commit as the code.
+
+The container's internals are in `packages/di/CLAUDE.md`, on the same terms.
+Read it before changing anything in `packages/di/src/` — its comments are
+regression guards measured against a specific TypeScript version, and it is the
+one package here whose type-level behaviour is the product.
 
 ## A known footgun: `start` without `runMain` exits 0 after a crash
 
@@ -371,8 +382,9 @@ the code.
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All
-  ten workspaces run under the same six commands as the kernel — 86 specs
-  plus four `needs-gate.test-d.ts` files and four `layering.test-d.ts` ones —
+  eleven workspaces run under the same six commands as the kernel — 89 specs
+  plus four `needs-gate.test-d.ts` files, four `layering.test-d.ts` ones and
+  `hexagonal-order-api`'s `index.test-d.ts` —
   so an example that stops compiling, stops linting or stops passing fails CI
   exactly as `packages/core` would. Three of the four needs-gate files pin
   **`start`'s** runtime-needs gate (`order-api`, `order-temporal-worker`,
@@ -469,15 +481,19 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   dependencies of `@btravstack/core` — the dual-copy hazard is real for both (di's port
   identity and unthrown's `isResult` each compare across copies). `@btravstack/http`
   peers on both of those plus `@btravstack/core` itself, for the same reason.
-  `node:` builtins only otherwise. Do not add a dependency.
-- `declarationMap: false` on all four published packages — the published
+  `node:` builtins only otherwise. Do not add a dependency. `@btravstack/di`
+  living in this workspace does **not** change that: it is linked with
+  `workspace:*` in `devDependencies` and stays `^0.1.0` in `peerDependencies`,
+  so a consumer still installs one copy of it themselves. `di` itself peers on
+  `unthrown` and depends on nothing.
+- `declarationMap: false` on all five published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All four published packages claim `engines: { node: ">=20" }` while the root
+- All five published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -529,7 +545,8 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
   `packages/http/CLAUDE.md`, `packages/temporal/CLAUDE.md` or
   `packages/amqp/CLAUDE.md`, whichever is where that package's public
-  surface lives. There are **five** `CLAUDE.md` files; naming the wrong one is
+  surface lives — or `packages/di/CLAUDE.md` for the container.
+  There are **six** `CLAUDE.md` files; naming the wrong one is
   how the last drift happened.
 
 ## Test conventions

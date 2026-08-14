@@ -3,7 +3,7 @@
 # start
 
 **The application kernel for [TypeScript](https://www.typescriptlang.org/) —
-boot a [`@btravstack/di`](https://github.com/btravstack/di) module into a running
+boot a [`@btravstack/di`](./packages/di) module into a running
 process, and stop it again without losing work.**
 
 [![CI](https://github.com/btravstack/start/actions/workflows/ci.yml/badge.svg)](https://github.com/btravstack/start/actions/workflows/ci.yml)
@@ -577,8 +577,9 @@ lines done well.
 ## Documentation
 
 See [`packages/core`](./packages/core) for the package README,
+[`packages/di`](./packages/di) for the container this all sits on,
 [`examples/`](./examples) for a ten-package clean-architecture application
-booted under three runtimes, each doing what its transport is for: answering (HTTP), orchestrating (Temporal), broadcasting (AMQP), and [`CLAUDE.md`](./CLAUDE.md) for the
+booted under three runtimes, each doing what its transport is for: answering (HTTP), orchestrating (Temporal), broadcasting (AMQP) — plus the container's own three — and [`CLAUDE.md`](./CLAUDE.md) for the
 authoritative spec: the theses, the public surface and the conventions. The
 load-bearing invariants with the test that guards each, and the internal design
 notes, live in

@@ -1,15 +1,16 @@
 {
-  "name": "@btravstack/temporal",
-  "version": "0.0.0",
-  "description": "The Temporal worker runtime for @btravstack/core: one unit per activity attempt, and a drain that honours the kernel's deadline",
+  "name": "@btravstack/di",
+  "version": "0.1.0",
+  "description": "A module-based dependency-injection container for TypeScript: ports as the vocabulary an application defines, providers bound at one edge, and modules that declare their imports and exports",
   "keywords": [
-    "graceful-shutdown",
-    "lifecycle",
-    "runtime",
-    "temporal",
+    "container",
+    "dependency-injection",
+    "di",
+    "hexagonal-architecture",
+    "inversion-of-control",
+    "ports-and-adapters",
     "typescript",
-    "unthrown",
-    "worker"
+    "unthrown"
   ],
   "homepage": "https://github.com/btravstack/start#readme",
   "bugs": {
@@ -20,7 +21,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/btravstack/start.git",
-    "directory": "packages/temporal"
+    "directory": "packages/di"
   },
   "files": [
     "dist"
@@ -46,36 +47,21 @@
   "scripts": {
     "build": "tsdown src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsdown src/index.ts --format cjs,esm --dts --watch",
-    "test": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "test": "vitest run",
+    "test:types": "tsc --noEmit -p tsconfig.test-d.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
-    "@btravstack/core": "workspace:*",
-    "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
-    "@temporal-contract/contract": "catalog:",
-    "@temporal-contract/worker": "catalog:",
-    "@temporalio/activity": "catalog:",
-    "@temporalio/client": "catalog:",
-    "@temporalio/common": "catalog:",
-    "@temporalio/testing": "catalog:",
-    "@temporalio/worker": "catalog:",
-    "@temporalio/workflow": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unthrown": "catalog:",
-    "vitest": "catalog:",
-    "zod": "catalog:"
+    "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@btravstack/core": "workspace:^",
-    "@btravstack/di": "^0.1.0",
-    "@temporalio/activity": "^1.22.0",
-    "@temporalio/common": "^1.22.0",
-    "@temporalio/worker": "^1.22.0",
     "unthrown": "^5.0.0"
   },
   "engines": {
