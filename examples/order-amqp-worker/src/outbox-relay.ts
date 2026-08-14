@@ -1,18 +1,38 @@
 import { TypedAmqpClient } from "@amqp-contract/client";
+import { Config } from "@btravstack/config";
+import { wholeNumber } from "@btravstack/config/zod";
 import type { Context } from "@btravstack/di";
 import { orderContract } from "@btravstack/start-example-order-amqp-contract";
 import { Logger, Outbox } from "@btravstack/start-example-order-application";
 import { P, fromSafePromise, type AsyncResult } from "unthrown";
 
-/** The ports the relay resolves out of the application context. */
-export type RelayNeeds = typeof Outbox | typeof Logger;
+import { amqpConfig } from "./config.js";
 
-export type RelayOptions = {
-  /** The broker URLs the relay's own client connects to. */
-  readonly urls: readonly string[];
-  /** How long to sleep when a sweep finds the outbox empty. */
-  readonly pollMs: number;
-};
+/**
+ * The relay's own knob, declared next to the loop it tunes rather than in a
+ * central file every consumer has to know about: the shape, the bound and the
+ * default live with the code that gives them meaning.
+ *
+ * The identity and the prefix differ on purpose — the thing is the outbox
+ * relay, the variable an operator sets is `OUTBOX_POLL_MS`, and
+ * `options.prefix` is what lets both stay true at once.
+ */
+export const outboxRelayConfig = Config("OutboxRelay")(
+  { pollMs: wholeNumber(200, 1, 60_000) },
+  { prefix: "OUTBOX" },
+);
+
+/**
+ * The ports the relay resolves out of the application context: the two
+ * application services, and the two configs that tune it. Configuration
+ * arrives the same way `Outbox` does — through di — rather than threaded down
+ * from `main.ts` as constructor arguments.
+ */
+export type RelayNeeds =
+  | typeof Outbox
+  | typeof Logger
+  | typeof amqpConfig
+  | typeof outboxRelayConfig;
 
 /** How many outbox rows one sweep publishes before sleeping. */
 const BATCH = 32;
@@ -36,28 +56,33 @@ const BATCH = 32;
  *
  * **Why the client is created here rather than injected as a port, and why
  * this is not a di provider.** A transport connection is a *runtime* concern
- * in this repo, configured from the environment in `main.ts`: `start-amqp`
- * creates its own `TypedAmqpWorker` inside `Runtime.start` from the same
- * `urls`, and `order-temporal-worker`'s `main.ts` opens its `NativeConnection`
- * the same way. Only `OrderDatabase` is a resourceful provider, because the
- * *application* depends on it — the repository cannot be built without one.
- * Nothing in the application graph depends on this publisher, and a provider
- * exists to be resolved by someone.
+ * in this repo: `start-amqp` creates its own `TypedAmqpWorker` inside
+ * `Runtime.start` from the same URL, and `order-temporal-worker`'s `main.ts`
+ * opens its `NativeConnection` itself. Only `OrderDatabase` is a resourceful
+ * provider, because the *application* depends on it — the repository cannot be
+ * built without one. Nothing in the application graph depends on this
+ * publisher, and a provider exists to be resolved by someone.
+ *
+ * The *address* it connects to is a different question, and the answer is di:
+ * `ctx.get(amqpConfig)` reads the same value the consumer half reads, so the
+ * two halves cannot be pointed at different brokers by a threading mistake in
+ * `main.ts`.
  *
  * It is not a second connection, either: `@amqp-contract/core`'s
  * `ConnectionManagerSingleton` pools by URL and reference-counts leases, so
  * this client and the consumer's worker share one TCP connection and
- * `client.close()` releases a lease rather than closing the socket. What the
- * relay *does* take from di is everything the application owns — `Outbox` and
- * `Logger`, resolved from `ctx` — which is the boundary that matters.
+ * `client.close()` releases a lease rather than closing the socket.
  */
 export const startOutboxRelay = (
   ctx: Context<InstanceType<RelayNeeds>>,
-  { urls, pollMs }: RelayOptions,
 ): AsyncResult<{ readonly stop: () => AsyncResult<void, never> }, never> =>
-  TypedAmqpClient.create({ contract: orderContract, urls: [...urls] }).map((client) => {
+  TypedAmqpClient.create({
+    contract: orderContract,
+    urls: [ctx.get(amqpConfig).url],
+  }).map((client) => {
     const outbox = ctx.get(Outbox);
     const logger = ctx.get(Logger);
+    const { pollMs } = ctx.get(outboxRelayConfig);
 
     let stopped = false;
     let wake: (() => void) | undefined;

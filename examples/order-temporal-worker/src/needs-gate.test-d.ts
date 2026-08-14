@@ -8,18 +8,19 @@
  * claim testable rather than asserted: three runtimes with non-empty `needs`,
  * all proven against the same application graph at the `start(...)` call site.
  */
+import { Config } from "@btravstack/config";
 import { Module } from "@btravstack/di";
 import { start } from "@btravstack/start-core";
 import {
   ApplicationModule,
   FindOrder,
-  Logger,
   PlaceOrder,
 } from "@btravstack/start-example-order-application";
 import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
 import { orderContract } from "@btravstack/start-example-order-temporal-contract";
 import type { NativeConnection } from "@temporalio/worker";
 
+import { temporalConfig } from "./config.js";
 import { OrderTemporalModule } from "./module.js";
 import { temporalWorkerRuntime } from "./temporal-runtime.js";
 
@@ -37,17 +38,18 @@ const options = {
   probes: false,
 } as const;
 
-// Positive: the composition root exports both ports the runtime needs (and a
-// third it does not), so the gate collapses to an empty tuple and this is an
-// ordinary two-argument call.
+// Positive: the composition root exports every port the runtime needs — the
+// five application ones and its config — so the gate collapses to an empty
+// tuple and this is an ordinary two-argument call.
 const _wired = start(OrderTemporalModule, options);
 
 // The same graph, one port short: `Logger` is provided (the interactors depend
 // on it) but not exported, so it is not in the application context the runtime
-// is handed.
+// is handed. `temporalConfig` *is* exported, so the gate can only be answering
+// about a genuinely missing application port.
 const PartialTemporal = Module("PartialTemporal")({
-  imports: [ApplicationModule, PersistenceModule],
-  exports: [PlaceOrder, FindOrder],
+  imports: [ApplicationModule, PersistenceModule, temporalConfig, Config.source(process.env)],
+  exports: [PlaceOrder, FindOrder, temporalConfig],
 });
 
 // Negative: the gate becomes a required two-element tuple naming the unmet need,

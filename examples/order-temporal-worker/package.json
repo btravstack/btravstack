@@ -15,10 +15,10 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "dependencies": {
+    "@btravstack/config": "workspace:*",
     "@btravstack/di": "catalog:",
     "@btravstack/start-core": "workspace:*",
     "@btravstack/start-example-order-application": "workspace:*",
-    "@btravstack/start-example-order-config": "workspace:*",
     "@btravstack/start-example-order-domain": "workspace:*",
     "@btravstack/start-example-order-infrastructure": "workspace:*",
     "@btravstack/start-example-order-temporal-contract": "workspace:*",
@@ -28,7 +28,6 @@
     "@temporalio/client": "catalog:",
     "@temporalio/worker": "catalog:",
     "@temporalio/workflow": "catalog:",
-    "@unthrown/standard-schema": "catalog:",
     "unthrown": "catalog:",
     "zod": "catalog:"
   },

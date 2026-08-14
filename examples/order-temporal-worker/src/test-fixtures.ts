@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { Config } from "@btravstack/config";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { start, type RunningApp } from "@btravstack/start-core";
 import {
@@ -30,6 +31,7 @@ import type { TestWorkflowEnvironment } from "@temporalio/testing";
 import { ErrAsync, OkAsync } from "unthrown";
 import { expect } from "vitest";
 
+import { temporalConfig } from "./config.js";
 import { FulfillmentModule } from "./fulfillment.js";
 import { temporalWorkerRuntime } from "./temporal-runtime.js";
 
@@ -59,12 +61,18 @@ mkdirSync(downloadDir, { recursive: true });
 type App<E> = RunningApp<E, TemporalInfo>;
 
 /**
- * `X` is pinned to the five ports the composition root exports rather than
- * left generic: `start`'s needs gate is a phantom rest parameter proven at the
+ * `X` is pinned to the ports the composition root exports rather than left
+ * generic: `start`'s needs gate is a phantom rest parameter proven at the
  * call site, and no proof is available inside a helper generic in the module's
  * own exports.
  */
-type TemporalPorts = PlaceOrder | OrderRepository | StockService | ShippingService | Logger;
+type TemporalPorts =
+  | PlaceOrder
+  | OrderRepository
+  | StockService
+  | ShippingService
+  | Logger
+  | InstanceType<typeof temporalConfig>;
 
 /** One booted deployment: the kernel's handle, and a client that can reach it. */
 type Deployment<E> = {
@@ -97,17 +105,23 @@ const tapProvider = (capture: (services: ServiceOf<ServicesTap>) => void) =>
 /**
  * A composition root shaped like the real one, with this test's fulfillment
  * module swapped in: same `ApplicationModule`, same `PersistenceModule`, same
- * runtime, same five exported ports, so the orchestration under test is
- * unchanged and only the external services' answers differ.
+ * runtime, same exported ports, so the orchestration under test is unchanged
+ * and only the external services' answers differ.
+ *
+ * Its `Config.source` is an empty record, not `process.env`: the time-skipping
+ * environment serves the `default` namespace, which is `temporalConfig`'s own
+ * default, so what this pins is that a spec supplies the environment as an
+ * ordinary module — and that an ambient variable on a developer's machine
+ * cannot reach into a test.
  */
 const rootWith = (
   fulfillment: typeof FulfillmentModule,
   capture: (services: ServiceOf<ServicesTap>) => void,
 ) =>
   Module("StubTemporal")({
-    imports: [ApplicationModule, PersistenceModule, fulfillment],
+    imports: [ApplicationModule, PersistenceModule, fulfillment, temporalConfig, Config.source({})],
     provides: [tapProvider(capture)],
-    exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger],
+    exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger, temporalConfig],
   });
 
 const deployment = (fulfillment: typeof FulfillmentModule) => {

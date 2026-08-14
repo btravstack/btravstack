@@ -15,18 +15,17 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "dependencies": {
+    "@btravstack/config": "workspace:*",
     "@btravstack/di": "catalog:",
     "@btravstack/start-core": "workspace:*",
     "@btravstack/start-example-order-api-contract": "workspace:*",
     "@btravstack/start-example-order-application": "workspace:*",
-    "@btravstack/start-example-order-config": "workspace:*",
     "@btravstack/start-example-order-domain": "workspace:*",
     "@btravstack/start-example-order-infrastructure": "workspace:*",
     "@btravstack/start-http": "workspace:*",
     "@orpc/client": "catalog:",
     "@orpc/server": "catalog:",
     "@unthrown/orpc": "catalog:",
-    "@unthrown/standard-schema": "catalog:",
     "unthrown": "catalog:",
     "zod": "catalog:"
   },

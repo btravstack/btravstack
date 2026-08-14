@@ -17,15 +17,14 @@
   "dependencies": {
     "@amqp-contract/client": "catalog:",
     "@amqp-contract/worker": "catalog:",
+    "@btravstack/config": "workspace:*",
     "@btravstack/di": "catalog:",
     "@btravstack/start-amqp": "workspace:*",
     "@btravstack/start-core": "workspace:*",
     "@btravstack/start-example-order-amqp-contract": "workspace:*",
     "@btravstack/start-example-order-application": "workspace:*",
-    "@btravstack/start-example-order-config": "workspace:*",
     "@btravstack/start-example-order-infrastructure": "workspace:*",
     "@opentelemetry/api": "catalog:",
-    "@unthrown/standard-schema": "catalog:",
     "unthrown": "catalog:",
     "zod": "catalog:"
   },

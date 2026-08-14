@@ -1,28 +1,38 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
+import { Config } from "@btravstack/config";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import type { AmqpInfo } from "@btravstack/start-amqp";
 import { start, type RunningApp } from "@btravstack/start-core";
 import {
+  ApplicationModule,
   Logger,
   OrderRepository,
   Outbox,
   PlaceOrder,
 } from "@btravstack/start-example-order-application";
+import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
 import { expect, type TestAPI } from "vitest";
 
 import { orderAmqpRuntime } from "./amqp-runtime.js";
-import { OrderAmqpModule } from "./module.js";
+import { amqpConfig } from "./config.js";
+import { outboxRelayConfig } from "./outbox-relay.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
 /**
- * `X` is pinned to the three ports the composition root exports rather than
- * left generic: `start`'s needs gate is a phantom rest parameter proven at the
- * call site, and no proof is available inside a helper generic in the module's
- * own exports. The runtime needs two of them; `PlaceOrder` is the writer's.
+ * `X` is pinned to the ports the composition root exports rather than left
+ * generic: `start`'s needs gate is a phantom rest parameter proven at the call
+ * site, and no proof is available inside a helper generic in the module's own
+ * exports. The runtime needs four of them; `PlaceOrder` is the writer's.
  */
-type AmqpPorts = PlaceOrder | OrderRepository | Outbox | Logger;
+type AmqpPorts =
+  | PlaceOrder
+  | OrderRepository
+  | Outbox
+  | Logger
+  | InstanceType<typeof amqpConfig>
+  | InstanceType<typeof outboxRelayConfig>;
 
 type ServeOptions = { readonly drainTimeoutMs: number };
 
@@ -43,12 +53,32 @@ class ServicesTap extends Port("ServicesTap")<{
   readonly logger: ServiceOf<Logger>;
 }> {}
 
-const tappedAmqp = () => {
+/**
+ * The composition root `OrderAmqpModule` is, with one import swapped: this
+ * test's own `Config.source` in place of `Config.source(process.env)`. The
+ * broker is a per-test vhost and the relay's sweep is tight enough for a test
+ * clock, and neither is a `Provider` stub — the configs parse their own
+ * declared shapes, from a record a spec wrote instead of one the operating
+ * system did.
+ *
+ * Spelled out rather than layered over `OrderAmqpModule`, because two
+ * providers for one port is a wiring bug in di: a graph gets exactly one
+ * `ConfigSource`, and this is the one.
+ */
+const tappedAmqp = (url: string) => {
   let services: ServiceOf<ServicesTap> | undefined;
 
   return {
     module: Module("TappedAmqp")({
-      imports: [OrderAmqpModule],
+      imports: [
+        ApplicationModule,
+        PersistenceModule,
+        amqpConfig,
+        outboxRelayConfig,
+        // Tight on purpose: the specs wait on real broker round trips, and a
+        // production-sized idle sleep would be most of every test's clock.
+        Config.source({ AMQP_URL: url, OUTBOX_POLL_MS: "25" }),
+      ],
       provides: [
         Provider(ServicesTap)([PlaceOrder, OrderRepository, Outbox, Logger], {
           sync: (placeOrder, repository, outbox, logger) => {
@@ -57,7 +87,7 @@ const tappedAmqp = () => {
           },
         }),
       ],
-      exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+      exports: [PlaceOrder, OrderRepository, Outbox, Logger, amqpConfig, outboxRelayConfig],
     }),
     services: (): ServiceOf<ServicesTap> => {
       // oxlint-disable-next-line unthrown/no-throw -- a fixture misused before `serve` is a broken test, and the loudest possible answer is the right one
@@ -82,17 +112,13 @@ export type AmqpFixtures = {
 // since `AmqpTestFixtures` reaches back into amqplib's `Channel` /
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
-  serve: async ({ amqpConnectionUrl }, use) => {
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; the broker URL now reaches the runtime through `tapped`'s config, not through here
+  serve: async ({}, use) => {
     const shutdowns: (() => Promise<void>)[] = [];
 
     const serve: Serve = async (module, options) => {
       const app = start(module, {
-        runtime: orderAmqpRuntime({
-          urls: [amqpConnectionUrl],
-          // Tight on purpose: the specs wait on real broker round trips, and
-          // a production-sized idle sleep would be most of every test's clock.
-          relay: { pollMs: 25 },
-        }),
+        runtime: orderAmqpRuntime(),
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
@@ -113,8 +139,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     for (const shutdown of shutdowns) await shutdown();
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  tapped: async ({}, use) => {
-    await use(tappedAmqp());
+  tapped: async ({ amqpConnectionUrl }, use) => {
+    await use(tappedAmqp(amqpConnectionUrl));
   },
 });

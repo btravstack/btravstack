@@ -1,6 +1,16 @@
 {
   "extends": "@btravstack/tsconfig/base.json",
   "compilerOptions": {
+    // Off, with `declarationMap`, because this package emits no declarations
+    // at all — it is source-only, `main` points at `src/`, and nothing ever
+    // consumes a `.d.ts` of it. The check they enable is real elsewhere and
+    // unmeetable here: a composition root that exports a `@btravstack/config`
+    // value emits `Module<InstanceType<typeof someConfig> | …>`, which reduces
+    // to `@btravstack/di`'s `PortInstance` — deliberately unexported, so a port
+    // instance cannot be hand-forged, and therefore unnameable by an emitted
+    // declaration. See `packages/config/src/slice.ts`'s `DeclaredConfig`.
+    "declaration": false,
+    "declarationMap": false,
     "noEmit": true,
     "types": ["node"],
     // Inherited from the persistence layer this package composes: the generated

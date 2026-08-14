@@ -21,6 +21,8 @@ import {
 import type { NativeConnection } from "@temporalio/worker";
 import { P } from "unthrown";
 
+import { temporalConfig } from "./config.js";
+
 /**
  * How long an activity that is *cancellation-aware* gets to notice the
  * shutdown. Set explicitly because Temporal's default is `0`, and cancelling
@@ -46,19 +48,30 @@ const SHUTDOWN_FORCE = "15 seconds";
 
 /**
  * The ports this runtime resolves out of the application context — one per
- * concern the saga's activities touch. `FindOrder` is not among them, and a
- * runtime declares what *it* needs rather than what the module happens to
- * export.
+ * concern the saga's activities touch, plus the config carrying the namespace
+ * it polls in. `FindOrder` is not among them, and a runtime declares what *it*
+ * needs rather than what the module happens to export.
+ *
+ * A config is a need like any other port, which is the point: `start` proves
+ * at the call site that the graph carries it, so a deployment that forgot to
+ * import `temporalConfig` fails to compile rather than to boot.
+ *
+ * One array, two uses — the union below is read off it, so the declared needs
+ * and the type the activities see cannot drift apart.
  *
  * Non-empty on purpose: it is what makes `start`'s arity gate mean something
  * (`src/needs-gate.test-d.ts` pins both directions).
  */
-type TemporalNeeds =
-  | typeof PlaceOrder
-  | typeof OrderRepository
-  | typeof StockService
-  | typeof ShippingService
-  | typeof Logger;
+const temporalNeeds = [
+  PlaceOrder,
+  OrderRepository,
+  StockService,
+  ShippingService,
+  Logger,
+  temporalConfig,
+] as const;
+
+type TemporalNeeds = (typeof temporalNeeds)[number];
 
 /**
  * A `Runtime` serving the order application as a Temporal worker — and, since
@@ -76,6 +89,16 @@ type TemporalNeeds =
  * from the middleware's own type, and infers nothing from a generic call it is
  * still resolving, so writing it bare would leave `context` empty inside the
  * implementation below.
+ *
+ * The **namespace** used to be a parameter, read from the environment in
+ * `main.ts` and threaded down. It is configuration, and a runtime is handed a
+ * `Context` at `start`, so it reads `temporalConfig` out of the graph itself.
+ * The connection is not configuration and stays a parameter — see below.
+ *
+ * That is why the package's runtime is built **inside** `start`, and why
+ * `name` and `needs` are stated here rather than forwarded from it: those two
+ * have to be answerable before a context exists. `"temporal"` is
+ * `@btravstack/start-temporal`'s own name for itself.
  */
 export const temporalWorkerRuntime = ({
   contract,
@@ -88,40 +111,44 @@ export const temporalWorkerRuntime = ({
    */
   readonly contract: OrderContract;
   /**
-   * An open connection to the Temporal service. Handed in rather than opened
-   * here, exactly as the queue runtime is handed its broker: `main.ts` builds
-   * one from the environment, and a spec passes the test environment's.
+   * An open connection to the Temporal service. Handed in rather than resolved
+   * from the graph, because it is not a value but a *resource with an owner*:
+   * `main.ts` opens one and closes it, and a spec passes the test
+   * environment's, which it must not close. Its address is configuration —
+   * `temporalConfig.address` — but the socket is not.
    */
   readonly connection: NativeConnection;
-  readonly namespace?: string;
   readonly workflows: WorkflowSource;
-}): Runtime<TemporalNeeds, TemporalInfo> =>
-  // `...transport` rather than three named fields: `connection`, `namespace`
-  // and `workflows` are the package's own options under the package's own
-  // names, and spreading them keeps `namespace` optional instead of
-  // reintroducing it as `string | undefined`, which `exactOptionalPropertyTypes`
-  // would reject.
-  temporalRuntime({
-    ...transport,
-    taskQueue: contract.taskQueue,
-    needs: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger],
-    activities: (host) =>
-      declareActivitiesHandler({
-        contract,
-        middleware: activityUnits<TemporalNeeds>(host),
-        activities: {
-          fulfillOrder: {
-            place: placeActivity,
-            reserveStock: reserveStockActivity,
-            arrangeShipping: arrangeShippingActivity,
-            releaseStock: releaseStockActivity,
-            cancelPlacement: cancelPlacementActivity,
+}): Runtime<TemporalNeeds, TemporalInfo> => ({
+  name: "temporal",
+  needs: temporalNeeds,
+  start: (host) =>
+    temporalRuntime({
+      // `...transport` rather than two named fields: `connection` and
+      // `workflows` are the package's own options under the package's own
+      // names.
+      ...transport,
+      namespace: host.ctx.get(temporalConfig).namespace,
+      taskQueue: contract.taskQueue,
+      needs: temporalNeeds,
+      activities: (h) =>
+        declareActivitiesHandler({
+          contract,
+          middleware: activityUnits<TemporalNeeds>(h),
+          activities: {
+            fulfillOrder: {
+              place: placeActivity,
+              reserveStock: reserveStockActivity,
+              arrangeShipping: arrangeShippingActivity,
+              releaseStock: releaseStockActivity,
+              cancelPlacement: cancelPlacementActivity,
+            },
           },
-        },
-      }),
-    gracePeriod: SHUTDOWN_GRACE,
-    forceAfter: SHUTDOWN_FORCE,
-  });
+        }),
+      gracePeriod: SHUTDOWN_GRACE,
+      forceAfter: SHUTDOWN_FORCE,
+    }).start(host),
+});
 
 /**
  * The one activity, and the hinge of this whole example.
