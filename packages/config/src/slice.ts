@@ -66,6 +66,42 @@ export type AnyConfigAdapter = AnyModule & {
 export type ConfigType<T> = ServiceOf<T>;
 
 /**
+ * What `Config(id)(shape, options?)` returns: the port class, the di module
+ * that serves it, and the brand plus the `prefix`/`shape` that `collect` and
+ * `parseAll` read back off the value.
+ *
+ * **Named, and exported, for declaration emit.** Written inline as an
+ * intersection this was unwritable by a consumer: `export const amqpConfig =
+ * Config("Amqp")({ … })` has an inferred type, and a package compiled with
+ * `declaration` must be able to *write* that type down. Expanding the
+ * intersection reaches `InstanceType<…>`'s `[ID]`/`[SERVICE]` brands — which
+ * `@btravstack/di` deliberately keeps unexported, so a port instance stays
+ * unforgeable — and this file's own `CONFIG_ADAPTER`, so every such consumer
+ * failed with `TS4023: … has or is using name 'ID' … but cannot be named`.
+ * Annotating the return with one exported alias gives the emitter a name to
+ * stop at, exactly as di's own `ConcretePortClass` does one layer down, and
+ * grants no new power: the brand keys are still unnameable from outside.
+ * `examples/` is what proved this — nothing inside this package exports a
+ * declared config, so nothing inside it could have caught the gap.
+ *
+ * It closes the *declaring* half only. A module that **exports** a config —
+ * a composition root, which is every consumer of `start` — still emits
+ * `Module<InstanceType<typeof amqpConfig> | …>`, and `InstanceType` reduces to
+ * di's `PortInstance`, which di keeps unexported on purpose so a port instance
+ * cannot be hand-forged. No alias here can name it; only `@btravstack/di`
+ * exporting the type would, and that is di's call. Until then a composition
+ * root carrying a config must be compiled with `declaration` off — which is
+ * what `examples/`'s deployment packages do, being source-only and emitting no
+ * declarations at all.
+ */
+export type DeclaredConfig<Id extends string, S extends Shape> = ConcretePortClass<Id, ValueOf<S>> &
+  Module<InstanceType<ConcretePortClass<Id, ValueOf<S>>>, never, ConfigSource> & {
+    readonly [CONFIG_ADAPTER]: true;
+    readonly prefix: string;
+    readonly shape: S;
+  };
+
+/**
  * `Config(id)(shape, options?)` — curried on the identity so it reads next to
  * the name it labels, then the field map, then an optional options object,
  * mirroring `@btravstack/entity`'s `Entity(tag)(fields, options?)`. It
@@ -80,15 +116,7 @@ export type ConfigType<T> = ServiceOf<T>;
  */
 export const Config =
   <const Id extends string>(id: Id) =>
-  <S extends Shape>(
-    shape: S,
-    options?: { readonly prefix?: string },
-  ): ConcretePortClass<Id, ValueOf<S>> &
-    Module<InstanceType<ConcretePortClass<Id, ValueOf<S>>>, never, ConfigSource> & {
-      readonly [CONFIG_ADAPTER]: true;
-      readonly prefix: string;
-      readonly shape: S;
-    } => {
+  <S extends Shape>(shape: S, options?: { readonly prefix?: string }): DeclaredConfig<Id, S> => {
     const prefix = options?.prefix ?? defaultPrefix(id);
     assertValidPrefix(prefix);
 
@@ -160,10 +188,5 @@ export const Config =
     // `ConfigPort` class — which genuinely has none of them — is rejected.
     // The object itself is exactly right at runtime; only the type needs
     // restating here, back to what the port and shape actually are.
-    return ConfigPort as unknown as ConcretePortClass<Id, ValueOf<S>> &
-      Module<InstanceType<ConcretePortClass<Id, ValueOf<S>>>, never, ConfigSource> & {
-        readonly [CONFIG_ADAPTER]: true;
-        readonly prefix: string;
-        readonly shape: S;
-      };
+    return ConfigPort as unknown as DeclaredConfig<Id, S>;
   };

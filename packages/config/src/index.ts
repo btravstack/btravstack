@@ -6,7 +6,7 @@ import { source } from "./source.js";
 export { ConfigInvalid, describeIssues, type ConfigIssue } from "./errors.js";
 export type { Shape } from "./parse.js";
 export { ConfigSource } from "./source.js";
-export type { AnyConfigAdapter, ConfigType, ValueOf } from "./slice.js";
+export type { AnyConfigAdapter, ConfigType, DeclaredConfig, ValueOf } from "./slice.js";
 
 /**
  * `Config(id)(shape, options?)` returns one value that is both the port token
