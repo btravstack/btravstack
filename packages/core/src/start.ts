@@ -67,25 +67,30 @@ export type RunningApp<E, Info = never> = {
   readonly runtimeInfo: () => AsyncResult<Info | undefined, never>;
 };
 
+/**
+ * The phantom rest tuple `start`, `runMain` and `withApp` all carry: empty —
+ * and invisible — when the module's exports cover the runtime's declared
+ * needs, a named error tuple otherwise, so an unmet need fails to typecheck at
+ * the call site. A trailing rest tuple rather than a conditional type on
+ * `module` or `options` is deliberate: a conditional on an inference-bearing
+ * parameter makes TypeScript defer that parameter's inference and can collapse
+ * `X` or `E` to `unknown`. Same shape, and the same reasoning, as di's own
+ * UNSATISFIED DEPENDENCIES gate on `Module.scoped`.
+ */
+export type RuntimeNeedsGate<Needs extends AnyPort, X> = [InstanceType<Needs>] extends [X]
+  ? []
+  : [error: "UNSATISFIED RUNTIME NEEDS", missing: Exclude<InstanceType<Needs>, X>];
+
 // `Module<X, E, Scope>`, not `Module<X, E, never>`: `Needs` sits in covariant
 // position on `Module`, so this accepts a module with no needs at all *and* the
 // resourceful one whose `acquire`/`release` provider adds `Scope` — the single
 // need `Module.scoped` discharges by opening the scope itself. A module with a
 // genuine unmet dependency is rejected here, as di's own gate would reject it.
 // The `gate` rest parameter is a phantom: it never carries a runtime argument.
-// It is what makes the runtime's declared needs a *compile-time* check — a
-// runtime needing a port the module does not export makes the tuple non-empty,
-// so the call fails to typecheck. A trailing rest tuple rather than a
-// conditional type on `module` or `options` is deliberate: a conditional on an
-// inference-bearing parameter makes TypeScript defer that parameter's
-// inference and can collapse `X` or `E` to `unknown`. Same shape, and the same
-// reasoning, as di's own UNSATISFIED DEPENDENCIES gate on `Module.scoped`.
 export const start = <X, E, Needs extends AnyPort, Info = never>(
   module: Module<X, E, Scope>,
   options: StartOptions<Needs, Info>,
-  ...gate: [InstanceType<Needs>] extends [X]
-    ? []
-    : [error: "UNSATISFIED RUNTIME NEEDS", missing: Exclude<InstanceType<Needs>, X>]
+  ...gate: RuntimeNeedsGate<Needs, X>
 ): RunningApp<E, Info> => {
   void gate;
   const clock = options.clock ?? systemClock;

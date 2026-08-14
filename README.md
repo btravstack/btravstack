@@ -89,14 +89,18 @@ const ticker: Runtime<typeof Greeter> = {
   },
 };
 
-await runMain(start(AppModule, { runtime: ticker }));
+await runMain(AppModule, { runtime: ticker });
 ```
 
-`start` returns immediately with a `RunningApp`; `runMain` awaits its
-`exited` and turns the outcome into a process exit code. The runtime's declared
+`runMain` is the front door: it boots the module, awaits the application's
+exit and turns the outcome into a process exit code — one call, and the whole
+of a `main.ts`. Underneath it is `start`, which returns immediately with a
+`RunningApp` and decides nothing about the process: reach for it when the
+handle itself is wanted (a test, an embedder, a dev runner booting two
+applications). The runtime's declared
 `needs` are checked against the module's exports **at compile time** — booting
 `ticker` against a module that does not export `Greeter` is a type error at the
-`start` call, not a boot-time crash.
+call, not a boot-time crash.
 
 Every code sample on this page is compiled by
 [`packages/core/src/docs-examples.test-d.ts`](./packages/core/src/docs-examples.test-d.ts),

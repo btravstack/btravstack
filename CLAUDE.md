@@ -328,7 +328,11 @@ so a production bundle never pulls the fakes in.
   events as `{"cause":{}}`. A cause it cannot serialise at all (a circular
   object) falls back to `"[unserialisable]"` rather than throwing, since
   `safeSink` would swallow the throw and the event would be reported nowhere.
-- **`runMain(app, exit?)`** — awaits `exited` and sets the exit code:
+- **`runMain(module, options, exit?)`** — the front door: `start` composed
+  with the wait for `exited`, carrying the same phantom needs gate
+  (`RuntimeNeedsGate`, the shared alias all three gated surfaces use). Every
+  `main.ts` calls this one function; `start` is for callers that want the
+  `RunningApp` itself. It boots the module and sets the exit code:
   `0` clean, `1` a modeled startup `Err`, `2` drained with work abandoned **or
   exited with a non-empty `teardownErrors`**, `70` an uncaught
   exception/rejection, `70` a defect. Both `70`s are sysexits(3)'s

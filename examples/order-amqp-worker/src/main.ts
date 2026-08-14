@@ -1,4 +1,4 @@
-import { runMain, start } from "@btravstack/core";
+import { runMain } from "@btravstack/core";
 import { P } from "unthrown";
 
 import { orderAmqpRuntime } from "./amqp-runtime.js";
@@ -17,15 +17,13 @@ import { OrderAmqpModule } from "./module.js";
  * source-only, and every spec drives `start` directly.
  */
 const work = (env: Env): Promise<void> =>
-  runMain(
-    start(OrderAmqpModule, {
-      runtime: orderAmqpRuntime({
-        urls: [env.AMQP_URL],
-        relay: { pollMs: env.OUTBOX_POLL_MS },
-      }),
-      probes: { port: env.PROBE_PORT },
+  runMain(OrderAmqpModule, {
+    runtime: orderAmqpRuntime({
+      urls: [env.AMQP_URL],
+      relay: { pollMs: env.OUTBOX_POLL_MS },
     }),
-  );
+    probes: { port: env.PROBE_PORT },
+  });
 
 /** sysexits(3) `EX_CONFIG`: the deployment is wrong, not the code. */
 const abort = (reason: string): void => {

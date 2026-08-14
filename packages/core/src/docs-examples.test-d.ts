@@ -79,7 +79,7 @@ const ticker: Runtime<typeof Greeter> = {
   },
 };
 
-await runMain(start(AppModule, { runtime: ticker }));
+await runMain(AppModule, { runtime: ticker });
 
 // ---------------------------------------------------------------------------
 // "The Runtime contract" — root README. Asserted equal to the shipped types
