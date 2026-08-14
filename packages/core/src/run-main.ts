@@ -103,7 +103,9 @@ export const awaitExit = async <E>(
  *
  * @example
  * ```ts
- * await runMain(AppModule, { runtime: httpRuntime({ port, handler }) });
+ * await runMain(AppModule, {
+ *   runtime: httpRuntime({ port: 3000, needs: [Greeting], handler }),
+ * });
  * ```
  */
 // The one async surface in this package that returns a bare `Promise<void>`
