@@ -1,3 +1,4 @@
+import { start } from "@btravstack/core";
 /**
  * The compile-time half of the broadcast deployment: `orderAmqpRuntime`
  * declares two ports in `needs`, and `start`'s phantom rest-tuple gate turns a
@@ -10,9 +11,8 @@
  * call site.
  */
 import { Module } from "@btravstack/di";
-import { start } from "@btravstack/start-core";
-import { ApplicationModule, Logger, PlaceOrder } from "@btravstack/start-example-order-application";
-import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
+import { ApplicationModule, Logger, PlaceOrder } from "@btravstack/example-order-application";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 
 import { orderAmqpRuntime } from "./amqp-runtime.js";
 import { OrderAmqpModule } from "./module.js";

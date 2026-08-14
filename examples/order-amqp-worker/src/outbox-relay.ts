@@ -1,7 +1,7 @@
 import { TypedAmqpClient } from "@amqp-contract/client";
 import type { Context } from "@btravstack/di";
-import { orderContract } from "@btravstack/start-example-order-amqp-contract";
-import { Logger, Outbox } from "@btravstack/start-example-order-application";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { Logger, Outbox } from "@btravstack/example-order-application";
 import { P, fromSafePromise, type AsyncResult } from "unthrown";
 
 /** The ports the relay resolves out of the application context. */
@@ -36,7 +36,7 @@ const BATCH = 32;
  *
  * **Why the client is created here rather than injected as a port, and why
  * this is not a di provider.** A transport connection is a *runtime* concern
- * in this repo, configured from the environment in `main.ts`: `start-amqp`
+ * in this repo, configured from the environment in `main.ts`: `@btravstack/amqp`
  * creates its own `TypedAmqpWorker` inside `Runtime.start` from the same
  * `urls`, and `order-temporal-worker`'s `main.ts` opens its `NativeConnection`
  * the same way. Only `OrderDatabase` is a resourceful provider, because the

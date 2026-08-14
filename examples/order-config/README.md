@@ -1,4 +1,4 @@
-# `@btravstack/start-core` example: the shared configuration reader
+# `@btravstack/core` example: the shared configuration reader
 
 Three deployments, one way to read an environment variable — and the seven cases
 it has to survive pinned once instead of three times.

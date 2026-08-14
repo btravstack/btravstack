@@ -1,4 +1,4 @@
-# `@btravstack/start-core` example: the order broadcast worker
+# `@btravstack/core` example: the order broadcast worker
 
 **What AMQP is for: telling everyone what happened.** This deployment
 broadcasts a **change stream** — every write to an order, as a fact on the
@@ -6,14 +6,14 @@ wire — and it gets those facts out without ever letting "the order committed"
 and "the event was sent" disagree: the **transactional outbox** pattern, end
 to end.
 The consuming half is served by
-[`@btravstack/start-amqp`](../../packages/start-amqp) the way `order-api` is
-served by `@btravstack/start-http`; the contract lives in
+[`@btravstack/amqp`](../../packages/amqp) the way `order-api` is
+served by `@btravstack/http`; the contract lives in
 [`order-amqp-contract`](../order-amqp-contract), because another service
 binding its own queue to the `orders` exchange needs it and needs none of this.
 
 ```
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent
-src/amqp-runtime.ts    the runtime: start-amqp's consumer with the relay layered on
+src/amqp-runtime.ts    the runtime: amqp's consumer with the relay layered on
 src/module.ts          OrderAmqpModule — the composition root
 src/env.ts             process.env validated through a schema, as a Result
 src/main.ts            the process: readEnv + start + runMain
@@ -47,7 +47,7 @@ The relay resolves `Outbox` and `Logger` from the application context — the
 boundary that matters — but creates its own `TypedAmqpClient` rather than
 receiving one as a port, and is not itself a di provider. Both are deliberate:
 a transport connection is a **runtime** concern in this repo (configured from
-the environment in `main.ts`, exactly as `start-amqp` creates its worker and
+the environment in `main.ts`, exactly as `@btravstack/amqp` creates its worker and
 `order-temporal-worker` opens its `NativeConnection`), while a di provider
 holds something the _application_ depends on — which is why `OrderDatabase` is
 one and this publisher is not. Nothing in the graph resolves the relay, and a
@@ -59,7 +59,7 @@ one TCP connection, and `close()` releases a lease rather than the socket.
 
 ## Where the relay lives
 
-`orderAmqpRuntime` layers the relay onto the runtime `start-amqp` hands back:
+`orderAmqpRuntime` layers the relay onto the runtime `@btravstack/amqp` hands back:
 started after the consumer, stopped before it, so a relay that cannot reach
 the broker fails startup the way a consumer that cannot would. `drain` stays
 the consumer's alone — draining means "stop taking new work", and the relay's
@@ -93,8 +93,8 @@ arriving as a tombstone behind its placement, and the same event delivered to
 a subscriber this contract never heard of.
 
 ```bash
-pnpm --filter @btravstack/start-example-order-amqp-worker test        # broadcast e2e + env specs
-pnpm --filter @btravstack/start-example-order-amqp-worker typecheck   # the needs gate
+pnpm --filter @btravstack/example-order-amqp-worker test        # broadcast e2e + env specs
+pnpm --filter @btravstack/example-order-amqp-worker typecheck   # the needs gate
 ```
 
 ## What this deployment deliberately is not

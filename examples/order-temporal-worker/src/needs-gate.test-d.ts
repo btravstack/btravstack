@@ -1,3 +1,4 @@
+import { start } from "@btravstack/core";
 /**
  * The compile-time half of the orchestration deployment: `temporalWorkerRuntime`
  * declares two ports in `needs`, and `start`'s phantom rest-tuple gate turns a
@@ -9,15 +10,14 @@
  * all proven against the same application graph at the `start(...)` call site.
  */
 import { Module } from "@btravstack/di";
-import { start } from "@btravstack/start-core";
 import {
   ApplicationModule,
   FindOrder,
   Logger,
   PlaceOrder,
-} from "@btravstack/start-example-order-application";
-import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
-import { orderContract } from "@btravstack/start-example-order-temporal-contract";
+} from "@btravstack/example-order-application";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { orderContract } from "@btravstack/example-order-temporal-contract";
 import type { NativeConnection } from "@temporalio/worker";
 
 import { OrderTemporalModule } from "./module.js";

@@ -5,8 +5,8 @@ import {
   OrderRepository,
   Outbox,
   PlaceOrder,
-} from "@btravstack/start-example-order-application";
-import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
+} from "@btravstack/example-order-application";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 
 /**
  * The composition root of the broadcast deployment. `ApplicationModule` and

@@ -1,4 +1,4 @@
-# `@btravstack/start-core` example: the order Temporal contract
+# `@btravstack/core` example: the order Temporal contract
 
 The Temporal contract — one saga workflow, its five activities (three forward
 steps, two compensations), and the four errors a caller may branch on — in a
@@ -33,7 +33,7 @@ repository and the kernel.
 ```
 
 `src/layering.test-d.ts` is that sentence as a compile error: it imports
-`@btravstack/start-example-order-temporal-worker` under a `@ts-expect-error`, so the
+`@btravstack/example-order-temporal-worker` under a `@ts-expect-error`, so the
 day this package gains a dependency on the worker it describes, `test:types`
 fails because the directive stops being used.
 

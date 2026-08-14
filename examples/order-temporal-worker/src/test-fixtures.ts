@@ -1,8 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { start, type RunningApp } from "@btravstack/start-core";
 import {
   ApplicationModule,
   Logger,
@@ -10,14 +10,11 @@ import {
   PlaceOrder,
   ShippingService,
   StockService,
-} from "@btravstack/start-example-order-application";
-import { OutOfStock, ShippingUnavailable } from "@btravstack/start-example-order-domain";
-import { PersistenceModule } from "@btravstack/start-example-order-infrastructure";
-import {
-  orderContract,
-  type OrderContract,
-} from "@btravstack/start-example-order-temporal-contract";
-import type { TemporalInfo } from "@btravstack/start-temporal";
+} from "@btravstack/example-order-application";
+import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domain";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
+import type { TemporalInfo } from "@btravstack/temporal";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import { createTimeSkippingTest } from "@temporal-contract/testing/time-skipping";
 import {

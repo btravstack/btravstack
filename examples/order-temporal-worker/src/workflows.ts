@@ -1,4 +1,4 @@
-import { orderContract } from "@btravstack/start-example-order-temporal-contract";
+import { orderContract } from "@btravstack/example-order-temporal-contract";
 import {
   ACTIVITY_CANCELLED_ERROR_TAG,
   ACTIVITY_ERROR_TAG,

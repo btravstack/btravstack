@@ -4,10 +4,10 @@ import {
   messageUnits,
   type AmqpInfo,
   type MessageUnitContext,
-} from "@btravstack/start-amqp";
-import type { Runtime } from "@btravstack/start-core";
-import { orderContract, type OrderContract } from "@btravstack/start-example-order-amqp-contract";
-import { Logger, Outbox } from "@btravstack/start-example-order-application";
+} from "@btravstack/amqp";
+import type { Runtime } from "@btravstack/core";
+import { orderContract, type OrderContract } from "@btravstack/example-order-amqp-contract";
+import { Logger, Outbox } from "@btravstack/example-order-application";
 import { OkAsync } from "unthrown";
 
 import { startOutboxRelay, type RelayOptions } from "./outbox-relay.js";
@@ -27,7 +27,7 @@ type AmqpNeeds = typeof Outbox | typeof Logger;
  * A `Runtime` broadcasting the order application's facts over AMQP — both
  * halves of the outbox pattern in one process.
  *
- * The consuming half is `@btravstack/start-amqp`'s runtime, unchanged: the
+ * The consuming half is `@btravstack/amqp`'s runtime, unchanged: the
  * `order-notifications` queue, a unit per delivery, the kernel's drain. The
  * publishing half is this example's own: `startOutboxRelay` is layered onto
  * the runtime the package hands back, started after it and stopped before it,

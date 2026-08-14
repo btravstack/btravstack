@@ -1,4 +1,4 @@
-# `@btravstack/start-core` example: the order API contract
+# `@btravstack/core` example: the order API contract
 
 The oRPC contract — the wire shapes and the declared error codes — in a package
 of its own, depending on `@orpc/contract` and nothing else.
@@ -27,7 +27,7 @@ So the arrow points the other way from every other one in this example set:
 ```
 
 `src/layering.test-d.ts` is that sentence as a compile error: it imports
-`@btravstack/start-example-order-api` under a `@ts-expect-error`, so the day
+`@btravstack/example-order-api` under a `@ts-expect-error`, so the day
 this package gains a dependency on the server it implements, `test:types` fails
 because the directive stops being used.
 

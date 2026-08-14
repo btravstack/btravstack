@@ -5,7 +5,7 @@ import {
   type InvalidQuantity,
   type Order,
   type OrderNotFound,
-} from "@btravstack/start-example-order-domain";
+} from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
 
 import { FindOrder, Logger, OrderRepository, PlaceOrder } from "./ports.js";

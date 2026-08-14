@@ -11,4 +11,4 @@
 // @ts-expect-error — the contract must not be able to reach the worker that
 // implements it: order-amqp-contract does not depend on order-amqp-worker, so the
 // specifier does not resolve.
-import type {} from "@btravstack/start-example-order-amqp-worker";
+import type {} from "@btravstack/example-order-amqp-worker";

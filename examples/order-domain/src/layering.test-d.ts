@@ -8,4 +8,4 @@
 
 // @ts-expect-error — the domain layer must not be able to reach the application
 // layer: order-domain does not depend on it, so the specifier does not resolve.
-import type {} from "@btravstack/start-example-order-application";
+import type {} from "@btravstack/example-order-application";

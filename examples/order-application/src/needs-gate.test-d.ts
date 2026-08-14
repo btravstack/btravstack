@@ -5,7 +5,7 @@
  * Type-checked by this package's `test:types` script, never executed.
  */
 import { Module, Provider } from "@btravstack/di";
-import { DuplicateOrder, OrderNotFound, type Order } from "@btravstack/start-example-order-domain";
+import { DuplicateOrder, OrderNotFound, type Order } from "@btravstack/example-order-domain";
 import { ErrAsync } from "unthrown";
 
 import { ApplicationModule, FindOrder, Logger, OrderRepository, PlaceOrder } from "./index.js";

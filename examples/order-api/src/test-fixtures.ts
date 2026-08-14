@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 
+import { start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { start, type RunningApp } from "@btravstack/start-core";
 import {
   ApplicationModule,
   FindOrder,
   Logger,
   OrderRepository,
   PlaceOrder,
-} from "@btravstack/start-example-order-application";
-import { placeOrder, type Order } from "@btravstack/start-example-order-domain";
-import { httpRuntime, type HttpInfo } from "@btravstack/start-http";
+} from "@btravstack/example-order-application";
+import { placeOrder, type Order } from "@btravstack/example-order-domain";
+import { httpRuntime, type HttpInfo } from "@btravstack/http";
 import { fromSafePromise, OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 

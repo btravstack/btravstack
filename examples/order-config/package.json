@@ -1,5 +1,5 @@
 {
-  "name": "@btravstack/start-example-order-config",
+  "name": "@btravstack/example-order-config",
   "private": true,
   "description": "The shared configuration reader of the clean-architecture example: one environment-variable idiom for all three deployments, validated as a value rather than parsed by throwing",
   "license": "MIT",

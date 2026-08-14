@@ -1,6 +1,6 @@
-import { runMain, start } from "@btravstack/start-core";
-import { FindOrder, Logger, PlaceOrder } from "@btravstack/start-example-order-application";
-import { httpRuntime } from "@btravstack/start-http";
+import { runMain, start } from "@btravstack/core";
+import { FindOrder, Logger, PlaceOrder } from "@btravstack/example-order-application";
+import { httpRuntime } from "@btravstack/http";
 import { P } from "unthrown";
 
 import { describeEnvIssues, readEnv, type Env } from "./env.js";

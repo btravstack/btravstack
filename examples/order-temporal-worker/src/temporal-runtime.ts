@@ -1,19 +1,19 @@
-import type { Runtime } from "@btravstack/start-core";
+import type { Runtime } from "@btravstack/core";
 import {
   Logger,
   OrderRepository,
   PlaceOrder,
   ShippingService,
   StockService,
-} from "@btravstack/start-example-order-application";
-import type { OrderContract } from "@btravstack/start-example-order-temporal-contract";
+} from "@btravstack/example-order-application";
+import type { OrderContract } from "@btravstack/example-order-temporal-contract";
 import {
   activityUnits,
   temporalRuntime,
   type ActivityUnitContext,
   type TemporalInfo,
   type WorkflowSource,
-} from "@btravstack/start-temporal";
+} from "@btravstack/temporal";
 import {
   declareActivitiesHandler,
   type ActivityImplementationFor,
@@ -62,14 +62,14 @@ type TemporalNeeds =
 
 /**
  * A `Runtime` serving the order application as a Temporal worker — and, since
- * `@btravstack/start-temporal` shipped, no longer a hand-rolled one.
+ * `@btravstack/temporal` shipped, no longer a hand-rolled one.
  *
  * What is left here is the application's half: the contract, the two ports the
  * activity resolves, and the triage from a domain `Err` to a declared contract
  * error. The Worker's lifecycle, the unit per activity attempt and the release
  * at the kernel's deadline are the package's, which is the point — the third
  * deployment consumes a runtime package exactly as `order-api` consumes
- * `@btravstack/start-http`.
+ * `@btravstack/http`.
  *
  * `activityUnits` is the one line a `temporal-contract` user adds. Its type
  * argument is not optional dressing: TypeScript infers the injected context

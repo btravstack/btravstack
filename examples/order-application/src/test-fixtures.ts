@@ -1,5 +1,5 @@
 import { Module, Provider } from "@btravstack/di";
-import { DuplicateOrder, OrderNotFound, type Order } from "@btravstack/start-example-order-domain";
+import { DuplicateOrder, OrderNotFound, type Order } from "@btravstack/example-order-domain";
 import { ErrAsync, OkAsync } from "unthrown";
 import { test } from "vitest";
 

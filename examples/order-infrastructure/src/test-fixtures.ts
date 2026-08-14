@@ -1,6 +1,6 @@
 import type { ServiceOf } from "@btravstack/di";
-import type { Outbox, OrderRepository } from "@btravstack/start-example-order-application";
-import { placeOrder, type Order } from "@btravstack/start-example-order-domain";
+import type { Outbox, OrderRepository } from "@btravstack/example-order-application";
+import { placeOrder, type Order } from "@btravstack/example-order-domain";
 import { test } from "vitest";
 
 import {
