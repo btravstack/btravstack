@@ -149,8 +149,9 @@ All three are answering the same obligation — `UnitMeta.id` must be unique per
 unit, because `traceId` defaults to it — and all three land on "the attempt, not
 the logical thing", because a retry is a second unit and the same trace.
 `order-amqp-worker` mints its `id` rather than reusing the broker's: a delivery
-tag is not unique per attempt (see its own README for why), where a queue job id
-or a task token already is.
+tag is not unique per attempt (see
+[`@btravstack/amqp`'s README](../packages/amqp/README.md) for why), where a
+queue job id or a task token already is.
 
 ## The runtimes with a non-empty `needs`
 
