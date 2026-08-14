@@ -1,44 +1,43 @@
 # @btravstack/config
 
 Configuration parsed from the environment, wired through
-[`@btravstack/di`](https://github.com/btravstack/di) as an ordinary port and
-adapter.
+[`@btravstack/di`](https://github.com/btravstack/di) as a port.
 
-A starter declares a **port** the normal way — `Port(id)<Service>` — and
-`Config(port, prefix)(shape)` is one **adapter** for it: a di module that
-implements the port by parsing `prefix`-scoped environment variables. The
-port stays a port: a test can hand it a literal, and a future file or
-secret-manager source can be a different adapter for the same port. Neither
-is possible when the port and its environment parser are welded into one
-value — this package deliberately keeps them apart.
+`Config(id)(shape, options?)` declares **one value** that is both a di port
+token and the module that serves it from the environment: a starter no longer
+writes a port and a separate adapter for it. The signature mirrors
+`@btravstack/entity`'s `Entity(tag)(fields, options?)` — curried on the
+identity so it reads next to the name it labels, then the field map, then an
+optional options object. The value stays adaptable even though it is one
+thing, not two: it is a port like any other, so a test can hand it a literal
+provider without ever importing it as a module, and a future file or
+secret-manager source could be a different `imports:` entry providing the
+same port.
 
-## Declaring a port and its env adapter
+## Declaring a config
 
 ```ts
-import { Config, type ValueOf } from "@btravstack/config";
-import { Port } from "@btravstack/di";
+import { Config } from "@btravstack/config";
 import { z } from "zod";
 
-const shape = {
-  url: z.string().min(1).default("amqp://127.0.0.1:5672"),
-  prefetch: z.string().min(1).pipe(z.coerce.number<string>().int()).default(10),
-};
-export class AmqpConfig extends Port("AmqpConfig")<ValueOf<typeof shape>> {}
-export const AmqpConfigFromEnv = Config(AmqpConfig, "AMQP")(shape);
+export const amqpConfig = Config("AmqpConfig")(
+  {
+    url: z.string().min(1).default("amqp://127.0.0.1:5672"),
+    prefetch: z
+      .string()
+      .min(1)
+      .pipe(z.coerce.number<string>().int())
+      .default(10),
+  },
+  { prefix: "AMQP" },
+);
 ```
 
-Each value in `shape` is a [Standard Schema](https://standardschema.dev)
+Each value in the shape is a [Standard Schema](https://standardschema.dev)
 validator — a `zod` schema above, but any Standard-Schema-compliant library
-works. `ValueOf<typeof shape>` types the port from the shape, so the service
-type and the schema are never written twice. A starter ships the port and
-its env adapter together, alongside the properties it defines: the shape and
-the defaults live with the code that gives them meaning, not in a central
-file every consumer has to know about.
-
-The port is declared by the starter, not by `Config`, because that is what
-makes it adaptable: `Config(port, prefix)(shape)` is just one provider for
-`port`, on equal footing with any other. An application imports the env
-adapter; a test imports nothing from this package at all:
+works. A starter ships `amqpConfig` alongside the properties it defines: the
+shape and the defaults live with the code that gives them meaning, not in a
+central file every consumer has to know about.
 
 ```ts
 // the application
@@ -49,55 +48,77 @@ const App = Module("App")({
   imports: [
     ApplicationModule,
     PersistenceModule,
-    AmqpConfigFromEnv,
+    amqpConfig,
     Config.source({ AMQP_URL: "amqp://broker" }),
   ],
-  exports: [AmqpConfig],
+  exports: [amqpConfig],
 });
 
-const value = await Module.scoped(App, (ctx) => OkAsync(ctx.get(AmqpConfig)));
-// Ok({ url: "amqp://broker", prefetch: 10 })
+const { url, prefetch } = await Module.scoped(App, (ctx) =>
+  OkAsync(ctx.get(amqpConfig)),
+);
+// { url: "amqp://broker", prefetch: 10 }
 ```
 
 ```ts
-// a test, or any other adapter — ordinary di, no config involvement
+// a test — ordinary di, no config module or environment involved
 import { Module, Provider } from "@btravstack/di";
 
 const Test = Module("Test")({
   provides: [
-    Provider(AmqpConfig)({ value: { url: "amqp://fake", prefetch: 1 } }),
+    Provider(amqpConfig)({ value: { url: "amqp://fake", prefetch: 1 } }),
   ],
-  exports: [AmqpConfig],
+  exports: [amqpConfig],
 });
 ```
 
-`imports: [AmqpConfigFromEnv]` provides the port; `ctx.get(AmqpConfig)` reads
-it back — from either adapter, unchanged. An adapter imported by two
-different modules in the same graph is still parsed once — di dedupes the
+The test above never puts `amqpConfig` in `imports:` — only in `provides:`
+and `exports:`. That works because `amqpConfig` is a token first: its module
+statics (`name`/`imports`/`provides`/`exports` — the environment-parsing
+behaviour) are only consulted when it appears in a module's `imports:` array.
+A graph that never imports it that way never reaches them, so a test can
+resolve `ctx.get(amqpConfig)` from a plain literal with no `Config.source`
+and no environment at all.
+
+`imports: [amqpConfig]` provides the port; `ctx.get(amqpConfig)` reads it back
+— from either the env adapter or a literal, unchanged. Imported by two
+different modules in the same graph, it is still parsed once — di dedupes the
 module before its provider ever runs.
 
-`Config(port, prefix)(shape)` also enforces, at compile time, that `shape`
-actually implements `port`: `shape`'s parsed output must be assignable to
-`port`'s own service type. A shape missing a key the port declares, or with
-the wrong type for one, fails to compile — the same way a wrong `Provider`
-qualification would.
+`ctx.get(amqpConfig)`'s type comes straight from the shape; annotate it
+elsewhere with `ConfigType`:
+
+```ts
+import type { ConfigType } from "@btravstack/config";
+
+type AmqpValue = ConfigType<typeof amqpConfig>; // { url: string; prefetch: number }
+```
 
 ## Naming: camelCase in, `PREFIX_SCREAMING_SNAKE` out
 
-Each key of the shape maps to an environment variable named by the adapter's
-prefix and the key shouted: `url` under `Config(port, "AMQP")` reads
+Each key of the shape maps to an environment variable named by the config's
+prefix and the key shouted: `url` under `{ prefix: "AMQP" }` reads
 `AMQP_URL`; `prefetch` reads `AMQP_PREFETCH`. The rule is a straight case
 conversion — the key's own camelCase word boundaries become underscores — so
 a validator's keys can stay idiomatic TypeScript while the environment stays
 idiomatic shell. A multi-word key splits at every boundary: `prefetchCount`
-under `Config(port, "AMQP")` reads `AMQP_PREFETCH_COUNT`. An acronym run is
-left alone, not split letter-by-letter: `urlBase` reads `URL_BASE`, but
-`URLBase` — the acronym already shouted in the key itself — reads `URLBASE`.
+under `{ prefix: "AMQP" }` reads `AMQP_PREFETCH_COUNT`. An acronym run is left
+alone, not split letter-by-letter: `urlBase` reads `URL_BASE`, but `URLBase`
+— the acronym already shouted in the key itself — reads `URLBASE`.
+
+`options.prefix` is optional. Omitted, it defaults to the screaming-snake
+form of the identity: `Config("AmqpConfig")({ url: ... })` reads
+`AMQP_CONFIG_URL`. Given explicitly, it is used verbatim, regardless of what
+the identity itself spells — `Config("AmqpConfig")({ url: ... }, { prefix:
+"AMQP" })` reads `AMQP_URL`. Either way, the _resolved_ prefix must be
+upper-snake-case, checked at declaration: a lowercase prefix (or one derived
+from an identity that doesn't shout cleanly) throws immediately rather than
+falling back silently to variables no operator will ever set.
 
 ## `Config.source`: the environment as a port
 
-Env adapters don't read `process.env` directly. `Config.source(record)` is
-the module that provides `ConfigSource` — the one place a plain
+Env-backed configs don't read `process.env` directly. `Config.source(record)`
+is the module that provides `ConfigSource` — the one place a plain
 `Record<string, string | undefined>` enters the graph:
 
 ```ts
@@ -106,31 +127,30 @@ Config.source(process.env);
 
 The environment is a port, not an ambient read, so that validating the
 configuration and actually providing it can never disagree about what the
-environment was. If an adapter read `process.env` itself while validation
-read a snapshot taken earlier, the two could see different values — a
-variable set between the two reads would pass validation and then fail to
-inject, or the reverse. Threading one `ConfigSource` through both removes the
-seam where that mismatch could happen.
+environment was. If a config read `process.env` itself while validation read
+a snapshot taken earlier, the two could see different values — a variable set
+between the two reads would pass validation and then fail to inject, or the
+reverse. Threading one `ConfigSource` through both removes the seam where
+that mismatch could happen.
 
 ## Validating everything before boot: `Config.collect` and `Config.parse`
 
-`Config.collect(module)` walks a module tree and returns every env adapter
+`Config.collect(module)` walks a module tree and returns every config
 reachable from it, each once, regardless of how many times or how deep it is
 imported:
 
 ```ts
-const adapters = Config.collect(App);
+const configs = Config.collect(App);
 ```
 
-`Config.parse(adapters, source)` validates all of them against one source
-and aggregates every issue — from every adapter — into a single
-`ConfigInvalid`:
+`Config.parse(configs, source)` validates all of them against one source and
+aggregates every issue — from every config — into a single `ConfigInvalid`:
 
 ```ts
-const outcome = Config.parse(adapters, process.env);
+const outcome = Config.parse(configs, process.env);
 ```
 
-`outcome` is `Ok()` when every adapter agrees with the environment, or an
+`outcome` is `Ok()` when every config agrees with the environment, or an
 `Err` carrying one `ConfigInvalid` — `{ issues: [{ variable, message }, ...] }`
 — when any of them don't. This is the one-report guarantee: `Config.parse`
 does not stop at the first wrong variable. An operator who mistyped three
@@ -146,15 +166,14 @@ if (outcome.isErr()) {
 }
 ```
 
-`Config.collect` walks the **root** module tree only. An adapter reachable
+`Config.collect` walks the **root** module tree only. A config reachable
 exclusively through a `Module.forkScope` request module — one built fresh per
 request, layered over an already-built parent `Context` — is not part of that
 tree and is therefore not covered by this pre-boot validation pass. That gap
 is a deliberate phase-2 design decision (`@btravstack/start-core` owns when
 and how forked request modules get validated), not something this package
-solves; an adapter declared only inside a request module today is still
-parsed by its own provider, just without the one-report-before-boot
-guarantee.
+solves; a config declared only inside a request module today is still parsed
+by its own provider, just without the one-report-before-boot guarantee.
 
 ## `@btravstack/config/zod`: `wholeNumber` and `port`
 
@@ -163,12 +182,13 @@ Two `zod` builders for the coercions configuration validation needs most:
 ```ts
 import { port, wholeNumber } from "@btravstack/config/zod";
 
-const httpShape = {
-  port: port(3000),
-  maxConnections: wholeNumber(100, 1, 10_000),
-};
-class HttpConfig extends Port("HttpConfig")<ValueOf<typeof httpShape>> {}
-const HttpConfigFromEnv = Config(HttpConfig, "HTTP")(httpShape);
+export const httpConfig = Config("HttpConfig")(
+  {
+    port: port(3000),
+    maxConnections: wholeNumber(100, 1, 10_000),
+  },
+  { prefix: "HTTP" },
+);
 ```
 
 `wholeNumber(fallback, min, max)` reads a string, requires it non-empty,

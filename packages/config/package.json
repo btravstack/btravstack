@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/config",
   "version": "0.0.0",
-  "description": "Environment variables validated into typed config, wired through @btravstack/di as a port and its adapter",
+  "description": "Environment variables validated into typed config, wired through @btravstack/di as one port token and module",
   "keywords": [
     "configuration",
     "dependency-injection",

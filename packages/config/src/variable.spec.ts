@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertValidPrefix, variableName } from "./variable.js";
+import { assertValidPrefix, defaultPrefix, variableName } from "./variable.js";
 
 describe("assertValidPrefix", () => {
   it("rejects a prefix that is not upper-snake-case", () => {
@@ -15,6 +15,15 @@ describe("assertValidPrefix", () => {
     // WHEN the prefix is checked
     // THEN nothing is thrown
     expect(() => assertValidPrefix("AMQP")).not.toThrow();
+  });
+});
+
+describe("defaultPrefix", () => {
+  it("shouts the identity, underscored at each word boundary", () => {
+    // GIVEN an identity with no explicit prefix
+    // WHEN the default prefix is derived
+    // THEN it is the screaming-snake form of that identity
+    expect(defaultPrefix("AmqpConfig")).toBe("AMQP_CONFIG");
   });
 });
 

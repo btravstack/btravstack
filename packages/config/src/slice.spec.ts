@@ -1,4 +1,4 @@
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module, Provider } from "@btravstack/di";
 import { OkAsync } from "unthrown";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -7,26 +7,25 @@ import { Config, type ValueOf } from "./slice.js";
 import { source } from "./source.js";
 
 const amqpShape = { url: z.string().min(1).default("amqp://localhost") };
-class AmqpConfig extends Port("AmqpConfig")<ValueOf<typeof amqpShape>> {}
-const AmqpConfigFromEnv = Config(AmqpConfig, "AMQP")(amqpShape);
+const amqpConfig = Config("AmqpConfig")(amqpShape, { prefix: "AMQP" });
 
-describe("a config adapter", () => {
-  it("implements the port it is given, injected under the port's own identity", async () => {
-    // GIVEN a module importing the env adapter and a source
+describe("a config", () => {
+  it("implements the port it declares, injected under its own identity", async () => {
+    // GIVEN a module importing the config as a module, and a source
     const App = Module("App")({
-      imports: [AmqpConfigFromEnv, source({ AMQP_URL: "amqp://broker" })],
-      exports: [AmqpConfig],
+      imports: [amqpConfig, source({ AMQP_URL: "amqp://broker" })],
+      exports: [amqpConfig],
     });
 
     // WHEN the graph is built and the port is resolved
-    const value = await Module.scoped(App, (ctx) => OkAsync(ctx.get(AmqpConfig)));
+    const value = await Module.scoped(App, (ctx) => OkAsync(ctx.get(amqpConfig)));
 
     // THEN the adapter served the port it was declared for
     expect(value).toBeOkWith({ url: "amqp://broker" });
   });
 
   it("is parsed once even when two modules import it", async () => {
-    // GIVEN a port whose validator counts how many times it actually runs
+    // GIVEN a config whose validator counts how many times it actually runs
     let parses = 0;
     const countedShape = {
       url: z
@@ -38,19 +37,18 @@ describe("a config adapter", () => {
           return value;
         }),
     };
-    class CountedConfig extends Port("CountedConfig")<ValueOf<typeof countedShape>> {}
-    const CountedConfigFromEnv = Config(CountedConfig, "COUNTED")(countedShape);
+    const countedConfig = Config("CountedConfig")(countedShape, { prefix: "COUNTED" });
 
-    // AND two modules that both import that adapter
-    const A = Module("A")({ imports: [CountedConfigFromEnv], exports: [CountedConfig] });
-    const B = Module("B")({ imports: [CountedConfigFromEnv], exports: [CountedConfig] });
+    // AND two modules that both import that config
+    const A = Module("A")({ imports: [countedConfig], exports: [countedConfig] });
+    const B = Module("B")({ imports: [countedConfig], exports: [countedConfig] });
     const Both = Module("Both")({
       imports: [A, B, source({ COUNTED_URL: "amqp://broker" })],
-      exports: [CountedConfig],
+      exports: [countedConfig],
     });
 
     // WHEN the graph is built
-    const value = await Module.scoped(Both, (ctx) => OkAsync(ctx.get(CountedConfig)));
+    const value = await Module.scoped(Both, (ctx) => OkAsync(ctx.get(countedConfig)));
 
     // THEN di deduped the module — one provider ran, so the validator ran once
     expect(value).toBeOkWith({ url: "amqp://broker" });
@@ -58,20 +56,38 @@ describe("a config adapter", () => {
   });
 
   it("names its module after its prefix, for a legible graph", () => {
-    // GIVEN an env adapter
+    // GIVEN a config
     // WHEN its module name is read
-    // THEN it says which configuration it is, not which port it implements
-    expect(AmqpConfigFromEnv.name).toBe("Config(AMQP)");
+    // THEN it says which configuration it is, not which id it was declared under
+    expect(amqpConfig.name).toBe("Config(AMQP)");
   });
 
   it("rejects a prefix that is not upper-snake-case, at declaration", () => {
-    // GIVEN a lowercase prefix — `Config(port, "amqp")` would derive
-    // `amqp_URL`, a variable no operator will ever set
-    // WHEN the adapter is declared
+    // GIVEN a lowercase explicit prefix — `Config(id, { prefix: "amqp" })`
+    // would derive `amqp_URL`, a variable no operator will ever set
+    // WHEN the config is declared
     // THEN the mistake is caught immediately, not left to fall back silently
     expect(() =>
-      Config(AmqpConfig, "amqp")({ url: z.string().default("amqp://localhost") }),
+      Config("AmqpConfig")({ url: z.string().default("amqp://localhost") }, { prefix: "amqp" }),
     ).toThrow(/upper-snake-case/);
+  });
+
+  it("defaults its prefix to the screaming-snake form of its identity", () => {
+    // GIVEN a config declared with no `options.prefix` — a distinct id from
+    // `amqpConfig` above, so this doesn't also trip di's duplicate-id warning
+    const defaulted = Config("HttpConfig")({ port: z.string().default("3000") });
+
+    // WHEN the resolved prefix is read
+    // THEN it is the identity, shouted and underscored
+    expect(defaulted.prefix).toBe("HTTP_CONFIG");
+    expect(defaulted.name).toBe("Config(HTTP_CONFIG)");
+  });
+
+  it("uses an explicit prefix verbatim, not derived from the identity", () => {
+    // GIVEN a config declared with an explicit `options.prefix`
+    // WHEN the resolved prefix is read
+    // THEN it is exactly what was given, unrelated to the identity's own spelling
+    expect(amqpConfig.prefix).toBe("AMQP");
   });
 
   it("makes a skipped validation a defect, not a silent wrong value", async () => {
@@ -79,16 +95,15 @@ describe("a config adapter", () => {
     // having run `Config.parse` first — the precondition the adapter's
     // provider documents but cannot itself enforce
     const strictShape = { url: z.string().min(1) };
-    class StrictConfig extends Port("StrictConfig")<ValueOf<typeof strictShape>> {}
-    const StrictFromEnv = Config(StrictConfig, "STRICT")(strictShape);
+    const strictConfig = Config("StrictConfig")(strictShape, { prefix: "STRICT" });
 
     const App = Module("App")({
-      imports: [StrictFromEnv, source({ STRICT_URL: "" })],
-      exports: [StrictConfig],
+      imports: [strictConfig, source({ STRICT_URL: "" })],
+      exports: [strictConfig],
     });
 
     // WHEN the graph is built anyway
-    const built = await Module.scoped(App, (ctx) => OkAsync(ctx.get(StrictConfig)));
+    const built = await Module.scoped(App, (ctx) => OkAsync(ctx.get(strictConfig)));
 
     // THEN it is a Defect carrying the tagged error — a bug in the caller who
     // skipped validation, never an `Err` the application could branch on, and
@@ -96,20 +111,24 @@ describe("a config adapter", () => {
     expect(built).toBeDefect();
   });
 
-  it("lets a port the env adapter implements be provided as a literal instead, with no config module involved", async () => {
-    // GIVEN the exact same port `AmqpConfigFromEnv` implements, and a
-    // consumer that only ever depends on the port — never on `Config`
-    const readUrl = (ctx: { get: (port: typeof AmqpConfig) => ValueOf<typeof amqpShape> }) =>
-      OkAsync(ctx.get(AmqpConfig).url);
+  it("lets a config be provided as a literal, with no config module or environment involved", async () => {
+    // GIVEN a consumer that never imports `amqpConfig` as a module — only
+    // depends on it as a port token
+    const readUrl = (ctx: { get: (port: typeof amqpConfig) => ValueOf<typeof amqpShape> }) =>
+      OkAsync(ctx.get(amqpConfig).url);
 
-    // WHEN a test hands the port a literal, ordinary di provider — no
-    // `Config`, no `ConfigSource`, no environment
+    // WHEN a test hands it a literal, ordinary di provider — no
+    // `Config.source`, no environment, and `amqpConfig` never appears in
+    // `imports:` anywhere in this graph
     const Fake = Module("Fake")({
-      provides: [Provider(AmqpConfig)({ value: { url: "amqp://fake" } })],
-      exports: [AmqpConfig],
+      provides: [Provider(amqpConfig)({ value: { url: "amqp://fake" } })],
+      exports: [amqpConfig],
     });
 
-    // THEN the same consumer resolves it unchanged: the port is adaptable
+    // THEN the same consumer resolves it unchanged: `amqpConfig` is a token
+    // like any other port, and its module statics (name/imports/provides/
+    // exports) are only consulted when it appears in `imports:` — a graph
+    // that never puts it there never reaches them.
     const value = await Module.scoped(Fake, readUrl);
     expect(value).toBeOkWith("amqp://fake");
   });

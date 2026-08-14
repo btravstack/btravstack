@@ -1,19 +1,16 @@
-import { Port } from "@btravstack/di";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { Config, type ValueOf } from "./index.js";
+import { Config } from "./index.js";
 
 const amqpShape = { url: z.string().min(1).default("amqp://localhost") };
-class AmqpPort extends Port("Amqp")<ValueOf<typeof amqpShape>> {}
-const Amqp = Config(AmqpPort, "AMQP")(amqpShape);
+const Amqp = Config("Amqp")(amqpShape, { prefix: "AMQP" });
 
 const httpShape = {
   port: z.string().min(1).pipe(z.coerce.number<string>().int()).default(3000),
 };
-class HttpPort extends Port("Http")<ValueOf<typeof httpShape>> {}
-const Http = Config(HttpPort, "HTTP")(httpShape);
+const Http = Config("Http")(httpShape, { prefix: "HTTP" });
 
 describe("Config.parse", () => {
   it("accepts an environment every adapter agrees with", () => {
@@ -51,8 +48,7 @@ describe("Config.parse", () => {
         validate: (value) => Promise.resolve({ value: String(value) }),
       },
     };
-    class AsyncPort extends Port("Async")<{ value: string }> {}
-    const Async = Config(AsyncPort, "ASYNC")({ value: asyncSchema });
+    const Async = Config("Async")({ value: asyncSchema }, { prefix: "ASYNC" });
 
     // WHEN it is validated through the public entry point
     // THEN the crash is a Defect, not a `ConfigInvalid` — and it never throws

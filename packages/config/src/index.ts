@@ -6,12 +6,13 @@ import { source } from "./source.js";
 export { ConfigInvalid, describeIssues, type ConfigIssue } from "./errors.js";
 export type { Shape } from "./parse.js";
 export { ConfigSource } from "./source.js";
-export type { AnyConfigAdapter, ValueOf } from "./slice.js";
+export type { AnyConfigAdapter, ConfigType, ValueOf } from "./slice.js";
 
 /**
- * `Config(port, "PREFIX")({ … })` implements `port` as a module; the
- * namespaced operations are the kernel's, following `Module.build` /
- * `Module.scoped` and `Port.many`.
+ * `Config(id)(shape, options?)` returns one value that is both the port token
+ * and the di module that serves it from the environment; the namespaced
+ * operations are the kernel's, following `Module.build` / `Module.scoped` and
+ * `Port.many`.
  */
 export const Config = Object.assign(declareConfig, {
   collect,

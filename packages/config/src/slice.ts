@@ -1,11 +1,11 @@
-import { Module, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type ConcretePortClass, type ServiceOf } from "@btravstack/di";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { P } from "unthrown";
 
 import { ConfigInvalid } from "./errors.js";
 import { parseShape, type Shape } from "./parse.js";
 import { ConfigSource } from "./source.js";
-import { assertValidPrefix } from "./variable.js";
+import { assertValidPrefix, defaultPrefix } from "./variable.js";
 
 /** The parsed value of a shape: each key's validator output. */
 export type ValueOf<S extends Shape> = {
@@ -13,7 +13,7 @@ export type ValueOf<S extends Shape> = {
 };
 
 /**
- * Marks a `Config(port, prefix)(shape)` result so `collect` (Task 4) can find
+ * Marks a `Config(id)(shape, options?)` result so `collect` (Task 4) can find
  * it in a module tree by identity rather than by duck-typing on `provides` or
  * `exports`, which every module — adapter or not — carries. Exported:
  * `collect` lives in a different file and needs this exact symbol to test
@@ -30,7 +30,7 @@ export type ValueOf<S extends Shape> = {
  * against a bad environment — the exact failure this package exists to
  * prevent, and it would fail quietly. The registry symbol is shared
  * process-wide by string key, so every copy of this module resolves to the
- * same one regardless of which copy actually ran `Config(port, prefix)(shape)`.
+ * same one regardless of which copy actually ran `Config(id)(shape, options?)`.
  */
 export const CONFIG_ADAPTER = Symbol.for("btravstack/config/adapter");
 
@@ -46,12 +46,10 @@ export const CONFIG_ADAPTER = Symbol.for("btravstack/config/adapter");
 export type AnyModule = { readonly imports: readonly AnyModule[] };
 
 /**
- * The structural type of what `Config(port, prefix)(shape)` returns, as
+ * The structural type of what `Config(id)(shape, options?)` returns, as
  * later tasks consume it: an ordinary di module — branded, and carrying back
  * the `prefix` and `shape` it was built from so `collect`/`parseAll` can read
- * them off the value instead of threading them separately. Unlike the welded
- * design this replaces, it is *only* a module: the port it implements is a
- * separate value, declared by whoever needs the port to exist.
+ * them off the value instead of threading them separately.
  */
 export type AnyConfigAdapter = AnyModule & {
   readonly [CONFIG_ADAPTER]: true;
@@ -60,36 +58,50 @@ export type AnyConfigAdapter = AnyModule & {
 };
 
 /**
- * `Config(port, prefix)(shape)` implements `port` — an ordinary port,
- * declared by the caller with `Port(id)<Service>` — by parsing
- * `prefix`-scoped variables out of `ConfigSource`, and returns the **module**
- * that provides it. It does not declare a port and does not return one: the
- * port stays adaptable precisely because this is just one provider for it,
- * the same as a test's literal or a future file/secret-manager adapter
- * would be.
+ * The parsed value's type for a declared config — di's own `ServiceOf` under
+ * this package's name, so a consumer can annotate `ConfigType<typeof
+ * amqpConfig>` without reaching into `@btravstack/di` for a type that has
+ * nothing to do with wiring, only with what `Config` produced.
+ */
+export type ConfigType<T> = ServiceOf<T>;
+
+/**
+ * `Config(id)(shape, options?)` — curried on the identity so it reads next to
+ * the name it labels, then the field map, then an optional options object,
+ * mirroring `@btravstack/entity`'s `Entity(tag)(fields, options?)`. It
+ * returns ONE value that is both a port token — `ctx.get(amqpConfig)`,
+ * `Provider(amqpConfig)({ value: ... })` — and the di module a starter
+ * imports to serve that port from the environment: `imports: [amqpConfig]`.
  *
- * `ValueOf<S> extends ServiceOf<P>` — checked via the trailing rest
- * parameter, the same arity-gate idiom `Module.build`'s `_missing` uses — is
- * "this adapter implements this port" made a compile-time fact: a shape
- * missing a key the port declares, or with the wrong type for one, is a
- * call-arity error at `Config(port, prefix)(shape)`, not a mismatch
- * discovered only once `ctx.get(port)` is read.
+ * `options.prefix` names the environment variables' shared prefix; omitted,
+ * it defaults to the screaming-snake form of `id` (`"AmqpConfig"` →
+ * `"AMQP_CONFIG"`). Either way the *resolved* prefix is validated at
+ * declaration — see `assertValidPrefix`.
  */
 export const Config =
-  <TPort extends AnyPort, const Prefix extends string>(port: TPort, prefix: Prefix) =>
+  <const Id extends string>(id: Id) =>
   <S extends Shape>(
     shape: S,
-    ..._implements: ValueOf<S> extends ServiceOf<TPort>
-      ? []
-      : [error: "shape does not implement the port's service type", expected: ServiceOf<TPort>]
-  ): Module<InstanceType<TPort>, never, ConfigSource> & {
-    readonly [CONFIG_ADAPTER]: true;
-    readonly prefix: Prefix;
-    readonly shape: S;
-  } => {
+    options?: { readonly prefix?: string },
+  ): ConcretePortClass<Id, ValueOf<S>> &
+    Module<InstanceType<ConcretePortClass<Id, ValueOf<S>>>, never, ConfigSource> & {
+      readonly [CONFIG_ADAPTER]: true;
+      readonly prefix: string;
+      readonly shape: S;
+    } => {
+    const prefix = options?.prefix ?? defaultPrefix(id);
     assertValidPrefix(prefix);
 
-    const provider = Provider(port)([ConfigSource], {
+    // The port half: `Port(id)<Service>` fixes the generic construct
+    // signature to this shape's parsed output — the same generic-heritage
+    // instantiation a starter would write by hand
+    // (`class X extends Port("X")<Shape> {}`). Reusing it rather than
+    // hand-rolling an equivalent class keeps the duplicate-id warning
+    // `Port` already carries.
+    // oxlint-disable-next-line typescript/no-extraneous-class -- a port class is a phantom token; see port.ts
+    class ConfigPort extends Port(id)<ValueOf<S>> {}
+
+    const provider = Provider(ConfigPort)([ConfigSource], {
       sync: (source: ServiceOf<ConfigSource>) =>
         // The provider is reached only after `Config.parse` has already
         // validated every adapter, so a failure here is a defect rather than
@@ -111,48 +123,47 @@ export const Config =
             // oxlint-disable-next-line unthrown/no-catch-all-pattern -- E is readonly ConfigIssue[], a single non-union type
             matcher.with(P._, (issues) => new ConfigInvalid({ issues })),
           )
-          .getOrThrow() as ServiceOf<TPort>,
+          // `ServiceOf<typeof ConfigPort>`, not the seemingly-equivalent
+          // `ValueOf<S>`: the `sync` arm's parameter type is generic in
+          // `ServiceOf<P>` (`P` still open here, inside `Provider`'s own
+          // signature), an unresolved conditional type that is not
+          // *textually* `ValueOf<S>` even though the two describe the same
+          // shape — TypeScript compares the annotation as written, not its
+          // reduced form, so only naming the conditional itself satisfies it.
+          .getOrThrow() as ServiceOf<typeof ConfigPort>,
     });
 
-    // `port as never`: `Module`'s `exports` array checks each entry against
-    // `AnyPort & (new () => Available<...>)` — a *non-abstract* constructor
-    // — but `AnyPort` (and therefore `TPort`, bounded by it) declares an
-    // *abstract* one on purpose (see `port.ts`'s note on why: it is what
-    // lets a concrete port class still widen to `AnyPort`). A generic
-    // `TPort` is checked against its bound, not against whatever concrete
-    // class the caller actually passed, so TypeScript can never see this
-    // particular `port` as concrete — no cast to a *named* type closes that
-    // gap. `never` is the bottom type, assignable into anything, so it
-    // sidesteps the check entirely rather than trying to satisfy it; the
-    // final cast below restates the real, precise type this factory
-    // promises, so nothing downstream ever observes the widening.
     const adapter = Module(`Config(${prefix})`)({
       provides: [provider],
-      exports: [port as never],
+      exports: [ConfigPort],
     });
 
-    // Non-enumerable — the default `Object.defineProperties` descriptor:
-    // `collect`/`parseAll` reach these three through the type, not through
-    // `Object.keys`/spreading the adapter, so leaving them out of an
-    // enumerated view keeps `{ ...adapter }` and friends showing only the
-    // ordinary module fields (`name`/`imports`/`provides`/`exports`).
-    Object.defineProperties(adapter, {
+    // Object.defineProperties, never Object.assign: a class's `name` is
+    // configurable but not writable, so `ConfigPort.name = adapter.name`
+    // either silently no-ops (sloppy mode) or throws (strict mode) instead of
+    // renaming it. The module statics land non-enumerable — the default
+    // descriptor — same as `CONFIG_ADAPTER`/`prefix`/`shape`: `collect` and
+    // `parseAll` reach all of these through the type, not through
+    // `Object.keys`/spreading the value.
+    Object.defineProperties(ConfigPort, {
+      name: { value: adapter.name, configurable: true },
+      imports: { value: adapter.imports },
+      provides: { value: adapter.provides },
+      exports: { value: adapter.exports },
       [CONFIG_ADAPTER]: { value: true },
       prefix: { value: prefix },
       shape: { value: shape },
     });
 
-    // `as unknown as`: the widened `exports: [port as never]` above means
-    // `Module(...)`'s own inferred return type is wider than the precise
-    // `Module<InstanceType<TPort>, never, ConfigSource>` this factory
-    // promises — a direct `as` between two differently-instantiated
-    // `Module<...>`s is rejected for the same contravariant-phantom-field
-    // reason di's own `Provider`/`Module` factories cast `as never`
-    // internally. The object itself is exactly right at runtime; only the
-    // type needs restating here, back to what the port and shape actually are.
-    return adapter as unknown as Module<InstanceType<TPort>, never, ConfigSource> & {
-      readonly [CONFIG_ADAPTER]: true;
-      readonly prefix: Prefix;
-      readonly shape: S;
-    };
+    // `as unknown as`: `Module`'s three phantom fields (`_exports`, `_error`,
+    // `_needs`) don't exist at runtime, so a direct `as` from the concrete
+    // `ConfigPort` class — which genuinely has none of them — is rejected.
+    // The object itself is exactly right at runtime; only the type needs
+    // restating here, back to what the port and shape actually are.
+    return ConfigPort as unknown as ConcretePortClass<Id, ValueOf<S>> &
+      Module<InstanceType<ConcretePortClass<Id, ValueOf<S>>>, never, ConfigSource> & {
+        readonly [CONFIG_ADAPTER]: true;
+        readonly prefix: string;
+        readonly shape: S;
+      };
   };
