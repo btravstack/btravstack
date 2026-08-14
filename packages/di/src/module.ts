@@ -8,19 +8,21 @@ import { createScope } from "./scope.js";
 
 /**
  * Structural bounds, not `Provider<any, any, any>` / `Module<any, any, any>`
- * as the brief has it. `Provider`/`Module`'s three phantom fields sit in
- * *contravariant* (function-parameter) position by design — see
- * `type-assert.ts` — and under this TypeScript version `any` is no longer
- * universally assignable into a contravariant slot whose peer channel is
- * `never` (e.g. a value provider's `E`/`N`, or a module with no unmet
- * needs): `Provider<Env, never, never>` fails to satisfy `Provider<any, any,
- * any>` with "Type 'any' is not assignable to type 'never'". A minimal
- * `tsc --strict` repro: `interface Foo<E> { readonly f: (e: E) => void };
- * declare const x: Foo<never>; const y: Foo<any> = x` is itself rejected.
- * These bounds only need to describe the shape every provider/module has in
- * common regardless of its channels, so they list the concrete
- * (non-phantom) fields structurally instead — no channel comparison, so
- * nothing to trip on.
+ * as the brief has it. The phantom channels carry *mixed* variance by design —
+ * capability channels (`_port`, `_exports`) contravariant, obligation channels
+ * (`_error`, `_needs`) covariant, see `Module` below — and these bounds only
+ * need the shape every provider and module has in common regardless of its
+ * channels. Listing the concrete (non-phantom) fields structurally keeps the
+ * comparison channel-free, so nothing here can trip on a variance rule it does
+ * not care about.
+ *
+ * The wildcarded bound was originally rejected outright: while `_error`/`_needs`
+ * were still contravariant, `Provider<Env, never, never>` failed to satisfy
+ * `Provider<any, any, any>` with "Type 'any' is not assignable to type
+ * 'never'". Covariant obligation channels ended that, and the wildcarded form
+ * would compile today (measured) — it stays gone because `any` is a lint error
+ * in this repo, and because a bound that compares channels it does not read is
+ * a variance bug waiting for the next rule change.
  */
 type AnyProvider = { readonly port: AnyPort; readonly deps: readonly AnyPort[] };
 

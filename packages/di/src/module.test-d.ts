@@ -34,11 +34,12 @@ const ConfigModule = Module("Config")({
 
 /**
  * Recovers `Module`'s three type arguments by direct positional inference
- * against the same generic interface, rather than by assignability. `Exports`,
- * `E`, and `Needs` all sit in contravariant field positions, so a plain
- * `const typed: Module<X, E, N> = m` assignment only proves `X`/`E`/`N` are
- * assignable *into* whatever the value actually carries — see
- * `provider.test-d.ts`'s `ChannelsOf` for the same pattern.
+ * against the same generic interface, rather than by assignability. `Exports`
+ * sits in a contravariant field position and `E`/`Needs` in covariant ones, so a
+ * plain `const typed: Module<X, E, N> = m` assignment proves only that each
+ * channel is assignable in its own direction — never that it is the channel the
+ * value actually carries. See `provider.test-d.ts`'s `ChannelsOf` for the same
+ * pattern.
  */
 type ChannelsOf<T> = T extends Module<infer X, infer E, infer N> ? readonly [X, E, N] : never;
 

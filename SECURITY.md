@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-`@btravstack/di` is released from this repository. Security fixes land on the
+`@btravstack/core`, `@btravstack/di` and the runtime packages are released from this repository. Security fixes land on the
 **latest** published version; please upgrade to the latest release before
 reporting.
 
@@ -12,7 +12,7 @@ reporting.
 
 Report privately through one of:
 
-- **GitHub Security Advisories** — [open a private report](https://github.com/btravstack/di/security/advisories/new)
+- **GitHub Security Advisories** — [open a private report](https://github.com/btravstack/start/security/advisories/new)
   (preferred; keeps the discussion and fix coordination in one place).
 - **Email** — `btravers.pro@gmail.com`.
 
@@ -29,4 +29,4 @@ Please include:
 - A coordinated fix and release, with credit to you in the advisory unless you
   prefer to remain anonymous.
 
-Thank you for helping keep `@btravstack/di` and its users safe.
+Thank you for helping keep these packages and their users safe.

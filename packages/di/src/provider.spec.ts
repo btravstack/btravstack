@@ -52,7 +52,7 @@ test("a class provider constructs with the resolved dependencies", async () => {
       return this.seed + 1;
     }
   }
-  const p = Provider(Value)([Seed], { class: Impl as never });
+  const p = Provider(Value)([Seed], { class: Impl });
   const built = await p.construct([41]);
   expect(built.isOk() && (built.value as Impl).n).toBe(42);
 });
