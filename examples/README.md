@@ -148,18 +148,19 @@ but `UnitMeta`:
 All three are answering the same obligation — `UnitMeta.id` must be unique per
 unit, because `traceId` defaults to it — and all three land on "the attempt, not
 the logical thing", because a retry is a second unit and the same trace.
-`order-worker` and `order-amqp-worker` agree on what a unit _is_ — one delivery — and
-disagree on how to name it: a queue job id is already unique per attempt, a
-delivery tag is not (see `order-amqp-worker`'s own README for why), so one mints and
-the other does not.
+`order-amqp-worker` mints its `id` rather than reusing the broker's: a delivery
+tag is not unique per attempt (see
+[`@btravstack/amqp`'s README](../packages/amqp/README.md) for why), where a
+queue job id or a task token already is.
 
 ## The runtimes with a non-empty `needs`
 
 `order-api`'s `httpRuntime` call declares `[PlaceOrder, FindOrder, Logger]`,
-while `queueWorkerRuntime`, `temporalWorkerRuntime` and `orderAmqpRuntime` each
-declare `[PlaceOrder, Logger]` — two of the three the module exports, because a
+`temporalWorkerRuntime` declares the five ports its activities resolve, and
+`orderAmqpRuntime` declares `[Outbox, Logger]` — each a selection of what the
+module exports, because a
 runtime declares what _it_ needs. The kernel's own `testRuntime` needs nothing,
-so these four are what exercise `start`'s phantom rest-tuple gate and
+so these three are what exercise `start`'s phantom rest-tuple gate and
 `RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
 _classes_ while di parameterises contexts by port _instances_ — against a real
 module here. `@btravstack/http`'s own `AppModule`/`Greeting` fixture
