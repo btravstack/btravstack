@@ -41,6 +41,7 @@ catalog:
   "@orpc/server": 2.0.0-beta.23
   "@prisma/adapter-better-sqlite3": 7.9.1
   "@prisma/client": 7.9.1
+  "@standard-schema/spec": 1.1.0
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.5.0. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
