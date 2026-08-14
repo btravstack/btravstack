@@ -1,0 +1,67 @@
+# @btravstack/di
+
+## 0.1.0
+
+Initial release.
+
+A module-based dependency-injection container for TypeScript. **Ports** are the
+vocabulary an application defines for what it needs, **providers** bind a port to
+one concrete construction at a single edge, and **modules** group providers while
+declaring what they import and what they let anyone else see. Every fallible
+construction returns an `unthrown` `Result` rather than throwing.
+
+Wiring mistakes are compile errors — a missing dependency, an internal port
+leaking out of a module, a re-export of something never imported. The two that
+types cannot catch, a cycle and two providers registered for the same port, are
+raised as defects before any factory runs.
+
+### The surface
+
+- **`Port(id)<Service>`** declares a port as a nominal token:
+  `class OrderRepository extends Port("OrderRepository")<Shape> {}`. Identity is
+  the token, not the shape, so two ports with identical services stay distinct.
+  `Port.many(id)<Member>` declares a set port that several providers contribute
+  to — a plugin registry, a list of health checks — and reading it returns every
+  contribution, accumulated across module boundaries.
+- **`Provider(port)(deps?, options)`** binds one port. The options literal picks
+  exactly one of five mutually exclusive arms — `value`, `sync`, `make`, `class`,
+  or `acquire` + `release` — and supplying more than one is a compile error.
+  Every arm also takes optional `onStart` / `onStop` hooks, fired once the whole
+  graph has constructed and during teardown. `Provider.member(port)` contributes
+  to a set port.
+- **`Module(name)({ imports, provides, exports })`** groups providers. Anything
+  not exported is private to the module even though the built container is a
+  single flat map at runtime, and the privacy is enforced at compile time.
+  `Module.build` builds a graph that needs nothing resourceful, `Module.scoped`
+  opens a scope for one that does, and `Module.forkScope` layers a short-lived
+  scope over an already-built parent — per-request services that must not
+  outlive the request but may read what the parent constructed.
+- **`Context`** is the built graph: `ctx.get(port)` returns the service, typed
+  from the port alone.
+- Types: `AnyPort`, `ServiceOf`, `ScopedOptions`, and `Scope`. `PortClass` and
+  `ManyPortClass` are exported for declaration emit — a consumer compiling with
+  `declaration: true` and exporting a port needs them nameable — not because
+  either is meant to be written by hand.
+
+### What it guarantees
+
+- **An unmet dependency does not compile.** Every requirement a graph has not
+  discharged shows up in its `Needs`, and the build call's arity gate rejects it
+  with an `UNSATISFIED DEPENDENCIES` parameter naming what is missing.
+- **A resourceful graph cannot be built without a scope.** `Scope` stays in
+  `Needs` for any provider with `acquire`/`release` or an `onStop`, and
+  `Module.scoped` is the only entry point that discharges it. Passing such a
+  graph to `Module.build` is a compile error, not a runtime leak.
+- **Teardown is ordered and survives partial failure.** Finalisers run in
+  reverse acquisition order, and a graph that fails half-constructed unwinds
+  exactly what it managed to acquire — on success, on failure, and on the
+  mid-graph case — before the call resolves.
+- **Errors are values.** A failing construction is an `unthrown` `Result` in the
+  module's own error channel. A wiring mistake is a defect on the separate
+  channel, because it is a bug rather than an outcome.
+- **Port identity is unforgeable.** The brand symbols behind a port are never
+  exported, so no hand-written object can pass itself off as a port instance.
+
+### Peer dependency
+
+`unthrown` (`^5.0.0`) — install it alongside.

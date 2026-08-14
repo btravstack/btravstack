@@ -19,7 +19,7 @@
     "@amqp-contract/worker": "catalog:",
     "@btravstack/amqp": "workspace:*",
     "@btravstack/core": "workspace:*",
-    "@btravstack/di": "catalog:",
+    "@btravstack/di": "workspace:*",
     "@btravstack/example-order-amqp-contract": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
     "@btravstack/example-order-config": "workspace:*",

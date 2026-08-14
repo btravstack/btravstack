@@ -55,7 +55,7 @@
     "@amqp-contract/testing": "catalog:",
     "@amqp-contract/worker": "catalog:",
     "@btravstack/core": "workspace:*",
-    "@btravstack/di": "catalog:",
+    "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@types/node": "catalog:",

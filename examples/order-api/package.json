@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@btravstack/core": "workspace:*",
-    "@btravstack/di": "catalog:",
+    "@btravstack/di": "workspace:*",
     "@btravstack/example-order-api-contract": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
     "@btravstack/example-order-config": "workspace:*",

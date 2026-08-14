@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "@btravstack/core": "workspace:*",
-    "@btravstack/di": "catalog:",
+    "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",

@@ -51,7 +51,7 @@
   },
   "devDependencies": {
     "@btravstack/core": "workspace:*",
-    "@btravstack/di": "catalog:",
+    "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@temporal-contract/contract": "catalog:",
     "@temporal-contract/worker": "catalog:",

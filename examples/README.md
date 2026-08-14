@@ -1,11 +1,18 @@
 # Examples
 
-Eleven small packages that are **one application booted four ways**: a clean
+Thirteen small packages in two families, none of them published, all of them in
+the gate.
+
+The **`order-*` ten** are one application booted three ways: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
-queue worker, once as a Temporal worker and once as an AMQP consumer, with each
-transport's contract in a package of its own — and, at the same time,
-exercising `@btravstack/core` end to end from a consumer's own workspace,
-`workspace:*` and all.
+Temporal worker and once as an AMQP consumer, with each transport's contract in a
+package of its own — and, at the same time, exercising `@btravstack/core` end to
+end from a consumer's own workspace, `workspace:*` and all.
+
+The **other three** came with `@btravstack/di` and are the container's own: they
+compose a `Module` and never call `start`, which is what keeps them tests of the
+wiring rather than of the lifecycle. They are listed under
+[The container's three](#the-containers-three) below.
 
 | Package                                                | Layer     | Shows                                                                                                                                                             |
 | ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -212,3 +219,22 @@ rather than executed.
 
 Nothing here is published: every package is `"private": true` and depends on the
 kernel via `workspace:*`.
+
+## The container's three
+
+These came in with `@btravstack/di` when it was merged into this repository, and
+they are about wiring rather than lifecycle: each composes a `Module` and asserts
+what the container did, without booting a process.
+
+| Package                                        | Shows                                                                                                                                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`hexagonal-order-api`](./hexagonal-order-api) | The core story: ports named by the application, a private internal beside a public surface, and one application module composed against a production adapter and an in-memory one. |
+| [`request-scope`](./request-scope)             | Lifetime management: a pool acquired once under `Module.scoped`, and a `Module.forkScope`'d transaction per request over the built parent.                                         |
+| [`plugin-registry`](./plugin-registry)         | Multi-binding: a `Port.many` set port fed by contributions from two independent modules, collected and run together.                                                               |
+
+`hexagonal-order-api` is also the one workspace in the repository that compiles
+**twice**: its `typecheck` emits declarations under the catalog's `typescript` and
+re-checks them under `typescript-consumer` (5.9.3), because a published package
+has to be readable by the stable line and the two emitters do not agree on
+everything. `src/emit-guards.ts` is the fixture that keeps TS4020 from coming
+back, and it is imported by nothing on purpose — it exists to be compiled.

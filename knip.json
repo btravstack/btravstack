@@ -1,9 +1,13 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreExportsUsedInFile": true,
-  "ignore": ["**/*.test-d.ts"],
+  "ignore": ["**/*.test-d.ts", "**/type-assert.ts"],
   "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"],
   "workspaces": {
+    "examples/hexagonal-order-api": {
+      "entry": ["src/emit-guards.ts"],
+      "project": ["src/**/*.ts"]
+    },
     "examples/order-api": { "entry": ["src/main.ts"] },
     "examples/order-temporal-worker": { "entry": ["src/main.ts"] }
   }

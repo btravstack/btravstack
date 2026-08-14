@@ -18,7 +18,6 @@ catalog:
   "@amqp-contract/testing": 3.0.0-beta.6
   "@amqp-contract/worker": 3.0.0-beta.6
   "@btravstack/commitlint": 0.1.0
-  "@btravstack/di": 0.1.0
   "@btravstack/entity": 0.7.0
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
@@ -69,6 +68,14 @@ catalog:
   tsdown: 0.22.14
   turbo: 2.10.8
   typescript: 7.0.2
+  # The TypeScript a *consumer* is realistically on, for the second
+  # declaration-emit pass in `examples/hexagonal-order-api`
+  # (`tsconfig.emit.json`, compiled once by each version). 7.0.2 is the native
+  # port and the one this repo builds with; a published package has to be
+  # readable by the stable line too, and the two emitters do not agree on
+  # everything. Aliased because one `package.json` cannot name `typescript`
+  # twice.
+  typescript-consumer: "npm:typescript@5.9.3"
   unthrown: 5.5.0
   "@vitest/coverage-v8": 4.1.10
   vitest: 4.1.10
@@ -101,7 +108,6 @@ minimumReleaseAgeExclude:
   - "@amqp-contract/core@3.0.0-beta.6"
   - "@amqp-contract/testing@3.0.0-beta.6"
   - "@amqp-contract/worker@3.0.0-beta.6"
-  - "@btravstack/di@0.1.0"
   - "@btravstack/entity@0.7.0"
   - "@unthrown/oxlint@5.2.0"
   - "@unthrown/prisma@0.3.2"
