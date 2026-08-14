@@ -74,6 +74,28 @@ describe("a config adapter", () => {
     ).toThrow(/upper-snake-case/);
   });
 
+  it("makes a skipped validation a defect, not a silent wrong value", async () => {
+    // GIVEN an environment the schema rejects, reached WITHOUT the kernel
+    // having run `Config.parse` first — the precondition the adapter's
+    // provider documents but cannot itself enforce
+    const strictShape = { url: z.string().min(1) };
+    class StrictConfig extends Port("StrictConfig")<ValueOf<typeof strictShape>> {}
+    const StrictFromEnv = Config(StrictConfig, "STRICT")(strictShape);
+
+    const App = Module("App")({
+      imports: [StrictFromEnv, source({ STRICT_URL: "" })],
+      exports: [StrictConfig],
+    });
+
+    // WHEN the graph is built anyway
+    const built = await Module.scoped(App, (ctx) => OkAsync(ctx.get(StrictConfig)));
+
+    // THEN it is a Defect carrying the tagged error — a bug in the caller who
+    // skipped validation, never an `Err` the application could branch on, and
+    // never a wrong value that boots
+    expect(built).toBeDefect();
+  });
+
   it("lets a port the env adapter implements be provided as a literal instead, with no config module involved", async () => {
     // GIVEN the exact same port `AmqpConfigFromEnv` implements, and a
     // consumer that only ever depends on the port — never on `Config`
