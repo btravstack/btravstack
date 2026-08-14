@@ -11,9 +11,10 @@ src/router.ts         the implementation, and the one place a domain error becom
 src/request-scope.ts  RequestModule — a scope forked per request over the application's
 src/handler.ts        apiHandler — the per-request forkScope, handed to httpRuntime
 src/client.ts         an AsyncResult client for the same contract
+src/api-runtime.ts    orderApiRuntime — httpRuntime, with its port read from the graph
+src/config.ts         httpConfig / probeConfig — @btravstack/config declarations
 src/module.ts         OrderApiModule — the composition root
-src/env.ts            process.env validated through a schema, as a Result
-src/main.ts           the process: readEnv + start + runMain
+src/main.ts           the process: Config.parse + start + runMain
 src/test-fixtures.ts  serve / clientFor / gate / tapped, as Vitest fixtures
 ```
 
@@ -128,7 +129,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/start-example-order-api test  # 15 api specs + 6 env specs
+pnpm --filter @btravstack/start-example-order-api test  # the 15 api specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
@@ -149,54 +150,69 @@ it("lets an in-flight call finish while draining", async ({ serve, clientFor, ga
 });
 ```
 
-`src/main.ts` is the process itself — and it reads its configuration the same way
-it reads everything else, as a value:
+## The configuration
+
+Two [`@btravstack/config`](../../packages/config) values, and no `env.ts`:
+
+| Variable     | Declared in                     | Default | What it is             |
+| ------------ | ------------------------------- | ------- | ---------------------- |
+| `HTTP_PORT`  | `httpConfig` (`src/config.ts`)  | `3000`  | the port the API binds |
+| `PROBE_PORT` | `probeConfig` (`src/config.ts`) | `9000`  | `/livez` / `/readyz`   |
+
+> **`HTTP_PORT` was `PORT`.** It is the one name this deployment changed, and
+> not by choice: a config's variables are `PREFIX_KEY`, and no prefix and key
+> join to a bare `PORT`. Every other variable in `examples/` is byte-for-byte
+> what it was.
+
+Each declaration is **one value that is both a port token and the module
+serving it**, so `imports: [httpConfig]` provides it and `ctx.get(httpConfig)`
+reads it back. `main.ts` never learns what a port is: `orderApiRuntime`
+(`src/api-runtime.ts`) declares `httpConfig` in its `needs` and resolves it
+from the context `start` hands it, then builds `@btravstack/start-http`'s
+runtime with what it found.
+
+`src/main.ts` is the process itself — and it validates **every** config in the
+graph before building it, reporting them together:
 
 ```ts
-await readEnv().match({
-  ok: (env) =>
+await Config.parse(Config.collect(OrderApiModule), process.env).match({
+  ok: () =>
     runMain(
       start(OrderApiModule, {
-        runtime: httpRuntime({
-          port: env.PORT,
-          needs: [PlaceOrder, FindOrder, Logger],
-          handler: apiHandler,
-        }),
-        probes: { port: env.PROBE_PORT },
+        runtime: orderApiRuntime(),
+        probes: { port: probePort },
       }),
     ),
   errCases: (matcher) =>
-    matcher.with(P._, (issues) => abort(describeEnvIssues(issues))),
+    matcher.with(P.tag("config/ConfigInvalid"), (error) =>
+      abort(describeIssues(error.issues)),
+    ),
   defect: (cause) =>
-    abort(`the environment could not be validated: ${String(cause)}`),
+    abort(`the configuration could not be validated: ${String(cause)}`),
 });
 ```
 
-`src/env.ts` is where `PORT` and `PROBE_PORT` are validated. It goes through
-`@unthrown/standard-schema`'s `fromSchema` rather than a schema's own `.parse()`,
-because `.parse()` throws — which `unthrown/no-throw` bans, and which would
-contradict the example it appears in. The issues are the modeled `E`, folded
-above into a message and a non-zero exit code.
+`ConfigInvalid` is a `TaggedError`, so the matcher names it. The fold this
+replaced reported one schema's issues and needed a `P._` escape hatch behind a
+lint-disable, because a `SchemaIssues` array is a single type with no
+discriminant to enumerate. And the report now covers the whole graph: an
+operator who mistyped three variables across two packages learns all three
+from one failed boot.
+
+`probePort` is the one variable still read from `process.env` by hand: `start`
+binds the probe server before it builds the graph, so its port cannot come out
+of one. It is still declared and still validated above — see the comment at
+that line, and phase 2's kernel integration.
 
 A port is a **non-empty string piped into a coercion**, never a bare
-`z.coerce.number()`:
-
-```ts
-z.string()
-  .trim()
-  .min(1)
-  .pipe(z.coerce.number<string>().int().min(0).max(65_535))
-  .default(fallback);
-```
-
-Coercion is `Number()` underneath, so `PORT=abc` would bind `NaN` and `PORT=`
-would bind `0`, the ephemeral port. The bounds catch the first — and every
-`PORT=3.5` or `PORT=99999` after it — but they cannot catch the second, because
-a port's `min` **is** `0` so that an ephemeral bind stays expressible. The
-non-empty string in front is what closes it: an empty value is a configuration
-error, not an absent one, and `.default(...)` applies only when the variable is
-genuinely missing. A malformed value is a validation issue instead.
+`z.coerce.number()` — `@btravstack/config/zod`'s `port(fallback)` is that
+fragment, and its own docs carry the reasoning: coercion is `Number()`
+underneath, so `HTTP_PORT=` would bind the ephemeral port `0` and the bounds
+cannot catch it, because a port's `min` **is** `0`.
 
 It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there
 is no compiled entry for `node` to run, and every spec drives `start` directly.
+The specs bind `port: 0` through `httpRuntime` directly, because an ephemeral
+bind read back off `Serving.info` is a property of the test rather than of the
+deployment; `src/needs-gate.test-d.ts` is what covers `orderApiRuntime`.

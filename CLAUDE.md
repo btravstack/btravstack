@@ -622,37 +622,49 @@ expect(r.error.code)… }` passes on the outer assertion alone the moment the
 
 A sixth rule is about production code that tests keep honest:
 
-6. **Configuration is validated through a schema and returned as a value, never
-   `.parse()`d.** `examples/order-api/src/env.ts` is the shape: a schema over
-   `process.env` run through `@unthrown/standard-schema`'s `fromSchema`, whose
-   issues are the modeled `E`, folded by the entry point into a message and a
-   non-zero exit code. A schema's own `.parse()` **throws**, which
-   `unthrown/no-throw` bans and which would contradict the example it appears in.
+6. **Configuration is declared with `@btravstack/config`, never hand-rolled over
+   `process.env`.** `Config(id)(shape, options?)` is one value that is both a di
+   port token and the module serving it from the environment, so a deployment
+   writes `imports: [amqpConfig]` and reads `ctx.get(amqpConfig)` — no port here
+   and an adapter there. `examples/order-amqp-worker` is the reference: configs
+   in `src/config.ts` (and `outboxRelayConfig` next to the loop it tunes in
+   `src/outbox-relay.ts`), `Config.source(process.env)` as the single place the
+   environment enters the composition root, a runtime that names its configs in
+   `needs` and reads them off `host.ctx` rather than taking them as parameters,
+   and a `main.ts` whose whole tail is
+   `Config.parse(Config.collect(Root), process.env).match({ … })` — one report
+   for every config in the graph, folded with
+   `matcher.with(P.tag("config/ConfigInvalid"), …)` and `describeIssues`. A
+   spec supplies its own `Config.source({ … })` instead; a `Provider` stub for
+   the port works too.
+
    A numeric variable is a **non-empty string piped into a coercion** —
-   `z.string().trim().min(1).pipe(z.coerce.number<string>().int().min(min).max(max)).default(f)`
-   — never a bare `z.coerce.number()`: coercion is `Number()` underneath, so
-   `PORT=abc` binds `NaN` and `PORT=` binds the ephemeral port `0` — the exact
-   silent failure the module exists to remove. The bounds catch the first (and
-   `3.5`, and out-of-range); they cannot catch the second, because a **port's
-   `min` is `0`** so that an ephemeral bind stays expressible, which is why the
-   string guard is not optional. An empty or whitespace-only value is a
-   configuration **error**, not an absent one — `.default(...)` applies only
-   when the variable is genuinely missing. The fragment is
-   `examples/order-config`'s `wholeNumber` / `port`, shared by all three
-   deployments, and its spec pins all seven cases (absent, `""`, whitespace,
-   `abc`, `3.5`, valid, out of range) **once**. Each deployment's own `env.ts`
-   is then its variables and their defaults, and its own spec pins what is
-   genuinely its own — `order-amqp-worker`'s `OUTBOX_POLL_MS` bound differs from a
-   port's, and `order-temporal-worker`'s two string variables have an emptiness rule
-   of their own. Triplicating the fragment was the earlier shape; it was cut
-   in the audit that also deleted this repo's planning documents. The `<string>` type argument
-   is needed because `z.coerce.number()`'s input is `unknown`, which `.pipe`
-   will not accept from a `string`. The earlier digits-only regex plus
-   `.transform(Number)` was the over-built form of this; it was simplified in
-   the PR #7 review, and a bare `z.coerce.number()` was tried there and reverted
-   for the `min(0)` hole above.
-   Note `fromSchema` is **curried** — `fromSchema(schema)(input)`, not
-   `fromSchema(schema, input)`.
+   `@btravstack/config/zod`'s `wholeNumber(fallback, min, max)` and
+   `port(fallback)` — never a bare `z.coerce.number()`: coercion is `Number()`
+   underneath, so `PORT=abc` binds `NaN` and `PORT=` binds the ephemeral port
+   `0`, the exact silent failure the package exists to remove. The bounds catch
+   the first (and `3.5`, and out-of-range); they cannot catch the second,
+   because a **port's `min` is `0`** so that an ephemeral bind stays
+   expressible. An empty or whitespace-only value is a configuration **error**,
+   not an absent one — `.default(...)` applies only when the variable is
+   genuinely missing. `packages/config` pins all seven cases (absent, `""`,
+   whitespace, `abc`, `3.5`, valid, out of range) once; a deployment's specs
+   pin only what is genuinely its own. The `<string>` type argument is needed
+   because `z.coerce.number()`'s input is `unknown`, which `.pipe` will not
+   accept from a `string`.
+
+   The hand-rolled shape — a `z.object` of `SCREAMING_SNAKE` keys per
+   deployment, a `readEnv` over `@unthrown/standard-schema`'s `fromSchema`, and
+   an `examples/order-config` package holding the shared fragment — was the
+   earlier form and is gone. Its fold needed a `P._` catch-all behind an
+   `unthrown/no-catch-all-pattern` disable, because `SchemaIssues` is one type
+   with no discriminant; `ConfigInvalid` is a `TaggedError`, so the matcher
+   enumerates it and the disable is gone with it. Two things still lag: `start`
+   needs `probes: { port }` **before** the graph exists, so each `main.ts`
+   reads `PROBE_PORT` from `process.env` at that one line (declared and
+   validated with the rest all the same), and a composition root exporting a
+   config cannot emit declarations until `@btravstack/di` exports
+   `PortInstance`. Both are phase-2 items; see `packages/config/README.md`.
 
 ## Deferred, deliberately
 

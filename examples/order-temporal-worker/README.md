@@ -15,9 +15,9 @@ starts these workflows needs it and needs none of this.
 src/workflows.ts        fulfillOrder — the saga, in Temporal's deterministic sandbox
 src/temporal-runtime.ts the runtime: five activities and their triage into contract errors
 src/fulfillment.ts      FulfillmentModule — the two external services, as stand-ins
+src/config.ts           temporalConfig / probeConfig — @btravstack/config declarations
 src/module.ts           OrderTemporalModule — the composition root
-src/env.ts              process.env validated through a schema, as a Result
-src/main.ts             the process: readEnv + connect + start + runMain
+src/main.ts             the process: Config.parse + connect + start + runMain
 src/test-fixtures.ts    serve / fulfilling / outOfStock / noShipping, against the time-skipping env
 ```
 
@@ -64,13 +64,45 @@ compensation paths run, against the real application and the real persistence:
 after a refusal, the spec reads the database through the same repository the
 saga used and finds the placement gone.
 
-## The environment
+## The configuration
 
-| Variable             | Default          | What it is           |
-| -------------------- | ---------------- | -------------------- |
-| `TEMPORAL_ADDRESS`   | `127.0.0.1:7233` | the Temporal service |
-| `TEMPORAL_NAMESPACE` | `default`        | must not be blank    |
-| `PROBE_PORT`         | `9000`           | `/livez` / `/readyz` |
+Two [`@btravstack/config`](../../packages/config) values, and no `env.ts`:
+
+| Variable             | Declared in                        | Default          | What it is           |
+| -------------------- | ---------------------------------- | ---------------- | -------------------- |
+| `TEMPORAL_ADDRESS`   | `temporalConfig` (`src/config.ts`) | `127.0.0.1:7233` | the Temporal service |
+| `TEMPORAL_NAMESPACE` | `temporalConfig` (`src/config.ts`) | `default`        | must not be blank    |
+| `PROBE_PORT`         | `probeConfig` (`src/config.ts`)    | `9000`           | `/livez` / `/readyz` |
+
+The names are unchanged; what changed is where they arrive. A declaration is
+**one value that is both a port token and the module serving it**, so
+`imports: [temporalConfig]` provides it and `ctx.get(temporalConfig)` reads it
+back — and `temporalWorkerRuntime` does exactly that for the namespace,
+declaring the config in its `needs` instead of taking it as a parameter.
+
+`main.ts` validates every config in the graph before building it, in one
+report:
+
+```ts
+await Config.parse(Config.collect(OrderTemporalModule), process.env).match({
+  ok: () => work(),
+  errCases: (matcher) =>
+    matcher.with(P.tag("config/ConfigInvalid"), (error) =>
+      abort(describeIssues(error.issues)),
+    ),
+  defect: (cause) =>
+    abort(`the configuration could not be validated: ${String(cause)}`),
+});
+```
+
+Two of the three are still read from `process.env` by hand, and the comment at
+those lines says why: `start` binds the probe server before it builds the
+graph, and the `NativeConnection` has to be **open** before the runtime can be
+handed it — so neither value can come out of a graph that does not exist yet.
+Both are still declared and still validated above. Phase 2's kernel
+integration is what removes them. The connection itself is not configuration:
+it is a resource with an owner, opened and closed by whoever opened it, which
+is why the runtime is handed one rather than resolving it.
 
 ## Running the specs
 
@@ -81,7 +113,7 @@ saga fulfills, both refusals compensate, and the duplicate-order answer
 arrives at the client as a typed contract error it can branch on by name.
 
 ```bash
-pnpm --filter @btravstack/start-example-order-temporal-worker test        # the saga + env specs
+pnpm --filter @btravstack/start-example-order-temporal-worker test        # the saga specs
 pnpm --filter @btravstack/start-example-order-temporal-worker typecheck   # the needs gate
 ```
 

@@ -1,30 +1,29 @@
 # Examples
 
-Eleven small packages that are **one application booted four ways**: a clean
+Nine small packages that are **one application booted four ways**: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
 queue worker, once as a Temporal worker and once as an AMQP consumer, with each
 transport's contract in a package of its own — and, at the same time,
 exercising `@btravstack/start-core` end to end from a consumer's own workspace,
 `workspace:*` and all.
 
-| Package                                                | Layer     | Shows                                                                                                                                                             |
-| ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                               |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.                                  |
-| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need.                        |
-| [`order-config`](./order-config)                       | config    | The one environment-variable idiom the three deployments share: a non-empty string piped into a coercion, validated as a value, with the seven cases pinned once. |
-| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                               |
-| [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                                                    |
-| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client.           |
-| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: a fulfillment saga on `@btravstack/start-temporal` — place, reserve, ship, and compensation in reverse on a permanent no.       |
-| [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, one subscriber queue with a retry/dead-letter policy — read by the relay and by any subscriber.           |
-| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: a transactional outbox relayed onto RabbitMQ by `@btravstack/start-amqp`'s worker — every committed write becomes an event.         |
+| Package                                                | Layer     | Shows                                                                                                                                                       |
+| ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                         |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.                            |
+| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need.                  |
+| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                         |
+| [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                                              |
+| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client.     |
+| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: a fulfillment saga on `@btravstack/start-temporal` — place, reserve, ship, and compensation in reverse on a permanent no. |
+| [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, one subscriber queue with a retry/dead-letter policy — read by the relay and by any subscriber.     |
+| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: a transactional outbox relayed onto RabbitMQ by `@btravstack/start-amqp`'s worker — every committed write becomes an event.   |
 
 ## The layering, and which way the arrows point
 
 ```
   order-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
-       └────────────────┼──────────────────┘  ─────▶ order-config  ← how all three read the environment
+       └────────────────┼──────────────────┘  ─────▶ @btravstack/config  ← how all three read the environment
                         ▼
              order-infrastructure                    ← Prisma, SQLite, P-codes
                         │  provides OrderRepository
@@ -34,6 +33,14 @@ exercising `@btravstack/start-core` end to end from a consumer's own workspace,
                         ▼
                  order-domain                       ← entities and rules; depends on nothing
 ```
+
+There used to be an `order-config` package on the right-hand arrow, holding the
+one environment-variable idiom the three deployments shared. It is gone:
+[`@btravstack/config`](../packages/config) owns that idiom now — `wholeNumber`
+and `port` are its `@btravstack/config/zod` builders, `describeEnvIssues` is
+its `describeIssues` — and each deployment declares its own configs with
+`Config(id)(shape, options?)` instead of hand-rolling a schema over
+`process.env`. See [Configuration](#configuration) below.
 
 Every arrow points **inwards**, and the one that looks like it goes the wrong
 way is the whole idea: `order-infrastructure` imports `order-application`,
@@ -150,11 +157,14 @@ the other does not.
 
 ## The runtimes with a non-empty `needs`
 
-`order-api`'s `httpRuntime` call declares `[PlaceOrder, FindOrder, Logger]`,
-while `queueWorkerRuntime`, `temporalWorkerRuntime` and `orderAmqpRuntime` each
-declare `[PlaceOrder, Logger]` — two of the three the module exports, because a
-runtime declares what _it_ needs. The kernel's own `testRuntime` needs nothing,
-so these four are what exercise `start`'s phantom rest-tuple gate and
+`orderApiRuntime` declares `[PlaceOrder, FindOrder, Logger, httpConfig]`,
+`temporalWorkerRuntime` its five application ports plus `temporalConfig`, and
+`orderAmqpRuntime` `[Outbox, Logger, amqpConfig, outboxRelayConfig]` — a
+selection of what the module exports, because a runtime declares what _it_
+needs. **Configuration is inside that selection**, which is the point: a config
+is a port like any other, so a deployment that forgot to import one fails to
+compile rather than to boot. The kernel's own `testRuntime` needs nothing, so
+these are what exercise `start`'s phantom rest-tuple gate and
 `RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
 _classes_ while di parameterises contexts by port _instances_ — against a real
 module here. `@btravstack/start-http`'s own `AppModule`/`Greeting` fixture
@@ -169,9 +179,59 @@ and `order-amqp-worker/src/needs-gate.test-d.ts`: the wired call is an ordinary
 two-argument one, and a module one port short fails on **arity**, naming the
 missing need.
 
+## Configuration
+
+Every deployment declares its configuration with
+[`@btravstack/config`](../packages/config), and none of them has an `env.ts`.
+
+| Variable             | Deployment              | Declared by         | Default                 |
+| -------------------- | ----------------------- | ------------------- | ----------------------- |
+| `HTTP_PORT`          | `order-api`             | `httpConfig`        | `3000`                  |
+| `TEMPORAL_ADDRESS`   | `order-temporal-worker` | `temporalConfig`    | `127.0.0.1:7233`        |
+| `TEMPORAL_NAMESPACE` | `order-temporal-worker` | `temporalConfig`    | `default`               |
+| `AMQP_URL`           | `order-amqp-worker`     | `amqpConfig`        | `amqp://127.0.0.1:5672` |
+| `OUTBOX_POLL_MS`     | `order-amqp-worker`     | `outboxRelayConfig` | `200`                   |
+| `PROBE_PORT`         | all three               | `probeConfig`       | `9000`                  |
+
+Every name is what it was before the package existed, bar one: `order-api`'s
+`HTTP_PORT` was `PORT`, and a bare `PORT` is not expressible — a config's
+variables are `PREFIX_KEY`, and no prefix and key join to it.
+
+Three things changed, and all three are worth copying:
+
+**A config is one value, and it is a di port.**
+`Config("Amqp")({ url: … })` is at once the token `ctx.get(amqpConfig)` reads
+and the module `imports: [amqpConfig]` provides — no port declared here and an
+adapter written for it there. `Config.source(process.env)` is the single place
+the environment enters a graph, so a spec swaps the whole environment by
+importing a different one (`order-amqp-worker`'s fixtures give each test its
+own vhost that way).
+
+**It travels through the graph, not through `main`.** A runtime is handed a
+`Context` at `start`, so it names its configs in `needs` and reads them itself.
+`main.ts` no longer knows what a broker URL, a namespace or a listening port
+is, and the needs gate proves the graph carries them before anything runs.
+
+**One report, not one deploy per typo.**
+`Config.parse(Config.collect(Root), process.env)` validates every config
+reachable from the composition root against one source and aggregates the lot
+into a single `ConfigInvalid`; `describeIssues` prints one line per wrong
+variable. Because `ConfigInvalid` is a `TaggedError`, the fold that reports it
+enumerates it properly — the `P._` catch-all and its lint-disable, which the
+old hand-rolled `SchemaIssues` fold needed, are gone from all three entry
+points.
+
+One thing is **not** clean yet, and each `main.ts` says so at the exact line:
+`PROBE_PORT` (and `order-temporal-worker`'s `TEMPORAL_ADDRESS`) is still read
+straight from `process.env`, because `start` binds the probe server — and the
+Temporal connection is opened — before the graph exists, and phase 1 has no
+way to read one config's value outside a graph. Both are still declared and
+still validated in the report above. Kernel integration is phase 2's, in
+`@btravstack/start-core`.
+
 ## Why these are tests, not just illustrations
 
-Each package reads as application code, and each is covered by real specs — 86
+Each package reads as application code, and each is covered by real specs — 68
 of them, run by the repository's own `pnpm test`:
 
 ```sh

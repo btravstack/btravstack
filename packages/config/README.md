@@ -200,9 +200,67 @@ raising a configuration error. The bounds alone cannot catch that case,
 because for `port` — `wholeNumber(fallback, 0, 65_535)` — `0` is a legitimate
 value, not just the coercion of an empty string.
 
+## Seeing it used
+
+[`examples/`](../../examples) is three real deployments on this package, and
+none of them has an `env.ts` any more — `examples/order-config`, the hand-rolled
+prototype of everything above, was deleted when they moved over.
+
+- [`order-amqp-worker`](../../examples/order-amqp-worker) is the fullest
+  version: `amqpConfig` and `probeConfig` in `src/config.ts`,
+  `outboxRelayConfig` declared next to the loop it tunes in
+  `src/outbox-relay.ts` (identity `OutboxRelay`, prefix `OUTBOX`), a runtime
+  naming all of them in its `needs` and reading them off `host.ctx` instead of
+  taking them as parameters, and a test fixture that swaps
+  `Config.source(process.env)` for a record of its own so each test gets its
+  own broker vhost.
+- [`order-api`](../../examples/order-api) is the same shape one layer thinner,
+  and [`order-temporal-worker`](../../examples/order-temporal-worker) shows one
+  config split across the graph boundary: `TEMPORAL_NAMESPACE` travels through
+  di, `TEMPORAL_ADDRESS` cannot yet — see below.
+
+Each `main.ts` is the one-report boot in full:
+
+```ts
+await Config.parse(Config.collect(OrderAmqpModule), process.env).match({
+  ok: () =>
+    runMain(
+      start(OrderAmqpModule, {
+        runtime: orderAmqpRuntime(),
+        probes: { port: probePort },
+      }),
+    ),
+  errCases: (matcher) =>
+    matcher.with(P.tag("config/ConfigInvalid"), (error) =>
+      abort(describeIssues(error.issues)),
+    ),
+  defect: (cause) =>
+    abort(`the configuration could not be validated: ${String(cause)}`),
+});
+```
+
+Two things `examples/` surfaced that nothing inside this package could, since
+nothing here exports a declared config or boots a process:
+
+- **`DeclaredConfig` had to become a named, exported type.** A consumer that
+  `export`s a declared config has an inferred type its own declaration emit
+  must be able to _write_ down, and the inline intersection expanded to brands
+  neither di nor this package exported. Annotating `Config`'s return with one
+  exported alias closes the declaring half. The _exporting_ half — a
+  composition root whose `Module<X, …>` carries a config **instance** — still
+  needs `@btravstack/di` to export `PortInstance`, so such a root has to be
+  compiled with `declaration` off for now, which is what the example
+  deployments do.
+- **`probes: { port }` has no clean answer in phase 1**, because `start` binds
+  the probe server before the graph exists. The examples declare `PROBE_PORT`
+  as a config anyway — so it is validated and reported with everything else —
+  and read the raw variable at that one line, with a comment naming the
+  constraint.
+
 ## What's next
 
 Kernel integration — turning a `ConfigInvalid` into process exit code
-`EX_CONFIG` and wiring zero-config entry points — arrives in
-`@btravstack/start-core` in phase 2. This package only validates and provides;
-it never reads `process.env` on its own and it never exits the process.
+`EX_CONFIG`, giving `start` a source of its own so `probes: { port }` and
+anything else the kernel needs before the graph can come out of a config, and
+wiring zero-config entry points — arrives in `@btravstack/start-core` in phase 2. This package only validates and provides; it never reads `process.env` on
+its own and it never exits the process.

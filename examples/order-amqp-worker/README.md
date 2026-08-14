@@ -14,9 +14,9 @@ binding its own queue to the `orders` exchange needs it and needs none of this.
 ```
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent
 src/amqp-runtime.ts    the runtime: start-amqp's consumer with the relay layered on
+src/config.ts          amqpConfig / probeConfig — @btravstack/config declarations
 src/module.ts          OrderAmqpModule — the composition root
-src/env.ts             process.env validated through a schema, as a Result
-src/main.ts            the process: readEnv + start + runMain
+src/main.ts            the process: Config.parse + start + runMain
 src/test-fixtures.ts   serve / tapped, as Vitest fixtures, against a real RabbitMQ
 ```
 
@@ -66,22 +66,64 @@ the consumer's alone — draining means "stop taking new work", and the relay's
 work is outbound: pending rows are safer published during the drain window
 than abandoned to the next boot.
 
-The relay's needs are ports (`Outbox`, `Logger`), resolved from the same
-application context the consumer's handler resolves — `start`'s needs gate
-(`src/needs-gate.test-d.ts`) proves the composition root exports both, at
-compile time.
+The relay's needs are ports (`Outbox`, `Logger`, and the two configs below),
+resolved from the same application context the consumer's handler resolves —
+`start`'s needs gate (`src/needs-gate.test-d.ts`) proves the composition root
+exports all four, at compile time.
 
-## The environment
+## The configuration
 
-| Variable         | Default                 | What it is                            |
-| ---------------- | ----------------------- | ------------------------------------- |
-| `AMQP_URL`       | `amqp://127.0.0.1:5672` | the broker, for consumer and relay    |
-| `PROBE_PORT`     | `9000`                  | `/livez` / `/readyz`                  |
-| `OUTBOX_POLL_MS` | `200`                   | the relay's idle sleep between sweeps |
+Three [`@btravstack/config`](../../packages/config) values, and no `env.ts`:
+
+| Variable         | Declared in                             | Default                 | What it is                            |
+| ---------------- | --------------------------------------- | ----------------------- | ------------------------------------- |
+| `AMQP_URL`       | `amqpConfig` (`src/config.ts`)          | `amqp://127.0.0.1:5672` | the broker, for consumer and relay    |
+| `OUTBOX_POLL_MS` | `outboxRelayConfig` (`outbox-relay.ts`) | `200`                   | the relay's idle sleep between sweeps |
+| `PROBE_PORT`     | `probeConfig` (`src/config.ts`)         | `9000`                  | `/livez` / `/readyz`                  |
+
+The names are unchanged; what changed is where they arrive. Each declaration
+is **one value that is both a port token and the module serving it**, so
+`imports: [amqpConfig]` provides it and `ctx.get(amqpConfig)` reads it back.
+`main.ts` no longer knows what a broker URL is: the runtime declares the
+configs in its `needs` and resolves them from the context `start` hands it,
+exactly as it resolves `Outbox`. `OUTBOX_POLL_MS` is declared next to the loop
+it tunes rather than in a central file — which is also why its config's
+identity (`OutboxRelay`) and its prefix (`OUTBOX`) differ.
 
 `OUTBOX_POLL_MS=0` is rejected at boot — a relay that never sleeps is a busy
-loop, and the deployment's own spec pins that where the shared `wholeNumber`
-fragment's bounds would not.
+loop, and its `wholeNumber(200, 1, 60_000)` lower bound says so where a port's
+own bounds would not.
+
+`main.ts` validates **every** config in the graph before building it, and
+reports them together:
+
+```ts
+await Config.parse(Config.collect(OrderAmqpModule), process.env).match({
+  ok: () =>
+    runMain(
+      start(OrderAmqpModule, {
+        runtime: orderAmqpRuntime(),
+        probes: { port: probePort },
+      }),
+    ),
+  errCases: (matcher) =>
+    matcher.with(P.tag("config/ConfigInvalid"), (error) =>
+      abort(describeIssues(error.issues)),
+    ),
+  defect: (cause) =>
+    abort(`the configuration could not be validated: ${String(cause)}`),
+});
+```
+
+`probePort` is the one variable still read from `process.env` by hand: `start`
+binds the probe server before it builds the graph, so its port cannot come out
+of one. It is still declared and still validated above — see the comment at
+that line, and phase 2's kernel integration.
+
+The specs swap the environment rather than the values: `src/test-fixtures.ts`
+imports `Config.source({ AMQP_URL: <this test's vhost>, OUTBOX_POLL_MS: "25" })`
+where `OrderAmqpModule` imports `Config.source(process.env)`, and nothing below
+it can tell the difference.
 
 ## Running the specs
 
@@ -93,7 +135,7 @@ arriving as a tombstone behind its placement, and the same event delivered to
 a subscriber this contract never heard of.
 
 ```bash
-pnpm --filter @btravstack/start-example-order-amqp-worker test        # broadcast e2e + env specs
+pnpm --filter @btravstack/start-example-order-amqp-worker test        # the broadcast end-to-end specs
 pnpm --filter @btravstack/start-example-order-amqp-worker typecheck   # the needs gate
 ```
 
