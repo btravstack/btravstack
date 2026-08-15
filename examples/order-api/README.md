@@ -12,7 +12,7 @@ needs none of this.
 ```
 src/router.ts         the implementation as a provider, and the one place a domain error becomes an ORPCError
 src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
-src/handler.ts        ApiModule — the Hono app and the oRPC handler, provided as the ApiHandler port
+src/handler.ts        ApiModule — the Hono app and the oRPC handler, provided as @btravstack/http's HttpHandler port
 src/client.ts         an AsyncResult client for the same contract
 src/module.ts         OrderApiModule — the composition root
 src/env.ts            process.env validated through a schema, as a Result
@@ -72,30 +72,34 @@ treatment rather than a fallback.
 Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, and the trace-id policy all live in
 [`@btravstack/http`](../../packages/http) now — see its README for
-the runtime contract and the guarantee it makes. This example supplies the
-`ApiHandler` **port** — the Hono app with oRPC's fetch adapter mounted under
-`/rpc`, built by a provider from the `OrderRouter` port, itself a provider
-built from the two use cases it declares, so even the transport wiring exists
-because the composition root said so; oRPC's own context stays empty, since
-one container is enough — and
-reads `port` back off `Serving.info` the same way any caller of the package
-does. The runtime is `apiRuntime`: `httpRuntime` needing that one port, its
-handler one line — resolve the port, call it — defined once and called by
-`main.ts`, the fixtures and the type test alike.
+the runtime contract and the guarantee it makes. This example provides the
+package's own **`HttpHandler` port** — the Hono app with oRPC's fetch adapter
+mounted under `/rpc`, built by a provider from the `OrderRouter` port, itself a
+provider built from the two use cases it declares, so even the transport wiring
+exists because the composition root said so; oRPC's own context stays empty,
+since one container is enough — and reads `port` back off `Serving.info` the
+same way any caller of the package does. The runtime is `httpRuntime({ port })`,
+whose one need is that port; a module that does not export it fails on arity at
+the `runMain` call.
 
 ### One unit per call
 
 ```ts
-export const apiRuntime = (options) =>
-  httpRuntime({
-    ...options,
-    needs: [ApiHandler],
-    handler: (request, response, ctx) => ctx.get(ApiHandler)(request, response),
-  });
+Provider(HttpHandler)([OrderRouter], {
+  sync: (router) => {
+    const rpc = new RPCHandler(router);
+    const app = new Hono();
+    app.all(`${PREFIX}/*`, …);
+    return getRequestListener((raw) => app.fetch(raw), { overrideGlobalObjects: false });
+  },
+});
 ```
 
-The `ctx` arriving per request is already the request's own — the kernel forked
-it (see below). The unit's lifetime **is** the response's: `@btravstack/http`
+The runtime resolves `HttpHandler` out of each request's context — the kernel
+forked it (see below), so a handler that wants per-request dependencies is
+provided by `RequestModule` instead and built once per request. This one needs
+none, so it lives at application scope. The unit's lifetime **is** the
+response's: `@btravstack/http`
 keeps it open until the response completes, so there is no seam for a late
 write to land in. An unmatched path is Hono's 404; a defect inside a procedure
 is oRPC's own `INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or
@@ -166,7 +170,7 @@ it reads everything else, as a value:
 await readEnv().match({
   ok: (env) =>
     runMain(OrderApiModule, {
-      runtime: apiRuntime({ port: env.PORT }),
+      runtime: httpRuntime({ port: env.PORT }),
       unit: RequestModule,
       probes: { port: env.PROBE_PORT },
     }),

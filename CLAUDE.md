@@ -435,8 +435,9 @@ the code.
   A runtime with a **non-empty `needs`** meeting a real module now exercises
   `start`'s phantom rest-tuple gate and `RuntimeHost`'s
   `Context<InstanceType<Needs>>` in two places: here, and in
-  `packages/http/src/test-fixtures.ts`'s `Greeting` port / `AppModule`,
-  driven by its 14 `http-runtime.spec.ts` specs. `examples/` stays the only
+  `packages/http/src/test-fixtures.ts`, whose modules provide the package's
+  own `HttpHandler` port — at application scope, and once from the `unit`
+  module — driven by its 15 `http-runtime.spec.ts` specs. `examples/` stays the only
   place the gate is pinned by a **type test** — `@btravstack/http` ships no
   `*.test-d.ts`.
 - **`examples/order-temporal-worker` is the one workspace whose suite needs the
@@ -502,20 +503,22 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
 - **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport, and its HTTP stack is deliberately ONE way: Hono +
   oRPC + `@unthrown/orpc`.** The surface itself is a di-provided service —
-  `ApiModule` provides the `ApiHandler` port (a Hono app with oRPC's fetch
-  adapter mounted, built by a provider from the `OrderRouter` port — itself a
-  provider that **declares** `PlaceOrder` and `FindOrder`, so oRPC's context
-  stays empty and nothing is located from a context at call time — never a
-  module-level singleton), `apiRuntime` is `httpRuntime` needing that one port
-  and resolving it in one line — the single definition `main.ts`, the fixtures
-  and the type test all call — and `RequestModule` rides `StartOptions.unit`
-  so the per-request fork is the kernel's. `getRequestListener` is called with
-  `overrideGlobalObjects: false`: its default replaces `globalThis.Request` /
-  `Response` on the first request served, a process-wide side effect. The router uses
-  `@unthrown/orpc`'s `.result()` builder extension. It reads `port` back off
-  `Serving.info`; binding, the drain and the trace-id policy are the package's.
-  This is what makes the package's needs gate a real one: `httpRuntime<Needs>`
-  infers `Needs` from the `needs` array the same way a hand-rolled runtime did.
+  `ApiModule` provides `@btravstack/http`'s **`HttpHandler` port** (a Hono app
+  with oRPC's fetch adapter mounted, built by a provider from the `OrderRouter`
+  port — itself a provider that **declares** `PlaceOrder` and `FindOrder`, so
+  oRPC's context stays empty and nothing is located from a context at call
+  time — never a module-level singleton), `httpRuntime({ port })` needs that
+  one port and resolves it out of each request's context, and `RequestModule`
+  rides `StartOptions.unit` so the per-request fork is the kernel's. There is
+  no `needs`/`handler` option to spell anywhere: `main.ts`, the fixtures and
+  the type test all call `httpRuntime({ port })`. `getRequestListener` is
+  called with `overrideGlobalObjects: false`: its default replaces
+  `globalThis.Request` / `Response` on the first request served, a
+  process-wide side effect. The router uses `@unthrown/orpc`'s `.result()`
+  builder extension. It reads `port` back off `Serving.info`; binding, the
+  drain and the trace-id policy are the package's. This is what makes the
+  package's needs gate a real one: a module that does not export `HttpHandler`
+  fails on arity at the `runMain` call.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned

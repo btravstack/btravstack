@@ -1,9 +1,10 @@
 import { start } from "@btravstack/core";
 /**
- * The compile-time half of the transport layer: `apiRuntime` declares the HTTP
- * surface itself as its one need, and `start`'s phantom rest-tuple gate turns a
- * module that does not export it into a call-site arity error. Type-checked by
- * this package's `test:types` script, never executed.
+ * The compile-time half of the transport layer: `httpRuntime` needs
+ * `@btravstack/http`'s `HttpHandler` port — the HTTP surface itself, which the
+ * application provides — and `start`'s phantom rest-tuple gate turns a module
+ * that does not export it into a call-site arity error. Type-checked by this
+ * package's `test:types` script, never executed.
  *
  * This is the only place in the repo where a runtime with a NON-EMPTY `needs`
  * meets a real module, so it is also what exercises `RuntimeHost`'s
@@ -13,12 +14,13 @@ import { start } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { ApplicationModule, Logger, PlaceOrder } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { HttpHandler, httpRuntime } from "@btravstack/http";
 
-import { ApiHandler, ApiModule, apiRuntime } from "./handler.js";
+import { ApiModule } from "./handler.js";
 import { OrderApiModule } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
-const options = { runtime: apiRuntime({ port: 0 }), signals: false, probes: false } as const;
+const options = { runtime: httpRuntime({ port: 0 }), signals: false, probes: false } as const;
 
 // Positive: the composition root exports the port the runtime needs, so the
 // gate collapses to an empty tuple and this is an ordinary two-argument call.
@@ -33,7 +35,7 @@ const HandlerlessApi = Module("HandlerlessApi")({
 
 // Negative: the gate becomes a required two-element tuple naming the unmet need,
 // and the call fails on arity.
-// @ts-expect-error — UNSATISFIED RUNTIME NEEDS: the module does not export ApiHandler.
+// @ts-expect-error — UNSATISFIED RUNTIME NEEDS: the module does not export HttpHandler.
 const _missingHandler = start(HandlerlessApi, options);
 
 // Positive: a `unit` module rides the same gate — `RequestModule` needs
@@ -47,7 +49,7 @@ const _withUnit = start(OrderApiModule, { ...options, unit: RequestModule });
 // `Logger`, so only the unit half of the gate can be what rejects the call.
 const UnloggedApi = Module("UnloggedApi")({
   imports: [ApplicationModule, PersistenceModule, ApiModule],
-  exports: [ApiHandler],
+  exports: [HttpHandler],
 });
 
 // @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.

@@ -155,8 +155,9 @@ queue job id or a task token already is.
 
 ## The runtimes with a non-empty `needs`
 
-`order-api`'s `apiRuntime` declares `[ApiHandler]` — the HTTP surface itself, a
-provider over the router provider that declares the two use cases it calls —
+`order-api`'s `httpRuntime` declares `[HttpHandler]` — the package's own port
+for the HTTP surface, which the example provides over a router provider that
+declares the two use cases it calls —
 `temporalWorkerRuntime` declares the five ports its activities resolve, and
 `orderAmqpRuntime` declares `[Outbox, Logger]` — each a selection of what the
 module exports, because a
@@ -164,10 +165,10 @@ runtime declares what _it_ needs. The kernel's own `testRuntime` needs nothing,
 so these three are what exercise `start`'s phantom rest-tuple gate and
 `RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
 _classes_ while di parameterises contexts by port _instances_ — against a real
-module here. `@btravstack/http`'s own `AppModule`/`Greeting` fixture
-(`packages/http/src/test-fixtures.ts`, driving its 14
-`http-runtime.spec.ts` specs) exercises the same runtime-side path a second
-way now. `examples/` stays the only place the gate is pinned by a **type
+module here. `@btravstack/http`'s own fixtures
+(`packages/http/src/test-fixtures.ts`, driving its 15
+`http-runtime.spec.ts` specs) exercise the same runtime-side path a second
+way now — including a `HttpHandler` provided by the `unit` module. `examples/` stays the only place the gate is pinned by a **type
 test**: `@btravstack/http` ships no `*.test-d.ts`.
 
 All three directions are pinned, in `order-api/src/needs-gate.test-d.ts`,

@@ -8,13 +8,21 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`httpRuntime(options)` → `Runtime<Needs, HttpInfo>`** — binds `node:http`,
-  one kernel unit per request. `HttpOptions<Needs>` — `port` (required; `0`
-  lets the OS pick, read back via `runtimeInfo()`), `hostname` (default
-  `0.0.0.0` — a pod, not a laptop), `needs`, `handler`. `HttpInfo` is
-  `{ port }`, published on `Serving.info` once bound.
-- **`HttpHandler<Needs>`** —
-  `(request, response, ctx: Context<InstanceType<Needs>>, signal) => PromiseLike<unknown>`.
+- **`httpRuntime(options)` → `Runtime<typeof HttpHandler, HttpInfo>`** — binds
+  `node:http`, one kernel unit per request. `HttpOptions` — `port` (required;
+  `0` lets the OS pick, read back via `runtimeInfo()`), `hostname` (default
+  `0.0.0.0` — a pod, not a laptop). `HttpInfo` is `{ port }`, published on
+  `Serving.info` once bound. Its one need is `HttpHandler`, resolved out of
+  **each unit's** context — so an application provides it at application
+  scope, or in the `StartOptions.unit` module when the handler wants
+  per-request dependencies constructor-injected (a handler is then built once
+  per request; _"resolves a handler the unit module provides, built once per
+  request"_ pins it). No `needs`, no `handler` option: the runtime declares
+  what _it_ needs, and what the handler needs is the handler's provider's
+  business. This is why the kernel's gate lets a runtime need come from
+  `UnitX`.
+- **`HttpHandler`** — a di `Port` whose service is
+  `(request, response, signal) => PromiseLike<unknown>`.
   Returns the handled-or-not signal, not the response body: the package
   decides `404` (resolved without writing) or `500` (rejected before writing)
   from it, and never double-writes once headers are on the wire. A defect that

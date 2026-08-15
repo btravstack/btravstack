@@ -104,7 +104,7 @@ export const awaitExit = async <E>(
  * @example
  * ```ts
  * await runMain(AppModule, {
- *   runtime: httpRuntime({ port: 3000, needs: [Greeting], handler }),
+ *   runtime: httpRuntime({ port: 3000 }),
  * });
  * ```
  */

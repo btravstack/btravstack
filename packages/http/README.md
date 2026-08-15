@@ -23,14 +23,23 @@ on npm to install yet. The command above is what it will be once it has.
 
 ## A worked example
 
+The HTTP surface is a service your module provides — the package's own
+`HttpHandler` port — and the runtime needs exactly that:
+
 ```ts
-start(OrderApiModule, {
-  runtime: httpRuntime({
-    port: env.PORT,
-    needs: [PlaceOrder, FindOrder, Logger],
-    handler: (req, res, ctx) => rpc.handle(req, res, { context: { ctx } }),
-  }),
+import { HttpHandler, httpRuntime } from "@btravstack/http";
+
+const ApiModule = Module("Api")({
+  provides: [
+    Provider(HttpHandler)([PlaceOrder, FindOrder], {
+      sync: (place, find) => (req, res) =>
+        rpc.handle(req, res, { context: { place, find } }),
+    }),
+  ],
+  exports: [HttpHandler],
 });
+
+start(OrderApiModule, { runtime: httpRuntime({ port: env.PORT }) });
 ```
 
 Or with [Hono](https://hono.dev), via `@hono/node-server`'s
@@ -40,18 +49,18 @@ Or with [Hono](https://hono.dev), via `@hono/node-server`'s
 ```ts
 import { getRequestListener } from "@hono/node-server";
 
-start(AppModule, {
-  runtime: httpRuntime({
-    port: 3000,
-    needs: [PlaceOrder],
-    handler: getRequestListener(app.fetch),
-  }),
+Provider(HttpHandler)({
+  value: getRequestListener(app.fetch, { overrideGlobalObjects: false }),
 });
 ```
 
-`needs` is the same array `Runtime.needs` reads to type `ctx` inside the
-handler and that `start`'s own compile-time gate checks against the module's
-exports — one declaration, both jobs.
+A module that does not export `HttpHandler` fails to compile at the `start`
+call — that is `start`'s own needs gate, and `HttpHandler` is the one need
+this runtime declares. What the handler itself needs is its provider's
+business, so it is injected by di like anything else; and because the runtime
+resolves the port out of **each request's** context, the provider may live in
+the `StartOptions.unit` module instead, where it is built once per request
+with per-request dependencies (a transaction) injected the same way.
 
 ## The guarantee
 
@@ -90,12 +99,13 @@ own job from that point on; the package will not double-write over it.
 
 ## Options
 
+The handler is not an option — it is the `HttpHandler` port your module
+provides. `httpRuntime` takes only what the socket needs:
+
 | Option     | Default   |                                                                                                                               |
 | ---------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `port`     | —         | required; `0` lets the OS pick — read the real one back from `RunningApp.runtimeInfo()`                                       |
 | `hostname` | `0.0.0.0` | the deployment target is a pod, not a laptop; it also means the server is reachable beyond loopback — set `127.0.0.1` locally |
-| `needs`    | —         | required; the ports the handler's `ctx` exposes, and what `start`'s needs gate checks against the module                      |
-| `handler`  | —         | required; `(request, response, ctx, signal) => PromiseLike<unknown>`                                                          |
 
 ## Status codes the package itself writes
 

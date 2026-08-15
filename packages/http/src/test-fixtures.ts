@@ -26,18 +26,47 @@ import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
 import { currentUnit, start, type RunningApp } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 
-import { httpRuntime, type HttpHandler, type HttpInfo } from "./http-runtime.js";
+import { HttpHandler, httpRuntime, type HttpInfo } from "./http-runtime.js";
 
-/** A port so the runtime's `needs` are non-empty, which is what makes the gate mean something. */
-export class Greeting extends Port("Greeting")<{ readonly text: string }> {}
+type Handler = ServiceOf<HttpHandler>;
 
-const AppModule = Module("App")({
-  provides: [Provider(Greeting)({ value: { text: "hello" } })],
-  exports: [Greeting],
+/** The application, reduced to the one port the runtime needs: its HTTP surface, provided as a value. */
+const appOf = (handler: Handler) =>
+  Module("App")({
+    provides: [Provider(HttpHandler)({ value: handler })],
+    exports: [HttpHandler],
+  });
+
+/** An application-scoped counter the per-unit handler below reads, so the fork's parent seeding is exercised too. */
+class Builds extends Port("Builds")<{ count: number }> {}
+
+const countingAppOf = () => {
+  const builds = { count: 0 };
+  return {
+    module: Module("CountingApp")({
+      provides: [Provider(Builds)({ value: builds })],
+      exports: [Builds],
+    }),
+    builds,
+  };
+};
+
+/** The HTTP surface provided by the UNIT module: built once per request, from the application-scoped counter. */
+const PerUnitHandler = Module("PerUnitHandler")({
+  provides: [
+    Provider(HttpHandler)([Builds], {
+      sync: (builds) => {
+        builds.count += 1;
+        return (_request, response) =>
+          new Promise<void>((done) => response.end("ok", () => done()));
+      },
+    }),
+  ],
+  exports: [HttpHandler],
 });
 
 /** A unit-scoped port whose construction is held open, so a unit's work can be delayed past its client's patience. */
@@ -79,7 +108,7 @@ const slowUnitOf = (): SlowUnit => {
 
 type App = RunningApp<never, HttpInfo>;
 
-const noop: HttpHandler<typeof Greeting> = (_request, response, _ctx, _signal) =>
+const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
 export type HttpFixtures = {
@@ -89,9 +118,15 @@ export type HttpFixtures = {
    * `finally` used to carry: the app exited `Ok`.
    */
   readonly serve: (
-    handler?: HttpHandler<typeof Greeting>,
+    handler?: Handler,
     unit?: SlowUnit["module"],
   ) => Promise<{ readonly app: App; readonly origin: string }>;
+  /**
+   * An app whose `HttpHandler` is provided by the `StartOptions.unit` module
+   * rather than the application one — built per request, reading a counter
+   * out of the application scope. Shut down by the fixture.
+   */
+  readonly perUnit: () => Promise<{ readonly origin: string; readonly builds: () => number }>;
   /** A `StartOptions.unit` module whose provider builds only once `release()` is called. */
   readonly slowUnit: SlowUnit;
   /** An app started on an explicit port, for the failure paths. Shut down by the fixture. */
@@ -101,7 +136,7 @@ export type HttpFixtures = {
   readonly boundServer: () => Server;
   /** A handler held open until `release()`, so a test can observe a unit in flight. */
   readonly gate: {
-    readonly handler: HttpHandler<typeof Greeting>;
+    readonly handler: Handler;
     readonly arrived: Promise<void>;
     readonly release: () => void;
   };
@@ -113,13 +148,13 @@ export type HttpFixtures = {
    * handler is free to.
    */
   readonly streamedGate: {
-    readonly handler: HttpHandler<typeof Greeting>;
+    readonly handler: Handler;
     readonly arrived: Promise<void>;
     readonly release: () => void;
   };
   /** A handler that records the ambient record the kernel opened for its unit. */
   readonly traced: {
-    readonly handler: HttpHandler<typeof Greeting>;
+    readonly handler: Handler;
     readonly seen: () => readonly (string | undefined)[];
   };
   /**
@@ -144,13 +179,8 @@ export const it = test.extend<HttpFixtures>({
     const started: App[] = [];
 
     await use(async (handler = noop, unit) => {
-      const app = start(AppModule, {
-        runtime: httpRuntime({
-          port: 0,
-          hostname: "127.0.0.1",
-          needs: [Greeting],
-          handler,
-        }),
+      const app = start(appOf(handler), {
+        runtime: httpRuntime({ port: 0, hostname: "127.0.0.1" }),
         ...(unit === undefined ? {} : { unit }),
         signals: false,
         probes: false,
@@ -171,6 +201,33 @@ export const it = test.extend<HttpFixtures>({
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
+  perUnit: async ({}, use) => {
+    const started: App[] = [];
+
+    await use(async () => {
+      const { module, builds } = countingAppOf();
+      const app = start(module, {
+        runtime: httpRuntime({ port: 0, hostname: "127.0.0.1" }),
+        unit: PerUnitHandler,
+        signals: false,
+        probes: false,
+        preDrainDelayMs: 0,
+        onEvent: () => {},
+      });
+      started.push(app);
+
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return { origin: `http://127.0.0.1:${info.port}`, builds: () => builds.count };
+    });
+
+    for (const app of started) {
+      app.stop();
+      await expect(app.exited).toBeOk();
+    }
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
   slowUnit: async ({}, use) => {
     await use(slowUnitOf());
   },
@@ -180,8 +237,8 @@ export const it = test.extend<HttpFixtures>({
     const started: App[] = [];
 
     await use((port) => {
-      const app = start(AppModule, {
-        runtime: httpRuntime({ port, hostname: "127.0.0.1", needs: [Greeting], handler: noop }),
+      const app = start(appOf(noop), {
+        runtime: httpRuntime({ port, hostname: "127.0.0.1" }),
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
@@ -230,7 +287,7 @@ export const it = test.extend<HttpFixtures>({
     });
 
     await use({
-      handler: (_request, response, _ctx, _signal) => {
+      handler: (_request, response, _signal) => {
         entered();
         return held.then(() => new Promise<void>((done) => response.end("late", () => done())));
       },
@@ -253,7 +310,7 @@ export const it = test.extend<HttpFixtures>({
     });
 
     await use({
-      handler: (_request, response, _ctx, _signal) => {
+      handler: (_request, response, _signal) => {
         response.writeHead(200);
         entered();
         return held.then(() => new Promise<void>((done) => response.end("late", () => done())));
@@ -269,7 +326,7 @@ export const it = test.extend<HttpFixtures>({
   traced: async ({}, use) => {
     const seen: (string | undefined)[] = [];
     await use({
-      handler: (_request, response, _ctx, _signal) => {
+      handler: (_request, response, _signal) => {
         seen.push(currentUnit()?.traceId);
         return new Promise<void>((done) => response.end("ok", () => done()));
       },

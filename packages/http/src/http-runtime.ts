@@ -9,51 +9,51 @@ import {
   type Serving,
   type UnitMeta,
 } from "@btravstack/core";
-import type { AnyPort, Context } from "@btravstack/di";
+import { Port } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */
 export type HttpInfo = { readonly port: number };
 
 /**
- * One request. Everything the client receives must be written from here — the
- * unit stays open until the response completes, so there is no way to be late.
+ * The one port this runtime needs: the application's HTTP surface, as a
+ * service. Provide it in the module `start` boots — at application scope, or
+ * in the `StartOptions.unit` module when the handler wants per-request
+ * dependencies (a transaction) constructor-injected — and the runtime resolves
+ * it out of each unit's context. Nothing else about the transport is the
+ * application's to wire.
  *
- * Returns `PromiseLike<unknown>` rather than `void`: the package needs to know
- * when the handler is finished so it can answer a request the handler declined,
- * and a `void`-returning handler writing asynchronously would draw a premature
- * `404` over a response still in flight. `unknown` because oRPC's `handle`
- * resolves `{ matched: boolean }`; the value is never the unit's result.
+ * Everything the client receives must be written from inside the handler —
+ * the unit stays open until the response completes, so there is no way to be
+ * late. It returns `PromiseLike<unknown>` rather than `void`: the package
+ * needs to know when the handler is finished so it can answer a request the
+ * handler declined, and a `void`-returning handler writing asynchronously
+ * would draw a premature `404` over a response still in flight. `unknown`
+ * because oRPC's `handle` resolves `{ matched: boolean }`; the value is never
+ * the unit's result.
  */
-export type HttpHandler<Needs extends AnyPort> = (
-  request: IncomingMessage,
-  response: ServerResponse,
-  ctx: Context<InstanceType<Needs>>,
-  signal: AbortSignal,
-) => PromiseLike<unknown>;
+export class HttpHandler extends Port("HttpHandler")<
+  (request: IncomingMessage, response: ServerResponse, signal: AbortSignal) => PromiseLike<unknown>
+> {}
 
-export type HttpOptions<Needs extends AnyPort> = {
+export type HttpOptions = {
   /** `0` lets the OS pick — read it back from `RunningApp.runtimeInfo()`. */
   readonly port: number;
   /** Default `0.0.0.0`: the deployment target is a pod, not a laptop. */
   readonly hostname?: string;
-  readonly needs: readonly Needs[];
-  readonly handler: HttpHandler<Needs>;
 };
 
 const DEFAULT_HOSTNAME = "0.0.0.0";
 
-export const httpRuntime = <Needs extends AnyPort>(
-  options: HttpOptions<Needs>,
-): Runtime<Needs, HttpInfo> => ({
+export const httpRuntime = (options: HttpOptions): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
-  needs: options.needs,
-  start: (host: RuntimeHost<Needs>) => listen(host, options),
+  needs: [HttpHandler],
+  start: (host) => listen(host, options),
 });
 
-const listen = <Needs extends AnyPort>(
-  host: RuntimeHost<Needs>,
-  options: HttpOptions<Needs>,
+const listen = (
+  host: RuntimeHost<typeof HttpHandler>,
+  options: HttpOptions,
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   fromSafePromise(
     new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
@@ -94,7 +94,7 @@ const listen = <Needs extends AnyPort>(
         // would be an always-dead branch with no case to name.
         void host
           .run(metaFor(request), (ctx, signal) => {
-            void answer(options.handler(request, response, ctx, signal), response);
+            void answer(ctx.get(HttpHandler)(request, response, signal), response);
             // The unit's lifetime IS the response's. This is what makes the
             // kernel's "flush inside the unit" contract structural rather than
             // documented: there is no way to write late, because the unit is

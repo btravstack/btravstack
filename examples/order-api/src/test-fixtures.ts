@@ -4,12 +4,12 @@ import { start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { ApplicationModule, Logger, OrderRepository } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
-import type { HttpInfo } from "@btravstack/http";
+import { HttpHandler, httpRuntime, type HttpInfo } from "@btravstack/http";
 import { fromSafePromise, OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
-import { ApiHandler, ApiModule, apiRuntime } from "./handler.js";
+import { ApiModule } from "./handler.js";
 import { OrderApiModule } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
@@ -22,7 +22,7 @@ type App<E> = RunningApp<E, HttpInfo>;
  * exports. `Logger` rides along for the gate's OTHER half — `RequestModule`,
  * passed as `StartOptions.unit`, reads it out of the parent scope.
  */
-type ApiPorts = ApiHandler | Logger;
+type ApiPorts = HttpHandler | Logger;
 
 type ServeOptions = {
   readonly drainTimeoutMs?: number;
@@ -47,7 +47,7 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
 const apiWith = (repository: ServiceOf<OrderRepository>) =>
   Module("StubApi")({
     imports: [ApplicationModule, persistenceOf(repository), ApiModule],
-    exports: [ApiHandler, Logger],
+    exports: [HttpHandler, Logger],
   });
 
 /**
@@ -71,7 +71,7 @@ const tappedApi = () => {
           },
         }),
       ],
-      exports: [ApiHandler, Logger],
+      exports: [HttpHandler, Logger],
     }),
     traces: (): readonly string[] => read().map((line) => line.slice(0, line.indexOf("]") + 1)),
   };
@@ -159,7 +159,7 @@ export const it = test.extend<ApiFixtures>({
 
     const serve: Serve = (module, options) => {
       const app = start(module, {
-        runtime: apiRuntime({ port: 0, hostname: "127.0.0.1" }),
+        runtime: httpRuntime({ port: 0, hostname: "127.0.0.1" }),
         unit: RequestModule,
         signals: false,
         probes: false,

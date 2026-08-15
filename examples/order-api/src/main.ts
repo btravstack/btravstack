@@ -1,8 +1,8 @@
 import { runMain } from "@btravstack/core";
+import { httpRuntime } from "@btravstack/http";
 import { P } from "unthrown";
 
 import { describeEnvIssues, readEnv, type Env } from "./env.js";
-import { apiRuntime } from "./handler.js";
 import { OrderApiModule } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
@@ -20,9 +20,9 @@ import { RequestModule } from "./request-scope.js";
  */
 const serve = (env: Env): Promise<void> =>
   runMain(OrderApiModule, {
-    // The HTTP surface is itself a service: the runtime needs `ApiHandler` and
-    // resolves it out of the request's context, one line per request.
-    runtime: apiRuntime({ port: env.PORT }),
+    // The HTTP surface is a service the module provides — `@btravstack/http`'s
+    // `HttpHandler` port — and the runtime resolves it per request.
+    runtime: httpRuntime({ port: env.PORT }),
     // Forked around every request by the kernel: `RequestSpan` is built as the
     // request opens and torn down as it closes, reading `Logger` out of the
     // application scope. The handler never sees the fork happen.
