@@ -1,7 +1,8 @@
 import type { Module, Scope } from "@btravstack/di";
 
+import type { Env } from "./config.js";
 import type { RuntimeInfoOf } from "./runtime.js";
-import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from "./start.js";
+import { start, type RunningApp, type StartGate, type StartOptions } from "./start.js";
 
 /**
  * Start an application, hand it to `use`, and stop it again — whatever `use`
@@ -36,12 +37,12 @@ import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from
  * directly, the same escape hatch a test needing the real probe server uses.
  */
 export const withApp = async <X, E, A, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope>,
+  module: Module<X, E, Scope | Env>,
   options: StartOptions<UnitX, UnitNeeds>,
   use: (app: RunningApp<E, RuntimeInfoOf<X>>) => Promise<A>,
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: RuntimeNeedsGate<X, UnitX, UnitNeeds>
+  ...gate: StartGate<X, UnitX, UnitNeeds>
 ): Promise<A> => {
   void gate;
 
@@ -51,7 +52,7 @@ export const withApp = async <X, E, A, UnitX = never, UnitNeeds = never>(
   // the forwarding call goes through a signature with the phantom tuple
   // already discharged.
   const boot = start as (
-    module: Module<X, E, Scope>,
+    module: Module<X, E, Scope | Env>,
     options: StartOptions<UnitX, UnitNeeds>,
   ) => RunningApp<E, RuntimeInfoOf<X>>;
 

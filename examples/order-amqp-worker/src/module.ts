@@ -8,7 +8,7 @@ import {
 } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 
-import { OrderAmqpRuntime, amqpModule, type OrderAmqpOptions } from "./amqp-runtime.js";
+import { OrderAmqpRuntime, amqpModule } from "./amqp-runtime.js";
 
 /**
  * The composition root of the broadcast deployment. `ApplicationModule` and
@@ -26,13 +26,12 @@ import { OrderAmqpRuntime, amqpModule, type OrderAmqpOptions } from "./amqp-runt
  * sharing a composition root would share its transport dependency — one
  * application, one root per process.
  *
- * A function of the transport's options rather than a constant, because the
- * broker URL comes from the environment and the runtime is a service of the
- * graph: `main.ts` calls it once with `env.AMQP_URL`, the specs with each
- * test's own vhost.
+ * A constant: the broker URL and the relay's poll interval are read from the
+ * environment inside the graph (`amqpModule`'s `AmqpConfig`), so nothing has
+ * to be passed in — `main.ts` boots this value as is, and the specs boot it
+ * with `env` pointing at each test's own vhost.
  */
-export const orderAmqpWorker = (options: OrderAmqpOptions) =>
-  Module("OrderAmqpWorker")({
-    imports: [ApplicationModule, PersistenceModule, amqpModule(options)],
-    exports: [OrderAmqpRuntime, PlaceOrder, OrderRepository, Outbox, Logger],
-  });
+export const OrderAmqpWorker = Module("OrderAmqpWorker")({
+  imports: [ApplicationModule, PersistenceModule, amqpModule],
+  exports: [OrderAmqpRuntime, PlaceOrder, OrderRepository, Outbox, Logger],
+});

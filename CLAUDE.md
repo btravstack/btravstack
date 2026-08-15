@@ -278,7 +278,7 @@ so a production bundle never pulls the fakes in.
   service of that module**, not an option: the module exports a port declared
   over `RuntimePort`, the kernel builds the graph, resolves that port and
   drives what it finds. The kernel is DI initialisation and lifecycle, nothing
-  else. Followed by the phantom `...gate` rest tuple, `RuntimeNeedsGate<X,
+  else. Followed by the phantom `...gate` rest tuple, `StartGate<X,
 UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   `UNSATISFIED RUNTIME NEEDS` when the runtime's declared needs are not among
   the module's exports (or the unit module's), `UNSATISFIED UNIT NEEDS` for
@@ -290,7 +290,7 @@ UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   `Needs`/`Info` in the type. `RuntimeOf<X>` / `RuntimeNeedsOf<X>` /
   `RuntimeInfoOf<X>` read those back out of a module's exports; `RuntimeInstance`
   is the shared instance type (`InstanceType<PortClass<"Runtime">>`). A
-  runtime whose needs are fixed ships its port and a module (`httpModule`); one
+  runtime whose needs are fixed ships its port and a starter (`http()`); one
   whose needs are the application's (`temporalRuntime`, `amqpRuntime`) is
   provided on a port the **application** declares over `RuntimePort`, since a
   port's service type is fixed at declaration and `PortInstance` is not
@@ -377,9 +377,13 @@ UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   signal must cut the pre-drain delay short, and `systemClock` `unref`s its
   timer so a shutdown sleep is never the reason the event loop stays alive.
 - **`Phase`** — `"building" | "starting" | "serving" | "draining" | "stopping" | "exited"`.
-- **`KernelEvent` / `EventSink` / `stderrSink`** — eight events: `building`,
-  `serving`, `draining`, `drained`, `stopping`, `exited`, `teardownError`,
-  `uncaught`. `stderrSink` writes one JSON line per event, normalising an
+- **`KernelEvent` / `EventSink` / `stderrSink`** — nine events: `building`,
+  `startFailed`, `serving`, `draining`, `drained`, `stopping`, `exited`,
+  `teardownError`, `uncaught`. `startFailed` carries the `cause` of any
+  startup failure — a modeled `Err` (a `ConfigInvalid` naming its variables,
+  a `RuntimeStartFailed`) or a defect — and is emitted before `stopping`, so a
+  process that never came up says why on stderr instead of exiting silently.
+  `stderrSink` writes one JSON line per event, normalising an
   `Error` cause to `{ name, message, stack, cause }` — `JSON.stringify` skips
   non-enumerable properties, so a bare one renders the two cause-carrying
   events as `{"cause":{}}`. A cause it cannot serialise at all (a circular
@@ -387,7 +391,7 @@ UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   `safeSink` would swallow the throw and the event would be reported nowhere.
 - **`runMain(module, options?, exit?)`** — the front door: `start` composed
   with the wait for `exited`, carrying the same phantom needs gate
-  (`RuntimeNeedsGate`, the shared alias all three gated surfaces use). Every
+  (`StartGate`, the shared alias all three gated surfaces use). Every
   `main.ts` calls this one function; `start` is for callers that want the
   `RunningApp` itself. It boots the module and sets the exit code:
   `0` clean, `1` a modeled startup `Err`, `2` drained with work abandoned **or
@@ -437,19 +441,33 @@ never, never>` providing the runtime on **`TestRuntimePort`** (its port,
   stopped and rethrown unchanged, so a shutdown defect can never mask the
   assertion that actually failed.
 
-### `@btravstack/http`, `@btravstack/temporal` and `@btravstack/amqp`
+### `@btravstack/http`, `@btravstack/orpc`, `@btravstack/temporal` and `@btravstack/amqp`
 
 Their public surfaces live in `packages/http/CLAUDE.md`,
-`packages/temporal/CLAUDE.md` and `packages/amqp/CLAUDE.md`, which
-load only when you work under those directories — the same split
-`packages/core/CLAUDE.md` already uses for the kernel's internals. Read the
-one you are changing before you change it, and update it in the same commit as
-the code.
+`packages/orpc/CLAUDE.md`, `packages/temporal/CLAUDE.md` and
+`packages/amqp/CLAUDE.md`, which load only when you work under those
+directories — the same split `packages/core/CLAUDE.md` already uses for the
+kernel's internals. Read the one you are changing before you change it, and
+update it in the same commit as the code.
+
+**Starters.** `http()` and `orpc()` are the first two, in the Spring Boot
+sense: a module (or provider) that brings the default behaviour for the
+standard case — `http()` binds `PORT`/`HOST` onto `HttpConfig` and provides
+`HttpRuntime`; `orpc(RouterPort)` turns a router port into the `HttpHandler`
+provider — so an application with an ordinary need writes none of that
+plumbing, and every piece is a port an application may provide itself instead
+(its own `HttpHandler`, its own `HttpConfig` by pinning). A starter has real
+dependencies (`@btravstack/orpc` peers on `hono`, `@hono/node-server`,
+`@orpc/server`); the kernel and `@btravstack/http` still have none.
+`temporalRuntime`/`amqpRuntime` are not yet starters — their needs are the
+application's, so the application declares the runtime port — and the same
+shape (a `TemporalConfig`/`AmqpConfig` bound from env, a resourceful
+connection provider) is what the examples show by hand.
 
 ## Toolchain & conventions
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All
-  eleven workspaces run under the same six commands as the kernel — 89 specs
+  ten workspaces run under the same six commands as the kernel — their specs
   plus four `needs-gate.test-d.ts` files, four `layering.test-d.ts` ones and
   `hexagonal-order-api`'s `index.test-d.ts` —
   so an example that stops compiling, stops linting or stops passing fails CI
@@ -461,7 +479,7 @@ the code.
   A runtime with a **non-empty `needs`** meeting a real module now exercises
   `start`'s phantom rest-tuple gate and `RuntimeHost`'s
   `Context<InstanceType<Needs>>` in two places: here, and in
-  `packages/http/src/test-fixtures.ts`, whose modules import `httpModule` and
+  `packages/http/src/test-fixtures.ts`, whose modules import `http()` and
   provide the package's own `HttpHandler` port — at application scope, and
   once from the `unit` module — driven by its 15 `http-runtime.spec.ts`
   specs. Every needs-gate file also pins the third arm, `NO RUNTIME`: a
@@ -540,22 +558,19 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   with oRPC's fetch adapter mounted, built by a provider from the `OrderRouter`
   port — itself a provider that **declares** `PlaceOrder` and `FindOrder`, so
   oRPC's context stays empty and nothing is located from a context at call
-  time — never a module-level singleton), the runtime is **`httpModule({ port })`
-  imported into the composition root** (`orderApi(http)`, a function of the
-  one thing only the process knows) and exported as `HttpRuntime`, whose one
+  time — never a module-level singleton) through **`orpc(OrderRouter)`**, the
+  `@btravstack/orpc` starter; the runtime is **`http()` imported into the
+  composition root** — `OrderApi` is a constant, `PORT`/`HOST` come from the
+  environment inside the graph — and exported as `HttpRuntime`, whose one
   need is `HttpHandler`, resolved out of each request's context; and
   `RequestModule` rides `StartOptions.unit` so the per-request fork is the
-  kernel's. There is no `runtime`, `needs` or `handler` option to spell
-  anywhere: `main.ts` is `runMain(orderApi({ port: env.PORT }), { unit, probes })`.
-  `getRequestListener` is
-  called with `overrideGlobalObjects: false`: its default replaces
-  `globalThis.Request` / `Response` on the first request served, a
-  process-wide side effect. The router uses `@unthrown/orpc`'s `.result()`
-  builder extension. It reads `port` back off `Serving.info`; binding, the
-  drain and the trace-id policy are the package's. This is what makes the
-  package's needs gate a real one: a composition that does not export
-  `HttpHandler` — or forgets `httpModule` altogether — fails on arity at the
-  `runMain` call.
+  kernel's. There is no `runtime`, `needs`, `handler`, `port` or env-reading
+  to spell anywhere: `main.ts` is `await runMain(OrderApi, { unit:
+RequestModule })`. The router uses `@unthrown/orpc`'s `.result()` builder
+  extension. It reads `port` back off `Serving.info`; binding, the drain and
+  the trace-id policy are the package's. This is what makes the package's
+  needs gate a real one: a composition that does not export `HttpHandler` —
+  or forgets `http()` altogether — fails on arity at the `runMain` call.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
@@ -578,14 +593,14 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   `workspace:*` in `devDependencies` and stays `^0.1.0` in `peerDependencies`,
   so a consumer still installs one copy of it themselves. `di` itself peers on
   `unthrown` and depends on nothing.
-- `declarationMap: false` on all five published packages — the published
+- `declarationMap: false` on all six published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All five published packages claim `engines: { node: ">=20" }` while the root
+- All six published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -636,11 +651,11 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   both READMEs **and** `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/core/src/` internals or the invariants guarding
   them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
-  `packages/http/CLAUDE.md`, `packages/temporal/CLAUDE.md` or
-  `packages/amqp/CLAUDE.md`, whichever is where that package's public
-  surface lives — or `packages/di/CLAUDE.md` for the container.
-  There are **six** `CLAUDE.md` files; naming the wrong one is
-  how the last drift happened.
+  `packages/http/CLAUDE.md`, `packages/orpc/CLAUDE.md`,
+  `packages/temporal/CLAUDE.md` or `packages/amqp/CLAUDE.md`, whichever is
+  where that package's public surface lives — or `packages/di/CLAUDE.md` for
+  the container. There are **seven** `CLAUDE.md` files; naming the wrong one
+  is how the last drift happened.
 
 ## Test conventions
 
@@ -732,37 +747,31 @@ expect(r.error.code)… }` passes on the outer assertion alone the moment the
 
 A sixth rule is about production code that tests keep honest:
 
-6. **Configuration is validated through a schema and returned as a value, never
-   `.parse()`d.** `examples/order-api/src/env.ts` is the shape: a schema over
-   `process.env` run through `@unthrown/standard-schema`'s `fromSchema`, whose
-   issues are the modeled `E`, folded by the entry point into a message and a
-   non-zero exit code. A schema's own `.parse()` **throws**, which
-   `unthrown/no-throw` bans and which would contradict the example it appears in.
-   A numeric variable is a **non-empty string piped into a coercion** —
-   `z.string().trim().min(1).pipe(z.coerce.number<string>().int().min(min).max(max)).default(f)`
-   — never a bare `z.coerce.number()`: coercion is `Number()` underneath, so
-   `PORT=abc` binds `NaN` and `PORT=` binds the ephemeral port `0` — the exact
-   silent failure the module exists to remove. The bounds catch the first (and
-   `3.5`, and out-of-range); they cannot catch the second, because a **port's
-   `min` is `0`** so that an ephemeral bind stays expressible, which is why the
-   string guard is not optional. An empty or whitespace-only value is a
-   configuration **error**, not an absent one — `.default(...)` applies only
-   when the variable is genuinely missing. The fragment is
-   `examples/order-config`'s `wholeNumber` / `port`, shared by all three
-   deployments, and its spec pins all seven cases (absent, `""`, whitespace,
-   `abc`, `3.5`, valid, out of range) **once**. Each deployment's own `env.ts`
-   is then its variables and their defaults, and its own spec pins what is
-   genuinely its own — `order-amqp-worker`'s `OUTBOX_POLL_MS` bound differs from a
-   port's, and `order-temporal-worker`'s two string variables have an emptiness rule
-   of their own. Triplicating the fragment was the earlier shape; it was cut
-   in the audit that also deleted this repo's planning documents. The `<string>` type argument
-   is needed because `z.coerce.number()`'s input is `unknown`, which `.pipe`
-   will not accept from a `string`. The earlier digits-only regex plus
-   `.transform(Number)` was the over-built form of this; it was simplified in
-   the PR #7 review, and a bare `z.coerce.number()` was tried there and reverted
-   for the `min(0)` hole above.
-   Note `fromSchema` is **curried** — `fromSchema(schema)(input)`, not
-   `fromSchema(schema, input)`.
+6. **Configuration is a provider bound from `Env` through a schema, never
+   `process.env` read by hand and never `.parse()`d.** The kernel owns it:
+   `Config.provider(Port, Config.object({...}))` reads the `Env` port the
+   kernel provides, validates once as the graph is built, and answers a
+   modeled `ConfigInvalid` — every offending variable named — which `runMain`
+   turns into `startFailed` on stderr and exit code `78`. Nothing in an
+   application touches `process.env`, and no `main.ts` folds issues into a
+   message and an exit code itself; `examples/order-api/src/main.ts` is one
+   line. A schema's own `.parse()` **throws**, which `unthrown/no-throw` bans.
+   The semantics `Config.*` fixes once (pinned by `config.spec.ts`'s cases:
+   absent, `""`, whitespace, `abc`, `3.5`, valid, out of range, boolean
+   spellings, a required field): an **empty or blank value is a configuration
+   error, not an absent one** — `default` applies only to a variable nobody
+   set — because `Number("")` is `0`, and `PORT=` would otherwise bind the
+   ephemeral port; a **port's floor is `0`** so an ephemeral bind stays
+   expressible, which is why that guard cannot be a lower bound; integers are
+   `Number()` + `isInteger` + inclusive bounds, so `abc`, `3.5` and
+   out-of-range are all named. Any Standard Schema is accepted in place of
+   `Config.object` (a `zod` object over the raw variables) — the practice
+   _"Accept any Standard Schema validator"_ — but the fields exist so the
+   framework's own starters, and an application with ordinary needs, bring no
+   schema library at all. `examples/order-config` and the three `env.ts`
+   files were the earlier shape (a shared zod fragment, `readEnv()`,
+   `describeEnvIssues`, `abort(78)` by hand in every `main.ts`); they were
+   deleted when the kernel took this over.
 
 ## Deferred, deliberately
 

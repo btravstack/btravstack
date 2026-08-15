@@ -16,16 +16,14 @@ import { ApplicationModule, Logger, PlaceOrder } from "@btravstack/example-order
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 
 import { OrderAmqpRuntime, amqpModule } from "./amqp-runtime.js";
-import { orderAmqpWorker } from "./module.js";
-
-const transport = { urls: ["amqp://127.0.0.1:5672"], relay: { pollMs: 200 } } as const;
+import { OrderAmqpWorker } from "./module.js";
 
 const options = { signals: false, probes: false } as const;
 
 // Positive: the composition root exports the runtime and both ports it needs
 // (and a writer's port it does not), so the gate collapses to an empty tuple
 // and this is an ordinary two-argument call.
-const _wired = start(orderAmqpWorker(transport), options);
+const _wired = start(OrderAmqpWorker, options);
 
 // The same graph without `amqpModule`: nothing declared over `RuntimePort` is
 // exported, so there is no runtime for `start` to resolve.
@@ -43,7 +41,7 @@ const _noRuntime = start(RuntimelessAmqp, options);
 // carries it) but not exported, so it is not in the application context the
 // runtime is handed.
 const PartialAmqp = Module("PartialAmqp")({
-  imports: [ApplicationModule, PersistenceModule, amqpModule(transport)],
+  imports: [ApplicationModule, PersistenceModule, amqpModule],
   exports: [OrderAmqpRuntime, PlaceOrder, Logger],
 });
 

@@ -1,0 +1,27 @@
+---
+"@btravstack/core": minor
+"@btravstack/http": minor
+---
+
+**Configuration is the kernel's, the twelve-factor way.** `@btravstack/core`
+exports `Env` — the environment as a port, provided to every graph `start`
+boots (`process.env`, or `StartOptions.env` for a test) — and `Config`:
+`Config.string/integer/port/boolean(variable, { default?, min?, max? })` fields,
+`Config.object({...})` composing them into a Standard Schema over the
+environment (any other Standard Schema, a `zod` object over the raw variables
+for instance, is accepted too), and `Config.provider(Port, schema)` binding a
+port from `Env` — a modeled `ConfigInvalid` naming every offending variable
+when the environment is wrong, which `runMain` maps to sysexits(3)'s
+`EX_CONFIG` (78) rather than the generic startup `1`. The kernel binds its own
+`PROBE_PORT` the same way (default `9000`; `probes` still overrides), and a
+startup failure of any kind is now reported as a `startFailed` kernel event
+before `stopping`, so a bad environment is named on stderr instead of exiting
+silently. An empty or blank variable is an error, never an absent one; `PORT=0`
+stays expressible.
+
+`@btravstack/http` becomes a starter: `http(options?)` provides `HttpRuntime`
+and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST` (default
+`0.0.0.0`) unless pinned (`http({ port: 0 })` for a test — explicit beats
+environment beats default, per field; pin both and the module reads nothing).
+`httpModule` is gone. `RuntimeNeedsGate` is renamed `StartGate`, since it now
+also states `NO RUNTIME`.

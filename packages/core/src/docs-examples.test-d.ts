@@ -16,11 +16,14 @@ import { Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
 import { expect, expectTypeOf } from "vitest";
 
 import {
+  Config,
   RuntimePort,
   currentUnit,
   runMain,
   start,
+  type ConfigInvalid,
   type DrainReport,
+  type ExitReport,
   type RunUnit,
   type Runtime,
   type RuntimeHost,
@@ -117,6 +120,44 @@ const TickModule = Module("Tick")({
 });
 
 await runMain(TickerApp, { unit: TickModule });
+
+// ---------------------------------------------------------------------------
+// "Configuration" — both READMEs. A port bound from the environment inside
+// the graph: the module's own error channel carries `ConfigInvalid`, still
+// typed, and its `Env` need is the one the kernel discharges.
+// ---------------------------------------------------------------------------
+
+class Settings extends Port("Settings")<{
+  readonly port: number;
+  readonly verbose: boolean;
+}> {}
+
+const SettingsModule = Module("Settings")({
+  provides: [
+    Config.provider(
+      Settings,
+      Config.object({
+        port: Config.port("PORT", { default: 3000 }),
+        verbose: Config.boolean("VERBOSE", { default: false }),
+      }),
+    ),
+  ],
+  exports: [Settings],
+});
+
+const ConfiguredApp = Module("ConfiguredApp")({
+  imports: [TickerApp, SettingsModule],
+  exports: [Greeter, Ticker, Settings],
+});
+
+// `process.env` in production; a test hands in the record it wants, and reads
+// `PROBE_PORT` from it too unless `probes` is set.
+await runMain(ConfiguredApp);
+const configured = start(ConfiguredApp, { env: { PORT: "0" }, probes: false });
+
+expectTypeOf(configured.exited).toEqualTypeOf<
+  AsyncResult<ExitReport, ConfigInvalid | RuntimeStartFailed>
+>();
 
 // ---------------------------------------------------------------------------
 // "The Runtime contract" — root README. Asserted equal to the shipped types

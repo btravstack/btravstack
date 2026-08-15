@@ -18,14 +18,14 @@ RuntimePort<Runtime<typeof PlaceOrder | typeof Logger, TemporalInfo>> {}` —
 temporalRuntime({...}) })` and exports the port alongside the ports the
   runtime needs. This package ships no port and no module of its own, which
   is where it differs from `@btravstack/http` (fixed needs, so `HttpRuntime`
-  - `httpModule` are the package's).
-    `TemporalOptions<Needs>` — `connection` (a `NativeConnection` the caller
-    opened, and therefore closes), `taskQueue`, `namespace` (default
-    `"default"`), `workflows` (a `WorkflowSource`: `{ workflowsPath }` or
-    `{ workflowBundle }`), `activities`, `needs`, `forceAfter` (Temporal's
-    `shutdownForceTime`, default `15 seconds`) and `gracePeriod`
-    (`shutdownGraceTime`, default `10 seconds`). `TemporalInfo` is
-    `{ taskQueue, namespace }`, published on `Serving.info` once polling.
+  and the `http()` starter are the package's).
+  `TemporalOptions<Needs>` — `connection` (a `NativeConnection` the caller
+  opened, and therefore closes), `taskQueue`, `namespace` (default
+  `"default"`), `workflows` (a `WorkflowSource`: `{ workflowsPath }` or
+  `{ workflowBundle }`), `activities`, `needs`, `forceAfter` (Temporal's
+  `shutdownForceTime`, default `15 seconds`) and `gracePeriod`
+  (`shutdownGraceTime`, default `10 seconds`). `TemporalInfo` is
+  `{ taskQueue, namespace }`, published on `Serving.info` once polling.
 - **`activities`** is a **builder** — `(host: RuntimeHost<Needs>) => Record<…>`
   — because the middleware needs the host and the host does not exist until
   `start` calls the runtime. The package never wraps what it returns, which is

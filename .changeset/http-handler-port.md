@@ -19,14 +19,14 @@ per-request dependencies constructor-injected — the reason there is no
 the `HttpHandler<Needs>` function type is replaced by the port class.
 
 **Breaking, in the same release.** The runtime is a module, not an option:
-`httpModule(options)` provides the runtime on the new **`HttpRuntime`** port
+the `http()` starter provides the runtime on the new **`HttpRuntime`** port
 (declared over core's `RuntimePort`), which the composition root imports and
 exports — `start(module)` resolves it from there, since `StartOptions.runtime`
 is gone. `httpRuntime` is no longer exported.
 
 ```ts
-const OrderApiModule = Module("OrderApi")({
-  imports: [ApplicationModule, ApiModule, httpModule({ port: env.PORT })],
+const OrderApi = Module("OrderApi")({
+  imports: [ApplicationModule, ApiModule, http()],
   exports: [HttpRuntime, HttpHandler],
 });
 ```

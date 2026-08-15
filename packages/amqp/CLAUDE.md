@@ -15,9 +15,9 @@ with the code in the same commit, and with `README.md` — the package ships no
   (`class OrderAmqpRuntime extends RuntimePort<Runtime<typeof Outbox | typeof
 Logger, AmqpInfo>> {}`) and provide the runtime on
   (`Provider(OrderAmqpRuntime)({ value: amqpRuntime({...}) })`), exported
-  from the module `start` boots. `@btravstack/http` ships a port and a module
-  of its own because its needs are fixed; this package's are not, so it ships
-  neither.
+  from the module `start` boots. `@btravstack/http` ships a port and a
+  starter module (`http()`) of its own because its needs are fixed; this
+  package's are not, so it ships neither.
   `AmqpOptions<TContract, Needs>` — `urls`, `contract: TContract` (`TContract`
   bounded by `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, never
   imported by name), `handlers`, `middleware`, `needs`, `connectionOptions`,

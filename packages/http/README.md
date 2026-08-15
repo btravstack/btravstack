@@ -23,37 +23,48 @@ on npm to install yet. The command above is what it will be once it has.
 
 ## A worked example
 
-The runtime is a module you import, and the HTTP surface is a service your
-module provides — the package's own `HttpHandler` port, the one thing the
-runtime needs:
+`http()` is a **starter**: a module providing the runtime (`HttpRuntime`) and
+its configuration (`HttpConfig`, bound from `PORT` and `HOST` in the
+environment). The HTTP surface is a service your module provides — the
+package's own `HttpHandler` port, the one thing the runtime needs — and
+[`@btravstack/orpc`](../orpc) is the router starter that provides it from an
+oRPC router port:
 
 ```ts
-import { HttpHandler, HttpRuntime, httpModule } from "@btravstack/http";
+import { runMain } from "@btravstack/core";
+import { HttpHandler, HttpRuntime, http } from "@btravstack/http";
+import { orpc } from "@btravstack/orpc";
 
-const ApiModule = Module("Api")({
+const Api = Module("Api")({
   provides: [
-    Provider(HttpHandler)([PlaceOrder, FindOrder], {
-      sync: (place, find) => (req, res) =>
-        rpc.handle(req, res, { context: { place, find } }),
-    }),
+    Provider(OrderRouter)([PlaceOrder, FindOrder], { sync: routerOf }),
+    orpc(OrderRouter),
   ],
   exports: [HttpHandler],
 });
 
-const OrderApiModule = Module("OrderApi")({
-  imports: [ApplicationModule, ApiModule, httpModule({ port: env.PORT })],
+const OrderApi = Module("OrderApi")({
+  imports: [Application, Persistence, Api, http()],
   exports: [HttpRuntime, HttpHandler],
 });
 
-start(OrderApiModule);
+await runMain(OrderApi);
 ```
 
-`start` finds the runtime by the `HttpRuntime` port the composition root
-exports; a module that exports none fails to compile at the call.
+That is the whole of a `main.ts`: `PORT` (default `3000`), `HOST` (default
+`0.0.0.0`) and the kernel's `PROBE_PORT` are read inside the graph, from the
+`Env` port the kernel provides — nothing is passed in — and a malformed one is
+a `ConfigInvalid` the kernel reports as a `startFailed` event and exit `78`. A
+test boots the same `OrderApi` with `start(OrderApi, { env: { PORT: "0",
+HOST: "127.0.0.1" } })` and reads the bound port back from
+`app.runtimeInfo()`. `start` finds the runtime by the `HttpRuntime` port the
+composition root exports; a module that exports none fails to compile at the
+call.
 
-Or with [Hono](https://hono.dev), via `@hono/node-server`'s
-`getRequestListener` — **not** its `serve()`, which creates and owns its own
-`node:http` server; standing one up is the job this package takes over:
+Without oRPC, provide `HttpHandler` yourself — with [Hono](https://hono.dev),
+via `@hono/node-server`'s `getRequestListener` (**not** its `serve()`, which
+creates and owns its own `node:http` server; standing one up is the job this
+package takes over), or with a bare `(request, response, signal) => …`:
 
 ```ts
 import { getRequestListener } from "@hono/node-server";
@@ -96,7 +107,7 @@ own job from that point on; the package will not double-write over it.
 - **Routing.** oRPC, Hono and Express already do this well; the package takes
   a node request and response, not a route table.
 - **Middleware.** Same reason — compose your own chain in front of the
-  `handler` you pass in.
+  `HttpHandler` you provide.
 - **`Result` → HTTP status.** This differs per API style (oRPC's typed errors,
   a plain REST 400), and shipping a mapping nobody asked for is how a
   lifecycle package turns into a framework. Fold it in your own handler.
@@ -106,15 +117,24 @@ own job from that point on; the package will not double-write over it.
 - **HTTP/2.** Same `node:http`-only boundary — framing belongs to a routing
   library, not a lifecycle package.
 
-## Options
+## Configuration and options
 
 The handler is not an option — it is the `HttpHandler` port your module
-provides. `httpModule` takes only what the socket needs:
+provides. What the socket is bound with is `HttpConfig`, `{ port, hostname }`,
+a port `http()` provides from the environment and anything else in the graph
+may read; `http(options)` lets a caller **pin** a field instead of reading it —
+explicit beats environment beats default, **per field**, so `http({ port: 0 })`
+still reads `HOST`. Pin both and the module reads nothing: no `Env` need, no
+`ConfigInvalid`, which is what its overloads say.
 
-| Option     | Default   |                                                                                                                               |
-| ---------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `port`     | —         | required; `0` lets the OS pick — read the real one back from `RunningApp.runtimeInfo()`                                       |
-| `hostname` | `0.0.0.0` | the deployment target is a pod, not a laptop; it also means the server is reachable beyond loopback — set `127.0.0.1` locally |
+| Option     | Variable | Default   |                                                                                                                               |
+| ---------- | -------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `port`     | `PORT`   | `3000`    | `0` lets the OS pick — read the real one back from `RunningApp.runtimeInfo()`                                                 |
+| `hostname` | `HOST`   | `0.0.0.0` | the deployment target is a pod, not a laptop; it also means the server is reachable beyond loopback — set `127.0.0.1` locally |
+
+An unset variable takes the default; a set-but-empty one is an error, and so is
+`PORT=abc` or `PORT=70000` — `Config.port` from `@btravstack/core` decides
+what a port is, once, and `PORT=0` is legal.
 
 ## Status codes the package itself writes
 

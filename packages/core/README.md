@@ -115,9 +115,13 @@ the call, and so is a module that exports no runtime port at all.
   whatever is still open is aborted and reported as `abandoned`. A second signal
   skips the drain.
 - **Probes from the state machine.** `GET /livez` and `GET /readyz` on a
-  separate `node:http` server (default port `9000`, `127.0.0.1`, `unref`'d;
-  `probes: false` to disable). A Temporal worker with no HTTP runtime gets
-  probes for free.
+  separate `node:http` server (`127.0.0.1`, `unref`'d; the port is `PROBE_PORT`
+  from the environment, default `9000`; `probes: false` to disable). A Temporal
+  worker with no HTTP runtime gets probes for free.
+- **Configuration from the environment, typed.** `Config.provider(Port,
+Config.object({...}))` binds a port from the `Env` the kernel provides to
+  every graph — validated once as the graph is built, every fault named at
+  once, exit `78` under `runMain`. See _Configuration_ below.
 - **Teardown on every path.** `start` is a thin wrapper over `Module.scoped`,
   so LIFO release, close-on-failure and non-masking finaliser errors are
   inherited from `di`, not reimplemented. Failing finalisers surface in
@@ -141,9 +145,9 @@ the call, and so is a module that exports no runtime port at all.
 - **An ambient record, not an ambient container.** One `AsyncLocalStorage`
   store per unit holding `{ unitId, traceId, tenantId, deadline }` — data,
   never capabilities. Read it with `currentUnit()`.
-- **Events, not a logger.** `building`, `serving`, `draining`, `drained`,
-  `stopping`, `exited`, `teardownError`, `uncaught` — JSON to stderr by
-  default, or your own `onEvent` sink.
+- **Events, not a logger.** `building`, `startFailed`, `serving`, `draining`,
+  `drained`, `stopping`, `exited`, `teardownError`, `uncaught` — JSON to
+  stderr by default, or your own `onEvent` sink.
 - **Every async surface is an `AsyncResult`**, including the infallible ones:
   `AsyncResult<T, never>` is how this package spells "async, and cannot fail",
   so `app.probePort()`, `clock.sleep(ms)` and friends all
@@ -151,6 +155,69 @@ the call, and so is a module that exports no runtime port at all.
   the Result world), `UnitWork`'s `Promise<Result>` arm (it accepts your own
   `async` handler) and `withApp`/`use` (a thrown assertion must reach the test
   runner).
+
+## Configuration
+
+Twelve-factor configuration is the environment and nothing else, so the kernel
+provides it as a port: `Env`, `process.env` by default (`StartOptions.env` for
+a test), reaching every graph `start` boots. A configuration provider is a
+provider that reads it — built with the rest of the graph, injected like any
+other service, and a bad environment is a modeled startup `Err` rather than a
+crash or a silently wrong value.
+
+```ts
+import { Config } from "@btravstack/core";
+
+class Settings extends Port("Settings")<{
+  readonly port: number;
+  readonly verbose: boolean;
+}> {}
+
+const SettingsModule = Module("Settings")({
+  provides: [
+    Config.provider(
+      Settings,
+      Config.object({
+        port: Config.port("PORT", { default: 3000 }),
+        verbose: Config.boolean("VERBOSE", { default: false }),
+      }),
+    ),
+  ],
+  exports: [Settings],
+});
+
+const ConfiguredApp = Module("ConfiguredApp")({
+  imports: [TickerApp, SettingsModule],
+  exports: [Greeter, Ticker, Settings],
+});
+
+// `process.env` in production; a test hands in the record it wants, and reads
+// `PROBE_PORT` from it too unless `probes` is set.
+await runMain(ConfiguredApp);
+const configured = start(ConfiguredApp, { env: { PORT: "0" }, probes: false });
+```
+
+- `Config.string(VAR, { default? })`, `Config.integer(VAR, { min?, max?,
+default? })`, `Config.port(VAR, { default? })` and `Config.boolean(VAR, {
+default? })` each read one variable. **Unset** takes the default, or is "is
+  required" without one; **set but empty or blank is an error**, never an
+  absent variable — `PORT=` would otherwise bind whatever the empty string
+  coerces to. `PORT=0` stays legal, since an ephemeral bind must be
+  expressible.
+- `Config.object({...})` composes fields into a Standard Schema over the
+  environment; every field is read, so one validation names every offending
+  variable at once. Any other Standard Schema — a `zod` object over the raw
+  variables — is accepted in its place, with no adapter.
+- `Config.provider(Port, schema)` is a di provider needing `Env` (which the
+  kernel discharges) with error `ConfigInvalid` — a `TaggedError` carrying
+  `{ port, issues }` whose message names each variable. It flows through
+  `start`'s error channel typed, like any application error, and **`runMain`
+  exits `78`** (sysexits' `EX_CONFIG`) on it. The kernel binds its own
+  `PROBE_PORT` the same way.
+
+A starter provides its own slice — `@btravstack/http`'s `http()` binds `PORT`
+and `HOST` onto `HttpConfig` — and an application binds whatever else it
+needs onto ports of its own. Nothing else should touch `process.env`.
 
 ## Writing a runtime
 
@@ -198,9 +265,13 @@ per-request acquire otherwise leaves the unit open for good.
 | `2`  | drained with work abandoned, or exited with teardown errors |
 | `70` | stopped by an uncaught exception or unhandled rejection     |
 | `70` | a defect                                                    |
+| `78` | a configuration port could not be bound (`ConfigInvalid`)   |
 
 Both `70`s are sysexits(3)'s `EX_SOFTWARE`. A crash takes precedence over
-abandoned work.
+abandoned work. `78` is `EX_CONFIG` — the deployment is wrong, not the code —
+and covers the kernel's own `PROBE_PORT` too. Every startup failure is also
+reported as a `startFailed` event, so a bad environment is named on stderr
+rather than exiting silently.
 
 `2` means "we stopped, but not cleanly", and a failed finaliser earns it just as
 abandoned work does: a non-empty `ExitReport.teardownErrors` is never a `0`.
@@ -232,8 +303,9 @@ together — the other way out, at the cost of no signal-driven drain.)
 
 ## Testing
 
-`@btravstack/core/testing` ships `createFakeClock`, `testRuntime` (and its
-port, `TestRuntimePort`) and `withApp`.
+`@btravstack/core/testing` ships `createFakeClock`, `testRuntime` (with its
+port, `TestRuntimePort`, and `.module`, which provides itself on that port)
+and `withApp`.
 
 ```ts
 const drainTest = async (): Promise<void> => {
@@ -277,15 +349,16 @@ asserting.
 
 ## Options
 
-| Option            | Default          |                                                               |
-| ----------------- | ---------------- | ------------------------------------------------------------- |
-| `unit`            | none             | a module forked around every unit; see above                  |
-| `clock`           | `systemClock`    | injectable, so drain tests are instant                        |
-| `signals`         | `true`           | `false` disables the SIGTERM/SIGINT **and** uncaught handlers |
-| `probes`          | `{ port: 9000 }` | `false` to disable; `{ port: 0 }` to let the OS choose        |
-| `preDrainDelayMs` | `5_000`          | beat 2 of the drain                                           |
-| `drainTimeoutMs`  | `20_000`         | beat 3; keep it under `terminationGracePeriodSeconds`         |
-| `onEvent`         | JSON to stderr   | a throwing sink is swallowed                                  |
+| Option            | Default        |                                                                                        |
+| ----------------- | -------------- | -------------------------------------------------------------------------------------- |
+| `env`             | `process.env`  | the environment, provided to the graph as `Env`; a test passes `{ PORT: "0", … }`      |
+| `unit`            | none           | a module forked around every unit; see above                                           |
+| `clock`           | `systemClock`  | injectable, so drain tests are instant                                                 |
+| `signals`         | `true`         | `false` disables the SIGTERM/SIGINT **and** uncaught handlers                          |
+| `probes`          | `PROBE_PORT`   | bound from `env` (default `9000`) when unset; `false` to disable; `{ port: 0 }` for OS |
+| `preDrainDelayMs` | `5_000`        | beat 2 of the drain                                                                    |
+| `drainTimeoutMs`  | `20_000`       | beat 3; keep it under `terminationGracePeriodSeconds`                                  |
+| `onEvent`         | JSON to stderr | a throwing sink is swallowed                                                           |
 
 ## Documentation
 

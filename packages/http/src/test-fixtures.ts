@@ -25,16 +25,29 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
-import { currentUnit, start, type RunningApp } from "@btravstack/core";
+import {
+  currentUnit,
+  start,
+  type ConfigInvalid,
+  type Environment,
+  type RunningApp,
+} from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 
-import { HttpHandler, HttpRuntime, httpModule, type HttpInfo } from "./http-runtime.js";
+import {
+  HttpConfig,
+  HttpHandler,
+  HttpRuntime,
+  http,
+  type HttpInfo,
+  type HttpOptions,
+} from "./http-runtime.js";
 
 type Handler = ServiceOf<HttpHandler>;
 
-const loopback = (port = 0) => httpModule({ port, hostname: "127.0.0.1" });
+const loopback = (port = 0) => http({ port, hostname: "127.0.0.1" });
 
 /** The application, reduced to the runtime and the one port it needs: its HTTP surface, provided as a value. */
 const appOf = (handler: Handler, port = 0) =>
@@ -43,6 +56,30 @@ const appOf = (handler: Handler, port = 0) =>
     provides: [Provider(HttpHandler)({ value: handler })],
     exports: [HttpRuntime, HttpHandler],
   });
+
+/** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
+class BoundConfig extends Port("BoundConfig")<{ readonly value: ServiceOf<HttpConfig> }> {}
+
+/** The starter left to configure itself — from the environment, plus whatever `options` pins. */
+const configuredAppOf = (options: HttpOptions) => {
+  let bound: ServiceOf<HttpConfig> | undefined;
+  return {
+    module: Module("ConfiguredApp")({
+      imports: [http(options)],
+      provides: [
+        Provider(HttpHandler)({ value: noop }),
+        Provider(BoundConfig)([HttpConfig], {
+          sync: (config) => {
+            bound = config;
+            return { value: config };
+          },
+        }),
+      ],
+      exports: [HttpRuntime, HttpHandler],
+    }),
+    config: () => bound,
+  };
+};
 
 /** An application-scoped counter the per-unit handler below reads, so the fork's parent seeding is exercised too. */
 class Builds extends Port("Builds")<{ count: number }> {}
@@ -126,6 +163,18 @@ export type HttpFixtures = {
     unit?: SlowUnit["module"],
   ) => Promise<{ readonly app: App; readonly origin: string }>;
   /**
+   * An app whose starter binds `HttpConfig` from `env` (plus whatever `options`
+   * pins), and what it bound. Shut down by the fixture; a startup failure is
+   * the test's to assert on `app.exited`.
+   */
+  readonly configured: (
+    env: Environment,
+    options?: HttpOptions,
+  ) => {
+    readonly app: RunningApp<ConfigInvalid, HttpInfo>;
+    readonly config: () => ServiceOf<HttpConfig> | undefined;
+  };
+  /**
    * An app whose `HttpHandler` is provided by the `StartOptions.unit` module
    * rather than the application one — built per request, reading a counter
    * out of the application scope. Shut down by the fixture.
@@ -200,6 +249,23 @@ export const it = test.extend<HttpFixtures>({
     for (const app of started) {
       app.stop();
       await expect(app.exited).toBeOk();
+    }
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  configured: async ({}, use) => {
+    const started: RunningApp<ConfigInvalid, HttpInfo>[] = [];
+
+    await use((env, options = {}) => {
+      const { module, config } = configuredAppOf(options);
+      const app = start(module, { env, signals: false, probes: false, onEvent: () => {} });
+      started.push(app);
+      return { app, config };
+    });
+
+    for (const app of started) {
+      app.stop();
+      await app.exited;
     }
   },
 

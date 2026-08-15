@@ -171,7 +171,7 @@ describe("start", () => {
     await app.exited;
 
     expect(app.phase()).toBe("exited");
-    expect(events).toEqual(["building", "stopping", "exited"]);
+    expect(events).toEqual(["building", "startFailed", "stopping", "exited"]);
   });
 
   it("surfaces a failing release in the exit report's teardown errors", async () => {

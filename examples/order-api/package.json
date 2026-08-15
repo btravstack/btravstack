@@ -19,19 +19,15 @@
     "@btravstack/di": "workspace:*",
     "@btravstack/example-order-api-contract": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
-    "@btravstack/example-order-config": "workspace:*",
     "@btravstack/example-order-domain": "workspace:*",
     "@btravstack/example-order-infrastructure": "workspace:*",
     "@btravstack/http": "workspace:*",
-    "@hono/node-server": "catalog:",
+    "@btravstack/orpc": "workspace:*",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
     "@unthrown/orpc": "catalog:",
-    "@unthrown/standard-schema": "catalog:",
-    "hono": "catalog:",
-    "unthrown": "catalog:",
-    "zod": "catalog:"
+    "unthrown": "catalog:"
   },
   "devDependencies": {
     "@btravstack/tsconfig": "catalog:",

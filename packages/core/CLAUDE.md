@@ -119,12 +119,28 @@ Beyond the nine:
   runtime is serving"_ and _"resolves undefined when the runtime never serves,
   so a caller cannot hang"_.
 
+- **Configuration is bound once, names every fault at once, and never
+  defaults a set-but-empty variable.** `config.spec.ts` guards `Config.object`'s
+  semantics (defaults, parsed values, `PORT=0`, empty, blank ×2 + malformed in
+  one validation, `3.5`, bounds, boolean spellings, a required field, a
+  defecting field reported against its variable) and `ConfigInvalid.message`;
+  `Config.provider` end to end (_"binds the port from the environment the
+  kernel provides"_ — the fixture's `Witness` provider captures what di
+  injected; _"fails startup with ConfigInvalid, naming the port and the
+  variables"_; _"exits 78 under runMain"_); and the kernel's own `PROBE_PORT`
+  (_"binds the probe server from the environment when no option is given"_
+  with `PROBE_PORT=0`, _"exits 78 when PROBE_PORT is not a port"_, and the
+  `RuntimeStartFailed`-for-`"probes"`-carrying-`ConfigInvalid` shape `runMain`
+  reads the `78` off). `start.spec.ts` → _"reaches the exited phase when the
+  runtime refuses to start"_ pins the `startFailed` event's place in the
+  sequence (`building`, `startFailed`, `stopping`, `exited`).
+
 Type-level invariants live in `start.test-d.ts` and are checked by
 `pnpm typecheck`:
 
 - **The module must export a runtime, and that runtime's declared `needs` are
   checked against the module's exports at the `start` call site** (the phantom
-  rest-tuple gate, `RuntimeNeedsGate<X, UnitX, UnitNeeds>`). A composition with
+  rest-tuple gate, `StartGate<X, UnitX, UnitNeeds>`). A composition with
   no port declared over `RuntimePort` among its exports fails on arity with
   `NO RUNTIME`; a missing need fails with `UNSATISFIED RUNTIME NEEDS`.
   `InstanceType<never>` is `never`, so a needs-free runtime works against any
@@ -146,6 +162,40 @@ gate.
 ## Internal design (don't break these)
 
 `packages/core/src/` is one concept per file.
+
+- **`Env` is provided by wrapping, not seeding.** `start` builds
+  `Module("Kernel")({ imports: [module, Module("Environment")({ provides:
+[Provider(Env)({ value: env })], exports: [Env] })], exports: [module] })`
+  and hands THAT to `Module.scoped`: di lets a module re-export an imported
+  module, so `X` stays exactly what the caller composed, and `Env` reaches
+  every provider — and every unit fork, since the built context holds all
+  services, not only the exports — through the ordinary graph. The cast to
+  `Module<X, E, Scope>` restates what the signature already promised
+  (`Module<X, E, Scope | Env>` in, `Env` discharged here). `Port("Env")` is
+  declared once, in `config.ts`.
+
+- **`PROBE_PORT` is read through the same `Config.port` field the public API
+  ships**, not a private parser — one definition of what a port is — and its
+  failure is wrapped in `RuntimeStartFailed({ runtime: "probes", cause:
+ConfigInvalid })` rather than widening `exited`'s error union for every
+  caller; `runMain`'s `isConfig` reads through that one level. `probes: false`
+  or an explicit `{ port }` skips the read entirely, which is why every kernel
+  spec that does not test probes passes one of them (an unset `probes` in a
+  test would try to bind 9000).
+
+- **`startFailed` is emitted from both `tapFailure` sites** — the probe bind's
+  and `Module.scoped`'s — because a failed probe bind short-circuits the
+  `flatMap` that would otherwise reach the second; the cause is
+  `failure.tag === "Err" ? failure.error : failure.cause`, the `FailureView`
+  unthrown hands a `tapFailure` callback.
+
+- **`Config.object`'s `~standard.validate` is synchronous and never throws.**
+  It walks every field, so an operator sees every fault at once; a field whose
+  `parse` defects (a bug in the field) is folded into an issue against its
+  variable rather than thrown through a validation that promised issues.
+  `Config.provider` still awaits `validate` (`fromSafePromise` over an `async`
+  wrapper) because a third-party Standard Schema may be async — and may throw,
+  which the wrapper turns into the defect it is.
 
 - **The needs check is a trailing phantom rest tuple, not a conditional on an
   inference-bearing parameter.**

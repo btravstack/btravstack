@@ -8,15 +8,23 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`httpModule(options)` → `Module<HttpRuntime, never, never>`** — the
-  runtime as a module: it provides `Runtime<typeof HttpHandler, HttpInfo>` on
-  the **`HttpRuntime`** port (a class over core's `RuntimePort`), which the
+- **`http(options?)` → `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env>`**
+  — the starter: it provides `Runtime<typeof HttpHandler, HttpInfo>` on the
+  **`HttpRuntime`** port (a class over core's `RuntimePort`), which the
   composition root imports next to the application and exports so `start`
-  finds it. The runtime value's own factory, `httpRuntime`, is internal — not
-  exported. The runtime binds `node:http`, one kernel unit per request.
-  `HttpOptions` — `port` (required;
-  `0` lets the OS pick, read back via `runtimeInfo()`), `hostname` (default
-  `0.0.0.0` — a pod, not a laptop). `HttpInfo` is `{ port }`, published on
+  finds it, and **`HttpConfig`** (`{ port, hostname }`) bound through
+  `Config.provider` from `PORT` (default `3000`) and `HOST` (default
+  `0.0.0.0` — a pod, not a laptop) in the kernel's `Env`. `HttpOptions`
+  (`port?`, `hostname?`) **pins** a field instead of reading it — explicit >
+  env > default, per field (`pinned` in `http-runtime.ts` swaps the field's
+  `parse` for a constant and keeps the variable name); with both pinned the
+  overload returns `Module<…, never, never>` and reads nothing. The worked
+  example is `Module("OrderApi")({ imports: [Application, Persistence, Api,
+http()], exports: [HttpRuntime, HttpHandler] })` + `runMain(OrderApi)`; a
+  test passes `env: { PORT: "0", HOST: "127.0.0.1" }` to `start`. The runtime
+  value's own factory, `httpRuntime`, is internal — not exported. The runtime
+  binds `node:http`, one kernel unit per request; `0` lets the OS pick, read
+  back via `runtimeInfo()`. `HttpInfo` is `{ port }`, published on
   `Serving.info` once bound. Its one need is `HttpHandler`, resolved out of
   **each unit's** context — so an application provides it at application
   scope, or in the `StartOptions.unit` module when the handler wants
@@ -27,7 +35,9 @@ the same commit, and with `README.md` — the package ships no
   business. This is why the kernel's gate lets a runtime need come from
   `UnitX`.
 - **`HttpHandler`** — a di `Port` whose service is
-  `(request, response, signal) => PromiseLike<unknown>`.
+  `(request, response, signal) => PromiseLike<unknown>`. `@btravstack/orpc`'s
+  `orpc(RouterPort)` is the router starter that provides it from an oRPC
+  router port; a Hono `getRequestListener` or a bare function does as well.
   Returns the handled-or-not signal, not the response body: the package
   decides `404` (resolved without writing) or `500` (rejected before writing)
   from it, and never double-writes once headers are on the wire. A defect that
@@ -51,4 +61,13 @@ the same commit, and with `README.md` — the package ships no
 - **Not included, deliberately**: routing, middleware, `Result` → HTTP status,
   HTTPS, HTTP/2 — see the package README's _"What it does not do"_ for why
   each is a non-goal.
+- **`http-runtime.spec.ts` carries 18 specs**, three of them the starter's:
+  _"binds PORT and HOST from the environment when nothing is pinned"_, _"pins
+  what it is given and reads the rest from the environment"_ and _"fails
+  startup with ConfigInvalid for HttpConfig when PORT is not a port"_ (all
+  three through the `configured` fixture, whose `BoundConfig` provider
+  captures what the graph bound). The rest drive the runtime through
+  `test-fixtures.ts`'s `appOf` — `http({ port: 0, hostname: "127.0.0.1" })`
+  next to a value-provided `HttpHandler` — which is also where `start`'s
+  non-empty-`needs` gate meets a real module outside `examples/`.
 - Peer dependencies: `@btravstack/core`, `@btravstack/di`, `unthrown`.

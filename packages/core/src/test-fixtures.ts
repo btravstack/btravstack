@@ -1,7 +1,9 @@
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { expect, test } from "vitest";
 
+import { Config, type ConfigInvalid, type Environment } from "./config.js";
 import type { KernelEvent } from "./events.js";
+import { runMain } from "./run-main.js";
 import type { Runtime } from "./runtime.js";
 import { start, type RunningApp } from "./start.js";
 import {
@@ -27,6 +29,62 @@ export const runtimeModule = (runtime: Runtime<never, TestRuntimeInfo>) =>
     exports: [TestRuntimePort],
   });
 
+class Witness extends Port("ConfigFixtureWitness")<true> {}
+class Settings extends Port("ConfigFixtureSettings")<{
+  readonly port: number;
+  readonly host: string;
+  readonly retries: number;
+  readonly verbose: boolean;
+}> {}
+
+/** The slice of environment `configuredApp` binds onto `Settings`. */
+export const settingsSchema = Config.object({
+  port: Config.port("PORT", { default: 3000 }),
+  host: Config.string("HOST", { default: "0.0.0.0" }),
+  retries: Config.integer("RETRIES", { min: 0, max: 10, default: 3 }),
+  verbose: Config.boolean("VERBOSE", { default: false }),
+});
+
+export type ConfiguredApp = {
+  /**
+   * Boots a module whose `Settings` port is bound from `env` through
+   * `settingsSchema`, next to an in-memory runtime, and hands back the app
+   * plus what the graph actually bound — `undefined` until (unless) the port
+   * was built.
+   */
+  readonly boot: (env: Environment) => {
+    readonly app: RunningApp<ConfigInvalid, TestRuntimeInfo>;
+    readonly bound: () => { readonly port: number; readonly host: string } | undefined;
+  };
+  /**
+   * The same module through `runMain`, resolving the exit code it set. Probes
+   * are off unless `probesFromEnv` asks the kernel to bind them from `env`.
+   */
+  readonly exitCodeFor: (env: Environment, probesFromEnv?: boolean) => Promise<number>;
+  /** An in-memory runtime alone, with the kernel binding its probe server from `env`. Shut down by the fixture. */
+  readonly probesFrom: (env: Environment) => RunningApp<never, TestRuntimeInfo>;
+};
+
+const settingsApp = () => {
+  let bound: ServiceOf<Settings> | undefined;
+  return {
+    module: Module("ConfigFixtureApp")({
+      imports: [testRuntime().module],
+      provides: [
+        Config.provider(Settings, settingsSchema),
+        Provider(Witness)([Settings], {
+          sync: (settings) => {
+            bound = settings;
+            return true;
+          },
+        }),
+      ],
+      exports: [TestRuntimePort, Settings],
+    }),
+    bound: () => bound,
+  };
+};
+
 export type UnitApp = {
   readonly runtime: TestRuntime;
   readonly app: RunningApp<never, TestRuntimeInfo>;
@@ -50,7 +108,42 @@ export type UnitApp = {
  * on re-declaration) while the providers, and therefore the counters, are
  * fresh per test.
  */
-export const it = test.extend<{ unitApp: UnitApp }>({
+export const it = test.extend<{ unitApp: UnitApp; configured: ConfiguredApp }>({
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  configured: async ({}, use) => {
+    const started: RunningApp<ConfigInvalid, TestRuntimeInfo>[] = [];
+
+    await use({
+      boot: (env) => {
+        const { module, bound } = settingsApp();
+        const app = start(module, { env, signals: false, probes: false, onEvent: () => {} });
+        started.push(app);
+        return { app, bound };
+      },
+      probesFrom: (env) => {
+        const app = start(testRuntime().module, { env, signals: false, onEvent: () => {} });
+        started.push(app);
+        return app;
+      },
+      exitCodeFor: async (env, probesFromEnv = false) => {
+        let code = -1;
+        await runMain(
+          settingsApp().module,
+          { env, signals: false, ...(probesFromEnv ? {} : { probes: false }), onEvent: () => {} },
+          (c) => {
+            code = c;
+          },
+        );
+        return code;
+      },
+    });
+
+    for (const app of started) {
+      app.stop();
+      await app.exited;
+    }
+  },
+
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   unitApp: async ({}, use) => {
     const counts = { parentBuilds: 0, spanBuilds: 0, spanStops: 0 };

@@ -1,22 +1,21 @@
 # `@btravstack/core` example: the order API layer
 
 The transport. A router implementing
-[`order-api-contract`](../order-api-contract), mounted on [Hono](https://hono.dev)
-and served under the kernel's lifecycle by
-[`@btravstack/http`](../../packages/http). One stack, all of it in the graph:
-Hono owns routing, oRPC owns the contract, `@unthrown/orpc` owns the `Result`
-bridge, and the whole HTTP surface is a di-provided service.
-The contract itself lives in its own package, because a client needs it and
-needs none of this.
+[`order-api-contract`](../order-api-contract), turned into an HTTP surface by
+[`@btravstack/orpc`](../../packages/orpc) and served under the kernel's
+lifecycle by [`@btravstack/http`](../../packages/http). One stack, all of it in
+the graph: oRPC owns the contract, `@unthrown/orpc` owns the `Result` bridge,
+the `orpc` starter owns Hono and the fetch adapter, and the whole HTTP surface
+is a di-provided service. The contract itself lives in its own package, because
+a client needs it and needs none of this.
 
 ```
 src/router.ts         the implementation as a provider, and the one place a domain error becomes an ORPCError
 src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
-src/handler.ts        ApiModule — the Hono app and the oRPC handler, provided as @btravstack/http's HttpHandler port
+src/api.ts            ApiModule — the router port, and orpc(OrderRouter) as @btravstack/http's HttpHandler port
 src/client.ts         an AsyncResult client for the same contract
-src/module.ts         orderApi(http) — the composition root, importing httpModule
-src/env.ts            process.env validated through a schema, as a Result
-src/main.ts           the process: readEnv + runMain
+src/module.ts         OrderApi — the composition root, importing http()
+src/main.ts           the process: runMain(OrderApi, { unit: RequestModule })
 src/test-fixtures.ts  serve / clientFor / gate / tapped, as Vitest fixtures
 ```
 
@@ -67,46 +66,43 @@ has to decide what a client sees. A `Defect` is never named: it has no code
 because it was never modelled, and collapsing it to a 500 is the correct
 treatment rather than a fallback.
 
-## The transport is `@btravstack/http`
+## The transport is `@btravstack/http`, the surface is `@btravstack/orpc`
 
 Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, and the trace-id policy all live in
-[`@btravstack/http`](../../packages/http) now — see its README for
-the runtime contract and the guarantee it makes. This example provides the
-package's own **`HttpHandler` port** — the Hono app with oRPC's fetch adapter
-mounted under `/rpc`, built by a provider from the `OrderRouter` port, itself a
-provider built from the two use cases it declares, so even the transport wiring
-exists because the composition root said so; oRPC's own context stays empty,
-since one container is enough — and reads `port` back off `Serving.info` the
-same way any caller of the package does. The runtime is `httpModule({ port })`,
-imported by the composition root and exported as `HttpRuntime` — which is how
-`runMain` finds it — and its one need is that port; a module that exports
-neither fails on arity at the `runMain` call.
-
-### One unit per call
+[`@btravstack/http`](../../packages/http) — see its README for the runtime
+contract and the guarantee it makes. Hono, oRPC's fetch adapter mounted under
+`/rpc`, and the bridge onto the node request pair all live in
+[`@btravstack/orpc`](../../packages/orpc). What this example writes is the
+router — a provider built from the two use cases it declares — and the module
+that hands it to the starter:
 
 ```ts
-Provider(HttpHandler)([OrderRouter], {
-  sync: (router) => {
-    const rpc = new RPCHandler(router);
-    const app = new Hono();
-    app.all(`${PREFIX}/*`, …);
-    return getRequestListener((raw) => app.fetch(raw), { overrideGlobalObjects: false });
-  },
+export const ApiModule = Module("Api")({
+  provides: [orderRouter, orpc(OrderRouter)],
+  exports: [HttpHandler],
 });
 ```
+
+`orpc(OrderRouter)` is a provider of the package's own **`HttpHandler` port**
+that declares the router port, so even the transport wiring exists because the
+composition root said so; oRPC's own context stays empty, since one container
+is enough. The runtime is `http()`, imported by the composition root and
+exported as `HttpRuntime` — which is how `runMain` finds it — and its one need
+is `HttpHandler`; a module that exports neither fails on arity at the `runMain`
+call. `port` is read back off `Serving.info` the same way any caller of the
+package does.
+
+### One unit per call
 
 The runtime resolves `HttpHandler` out of each request's context — the kernel
 forked it (see below), so a handler that wants per-request dependencies is
 provided by `RequestModule` instead and built once per request. This one needs
 none, so it lives at application scope. The unit's lifetime **is** the
-response's: `@btravstack/http`
-keeps it open until the response completes, so there is no seam for a late
-write to land in. An unmatched path is Hono's 404; a defect inside a procedure
-is oRPC's own `INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or
-end by hand. `getRequestListener` runs with `overrideGlobalObjects: false`; its
-default swaps `globalThis.Request`/`Response` for Hono's own on the first
-request served, which nothing in a composition root should have to know.
+response's: `@btravstack/http` keeps it open until the response completes, so
+there is no seam for a late write to land in. An unmatched path is Hono's 404;
+a defect inside a procedure is oRPC's own `INTERNAL_SERVER_ERROR` collapse —
+nothing left to dispatch or end by hand.
 
 ### A request scope over the application scope
 
@@ -143,7 +139,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-api test  # 15 api specs + 6 env specs
+pnpm --filter @btravstack/example-order-api test  # 15 api specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
@@ -164,47 +160,23 @@ it("lets an in-flight call finish while draining", async ({ serve, clientFor, ga
 });
 ```
 
-`src/main.ts` is the process itself — and it reads its configuration the same way
-it reads everything else, as a value:
+`serve` boots whatever composition it is handed with
+`env: { PORT: "0", HOST: "127.0.0.1" }` — the real `OrderApi` included, since
+`http()` reads its port from the environment the kernel provides — and reads
+the port it got back from `runtimeInfo()`.
+
+`src/main.ts` is the process itself, and it is one call:
 
 ```ts
-await readEnv().match({
-  ok: (env) =>
-    runMain(orderApi({ port: env.PORT }), {
-      unit: RequestModule,
-      probes: { port: env.PROBE_PORT },
-    }),
-  errCases: (matcher) =>
-    matcher.with(P._, (issues) => abort(describeEnvIssues(issues))),
-  defect: (cause) =>
-    abort(`the environment could not be validated: ${String(cause)}`),
-});
+await runMain(OrderApi, { unit: RequestModule });
 ```
 
-`src/env.ts` is where `PORT` and `PROBE_PORT` are validated. It goes through
-`@unthrown/standard-schema`'s `fromSchema` rather than a schema's own `.parse()`,
-because `.parse()` throws — which `unthrown/no-throw` bans, and which would
-contradict the example it appears in. The issues are the modeled `E`, folded
-above into a message and a non-zero exit code.
-
-A port is a **non-empty string piped into a coercion**, never a bare
-`z.coerce.number()`:
-
-```ts
-z.string()
-  .trim()
-  .min(1)
-  .pipe(z.coerce.number<string>().int().min(0).max(65_535))
-  .default(fallback);
-```
-
-Coercion is `Number()` underneath, so `PORT=abc` would bind `NaN` and `PORT=`
-would bind `0`, the ephemeral port. The bounds catch the first — and every
-`PORT=3.5` or `PORT=99999` after it — but they cannot catch the second, because
-a port's `min` **is** `0` so that an ephemeral bind stays expressible. The
-non-empty string in front is what closes it: an empty value is a configuration
-error, not an absent one, and `.default(...)` applies only when the variable is
-genuinely missing. A malformed value is a validation issue instead.
+Configuration is read **inside the graph**: `http()` binds `PORT` (default
+`3000`) and `HOST` (default `0.0.0.0`) from the `Env` port the kernel provides,
+and the kernel binds its own `PROBE_PORT` (default `9000`). A malformed value —
+`PORT=abc`, `PORT=` — is a `ConfigInvalid` the kernel reports as a
+`startFailed` event and exit code `78`, sysexits(3)'s `EX_CONFIG`; nothing in
+this package validates, prints or exits.
 
 It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there

@@ -133,15 +133,16 @@ process starts.
 
 `di` proves the graph before the process exists, so `start` does not wire.
 
-|                    | NestJS                                                 | `di` + `start`                                        |
-| ------------------ | ------------------------------------------------------ | ----------------------------------------------------- |
-| Wiring declared by | decorators + metadata reflection                       | explicit `Module`/`Provider` values                   |
-| Missing dependency | boot-time exception                                    | compile error                                         |
-| Module privacy     | enforced at runtime                                    | compile error                                         |
-| Cycles             | `forwardRef()`                                         | detected pre-construction, as a defect                |
-| Request scope      | request-scoped providers bubble up the injection chain | `StartOptions.unit` — forked per unit by the kernel   |
-| Lifecycle hooks    | 5 interfaces + `enableShutdownHooks()`                 | `onStart`/`onStop` per provider; `start` owns signals |
-| Failures           | thrown                                                 | `Result`                                              |
+|                    | NestJS                                                 | `di` + `start`                                            |
+| ------------------ | ------------------------------------------------------ | --------------------------------------------------------- |
+| Wiring declared by | decorators + metadata reflection                       | explicit `Module`/`Provider` values                       |
+| Missing dependency | boot-time exception                                    | compile error                                             |
+| Module privacy     | enforced at runtime                                    | compile error                                             |
+| Cycles             | `forwardRef()`                                         | detected pre-construction, as a defect                    |
+| Request scope      | request-scoped providers bubble up the injection chain | `StartOptions.unit` — forked per unit by the kernel       |
+| Configuration      | `ConfigService.get("PORT")`, a string at runtime       | `Config.provider(Port, schema)`, typed, validated at boot |
+| Lifecycle hooks    | 5 interfaces + `enableShutdownHooks()`                 | `onStart`/`onStop` per provider; `start` owns signals     |
+| Failures           | thrown                                                 | `Result`                                                  |
 
 The accepted cost is that there is **no auto-discovery**: the provider and its
 dependency array are written out, and that array is what buys the compile-time
@@ -397,12 +398,73 @@ type DrainReport = {
 during the drain. That is honest reporting, not a bug — it is counted from a
 monotonic total precisely so it can never go negative.
 
+## Configuration
+
+Twelve-factor configuration is the environment and nothing else, so the kernel
+provides it as a port: `Env`, `process.env` by default (`StartOptions.env` for
+a test), reaching every graph `start` boots. A configuration provider is a
+provider that reads it — built with the rest of the graph, injected like any
+other service — and a bad environment is a modeled startup `Err` rather than a
+crash or, worse, a silently wrong value.
+
+```ts
+import { Config } from "@btravstack/core";
+
+class Settings extends Port("Settings")<{
+  readonly port: number;
+  readonly verbose: boolean;
+}> {}
+
+const SettingsModule = Module("Settings")({
+  provides: [
+    Config.provider(
+      Settings,
+      Config.object({
+        port: Config.port("PORT", { default: 3000 }),
+        verbose: Config.boolean("VERBOSE", { default: false }),
+      }),
+    ),
+  ],
+  exports: [Settings],
+});
+
+const ConfiguredApp = Module("ConfiguredApp")({
+  imports: [TickerApp, SettingsModule],
+  exports: [Greeter, Ticker, Settings],
+});
+
+// `process.env` in production; a test hands in the record it wants, and reads
+// `PROBE_PORT` from it too unless `probes` is set.
+await runMain(ConfiguredApp);
+const configured = start(ConfiguredApp, { env: { PORT: "0" }, probes: false });
+```
+
+`Config.string`, `Config.integer` (with `min`/`max`), `Config.port` and
+`Config.boolean` each read one variable: **unset** takes the `default`, or is
+"is required" without one; **set but empty or blank is an error**, never an
+absent variable — `PORT=` would otherwise bind whatever the empty string
+coerces to, the exact silent failure this exists to remove. `PORT=0` stays
+legal, since an ephemeral bind must be expressible. `Config.object` composes
+them into a Standard Schema over the environment, reading every field so one
+validation names every offending variable at once; any other Standard Schema
+(a `zod` object over the raw variables) is accepted in its place.
+
+`Config.provider(Port, schema)` is a di provider needing `Env` — the kernel
+discharges it — with error `ConfigInvalid`, a `TaggedError` carrying
+`{ port, issues }`. It flows through `start`'s error channel typed, like any
+application error, and `runMain` exits **`78`** (sysexits' `EX_CONFIG`) on it:
+the deployment is wrong, not the code. A starter provides its own slice —
+`@btravstack/http`'s `http()` binds `PORT` and `HOST` onto `HttpConfig` — and
+an application binds whatever else it needs onto ports of its own. Nothing else
+should touch `process.env`.
+
 ## Probes
 
 Liveness and readiness are process-level concerns, not transport-level ones, so
-the kernel runs its own `node:http` probe server on a separate port (default
-`9000`, `probes: false` to disable, `{ port: 0 }` to let the OS choose and read
-it back from `app.probePort()`, an `AsyncResult<number | undefined, never>`):
+the kernel runs its own `node:http` probe server on a separate port (`PROBE_PORT`
+from the environment, default `9000`; `probes: false` to disable, `{ port: 0 }`
+to let the OS choose and read it back from `app.probePort()`, an
+`AsyncResult<number | undefined, never>`):
 
 | Route         | 200                                         | 503           |
 | ------------- | ------------------------------------------- | ------------- |
@@ -412,7 +474,9 @@ it back from `app.probePort()`, an `AsyncResult<number | undefined, never>`):
 Anything else answers 404. The server binds **`127.0.0.1` only** and is
 `unref`'d, so it never keeps the event loop alive. A bind failure is a startup
 failure: it stops the graph being built at all, and surfaces as
-`RuntimeStartFailed({ runtime: "probes" })`.
+`RuntimeStartFailed({ runtime: "probes" })` — a malformed `PROBE_PORT` too,
+with a `ConfigInvalid` as its `cause`, which is what `runMain` reads the `78`
+off.
 
 This is how a Temporal worker pod with no HTTP runtime still gets probes, and
 why an HTTP runtime never has to expose `/healthz` on the public port. There is
@@ -464,10 +528,15 @@ output is flushed and an embedding host keeps control of its own lifetime.
 | `2`  | drained with work abandoned, or exited with teardown errors |
 | `70` | stopped by an uncaught exception or unhandled rejection     |
 | `70` | a defect                                                    |
+| `78` | a configuration port could not be bound (`ConfigInvalid`)   |
 
 The two `70`s are the same statement — sysexits(3)'s `EX_SOFTWARE`, an internal
 software error — reached through the two channels a bug can take. A crash takes
-precedence over abandoned work.
+precedence over abandoned work. `78` is `EX_CONFIG`: the one startup failure an
+operator fixes without a rebuild, and the code says so — the kernel's own
+`PROBE_PORT` included. Every startup failure is also reported as a
+`startFailed` event before `stopping`, so a bad environment is named on stderr
+rather than exiting silently.
 
 `2` is the one code an operator reads as "we stopped, but not cleanly", and two
 facts earn it: work the drain ran out of time for, and a finaliser that failed
@@ -507,8 +576,9 @@ Failures are classified by **phase**, and each phase has one honest channel.
 - **Startup — a modeled `Err`.** `start` returns
   `AsyncResult<ExitReport, E | RuntimeStartFailed>`, where `E` is the
   _application module's own_ error type, passed through **unwrapped and still
-  typed**. The kernel adds only `RuntimeStartFailed`, which is genuinely its
-  own (a port in use, a broker unreachable, a probe port taken).
+  typed** — a `Config.provider`'s `ConfigInvalid` arrives this way. The kernel
+  adds only `RuntimeStartFailed`, which is genuinely its own (a port in use, a
+  broker unreachable, a probe port taken).
 - **Wiring — a `Defect`, untouched.** A cycle or a duplicate provider arrives
   from `di` as a defect and stays one. A wiring bug is not something a caller
   branches on.
@@ -531,6 +601,7 @@ The kernel emits structured events and takes no logger dependency:
 | Event           | Payload         |
 | --------------- | --------------- |
 | `building`      | —               |
+| `startFailed`   | `cause`         |
 | `serving`       | `runtime`       |
 | `draining`      | `inFlight`      |
 | `drained`       | `report`        |
@@ -541,6 +612,9 @@ The kernel emits structured events and takes no logger dependency:
 
 The default sink writes one JSON line per event to stderr. A throwing sink is
 swallowed: a broken reporter must not take the process down mid-shutdown.
+`startFailed` is emitted before `stopping` on every startup failure — a
+construction `Err`, a runtime that refused to start, a probe bind failure — so
+the reason a process never came up is named, not inferred from a `1`.
 
 ## Testing
 
@@ -584,7 +658,8 @@ const drainTest = async (): Promise<void> => {
   with a real macrotask at each end, so the code under test has reacted by the
   time it resolves.
 - `testRuntime()` — an in-memory `Runtime` that lets units be held open, so
-  drain behaviour can be proved with no transport.
+  drain behaviour can be proved with no transport. Its `.module` provides it
+  on `TestRuntimePort`, the shape a runtime package ships.
 - `withApp(module, options, use)` — starts, hands the app to `use`, and stops
   it again whatever `use` does. `signals` and `probes` are **forced off**
   whatever the caller passes: process-wide handlers would fight across a test
@@ -611,6 +686,9 @@ kernel's deadline rather than Temporal's `shutdownForceTime`.
 [`@btravstack/amqp`](./packages/amqp): an `amqp-contract` worker,
 one unit per delivery, and a drain with exactly one deadline — the library is
 told to wait forever, so there is no second timeout to keep in sync at all.
+Beside them, one **starter** that is not a runtime:
+[`@btravstack/orpc`](./packages/orpc) turns an oRPC router port into the
+`HttpHandler` `@btravstack/http` needs, Hono underneath.
 The rest are planned, not published:
 
 | Planned package          | Would own                                          |

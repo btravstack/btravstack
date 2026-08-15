@@ -5,8 +5,8 @@ import {
   type AmqpInfo,
   type MessageUnitContext,
 } from "@btravstack/amqp";
-import { RuntimePort, type Runtime } from "@btravstack/core";
-import { Module, Provider } from "@btravstack/di";
+import { Config, RuntimePort, type Runtime } from "@btravstack/core";
+import { Module, Port, Provider } from "@btravstack/di";
 import { orderContract, type OrderContract } from "@btravstack/example-order-amqp-contract";
 import { Logger, Outbox } from "@btravstack/example-order-application";
 import { OkAsync } from "unthrown";
@@ -33,7 +33,19 @@ type AmqpNeeds = typeof Outbox | typeof Logger;
  */
 export class OrderAmqpRuntime extends RuntimePort<Runtime<AmqpNeeds, AmqpInfo>> {}
 
-/** What only the process knows: the broker, and the relay's own knobs. */
+/**
+ * What only the deployment knows, as a service: the broker, and the relay's
+ * idle sleep. Bound from the environment by `amqpModule` — `AMQP_URL` and
+ * `OUTBOX_POLL_MS` — the way `@btravstack/http`'s `http()` binds `HttpConfig`
+ * from `PORT` / `HOST`, so the composition root stays a constant and a bad
+ * value is a `ConfigInvalid` the kernel reports (exit 78 under `runMain`).
+ */
+export class AmqpConfig extends Port("AmqpConfig")<{
+  readonly url: string;
+  readonly outboxPollMs: number;
+}> {}
+
+/** What `orderAmqpRuntime` is built from: the broker, and the relay's own knobs. */
 export type OrderAmqpOptions = {
   /** The broker URLs the worker and the relay both connect to. */
   readonly urls: readonly string[];
@@ -42,15 +54,30 @@ export type OrderAmqpOptions = {
 };
 
 /**
- * The runtime as a module — `orderAmqpRuntime` provided on `OrderAmqpRuntime`,
- * the way `@btravstack/http`'s `httpModule` provides `HttpRuntime`. The
- * composition root imports it and exports the port, and `start` finds it.
+ * The runtime as a module — `AmqpConfig` bound from the environment,
+ * `orderAmqpRuntime` built from it and provided on `OrderAmqpRuntime`, the
+ * way `@btravstack/http`'s `http()` provides `HttpRuntime`. The composition
+ * root imports it and exports the port, and `start` finds it.
+ *
+ * `OUTBOX_POLL_MS=0` is rejected here — a relay that never sleeps is a busy
+ * loop — and so is anything above a minute, which is a typo, not a policy.
  */
-export const amqpModule = (options: OrderAmqpOptions) =>
-  Module("Amqp")({
-    provides: [Provider(OrderAmqpRuntime)({ value: orderAmqpRuntime(options) })],
-    exports: [OrderAmqpRuntime],
-  });
+export const amqpModule = Module("Amqp")({
+  provides: [
+    Config.provider(
+      AmqpConfig,
+      Config.object({
+        url: Config.string("AMQP_URL", { default: "amqp://127.0.0.1:5672" }),
+        outboxPollMs: Config.integer("OUTBOX_POLL_MS", { min: 1, max: 60_000, default: 200 }),
+      }),
+    ),
+    Provider(OrderAmqpRuntime)([AmqpConfig], {
+      sync: (config) =>
+        orderAmqpRuntime({ urls: [config.url], relay: { pollMs: config.outboxPollMs } }),
+    }),
+  ],
+  exports: [OrderAmqpRuntime],
+});
 
 /**
  * A `Runtime` broadcasting the order application's facts over AMQP — both

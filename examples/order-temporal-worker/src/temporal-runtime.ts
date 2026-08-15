@@ -1,5 +1,5 @@
-import { RuntimePort, type Runtime } from "@btravstack/core";
-import { Module, Provider } from "@btravstack/di";
+import { Config, RuntimePort, type Runtime } from "@btravstack/core";
+import { Module, Port, Provider } from "@btravstack/di";
 import {
   Logger,
   OrderRepository,
@@ -19,8 +19,8 @@ import {
   declareActivitiesHandler,
   type ActivityImplementationFor,
 } from "@temporal-contract/worker/activity";
-import type { NativeConnection } from "@temporalio/worker";
-import { P } from "unthrown";
+import { NativeConnection } from "@temporalio/worker";
+import { P, TaggedError, fromPromise } from "unthrown";
 
 /**
  * How long an activity that is *cancellation-aware* gets to notice the
@@ -68,15 +68,39 @@ export type TemporalWorkerOptions = {
    * rather than passed separately.
    */
   readonly contract: OrderContract;
-  /**
-   * An open connection to the Temporal service. Handed in rather than opened
-   * here, exactly as the queue runtime is handed its broker: `main.ts` builds
-   * one from the environment, and a spec passes the test environment's.
-   */
+  /** An open connection to the Temporal service — `TemporalConnection`, in the graph. */
   readonly connection: NativeConnection;
   readonly namespace?: string;
   readonly workflows: WorkflowSource;
 };
+
+/**
+ * Where the Temporal service is, bound from `TEMPORAL_ADDRESS` (default
+ * `127.0.0.1:7233`) and `TEMPORAL_NAMESPACE` (default `default`); a blank
+ * value is a configuration error the kernel reports (`ConfigInvalid`, exit 78).
+ */
+export class TemporalConfig extends Port("TemporalConfig")<{
+  readonly address: string;
+  readonly namespace: string;
+}> {}
+
+/**
+ * The connection, as a resource of the graph: di opens it with the scope and
+ * closes it on every exit path — startup failure included — which is what a
+ * `main.ts` opening it by hand had to `.finally` around `runMain`.
+ */
+export class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}
+
+/**
+ * The service at `TEMPORAL_ADDRESS` did not answer. Modeled rather than left a
+ * defect because an operator *can* act on it — the address is wrong or the
+ * service is down, and neither is a bug in this code — so `runMain` exits `1`,
+ * a startup `Err`, not the `70` a defect earns.
+ */
+export class TemporalUnreachable extends TaggedError("TemporalUnreachable")<{
+  readonly address: string;
+  readonly cause: unknown;
+}> {}
 
 /**
  * The port `start` resolves this deployment's runtime from. The runtime's
@@ -87,13 +111,39 @@ export type TemporalWorkerOptions = {
 export class OrderTemporalRuntime extends RuntimePort<Runtime<TemporalNeeds, TemporalInfo>> {}
 
 /**
- * The runtime as a module: what the composition root imports so the worker is
- * built by di like every other service, and what a spec swaps a per-test
- * queue and the test environment's connection into.
+ * The runtime as a module: configuration from the environment, the connection
+ * as a resource, and the worker built from both — so the composition root
+ * imports it like every other service. Its two arguments are the deployment's
+ * static facts, which is why it is a small factory rather than a constant: a
+ * spec hands over a per-test queue and a prebuilt bundle where `module.ts`
+ * hands over `orderContract` and the workflow module's path.
  */
-export const temporalModule = (options: TemporalWorkerOptions) =>
+export const temporalModule = ({
+  contract,
+  workflows,
+}: Pick<TemporalWorkerOptions, "contract" | "workflows">) =>
   Module("OrderTemporal")({
-    provides: [Provider(OrderTemporalRuntime)({ value: temporalWorkerRuntime(options) })],
+    provides: [
+      Config.provider(
+        TemporalConfig,
+        Config.object({
+          address: Config.string("TEMPORAL_ADDRESS", { default: "127.0.0.1:7233" }),
+          namespace: Config.string("TEMPORAL_NAMESPACE", { default: "default" }),
+        }),
+      ),
+      Provider(TemporalConnection)([TemporalConfig], {
+        acquire: ({ address }) =>
+          fromPromise(
+            NativeConnection.connect({ address }),
+            (cause) => new TemporalUnreachable({ address, cause }),
+          ),
+        release: (connection) => connection.close(),
+      }),
+      Provider(OrderTemporalRuntime)([TemporalConnection, TemporalConfig], {
+        sync: (connection, { namespace }) =>
+          temporalWorkerRuntime({ contract, connection, namespace, workflows }),
+      }),
+    ],
     exports: [OrderTemporalRuntime],
   });
 

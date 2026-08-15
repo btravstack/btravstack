@@ -18,7 +18,6 @@
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
-    "@btravstack/example-order-config": "workspace:*",
     "@btravstack/example-order-domain": "workspace:*",
     "@btravstack/example-order-infrastructure": "workspace:*",
     "@btravstack/example-order-temporal-contract": "workspace:*",
@@ -28,9 +27,7 @@
     "@temporalio/client": "catalog:",
     "@temporalio/worker": "catalog:",
     "@temporalio/workflow": "catalog:",
-    "@unthrown/standard-schema": "catalog:",
-    "unthrown": "catalog:",
-    "zod": "catalog:"
+    "unthrown": "catalog:"
   },
   "devDependencies": {
     "@btravstack/tsconfig": "catalog:",

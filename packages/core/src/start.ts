@@ -1,7 +1,8 @@
-import { Module, type Context, type Scope, type ScopedOptions } from "@btravstack/di";
-import { fromSafePromise, OkAsync, type AsyncResult } from "unthrown";
+import { Module, Provider, type Context, type Scope, type ScopedOptions } from "@btravstack/di";
+import { fromSafePromise, Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
+import { Config, ConfigInvalid, Env, type Environment } from "./config.js";
 import { createDeferred } from "./deferred.js";
 import { drainApp, type DrainReport } from "./drain.js";
 import { safeSink, stderrSink, type EventSink } from "./events.js";
@@ -10,12 +11,12 @@ import { startProbeServer } from "./probes.js";
 import { installSignalHandlers, installUncaughtHandlers } from "./process-handlers.js";
 import {
   RuntimePort,
+  RuntimeStartFailed,
   type RunUnit,
   type Runtime,
   type RuntimeInfoOf,
   type RuntimeInstance,
   type RuntimeNeedsOf,
-  type RuntimeStartFailed,
   type Serving,
 } from "./runtime.js";
 import { createUnitRegistry } from "./units.js";
@@ -30,6 +31,12 @@ export type ExitReport = {
 };
 
 export type StartOptions<UnitX = never, UnitNeeds = never> = {
+  /**
+   * The environment the graph is configured from — provided to it as the
+   * `Env` port, and what the kernel reads its own `PROBE_PORT` from. Defaults
+   * to `process.env`; a test hands in the record it wants.
+   */
+  readonly env?: Environment;
   /**
    * A module forked around **every unit**: its providers are constructed when
    * a unit opens and torn down when it closes, reading anything the
@@ -57,6 +64,10 @@ export type StartOptions<UnitX = never, UnitNeeds = never> = {
   readonly unit?: Module<UnitX, never, UnitNeeds>;
   readonly clock?: Clock;
   readonly signals?: boolean;
+  /**
+   * The probe server's port. Unset, it is bound from `PROBE_PORT` in `env`
+   * (default `9000`); `false` disables the probe server.
+   */
   readonly probes?: { readonly port: number } | false;
   readonly preDrainDelayMs?: number;
   readonly drainTimeoutMs?: number;
@@ -117,34 +128,37 @@ export type RunningApp<E, Info = never> = {
  * must be covered by the module's exports or `Scope`, which is `forkScope`'s
  * own gate stated at `start`'s call site, where the parent is actually known.
  */
-export type RuntimeNeedsGate<X, UnitX = never, UnitNeeds = never> = [
-  Extract<X, RuntimeInstance>,
-] extends [never]
+export type StartGate<X, UnitX = never, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [
+  never,
+]
   ? [error: "NO RUNTIME", hint: "the module exports no port declared over RuntimePort"]
   : [InstanceType<RuntimeNeedsOf<X>>] extends [X | UnitX]
-    ? [Exclude<UnitNeeds, X | Scope>] extends [never]
+    ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
       ? []
-      : [error: "UNSATISFIED UNIT NEEDS", missing: Exclude<UnitNeeds, X | Scope>]
+      : [error: "UNSATISFIED UNIT NEEDS", missing: Exclude<UnitNeeds, X | Scope | Env>]
     : [
         error: "UNSATISFIED RUNTIME NEEDS",
         missing: Exclude<InstanceType<RuntimeNeedsOf<X>>, X | UnitX>,
       ];
 
-// `Module<X, E, Scope>`, not `Module<X, E, never>`: `Needs` sits in covariant
-// position on `Module`, so this accepts a module with no needs at all *and* the
-// resourceful one whose `acquire`/`release` provider adds `Scope` — the single
-// need `Module.scoped` discharges by opening the scope itself. A module with a
-// genuine unmet dependency is rejected here, as di's own gate would reject it.
-// The `gate` rest parameter is a phantom: it never carries a runtime argument.
+// `Module<X, E, Scope | Env>`, not `Module<X, E, never>`: `Needs` sits in
+// covariant position on `Module`, so this accepts a module with no needs at
+// all, the resourceful one whose `acquire`/`release` provider adds `Scope` —
+// the single need `Module.scoped` discharges by opening the scope itself — and
+// one whose configuration providers read `Env`, which the kernel provides. A
+// module with a genuine unmet dependency is rejected here, as di's own gate
+// would reject it. The `gate` rest parameter is a phantom: it never carries a
+// runtime argument.
 export const start = <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope>,
+  module: Module<X, E, Scope | Env>,
   options: StartOptions<UnitX, UnitNeeds> = {},
-  ...gate: RuntimeNeedsGate<X, UnitX, UnitNeeds>
+  ...gate: StartGate<X, UnitX, UnitNeeds>
 ): RunningApp<E, RuntimeInfoOf<X>> => {
   void gate;
   type Info = RuntimeInfoOf<X>;
   type Needs = RuntimeNeedsOf<X>;
   const clock = options.clock ?? systemClock;
+  const env = options.env ?? process.env;
   const emit = safeSink(options.onEvent ?? stderrSink);
   // Known only once the graph is built — the runtime is one of its services.
   let runtimeName = "";
@@ -252,46 +266,84 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   // `tapFailure` here runs the same construction-failure cleanup as
   // `Module.scoped`'s below, since a failed `probesStarted` short-circuits
   // the `flatMap` that would otherwise reach it.
-  const probesOptions = options.probes ?? { port: 9000 };
-  if (probesOptions === false) probeBound.resolve(undefined);
+  // The one piece of configuration the kernel binds itself: the probe server
+  // is up before the graph exists, so its port cannot come out of the graph.
+  // A bad `PROBE_PORT` is a `RuntimeStartFailed` for `"probes"` whose cause is
+  // the `ConfigInvalid`, which is what `runMain` reads the `78` off.
+  const probesOptions: Result<{ readonly port: number } | false, RuntimeStartFailed> =
+    options.probes !== undefined
+      ? Ok(options.probes)
+      : Config.port("PROBE_PORT", { default: 9000 })
+          .parse(env["PROBE_PORT"])
+          .map((port) => ({ port }))
+          .mapErrCases((matcher) =>
+            matcher.with(
+              P.tag("ConfigFieldInvalid"),
+              (error) =>
+                new RuntimeStartFailed({
+                  runtime: "probes",
+                  cause: new ConfigInvalid({
+                    port: "probes",
+                    issues: [{ message: error.reason, path: ["PROBE_PORT"] }],
+                  }),
+                }),
+            ),
+          );
+  if (probesOptions.isOk() && probesOptions.value === false) probeBound.resolve(undefined);
 
-  const probesStarted: AsyncResult<void, RuntimeStartFailed> = (
-    probesOptions === false
-      ? OkAsync()
-      : startProbeServer({ port: probesOptions.port, live, ready })
-          .tap((server) => {
-            probeBound.resolve(server.port);
-            disposeProbes = () => {
-              // The one `Result` this kernel deliberately drops, and the drop
-              // rests on the OUTCOME being unactionable rather than on a claim
-              // that nothing here can fail. The process is already exiting:
-              // there is no recovery to attempt, and the exit report describes
-              // the application's shutdown, not its health endpoint's. So even
-              // a `Defect` would be correctly discarded here.
-              //
-              // Resting it instead on "the defect channel is unreachable" would
-              // rest it on node's internals. `server.close(cb)` reports
-              // `ERR_SERVER_NOT_RUNNING` through `cb` rather than throwing —
-              // measured on v24, for both the double-close and never-listened
-              // cases, which is why the second dispose site is harmless — but
-              // that is node's guarantee to change, not ours.
-              //
-              // It must also not be awaited on the exit path: the socket is
-              // `unref`'d and `close` waits out live keep-alive connections, so
-              // threading it would delay the exit report behind a probe agent,
-              // or strand it entirely when nothing else keeps the loop alive.
-              void server.close();
-            };
-          })
-          .discard()
-  ).tapFailure(() => {
-    probeBound.resolve(undefined);
-    runtimePublished.resolve(undefined);
-    tracker.advanceTo("stopping");
-    disposeSignals();
-    disposeUncaught();
-    tracker.advanceTo("exited");
-  });
+  const probesStarted: AsyncResult<void, RuntimeStartFailed> = probesOptions
+    .toAsync()
+    .flatMap((probes) =>
+      probes === false
+        ? OkAsync()
+        : startProbeServer({ port: probes.port, live, ready })
+            .tap((server) => {
+              probeBound.resolve(server.port);
+              disposeProbes = () => {
+                // The one `Result` this kernel deliberately drops, and the drop
+                // rests on the OUTCOME being unactionable rather than on a claim
+                // that nothing here can fail. The process is already exiting:
+                // there is no recovery to attempt, and the exit report describes
+                // the application's shutdown, not its health endpoint's. So even
+                // a `Defect` would be correctly discarded here.
+                //
+                // Resting it instead on "the defect channel is unreachable" would
+                // rest it on node's internals. `server.close(cb)` reports
+                // `ERR_SERVER_NOT_RUNNING` through `cb` rather than throwing —
+                // measured on v24, for both the double-close and never-listened
+                // cases, which is why the second dispose site is harmless — but
+                // that is node's guarantee to change, not ours.
+                //
+                // It must also not be awaited on the exit path: the socket is
+                // `unref`'d and `close` waits out live keep-alive connections, so
+                // threading it would delay the exit report behind a probe agent,
+                // or strand it entirely when nothing else keeps the loop alive.
+                void server.close();
+              };
+            })
+            .discard(),
+    )
+    .tapFailure((failure) => {
+      emit({ type: "startFailed", cause: failure.tag === "Err" ? failure.error : failure.cause });
+      probeBound.resolve(undefined);
+      runtimePublished.resolve(undefined);
+      tracker.advanceTo("stopping");
+      disposeSignals();
+      disposeUncaught();
+      tracker.advanceTo("exited");
+    });
+
+  // The environment is a service of every graph the kernel boots — the one
+  // twelve-factor source of configuration, provided here so nothing below
+  // reaches for `process.env` and a test can hand in a record of its own.
+  // Re-exporting `module` keeps `X` exactly what the caller composed.
+  const root = Module("Kernel")({
+    imports: [
+      module,
+      Module("Environment")({ provides: [Provider(Env)({ value: env })], exports: [Env] }),
+    ],
+    exports: [module],
+  }) as unknown as Module<X, E, Scope>;
 
   // Only a `"signal"` shutdown reason drains. `"runtimeStopped"` (plain
   // `stop()`) and `"uncaught"` go straight to `stopping`, leaving
@@ -356,7 +408,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
 
   const exited = probesStarted.flatMap(() =>
     Module.scoped(
-      module,
+      root,
       (ctx: Context<X>): AsyncResult<ExitReport, RuntimeStartFailed> => {
         tracker.advanceTo("starting");
 
@@ -442,7 +494,8 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
       // The plan's state diagram says any failure short-circuits to `stopping`;
       // without this the event stream just stops and `phase()` lies about an
       // application that has already exited.
-    ).tapFailure(() => {
+    ).tapFailure((failure) => {
+      emit({ type: "startFailed", cause: failure.tag === "Err" ? failure.error : failure.cause });
       runtimePublished.resolve(undefined);
       tracker.advanceTo("stopping");
       disposeSignals();

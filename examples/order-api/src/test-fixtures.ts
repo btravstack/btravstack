@@ -1,22 +1,19 @@
 import assert from "node:assert/strict";
 
-import { start, type RunningApp } from "@btravstack/core";
+import { start, type Env, type RunningApp, type StartOptions } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { ApplicationModule, Logger, OrderRepository } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
-import { HttpHandler, HttpRuntime, httpModule, type HttpInfo } from "@btravstack/http";
+import { HttpHandler, HttpRuntime, http, type HttpInfo } from "@btravstack/http";
 import { fromSafePromise, OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
+import { ApiModule } from "./api.js";
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
-import { ApiModule } from "./handler.js";
-import { orderApi } from "./module.js";
+import { OrderApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
-
-/** Every composition here binds `port: 0` on loopback and reads the port back from `Serving.info`. */
-const loopback = { port: 0, hostname: "127.0.0.1" } as const;
 
 const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
   Module("StubPersistence")({
@@ -26,12 +23,13 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
 
 /**
  * A composition root shaped like the real one but with the repository swapped:
- * same `ApplicationModule`, same runtime, same three exported ports, so the
- * transport under test is unchanged.
+ * same `ApplicationModule`, same runtime — `http()`, unpinned, so `serve`'s
+ * `env` is what binds it to an ephemeral loopback port — same three exported
+ * ports, so the transport under test is unchanged.
  */
 const apiWith = (repository: ServiceOf<OrderRepository>) =>
   Module("StubApi")({
-    imports: [ApplicationModule, persistenceOf(repository), ApiModule, httpModule(loopback)],
+    imports: [ApplicationModule, persistenceOf(repository), ApiModule, http()],
     exports: [HttpRuntime, HttpHandler, Logger],
   });
 
@@ -47,7 +45,7 @@ const tappedApi = () => {
 
   return {
     api: Module("TappedApi")({
-      imports: [orderApi(loopback)],
+      imports: [OrderApi],
       provides: [
         Provider(LoggerTap)([Logger], {
           sync: (logger) => {
@@ -117,9 +115,12 @@ const portOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<number> => {
 
 export type ApiFixtures = {
   /**
-   * Starts an app and registers its shutdown. The teardown runs even when the
-   * test fails, which is what the `try`/`finally` blocks used to hand-roll —
-   * and it keeps the assertion those blocks carried: the app exited `Ok`.
+   * Starts an app on an ephemeral loopback port — `env: { PORT: "0", HOST:
+   * "127.0.0.1" }`, which is how every composition here, the real one
+   * included, gets bound — and registers its shutdown. The teardown runs even
+   * when the test fails, which is what the `try`/`finally` blocks used to
+   * hand-roll — and it keeps the assertion those blocks carried: the app
+   * exited `Ok`.
    *
    * The module's `X` is pinned to the three ports every composition here
    * exports rather than left generic: `start`'s needs gate is a phantom rest
@@ -130,17 +131,14 @@ export type ApiFixtures = {
    * it out of the parent.
    */
   readonly serve: <E>(
-    module: Module<HttpRuntime | HttpHandler | Logger, E, Scope>,
-    options?: {
-      readonly drainTimeoutMs?: number;
-      readonly probes?: { readonly port: number } | false;
-    },
+    module: Module<HttpRuntime | HttpHandler | Logger, E, Scope | Env>,
+    options?: Pick<StartOptions, "drainTimeoutMs" | "probes">,
   ) => RunningApp<E, HttpInfo>;
   readonly clientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;
   readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<string>;
   readonly statusOf: (url: string) => Promise<number>;
-  /** The real composition root, on loopback. */
-  readonly api: ReturnType<typeof orderApi>;
+  /** The real composition root. */
+  readonly api: typeof OrderApi;
   readonly unmodelled: ReturnType<typeof unmodelledApi>;
   readonly gate: ReturnType<typeof gatedApi>;
   readonly tapped: ReturnType<typeof tappedApi>;
@@ -161,6 +159,7 @@ export const it = test.extend<ApiFixtures>({
 
     const serve: ApiFixtures["serve"] = (module, options) => {
       const app = start(module, {
+        env: { PORT: "0", HOST: "127.0.0.1" },
         unit: RequestModule,
         signals: false,
         probes: false,
@@ -200,7 +199,7 @@ export const it = test.extend<ApiFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   api: async ({}, use) => {
-    await use(orderApi(loopback));
+    await use(OrderApi);
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

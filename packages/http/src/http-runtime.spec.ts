@@ -82,6 +82,50 @@ describe("httpRuntime", () => {
     );
   });
 
+  it("binds PORT and HOST from the environment when nothing is pinned", async ({ configured }) => {
+    // GIVEN a starter left to configure itself, and an environment naming the socket
+    const { app, config } = configured({ PORT: "0", HOST: "127.0.0.1" });
+
+    // WHEN the graph has been built and the runtime is serving
+    const info = (await app.runtimeInfo()).get();
+
+    // THEN the config was bound from the environment, parsed, and the runtime
+    // published the ephemeral port the OS picked for it
+    expect({ config: config(), listening: (info?.port ?? 0) > 0 }).toEqual({
+      config: { port: 0, hostname: "127.0.0.1" },
+      listening: true,
+    });
+  });
+
+  it("pins what it is given and reads the rest from the environment", async ({ configured }) => {
+    // GIVEN a starter with the port pinned, and a HOST in the environment
+    const { app, config } = configured({ PORT: "9", HOST: "127.0.0.1" }, { port: 0 });
+
+    // WHEN the graph has been built
+    await app.runtimeInfo();
+
+    // THEN the pin won over the environment for the port, and the environment
+    // was still read for the host — explicit beats environment beats default,
+    // per field
+    expect(config()).toEqual({ port: 0, hostname: "127.0.0.1" });
+  });
+
+  it("fails startup with ConfigInvalid for HttpConfig when PORT is not a port", async ({
+    configured,
+  }) => {
+    // GIVEN an environment whose PORT the OS would refuse
+    const { app } = configured({ PORT: "http" });
+
+    // WHEN the application boots
+    // THEN the modeled startup Err names the starter's config port and the variable
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        port: "HttpConfig",
+        issues: [{ message: 'is not a whole number: "http"', path: ["PORT"] }],
+      }),
+    );
+  });
+
   it("resolves a handler the unit module provides, built once per request", async ({ perUnit }) => {
     // GIVEN an application whose HttpHandler is provided by the unit module,
     // built from a counter the application scope holds

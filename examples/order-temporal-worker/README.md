@@ -14,11 +14,11 @@ starts these workflows needs it and needs none of this.
 ```
 src/workflows.ts        fulfillOrder — the saga, in Temporal's deterministic sandbox
 src/temporal-runtime.ts the runtime: five activities and their triage into contract errors,
-                        provided on OrderTemporalRuntime by temporalModule(options)
+                        provided on OrderTemporalRuntime by temporalModule({ contract, workflows }),
+                        with TemporalConfig (the environment) and TemporalConnection (a resource)
 src/fulfillment.ts      FulfillmentModule — the two external services, as stand-ins
-src/module.ts           orderTemporalWorker(options) — the composition root, runtime included
-src/env.ts              process.env validated through a schema, as a Result
-src/main.ts             the process: readEnv + connect + runMain
+src/module.ts           OrderTemporalWorker — the composition root, runtime included
+src/main.ts             the process: runMain(OrderTemporalWorker)
 src/test-fixtures.ts    serve / fulfilling / outOfStock / noShipping, against the time-skipping env
 ```
 
@@ -27,12 +27,21 @@ src/test-fixtures.ts    serve / fulfilling / outOfStock / noShipping, against th
 `start` takes no runtime option: it resolves the worker from a port the module
 exports, declared over the kernel's `RuntimePort`. The worker's `needs` are
 this application's five ports, so the port — `OrderTemporalRuntime` — is this
-package's to declare, and `temporalModule(options)` provides
-`temporalWorkerRuntime(options)` on it. The composition root is a function of
-what only the process knows (the connection it opened, its namespace, where
-the workflow code lives) and exports that port alongside the five the
-activities resolve; `start`'s gate reads both halves off the exports, and
-`src/needs-gate.test-d.ts` pins a root with no runtime and one a port short.
+package's to declare, and `temporalModule({ contract, workflows })` provides
+`temporalWorkerRuntime(...)` on it. Inside that module the transport is wired
+like any other service: `TemporalConfig` is bound from the environment with
+`Config.provider`, and `TemporalConnection` is a **resourceful** provider —
+di opens the `NativeConnection` with the scope and closes it on every exit
+path, startup failure included, which is what a `main.ts` opening it by hand
+had to `.finally` around `runMain`. A service that will not answer is a
+modeled `TemporalUnreachable` (exit `1`), not a defect: an operator can act
+on it. The composition root, `OrderTemporalWorker`, is therefore a constant;
+it exports the runtime's port alongside the five the activities resolve, and
+`start`'s gate reads both halves off the exports (`src/needs-gate.test-d.ts`
+pins a root with no runtime and one a port short). The two arguments the
+module factory keeps are the deployment's static facts: `main.ts` hands
+`orderContract` and the workflow module's path, a spec a per-test queue and
+a prebuilt bundle.
 
 ## The saga
 
@@ -79,11 +88,20 @@ saga used and finds the placement gone.
 
 ## The environment
 
+Read inside the graph — `TemporalConfig` for the first two, the kernel for
+`PROBE_PORT` — never by `main.ts`. A blank or malformed value is a
+`ConfigInvalid` the kernel reports as a `startFailed` event and exit `78`.
+
 | Variable             | Default          | What it is           |
 | -------------------- | ---------------- | -------------------- |
 | `TEMPORAL_ADDRESS`   | `127.0.0.1:7233` | the Temporal service |
 | `TEMPORAL_NAMESPACE` | `default`        | must not be blank    |
 | `PROBE_PORT`         | `9000`           | `/livez` / `/readyz` |
+
+The specs boot the real `temporalModule` with `env: { TEMPORAL_ADDRESS }`
+pointing at the time-skipping server, so every test opens and closes a
+connection of its own — the environment's shared `nativeConnection` is never
+handed to a scope that would close it.
 
 ## Running the specs
 
@@ -94,7 +112,7 @@ saga fulfills, both refusals compensate, and the duplicate-order answer
 arrives at the client as a typed contract error it can branch on by name.
 
 ```bash
-pnpm --filter @btravstack/example-order-temporal-worker test        # the saga + env specs
+pnpm --filter @btravstack/example-order-temporal-worker test        # the saga specs
 pnpm --filter @btravstack/example-order-temporal-worker typecheck   # the needs gate
 ```
 

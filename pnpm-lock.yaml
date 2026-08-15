@@ -271,24 +271,15 @@ importers:
       '@btravstack/example-order-application':
         specifier: workspace:*
         version: link:../order-application
-      '@btravstack/example-order-config':
-        specifier: workspace:*
-        version: link:../order-config
       '@btravstack/example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
-      '@unthrown/standard-schema':
-        specifier: 'catalog:'
-        version: 5.5.0
       unthrown:
         specifier: 'catalog:'
         version: 5.5.0
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@amqp-contract/testing':
         specifier: 'catalog:'
@@ -323,9 +314,6 @@ importers:
       '@btravstack/example-order-application':
         specifier: workspace:*
         version: link:../order-application
-      '@btravstack/example-order-config':
-        specifier: workspace:*
-        version: link:../order-config
       '@btravstack/example-order-domain':
         specifier: workspace:*
         version: link:../order-domain
@@ -335,9 +323,9 @@ importers:
       '@btravstack/http':
         specifier: workspace:*
         version: link:../../packages/http
-      '@hono/node-server':
-        specifier: 'catalog:'
-        version: 2.1.1(hono@4.13.2)
+      '@btravstack/orpc':
+        specifier: workspace:*
+        version: link:../../packages/orpc
       '@orpc/client':
         specifier: 'catalog:'
         version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
@@ -350,18 +338,9 @@ importers:
       '@unthrown/orpc':
         specifier: 'catalog:'
         version: 0.1.2(@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1))
-      '@unthrown/standard-schema':
-        specifier: 'catalog:'
-        version: 5.5.0
-      hono:
-        specifier: 'catalog:'
-        version: 4.13.2
       unthrown:
         specifier: 'catalog:'
         version: 5.5.0
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -437,34 +416,6 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
-
-  examples/order-config:
-    dependencies:
-      '@unthrown/standard-schema':
-        specifier: 'catalog:'
-        version: 5.5.0
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
-    devDependencies:
-      '@btravstack/tsconfig':
-        specifier: 'catalog:'
-        version: 0.2.0
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.1.2
-      '@unthrown/vitest':
-        specifier: 'catalog:'
-        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-      unthrown:
-        specifier: 'catalog:'
-        version: 5.5.0
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
@@ -585,9 +536,6 @@ importers:
       '@btravstack/example-order-application':
         specifier: workspace:*
         version: link:../order-application
-      '@btravstack/example-order-config':
-        specifier: workspace:*
-        version: link:../order-config
       '@btravstack/example-order-domain':
         specifier: workspace:*
         version: link:../order-domain
@@ -615,15 +563,9 @@ importers:
       '@temporalio/workflow':
         specifier: 'catalog:'
         version: 1.22.0
-      '@unthrown/standard-schema':
-        specifier: 'catalog:'
-        version: 5.5.0
       unthrown:
         specifier: 'catalog:'
         version: 5.5.0
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -772,6 +714,54 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.10(vitest@4.1.10)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(oxc-resolver@11.24.2)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.5.0
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+
+  packages/orpc:
+    devDependencies:
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../di
+      '@btravstack/http':
+        specifier: workspace:*
+        version: link:../http
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.2.0
+      '@hono/node-server':
+        specifier: 'catalog:'
+        version: 2.1.1(hono@4.13.2)
+      '@orpc/client':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
+      '@orpc/server':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.1.2
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 4.1.10(vitest@4.1.10)
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.2
       tsdown:
         specifier: 'catalog:'
         version: 0.22.14(oxc-resolver@11.24.2)(typescript@7.0.2)

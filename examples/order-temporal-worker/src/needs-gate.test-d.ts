@@ -23,19 +23,13 @@ import {
 } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
-import type { NativeConnection } from "@temporalio/worker";
 
 import { FulfillmentModule } from "./fulfillment.js";
-import { orderTemporalWorker } from "./module.js";
+import { OrderTemporalWorker } from "./module.js";
 import { OrderTemporalRuntime, temporalModule } from "./temporal-runtime.js";
-
-// Never dereferenced: this file is checked, not run. The runtime's `needs` are
-// what the gate reads, and they do not depend on a live connection.
-declare const connection: NativeConnection;
 
 const transport = {
   contract: orderContract,
-  connection,
   workflows: { workflowsPath: "./workflows.js" },
 } as const;
 
@@ -44,7 +38,7 @@ const options = { signals: false, probes: false } as const;
 // Positive: the composition root exports the runtime port and every port the
 // runtime needs, so the gate collapses to an empty tuple and this is an
 // ordinary two-argument call.
-const _wired = start(orderTemporalWorker(transport), options);
+const _wired = start(OrderTemporalWorker, options);
 
 // The same graph without the runtime: nothing declared over `RuntimePort` is
 // exported, so there is nothing for `start` to boot.

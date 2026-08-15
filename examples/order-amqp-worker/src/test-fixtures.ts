@@ -1,13 +1,13 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import type { AmqpInfo } from "@btravstack/amqp";
-import { start, type RunningApp } from "@btravstack/core";
+import { start, type Env, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { Logger, OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { expect, type TestAPI } from "vitest";
 
 import { OrderAmqpRuntime } from "./amqp-runtime.js";
-import { orderAmqpWorker } from "./module.js";
+import { OrderAmqpWorker } from "./module.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
@@ -22,7 +22,10 @@ type AmqpPorts = OrderAmqpRuntime | PlaceOrder | OrderRepository | Outbox | Logg
 
 type ServeOptions = { readonly drainTimeoutMs: number };
 
-type Serve = <E>(module: Module<AmqpPorts, E, Scope>, options?: ServeOptions) => Promise<App<E>>;
+type Serve = <E>(
+  module: Module<AmqpPorts, E, Scope | Env>,
+  options?: ServeOptions,
+) => Promise<App<E>>;
 
 /**
  * `start` hands the application context to the runtime alone, so a spec cannot
@@ -39,14 +42,12 @@ class ServicesTap extends Port("ServicesTap")<{
   readonly logger: ServiceOf<Logger>;
 }> {}
 
-const tappedAmqp = (amqpConnectionUrl: string) => {
+const tappedAmqp = () => {
   let services: ServiceOf<ServicesTap> | undefined;
 
   return {
     module: Module("TappedAmqp")({
-      // Tight on purpose: the specs wait on real broker round trips, and
-      // a production-sized idle sleep would be most of every test's clock.
-      imports: [orderAmqpWorker({ urls: [amqpConnectionUrl], relay: { pollMs: 25 } })],
+      imports: [OrderAmqpWorker],
       provides: [
         Provider(ServicesTap)([PlaceOrder, OrderRepository, Outbox, Logger], {
           sync: (placeOrder, repository, outbox, logger) => {
@@ -73,9 +74,9 @@ export type AmqpFixtures = {
    */
   readonly serve: Serve;
   /**
-   * The composition root on this test's own vhost — its relay publishes to,
-   * and its consumer reads from, a broker no other test shares — plus a tap
-   * on the very service instances it runs.
+   * The composition root, plus a tap on the very service instances it runs.
+   * `serve` points it at this test's own vhost — its relay publishes to, and
+   * its consumer reads from, a broker no other test shares.
    */
   readonly tapped: ReturnType<typeof tappedAmqp>;
 };
@@ -84,12 +85,20 @@ export type AmqpFixtures = {
 // since `AmqpTestFixtures` reaches back into amqplib's `Channel` /
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  serve: async ({}, use) => {
+  serve: async ({ amqpConnectionUrl }, use) => {
     const shutdowns: (() => Promise<void>)[] = [];
+    // `OUTBOX_POLL_MS` tight on purpose: the specs wait on real broker round
+    // trips, and a production-sized idle sleep would be most of every test's clock.
+    const env = { AMQP_URL: amqpConnectionUrl, OUTBOX_POLL_MS: "25" };
 
     const serve: Serve = async (module, options) => {
-      const app = start(module, { signals: false, probes: false, preDrainDelayMs: 0, ...options });
+      const app = start(module, {
+        env,
+        signals: false,
+        probes: false,
+        preDrainDelayMs: 0,
+        ...options,
+      });
       shutdowns.push(async () => {
         app.stop();
         await expect(app.exited).toBeOk();
@@ -105,7 +114,8 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     for (const shutdown of shutdowns) await shutdown();
   },
 
-  tapped: async ({ amqpConnectionUrl }, use) => {
-    await use(tappedAmqp(amqpConnectionUrl));
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  tapped: async ({}, use) => {
+    await use(tappedAmqp());
   },
 });

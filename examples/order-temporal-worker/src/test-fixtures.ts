@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { start, type RunningApp } from "@btravstack/core";
+import { start, type ConfigInvalid, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
   ApplicationModule,
@@ -28,7 +28,11 @@ import { ErrAsync, OkAsync } from "unthrown";
 import { expect } from "vitest";
 
 import { FulfillmentModule } from "./fulfillment.js";
-import { OrderTemporalRuntime, temporalModule } from "./temporal-runtime.js";
+import {
+  OrderTemporalRuntime,
+  temporalModule,
+  type TemporalUnreachable,
+} from "./temporal-runtime.js";
 
 /**
  * The time-skipping server binary, cached where **we** decide rather than in the
@@ -53,7 +57,9 @@ const downloadDir = fileURLToPath(
 // keeps the fixture's failure mode "no network" rather than "no directory".
 mkdirSync(downloadDir, { recursive: true });
 
-type App<E> = RunningApp<E, TemporalInfo>;
+// The runtime module's own errors join the app's: a bad environment, or a
+// service that will not answer.
+type App<E> = RunningApp<E | ConfigInvalid | TemporalUnreachable, TemporalInfo>;
 
 /**
  * `X` is pinned to the five ports the composition root exports rather than
@@ -205,18 +211,14 @@ export const it = createTimeSkippingTest({
       // each other's tasks.
       const contract = withTaskQueue(orderContract, nextTaskQueueId("orders"));
 
-      // The runtime joins the graph the way `orderTemporalWorker` adds it —
-      // built from what only this test knows: its queue, the environment's
-      // connection, the memoised bundle.
+      // The runtime joins the graph the way `OrderTemporalWorker` adds it —
+      // built from what only this test knows: its queue and the memoised
+      // bundle. The connection is the module's own resource, opened against
+      // the environment's address per test and closed with the scope; the
+      // shared `testEnv.nativeConnection` is never handed over, so no test can
+      // close it under the next.
       const worker = Module("StubTemporalWorker")({
-        imports: [
-          module,
-          temporalModule({
-            contract,
-            connection: testEnv.nativeConnection,
-            workflows: { workflowBundle },
-          }),
-        ],
+        imports: [module, temporalModule({ contract, workflows: { workflowBundle } })],
         exports: [
           OrderTemporalRuntime,
           PlaceOrder,
@@ -227,7 +229,12 @@ export const it = createTimeSkippingTest({
         ],
       });
 
-      const app = start(worker, { signals: false, probes: false, preDrainDelayMs: 0 });
+      const app = start(worker, {
+        env: { TEMPORAL_ADDRESS: testEnv.address },
+        signals: false,
+        probes: false,
+        preDrainDelayMs: 0,
+      });
 
       shutdowns.push(async () => {
         app.stop();

@@ -22,12 +22,9 @@
     "@btravstack/di": "workspace:*",
     "@btravstack/example-order-amqp-contract": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
-    "@btravstack/example-order-config": "workspace:*",
     "@btravstack/example-order-infrastructure": "workspace:*",
     "@opentelemetry/api": "catalog:",
-    "@unthrown/standard-schema": "catalog:",
-    "unthrown": "catalog:",
-    "zod": "catalog:"
+    "unthrown": "catalog:"
   },
   "devDependencies": {
     "@amqp-contract/testing": "catalog:",

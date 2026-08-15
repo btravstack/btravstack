@@ -3,14 +3,18 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Socket } from "node:net";
 
 import {
+  Config,
   RuntimePort,
   RuntimeStartFailed,
+  type ConfigField,
+  type ConfigInvalid,
+  type Env,
   type Runtime,
   type RuntimeHost,
   type Serving,
   type UnitMeta,
 } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */
@@ -37,34 +41,75 @@ export class HttpHandler extends Port("HttpHandler")<
   (request: IncomingMessage, response: ServerResponse, signal: AbortSignal) => PromiseLike<unknown>
 > {}
 
-export type HttpOptions = {
-  /** `0` lets the OS pick — read it back from `RunningApp.runtimeInfo()`. */
+/**
+ * What the socket is bound with, as a service: `http()` binds it from the
+ * environment — `PORT` (default `3000`; `0` lets the OS pick, read it back
+ * from `RunningApp.runtimeInfo()`) and `HOST` (default `0.0.0.0`: the
+ * deployment target is a pod, not a laptop) — and anything else in the graph
+ * may read it.
+ */
+export class HttpConfig extends Port("HttpConfig")<{
   readonly port: number;
-  /** Default `0.0.0.0`: the deployment target is a pod, not a laptop. */
+  readonly hostname: string;
+}> {}
+
+/** What `http(options)` lets a caller pin instead of reading from the environment — a test's `{ port: 0 }`. */
+export type HttpOptions = {
+  readonly port?: number;
   readonly hostname?: string;
 };
 
-const DEFAULT_HOSTNAME = "0.0.0.0";
-
-/** The runtime's port: what `httpModule` provides, and what the module `start` boots must export. */
+/** The runtime's port: what `http()` provides, and what the module `start` boots must export. */
 export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}
 
-const httpRuntime = (options: HttpOptions): Runtime<typeof HttpHandler, HttpInfo> => ({
+const httpRuntime = (config: ServiceOf<HttpConfig>): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
   needs: [HttpHandler],
-  start: (host) => listen(host, options),
+  start: (host) => listen(host, config),
 });
 
-/** The runtime as a module: import it next to the application and export `HttpRuntime`. */
-export const httpModule = (options: HttpOptions): Module<HttpRuntime, never, never> =>
-  Module("Http")({
-    provides: [Provider(HttpRuntime)({ value: httpRuntime(options) })],
-    exports: [HttpRuntime],
+// Explicit beats environment beats default, per field: `http({ port: 0 })`
+// still reads `HOST` from the environment.
+const pinned = <T>(value: T | undefined, fromEnv: ConfigField<T>): ConfigField<T> =>
+  value === undefined ? fromEnv : { variable: fromEnv.variable, parse: () => Ok(value) };
+
+/**
+ * The HTTP starter: a module providing the runtime (`HttpRuntime`) and its
+ * configuration (`HttpConfig`, bound from `PORT`/`HOST` unless pinned here).
+ * Import it next to the application, export `HttpRuntime`, and provide the
+ * `HttpHandler` port — that is the whole of the transport wiring.
+ *
+ * With every field pinned the module reads nothing — no `Env` need, no
+ * `ConfigInvalid` — which is what the overloads say; pin only some and the
+ * rest still comes from the environment.
+ */
+export function http(
+  options: Required<HttpOptions>,
+): Module<HttpRuntime | HttpConfig, never, never>;
+export function http(options?: HttpOptions): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env>;
+export function http(
+  options: HttpOptions = {},
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env> {
+  const { port, hostname } = options;
+  const config =
+    port !== undefined && hostname !== undefined
+      ? Provider(HttpConfig)({ value: { port, hostname } })
+      : Config.provider(
+          HttpConfig,
+          Config.object({
+            port: pinned(port, Config.port("PORT", { default: 3000 })),
+            hostname: pinned(hostname, Config.string("HOST", { default: "0.0.0.0" })),
+          }),
+        );
+  return Module("Http")({
+    provides: [config, Provider(HttpRuntime)([HttpConfig], { sync: (c) => httpRuntime(c) })],
+    exports: [HttpRuntime, HttpConfig],
   });
+}
 
 const listen = (
   host: RuntimeHost<typeof HttpHandler>,
-  options: HttpOptions,
+  options: ServiceOf<HttpConfig>,
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   fromSafePromise(
     new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
@@ -171,7 +216,7 @@ const listen = (
       // rejects the promise, and reaches the caller as a Defect, bypassing the
       // `AsyncResult<Serving, RuntimeStartFailed>` this function declares.
       try {
-        server.listen(options.port, options.hostname ?? DEFAULT_HOSTNAME, () => {
+        server.listen(options.port, options.hostname, () => {
           server.removeListener("error", onBindError);
           server.on("error", ignoreServingError);
 
