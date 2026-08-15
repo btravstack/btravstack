@@ -8,7 +8,7 @@
 exports `Env` — the environment as a port, which `@btravstack/core` provides to
 every graph `start` boots (`process.env`, or `StartOptions.env` for a test) —
 and `Config`:
-`Config.string/integer/port/boolean(variable, { default?, min?, max? })` fields,
+`Config.string/integer/port(variable, { default?, min?, max? })` fields,
 `Config.object({...})` composing them into a Standard Schema over the
 environment (any other Standard Schema, a `zod` object over the raw variables
 for instance, is accepted too), and `Config.provider(Port)(schema)` binding a

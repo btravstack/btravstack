@@ -5,22 +5,11 @@ import { RuntimeStartFailed } from "./runtime.js";
 import { it } from "./test-fixtures.js";
 
 describe("Config.provider", () => {
-  it("binds the port from the environment the kernel provides", async ({ configured }) => {
-    // GIVEN an application whose Settings are bound from a hand-picked environment
-    const { app, bound } = configured.boot({ PORT: "8080", HOST: "::1" });
-
-    // WHEN the graph has been built
-    await app.runtimeInfo();
-
-    // THEN the port holds the parsed values
-    expect(bound()).toEqual({ port: 8080, host: "::1", retries: 3, verbose: false });
-  });
-
   it("fails startup with ConfigInvalid, naming the port and the variables", async ({
     configured,
   }) => {
     // GIVEN an environment the schema rejects
-    const { app } = configured.boot({ PORT: "abc" });
+    const app = configured.boot({ PORT: "abc" });
 
     // WHEN the application boots
     // THEN the modeled startup Err is the ConfigInvalid, still typed

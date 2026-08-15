@@ -98,9 +98,9 @@ calls mint the port — id `name`, service `WorkerInferHandlers<typeof
 contract>` — and return di's own `Provider(port)`, so the last call is exactly
 `Provider(port)(deps, arm)`: any arm, same typing, and the arm is checked
 against the contract's record before any module sees it. The provider carries
-the port typed (`orderHandlers.port`, a `HandlersPortClass<Name, typeof
-contract>`) for the rare place that names it — a hand-written `amqp()` call, a
-type test. A port declared by hand (`class OrderHandlers extends
+the port typed (`orderHandlers.port`, di's `PortClassOf<Name,
+WorkerInferHandlers<typeof contract>>`) for the rare place that names it — a
+hand-written `amqp()` call, a type test. A port declared by hand (`class OrderHandlers extends
 Port("OrderHandlers")<WorkerInferHandlers<typeof orderContract>> {}` plus
 `Provider(OrderHandlers)(…)`) still works everywhere the minted one does; the
 class line is what the sugar removes.
@@ -112,9 +112,9 @@ written by hand: `Module("Worker")({ imports: [AppModule, amqp({ contract:
 orderContract, handlers: orderHandlers.port })], provides: [orderHandlers],
 exports: [AmqpRuntime] })` is what the sugar produces. It returns a `Module<AmqpRuntime
 | AmqpConfig, ConfigInvalid, Env | H>` — `H` the handlers port's instance, the
-module's one need — or, with `url` pinned, `Module<AmqpRuntime | AmqpConfig,
-never, H>`: it then reads nothing from the environment. (`AmqpModule` declares
-the unpinned type either way; a pinned `url` still binds nothing.)
+module's one need — pinned or not: with `url` pinned it reads nothing from the
+environment, and the declared `Env` need and `ConfigInvalid` stay (the kernel
+discharges the one, a pinned config never produces the other).
 
 There is no context channel: a handler reads nothing out of a `context.ctx`,
 because it was built from its dependencies by di. The middleware this package

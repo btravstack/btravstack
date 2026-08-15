@@ -1,4 +1,4 @@
-import { Config, type ConfigField, type ConfigInvalid, type Env } from "@btravstack/config";
+import { Config, type ConfigInvalid, type Env } from "@btravstack/config";
 import {
   RuntimePort,
   RuntimeStartFailed,
@@ -15,7 +15,6 @@ import {
 import type { Duration } from "@temporalio/common";
 import { NativeConnection, Worker, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import {
-  Ok,
   OkAsync,
   TaggedError,
   fromPromise,
@@ -114,11 +113,6 @@ const DEFAULT_FORCE: Duration = "15 seconds";
 
 type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
 
-// Explicit beats environment beats default, per field: `temporal({ address })`
-// still reads `TEMPORAL_NAMESPACE` from the environment.
-const pinned = <T>(value: T | undefined, fromEnv: ConfigField<T>): ConfigField<T> =>
-  value === undefined ? fromEnv : { variable: fromEnv.variable, parse: () => Ok(value) };
-
 /**
  * The Temporal starter: a module providing the runtime (`TemporalRuntime`),
  * its configuration (`TemporalConfig`, bound from `TEMPORAL_ADDRESS` /
@@ -130,30 +124,25 @@ const pinned = <T>(value: T | undefined, fromEnv: ConfigField<T>): ConfigField<T
  * activities port is a **need** of this module, so a composition root that
  * forgets to provide it fails at `Module(...)`, di's own gate.
  *
- * With both configuration fields pinned the module reads nothing — no `Env`
- * need, no `ConfigInvalid` — which is what the overloads say; pin only one and
- * the other still comes from the environment.
+ * With both configuration fields pinned the module reads nothing from the
+ * environment (the declared `Env` need and `ConfigInvalid` stay — the kernel
+ * discharges the one, a pinned config never produces the other); pin only one
+ * and the other still comes from the environment.
  */
-export function temporal<C extends ContractDefinition, A extends AnyPort>(
-  options: TemporalOptions<C, A> & Required<Pick<TemporalOptions<C, A>, "address" | "namespace">>,
-): Module<Provided, TemporalUnreachable, Scope | InstanceType<A>>;
-export function temporal<C extends ContractDefinition, A extends AnyPort>(
+export const temporal = <C extends ContractDefinition, A extends AnyPort>(
   options: TemporalOptions<C, A>,
-): Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | InstanceType<A>>;
-export function temporal<C extends ContractDefinition, A extends AnyPort>(
-  options: TemporalOptions<C, A>,
-): Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | InstanceType<A>> {
+): Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | InstanceType<A>> => {
   const { address, namespace, activities } = options;
   const config =
     address !== undefined && namespace !== undefined
       ? Provider(TemporalConfig)({ value: { address, namespace } })
       : Config.provider(TemporalConfig)(
           Config.object({
-            address: pinned(
+            address: Config.pinned(
               address,
               Config.string("TEMPORAL_ADDRESS", { default: "127.0.0.1:7233" }),
             ),
-            namespace: pinned(
+            namespace: Config.pinned(
               namespace,
               Config.string("TEMPORAL_NAMESPACE", { default: "default" }),
             ),
@@ -180,7 +169,7 @@ export function temporal<C extends ContractDefinition, A extends AnyPort>(
     ],
     exports: [TemporalRuntime, TemporalConfig, TemporalConnection],
   });
-}
+};
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>
   new RuntimeStartFailed({ runtime: "temporal", cause });

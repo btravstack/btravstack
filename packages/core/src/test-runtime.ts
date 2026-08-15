@@ -69,12 +69,11 @@ export const testRuntime = (name = "test"): TestRuntime => {
 
   const runtime: TestRuntime = {
     name,
-    get module() {
-      return Module("TestRuntime")({
-        provides: [Provider(TestRuntimePort)({ value: runtime })],
-        exports: [TestRuntimePort],
-      });
-    },
+    module: Module("TestRuntime")({
+      // Resolved lazily so the object literal can name itself.
+      provides: [Provider(TestRuntimePort)({ sync: () => runtime })],
+      exports: [TestRuntimePort],
+    }),
     needs: [],
     start: (host: RuntimeHost<never>) => {
       run = host.run;

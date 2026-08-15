@@ -271,25 +271,25 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   // A bad `PROBE_PORT` is a `RuntimeStartFailed` for `"probes"` whose cause is
   // the `ConfigInvalid`, which is what `runMain` reads the `78` off.
   const probesOptions: Result<{ readonly port: number } | false, RuntimeStartFailed> =
-    options.probes !== undefined
-      ? Ok(options.probes)
-      : Config.port("PROBE_PORT", { default: 9000 })
+    options.probes === undefined
+      ? Config.port("PROBE_PORT", { default: 9000 })
           .parse(env["PROBE_PORT"])
           .map((port) => ({ port }))
           .mapErrCases((matcher) =>
             matcher.with(
               P.tag("ConfigFieldInvalid"),
-              (error) =>
+              ({ reason }) =>
                 new RuntimeStartFailed({
                   runtime: "probes",
                   cause: new ConfigInvalid({
                     port: "probes",
-                    issues: [{ message: error.reason, path: ["PROBE_PORT"] }],
+                    issues: [{ message: reason, path: ["PROBE_PORT"] }],
                   }),
                 }),
             ),
-          );
-  if (probesOptions.isOk() && probesOptions.value === false) probeBound.resolve(undefined);
+          )
+      : Ok(options.probes);
+  if (options.probes === false) probeBound.resolve(undefined);
 
   const probesStarted: AsyncResult<void, RuntimeStartFailed> = probesOptions
     .toAsync()

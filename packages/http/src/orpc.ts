@@ -1,4 +1,11 @@
-import { Port, Provider, type AnyPort, type PortInstance, type ServiceOf } from "@btravstack/di";
+import {
+  Port,
+  Provider,
+  type AnyPort,
+  type PortClassOf,
+  type PortInstance,
+  type ServiceOf,
+} from "@btravstack/di";
 import { getRequestListener } from "@hono/node-server";
 import type { ProcedureContract, RouterContract } from "@orpc/contract";
 import {
@@ -100,13 +107,12 @@ export const HttpRouter =
       ) => Implementation<C>;
     },
   ): Provider<PortInstance<Name, Router<Record<never, never>>>, never, InstanceType<D[number]>> & {
-    readonly port: RouterPortClass<Name>;
+    readonly port: PortClassOf<Name, Router<Record<never, never>>>;
   } => {
-    // The class expression's own type expands the port's brand keys in
-    // declaration emit and cannot be named by a consumer; `RouterPortClass`
-    // spells the same class through the exported `PortInstance`, and is what
-    // the returned provider's `.port` is typed as.
-    const port = class extends Port(name)<Router<Record<never, never>>> {} as RouterPortClass<Name>;
+    const port = class extends Port(name)<Router<Record<never, never>>> {} as PortClassOf<
+      Name,
+      Router<Record<never, never>>
+    >;
     // The implementer is walked untyped: `Implementation<C>` above is the
     // whole check, and `implement(contract)`'s own type is a per-contract
     // intersection this generic body cannot index into.
@@ -117,12 +123,6 @@ export const HttpRouter =
       os.router(routerOf(os, options.sync(...(services as never)) as Record<string, unknown>));
     return Provider(port)(deps, { sync } as never) as never;
   };
-
-/** The port `HttpRouter(contract)(name)` mints: id `Name`, service the router `http()` serves. */
-export type RouterPortClass<Name extends string> = {
-  readonly portId: Name;
-  new (): PortInstance<Name, Router<Record<never, never>>>;
-};
 
 /**
  * What `HttpRouter(contract)(…)(…, { sync })`'s `sync` returns: the contract's

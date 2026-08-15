@@ -1,4 +1,11 @@
-import { Port, Provider, type AnyPort, type PortInstance, type ServiceOf } from "@btravstack/di";
+import {
+  Port,
+  Provider,
+  type AnyPort,
+  type PortClassOf,
+  type PortInstance,
+  type ServiceOf,
+} from "@btravstack/di";
 import { Err, Ok, P, TaggedError, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 /** The process environment as it actually arrives: flat, and every value a string or absent. */
@@ -119,9 +126,6 @@ const integerIn =
     return Ok(parsed);
   };
 
-const TRUE = new Set(["true", "1", "yes", "on"]);
-const FALSE = new Set(["false", "0", "no", "off"]);
-
 /**
  * Configuration, the twelve-factor way: typed values bound from the
  * environment, validated once as the graph is built, and injected like any
@@ -155,14 +159,14 @@ export const Config = {
   port: (variable: string, options: WithDefault<number> = {}): ConfigField<number> =>
     present(variable, options, integerIn(0, 65_535)),
 
-  /** `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off` — case-insensitively. */
-  boolean: (variable: string, options: WithDefault<boolean> = {}): ConfigField<boolean> =>
-    present(variable, options, (value) => {
-      const lower = value.toLowerCase();
-      if (TRUE.has(lower)) return Ok(true);
-      if (FALSE.has(lower)) return Ok(false);
-      return invalid(`is not a boolean: ${JSON.stringify(value)}`);
-    }),
+  /**
+   * `field`, unless `value` is given — then a field that answers `value` and
+   * reads nothing. What a starter's options do to its own fields: explicit
+   * beats environment beats default, per field (`http({ port: 0 })` still
+   * reads `HOST`).
+   */
+  pinned: <T>(value: T | undefined, field: ConfigField<T>): ConfigField<T> =>
+    value === undefined ? field : { variable: field.variable, parse: () => Ok(value) },
 
   /**
    * A record of fields, as a Standard Schema over the environment. Every field
@@ -231,12 +235,6 @@ export const Config = {
   provider: configProvider,
 };
 
-/** A port `Config.provider(name)(schema)` minted: its instance is `PortInstance<Name, Output>`, and it is what `provider.port` is typed as. */
-export type ConfigPort<Name extends string, Output> = {
-  readonly portId: Name;
-  new (): PortInstance<Name, Output>;
-};
-
 function configProvider<P extends AnyPort>(
   port: P,
 ): (
@@ -249,12 +247,12 @@ function configProvider<const Name extends string>(
   ConfigInvalid,
   Env
 > & {
-  readonly port: ConfigPort<Name, Output>;
+  readonly port: PortClassOf<Name, Output>;
 };
 // The implementation's return type is `unknown` — the two overloads above are
 // the whole contract, and no single type is assignable both ways to
 // `Provider<InstanceType<P>, …> & { port: P }` and
-// `Provider<PortInstance<Name, Output>, …> & { port: ConfigPort<Name, Output> }`
+// `Provider<PortInstance<Name, Output>, …> & { port: PortClassOf<Name, Output> }`
 // (`Provider` is contravariant in its port).
 function configProvider(portOrName: AnyPort | string): unknown {
   const port: AnyPort =

@@ -17,20 +17,20 @@ describe("Config.object", () => {
 
     // THEN every field carries its default, typed
     expect(result).toEqual({
-      value: { port: 3000, host: "0.0.0.0", retries: 3, verbose: false },
+      value: { port: 3000, host: "0.0.0.0", retries: 3 },
     });
   });
 
   it("reads what a deployment actually supplies, parsed", () => {
     // GIVEN every variable set, as the strings an environment always holds
-    const env = { PORT: "8080", HOST: "127.0.0.1", RETRIES: "0", VERBOSE: "yes" };
+    const env = { PORT: "8080", HOST: "127.0.0.1", RETRIES: "0" };
 
     // WHEN it is validated
     const result = validate(env);
 
     // THEN they arrive as their own types rather than as strings
     expect(result).toEqual({
-      value: { port: 8080, host: "127.0.0.1", retries: 0, verbose: true },
+      value: { port: 8080, host: "127.0.0.1", retries: 0 },
     });
   });
 
@@ -107,19 +107,6 @@ describe("Config.object", () => {
     });
   });
 
-  it("rejects a word that is not a boolean", () => {
-    // GIVEN a value neither spelling of true nor of false covers
-    const env = { VERBOSE: "maybe" };
-
-    // WHEN it is validated
-    const result = validate(env);
-
-    // THEN it is an issue rather than a silent `false`
-    expect(result).toEqual({
-      issues: [{ message: 'is not a boolean: "maybe"', path: ["VERBOSE"] }],
-    });
-  });
-
   it("requires a field with no default", () => {
     // GIVEN a schema whose one field has no default, and an environment without it
     const schema = Config.object({ url: Config.string("DATABASE_URL") });
@@ -148,6 +135,26 @@ describe("Config.object", () => {
 
     // THEN the validation still answers with issues rather than throwing
     expect(result).toEqual({ issues: [{ message: "Error: parser bug", path: ["BROKEN"] }] });
+  });
+});
+
+describe("Config.pinned", () => {
+  it("answers the pin over whatever the environment says, and reads the field otherwise", () => {
+    // GIVEN a port field, once pinned and once left alone
+    const field = Config.port("PORT", { default: 3000 });
+
+    // WHEN both read an environment that sets PORT
+    const read = {
+      pinned: Config.pinned(0, field).parse("8080"),
+      free: Config.pinned(undefined, field).parse("8080"),
+    };
+
+    // THEN the pin wins where given — explicit beats environment beats default —
+    // and the field is itself where not
+    expect({ pinned: read.pinned.getOrThrow(), free: read.free.getOrThrow() }).toEqual({
+      pinned: 0,
+      free: 8080,
+    });
   });
 });
 
@@ -182,12 +189,12 @@ describe("Config.provider", () => {
     const settings = bound(env);
 
     // THEN it holds the parsed values, defaults filled in
-    await expect(settings).toBeOkWith({ port: 8080, host: "::1", retries: 3, verbose: false });
+    await expect(settings).toBeOkWith({ port: 8080, host: "::1", retries: 3 });
   });
 
   it("answers ConfigInvalid, naming the port and every offending variable", async ({ bound }) => {
     // GIVEN an environment the schema rejects on two counts
-    const env = { PORT: "abc", VERBOSE: "" };
+    const env = { PORT: "abc", HOST: "" };
 
     // WHEN the port is resolved
     const settings = bound(env);
@@ -199,7 +206,7 @@ describe("Config.provider", () => {
         port: "ConfigFixtureSettings",
         issues: [
           { message: 'is not a whole number: "abc"', path: ["PORT"] },
-          { message: "is set but empty", path: ["VERBOSE"] },
+          { message: "is set but empty", path: ["HOST"] },
         ],
       }),
     );

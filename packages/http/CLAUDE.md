@@ -12,21 +12,22 @@ the same commit, and with `README.md` — the package ships no
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
   `http({ router: provider.port })` to `imports`, prepends the provider to
-  `provides` and `HttpRuntime` to `exports`, and returns exactly the module
-  `Module(...)` would have declared over those augmented tuples — spelled
-  **inline** from di's exported pieces (`ResolvedExports`, `ErrOf`,
-  `ErrOfModule`, `NeedOf`, `NeedsOfModule`, `Available`, `Exportable`), never
-  through a named alias (declaration emit keeps a generic alias unreduced and
-  then cannot name imported modules' internal ports — TS2883, measured). The
-  provider's **instance** service is constrained the way `http()` constrains
-  the port class (`RouterProvider<RI>`, intersected on the option), so a
-  provider of anything but a context-free oRPC router fails at the call; the
-  port class is read off `provider.port` for the delegation (`as never` — the
-  check already happened one level up). Covered by the package's own `rpc`
-  fixture, which composes `RpcApp` through it; the value it returns is a plain
-  di module (`Module(name)({...} as never) as never` — di computes the
-  declared type from a literal, and generic tuples are not one). Options
-  `port`/`hostname` pin as for `http()`.
+  `provides` and `HttpRuntime` to `exports`, and hands the augmented tuples —
+  `Imports<I, RouterInstance>` / `Provides<P, RouterInstance, RouterError,
+RouterNeeds>`, readonly and exact — to di's own `Module(name)({...})`, whose
+  return type IS the sugar's: nothing spelled twice. di exports `AnyModule`,
+  `AnyProvider` and `Exportable` for exactly that (constraining the tuples the
+  way `Module(name)` does); its other module-typing pieces stay internal.
+  (Spelling the return through a named generic alias was tried and removed:
+  declaration emit keeps such an alias unreduced and cannot name imported
+  modules' internal ports — TS2883, measured.) `router` is a plain
+  `Provider<RouterInstance, RouterError, RouterNeeds>` whose instance is
+  constrained on the type parameter — `RouterInstance extends
+PortInstance<string, Router<Record<never, never>>>` — so a provider of
+  anything but a context-free oRPC router fails at the call; the port class is
+  read off `provider.port` for the delegation (`as never` — the check already
+  happened one level up). Covered by the package's own `rpc` fixture, which
+  composes `RpcApp` through it. Options `port`/`hostname` pin as for `http()`.
 - **`HttpRouter(contract)(name)(deps, { sync })`** (`orpc.ts`) — contract-first
   router provider. `Implementation<C>` is the record type: recursing the
   contract's shape, each `ProcedureContract<I, O, E>` becomes
@@ -38,12 +39,12 @@ O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   walked next to the record (`routerOf`: a function leaf → `node.result(fn)`,
   an object → recurse), and `os.router(built)` is the port's service. The port
   is minted `class extends Port(name)<Router<Record<never, never>>> {}` and
-  cast to **`RouterPortClass<Name>`** (`{ portId: Name; new (): PortInstance<Name,
-Router<…>> }` — the nameable spelling through di's exported `PortInstance`;
-  the class expression's own type expands the brand keys in declaration emit,
-  TS4023 measured); the return is `Provider<PortInstance<Name, Router<…>>,
-never, InstanceType<D[number]>> & { port: RouterPortClass<Name> }`, spelled
-  explicitly for the same reason. Only the `sync` arm: a router is built, not
+  cast to di's **`PortClassOf<Name, Router<…>>`** (`{ portId: Name; new ():
+PortInstance<Name, Router<…>> }` — the one nameable spelling of a minted port
+  class; the class expression's own type expands the brand keys in declaration
+  emit, TS4023 measured); the return is `Provider<PortInstance<Name,
+Router<…>>, never, InstanceType<D[number]>> & { port: PortClassOf<Name,
+Router<…>> }`, spelled explicitly for the same reason. Only the `sync` arm: a router is built, not
   acquired. `HttpModule({ router: orderRouter })` / `http({ router:
 orderRouter.port })` take it from there. Covered by the `rpc` fixture's
   `greetingRouter` (a bare-procedure `oc.router`, one nested).
@@ -65,9 +66,11 @@ orderRouter.port })` take it from there. Covered by the `rpc` fixture's
   (`{ port, hostname }`) bound through `Config.provider` from `PORT` (default
   `3000`) and `HOST` (default `0.0.0.0` — a pod, not a laptop) in the kernel's
   `Env`. `port`/`hostname` **pin** a field instead of reading it — explicit >
-  env > default, per field (`pinned` in `http-runtime.ts` swaps the field's
-  `parse` for a constant and keeps the variable name); with both pinned the
-  overload returns `Module<…, never, InstanceType<R>>` and reads nothing.
+  env > default, per field (`Config.pinned(value, field)` swaps the field's
+  `parse` for a constant and keeps the variable name). A pinned field reads
+  nothing from the environment; the declared `Env` need and `ConfigInvalid`
+  stay whatever is pinned — one signature, no overload pair to keep in step
+  (the kernel discharges the one, a pinned config never produces the other).
   `prefix` (default `/rpc`) is where the RPC endpoint is mounted. The worked
   example is `Module("OrderApi")({ imports: [Application, Persistence,
 http({ router: OrderRouter })], provides: [orderRouter], exports:
@@ -135,7 +138,7 @@ false`, so `globalThis.Request`/`Response` are left alone.
   `httpModule(socket, orpc(router, prefix))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **23 specs, 100% lines/functions.** `http-runtime.spec.ts` carries 17,
+- **24 specs, 100% lines/functions.** `http-runtime.spec.ts` carries 17,
   through `test-fixtures.ts`'s `appOf` — `httpModule({ port: 0, hostname:
 "127.0.0.1" }, Provider(HttpHandler)({ value: handler }))` — so the
   guarantees (`404`/`500` fallbacks, the unit open until `'close'`, the drain,
@@ -145,9 +148,9 @@ false`, so `globalThis.Request`/`Response` are left alone.
   pinned"_, _"pins what it is given and reads the rest from the environment"_,
   _"fails startup with ConfigInvalid for HttpConfig when PORT is not a port"_,
   through the `configured` fixture, whose `BoundConfig` provider captures what
-  the graph bound). `orpc.spec.ts` carries the 6 the starter proper answers
+  the graph bound). `orpc.spec.ts` carries the 7 the starter proper answers
   for, through the `rpc` fixture — `http({ router: GreetingRouter, port: 0,
 hostname: "127.0.0.1" })` over a router provider that declares a `Greeter`,
-  with a typed `RPCLink` client: dependencies injected, `prefix` honoured, Hono's 404 outside and under the prefix, oRPC's
+  with a typed `RPCLink` client: dependencies injected, a nested procedure, `prefix` honoured, Hono's 404 outside and under the prefix, oRPC's
   `INTERNAL_SERVER_ERROR` collapse, and the global `Request`/`Response` left
   alone.

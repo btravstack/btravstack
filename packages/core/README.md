@@ -169,7 +169,6 @@ import { Config } from "@btravstack/config";
 
 class Settings extends Port("Settings")<{
   readonly port: number;
-  readonly verbose: boolean;
 }> {}
 
 const SettingsModule = Module("Settings")({
@@ -177,7 +176,6 @@ const SettingsModule = Module("Settings")({
     Config.provider(Settings)(
       Config.object({
         port: Config.port("PORT", { default: 3000 }),
-        verbose: Config.boolean("VERBOSE", { default: false }),
       }),
     ),
   ],
@@ -196,8 +194,7 @@ const configured = start(ConfiguredApp, { env: { PORT: "0" }, probes: false });
 ```
 
 - `Config.string(VAR, { default? })`, `Config.integer(VAR, { min?, max?,
-default? })`, `Config.port(VAR, { default? })` and `Config.boolean(VAR, {
-default? })` each read one variable. **Unset** takes the default, or is "is
+default? })` and `Config.port(VAR, { default? })` each read one variable. **Unset** takes the default, or is "is
   required" without one; **set but empty or blank is an error**, never an
   absent variable — `PORT=` would otherwise bind whatever the empty string
   coerces to. `PORT=0` stays legal, since an ephemeral bind must be

@@ -12,7 +12,7 @@ import {
   Port,
   Provider,
   type AnyPort,
-  type PortInstance,
+  type PortClassOf,
   type ServiceOf,
 } from "@btravstack/di";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
@@ -74,18 +74,13 @@ export type AmqpOptions<TContract extends AnyAmqpContract, H extends AnyPort> = 
  * whole of the transport wiring. The handlers port is the module's one need,
  * which di's own gate checks where the composition root is declared.
  *
- * With `url` pinned the module reads nothing — no `Env` need, no
- * `ConfigInvalid` — which is what the overloads say.
+ * With `url` pinned the module reads nothing from the environment (the
+ * declared `Env` need and `ConfigInvalid` stay — the kernel discharges the
+ * one, a pinned config never produces the other).
  */
-export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
-  options: AmqpOptions<TContract, H> & { readonly url: string },
-): Module<AmqpRuntime | AmqpConfig, never, InstanceType<H>>;
-export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
+export const amqp = <TContract extends AnyAmqpContract, H extends AnyPort>(
   options: AmqpOptions<TContract, H>,
-): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | InstanceType<H>>;
-export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
-  options: AmqpOptions<TContract, H>,
-): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | InstanceType<H>> {
+): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | InstanceType<H>> => {
   const config =
     options.url === undefined
       ? Config.provider(AmqpConfig)(
@@ -111,7 +106,7 @@ export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
     ],
     exports: [AmqpRuntime, AmqpConfig],
   });
-}
+};
 
 /**
  * The handlers' port and provider in one call: `AmqpHandlers(orderContract)("OrderHandlers")([Logger],
@@ -130,19 +125,15 @@ export const AmqpHandlers =
   <C extends AnyAmqpContract>(_contract: C) =>
   <const Name extends string>(
     name: Name,
-  ): ReturnType<typeof Provider<HandlersPortClass<Name, C>>> =>
-    // The class expression's own type expands the port's brand keys in
-    // declaration emit and cannot be named by a consumer; `HandlersPortClass`
-    // spells the same class through the exported `PortInstance`, and is what
-    // the returned provider's `.port` is typed as. The contract is a value the
-    // type alone needs, so it is not read.
-    Provider(class extends Port(name)<WorkerInferHandlers<C>> {} as HandlersPortClass<Name, C>);
+  ): ReturnType<typeof Provider<PortClassOf<Name, WorkerInferHandlers<C>>>> =>
+    Provider(
+      class extends Port(name)<WorkerInferHandlers<C>> {} as PortClassOf<
+        Name,
+        WorkerInferHandlers<C>
+      >,
+    );
 
 /** The port `AmqpHandlers(contract)(name)` mints: id `Name`, service the contract's handlers record. */
-export type HandlersPortClass<Name extends string, C extends AnyAmqpContract> = {
-  readonly portId: Name;
-  new (): PortInstance<Name, WorkerInferHandlers<C>>;
-};
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>
   new RuntimeStartFailed({ runtime: "amqp", cause });

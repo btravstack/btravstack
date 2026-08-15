@@ -8,15 +8,16 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
+import type { WorkerInferHandlers } from "@amqp-contract/worker";
 import type { ConfigInvalid } from "@btravstack/config";
 import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, type TestAPI } from "vitest";
 import { z } from "zod";
 
 import { AmqpModule } from "./amqp-module.js";
-import { AmqpHandlers, type AmqpInfo, type HandlersPortClass } from "./amqp-runtime.js";
+import { AmqpHandlers, type AmqpInfo } from "./amqp-runtime.js";
 
 const echoExchange = defineExchange("amqp-test");
 const echoDlx = defineExchange("amqp-test-dlx", { type: "direct" });
@@ -42,7 +43,7 @@ export class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 
 /** The handlers port the suite hands the starter, and its provider builder — both minted by `AmqpHandlers`. */
 const echoHandlers = AmqpHandlers(echoContract)("EchoHandlers");
-type EchoHandlers = HandlersPortClass<"EchoHandlers", typeof echoContract>;
+type EchoHandlers = PortClassOf<"EchoHandlers", WorkerInferHandlers<typeof echoContract>>;
 
 const AppModule = Module("App")({
   provides: [Provider(Greeting)({ value: { text: "hello" } })],

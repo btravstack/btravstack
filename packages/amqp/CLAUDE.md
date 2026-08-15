@@ -13,42 +13,42 @@ the same commit, and with `README.md` — the package ships no
   `Module(name)({...})` plus the contract and the handlers **provider**. It
   appends `amqp({ contract, handlers: provider.port, … })` to `imports`,
   prepends the provider to `provides` and `AmqpRuntime` to `exports`, and
-  returns exactly the module `Module(...)` would have declared over those
-  augmented tuples — spelled **inline** from di's exported pieces
-  (`ResolvedExports`, `ErrOf`, `ErrOfModule`, `NeedOf`, `NeedsOfModule`,
-  `Available`, `Exportable`), never through a named alias (declaration emit
-  keeps a generic alias unreduced and then cannot name imported modules'
-  internal ports — TS2883, measured on `HttpModule`). The provider's
-  **instance** service is constrained the way `amqp()` constrains the port
-  class (`HandlersProvider<HI, TContract>`, intersected on the option), so a
-  provider whose service is not `WorkerInferHandlers<TContract>` fails at the
-  call (`amqp-runtime.test-d.ts` pins the sugar's three directions next to
-  the primitive's); the port class is read off `provider.port` for the
-  delegation (`as never` — the check already happened one level up). The
-  starter it adds is typed as the **unpinned** `Module<AmqpRuntime |
-AmqpConfig, ConfigInvalid, Env | HI>` whether or not `url` is pinned — one
-  declared type, no overload pair — so a pinned composition still carries
-  `ConfigInvalid` in its error channel (the package's own `App` fixture type
-  is `RunningApp<ConfigInvalid, AmqpInfo>` for that reason). Covered by the
+  hands the augmented tuples — `Imports<I, HandlersInstance>` / `Provides<P,
+HandlersInstance, HandlersError, HandlersNeeds>`, readonly and exact — to
+  di's own `Module(name)({...})`, whose return type IS the sugar's: nothing
+  spelled twice (di exports `AnyModule`, `AnyProvider`, `Exportable` for the
+  tuple constraints; a named generic alias for the return was tried and
+  removed — declaration emit keeps it unreduced and cannot name imported
+  modules' internal ports, TS2883, measured on `HttpModule`). `handlers` is a
+  plain `Provider<HandlersInstance, HandlersError, HandlersNeeds>` whose
+  instance is constrained on the type parameter (`HandlersInstance extends
+PortInstance<string, WorkerInferHandlers<TContract>>`), so a provider whose
+  service is not the contract's handlers fails at the call
+  (`amqp-runtime.test-d.ts` pins the sugar's three directions next to the
+  primitive's); the port class is read off `provider.port` for the delegation
+  (`as never` — the check already happened one level up). The starter it adds
+  is typed `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env |
+HandlersInstance>` whether or not `url` is pinned — one declared type, no
+  overload pair — so a pinned composition still carries `ConfigInvalid` in its
+  error channel (the package's own `App` fixture type is
+  `RunningApp<ConfigInvalid, AmqpInfo>` for that reason). Covered by the
   package's own `consuming` fixture, which composes every `serve` /
-  `serveBroken` app through it; the value it returns is a plain di module
-  (`Module(name)({...} as never) as never` — di computes the declared type
-  from a literal, and generic tuples are not one). `AmqpModuleOptions` is
+  `serveBroken` app through it. `AmqpModuleOptions` is
   the exported options type. `AnyAmqpContract` is exported from
   `amqp-runtime.ts` for the sugar's bound, not from `index.ts`.
-- **`AmqpHandlers(contract)(name)` → `ReturnType<typeof Provider<HandlersPortClass<Name, C>>>`**
+- **`AmqpHandlers(contract)(name)` → `ReturnType<typeof Provider<PortClassOf<Name, WorkerInferHandlers<C>>>>`**
   (`amqp-runtime.ts`) — the way to the handlers provider `AmqpModule` takes,
   next to it: the first two calls mint the port (`class extends
-Port(name)<WorkerInferHandlers<C>> {} as HandlersPortClass<Name, C>`) and
+Port(name)<WorkerInferHandlers<C>> {} as PortClassOf<Name, WorkerInferHandlers<C>>`) and
   return di's own `Provider(port)`, so the last call is exactly
   `Provider(port)(deps, arm)` — any arm, same typing, checked against the
   contract's record before any module sees it — and the provider carries the
-  port typed (`provider.port`, di's `& { readonly port: P }`). The return
-  type is spelled explicitly through di's exported `PortInstance` because the
-  class expression's own type expands the brand keys in declaration emit and
-  cannot be named (TS4023, measured on `HttpRouter`); `HandlersPortClass<Name,
-C>` (`{ portId: Name; new (): PortInstance<Name, WorkerInferHandlers<C>> }`)
-  is that spelling and is exported for a consumer that names the port type.
+  port typed (`provider.port`, di's `& { readonly port: P }`). The class is
+  cast to di's `PortClassOf<Name, WorkerInferHandlers<C>>` (`{ portId: Name;
+new (): PortInstance<Name, WorkerInferHandlers<C>> }`, the one nameable
+  spelling of a minted port class) because the class expression's own type
+  expands the brand keys in declaration emit and cannot be named (TS4023,
+  measured on `HttpRouter`).
   The contract argument is a value the type alone reads (`_contract`). Same
   shape as `@btravstack/http`'s `HttpRouter(name)` and
   `@btravstack/config`'s `Config.provider(name)(schema)`. A hand-declared port

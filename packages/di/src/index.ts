@@ -40,29 +40,26 @@ export { Port } from "./port.js";
 // consumer that exports it needs declaration emit to be able to write that.
 // The `[MANY]` intersection is never named; `emit-guards.ts` in
 // `examples/hexagonal-order-api` is the fixture that keeps that true.
-export type { AnyPort, ManyPortClass, PortClass, PortInstance, Scope, ServiceOf } from "./port.js";
+export type {
+  AnyPort,
+  ManyPortClass,
+  PortClass,
+  PortClassOf,
+  PortInstance,
+  Scope,
+  ServiceOf,
+} from "./port.js";
 export { Context } from "./context.js";
 export { Provider } from "./provider.js";
 export { Module } from "./module.js";
-// The pieces `Module(name)({...})`'s declared type is built from — exported so a
-// package offering a *shaped* module (a starter's `HttpModule(name)({...})`
-// sugar, which adds its own import and export to what the application wrote)
-// can spell exactly the type `Module(...)` would have over the augmented
-// `imports`/`provides`/`exports`. Spelled inline there as it is here, never
-// through a named alias: TypeScript keeps a generic alias unreduced in
-// declaration emit, and its arguments would then name every internal port of
-// every imported module (measured: TS2883 on the first consumer).
-export type {
-  AnyModule,
-  AnyProvider,
-  Available,
-  ErrOf,
-  ErrOfModule,
-  Exportable,
-  ExportsOfModule,
-  NeedOf,
-  NeedsOfModule,
-  PortOf,
-  ResolvedExports,
-} from "./module.js";
+// `AnyModule`, `AnyProvider` and `Exportable` are exported so a package
+// offering a *shaped* module (a starter's `HttpModule(name)({...})` sugar,
+// which appends its own import and export to what the application wrote) can
+// constrain its `imports`/`provides`/`exports` the way `Module(name)` does,
+// then hand those tuples to `Module(name)({...})` itself — whose return type
+// is then the sugar's, spelled once, here. (Spelling it again in the sugar
+// through a named generic alias was tried and removed: declaration emit keeps
+// such an alias unreduced and cannot name imported modules' internal ports —
+// TS2883.)
+export type { AnyModule, AnyProvider, Exportable } from "./module.js";
 export type { ScopedOptions } from "./build.js";

@@ -1,5 +1,5 @@
 import { Config, type ConfigInvalid, type Environment } from "@btravstack/config";
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider } from "@btravstack/di";
 import { expect, test } from "vitest";
 
 import type { KernelEvent } from "./events.js";
@@ -29,12 +29,10 @@ export const runtimeModule = (runtime: Runtime<never, TestRuntimeInfo>) =>
     exports: [TestRuntimePort],
   });
 
-class Witness extends Port("ConfigFixtureWitness")<true> {}
 class Settings extends Port("ConfigFixtureSettings")<{
   readonly port: number;
   readonly host: string;
   readonly retries: number;
-  readonly verbose: boolean;
 }> {}
 
 /** The slice of environment `configuredApp` binds onto `Settings`. */
@@ -42,20 +40,16 @@ export const settingsSchema = Config.object({
   port: Config.port("PORT", { default: 3000 }),
   host: Config.string("HOST", { default: "0.0.0.0" }),
   retries: Config.integer("RETRIES", { min: 0, max: 10, default: 3 }),
-  verbose: Config.boolean("VERBOSE", { default: false }),
 });
 
 export type ConfiguredApp = {
   /**
    * Boots a module whose `Settings` port is bound from `env` through
-   * `settingsSchema`, next to an in-memory runtime, and hands back the app
-   * plus what the graph actually bound — `undefined` until (unless) the port
-   * was built.
+   * `settingsSchema`, next to an in-memory runtime — the binding itself is
+   * `@btravstack/config`'s spec's business; what this app shows is how the
+   * kernel reports it.
    */
-  readonly boot: (env: Environment) => {
-    readonly app: RunningApp<ConfigInvalid, TestRuntimeInfo>;
-    readonly bound: () => { readonly port: number; readonly host: string } | undefined;
-  };
+  readonly boot: (env: Environment) => RunningApp<ConfigInvalid, TestRuntimeInfo>;
   /**
    * The same module through `runMain`, resolving the exit code it set. Probes
    * are off unless `probesFromEnv` asks the kernel to bind them from `env`.
@@ -65,25 +59,12 @@ export type ConfiguredApp = {
   readonly probesFrom: (env: Environment) => RunningApp<never, TestRuntimeInfo>;
 };
 
-const settingsApp = () => {
-  let bound: ServiceOf<Settings> | undefined;
-  return {
-    module: Module("ConfigFixtureApp")({
-      imports: [testRuntime().module],
-      provides: [
-        Config.provider(Settings)(settingsSchema),
-        Provider(Witness)([Settings], {
-          sync: (settings) => {
-            bound = settings;
-            return true;
-          },
-        }),
-      ],
-      exports: [TestRuntimePort, Settings],
-    }),
-    bound: () => bound,
-  };
-};
+const settingsApp = () =>
+  Module("ConfigFixtureApp")({
+    imports: [testRuntime().module],
+    provides: [Config.provider(Settings)(settingsSchema)],
+    exports: [TestRuntimePort, Settings],
+  });
 
 export type UnitApp = {
   readonly runtime: TestRuntime;
@@ -115,10 +96,9 @@ export const it = test.extend<{ unitApp: UnitApp; configured: ConfiguredApp }>({
 
     await use({
       boot: (env) => {
-        const { module, bound } = settingsApp();
-        const app = start(module, { env, signals: false, probes: false, onEvent: () => {} });
+        const app = start(settingsApp(), { env, signals: false, probes: false, onEvent: () => {} });
         started.push(app);
-        return { app, bound };
+        return app;
       },
       probesFrom: (env) => {
         const app = start(testRuntime().module, { env, signals: false, onEvent: () => {} });
@@ -128,7 +108,7 @@ export const it = test.extend<{ unitApp: UnitApp; configured: ConfiguredApp }>({
       exitCodeFor: async (env, probesFromEnv = false) => {
         let code = -1;
         await runMain(
-          settingsApp().module,
+          settingsApp(),
           { env, signals: false, ...(probesFromEnv ? {} : { probes: false }), onEvent: () => {} },
           (c) => {
             code = c;

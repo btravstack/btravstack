@@ -31,7 +31,6 @@ import { Module, Provider } from "@btravstack/di";
 const databaseConfig = Config.provider("DatabaseConfig")(Config.object({
     url: Config.string("DATABASE_URL"),
     poolSize: Config.integer("DATABASE_POOL_SIZE", { min: 1, max: 64, default: 8 }),
-    ssl: Config.boolean("DATABASE_SSL", { default: true }),
   }),
 );
 
@@ -45,7 +44,7 @@ const Persistence = Module("Persistence")({
 ```
 
 `Config.provider("DatabaseConfig")(schema)` mints the port — its service is
-the schema's output, `{ url: string; poolSize: number; ssl: boolean }` — and
+the schema's output, `{ url: string; poolSize: number }` — and
 hands back the provider carrying it: `databaseConfig.port` is what a
 dependent lists in its deps. That is the shape for a slice that is one
 application's own. A slice that is public API — a starter's `HttpConfig`,
@@ -66,7 +65,6 @@ same way it discharges `Scope`. Anywhere else, provide it yourself:
 | `Config.string(VAR, { default? })`              | a non-empty string                                              |
 | `Config.integer(VAR, { min?, max?, default? })` | a whole number, bounds inclusive                                |
 | `Config.port(VAR, { default? })`                | a whole number in `0..65535` — `0` (an ephemeral bind) included |
-| `Config.boolean(VAR, { default? })`             | `true/false`, `1/0`, `yes/no`, `on/off`, case-insensitively     |
 
 Semantics that hold for every field, pinned by the package's own spec:
 
@@ -78,6 +76,11 @@ Semantics that hold for every field, pinned by the package's own spec:
 - `abc`, `3.5` and out-of-range values are named, not truncated or `NaN`'d.
 - Every field is read before answering, so one validation names every fault at
   once — an operator fixes the deployment in one round trip.
+
+`Config.pinned(value, field)` is `field` unless `value` is given — then a field
+that answers `value` and reads nothing. It is what a starter's options do to
+its own fields: explicit beats environment beats default, per field, so
+`http({ port: 0 })` still reads `HOST`.
 
 ## Any Standard Schema
 

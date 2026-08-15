@@ -128,7 +128,6 @@ await runMain(TickerApp, { unit: TickModule });
 
 class Settings extends Port("Settings")<{
   readonly port: number;
-  readonly verbose: boolean;
 }> {}
 
 const SettingsModule = Module("Settings")({
@@ -136,7 +135,6 @@ const SettingsModule = Module("Settings")({
     Config.provider(Settings)(
       Config.object({
         port: Config.port("PORT", { default: 3000 }),
-        verbose: Config.boolean("VERBOSE", { default: false }),
       }),
     ),
   ],

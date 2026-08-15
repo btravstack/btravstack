@@ -8,7 +8,6 @@ class Settings extends Port("ConfigFixtureSettings")<{
   readonly port: number;
   readonly host: string;
   readonly retries: number;
-  readonly verbose: boolean;
 }> {}
 
 class Named extends Port("ConfigFixtureNamed")<{ readonly name: string }> {}
@@ -18,7 +17,6 @@ export const settingsSchema = Config.object({
   port: Config.port("PORT", { default: 3000 }),
   host: Config.string("HOST", { default: "0.0.0.0" }),
   retries: Config.integer("RETRIES", { min: 0, max: 10, default: 3 }),
-  verbose: Config.boolean("VERBOSE", { default: false }),
 });
 
 /**
@@ -67,7 +65,6 @@ export type ConfigFixtures = {
       readonly port: number;
       readonly host: string;
       readonly retries: number;
-      readonly verbose: boolean;
     },
     ConfigInvalid
   >;

@@ -173,8 +173,9 @@ What the socket is bound with is `HttpConfig`, `{ port, hostname }` — a port
 `http()` provides from the environment and anything else in the graph may
 read. `port` and `hostname` **pin** a field instead of reading it — explicit
 beats environment beats default, **per field**, so `http({ router, port: 0 })`
-still reads `HOST`. Pin both and the module reads nothing: no `Env` need, no
-`ConfigInvalid`, which is what its overloads say.
+still reads `HOST`. A pinned field reads nothing from the environment; the
+declared `Env` need and `ConfigInvalid` stay whatever is pinned — the kernel
+discharges the one, and a pinned config never produces the other.
 
 | Variable | Default   |                                                                                                                               |
 | -------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- |

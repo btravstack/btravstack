@@ -438,7 +438,7 @@ Its own spec is `packages/config/CLAUDE.md`.
 undefined>>`), provided by `start` to every graph it boots the same way it
   discharges `Scope`, so `start` takes `Module<X, E, Scope | Env>` and nothing
   in an application reaches for `process.env`.
-- **`Config.string` / `integer` / `port` / `boolean` `(variable, { default?,
+- **`Config.string` / `integer` / `port` `(variable, { default?,
 min?, max? })`** — `ConfigField<T>`s (`{ variable, parse(raw) → Result<T,
 ConfigFieldInvalid> }`). **`Config.object({...})`** composes them into a
   Standard Schema over the environment (hand-rolled, so the package depends on
@@ -506,9 +506,9 @@ sugar** — `HttpModule(name)({ router, imports, provides, exports })`,
 `AmqpModule(name)({ contract, handlers, … })` — a `Module(name)({...})` that
 also takes the starter's own fields, appends the starter to `imports`,
 prepends the router/activities/handlers **provider** to `provides` and the
-runtime port to `exports`, and returns exactly the module `Module(...)` would
-have declared (spelled from di's exported typing pieces, inline — see
-`packages/di/CLAUDE.md`), so the kernel and both gates see nothing new; the
+runtime port to `exports`, and hands those tuples to di's own `Module(name)`
+— whose return type is the sugar's, spelled once (see
+`packages/di/CLAUDE.md`) — so the kernel and both gates see nothing new; the
 plain starter (`http({ router })`, …) stays exported as the primitive it
 delegates to. And each ships the **port-and-provider sugar** for what the
 application supplies — `HttpRouter(contract)(name)(deps, { sync })`,
@@ -516,8 +516,9 @@ application supplies — `HttpRouter(contract)(name)(deps, { sync })`,
 `AmqpHandlers(contract)(name)(deps, arm)`, and `Config.provider(name)(schema)` for a config slice — the first call minting the port (its service
 known from the contract or schema) and returning di's own `Provider(port)`, so
 the last call is `Provider(port)(deps, arm)` exactly as everywhere else and
-the provider carries its port typed (`provider.port` — di's `Provider(port)(…)`
-now returns `Provider<P, E, N> & { port: typeof port }`). **The contract types
+the provider carries its port typed (`provider.port`, a `PortClassOf<Name,
+Service>` — di's `Provider(port)(…)` now returns `Provider<P, E, N> & { port:
+typeof port }`). **The contract types
 the record, and nothing wraps a leaf**: an oRPC procedure, a Temporal activity
 and an AMQP handler are each a plain function typed by the contract at the
 call (`HttpRouter` does `implement`/`.result`/`os.router` itself; the
@@ -526,9 +527,11 @@ accepts a bare function), so an application never writes `implement`,
 `os.…`, `declareHandler` or `declareActivitiesHandler`. The class line and
 its service type are what disappear; the port stays a real di port. Two rules
 from di's CLAUDE.md apply to writing one: return a type spelled through the
-exported `PortInstance` (the class expression's own type is not nameable in
-declaration emit) and mint with `class extends Port(name)<Service> {}` so the
-duplicate-id warning still guards a name used twice. `http({ router })` binds
+exported `PortClassOf`/`PortInstance` (the class expression's own type is not
+nameable in declaration emit) and mint with `class extends Port(name)<Service>
+{}` so the duplicate-id warning still guards a name used twice. Pinning
+(`http({ port: 0 })`) is `Config.pinned(value, field)`, one helper for every
+starter. `http({ router })` binds
 `PORT`/`HOST` onto `HttpConfig`, mounts the application's **router port** —
 an oRPC router as a provider that declares the use cases its procedures call
 — on Hono under `prefix`, and provides `HttpRuntime`; **oRPC on Hono is the

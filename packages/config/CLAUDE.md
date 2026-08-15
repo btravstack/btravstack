@@ -13,13 +13,18 @@ the code and `README.md` in the same commit — the package ships no
   duplicate-id warning never fires. Whoever boots a graph provides it — the
   kernel does for every `start`; a bare `Module.scoped` needs
   `Provider(Env)({ value })`, which is what this package's own fixtures do.
-- **`Config.string` / `integer` / `port` / `boolean`** — `ConfigField<T>`
+- **`Config.string` / `integer` / `port`** — `ConfigField<T>`
   factories over one variable: `{ variable, parse(raw: string | undefined) →
 Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   fixes the shared semantics (unset → default or `is required`; trimmed empty →
   `is set but empty`; otherwise the field's own `read`), so "empty is an
   error, never a default" is decided in one place. `integer`/`port` share
   `integerIn(min, max)`: `Number()` + `Number.isInteger` + inclusive bounds.
+- **`Config.pinned(value, field)`** — `field` unless `value` is given, then a
+  field answering `value` that reads nothing (same `variable`, `parse: () =>
+Ok(value)`). What a starter's options do to its own fields — explicit beats
+  environment beats default, **per field** — declared once here rather than
+  as a local helper in each starter (`http` and `temporal` had one apiece).
 - **`Config.object(fields)`** — a hand-rolled Standard Schema v1
   (`~standard: { version: 1, vendor: "btravstack", validate }`) over
   `Environment`, typed `ConfigSchema<Environment, { [K]: T }>`. `validate` is
@@ -35,10 +40,10 @@ Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   `Err(new ConfigInvalid({ port: port.portId, issues }))`. The **name** form
   mints the port (`class extends Port(name)<Output> {}`, service = the
   schema's output) and returns `Provider<PortInstance<Name, Output>,
-ConfigInvalid, Env> & { readonly port: ConfigPort<Name, Output> }` —
-  `ConfigPort` is the nameable spelling of that class (`{ portId: Name; new
-(): PortInstance<Name, Output> }`, through di's exported `PortInstance`),
-  because the class expression's own type expands the brand keys in
+ConfigInvalid, Env> & { readonly port: PortClassOf<Name, Output> }` — di's
+  `PortClassOf` is the nameable spelling of that class (`{ portId: Name; new
+(): PortInstance<Name, Output> }`; the same type every starter's minted port
+  uses), because the class expression's own type expands the brand keys in
   declaration emit. The **class** form returns `Provider<InstanceType<P>,
 ConfigInvalid, Env> & { readonly port: P }` (di's own `Provider(port)`
   return). The implementation signature returns `unknown`: no one type is
@@ -61,10 +66,10 @@ ConfigInvalid, Env> & { readonly port: P }` (di's own `Provider(port)`
 
 ## Tests
 
-`config.spec.ts` (14 specs): `Config.object`'s semantics (defaults, parsed
+`config.spec.ts` (15 specs): `Config.object`'s semantics (defaults, parsed
 values, `PORT=0`, empty, blank ×2 + malformed named in one validation, `3.5`,
-bounds, boolean spellings, a required field, a defecting field),
-`ConfigInvalid.message`, and `Config.provider` end to end through a real
+bounds, a required field, a defecting field), `Config.pinned` (the pin over
+the environment, the field otherwise), `ConfigInvalid.message`, and `Config.provider` end to end through a real
 `Module.scoped` graph with `Env` provided as a value (`bound`, `boundThrough`
 fixtures in `src/test-fixtures.ts`) — including an async third-party
 Standard Schema. Coverage 100% lines/functions. The kernel-facing half — the

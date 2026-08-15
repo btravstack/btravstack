@@ -3,15 +3,9 @@ import {
   Module,
   type AnyModule,
   type AnyProvider,
-  type Available,
-  type ErrOf,
-  type ErrOfModule,
   type Exportable,
-  type NeedOf,
-  type NeedsOfModule,
+  type PortInstance,
   type Provider,
-  type ResolvedExports,
-  type ServiceOf,
 } from "@btravstack/di";
 import type { Router } from "@orpc/server";
 
@@ -24,28 +18,36 @@ type HttpStarter<RouterInstance> = Module<
   Env | RouterInstance
 >;
 
-/**
- * `unknown` when the provider's port carries a router `RPCHandler` can serve
- * with no initial context, `never` otherwise — intersected with the provider
- * at the call site, so a provider of anything else fails to typecheck there.
- */
-type RouterProvider<RouterInstance> =
-  ServiceOf<RouterInstance> extends Router<Record<never, never>> ? unknown : never;
+/** The application's imports plus the starter — the tuple `Module(name)` is handed. */
+type Imports<I extends readonly AnyModule[], RouterInstance> = readonly [
+  ...I,
+  HttpStarter<RouterInstance>,
+];
+
+/** The router provider plus the application's own — the tuple `Module(name)` is handed. */
+type Provides<
+  P extends readonly AnyProvider[],
+  RouterInstance,
+  RouterError,
+  RouterNeeds,
+> = readonly [Provider<RouterInstance, RouterError, RouterNeeds>, ...P];
+
+/** A router port's instance: its service is a context-free oRPC router — the one shape `http()` serves. */
+type AnyRouterInstance = PortInstance<string, Router<Record<never, never>>>;
 
 export type HttpModuleOptions<
-  RouterInstance,
+  RouterInstance extends AnyRouterInstance,
   RouterError,
   RouterNeeds,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<
-    [...I, HttpStarter<RouterInstance>],
-    [Provider<RouterInstance, RouterError, RouterNeeds>, ...P]
+    Imports<I, RouterInstance>,
+    Provides<P, RouterInstance, RouterError, RouterNeeds>
   >[],
 > = {
   /** The application's oRPC router, as the provider that builds it from the services its procedures call. */
-  readonly router: Provider<RouterInstance, RouterError, RouterNeeds> &
-    RouterProvider<RouterInstance>;
+  readonly router: Provider<RouterInstance, RouterError, RouterNeeds>;
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
   readonly prefix?: `/${string}`;
   /** Pins for a test — otherwise `PORT`/`HOST` from the environment. */
@@ -80,31 +82,22 @@ export type HttpModuleOptions<
 export const HttpModule =
   <const Name extends string>(name: Name) =>
   <
-    RouterInstance,
+    RouterInstance extends AnyRouterInstance,
     RouterError,
     RouterNeeds,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<
-      [...I, HttpStarter<RouterInstance>],
-      [Provider<RouterInstance, RouterError, RouterNeeds>, ...P]
+      Imports<I, RouterInstance>,
+      Provides<P, RouterInstance, RouterError, RouterNeeds>
     >[] = [],
   >(
     options: HttpModuleOptions<RouterInstance, RouterError, RouterNeeds, I, P, X>,
-  ): Module<
-    ResolvedExports<[typeof HttpRuntime, ...X]>,
-    | ErrOf<[Provider<RouterInstance, RouterError, RouterNeeds>, ...P][number]>
-    | ErrOfModule<[...I, HttpStarter<RouterInstance>][number]>,
-    Exclude<
-      | NeedOf<[Provider<RouterInstance, RouterError, RouterNeeds>, ...P][number]>
-      | NeedsOfModule<[...I, HttpStarter<RouterInstance>][number]>,
-      Available<
-        [...I, HttpStarter<RouterInstance>],
-        [Provider<RouterInstance, RouterError, RouterNeeds>, ...P]
-      >
-    >
-  > => {
-    const { router, prefix, port, hostname, imports = [], provides = [], exports = [] } = options;
+  ) => {
+    const { router, prefix, port, hostname } = options;
+    const imports = (options.imports ?? []) as I;
+    const provides = (options.provides ?? []) as P;
+    const exports = (options.exports ?? []) as X;
     // `router.port` is the port class the provider targets — `AnyPort` at
     // this level; the constraint that its service is a context-free router
     // was checked on the provider's instance type above, so `http()`'s
@@ -115,12 +108,11 @@ export const HttpModule =
       ...(port === undefined ? {} : { port }),
       ...(hostname === undefined ? {} : { hostname }),
     });
-    // The typing above is the whole contract; the value is the plain module
-    // it describes. `never` because di computes the declared type from the
-    // literal it is handed, and generic `I`/`P`/`X` are not one.
+    // di's own `Module(name)({...})` over the augmented tuples: its return
+    // type IS the sugar's — nothing spelled twice.
     return Module(name)({
-      imports: [...imports, starter],
-      provides: [router, ...provides],
-      exports: [HttpRuntime, ...exports],
-    } as never) as never;
+      imports: [...imports, starter as HttpStarter<RouterInstance>] as Imports<I, RouterInstance>,
+      provides: [router, ...provides] as Provides<P, RouterInstance, RouterError, RouterNeeds>,
+      exports: [HttpRuntime, ...exports] as readonly [typeof HttpRuntime, ...X],
+    });
   };

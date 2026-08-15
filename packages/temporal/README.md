@@ -97,8 +97,9 @@ works. Everything below is the primitive both delegate to; reach for
   `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`) and `TEMPORAL_NAMESPACE`
   (default `default`) in the kernel's `Env`. `address` / `namespace` in the
   options **pin** a field instead of reading it — explicit beats environment
-  beats default, per field; pin both and the module reads nothing (no `Env`
-  need, no `ConfigInvalid`, which is what the overloads say). A blank variable
+  beats default, per field; a pinned field reads nothing from the environment
+  (the declared `Env` need and `ConfigInvalid` stay whatever is pinned — the
+  kernel discharges the one, a pinned config never produces the other). A blank variable
   is a `ConfigInvalid`, exit `78` under `runMain`, never a silent default.
 - **`TemporalConnection`** — the `NativeConnection`, a **resource** of the
   graph: opened with the scope, closed on every exit path, startup failure

@@ -12,36 +12,36 @@ with the code in the same commit, and with `README.md` — the package ships no
 namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })`** —
   THE way an application writes its worker root; `temporal-module.ts`, the
   same shape as `@btravstack/http`'s `HttpModule`. `activities` is the
-  **provider** of the activities port (`Provider<AI, AE, AN> &
-ActivitiesProvider<AI, C>` — the `temporal()` constraint restated on the
-  instance type, so a provider of anything but the implementations record for
-  `contract` fails there). It delegates to `temporal({ contract, activities:
-activities.port as never, workflows, … })` and returns `Module(name)({
-imports: [...imports, starter], provides: [activities, ...provides], exports:
-[TemporalRuntime, ...exports] })`, **typed as exactly what `Module(...)` would
-  declare** over those lists — spelled inline from di's exported pieces
-  (`ResolvedExports` / `ErrOf` / `ErrOfModule` / `NeedOf` / `NeedsOfModule` /
-  `Available` / `Exportable`), never through a named alias (TS keeps a generic
-  alias unreduced in declaration emit and TS2883 follows). The starter's type
-  in that spelling is always the env-reading overload
-  (`Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | AI>`),
-  pins or not — `Env` is discharged by `start` anyway. `TemporalModuleOptions`
+  **provider** of the activities port — a plain `Provider<ActivitiesInstance,
+ActivitiesError, ActivitiesNeeds>` whose instance is constrained on the type
+  parameter (`ActivitiesInstance extends PortInstance<string,
+ActivitiesOf<C>>`), so a provider of anything but the implementations record
+  for `contract` fails there. It delegates to `temporal({ contract,
+activities: activities.port as never, workflows, … })` and hands the augmented
+  tuples — `Imports<I, ActivitiesInstance>` / `Provides<P, ActivitiesInstance,
+ActivitiesError, ActivitiesNeeds>`, readonly and exact — to di's own
+  `Module(name)({...})`, whose return type IS the sugar's: nothing spelled
+  twice (di exports `AnyModule`, `AnyProvider`, `Exportable` for the tuple
+  constraints; a named generic alias for the return was tried and removed,
+  TS2883). The starter's type in that tuple is always `Module<Provided,
+ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstance>`, pins
+  or not — `Env` is discharged by `start` anyway. `TemporalModuleOptions`
   is exported for the type. Covered by `test-fixtures.ts`'s `boot`, which is
   written with it. `temporal()` stays exported as the primitive it delegates
   to.
 - **`TemporalActivities(contract)(name)` → `ReturnType<typeof
-Provider<ActivitiesPortClass<Name, C>>>`** — the activities' port and
+Provider<PortClassOf<Name, ActivitiesOf<C>>>>`** — the activities' port and
   provider in one call, `temporal-module.ts`, the same shape as
   `@btravstack/http`'s `HttpRouter(name)`. The first call fixes `C` (the
   contract value is otherwise unused; it exists so `C` is inferred rather than
   written), the second mints `class extends Port(name)<ActivitiesOf<C>> {}`
   and returns di's own `Provider(port)` builder, so the third call is di's
   `(deps, arm)` unchanged and the provider it returns carries the port typed
-  (`orderActivities.port`). The return type is spelled explicitly through
-  di's exported `PortInstance` — the class expression's own type expands the
-  brand keys in declaration emit and cannot be named (TS4023) — and the class
-  is cast to **`ActivitiesPortClass<Name, C>`** (`{ portId: Name; new ():
-PortInstance<Name, ActivitiesOf<C>> }`), exported for the type. This is the
+  (`orderActivities.port`). The class is cast to di's **`PortClassOf<Name,
+ActivitiesOf<C>>`** (`{ portId: Name; new (): PortInstance<Name,
+ActivitiesOf<C>> }`, the one nameable spelling of a minted port class) because
+  the class expression's own type expands the brand keys in declaration emit
+  and cannot be named (TS4023). This is the
   way an application declares its activities; a hand-declared port class plus
   `Provider(port)` remains possible. `test-fixtures.ts` mints `EchoActivities`
   with it and builds all four fixture providers off the one builder, and
@@ -61,9 +61,11 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   `TemporalOptions<C, A>`: `contract` (a `temporal-contract` contract; the task
   queue is read off it), `activities` (a **port**, see below), `workflows` (a
   `WorkflowSource`: `{ workflowsPath }` or `{ workflowBundle }`), `address?` /
-  `namespace?` (**pins** — explicit > env > default, per field, the same
-  `pinned` helper as http; both pinned and the overload returns
-  `Module<…, TemporalUnreachable, Scope | InstanceType<A>>` and reads nothing),
+  `namespace?` (**pins** — explicit > env > default, per field, through
+  `Config.pinned(value, field)`; a pinned field reads nothing from the
+  environment, and the declared `Env` need and `ConfigInvalid` stay whatever is
+  pinned — one signature, no overload pair: the kernel discharges the one, a
+  pinned config never produces the other),
   `forceAfter` (Temporal's `shutdownForceTime`, default `15 seconds`) and
   `gracePeriod` (`shutdownGraceTime`, default `10 seconds`). `TemporalInfo` is
   `{ taskQueue, namespace }`, published on `Serving.info` once polling. The

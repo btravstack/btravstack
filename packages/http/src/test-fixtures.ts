@@ -143,7 +143,7 @@ const slowUnitOf = (): SlowUnit => {
   };
 };
 
-type App = RunningApp<never, HttpInfo>;
+type App = RunningApp<ConfigInvalid, HttpInfo>;
 
 const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));

@@ -5,16 +5,10 @@ import {
   Provider,
   type AnyModule,
   type AnyProvider,
-  type Available,
-  type ErrOf,
-  type ErrOfModule,
   type Exportable,
-  type NeedOf,
-  type NeedsOfModule,
+  type PortClassOf,
   type PortInstance,
-  type ResolvedExports,
   type Scope,
-  type ServiceOf,
 } from "@btravstack/di";
 import type { ContractDefinition } from "@temporal-contract/contract";
 import type { Duration } from "@temporalio/common";
@@ -36,32 +30,36 @@ type TemporalStarter<ActivitiesInstance> = Module<
   Env | Scope | ActivitiesInstance
 >;
 
-/**
- * `unknown` when the provider's port carries the implementations record
- * `declareActivitiesHandler` takes for `C`, `never` otherwise — intersected
- * with the provider at the call site, so a provider of anything else fails to
- * typecheck there.
- */
-type ActivitiesProvider<ActivitiesInstance, C extends ContractDefinition> =
-  ServiceOf<ActivitiesInstance> extends ActivitiesOf<C> ? unknown : never;
+/** The application's imports plus the starter — the tuple `Module(name)` is handed. */
+type Imports<I extends readonly AnyModule[], ActivitiesInstance> = readonly [
+  ...I,
+  TemporalStarter<ActivitiesInstance>,
+];
+
+/** The activities provider plus the application's own — the tuple `Module(name)` is handed. */
+type Provides<
+  P extends readonly AnyProvider[],
+  ActivitiesInstance,
+  ActivitiesError,
+  ActivitiesNeeds,
+> = readonly [Provider<ActivitiesInstance, ActivitiesError, ActivitiesNeeds>, ...P];
 
 export type TemporalModuleOptions<
   C extends ContractDefinition,
-  ActivitiesInstance,
+  ActivitiesInstance extends PortInstance<string, ActivitiesOf<C>>,
   ActivitiesError,
   ActivitiesNeeds,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<
-    [...I, TemporalStarter<ActivitiesInstance>],
-    [Provider<ActivitiesInstance, ActivitiesError, ActivitiesNeeds>, ...P]
+    Imports<I, ActivitiesInstance>,
+    Provides<P, ActivitiesInstance, ActivitiesError, ActivitiesNeeds>
   >[],
 > = {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
   /** The application's activity implementations, as the provider that builds the record from the services they close over. */
-  readonly activities: Provider<ActivitiesInstance, ActivitiesError, ActivitiesNeeds> &
-    ActivitiesProvider<ActivitiesInstance, C>;
+  readonly activities: Provider<ActivitiesInstance, ActivitiesError, ActivitiesNeeds>;
   readonly workflows: WorkflowSource;
   /** Pins `TemporalConfig.address` instead of reading `TEMPORAL_ADDRESS`. */
   readonly address?: string;
@@ -103,14 +101,14 @@ export const TemporalModule =
   <const Name extends string>(name: Name) =>
   <
     C extends ContractDefinition,
-    ActivitiesInstance,
+    ActivitiesInstance extends PortInstance<string, ActivitiesOf<C>>,
     ActivitiesError,
     ActivitiesNeeds,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<
-      [...I, TemporalStarter<ActivitiesInstance>],
-      [Provider<ActivitiesInstance, ActivitiesError, ActivitiesNeeds>, ...P]
+      Imports<I, ActivitiesInstance>,
+      Provides<P, ActivitiesInstance, ActivitiesError, ActivitiesNeeds>
     >[] = [],
   >(
     options: TemporalModuleOptions<
@@ -122,31 +120,12 @@ export const TemporalModule =
       P,
       X
     >,
-  ): Module<
-    ResolvedExports<[typeof TemporalRuntime, ...X]>,
-    | ErrOf<[Provider<ActivitiesInstance, ActivitiesError, ActivitiesNeeds>, ...P][number]>
-    | ErrOfModule<[...I, TemporalStarter<ActivitiesInstance>][number]>,
-    Exclude<
-      | NeedOf<[Provider<ActivitiesInstance, ActivitiesError, ActivitiesNeeds>, ...P][number]>
-      | NeedsOfModule<[...I, TemporalStarter<ActivitiesInstance>][number]>,
-      Available<
-        [...I, TemporalStarter<ActivitiesInstance>],
-        [Provider<ActivitiesInstance, ActivitiesError, ActivitiesNeeds>, ...P]
-      >
-    >
-  > => {
-    const {
-      contract,
-      activities,
-      workflows,
-      address,
-      namespace,
-      gracePeriod,
-      forceAfter,
-      imports = [],
-      provides = [],
-      exports = [],
-    } = options;
+  ) => {
+    const { contract, activities, workflows, address, namespace, gracePeriod, forceAfter } =
+      options;
+    const imports = (options.imports ?? []) as I;
+    const provides = (options.provides ?? []) as P;
+    const exports = (options.exports ?? []) as X;
     // `activities.port` is the port class the provider targets — `AnyPort` at
     // this level; the constraint that its service is the implementations record
     // was checked on the provider's instance type above, so `temporal()`'s
@@ -160,14 +139,21 @@ export const TemporalModule =
       ...(gracePeriod === undefined ? {} : { gracePeriod }),
       ...(forceAfter === undefined ? {} : { forceAfter }),
     });
-    // The typing above is the whole contract; the value is the plain module
-    // it describes. `never` because di computes the declared type from the
-    // literal it is handed, and generic `I`/`P`/`X` are not one.
+    // di's own `Module(name)({...})` over the augmented tuples: its return
+    // type IS the sugar's — nothing spelled twice.
     return Module(name)({
-      imports: [...imports, starter],
-      provides: [activities, ...provides],
-      exports: [TemporalRuntime, ...exports],
-    } as never) as never;
+      imports: [...imports, starter as TemporalStarter<ActivitiesInstance>] as Imports<
+        I,
+        ActivitiesInstance
+      >,
+      provides: [activities, ...provides] as Provides<
+        P,
+        ActivitiesInstance,
+        ActivitiesError,
+        ActivitiesNeeds
+      >,
+      exports: [TemporalRuntime, ...exports] as readonly [typeof TemporalRuntime, ...X],
+    });
   };
 
 /**
@@ -186,15 +172,7 @@ export const TemporalActivities =
   <C extends ContractDefinition>(_contract: C) =>
   <const Name extends string>(
     name: Name,
-  ): ReturnType<typeof Provider<ActivitiesPortClass<Name, C>>> =>
-    // The class expression's own type expands the port's brand keys in
-    // declaration emit and cannot be named by a consumer; `ActivitiesPortClass`
-    // spells the same class through the exported `PortInstance`, and is what
-    // the returned provider's `.port` is typed as.
-    Provider(class extends Port(name)<ActivitiesOf<C>> {} as ActivitiesPortClass<Name, C>);
+  ): ReturnType<typeof Provider<PortClassOf<Name, ActivitiesOf<C>>>> =>
+    Provider(class extends Port(name)<ActivitiesOf<C>> {} as PortClassOf<Name, ActivitiesOf<C>>);
 
 /** The port `TemporalActivities(contract)(name)` mints: id `Name`, service the implementations record for `C`. */
-export type ActivitiesPortClass<Name extends string, C extends ContractDefinition> = {
-  readonly portId: Name;
-  new (): PortInstance<Name, ActivitiesOf<C>>;
-};

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 
-import { Config, type ConfigField, type ConfigInvalid, type Env } from "@btravstack/config";
+import { Config, type ConfigInvalid, type Env } from "@btravstack/config";
 import {
   RuntimePort,
   RuntimeStartFailed,
@@ -59,41 +59,29 @@ const httpRuntime = (
   start: (host) => listen(host, config, handler),
 });
 
-// Explicit beats environment beats default, per field: `http({ port: 0 })`
-// still reads `HOST` from the environment.
-const pinned = <T>(value: T | undefined, fromEnv: ConfigField<T>): ConfigField<T> =>
-  value === undefined ? fromEnv : { variable: fromEnv.variable, parse: () => Ok(value) };
-
 /**
  * The runtime and its configuration as a module, over whichever `HttpHandler`
  * provider it is handed: `http()` hands it the oRPC one; the package's own
  * transport specs hand it a bare listener. INTERNAL for that second reason
  * only.
  *
- * With every field pinned the module reads nothing — no `Env` need, no
- * `ConfigInvalid` — which is what `http`'s overloads say; pin only some and the
- * rest still comes from the environment.
+ * With every field pinned the module reads nothing from the environment; the
+ * declared `Env` need and `ConfigInvalid` stay (the kernel discharges the
+ * one, a pinned config never produces the other) — one signature, no
+ * overload pair to keep in step.
  */
-export function httpModule<N>(
-  options: { readonly port: number; readonly hostname: string },
-  handler: Provider<HttpHandler, never, N>,
-): Module<HttpRuntime | HttpConfig, never, N>;
-export function httpModule<N>(
+export const httpModule = <N>(
   options: { readonly port?: number; readonly hostname?: string },
   handler: Provider<HttpHandler, never, N>,
-): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
-export function httpModule<N>(
-  options: { readonly port?: number; readonly hostname?: string },
-  handler: Provider<HttpHandler, never, N>,
-): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N> {
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N> => {
   const { port, hostname } = options;
   const config =
     port !== undefined && hostname !== undefined
       ? Provider(HttpConfig)({ value: { port, hostname } })
       : Config.provider(HttpConfig)(
           Config.object({
-            port: pinned(port, Config.port("PORT", { default: 3000 })),
-            hostname: pinned(hostname, Config.string("HOST", { default: "0.0.0.0" })),
+            port: Config.pinned(port, Config.port("PORT", { default: 3000 })),
+            hostname: Config.pinned(hostname, Config.string("HOST", { default: "0.0.0.0" })),
           }),
         );
   return Module("Http")({
@@ -104,7 +92,7 @@ export function httpModule<N>(
     ],
     exports: [HttpRuntime, HttpConfig],
   }) as unknown as Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
-}
+};
 
 /**
  * The HTTP starter, and the one way HTTP is answered here: oRPC on Hono. A
@@ -116,24 +104,19 @@ export function httpModule<N>(
  * the application, export `HttpRuntime`, and that is the whole of the
  * transport wiring: no handler, no `needs`, no context handed to a procedure.
  *
- * With `port` and `hostname` both pinned the module reads nothing from the
- * environment — no `Env` need, no `ConfigInvalid` — which is what the
- * overloads say; pin only some and the rest still comes from the environment.
- * A port whose service is not an oRPC router `RPCHandler` can serve with no
- * initial context fails to typecheck at the call.
+ * Pin `port`/`hostname` and the module reads nothing from the environment
+ * (the declared `Env` need and `ConfigInvalid` stay — the kernel discharges
+ * the one, a pinned config never produces the other); pin only some and the
+ * rest still comes from the environment. A port whose service is not an oRPC
+ * router `RPCHandler` can serve with no initial context fails to typecheck at
+ * the call.
  */
-export function http<R extends AnyPort>(
-  options: HttpOptions<R> & { readonly port: number; readonly hostname: string },
-): Module<HttpRuntime | HttpConfig, never, InstanceType<R>>;
-export function http<R extends AnyPort>(
+export const http = <R extends AnyPort>(
   options: HttpOptions<R>,
-): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<R>>;
-export function http<R extends AnyPort>(
-  options: HttpOptions<R>,
-): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<R>> {
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<R>> => {
   const { router, prefix, ...socket } = options;
   return httpModule(socket, orpc(router, prefix === undefined ? {} : { prefix }));
-}
+};
 
 const listen = (
   host: RuntimeHost<never>,

@@ -4,15 +4,9 @@ import {
   Module,
   type AnyModule,
   type AnyProvider,
-  type Available,
-  type ErrOf,
-  type ErrOfModule,
   type Exportable,
-  type NeedOf,
-  type NeedsOfModule,
+  type PortInstance,
   type Provider,
-  type ResolvedExports,
-  type ServiceOf,
 } from "@btravstack/di";
 
 import { AmqpRuntime, amqp, type AmqpConfig, type AnyAmqpContract } from "./amqp-runtime.js";
@@ -24,32 +18,35 @@ type AmqpStarter<HandlersInstance> = Module<
   Env | HandlersInstance
 >;
 
-/**
- * `unknown` when the provider's port carries the handlers record `TContract`
- * wants with no injected context, `never` otherwise — intersected with the
- * provider at the call site, so a provider of anything else fails to
- * typecheck there. The same check `amqp()` makes on the port class, made on
- * the provider's instance type.
- */
-type HandlersProvider<HandlersInstance, TContract extends AnyAmqpContract> =
-  ServiceOf<HandlersInstance> extends WorkerInferHandlers<TContract> ? unknown : never;
+/** The application's imports plus the starter — the tuple `Module(name)` is handed. */
+type Imports<I extends readonly AnyModule[], HandlersInstance> = readonly [
+  ...I,
+  AmqpStarter<HandlersInstance>,
+];
+
+/** The handlers provider plus the application's own — the tuple `Module(name)` is handed. */
+type Provides<
+  P extends readonly AnyProvider[],
+  HandlersInstance,
+  HandlersError,
+  HandlersNeeds,
+> = readonly [Provider<HandlersInstance, HandlersError, HandlersNeeds>, ...P];
 
 export type AmqpModuleOptions<
   TContract extends AnyAmqpContract,
-  HandlersInstance,
+  HandlersInstance extends PortInstance<string, WorkerInferHandlers<TContract>>,
   HandlersError,
   HandlersNeeds,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<
-    [...I, AmqpStarter<HandlersInstance>],
-    [Provider<HandlersInstance, HandlersError, HandlersNeeds>, ...P]
+    Imports<I, HandlersInstance>,
+    Provides<P, HandlersInstance, HandlersError, HandlersNeeds>
   >[],
 > = {
   readonly contract: TContract;
   /** The application's handlers — one per `consumers` / `rpcs` key of `contract` — as the provider that builds them from the services they call. */
-  readonly handlers: Provider<HandlersInstance, HandlersError, HandlersNeeds> &
-    HandlersProvider<HandlersInstance, TContract>;
+  readonly handlers: Provider<HandlersInstance, HandlersError, HandlersNeeds>;
   /** Pins the broker instead of reading `AMQP_URL` — a test's container. */
   readonly url?: string;
   readonly connectionOptions?: Record<string, unknown>;
@@ -87,41 +84,23 @@ export const AmqpModule =
   <const Name extends string>(name: Name) =>
   <
     TContract extends AnyAmqpContract,
-    HandlersInstance,
+    HandlersInstance extends PortInstance<string, WorkerInferHandlers<TContract>>,
     HandlersError,
     HandlersNeeds,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<
-      [...I, AmqpStarter<HandlersInstance>],
-      [Provider<HandlersInstance, HandlersError, HandlersNeeds>, ...P]
+      Imports<I, HandlersInstance>,
+      Provides<P, HandlersInstance, HandlersError, HandlersNeeds>
     >[] = [],
   >(
     options: AmqpModuleOptions<TContract, HandlersInstance, HandlersError, HandlersNeeds, I, P, X>,
-  ): Module<
-    ResolvedExports<[typeof AmqpRuntime, ...X]>,
-    | ErrOf<[Provider<HandlersInstance, HandlersError, HandlersNeeds>, ...P][number]>
-    | ErrOfModule<[...I, AmqpStarter<HandlersInstance>][number]>,
-    Exclude<
-      | NeedOf<[Provider<HandlersInstance, HandlersError, HandlersNeeds>, ...P][number]>
-      | NeedsOfModule<[...I, AmqpStarter<HandlersInstance>][number]>,
-      Available<
-        [...I, AmqpStarter<HandlersInstance>],
-        [Provider<HandlersInstance, HandlersError, HandlersNeeds>, ...P]
-      >
-    >
-  > => {
-    const {
-      contract,
-      handlers,
-      url,
-      connectionOptions,
-      defaultConsumerOptions,
-      connectTimeoutMs,
-      imports = [],
-      provides = [],
-      exports = [],
-    } = options;
+  ) => {
+    const { contract, handlers, url, connectionOptions, defaultConsumerOptions, connectTimeoutMs } =
+      options;
+    const imports = (options.imports ?? []) as I;
+    const provides = (options.provides ?? []) as P;
+    const exports = (options.exports ?? []) as X;
     // `handlers.port` is the port class the provider targets — `AnyPort` at
     // this level; the constraint that its service is the contract's handlers
     // was checked on the provider's instance type above, so `amqp()`'s
@@ -134,12 +113,19 @@ export const AmqpModule =
       ...(defaultConsumerOptions === undefined ? {} : { defaultConsumerOptions }),
       ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
     });
-    // The typing above is the whole contract; the value is the plain module
-    // it describes. `never` because di computes the declared type from the
-    // literal it is handed, and generic `I`/`P`/`X` are not one.
+    // di's own `Module(name)({...})` over the augmented tuples: its return
+    // type IS the sugar's — nothing spelled twice.
     return Module(name)({
-      imports: [...imports, starter],
-      provides: [handlers, ...provides],
-      exports: [AmqpRuntime, ...exports],
-    } as never) as never;
+      imports: [...imports, starter as AmqpStarter<HandlersInstance>] as Imports<
+        I,
+        HandlersInstance
+      >,
+      provides: [handlers, ...provides] as Provides<
+        P,
+        HandlersInstance,
+        HandlersError,
+        HandlersNeeds
+      >,
+      exports: [AmqpRuntime, ...exports] as readonly [typeof AmqpRuntime, ...X],
+    });
   };

@@ -122,7 +122,7 @@ Beyond the nine:
 - **Configuration is bound once, names every fault at once, and never
   defaults a set-but-empty variable.** `config.spec.ts` guards `Config.object`'s
   semantics (defaults, parsed values, `PORT=0`, empty, blank ×2 + malformed in
-  one validation, `3.5`, bounds, boolean spellings, a required field, a
+  one validation, `3.5`, bounds, a required field, a
   defecting field reported against its variable) and `ConfigInvalid.message`;
   `Config.provider` end to end (_"binds the port from the environment the
   kernel provides"_ — the fixture's `Witness` provider captures what di
