@@ -58,7 +58,7 @@ one TCP connection, and `close()` releases a lease rather than the socket.
 
 ## Where the relay lives
 
-`orderAmqpRuntime` layers the relay onto the runtime `@btravstack/amqp` hands back:
+`amqpModule`'s runtime provider layers the relay onto the runtime `@btravstack/amqp` hands back:
 started after the consumer, stopped before it, so a relay that cannot reach
 the broker fails startup the way a consumer that cannot would. `drain` stays
 the consumer's alone — draining means "stop taking new work", and the relay's
@@ -67,7 +67,7 @@ than abandoned to the next boot.
 
 The runtime is a service the composition root provides: `amqpModule` binds
 `AmqpConfig` from the environment (`AMQP_URL`, `OUTBOX_POLL_MS`) with the
-kernel's `Config.provider`, builds `orderAmqpRuntime` from it and puts that on
+`Config.provider`, builds the runtime from it — inline, in the provider — and puts that on
 the `OrderAmqpRuntime` port — declared here, over the kernel's `RuntimePort`,
 because `@btravstack/amqp` ships no port of its own (a consumer's `needs` are
 the application's, so the port carrying them is the application's to declare)

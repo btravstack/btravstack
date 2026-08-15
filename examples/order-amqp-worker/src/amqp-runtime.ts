@@ -12,7 +12,7 @@ import { orderContract, type OrderContract } from "@btravstack/example-order-amq
 import { Logger, Outbox } from "@btravstack/example-order-application";
 import { OkAsync } from "unthrown";
 
-import { startOutboxRelay, type RelayOptions } from "./outbox-relay.js";
+import { startOutboxRelay } from "./outbox-relay.js";
 
 /**
  * The ports this runtime resolves out of the application context: `Outbox`
@@ -46,43 +46,13 @@ export class AmqpConfig extends Port("AmqpConfig")<{
   readonly outboxPollMs: number;
 }> {}
 
-/** What `orderAmqpRuntime` is built from: the broker, and the relay's own knobs. */
-export type OrderAmqpOptions = {
-  /** The broker URLs the worker and the relay both connect to. */
-  readonly urls: readonly string[];
-  /** The relay's own knobs. */
-  readonly relay: Pick<RelayOptions, "pollMs">;
-};
-
 /**
- * The runtime as a module — `AmqpConfig` bound from the environment,
- * `orderAmqpRuntime` built from it and provided on `OrderAmqpRuntime`, the
- * way `@btravstack/http`'s `http()` provides `HttpRuntime`. The composition
- * root imports it and exports the port, and `start` finds it.
- *
- * `OUTBOX_POLL_MS=0` is rejected here — a relay that never sleeps is a busy
- * loop — and so is anything above a minute, which is a typo, not a policy.
- */
-export const amqpModule = Module("Amqp")({
-  provides: [
-    Config.provider(
-      AmqpConfig,
-      Config.object({
-        url: Config.string("AMQP_URL", { default: "amqp://127.0.0.1:5672" }),
-        outboxPollMs: Config.integer("OUTBOX_POLL_MS", { min: 1, max: 60_000, default: 200 }),
-      }),
-    ),
-    Provider(OrderAmqpRuntime)([AmqpConfig], {
-      sync: (config) =>
-        orderAmqpRuntime({ urls: [config.url], relay: { pollMs: config.outboxPollMs } }),
-    }),
-  ],
-  exports: [OrderAmqpRuntime],
-});
-
-/**
- * A `Runtime` broadcasting the order application's facts over AMQP — both
- * halves of the outbox pattern in one process.
+ * The runtime as a module — `AmqpConfig` bound from the environment, and a
+ * `Runtime` built from it on `OrderAmqpRuntime`, the way `@btravstack/http`'s
+ * `http()` provides `HttpRuntime`. The composition root imports it and exports
+ * the port, and `start` finds it. The runtime broadcasts the order
+ * application's facts over AMQP — both halves of the outbox pattern in one
+ * process.
  *
  * The consuming half is `@btravstack/amqp`'s runtime, unchanged: the
  * `order-notifications` queue, a unit per delivery, the kernel's drain. The
@@ -103,33 +73,47 @@ export const amqpModule = Module("Amqp")({
  * test to its own task queue. Here the specs get their isolation from a
  * per-test vhost in the URL, so nothing varies and the parameter would be
  * ceremony.)
- */
-export const orderAmqpRuntime = ({
-  relay,
-  ...transport
-}: OrderAmqpOptions): Runtime<AmqpNeeds, AmqpInfo> => {
-  const consumer = amqpRuntime({
-    ...transport,
-    contract: orderContract,
-    needs: [Outbox, Logger],
-    handlers: () => ({ orderChanged: notifyHandler(orderContract) }),
-    middleware: (host) => messageUnits<AmqpNeeds>(host),
-  });
 
-  return {
-    name: consumer.name,
-    needs: consumer.needs,
-    start: (host) =>
-      consumer.start(host).flatMap((serving) =>
-        startOutboxRelay(host.ctx, { urls: transport.urls, pollMs: relay.pollMs }).map(
-          (running) => ({
-            ...serving,
-            stop: () => running.stop().flatMap(() => serving.stop()),
-          }),
-        ),
-      ),
-  };
-};
+ * `OUTBOX_POLL_MS=0` is rejected here — a relay that never sleeps is a busy
+ * loop — and so is anything above a minute, which is a typo, not a policy.
+ */
+export const amqpModule = Module("Amqp")({
+  provides: [
+    Config.provider(
+      AmqpConfig,
+      Config.object({
+        url: Config.string("AMQP_URL", { default: "amqp://127.0.0.1:5672" }),
+        outboxPollMs: Config.integer("OUTBOX_POLL_MS", { min: 1, max: 60_000, default: 200 }),
+      }),
+    ),
+    Provider(OrderAmqpRuntime)([AmqpConfig], {
+      sync: (config) => {
+        const consumer = amqpRuntime({
+          urls: [config.url],
+          contract: orderContract,
+          needs: [Outbox, Logger],
+          handlers: () => ({ orderChanged: notifyHandler(orderContract) }),
+          middleware: (host) => messageUnits<AmqpNeeds>(host),
+        });
+
+        return {
+          name: consumer.name,
+          needs: consumer.needs,
+          start: (host) =>
+            consumer.start(host).flatMap((serving) =>
+              startOutboxRelay(host.ctx, { urls: [config.url], pollMs: config.outboxPollMs }).map(
+                (running) => ({
+                  ...serving,
+                  stop: () => running.stop().flatMap(() => serving.stop()),
+                }),
+              ),
+            ),
+        };
+      },
+    }),
+  ],
+  exports: [OrderAmqpRuntime],
+});
 
 /**
  * The consuming half's one handler — a subscriber like any other service
