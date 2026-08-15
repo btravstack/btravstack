@@ -1,5 +1,4 @@
-import { AmqpRuntime, amqp } from "@btravstack/amqp";
-import { Module } from "@btravstack/di";
+import { AmqpModule } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
   ApplicationModule,
@@ -10,25 +9,24 @@ import {
 } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 
-import { OrderHandlers, orderHandlers } from "./handlers.js";
+import { orderHandlers } from "./handlers.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
 
 /**
  * The composition root of the broadcast deployment. `ApplicationModule` and
  * `PersistenceModule` are booted here unchanged — the same pair every other
- * deployment composes — with `@btravstack/amqp`'s starter providing the
- * runtime over the handlers this deployment provides, and the outbox relay
- * as a resourceful provider next to it: both halves of the outbox pattern in
- * one graph, each built by di from the services it declares.
+ * deployment composes — through `@btravstack/amqp`'s `AmqpModule` sugar,
+ * which imports the starter over `orderHandlers`, provides it, and exports
+ * `AmqpRuntime` for `start` to resolve; the outbox relay sits next to it as a
+ * resourceful provider: both halves of the outbox pattern in one graph, each
+ * built by di from the services it declares.
  *
- * `amqp()` needs `OrderHandlers`, which is provided here — di's own gate
- * checks that where this module is declared. The exports are this
- * deployment's own selection: `AmqpRuntime` is what `start` resolves, and
- * `PlaceOrder` / `OrderRepository` / `Outbox` / `Logger` are the writer's
- * surface — what a writer in the same process (the specs; in production,
- * `order-api` against the same database) places and cancels orders through,
- * and what the specs tap. Both write paths leave the outbox an event, which is
- * the property this deployment exists to demonstrate.
+ * The exports are this deployment's own selection: `PlaceOrder` /
+ * `OrderRepository` / `Outbox` / `Logger` are the writer's surface — what a
+ * writer in the same process (the specs; in production, `order-api` against
+ * the same database) places and cancels orders through, and what the specs
+ * tap. Both write paths leave the outbox an event, which is the property this
+ * deployment exists to demonstrate.
  *
  * A constant: the broker URL and the relay's poll interval are read from the
  * environment inside the graph (`AmqpConfig` from `AMQP_URL`, `RelayConfig`
@@ -36,12 +34,10 @@ import { outboxRelay, relayConfig } from "./outbox-relay.js";
  * this value as is, and the specs boot it with `env` pointing at each test's
  * own vhost.
  */
-export const OrderAmqpWorker = Module("OrderAmqpWorker")({
-  imports: [
-    ApplicationModule,
-    PersistenceModule,
-    amqp({ contract: orderContract, handlers: OrderHandlers }),
-  ],
-  provides: [orderHandlers, relayConfig, outboxRelay],
-  exports: [AmqpRuntime, PlaceOrder, OrderRepository, Outbox, Logger],
+export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
+  contract: orderContract,
+  handlers: orderHandlers,
+  imports: [ApplicationModule, PersistenceModule],
+  provides: [relayConfig, outboxRelay],
+  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });

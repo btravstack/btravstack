@@ -24,9 +24,9 @@ import { createScope } from "./scope.js";
  * in this repo, and because a bound that compares channels it does not read is
  * a variance bug waiting for the next rule change.
  */
-type AnyProvider = { readonly port: AnyPort; readonly deps: readonly AnyPort[] };
+export type AnyProvider = { readonly port: AnyPort; readonly deps: readonly AnyPort[] };
 
-type AnyModule = {
+export type AnyModule = {
   readonly name: string;
   readonly imports: readonly AnyModule[];
   readonly provides: readonly AnyProvider[];
@@ -50,14 +50,14 @@ type AnyModule = {
  */
 type ProviderChannels<T> =
   T extends Provider<infer P, infer E, infer N> ? readonly [P, E, N] : never;
-type PortOf<T> = ProviderChannels<T>[0];
-type ErrOf<T> = ProviderChannels<T>[1];
-type NeedOf<T> = ProviderChannels<T>[2];
+export type PortOf<T> = ProviderChannels<T>[0];
+export type ErrOf<T> = ProviderChannels<T>[1];
+export type NeedOf<T> = ProviderChannels<T>[2];
 
 type ModuleChannels<T> = T extends Module<infer X, infer E, infer N> ? readonly [X, E, N] : never;
-type ExportsOfModule<T> = ModuleChannels<T>[0];
-type ErrOfModule<T> = ModuleChannels<T>[1];
-type NeedsOfModule<T> = ModuleChannels<T>[2];
+export type ExportsOfModule<T> = ModuleChannels<T>[0];
+export type ErrOfModule<T> = ModuleChannels<T>[1];
+export type NeedsOfModule<T> = ModuleChannels<T>[2];
 
 /**
  * The variance rule, stated once and shared with `Provider` (see the identical
@@ -110,7 +110,7 @@ export type Module<Exports, E, Needs> = {
 };
 
 /** Everything visible inside the module: what it provides plus what its imports export. */
-type Available<I extends readonly AnyModule[], P extends readonly AnyProvider[]> =
+export type Available<I extends readonly AnyModule[], P extends readonly AnyProvider[]> =
   | ExportsOfModule<I[number]>
   | PortOf<P[number]>;
 
@@ -136,11 +136,11 @@ type Available<I extends readonly AnyModule[], P extends readonly AnyProvider[]>
  * against the intersection individually when the `exports` literal is
  * checked against `readonly Exportable<I, P>[]`.
  */
-type Exportable<I extends readonly AnyModule[], P extends readonly AnyProvider[]> =
+export type Exportable<I extends readonly AnyModule[], P extends readonly AnyProvider[]> =
   | (AnyPort & (new () => Available<I, P>))
   | I[number];
 
-type ResolvedExports<X extends readonly unknown[]> =
+export type ResolvedExports<X extends readonly unknown[]> =
   | (X[number] extends infer E ? (E extends AnyPort ? InstanceType<E> : never) : never)
   | ExportsOfModule<Extract<X[number], AnyModule>>;
 

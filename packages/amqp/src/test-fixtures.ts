@@ -9,13 +9,15 @@ import {
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { declareHandler, type WorkerInferHandlers } from "@amqp-contract/worker";
+import type { ConfigInvalid } from "@btravstack/config";
 import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, type TestAPI } from "vitest";
 import { z } from "zod";
 
-import { AmqpRuntime, amqp, type AmqpInfo } from "./amqp-runtime.js";
+import { AmqpModule } from "./amqp-module.js";
+import type { AmqpInfo } from "./amqp-runtime.js";
 
 const echoExchange = defineExchange("amqp-test");
 const echoDlx = defineExchange("amqp-test-dlx", { type: "direct" });
@@ -53,29 +55,24 @@ type EchoProvider = Provider<EchoHandlers, never, Greeting>;
 /**
  * The runtime is a service the module provides, so each fixture composes the
  * application with the starter it is testing — the same shape a real
- * deployment's composition root has, sized for one test. `url` is pinned to
+ * deployment's composition root has, sized for one test — through the
+ * `AmqpModule` sugar, so the package's own suite covers it. `url` is pinned to
  * the test's own broker, so the module reads no environment.
  */
 const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: number) =>
-  Module("Consuming")({
-    imports: [
-      AppModule,
-      amqp({
-        contract: echoContract,
-        handlers: EchoHandlers,
-        url,
-        ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
-      }),
-    ],
-    provides: [handlers],
-    exports: [AmqpRuntime],
+  AmqpModule("Consuming")({
+    contract: echoContract,
+    handlers,
+    url,
+    ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
+    imports: [AppModule],
   });
 
 const plainHandlers: EchoProvider = Provider(EchoHandlers)({
   value: { echo: () => OkAsync(undefined) },
 });
 
-type App = RunningApp<never, AmqpInfo>;
+type App = RunningApp<ConfigInvalid, AmqpInfo>;
 
 type ServeOptions = { readonly drainTimeoutMs: number };
 

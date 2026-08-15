@@ -1,9 +1,8 @@
-import { Module } from "@btravstack/di";
 import { ApplicationModule, Logger } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
-import { HttpRuntime, http } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http";
 
-import { OrderRouter, orderRouter } from "./router.js";
+import { orderRouter } from "./router.js";
 
 /**
  * The composition root, and the only file in the example that knows the three
@@ -26,8 +25,8 @@ import { OrderRouter, orderRouter } from "./router.js";
  * a `Scope` need that only `Module.scoped` discharges — which is what `start`
  * does, once, for the whole process.
  */
-export const OrderApi = Module("OrderApi")({
-  imports: [ApplicationModule, PersistenceModule, http({ router: OrderRouter })],
-  provides: [orderRouter],
-  exports: [HttpRuntime, Logger],
+export const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  imports: [ApplicationModule, PersistenceModule],
+  exports: [Logger],
 });

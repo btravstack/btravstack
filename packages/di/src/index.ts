@@ -39,4 +39,25 @@ export type { AnyPort, ManyPortClass, PortClass, Scope, ServiceOf } from "./port
 export { Context } from "./context.js";
 export { Provider } from "./provider.js";
 export { Module } from "./module.js";
+// The pieces `Module(name)({...})`'s declared type is built from — exported so a
+// package offering a *shaped* module (a starter's `HttpModule(name)({...})`
+// sugar, which adds its own import and export to what the application wrote)
+// can spell exactly the type `Module(...)` would have over the augmented
+// `imports`/`provides`/`exports`. Spelled inline there as it is here, never
+// through a named alias: TypeScript keeps a generic alias unreduced in
+// declaration emit, and its arguments would then name every internal port of
+// every imported module (measured: TS2883 on the first consumer).
+export type {
+  AnyModule,
+  AnyProvider,
+  Available,
+  ErrOf,
+  ErrOfModule,
+  Exportable,
+  ExportsOfModule,
+  NeedOf,
+  NeedsOfModule,
+  PortOf,
+  ResolvedExports,
+} from "./module.js";
 export type { ScopedOptions } from "./build.js";

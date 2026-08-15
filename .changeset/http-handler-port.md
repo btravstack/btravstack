@@ -38,3 +38,11 @@ provides a router, never a handler, and a handler built per request by the
 and a defect inside a procedure is oRPC's own `INTERNAL_SERVER_ERROR`;
 `Result` → HTTP status stays the router's `.result()` triage. `hono`,
 `@hono/node-server` and `@orpc/server` are peer dependencies.
+
+**`HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })`**
+is the way an application declares an HTTP deployment: `Module(name)({...})`
+plus the router **provider**. It imports the starter, provides the router,
+exports `HttpRuntime`, and returns exactly the di module `Module(...)` would
+have declared over the augmented imports/provides/exports — sugar over the same
+primitives, nothing new for the kernel or the gates. `http({ router })` stays
+exported as the primitive it delegates to.

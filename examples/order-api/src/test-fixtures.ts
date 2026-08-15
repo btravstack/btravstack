@@ -5,14 +5,14 @@ import { start, type RunningApp, type StartOptions } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { ApplicationModule, Logger, OrderRepository } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
-import { HttpRuntime, http, type HttpInfo } from "@btravstack/http";
+import { HttpModule, HttpRuntime, type HttpInfo } from "@btravstack/http";
 import { fromSafePromise, OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { OrderApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
-import { OrderRouter, orderRouter } from "./router.js";
+import { orderRouter } from "./router.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
@@ -24,15 +24,15 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
 
 /**
  * A composition root shaped like the real one but with the repository swapped:
- * same `ApplicationModule`, same runtime — `http()`, unpinned, so `serve`'s
- * `env` is what binds it to an ephemeral loopback port — same three exported
- * ports, so the transport under test is unchanged.
+ * same `ApplicationModule`, same `HttpModule` sugar — unpinned, so `serve`'s
+ * `env` is what binds it to an ephemeral loopback port — same exports, so
+ * the transport under test is unchanged.
  */
 const apiWith = (repository: ServiceOf<OrderRepository>) =>
-  Module("StubApi")({
-    imports: [ApplicationModule, persistenceOf(repository), http({ router: OrderRouter })],
-    provides: [orderRouter],
-    exports: [HttpRuntime, Logger],
+  HttpModule("StubApi")({
+    router: orderRouter,
+    imports: [ApplicationModule, persistenceOf(repository)],
+    exports: [Logger],
   });
 
 /**

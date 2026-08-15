@@ -38,45 +38,47 @@ class OrderActivities extends Port("OrderActivities")<
   DeclareActivitiesHandlerOptions<typeof contract>["activities"]
 > {}
 
-const ActivitiesModule = Module("OrderActivities")({
-  provides: [
-    Provider(OrderActivities)([PlaceOrder], {
-      sync: (place) => ({
-        placeOrder: {
-          place: (args, { errors }) =>
-            place
-              .execute(args.orderId, args.quantity)
-              .mapErrCases((matcher) =>
-                matcher.with(P.tag("DuplicateOrder"), (error) =>
-                  errors.OrderAlreadyPlaced({ id: error.id }),
-                ),
-              ),
-        },
-      }),
-    }),
-  ],
-  exports: [OrderActivities],
+const orderActivities = Provider(OrderActivities)([PlaceOrder], {
+  sync: (place) => ({
+    placeOrder: {
+      place: (args, { errors }) =>
+        place
+          .execute(args.orderId, args.quantity)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("DuplicateOrder"), (error) =>
+              errors.OrderAlreadyPlaced({ id: error.id }),
+            ),
+          ),
+    },
+  }),
 });
 
-// The composition root: the starter next to the application, and the one
-// export `start` resolves.
-const OrderWorker = Module("OrderWorker")({
-  imports: [
-    AppModule,
-    ActivitiesModule,
-    temporal({
-      contract,
-      activities: OrderActivities,
-      workflows: {
-        workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
-      },
-    }),
-  ],
-  exports: [TemporalRuntime],
+// The composition root: a di module, plus the contract, the activities
+// provider and the workflow source — and nothing else to know.
+const OrderWorker = TemporalModule("OrderWorker")({
+  contract,
+  activities: orderActivities,
+  workflows: {
+    workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
+  },
+  imports: [AppModule],
 });
 
 await runMain(OrderWorker);
 ```
+
+`TemporalModule(name)({ contract, activities, workflows, address?, namespace?,
+gracePeriod?, forceAfter?, imports?, provides?, exports? })` is
+`Module(name)({...})` for a Temporal worker: it imports the starter
+(`temporal({ contract, activities: activities.port, workflows, ... })`),
+prepends the activities provider to `provides` and `TemporalRuntime` to
+`exports`, and hands back **exactly** the module `Module(...)` would have
+declared over those augmented lists — so the kernel, `start`'s gate and di's
+see nothing new. `activities` is the **provider** (not the port), constrained
+on its instance type the way `temporal()` constrains the port: a provider of
+anything but the implementations record for `contract` fails to typecheck
+there. Everything below is the primitive it delegates to; reach for
+`temporal()` directly when the module shape is not the one you want.
 
 `temporal(options)` is a module providing three ports:
 
@@ -96,8 +98,9 @@ await runMain(OrderWorker);
 
 And it has one **need**: the `activities` port. The starter's runtime provider
 depends on it through di, so it is not resolved from a context at the first
-attempt — a composition root that forgets the activities module still owes the
-port, and `start` rejects it at the call site. The port's service is
+attempt — a composition root that forgets the activities provider still owes
+the port, and `start` rejects it at the call site (`TemporalModule` provides
+it, which is the point of the sugar). The port's service is
 constrained at the call site too: `activities: A & ActivitiesPort<A, C>` is
 `never` for a port whose service is not the implementations record for
 `contract`, so the mismatch is a type error on `temporal(...)`, not a startup

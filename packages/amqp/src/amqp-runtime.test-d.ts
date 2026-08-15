@@ -18,9 +18,11 @@ import {
   defineQueue,
 } from "@amqp-contract/contract";
 import type { WorkerInferHandlers } from "@amqp-contract/worker";
-import { Port } from "@btravstack/di";
+import { Port, Provider } from "@btravstack/di";
+import { OkAsync } from "unthrown";
 import { z } from "zod";
 
+import { AmqpModule } from "./amqp-module.js";
 import { amqp } from "./amqp-runtime.js";
 
 const pinExchange = defineExchange("pin-exchange");
@@ -53,3 +55,21 @@ amqp({ contract: pinContract, handlers: TypoHandlers });
 class NoHandlers extends Port("NoHandlers")<Record<never, never>> {}
 // @ts-expect-error -- the `echo` consumer has no handler
 amqp({ contract: pinContract, handlers: NoHandlers });
+
+// The same three, through the `AmqpModule` sugar: the check is made on the
+// handlers PROVIDER's instance type, not the port class, and it is the same
+// check.
+AmqpModule("Pin")({
+  contract: pinContract,
+  handlers: Provider(PinHandlers)({ value: { echo: () => OkAsync(undefined) } }),
+});
+AmqpModule("Typo")({
+  contract: pinContract,
+  // @ts-expect-error -- "ecoh" is not one of `pinContract`'s consumer/RPC names, and "echo" is missing
+  handlers: Provider(TypoHandlers)({ value: { ecoh: () => undefined, anything: 1 } }),
+});
+AmqpModule("NoHandlers")({
+  contract: pinContract,
+  // @ts-expect-error -- the `echo` consumer has no handler
+  handlers: Provider(NoHandlers)({ value: {} }),
+});

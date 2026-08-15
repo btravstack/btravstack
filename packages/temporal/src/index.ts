@@ -1,3 +1,5 @@
+export { TemporalModule } from "./temporal-module.js";
+export type { TemporalModuleOptions } from "./temporal-module.js";
 export {
   TemporalConfig,
   TemporalConnection,

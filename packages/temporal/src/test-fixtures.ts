@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
 import type { DeclareActivitiesHandlerOptions } from "@temporal-contract/worker/activity";
 import type { Client } from "@temporalio/client";
@@ -12,10 +12,9 @@ import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 import { z } from "zod";
 
+import { TemporalModule } from "./temporal-module.js";
 import {
   TemporalConfig,
-  TemporalRuntime,
-  temporal,
   type TemporalInfo,
   type TemporalUnreachable,
   type WorkflowSource,
@@ -193,29 +192,23 @@ export type TemporalFixtures = {
 
 /**
  * One booted application: the starter composed the way a composition root
- * composes it — `temporal({ contract, activities, workflows })` next to the
- * application's providers, `TemporalRuntime` exported — and started with the
- * environment's address in `env`, so every test opens and closes a connection
- * of its own rather than sharing the environment's.
+ * composes it — `TemporalModule(name)({ contract, activities, workflows })`
+ * over the application's providers — and started with the environment's
+ * address in `env`, so every test opens and closes a connection of its own
+ * rather than sharing the environment's.
  */
 const boot = (env: TestWorkflowEnvironment, options: BootOptions) => {
   const taskQueue = nextTaskQueue();
-  const worker = Module("Worker")({
-    imports: [
-      temporal({
-        contract: { ...echoContract, taskQueue },
-        activities: EchoActivities,
-        workflows: options.workflows ?? echoWorkflows,
-        ...(options.address === undefined ? {} : { address: options.address }),
-        ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
-      }),
-    ],
+  const worker = TemporalModule("Worker")({
+    contract: { ...echoContract, taskQueue },
+    activities: options.activities ?? echoing,
+    workflows: options.workflows ?? echoWorkflows,
+    ...(options.address === undefined ? {} : { address: options.address }),
+    ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
     provides: [
       Provider(Greeting)({ value: { text: "hello" } }),
-      options.activities ?? echoing,
       ...(options.tap === undefined ? [] : [options.tap]),
     ],
-    exports: [TemporalRuntime],
   });
   const app: App = start(worker, {
     env: options.env ?? { TEMPORAL_ADDRESS: env.address },

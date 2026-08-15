@@ -29,7 +29,7 @@ export class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}
  * The contract type `TypedAmqpWorker.create` accepts, extracted rather than
  * imported by name so `@amqp-contract/contract` stays out of the peer range.
  */
-type AnyAmqpContract = Parameters<typeof TypedAmqpWorker.create>[0]["contract"];
+export type AnyAmqpContract = Parameters<typeof TypedAmqpWorker.create>[0]["contract"];
 
 /**
  * `unknown` when the port's service is the handlers record `TContract` wants

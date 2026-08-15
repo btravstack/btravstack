@@ -8,6 +8,27 @@ with the code in the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
+- **`TemporalModule(name)({ contract, activities, workflows, address?,
+namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })`** —
+  THE way an application writes its worker root; `temporal-module.ts`, the
+  same shape as `@btravstack/http`'s `HttpModule`. `activities` is the
+  **provider** of the activities port (`Provider<AI, AE, AN> &
+ActivitiesProvider<AI, C>` — the `temporal()` constraint restated on the
+  instance type, so a provider of anything but the implementations record for
+  `contract` fails there). It delegates to `temporal({ contract, activities:
+activities.port as never, workflows, … })` and returns `Module(name)({
+imports: [...imports, starter], provides: [activities, ...provides], exports:
+[TemporalRuntime, ...exports] })`, **typed as exactly what `Module(...)` would
+  declare** over those lists — spelled inline from di's exported pieces
+  (`ResolvedExports` / `ErrOf` / `ErrOfModule` / `NeedOf` / `NeedsOfModule` /
+  `Available` / `Exportable`), never through a named alias (TS keeps a generic
+  alias unreduced in declaration emit and TS2883 follows). The starter's type
+  in that spelling is always the env-reading overload
+  (`Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | AI>`),
+  pins or not — `Env` is discharged by `start` anyway. `TemporalModuleOptions`
+  is exported for the type. Covered by `test-fixtures.ts`'s `boot`, which is
+  written with it. `temporal()` stays exported as the primitive it delegates
+  to.
 - **`temporal(options)` → `Module<TemporalRuntime | TemporalConfig |
 TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
 InstanceType<A>>`** — the starter, the same shape as `@btravstack/http`'s
@@ -28,10 +49,10 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   `forceAfter` (Temporal's `shutdownForceTime`, default `15 seconds`) and
   `gracePeriod` (`shutdownGraceTime`, default `10 seconds`). `TemporalInfo` is
   `{ taskQueue, namespace }`, published on `Serving.info` once polling. The
-  worked example is `Module("OrderTemporalWorker")({ imports: [Application,
-Persistence, Activities, temporal({ contract, activities: OrderActivities,
-workflows })], exports: [TemporalRuntime] })` + `runMain(OrderTemporalWorker)`;
-  a test passes `env: { TEMPORAL_ADDRESS }` to `start`.
+  worked example is `TemporalModule("OrderTemporalWorker")({ contract,
+activities: orderActivities, workflows, imports: [Application, Persistence,
+Fulfillment] })` + `runMain(OrderTemporalWorker)`; a test passes `env: {
+TEMPORAL_ADDRESS }` to `start`.
 - **`activities` is a port the application provides, and a need of the
   module.** Its service is `DeclareActivitiesHandlerOptions<C>["activities"]` —
   the implementations record `declareActivitiesHandler` takes for `C`, with no
@@ -95,11 +116,10 @@ options.activities], { sync })` — the port rides di, which is why
   the kernel never reads `meta.id` again; _"builds the activities from the
   graph, closing over the services their provider declared"_), two the drain.
   All boot through the `env` fixture (one `TestWorkflowEnvironment` per test)
-  and `test-fixtures.ts`'s `boot`: `temporal({ contract: { ...echoContract,
-taskQueue }, activities: EchoActivities, workflows })` next to a `Greeting`
-  provider and the activities provider under test, `TemporalRuntime` exported,
-  `env: { TEMPORAL_ADDRESS: env.address }` — a per-test connection measured as
-  free.
+  and `test-fixtures.ts`'s `boot`: `TemporalModule("Worker")({ contract: {
+...echoContract, taskQueue }, activities: <the provider under test>,
+workflows, provides: [Greeting] })`, `env: { TEMPORAL_ADDRESS: env.address }`
+  — a per-test connection measured as free.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
   `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`,
   `@temporal-contract/worker`, `@temporal-contract/contract`.

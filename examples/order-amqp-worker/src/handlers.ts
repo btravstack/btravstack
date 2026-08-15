@@ -6,8 +6,8 @@ import { OkAsync } from "unthrown";
 
 /**
  * The consuming half, as a port: the handlers record `orderContract` wants,
- * one per consumer, which `amqp({ handlers: OrderHandlers })` resolves like
- * any other service. It is a port rather than a value so its provider can
+ * one per consumer, which the starter resolves like any other service. It is
+ * a port rather than a value so its provider can
  * declare what the handlers need — here `Logger` — and be built by di from
  * it, exactly as a use case is.
  */

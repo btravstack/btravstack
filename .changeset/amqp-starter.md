@@ -34,3 +34,19 @@ and `AmqpOptions.needs` / `handlers(host)` / `middleware(host)` / `urls`. The
 unit-per-delivery middleware is installed by the starter and injects nothing;
 `currentUnit()` still carries the trace id (the publisher's `messageId`).
 `@btravstack/config` joins the peer dependencies.
+
+**`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })`**
+is the way an application declares an AMQP deployment: `Module(name)({...})`
+plus the contract and the handlers **provider**. It imports the starter,
+provides the handlers, exports `AmqpRuntime`, and returns exactly the di module
+`Module(...)` would have declared over the augmented imports/provides/exports —
+sugar over the same primitives, nothing new for the kernel or the gates.
+`amqp({ contract, handlers })` stays exported as the primitive it delegates to.
+
+```ts
+const Worker = AmqpModule("Worker")({
+  contract: orderContract,
+  handlers: orderHandlers,
+  imports: [AppModule],
+});
+```

@@ -26,3 +26,14 @@ port. The starter calls `declareActivitiesHandler` itself, inside its error
 qualifier, with its unit middleware in place; the middleware injects nothing.
 `@temporal-contract/worker`, `@temporal-contract/contract` and
 `@btravstack/config` join the peer dependencies.
+
+**`TemporalModule(name)({...})` is the way an application writes its worker
+root.** `TemporalModule(name)({ contract, activities, workflows, address?,
+namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })` is
+`Module(name)({...})` for a Temporal worker: `activities` is the **provider**
+of the activities port (constrained on its instance type the way `temporal()`
+constrains the port), and the sugar imports the starter, provides the
+activities and exports `TemporalRuntime` — returning exactly the module
+`Module(...)` would have declared over those augmented lists, so `start`'s
+gate and di's see nothing new. `temporal()` stays exported as the primitive
+it delegates to. `TemporalModuleOptions` is exported for the type.

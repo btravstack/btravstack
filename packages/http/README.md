@@ -25,17 +25,20 @@ on npm to install yet. The command above is what it will be once it has.
 
 ## A worked example
 
-The application provides its **router as a port** — a provider that declares
-the use cases its procedures call, so the router is built by di like everything
-else and oRPC's own context stays empty. `http({ router })` is the whole of the
-transport: a module providing the runtime (`HttpRuntime`), its configuration
-(`HttpConfig`, bound from `PORT` and `HOST` in the environment) and the HTTP
-surface — the router mounted on Hono under `/rpc`, put on the socket.
+The application provides its **router as a provider** — one that declares the
+use cases its procedures call, so the router is built by di like everything
+else and oRPC's own context stays empty — and `HttpModule(name)({...})` is a
+`Module(name)({...})` that also knows about it: everything a di module takes,
+plus `router`, and nothing else to know. Under the hood it imports the starter
+(`http({ router })` — the runtime on `HttpRuntime`, `HttpConfig` bound from
+`PORT` and `HOST`, the router mounted on Hono under `/rpc`), provides the
+router and exports `HttpRuntime`, and hands back exactly the module
+`Module(...)` would have declared: syntax over the same primitives.
 
 ```ts
 import { runMain } from "@btravstack/core";
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
-import { HttpRuntime, http } from "@btravstack/http";
+import { Port, Provider, type ServiceOf } from "@btravstack/di";
+import { HttpModule } from "@btravstack/http";
 
 const routerOf = (place: ServiceOf<PlaceOrder>, find: ServiceOf<FindOrder>) =>
   os.router({ orders: { place: /* … */, find: /* … */ } });
@@ -43,14 +46,19 @@ const routerOf = (place: ServiceOf<PlaceOrder>, find: ServiceOf<FindOrder>) =>
 class OrderRouter extends Port("OrderRouter")<ReturnType<typeof routerOf>> {}
 const orderRouter = Provider(OrderRouter)([PlaceOrder, FindOrder], { sync: routerOf });
 
-const OrderApi = Module("OrderApi")({
-  imports: [Application, Persistence, http({ router: OrderRouter })],
-  provides: [orderRouter],
-  exports: [HttpRuntime],
+const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  imports: [Application, Persistence],
 });
 
 await runMain(OrderApi);
 ```
+
+`http({ router: OrderRouter })` — the starter module itself, taking the port
+rather than the provider — stays exported for a composition root written by
+hand (`Module("OrderApi")({ imports: [Application, Persistence, http({
+router: OrderRouter })], provides: [orderRouter], exports: [HttpRuntime] })`
+is what the sugar produces).
 
 That is a whole `main.ts`: `PORT` (default `3000`), `HOST` (default
 `0.0.0.0`) and the kernel's `PROBE_PORT` are read inside the graph, from the
@@ -122,12 +130,18 @@ treatment, and oRPC does it.
 
 ## Options
 
-| Option     | Required |                                                                                                                                                                           |
-| ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`   | yes      | the application's router **port** — a class over di's `Port` whose service is a context-free oRPC router; the runtime provider depends on it, the application provides it |
-| `prefix`   | no       | where the RPC endpoint is mounted; default `/rpc`                                                                                                                         |
-| `port`     | no       | pins the port instead of reading `PORT`                                                                                                                                   |
-| `hostname` | no       | pins the host instead of reading `HOST`                                                                                                                                   |
+`HttpModule(name)({...})` takes everything `Module(name)({...})` takes —
+`imports`, `provides`, `exports` — plus:
+
+| Option     | Required |                                                                                                                                                                          |
+| ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `router`   | yes      | the application's router **provider** — over a port whose service is a context-free oRPC router; the sugar provides it and the runtime provider depends on it through di |
+| `prefix`   | no       | where the RPC endpoint is mounted; default `/rpc`                                                                                                                        |
+| `port`     | no       | pins the port instead of reading `PORT`                                                                                                                                  |
+| `hostname` | no       | pins the host instead of reading `HOST`                                                                                                                                  |
+
+`http({ router, prefix?, port?, hostname? })` takes the same four, with
+`router` the port **class** — it is what the sugar imports.
 
 ## Configuration
 

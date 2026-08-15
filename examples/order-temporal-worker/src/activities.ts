@@ -1,4 +1,4 @@
-import { Module, Port, Provider } from "@btravstack/di";
+import { Port, Provider } from "@btravstack/di";
 import {
   OrderRepository,
   PlaceOrder,
@@ -51,46 +51,42 @@ export class OrderActivities extends Port("OrderActivities")<
  * placement that never landed is the no-op a *repeated* compensation performs,
  * and an activity Temporal may re-run has to answer the same both times.
  */
-export const ActivitiesModule = Module("OrderActivities")({
-  provides: [
-    Provider(OrderActivities)([PlaceOrder, OrderRepository, StockService, ShippingService], {
-      sync: (place, repository, stock, shipping) => ({
-        fulfillOrder: {
-          place: (args, { errors }) =>
-            place
-              .execute(args.orderId, args.quantity)
-              .map((order) => ({ id: order.id, quantity: order.quantity }))
-              .mapErrCases((matcher) =>
-                matcher
-                  .with(P.tag("InvalidQuantity"), (error) =>
-                    errors.InvalidQuantity({ id: error.id }),
-                  )
-                  .with(P.tag("DuplicateOrder"), (error) =>
-                    errors.OrderAlreadyPlaced({ id: error.id }),
-                  ),
-              ),
-          reserveStock: (args, { errors }) =>
-            stock
-              .reserve(args.orderId, args.quantity)
-              .mapErrCases((matcher) =>
-                matcher.with(P.tag("OutOfStock"), (error) => errors.OutOfStock({ id: error.id })),
-              ),
-          arrangeShipping: (args, { errors }) =>
-            shipping
-              .arrange(args.orderId)
-              .mapErrCases((matcher) =>
-                matcher.with(P.tag("ShippingUnavailable"), (error) =>
-                  errors.ShippingUnavailable({ id: error.id }),
+export const orderActivities = Provider(OrderActivities)(
+  [PlaceOrder, OrderRepository, StockService, ShippingService],
+  {
+    sync: (place, repository, stock, shipping) => ({
+      fulfillOrder: {
+        place: (args, { errors }) =>
+          place
+            .execute(args.orderId, args.quantity)
+            .map((order) => ({ id: order.id, quantity: order.quantity }))
+            .mapErrCases((matcher) =>
+              matcher
+                .with(P.tag("InvalidQuantity"), (error) => errors.InvalidQuantity({ id: error.id }))
+                .with(P.tag("DuplicateOrder"), (error) =>
+                  errors.OrderAlreadyPlaced({ id: error.id }),
                 ),
+            ),
+        reserveStock: (args, { errors }) =>
+          stock
+            .reserve(args.orderId, args.quantity)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("OutOfStock"), (error) => errors.OutOfStock({ id: error.id })),
+            ),
+        arrangeShipping: (args, { errors }) =>
+          shipping
+            .arrange(args.orderId)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("ShippingUnavailable"), (error) =>
+                errors.ShippingUnavailable({ id: error.id }),
               ),
-          releaseStock: (args) => stock.release(args.orderId),
-          cancelPlacement: (args) =>
-            repository
-              .remove(args.orderId)
-              .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
-        },
-      }),
+            ),
+        releaseStock: (args) => stock.release(args.orderId),
+        cancelPlacement: (args) =>
+          repository
+            .remove(args.orderId)
+            .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
+      },
     }),
-  ],
-  exports: [OrderActivities],
-});
+  },
+);

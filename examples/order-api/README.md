@@ -12,7 +12,7 @@ its own package, because a client needs it and needs none of this.
 src/router.ts         the implementation as a provider, and the one place a domain error becomes an ORPCError
 src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts         an AsyncResult client for the same contract
-src/module.ts         OrderApi — the composition root, importing http({ router: OrderRouter })
+src/module.ts         OrderApi — the composition root, HttpModule("OrderApi")({ router: orderRouter, … })
 src/main.ts           the process: runMain(OrderApi, { unit: RequestModule })
 src/test-fixtures.ts  serve / clientFor / gate / tapped, as Vitest fixtures
 ```
@@ -71,29 +71,28 @@ keep-alive connection, the trace-id policy, Hono and oRPC's fetch adapter
 mounted under `/rpc` all live in [`@btravstack/http`](../../packages/http) —
 see its README for the guarantee it makes and the one way it answers HTTP.
 What this example writes is the router — a provider built from the two use
-cases it declares — and the composition root that hands its port to the
-starter:
+cases it declares — and a composition root that is a `Module(...)` which also
+knows about it:
 
 ```ts
-export const OrderApi = Module("OrderApi")({
-  imports: [
-    ApplicationModule,
-    PersistenceModule,
-    http({ router: OrderRouter }),
-  ],
-  provides: [orderRouter],
-  exports: [HttpRuntime, Logger],
+export const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  imports: [ApplicationModule, PersistenceModule],
+  exports: [Logger],
 });
 ```
 
-`http({ router: OrderRouter })` is the whole surface. Its runtime provider
-depends on the router port through di, so even the transport wiring exists
-because the composition root said so — a composition that imports the starter
-without providing `OrderRouter` carries an unmet need `start` refuses — and
-oRPC's own context stays empty, since one container is enough. The runtime is
-exported as `HttpRuntime`, which is how `runMain` finds it; a module that
-exports none fails on arity at the `runMain` call. `port` is read back off
-`Serving.info` the same way any caller of the package does.
+`HttpModule` is sugar over the same primitives: it imports the starter
+(`http({ router: OrderRouter })` — the whole surface), provides the router and
+exports `HttpRuntime`, and returns exactly the di module `Module("OrderApi")({
+imports: [ApplicationModule, PersistenceModule, http({ router: OrderRouter })],
+provides: [orderRouter], exports: [HttpRuntime, Logger] })` would have. The
+runtime provider depends on the router port through di, so even the transport
+wiring exists because the composition root said so — a composition that
+imports the starter without providing `OrderRouter` carries an unmet need
+`start` refuses (`needs-gate.test-d.ts` pins it with the hand-written form) —
+and oRPC's own context stays empty, since one container is enough. `port` is
+read back off `Serving.info` the same way any caller of the package does.
 
 ### One unit per call
 

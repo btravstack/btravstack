@@ -62,7 +62,21 @@ missing: N]`.
 - **`index.ts`** — the deliberate public surface. `Scope` is exported as a _type
   only_ (the class value would let consumers provide or alias it);
   `PortClass`/`ManyPortClass` are exported solely so declaration emit works for
-  consumers who export ports.
+  consumers who export ports. The pieces `Module(name)({...})`'s declared type
+  is built from — `AnyModule`, `AnyProvider`, `Exportable`, `ResolvedExports`,
+  `ErrOf`/`NeedOf`/`PortOf`, `ErrOfModule`/`NeedsOfModule`/`ExportsOfModule`,
+  `Available` — are exported (types only) so a package offering a **shaped
+  module** (a starter's `HttpModule(name)({ router, imports, provides,
+exports })` sugar, which appends its own import and export to what the
+  application wrote) can spell exactly the type `Module(...)` would have over
+  the augmented tuples. Two rules for anyone using them: spell the result
+  **inline** as `Module<ResolvedExports<X>, ErrOf<…> | ErrOfModule<…>,
+Exclude<…, Available<I, P>>>`, never through a named generic alias —
+  TypeScript keeps such an alias unreduced in declaration emit and its
+  arguments then name every internal port of every imported module (measured:
+  TS2883 on the first consumer, which is why `DeclaredModule` was tried and
+  removed the same hour); and keep `ModuleDeclaration`'s own return type
+  written the same inline way, for the same reason.
 
 ### Type-level tests
 

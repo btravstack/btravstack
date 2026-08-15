@@ -30,7 +30,21 @@ on npm to install yet. The command above is what it will be once it has.
 
 ## A worked example
 
+The application provides its **handlers as a provider** — one that declares
+the use cases the handlers call, so they are built by di like everything else
+and no context is injected — and `AmqpModule(name)({...})` is a
+`Module(name)({...})` that also knows about it: everything a di module takes,
+plus `contract` and `handlers`, and nothing else to know. Under the hood it
+imports the starter (`amqp({ contract, handlers })` — the runtime on
+`AmqpRuntime`, the broker on `AmqpConfig` from `AMQP_URL`), provides the
+handlers and exports `AmqpRuntime`, and hands back exactly the module
+`Module(...)` would have declared: syntax over the same primitives.
+
 ```ts
+import { runMain } from "@btravstack/core";
+import { Port, Provider } from "@btravstack/di";
+import { AmqpModule } from "@btravstack/amqp";
+
 // The handlers, as a port: its service is the record the contract wants —
 // `WorkerInferHandlers<typeof orderContract>`, one entry per consumer / RPC,
 // no injected context. Its provider declares what the handlers need and
@@ -59,30 +73,36 @@ const orderHandlers = Provider(OrderHandlers)([PlaceOrder], {
   }),
 });
 
-// The starter provides the runtime on `AmqpRuntime` and the broker on
-// `AmqpConfig` (from `AMQP_URL`, default `amqp://127.0.0.1:5672`, unless
-// `url` is pinned). It needs `OrderHandlers`, which the composition root
-// provides; `start` resolves the runtime from the exports.
-const Worker = Module("Worker")({
-  imports: [
-    AppModule,
-    amqp({ contract: orderContract, handlers: OrderHandlers }),
-  ],
-  provides: [orderHandlers],
-  exports: [AmqpRuntime],
+const Worker = AmqpModule("Worker")({
+  contract: orderContract,
+  handlers: orderHandlers,
+  imports: [AppModule],
 });
 
 await runMain(Worker);
 ```
 
+`AmqpModule(name)({ contract, handlers, url?, connectionOptions?,
+defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })`
+takes everything `Module(name)({...})` takes, plus the contract, the handlers
+**provider** and the starter's own options; `AmqpRuntime` is added to the
+exports since `start` resolves it. `handlers` is checked against `contract` at
+the call site, on the provider's port — a provider whose service misses a
+consumer or names one the contract does not declare fails to typecheck there,
+rather than on the first delivery, silently to the DLQ
+(`amqp-runtime.test-d.ts` pins both directions, for the sugar and the
+primitive alike).
+
 `amqp({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?,
-connectTimeoutMs? })` returns a `Module<AmqpRuntime | AmqpConfig, ConfigInvalid,
-Env | H>` — `H` the handlers port's instance, the module's one need — or, with
-`url` pinned, `Module<AmqpRuntime | AmqpConfig, never, H>`: it then reads nothing
-from the environment. `handlers` is checked against `contract` at the call
-site — a port whose service misses a consumer or names one the contract does
-not declare fails to typecheck there, rather than on the first delivery,
-silently to the DLQ (`amqp-runtime.test-d.ts` pins both directions).
+connectTimeoutMs? })` — the starter module itself, taking the handlers **port
+class** rather than the provider — stays exported for a composition root
+written by hand: `Module("Worker")({ imports: [AppModule, amqp({ contract:
+orderContract, handlers: OrderHandlers })], provides: [orderHandlers], exports:
+[AmqpRuntime] })` is what the sugar produces. It returns a `Module<AmqpRuntime
+| AmqpConfig, ConfigInvalid, Env | H>` — `H` the handlers port's instance, the
+module's one need — or, with `url` pinned, `Module<AmqpRuntime | AmqpConfig,
+never, H>`: it then reads nothing from the environment. (`AmqpModule` declares
+the unpinned type either way; a pinned `url` still binds nothing.)
 
 There is no context channel: a handler reads nothing out of a `context.ctx`,
 because it was built from its dependencies by di. The middleware this package

@@ -8,18 +8,14 @@ import {
   ApplicationModule,
   Logger,
   OrderRepository,
+  PlaceOrder,
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
 import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domain";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
-import {
-  TemporalRuntime,
-  temporal,
-  type TemporalInfo,
-  type TemporalUnreachable,
-} from "@btravstack/temporal";
+import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import { createTimeSkippingTest } from "@temporal-contract/testing/time-skipping";
 import {
@@ -32,7 +28,7 @@ import type { TestWorkflowEnvironment } from "@temporalio/testing";
 import { ErrAsync, OkAsync } from "unthrown";
 import { expect } from "vitest";
 
-import { ActivitiesModule, OrderActivities } from "./activities.js";
+import { orderActivities } from "./activities.js";
 import { FulfillmentModule } from "./fulfillment.js";
 
 /**
@@ -69,12 +65,14 @@ type Deployment<E> = {
 };
 
 /**
- * `X` is pinned to the one port the starter depends on rather than left
- * generic: `start`'s gate is a phantom rest parameter proven at the call site,
- * and no proof is available inside a helper generic in the module's own
- * exports.
+ * `X` is pinned to the four ports the activities provider depends on rather
+ * than left generic: `start`'s gate is a phantom rest parameter proven at the
+ * call site, and no proof is available inside a helper generic in the module's
+ * own exports.
  */
-type Serve = <E>(module: Module<OrderActivities, E, Scope>) => Promise<Deployment<E>>;
+type Serve = <E>(
+  module: Module<PlaceOrder | OrderRepository | StockService | ShippingService, E, Scope>,
+) => Promise<Deployment<E>>;
 
 /**
  * `start` hands the application context to the runtime alone, so a spec cannot
@@ -97,20 +95,21 @@ const tapProvider = (capture: (services: ServiceOf<ServicesTap>) => void) =>
   });
 
 /**
- * A composition root shaped like the real one, with this test's fulfillment
- * module swapped in: same `ApplicationModule`, same `PersistenceModule`, same
- * `ActivitiesModule`, so the orchestration under test is unchanged and only
- * the external services' answers differ. The starter joins in `serve`, which
- * is where the per-test queue and the memoised bundle are known.
+ * The application half of a root shaped like the real one, with this test's
+ * fulfillment module swapped in: same `ApplicationModule`, same
+ * `PersistenceModule`, so the orchestration under test is unchanged and only
+ * the external services' answers differ. It exports what `orderActivities`
+ * closes over; the sugar joins in `serve`, which is where the per-test queue
+ * and the memoised bundle are known.
  */
 const rootWith = (
   fulfillment: typeof FulfillmentModule,
   capture: (services: ServiceOf<ServicesTap>) => void,
 ) =>
   Module("StubTemporal")({
-    imports: [ApplicationModule, PersistenceModule, fulfillment, ActivitiesModule],
+    imports: [ApplicationModule, PersistenceModule, fulfillment],
     provides: [tapProvider(capture)],
-    exports: [OrderActivities],
+    exports: [PlaceOrder, OrderRepository, StockService, ShippingService],
   });
 
 const deployment = (fulfillment: typeof FulfillmentModule) => {
@@ -210,18 +209,17 @@ export const it = createTimeSkippingTest({
       // each other's tasks.
       const contract = withTaskQueue(orderContract, nextTaskQueueId("orders"));
 
-      // The starter joins the graph the way `OrderTemporalWorker` adds it —
-      // built from what only this test knows: its queue and the memoised
-      // bundle. The connection is the starter's own resource, opened against
-      // the environment's address per test and closed with the scope; the
-      // shared `testEnv.nativeConnection` is never handed over, so no test can
-      // close it under the next.
-      const worker = Module("StubTemporalWorker")({
-        imports: [
-          module,
-          temporal({ contract, activities: OrderActivities, workflows: { workflowBundle } }),
-        ],
-        exports: [TemporalRuntime],
+      // The same `TemporalModule` sugar `OrderTemporalWorker` is — built from
+      // what only this test knows: its queue and the memoised bundle. The
+      // connection is the starter's own resource, opened against the
+      // environment's address per test and closed with the scope; the shared
+      // `testEnv.nativeConnection` is never handed over, so no test can close
+      // it under the next.
+      const worker = TemporalModule("StubTemporalWorker")({
+        contract,
+        activities: orderActivities,
+        workflows: { workflowBundle },
+        imports: [module],
       });
 
       const app = start(worker, {

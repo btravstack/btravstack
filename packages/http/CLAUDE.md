@@ -8,6 +8,25 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
+- **`HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })`**
+  (`http-module.ts`) — THE way an application declares an HTTP deployment:
+  `Module(name)({...})` plus the router **provider**. It appends
+  `http({ router: provider.port })` to `imports`, prepends the provider to
+  `provides` and `HttpRuntime` to `exports`, and returns exactly the module
+  `Module(...)` would have declared over those augmented tuples — spelled
+  **inline** from di's exported pieces (`ResolvedExports`, `ErrOf`,
+  `ErrOfModule`, `NeedOf`, `NeedsOfModule`, `Available`, `Exportable`), never
+  through a named alias (declaration emit keeps a generic alias unreduced and
+  then cannot name imported modules' internal ports — TS2883, measured). The
+  provider's **instance** service is constrained the way `http()` constrains
+  the port class (`RouterProvider<RI>`, intersected on the option), so a
+  provider of anything but a context-free oRPC router fails at the call; the
+  port class is read off `provider.port` for the delegation (`as never` — the
+  check already happened one level up). Covered by the package's own `rpc`
+  fixture, which composes `RpcApp` through it; the value it returns is a plain
+  di module (`Module(name)({...} as never) as never` — di computes the
+  declared type from a literal, and generic tuples are not one). Options
+  `port`/`hostname` pin as for `http()`.
 - **`http({ router, prefix?, port?, hostname? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<RouterPort>>`**
   — the starter, and **the one way HTTP is answered here: oRPC on Hono**. The

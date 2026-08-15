@@ -35,7 +35,8 @@ import { fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 
 import { HttpHandler } from "./handler.js";
-import { HttpConfig, HttpRuntime, http, httpModule, type HttpInfo } from "./http-runtime.js";
+import { HttpModule } from "./http-module.js";
+import { HttpConfig, HttpRuntime, httpModule, type HttpInfo } from "./http-runtime.js";
 
 type Handler = ServiceOf<HttpHandler>;
 
@@ -68,22 +69,14 @@ const routerOf = (greeter: ServiceOf<Greeter>) =>
 /** The router as a service, built from the greeter it declares. */
 class GreetingRouter extends Port("GreetingRouter")<ReturnType<typeof routerOf>> {}
 
-/** The starter as an application uses it: `http({ router })` over a router provider. */
+/** The starter as an application uses it: `HttpModule` sugar over a router provider. */
 const rpcAppOf = (prefix?: `/${string}`) =>
-  Module("RpcApp")({
-    imports: [
-      http({
-        router: GreetingRouter,
-        port: 0,
-        hostname: "127.0.0.1",
-        ...(prefix === undefined ? {} : { prefix }),
-      }),
-    ],
-    provides: [
-      Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } }),
-      Provider(GreetingRouter)([Greeter], { sync: (greeter) => routerOf(greeter) }),
-    ],
-    exports: [HttpRuntime],
+  HttpModule("RpcApp")({
+    router: Provider(GreetingRouter)([Greeter], { sync: (greeter) => routerOf(greeter) }),
+    port: 0,
+    hostname: "127.0.0.1",
+    ...(prefix === undefined ? {} : { prefix }),
+    provides: [Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } })],
   });
 
 /** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
@@ -273,7 +266,7 @@ export const it = test.extend<HttpFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   rpc: async ({}, use) => {
-    const started: App[] = [];
+    const started: RunningApp<ConfigInvalid, HttpInfo>[] = [];
 
     await use(async (prefix) => {
       const app = start(rpcAppOf(prefix), {

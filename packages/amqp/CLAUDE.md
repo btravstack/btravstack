@@ -8,6 +8,34 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
+- **`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })`**
+  (`amqp-module.ts`) — THE way an application declares an AMQP deployment:
+  `Module(name)({...})` plus the contract and the handlers **provider**. It
+  appends `amqp({ contract, handlers: provider.port, … })` to `imports`,
+  prepends the provider to `provides` and `AmqpRuntime` to `exports`, and
+  returns exactly the module `Module(...)` would have declared over those
+  augmented tuples — spelled **inline** from di's exported pieces
+  (`ResolvedExports`, `ErrOf`, `ErrOfModule`, `NeedOf`, `NeedsOfModule`,
+  `Available`, `Exportable`), never through a named alias (declaration emit
+  keeps a generic alias unreduced and then cannot name imported modules'
+  internal ports — TS2883, measured on `HttpModule`). The provider's
+  **instance** service is constrained the way `amqp()` constrains the port
+  class (`HandlersProvider<HI, TContract>`, intersected on the option), so a
+  provider whose service is not `WorkerInferHandlers<TContract>` fails at the
+  call (`amqp-runtime.test-d.ts` pins the sugar's three directions next to
+  the primitive's); the port class is read off `provider.port` for the
+  delegation (`as never` — the check already happened one level up). The
+  starter it adds is typed as the **unpinned** `Module<AmqpRuntime |
+AmqpConfig, ConfigInvalid, Env | HI>` whether or not `url` is pinned — one
+  declared type, no overload pair — so a pinned composition still carries
+  `ConfigInvalid` in its error channel (the package's own `App` fixture type
+  is `RunningApp<ConfigInvalid, AmqpInfo>` for that reason). Covered by the
+  package's own `consuming` fixture, which composes every `serve` /
+  `serveBroken` app through it; the value it returns is a plain di module
+  (`Module(name)({...} as never) as never` — di computes the declared type
+  from a literal, and generic tuples are not one). `AmqpModuleOptions` is
+  the exported options type. `AnyAmqpContract` is exported from
+  `amqp-runtime.ts` for the sugar's bound, not from `index.ts`.
 - **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | H>`**
   — the starter, the same shape as `@btravstack/http`'s `http()`. It provides
   the runtime on **`AmqpRuntime`** (`extends RuntimePort<Runtime<never,
@@ -108,8 +136,9 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   **four** total attempts (first plus three retries), not the same count as
   Temporal's `maximumAttempts: 3`.
 - **The suite needs Docker** (`@amqp-contract/testing` boots one RabbitMQ per
-  run); its fixtures compose `amqp({ contract: echoContract, handlers:
-EchoHandlers, url: amqpConnectionUrl })` with a provider for `EchoHandlers`
-  per test — from `Greeting`, or a value — so the module reads no environment.
+  run); its fixtures compose `AmqpModule("Consuming")({ contract:
+echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
+  with a provider for `EchoHandlers` per test — from `Greeting`, or a value —
+  so the module reads no environment.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
   `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`.

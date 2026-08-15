@@ -497,7 +497,17 @@ update it in the same commit as the code.
 
 **Starters.** All three are, in the Spring Boot sense: a module that brings
 the default behaviour for the standard case, opinionated about the one way it
-is done and configurable where a deployment differs. `http({ router })` binds
+is done and configurable where a deployment differs. Each ships a **module
+sugar** — `HttpModule(name)({ router, imports, provides, exports })`,
+`TemporalModule(name)({ contract, activities, workflows, … })`,
+`AmqpModule(name)({ contract, handlers, … })` — a `Module(name)({...})` that
+also takes the starter's own fields, appends the starter to `imports`,
+prepends the router/activities/handlers **provider** to `provides` and the
+runtime port to `exports`, and returns exactly the module `Module(...)` would
+have declared (spelled from di's exported typing pieces, inline — see
+`packages/di/CLAUDE.md`), so the kernel and both gates see nothing new; the
+plain starter (`http({ router })`, …) stays exported as the primitive it
+delegates to. `http({ router })` binds
 `PORT`/`HOST` onto `HttpConfig`, mounts the application's **router port** —
 an oRPC router as a provider that declares the use cases its procedures call
 — on Hono under `prefix`, and provides `HttpRuntime`; **oRPC on Hono is the
@@ -603,22 +613,25 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. Its activities are a
   **port** (`OrderActivities`), provided from `PlaceOrder`, `OrderRepository`,
   `StockService` and `ShippingService` — closures over the services, no
-  context read at call time — and `temporal({ contract, activities:
-OrderActivities, workflows })` is what the composition root imports; the
-  connection and `TEMPORAL_*` come from the starter. `order-amqp-worker` is
-  the same shape (`OrderHandlers` from `Logger`, `amqp({ contract, handlers:
-OrderHandlers })`), with its outbox relay a resourceful provider of its own
-  rather than something layered onto the runtime.
+  context read at call time — and the composition root is
+  `TemporalModule("OrderTemporalWorker")({ contract, activities:
+orderActivities, workflows, imports })`, the sugar importing the starter;
+  the connection and `TEMPORAL_*` come from the starter. `order-amqp-worker` is
+  the same shape (`OrderHandlers` from `Logger`,
+  `AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers, … })`),
+  with its outbox relay a resourceful provider of its own rather than
+  something layered onto the runtime.
 - **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
   on Hono, `@unthrown/orpc` at the boundary.** The router is a di-provided
   service — `orderRouter` is a provider that **declares** `PlaceOrder` and
   `FindOrder`, so oRPC's context stays empty and nothing is located from a
   context at call time, never a module-level singleton — and
-  **`http({ router: OrderRouter })` imported into the composition root** is
-  the whole transport: `OrderApi` is a constant, `PORT`/`HOST` come from the
-  environment inside the graph, the router is mounted under `/rpc`, and the
-  root exports `HttpRuntime`. `RequestModule` rides `StartOptions.unit` so
+  **`HttpModule("OrderApi")({ router: orderRouter, imports: [Application,
+Persistence], exports: [Logger] })`** is the whole composition root — the
+  sugar imports `http({ router: OrderRouter })`, provides the router and
+  exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` come from the
+  environment inside the graph, the router is mounted under `/rpc`. `RequestModule` rides `StartOptions.unit` so
   the per-request fork is the kernel's. There is no `runtime`, `needs`,
   `handler`, `port` or env-reading to spell anywhere: `main.ts` is `await
 runMain(OrderApi, { unit: RequestModule })`. The router uses

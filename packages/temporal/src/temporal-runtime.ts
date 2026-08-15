@@ -76,7 +76,8 @@ export class TemporalUnreachable extends TaggedError("TemporalUnreachable")<{
 export class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}
 
 /** The activity implementations `declareActivitiesHandler` takes for `C`, with no injected context. */
-type ActivitiesOf<C extends ContractDefinition> = DeclareActivitiesHandlerOptions<C>["activities"];
+export type ActivitiesOf<C extends ContractDefinition> =
+  DeclareActivitiesHandlerOptions<C>["activities"];
 
 /**
  * `unknown` when the port's service is the implementations record for `C`,

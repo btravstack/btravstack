@@ -40,7 +40,9 @@ const RuntimelessAmqp = Module("RuntimelessAmqp")({
 const _noRuntime = start(RuntimelessAmqp, options);
 
 // The starter without the handlers it depends on: `OrderHandlers` is neither
-// provided nor imported, so it stays in the module's needs channel.
+// provided nor imported, so it stays in the module's needs channel. Spelled
+// with the `amqp()` primitive rather than `AmqpModule`, since the sugar cannot
+// leave the handlers out — that is what it is for.
 const HandlerlessAmqp = Module("HandlerlessAmqp")({
   imports: [
     ApplicationModule,
