@@ -1,7 +1,7 @@
+import { ConfigInvalid, type Env } from "@btravstack/config";
 import type { Module, Scope } from "@btravstack/di";
 import { P } from "unthrown";
 
-import { ConfigInvalid, type Env } from "./config.js";
 import { RuntimeStartFailed, type RuntimeInfoOf } from "./runtime.js";
 import {
   start,

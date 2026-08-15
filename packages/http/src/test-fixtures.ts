@@ -25,13 +25,8 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
-import {
-  currentUnit,
-  start,
-  type ConfigInvalid,
-  type Environment,
-  type RunningApp,
-} from "@btravstack/core";
+import type { ConfigInvalid, Environment } from "@btravstack/config";
+import { currentUnit, start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";

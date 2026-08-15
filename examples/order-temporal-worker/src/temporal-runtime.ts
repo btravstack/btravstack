@@ -1,4 +1,5 @@
-import { Config, RuntimePort, type Runtime } from "@btravstack/core";
+import { Config } from "@btravstack/config";
+import { RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import {
   Logger,

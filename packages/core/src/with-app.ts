@@ -1,6 +1,6 @@
+import type { Env } from "@btravstack/config";
 import type { Module, Scope } from "@btravstack/di";
 
-import type { Env } from "./config.js";
 import type { RuntimeInfoOf } from "./runtime.js";
 import { start, type RunningApp, type StartGate, type StartOptions } from "./start.js";
 

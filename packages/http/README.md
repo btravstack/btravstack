@@ -133,7 +133,7 @@ still reads `HOST`. Pin both and the module reads nothing: no `Env` need, no
 | `hostname` | `HOST`   | `0.0.0.0` | the deployment target is a pod, not a laptop; it also means the server is reachable beyond loopback — set `127.0.0.1` locally |
 
 An unset variable takes the default; a set-but-empty one is an error, and so is
-`PORT=abc` or `PORT=70000` — `Config.port` from `@btravstack/core` decides
+`PORT=abc` or `PORT=70000` — `Config.port` from `@btravstack/config` decides
 what a port is, once, and `PORT=0` is legal.
 
 ## Status codes the package itself writes

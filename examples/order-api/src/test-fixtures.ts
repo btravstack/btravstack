@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
-import { start, type Env, type RunningApp, type StartOptions } from "@btravstack/core";
+import type { Env } from "@btravstack/config";
+import { start, type RunningApp, type StartOptions } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { ApplicationModule, Logger, OrderRepository } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";

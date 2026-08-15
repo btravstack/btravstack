@@ -1,7 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { start, type ConfigInvalid, type RunningApp } from "@btravstack/core";
+import type { ConfigInvalid } from "@btravstack/config";
+import { start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
   ApplicationModule,

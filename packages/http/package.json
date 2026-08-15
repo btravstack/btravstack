@@ -49,6 +49,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@btravstack/config": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
@@ -61,6 +62,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "^0.1.0",
     "unthrown": "^5.0.0"

@@ -1,7 +1,7 @@
+import { Config, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { expect, test } from "vitest";
 
-import { Config, type ConfigInvalid, type Environment } from "./config.js";
 import type { KernelEvent } from "./events.js";
 import { runMain } from "./run-main.js";
 import type { Runtime } from "./runtime.js";

@@ -1,8 +1,8 @@
+import { Config, ConfigInvalid, Env, type Environment } from "@btravstack/config";
 import { Module, Provider, type Context, type Scope, type ScopedOptions } from "@btravstack/di";
 import { fromSafePromise, Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
-import { Config, ConfigInvalid, Env, type Environment } from "./config.js";
 import { createDeferred } from "./deferred.js";
 import { drainApp, type DrainReport } from "./drain.js";
 import { safeSink, stderrSink, type EventSink } from "./events.js";

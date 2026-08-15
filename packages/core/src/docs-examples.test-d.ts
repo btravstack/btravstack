@@ -7,6 +7,7 @@
 // inside its own source tree, and those two specifiers are exactly what
 // `package.json`'s `exports` map points at.
 
+import { Config, type ConfigInvalid } from "@btravstack/config";
 import { Module, Port, Provider, type AnyPort, type Context } from "@btravstack/di";
 // The matcher augmentation `src/vitest.d.ts` carries for the specs: this
 // config compiles `*.test-d.ts` alone, so the testing sample below needs it in
@@ -16,12 +17,10 @@ import { Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
 import { expect, expectTypeOf } from "vitest";
 
 import {
-  Config,
   RuntimePort,
   currentUnit,
   runMain,
   start,
-  type ConfigInvalid,
   type DrainReport,
   type ExitReport,
   type RunUnit,

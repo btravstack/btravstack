@@ -5,7 +5,8 @@ import {
   type AmqpInfo,
   type MessageUnitContext,
 } from "@btravstack/amqp";
-import { Config, RuntimePort, type Runtime } from "@btravstack/core";
+import { Config } from "@btravstack/config";
+import { RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { orderContract, type OrderContract } from "@btravstack/example-order-amqp-contract";
 import { Logger, Outbox } from "@btravstack/example-order-application";

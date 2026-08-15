@@ -172,7 +172,7 @@ gate.
   services, not only the exports — through the ordinary graph. The cast to
   `Module<X, E, Scope>` restates what the signature already promised
   (`Module<X, E, Scope | Env>` in, `Env` discharged here). `Port("Env")` is
-  declared once, in `config.ts`.
+  declared once, in `@btravstack/config`.
 
 - **`PROBE_PORT` is read through the same `Config.port` field the public API
   ships**, not a private parser — one definition of what a port is — and its

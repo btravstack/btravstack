@@ -1,11 +1,13 @@
 ---
+"@btravstack/config": minor
 "@btravstack/core": minor
 "@btravstack/http": minor
 ---
 
-**Configuration is the kernel's, the twelve-factor way.** `@btravstack/core`
-exports `Env` — the environment as a port, provided to every graph `start`
-boots (`process.env`, or `StartOptions.env` for a test) — and `Config`:
+**Configuration, the twelve-factor way, in its own package.** `@btravstack/config`
+exports `Env` — the environment as a port, which `@btravstack/core` provides to
+every graph `start` boots (`process.env`, or `StartOptions.env` for a test) —
+and `Config`:
 `Config.string/integer/port/boolean(variable, { default?, min?, max? })` fields,
 `Config.object({...})` composing them into a Standard Schema over the
 environment (any other Standard Schema, a `zod` object over the raw variables

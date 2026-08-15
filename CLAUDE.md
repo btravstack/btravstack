@@ -19,14 +19,15 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds five published packages,
-`di` (the container), `core` (the kernel), `http` (the HTTP runtime),
-`temporal` (the Temporal worker runtime) and `amqp` (the AMQP consumer
-runtime). `di` was its own repository until it was merged here **with its
-history**; it is the one package that depends on nothing else in this
-workspace, and the dependency runs `core` → `di`, never back. Its own spec is
-`packages/di/CLAUDE.md`.
-`examples/` holds eleven private ones — a clean-architecture application
+pnpm workspace + turbo monorepo. `packages/` holds seven published packages,
+`di` (the container), `config` (configuration from the environment, as
+providers), `core` (the kernel), `http` (the HTTP starter), `orpc` (the oRPC
+starter over it), `temporal` (the Temporal worker runtime) and `amqp` (the
+AMQP consumer runtime). `di` was its own repository until it was merged here
+**with its history**; it is the one package that depends on nothing else in
+this workspace, and the dependencies run `core` → `config` → `di`, never
+back. Its own spec is `packages/di/CLAUDE.md`.
+`examples/` holds ten private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
 each doing what its transport is for — answering, orchestrating,
@@ -295,7 +296,10 @@ UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   provided on a port the **application** declares over `RuntimePort`, since a
   port's service type is fixed at declaration and `PortInstance` is not
   nameable outside di.
-- **`StartOptions<UnitX, UnitNeeds>`** —
+- **`StartOptions<UnitX, UnitNeeds>`** — `env` (the environment the graph is
+  configured from, provided to it as `@btravstack/config`'s `Env` port and
+  what the kernel reads its own `PROBE_PORT` from; default `process.env`, a
+  test hands in a record);
   `unit` (a `Module<UnitX, never, UnitNeeds>` the kernel forks around **every
   unit**: built as the unit opens, torn down as it closes — while the unit's
   ambient record is still open — reading anything the application context
@@ -318,7 +322,11 @@ UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   defect); `clock`
   (default `systemClock`); `signals` (default `true`; **`false` disables the
   SIGTERM/SIGINT handlers _and_ the uncaught ones together**); `probes`
-  (default `{ port: 9000 }`, or `false`); `preDrainDelayMs` (`5_000`);
+  (`{ port }` or `false`; unset, bound from `PROBE_PORT` in `env`, default
+  `9000` — the one piece of configuration the kernel binds itself, because
+  the probe server is up before the graph exists; a bad value is a
+  `RuntimeStartFailed` for `"probes"` whose `cause` is the `ConfigInvalid`,
+  which is what `runMain` reads the `78` off); `preDrainDelayMs` (`5_000`);
   `drainTimeoutMs` (`20_000`); `onEvent` (default `stderrSink`).
 - **`RunningApp<E, Info>`** — `exited` (`AsyncResult<ExitReport, E | RuntimeStartFailed>`),
   `stop()`, `requestDrain()`, `phase()`, `ready()`, `probePort()`,
@@ -394,10 +402,13 @@ UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   (`StartGate`, the shared alias all three gated surfaces use). Every
   `main.ts` calls this one function; `start` is for callers that want the
   `RunningApp` itself. It boots the module and sets the exit code:
-  `0` clean, `1` a modeled startup `Err`, `2` drained with work abandoned **or
-  exited with a non-empty `teardownErrors`**, `70` an uncaught
-  exception/rejection, `70` a defect. Both `70`s are sysexits(3)'s
-  `EX_SOFTWARE`. **A crash outranks abandoned work** — written out explicitly
+  `0` clean, `1` a modeled startup `Err`, `78` a `ConfigInvalid` (or a
+  `RuntimeStartFailed` carrying one — the kernel's own `PROBE_PORT`), `2`
+  drained with work abandoned **or exited with a non-empty
+  `teardownErrors`**, `70` an uncaught exception/rejection, `70` a defect.
+  Both `70`s are sysexits(3)'s `EX_SOFTWARE`; `78` is its `EX_CONFIG` — the
+  deployment is wrong, not the code, the one startup failure fixed without a
+  rebuild. **A crash outranks abandoned work** — written out explicitly
   rather than left to depend on the fact that the uncaught path skips the drain
   anyway. `2` means "we stopped, but not cleanly", and a failed finaliser earns
   it as much as abandoned work does: the kernel goes to real trouble to keep
@@ -408,6 +419,35 @@ There is **no** `Defect` construction, no `overrideProvider`, no accumulation of
 runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
 adapter is composing a different module, which di already documents and the type
 checker already verifies.
+
+### `@btravstack/config`
+
+Configuration, the twelve-factor way, in a package of its own because it is
+its own concern — the kernel's thesis says it owns three things — and because
+a starter binds _its_ slice against this package, not the lifecycle machine.
+It depends on `di` and `unthrown` only (peers); `core` peers on it, provides
+`Env` and binds `PROBE_PORT` through it, and maps `ConfigInvalid` to `78`.
+Its own spec is `packages/config/CLAUDE.md`.
+
+- **`Env`** — the environment as a port (`Readonly<Record<string, string |
+undefined>>`), provided by `start` to every graph it boots the same way it
+  discharges `Scope`, so `start` takes `Module<X, E, Scope | Env>` and nothing
+  in an application reaches for `process.env`.
+- **`Config.string` / `integer` / `port` / `boolean` `(variable, { default?,
+min?, max? })`** — `ConfigField<T>`s (`{ variable, parse(raw) → Result<T,
+ConfigFieldInvalid> }`). **`Config.object({...})`** composes them into a
+  Standard Schema over the environment (hand-rolled, so the package depends on
+  nothing — `ConfigSchema` is the structural slice of Standard Schema v1, and a
+  `zod`/`valibot`/`arktype` schema is accepted where it is); every field is
+  read so one validation names every offending variable at once.
+  **`Config.provider(Port, schema)`** is a di provider with dep `[Env]` whose
+  `make` validates and answers **`ConfigInvalid`** (`{ port, issues }`, message
+  one line per variable). Modelled on Effect's `Config` (typed descriptions,
+  an environment provider swappable for a test) and Spring Boot's
+  externalised configuration (a starter binds its own slice: `@btravstack/http`
+  → `HttpConfig` from `PORT`/`HOST`), applied to di: a config slice is just a
+  port. Precedence, wherever a starter takes options, is explicit > env >
+  default, per field.
 
 ### `@btravstack/core/testing`
 
@@ -588,19 +628,23 @@ RequestModule })`. The router uses `@unthrown/orpc`'s `.result()` builder
   dependencies of `@btravstack/core` — the dual-copy hazard is real for both (di's port
   identity and unthrown's `isResult` each compare across copies). `@btravstack/http`
   peers on both of those plus `@btravstack/core` itself, for the same reason.
-  `node:` builtins only otherwise. Do not add a dependency. `@btravstack/di`
+  `node:` builtins only otherwise. Do not add a dependency — `Config` is
+  hand-rolled Standard Schema for exactly this reason. `@btravstack/di`
   living in this workspace does **not** change that: it is linked with
   `workspace:*` in `devDependencies` and stays `^0.1.0` in `peerDependencies`,
   so a consumer still installs one copy of it themselves. `di` itself peers on
-  `unthrown` and depends on nothing.
-- `declarationMap: false` on all six published packages — the published
+  `unthrown` and depends on nothing; `config` peers on `di` and `unthrown`;
+  `core` peers on all three. A **starter** is the exception by definition:
+  `@btravstack/orpc` peers on `hono`, `@hono/node-server` and `@orpc/server` —
+  peers, not dependencies, so an application holds one copy of each.
+- `declarationMap: false` on all seven published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All six published packages claim `engines: { node: ">=20" }` while the root
+- All seven published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -651,10 +695,10 @@ RequestModule })`. The router uses `@unthrown/orpc`'s `.result()` builder
   both READMEs **and** `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/core/src/` internals or the invariants guarding
   them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
-  `packages/http/CLAUDE.md`, `packages/orpc/CLAUDE.md`,
+  `packages/config/CLAUDE.md`, `packages/http/CLAUDE.md`, `packages/orpc/CLAUDE.md`,
   `packages/temporal/CLAUDE.md` or `packages/amqp/CLAUDE.md`, whichever is
   where that package's public surface lives — or `packages/di/CLAUDE.md` for
-  the container. There are **seven** `CLAUDE.md` files; naming the wrong one
+  the container. There are **eight** `CLAUDE.md` files; naming the wrong one
   is how the last drift happened.
 
 ## Test conventions

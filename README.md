@@ -408,7 +408,7 @@ other service — and a bad environment is a modeled startup `Err` rather than a
 crash or, worse, a silently wrong value.
 
 ```ts
-import { Config } from "@btravstack/core";
+import { Config } from "@btravstack/config";
 
 class Settings extends Port("Settings")<{
   readonly port: number;
