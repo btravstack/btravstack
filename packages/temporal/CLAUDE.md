@@ -30,8 +30,8 @@ with the code in the same commit, and with `README.md` — the package ships no
   slot. It opens one kernel unit per activity **attempt** (`id` is the base64
   task token, `traceId` the workflow id) and injects
   `ActivityUnitContext<Needs>` — `{ ctx }` — through `temporal-contract`'s own
-  per-invocation channel, which is why the deferred per-unit `forkScope` will
-  land without an API change. **Pass the type argument** (or hoist the call)
+  per-invocation channel; `ctx` is whatever the kernel hands unit work, so a
+  `StartOptions.unit` module reaches an activity with no change here. **Pass the type argument** (or hoist the call)
   when an implementation reads `context.ctx`: TypeScript infers the injected
   context from the middleware's type and infers nothing from a generic call it
   is still resolving.

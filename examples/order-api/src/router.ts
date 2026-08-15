@@ -1,18 +1,21 @@
-import type { Context } from "@btravstack/di";
+import type { ServiceOf } from "@btravstack/di";
 import { orderContract, type OrderView } from "@btravstack/example-order-api-contract";
-import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
+import type { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
 import { implement } from "@orpc/server";
 import "@unthrown/orpc/extensions/result";
 import { P } from "unthrown";
 
 /**
- * What every procedure is handed: the request's own di `Context`, seeded from
- * the application scope the kernel built. Passing the context rather than the
- * services keeps the router indifferent to how the request scope was made — the
- * runtime forks it, and this file only reads out of it.
+ * What every procedure is handed: the two use cases, resolved once by
+ * `ApiModule`'s provider — the router declares nothing about di and reads
+ * nothing out of a context, so it is a pure function of the contract and the
+ * services it is given.
  */
-export type ApiContext = { readonly scope: Context<PlaceOrder | FindOrder> };
+export type ApiContext = {
+  readonly place: ServiceOf<PlaceOrder>;
+  readonly find: ServiceOf<FindOrder>;
+};
 
 const os = implement(orderContract).$context<ApiContext>();
 
@@ -34,8 +37,7 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
 export const orderRouter = os.router({
   orders: {
     place: os.orders.place.result(({ context, errors }, input) =>
-      context.scope
-        .get(PlaceOrder)
+      context.place
         .execute(input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
@@ -49,8 +51,7 @@ export const orderRouter = os.router({
         ),
     ),
     find: os.orders.find.result(({ context, errors }, input) =>
-      context.scope
-        .get(FindOrder)
+      context.find
         .execute(input.id)
         .map(view)
         .mapErrCases((matcher) =>

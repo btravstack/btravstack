@@ -1,4 +1,4 @@
-import { Module, type AnyPort, type Context, type Scope } from "@btravstack/di";
+import { Module, type AnyPort, type Context, type Scope, type ScopedOptions } from "@btravstack/di";
 import { fromSafePromise, OkAsync, type AsyncResult } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
@@ -37,7 +37,14 @@ export type StartOptions<Needs extends AnyPort, Info = never, UnitX = never, Uni
    * `start`'s gate checks that at the call site.
    *
    * Teardown runs while the unit is still open, so a finaliser that logs does
-   * it under the unit's own trace id.
+   * it under the unit's own trace id. A finaliser that fails is reported as a
+   * `teardownError` event and nowhere else — not in `ExitReport.teardownErrors`,
+   * which is the application scope's.
+   *
+   * With this option the unit's work runs only once the fork is built — after
+   * an `await` when a unit provider is async — rather than synchronously
+   * inside `host.run`; a runtime that attaches a listener from inside its
+   * work must be ready for the event to have already fired.
    */
   readonly unit?: Module<UnitX, never, UnitNeeds>;
   readonly clock?: Clock;
@@ -369,12 +376,20 @@ export const start = <X, E, Needs extends AnyPort, Info = never, UnitX = never, 
               parent: Context<X>,
               module: Module<UnitX, never, UnitNeeds>,
               use: (forked: Context<X | UnitX>) => AsyncResult<T, Err>,
+              options: ScopedOptions,
             ) => AsyncResult<T, Err>;
 
-            return fork(ctx, unit, (forked) =>
-              fromSafePromise(
-                (async () => await work(forked as Context<InstanceType<Needs>>, signal))(),
-              ).flatMap((result) => result),
+            // Emitted, not pushed into `teardownErrors`: that array is the
+            // application scope's and rides the exit report; a per-unit
+            // finaliser failing on every request would grow it without bound.
+            return fork(
+              ctx,
+              unit,
+              (forked) =>
+                fromSafePromise(
+                  (async () => await work(forked as Context<InstanceType<Needs>>, signal))(),
+                ).flatMap((result) => result),
+              { onTeardownError: (port, cause) => emit({ type: "teardownError", port, cause }) },
             ) as ReturnType<typeof work>;
           });
 

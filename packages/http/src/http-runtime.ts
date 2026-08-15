@@ -102,12 +102,17 @@ const listen = <Needs extends AnyPort>(
             return closedOf(response);
           })
           .recoverDefect((cause) => {
-            // `destroy` is the last courtesy left when the response machinery
-            // itself failed: a client that would otherwise hang gets a reset.
-            // Guarded so this callback cannot throw — `recoverDefect` would wrap
-            // a throw here into a FRESH defect, and the `void` below would drop it.
+            // The unit failed outside `answer`'s reach — the handler threw
+            // synchronously, or a `StartOptions.unit` provider failed to build —
+            // so this is where the `500` is written; `destroy` is the last
+            // courtesy left once headers are already on the wire, so a client
+            // that would otherwise hang gets a reset. Guarded so this callback
+            // cannot throw — `recoverDefect` would wrap a throw here into a
+            // FRESH defect, and the `void` below would drop it.
             try {
-              response.destroy(cause instanceof Error ? cause : undefined);
+              end(response, 500, "InternalError");
+              if (!response.writableEnded)
+                response.destroy(cause instanceof Error ? cause : undefined);
             } catch {
               // nothing left to try; the socket is already unusable
             }
@@ -186,8 +191,15 @@ const listen = <Needs extends AnyPort>(
     }),
   ).flatMap((result) => result);
 
+// `closed` is checked first because the unit's work is not always synchronous
+// with the request: under a `StartOptions.unit` module it runs once the fork is
+// built, and a client that hung up in the meantime has already emitted
+// `'close'` — subscribing then would hold the unit open for the process
+// lifetime.
 const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
-  fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
+  response.closed
+    ? OkAsync()
+    : fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
 
 /**
  * `UnitMeta.traceId` defaults to `id`, so `id` is minted fresh per request and

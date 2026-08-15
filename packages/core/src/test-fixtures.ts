@@ -1,6 +1,7 @@
 import { Module, Port, Provider } from "@btravstack/di";
-import { test } from "vitest";
+import { expect, test } from "vitest";
 
+import type { KernelEvent } from "./events.js";
 import { start, type RunningApp } from "./start.js";
 import { testRuntime, type TestRuntime, type TestRuntimeInfo } from "./test-runtime.js";
 import { currentUnit } from "./units.js";
@@ -15,6 +16,12 @@ export type UnitApp = {
   readonly counts: { parentBuilds: number; spanBuilds: number; spanStops: number };
   /** What `currentUnit()` answered inside the unit provider's build and stop. */
   readonly seen: { build: string | undefined; stop: string | undefined };
+  /** Every kernel event the application emitted, in order. */
+  readonly events: readonly KernelEvent[];
+  /** Holds every subsequent unit teardown open until the returned `release` is called. */
+  readonly holdTeardown: () => { readonly release: () => void };
+  /** Makes every subsequent unit teardown fail with `cause`. */
+  readonly failTeardown: (cause: unknown) => void;
 };
 
 /**
@@ -32,6 +39,19 @@ export const it = test.extend<{ unitApp: UnitApp }>({
     const seen: { build: string | undefined; stop: string | undefined } = {
       build: undefined,
       stop: undefined,
+    };
+    const events: KernelEvent[] = [];
+    let teardown: () => Promise<void> | undefined = () => undefined;
+    const holdTeardown = (): { readonly release: () => void } => {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      teardown = () => held;
+      return { release: () => release() };
+    };
+    const failTeardown = (cause: unknown): void => {
+      teardown = () => Promise.reject(cause);
     };
 
     const AppModule = Module("UnitFixtureApp")({
@@ -57,6 +77,7 @@ export const it = test.extend<{ unitApp: UnitApp }>({
           onStop: () => {
             counts.spanStops += 1;
             seen.stop = currentUnit()?.unitId;
+            return teardown();
           },
         }),
       ],
@@ -69,13 +90,16 @@ export const it = test.extend<{ unitApp: UnitApp }>({
       unit: UnitModule,
       signals: false,
       probes: false,
-      onEvent: () => {},
+      preDrainDelayMs: 0,
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
     await runtime.untilStarted();
 
-    await use({ runtime, app, counts, seen });
+    await use({ runtime, app, counts, seen, events, holdTeardown, failTeardown });
 
     app.stop();
-    await app.exited;
+    await expect(app.exited).toBeOk();
   },
 });

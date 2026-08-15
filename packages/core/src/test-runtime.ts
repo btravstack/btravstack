@@ -83,20 +83,17 @@ export const testRuntime = (name = "test"): TestRuntime => {
       const held = new Promise<Result<T, E>>((resolve) => {
         settle = resolve;
       });
-      let signal!: AbortSignal;
-
-      const result = run<T, E>({ kind: "test", id: `${submitted}` }, (_ctx, s) => {
-        signal = s;
+      // Forwarded rather than captured: with a `unit` module the kernel runs
+      // the work only once the fork is built, so a captured signal would be
+      // `undefined` for a caller reading it right after `submit()`.
+      const forwarded = new AbortController();
+      const result = run<T, E>({ kind: "test", id: `${submitted}` }, (_ctx, signal) => {
+        if (signal.aborted) forwarded.abort(signal.reason);
+        else signal.addEventListener("abort", () => forwarded.abort(signal.reason), { once: true });
         return held;
       });
 
-      return {
-        settle,
-        result,
-        get signal() {
-          return signal;
-        },
-      };
+      return { settle, result, signal: forwarded.signal };
     },
   };
 };

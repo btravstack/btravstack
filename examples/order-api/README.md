@@ -44,8 +44,7 @@ elimination, and the `mapErrCases` inside it
 is the triage point — the boundary where the application's vocabulary stops:
 
 ```ts
-context.scope
-  .get(PlaceOrder)
+context.place
   .execute(input.id, input.quantity)
   .map(view)
   .mapErrCases((matcher) =>
@@ -75,24 +74,32 @@ keep-alive connection, and the trace-id policy all live in
 [`@btravstack/http`](../../packages/http) now — see its README for
 the runtime contract and the guarantee it makes. This example supplies the
 `ApiHandler` **port** — the Hono app with oRPC's fetch adapter mounted under
-`/rpc`, built by `ApiModule`'s provider, so even the transport wiring exists
-because the composition root said so — and reads `port` back off
-`Serving.info` the same way any caller of the package does. The runtime's
-handler is one line: resolve the port, call it.
+`/rpc`, built by `ApiModule`'s provider from the two use cases it declares, so
+even the transport wiring exists because the composition root said so — and
+reads `port` back off `Serving.info` the same way any caller of the package
+does. The runtime is `apiRuntime`: `httpRuntime` needing that one port, its
+handler one line — resolve the port, call it — defined once and called by
+`main.ts`, the fixtures and the type test alike.
 
 ### One unit per call
 
 ```ts
-handler: (request, response, ctx) => ctx.get(ApiHandler)(request, response, ctx),
+export const apiRuntime = (options) =>
+  httpRuntime({
+    ...options,
+    needs: [ApiHandler],
+    handler: (request, response, ctx) => ctx.get(ApiHandler)(request, response),
+  });
 ```
 
 The `ctx` arriving per request is already the request's own — the kernel forked
-it (see below) — and it flows into oRPC as the procedure context, so every
-procedure reads its use cases out of the request's di scope. The unit's
-lifetime **is** the response's: `@btravstack/http` keeps it open until the
-response completes, so there is no seam for a late write to land in. An
-unmatched path is Hono's 404; a defect inside a procedure is oRPC's own
-`INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or end by hand.
+it (see below). The unit's lifetime **is** the response's: `@btravstack/http`
+keeps it open until the response completes, so there is no seam for a late
+write to land in. An unmatched path is Hono's 404; a defect inside a procedure
+is oRPC's own `INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or
+end by hand. `getRequestListener` runs with `overrideGlobalObjects: false`; its
+default swaps `globalThis.Request`/`Response` for Hono's own on the first
+request served, which nothing in a composition root should have to know.
 
 ### A request scope over the application scope
 
@@ -157,12 +164,7 @@ it reads everything else, as a value:
 await readEnv().match({
   ok: (env) =>
     runMain(OrderApiModule, {
-      runtime: httpRuntime({
-        port: env.PORT,
-        needs: [ApiHandler, PlaceOrder, FindOrder],
-        handler: (request, response, ctx) =>
-          ctx.get(ApiHandler)(request, response, ctx),
-      }),
+      runtime: apiRuntime({ port: env.PORT }),
       unit: RequestModule,
       probes: { port: env.PROBE_PORT },
     }),

@@ -277,8 +277,16 @@ gate.
   placement are load-bearing** (`unit-module.spec.ts` guards them). Inside
   `registry.run`'s work means the fork's teardown runs while the unit's
   ambient record is still open — a span's `onStop` logs under the request's
-  own trace id — and the unit is not counted closed until the scope is, so a
-  drain waits for unit teardown too. `run` stays an **annotation** against
+  own trace id (_"builds and tears down inside the unit's own ambient
+  record"_) — and the unit is not counted closed until the scope is, so a
+  drain waits for unit teardown too (_"keeps a unit in flight until its scope
+  has closed"_: the teardown is held open across `requestDrain()`, and the
+  report says `inFlightAtStart: 1, completed: 1`). The fork passes its own
+  `onTeardownError`, which **emits and does not push**: `teardownErrors` is
+  the application scope's array and rides the exit report, and a per-unit
+  finaliser failing on every request would grow it without bound (_"reports
+  a failing unit teardown as an event and keeps it off the exit report"_).
+  `run` stays an **annotation** against
   `RunUnit` (a divergence is reported, not absorbed); with no `unit` option
   the work receives `runtimeCtx` exactly as before, zero overhead. The
   `forkScope` call goes through a discharged-signature cast — the same move

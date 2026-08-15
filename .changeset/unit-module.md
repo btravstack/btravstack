@@ -17,8 +17,17 @@ module's error channel is pinned to `never` — a construction failure at unit
 scope has no modeled channel to land in, so it rides the unit's defect path,
 which every runtime already answers.
 
-`RuntimeHost.ctx` remains the application context: a unit-provided port exists
-only while a unit is open, so resolving one at runtime startup is a defect.
-Without the option, unit work receives the application context exactly as
-before. This closes the "Per-unit ports" deferral: `RunUnit` was typed for
-this fork from the start, and no runtime package changes.
+A unit finaliser that fails is emitted as a `teardownError` event and kept off
+`ExitReport.teardownErrors`, which is the application scope's.
+
+Two things a runtime author should know. `RuntimeHost.ctx` remains the
+application context: a unit-provided port exists only while a unit is open, so
+resolving one at runtime startup is a defect. And with a unit module the unit's
+work runs only once the fork is built — after an `await` when a provider is
+async — so a runtime subscribing to an event from inside its work must check
+whether it already fired. Without the option, unit work receives the
+application context exactly as before, synchronously. This closes the "Per-unit
+ports" deferral: `RunUnit` was typed for this fork from the start.
+
+`@btravstack/core/testing`'s `SubmittedUnit.signal` is now available
+synchronously after `submit()` whether or not a unit module is in play.

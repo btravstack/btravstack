@@ -99,10 +99,10 @@ own job from that point on; the package will not double-write over it.
 
 ## Status codes the package itself writes
 
-| Code  | When                                                            |
-| ----- | --------------------------------------------------------------- |
-| `404` | the handler resolved without writing a response                 |
-| `500` | the handler's promise rejected, and no response was written yet |
+| Code  | When                                                |
+| ----- | --------------------------------------------------- |
+| `404` | the handler resolved without writing a response     |
+| `500` | the handler failed, and no response was written yet |
 
 A handler that hands back an `AsyncResult` carrying an `Err` or a `Defect`
 **resolves** rather than rejects — an `AsyncResult` never rejects — so it lands
@@ -110,10 +110,12 @@ in the `404` branch, not the `500` one. That is correct, not a bug: this
 package does not map `Result` → status, and a handler that returns an
 unfolded `Result` has not answered the request.
 
-A handler that throws **synchronously**, before it has returned anything
-awaitable, gets neither: there is nothing left to write to, so the package's
-last resort is destroying the socket — a reset the client sees rather than a
-hang.
+"Failed" covers a rejected promise, a **synchronous** throw before anything
+awaitable was returned, and a `StartOptions.unit` provider that failed to build
+— the last two never reach the handler's own promise, so the `500` is written
+from the unit's defect path instead. Once headers are already on the wire there
+is no status left to write, and the last resort is destroying the socket — a
+reset the client sees rather than a hang.
 
 ## Writing a runtime
 
@@ -125,7 +127,9 @@ built on it gets them for free rather than having to get them right by hand:
 - **Flush the response inside the unit.** The unit's work does not settle
   until the response's `'close'` event fires, so there is no way to write
   late — the failure mode the kernel can only document, this package makes
-  structurally unreachable.
+  structurally unreachable. (A response already closed by the time the work
+  runs — a client that hung up during a slow `StartOptions.unit` build —
+  settles at once rather than waiting for a `'close'` that has fired.)
 - **`UnitMeta.id` unique per unit.** The package mints `id: randomUUID()` for
   every request itself; a caller never gets the chance to pass a route
   template and silently collapse every request onto one trace id. An inbound

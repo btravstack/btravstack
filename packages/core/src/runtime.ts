@@ -29,6 +29,11 @@ export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
  *
  * `UnitMeta.id` must be unique per unit unless a `traceId` is supplied — see
  * {@link UnitMeta}.
+ *
+ * With a `StartOptions.unit` module in play, `work` runs only once the fork is
+ * built — after an `await` when a unit provider is async — not synchronously
+ * inside `host.run`. A runtime that subscribes to an event from inside `work`
+ * (a response's `'close'`) must first check whether it has already fired.
  */
 // `Context<InstanceType<Needs>>`, not `Context<Needs>`: di parameterises
 // `Context<in R>` by port *instance* types, while a runtime declares its needs
@@ -49,6 +54,12 @@ export type RunUnit<Needs extends AnyPort> = <T, E>(
  * checkable by the kernel: a unit's response must be flushed **inside** the
  * work callback (see {@link RunUnit}), and `UnitMeta.id` must be unique per
  * unit unless a `traceId` is supplied (see {@link UnitMeta}).
+ *
+ * `ctx` is the **application** context. A port a `StartOptions.unit` module
+ * provides exists only while a unit is open and reaches the runtime through
+ * `run`'s work callback alone; `start`'s gate lets a runtime's `needs` name
+ * such a port, so `ctx.get(...)` of one here type-checks and is a defect at
+ * startup. Resolve at `start` only what the application module itself exports.
  */
 export type RuntimeHost<Needs extends AnyPort> = {
   readonly ctx: Context<InstanceType<Needs>>;

@@ -37,10 +37,9 @@ type RawDelivery = {
 };
 
 /**
- * Open one kernel unit per delivery, and hand the application context
- * downstream through `amqp-contract`'s own per-message context channel — which
- * is per-invocation, so a future per-unit `forkScope` lands here without an
- * API change.
+ * Open one kernel unit per delivery, and hand the unit's context — the
+ * application context, or the per-unit fork when `StartOptions.unit` is set —
+ * downstream through `amqp-contract`'s own per-message context channel.
  *
  * **Pass the type argument** — `messageUnits<typeof PlaceOrder | typeof Logger>(host)`
  * — whenever a handler reads `context.ctx`. TypeScript infers the injected

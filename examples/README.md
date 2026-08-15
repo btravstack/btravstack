@@ -155,7 +155,8 @@ queue job id or a task token already is.
 
 ## The runtimes with a non-empty `needs`
 
-`order-api`'s `httpRuntime` call declares `[PlaceOrder, FindOrder, Logger]`,
+`order-api`'s `apiRuntime` declares `[ApiHandler]` — the HTTP surface itself, a
+provider that declares the two use cases it calls —
 `temporalWorkerRuntime` declares the five ports its activities resolve, and
 `orderAmqpRuntime` declares `[Outbox, Logger]` — each a selection of what the
 module exports, because a
@@ -164,7 +165,7 @@ so these three are what exercise `start`'s phantom rest-tuple gate and
 `RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
 _classes_ while di parameterises contexts by port _instances_ — against a real
 module here. `@btravstack/http`'s own `AppModule`/`Greeting` fixture
-(`packages/http/src/test-fixtures.ts`, driving its 12
+(`packages/http/src/test-fixtures.ts`, driving its 14
 `http-runtime.spec.ts` specs) exercises the same runtime-side path a second
 way now. `examples/` stays the only place the gate is pinned by a **type
 test**: `@btravstack/http` ships no `*.test-d.ts`.

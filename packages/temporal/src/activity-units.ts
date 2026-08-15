@@ -29,10 +29,10 @@ export type ActivityMiddleware<Needs extends AnyPort> = (
 ) => AsyncResult<unknown, never>;
 
 /**
- * Open one kernel unit per activity attempt, and hand the application context
- * downstream through `temporal-contract`'s own context channel — which is
- * per-invocation, so a future per-unit `forkScope` lands here without an API
- * change.
+ * Open one kernel unit per activity attempt, and hand the unit's context —
+ * the application context, or the per-unit fork when `StartOptions.unit` is
+ * set — downstream through `temporal-contract`'s own per-invocation context
+ * channel.
  *
  * There is deliberately no `Result`-unwrapping boundary: `declareActivitiesHandler`
  * owns the mapping from a settled `Result` to an activity failure, and the

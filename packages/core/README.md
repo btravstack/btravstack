@@ -159,6 +159,16 @@ telling two units apart never needs `traceId`; `traceId` is the **correlation**
 id, carrying an id from outside the process (a `traceparent` header, a message
 property) so a line logged here joins a trace that started elsewhere.
 
+**`host.ctx` is the application context, and unit work is deferred.** Both
+follow from `StartOptions.unit`. A port the unit module provides exists only
+while a unit is open and reaches you through `host.run`'s work callback alone —
+the gate lets your `needs` name it, so `host.ctx.get(...)` of one type-checks
+and is a defect at startup; resolve at `start` only what the application module
+itself exports. And with a unit module the work runs only once the fork is
+built, so if you subscribe to an event from inside it (a response's `'close'`),
+check first whether it already fired — a client that hung up during a slow
+per-request acquire otherwise leaves the unit open for good.
+
 ## Exit codes
 
 `runMain` sets `process.exitCode` and never calls `process.exit()`.
@@ -246,6 +256,7 @@ asserting.
 | Option            | Default          |                                                               |
 | ----------------- | ---------------- | ------------------------------------------------------------- |
 | `runtime`         | —                | required; the one runtime this process boots                  |
+| `unit`            | none             | a module forked around every unit; see above                  |
 | `clock`           | `systemClock`    | injectable, so drain tests are instant                        |
 | `signals`         | `true`           | `false` disables the SIGTERM/SIGINT **and** uncaught handlers |
 | `probes`          | `{ port: 9000 }` | `false` to disable; `{ port: 0 }` to let the OS choose        |

@@ -106,9 +106,7 @@ describe("httpRuntime", () => {
     expect(response.status).toBe(500);
   });
 
-  it("resets the connection when the handler throws before returning a promise", async ({
-    serve,
-  }) => {
+  it("answers 500 when the handler throws before returning a promise", async ({ serve }) => {
     // GIVEN a handler that throws synchronously — not a rejected promise, so
     // there is nothing `answer`'s own try/catch can reach. The throw escapes
     // the unit's work callback itself, which the kernel folds to a Defect.
@@ -118,9 +116,60 @@ describe("httpRuntime", () => {
     });
 
     // WHEN a request arrives
-    // THEN there is nothing left to write, so the one remaining courtesy —
-    // killing the socket — is what the client observes.
-    await expect(fetch(origin)).rejects.toThrow();
+    const response = await fetch(origin);
+
+    // THEN the unit's defect path still answers it — the same path a
+    // `StartOptions.unit` construction failure takes
+    expect(response.status).toBe(500);
+  });
+
+  it("resets the connection when the handler throws with headers already on the wire", async ({
+    serve,
+  }) => {
+    // GIVEN a handler that flushes its headers and then throws synchronously —
+    // no status left to write, and a body the client is still waiting on
+    const { origin } = await serve((_request, response) => {
+      response.writeHead(200, { "content-length": "2" });
+      response.flushHeaders();
+      // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test
+      throw new Error("boom");
+    });
+
+    // WHEN a request arrives
+    // THEN the one courtesy left — killing the socket rather than leaving the
+    // client to hang on a body that never comes — is what it observes
+    await expect(fetch(origin).then((response) => response.text())).rejects.toThrow();
+  });
+
+  it("closes the unit when the client hung up before its work began", async ({
+    serve,
+    slowUnit,
+    boundServer,
+  }) => {
+    // GIVEN a unit module that builds only when released, and a request whose
+    // client gives up while it is building — the server has already seen the
+    // response close by the time the unit's work runs
+    const { app, origin } = await serve(undefined, slowUnit.module);
+    const hungUp = new Promise<void>((done) => {
+      boundServer().once("request", (_request, response) => response.once("close", () => done()));
+    });
+    const controller = new AbortController();
+    const abandonedByClient = fetch(origin, { signal: controller.signal }).catch(() => undefined);
+    await slowUnit.arrived;
+    controller.abort();
+    await hungUp;
+
+    // WHEN the unit is released and its work runs to completion
+    slowUnit.release();
+    await abandonedByClient;
+    await new Promise<void>((tick) => setImmediate(tick));
+
+    // THEN a drain finds nothing in flight: the unit closed on the response that
+    // was already closed, rather than waiting for a `'close'` that had fired
+    app.requestDrain();
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({ drain: { inFlightAtStart: 0, completed: 0, abandoned: 0 } }),
+    );
   });
 
   it("adopts a non-blank x-request-id as the trace id", async ({ serve, traced }) => {

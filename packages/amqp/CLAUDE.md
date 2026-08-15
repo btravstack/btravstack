@@ -52,8 +52,8 @@ Err, not a defect"` guards it).
   **delivery** (`id` a minted `randomUUID()`, `traceId` the publisher's
   `messageId` — falling back to `correlationId`, then to the minted id) and
   injects `MessageUnitContext<Needs>` — `{ ctx }` — through `amqp-contract`'s
-  own per-message context channel, which is why the deferred per-unit
-  `forkScope` will land without an API change. **Pass the type argument** (or
+  own per-message context channel; `ctx` is whatever the kernel hands unit
+  work, so a `StartOptions.unit` module reaches a handler with no change here. **Pass the type argument** (or
   hoist the call) when a handler reads `context.ctx`: TypeScript infers the
   injected context from the middleware's own type and infers nothing from a
   generic call it is still resolving — and unlike `@btravstack/temporal`'s single

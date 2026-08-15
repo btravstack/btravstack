@@ -216,7 +216,8 @@ Both surfaced from building the first real runtime against this kernel, and
 both are silent when broken. They live in the `RunUnit` / `RuntimeHost` /
 `UnitMeta` TSDoc, in the root README's _"Two contracts a runtime owes"_ and in
 the package README's _"Writing a runtime"_ — four places that must stay in
-sync.
+sync. A third, smaller one arrived with `StartOptions.unit` and lives in the
+same four places.
 
 **1. The response must be flushed INSIDE the unit.** A unit is closed the
 instant its `Result` settles; `registry.awaitIdle()` is what beat 3 of the
@@ -245,6 +246,20 @@ so telling two units apart never needs `traceId`; `traceId` is the
 carries an id from outside the process so a line logged here joins a trace that
 started elsewhere.
 
+**3. `RuntimeHost.ctx` is the application context, and unit work is not
+synchronous with `host.run`.** Two consequences of `StartOptions.unit`. A port
+the unit module provides exists only while a unit is open and reaches the
+runtime through `run`'s work callback alone — `start`'s gate lets a runtime's
+`needs` name such a port, because unit work is what receives it, so
+`host.ctx.get(...)` of one **type-checks** and is a defect at startup; resolve
+at `start` only what the application module itself exports. And with a unit
+module the work runs only once the fork is built — after an `await` when a
+unit provider is async — so a runtime that subscribes to an event from inside
+its work (a response's `'close'`) must first check whether it already fired:
+`@btravstack/http`'s `closedOf` checks `response.closed` for exactly this,
+found by a client hanging up during a slow per-request acquire and leaving a
+unit open for the process lifetime.
+
 ## Public surface
 
 `packages/core/src/index.ts` is the one place the API is decided. `testing.ts`
@@ -266,7 +281,15 @@ so a production bundle never pulls the fakes in.
   carries; this is what makes a per-request scope transparent, so no handler
   ever calls `Module.forkScope` itself. Its error channel is pinned to `never`
   — a construction failure at unit scope has no modeled channel and rides the
-  unit's defect path, which every runtime already answers. The gate checks
+  unit's defect path, which every runtime already answers — `@btravstack/http`
+  writes the `500` from its `recoverDefect`, precisely because that failure
+  happens before the handler is reached. A unit finaliser that fails is
+  emitted as a `teardownError` event only, never pushed into
+  `ExitReport.teardownErrors` (which is the application scope's, and would
+  grow unbounded). With the option, unit work runs only once the fork is
+  built — after an `await` when a unit provider is async — so a runtime that
+  subscribes to an event from inside its work must check it has not already
+  fired (see contract 3 above). The gate checks
   both directions at the call site: runtime `needs` may draw on `UnitX`, and
   `UnitNeeds` must be covered by the module's exports or `Scope`. One caveat:
   `RuntimeHost.ctx` is the **application** context, so a unit-provided port
@@ -413,7 +436,7 @@ the code.
   `start`'s phantom rest-tuple gate and `RuntimeHost`'s
   `Context<InstanceType<Needs>>` in two places: here, and in
   `packages/http/src/test-fixtures.ts`'s `Greeting` port / `AppModule`,
-  driven by its 12 `http-runtime.spec.ts` specs. `examples/` stays the only
+  driven by its 14 `http-runtime.spec.ts` specs. `examples/` stays the only
   place the gate is pinned by a **type test** — `@btravstack/http` ships no
   `*.test-d.ts`.
 - **`examples/order-temporal-worker` is the one workspace whose suite needs the
@@ -480,9 +503,14 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   hand-rolling a transport, and its HTTP stack is deliberately ONE way: Hono +
   oRPC + `@unthrown/orpc`.** The surface itself is a di-provided service —
   `ApiModule` provides the `ApiHandler` port (a Hono app with oRPC's fetch
-  adapter mounted, built by a provider, never a module-level singleton), the
-  runtime's handler resolves it in one line, and `RequestModule` rides
-  `StartOptions.unit` so the per-request fork is the kernel's. The router uses
+  adapter mounted, built by a provider that **declares** `PlaceOrder` and
+  `FindOrder` rather than locating them from a context at call time, never a
+  module-level singleton), `apiRuntime` is `httpRuntime` needing that one port
+  and resolving it in one line — the single definition `main.ts`, the fixtures
+  and the type test all call — and `RequestModule` rides `StartOptions.unit`
+  so the per-request fork is the kernel's. `getRequestListener` is called with
+  `overrideGlobalObjects: false`: its default replaces `globalThis.Request` /
+  `Response` on the first request served, a process-wide side effect. The router uses
   `@unthrown/orpc`'s `.result()` builder extension. It reads `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the package's.
   This is what makes the package's needs gate a real one: `httpRuntime<Needs>`
@@ -554,7 +582,8 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   latch, the monotonic `completed`), which is what the surviving comments are.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
 - Coverage thresholds are 100% lines/functions on `packages/core`, with
-  `testing.ts` excluded (it is a re-export barrel).
+  `testing.ts` (a re-export barrel) and `test-fixtures.ts` (test code, per the
+  Test conventions) excluded.
 - Test mechanics: `@unthrown/vitest`'s matchers are registered via `setupFiles`
   (`toBeOk`, `toBeOkWith`, `toBeErrTagged`, …). Timing is asserted through
   `createFakeClock`, never a real `setTimeout` — a kernel whose own tests are

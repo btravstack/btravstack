@@ -293,6 +293,15 @@ unique, so a reader that only needs to tell two units apart already has one.
 supply: it carries an id from _outside_ the process (a `traceparent` header, a
 message property) so a line logged here joins a trace that started elsewhere.
 
+**`RuntimeHost.ctx` is the application context, and unit work is deferred** —
+a third, smaller obligation that came with `StartOptions.unit`. A port the unit
+module provides exists only while a unit is open and reaches the runtime
+through `host.run`'s work callback alone; the gate lets a runtime's `needs`
+name it, so `host.ctx.get(...)` of one type-checks and is a defect at startup.
+And with a unit module the work runs only once the fork is built, so a runtime
+that subscribes to an event from inside it (a response's `'close'`) must first
+check whether it already fired.
+
 ## Every async surface is an `AsyncResult`
 
 Not only the fallible ones. `AsyncResult<T, never>` is how this package spells

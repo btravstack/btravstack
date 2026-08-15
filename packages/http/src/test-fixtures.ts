@@ -27,6 +27,7 @@ import { connect, type Socket } from "node:net";
 
 import { currentUnit, start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
+import { fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 
 import { httpRuntime, type HttpHandler, type HttpInfo } from "./http-runtime.js";
@@ -38,6 +39,43 @@ const AppModule = Module("App")({
   provides: [Provider(Greeting)({ value: { text: "hello" } })],
   exports: [Greeting],
 });
+
+/** A unit-scoped port whose construction is held open, so a unit's work can be delayed past its client's patience. */
+class Slow extends Port("Slow")<{ readonly built: true }> {}
+
+type SlowUnit = {
+  readonly module: Module<Slow, never, never>;
+  /** Resolves once a unit has started building the module. */
+  readonly arrived: Promise<void>;
+  /** Lets every held construction finish. */
+  readonly release: () => void;
+};
+
+const slowUnitOf = (): SlowUnit => {
+  let entered!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    module: Module("SlowUnit")({
+      provides: [
+        Provider(Slow)({
+          make: () => {
+            entered();
+            return fromSafePromise(held.then(() => ({ built: true }) as const));
+          },
+        }),
+      ],
+      exports: [Slow],
+    }),
+    arrived,
+    release: () => release(),
+  };
+};
 
 type App = RunningApp<never, HttpInfo>;
 
@@ -52,7 +90,10 @@ export type HttpFixtures = {
    */
   readonly serve: (
     handler?: HttpHandler<typeof Greeting>,
+    unit?: SlowUnit["module"],
   ) => Promise<{ readonly app: App; readonly origin: string }>;
+  /** A `StartOptions.unit` module whose provider builds only once `release()` is called. */
+  readonly slowUnit: SlowUnit;
   /** An app started on an explicit port, for the failure paths. Shut down by the fixture. */
   readonly appOnPort: (port: number) => App;
   readonly occupied: { readonly appOnTakenPort: App };
@@ -102,7 +143,7 @@ export const it = test.extend<HttpFixtures>({
   serve: async ({}, use) => {
     const started: App[] = [];
 
-    await use(async (handler = noop) => {
+    await use(async (handler = noop, unit) => {
       const app = start(AppModule, {
         runtime: httpRuntime({
           port: 0,
@@ -110,6 +151,7 @@ export const it = test.extend<HttpFixtures>({
           needs: [Greeting],
           handler,
         }),
+        ...(unit === undefined ? {} : { unit }),
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
@@ -126,6 +168,11 @@ export const it = test.extend<HttpFixtures>({
       app.stop();
       await expect(app.exited).toBeOk();
     }
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  slowUnit: async ({}, use) => {
+    await use(slowUnitOf());
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

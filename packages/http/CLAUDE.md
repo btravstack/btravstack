@@ -17,10 +17,16 @@ the same commit, and with `README.md` — the package ships no
   `(request, response, ctx: Context<InstanceType<Needs>>, signal) => PromiseLike<unknown>`.
   Returns the handled-or-not signal, not the response body: the package
   decides `404` (resolved without writing) or `500` (rejected before writing)
-  from it, and never double-writes once headers are on the wire.
+  from it, and never double-writes once headers are on the wire. A defect that
+  never reaches the handler's promise — a synchronous throw, a
+  `StartOptions.unit` provider failing to build — gets its `500` from the
+  unit's `recoverDefect` instead, which destroys the socket only once headers
+  are already out.
 - **The guarantee**: the unit's lifetime **is** the response's — it does not
-  close until the response's `'close'` event fires — so there is no seam for a
-  late write to land in, and `id: randomUUID()` is minted per request (a
+  close until the response's `'close'` event fires, and closes at once if that
+  event already fired before the work ran (a client hanging up during a slow
+  `StartOptions.unit` build; the unit's work is deferred behind the fork) — so
+  there is no seam for a late write to land in, and `id: randomUUID()` is minted per request (a
   non-blank inbound `x-request-id` becomes `traceId`), so the two contracts a
   runtime owes (see above) are structural here rather than left to a caller's
   care.
