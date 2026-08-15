@@ -1,40 +1,53 @@
 import { TypedAmqpWorker, type WorkerInferHandlers } from "@amqp-contract/worker";
-import { RuntimeStartFailed, type Runtime, type RuntimeHost, type Serving } from "@btravstack/core";
-import type { AnyPort } from "@btravstack/di";
-import { ErrAsync, OkAsync, fromSafePromise, fromThrowable, type AsyncResult } from "unthrown";
+import { Config, type ConfigInvalid, type Env } from "@btravstack/config";
+import {
+  RuntimePort,
+  RuntimeStartFailed,
+  type Runtime,
+  type RuntimeHost,
+  type Serving,
+} from "@btravstack/core";
+import { Module, Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
-import type { MessageMiddleware, MessageUnitContext } from "./message-units.js";
+import { messageUnits } from "./message-units.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
 export type AmqpInfo = { readonly queues: readonly string[] };
 
 /**
+ * The broker, as a service: `amqp()` binds it from `AMQP_URL` (default
+ * `amqp://127.0.0.1:5672`) unless pinned, and anything else in the graph may
+ * read it — a publisher sharing the consumer's broker, say.
+ */
+export class AmqpConfig extends Port("AmqpConfig")<{ readonly url: string }> {}
+
+/** The runtime's port: what `amqp()` provides, and what the module `start` boots must export. */
+export class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}
+
+/**
  * The contract type `TypedAmqpWorker.create` accepts, extracted rather than
- * imported by name — the same technique `contract`'s own type used before this
- * package parameterised on it, kept as the upper bound `AmqpOptions` and
- * `queuesOf` now share.
+ * imported by name so `@amqp-contract/contract` stays out of the peer range.
  */
 type AnyAmqpContract = Parameters<typeof TypedAmqpWorker.create>[0]["contract"];
 
-export type AmqpOptions<TContract extends AnyAmqpContract, Needs extends AnyPort> = {
-  readonly urls: readonly string[];
+/**
+ * `unknown` when the port's service is the handlers record `TContract` wants
+ * with no injected context — `WorkerInferHandlers<TContract>` — and `never`
+ * otherwise; intersected with `H` at the call site, so a port whose service
+ * is not the contract's handlers fails to typecheck there rather than at the
+ * first delivery. A handler is built by di from the services it declares, so
+ * there is no context for the middleware to hand it.
+ */
+type HandlersPort<H extends AnyPort, TContract extends AnyAmqpContract> =
+  ServiceOf<H> extends WorkerInferHandlers<TContract> ? unknown : never;
+
+export type AmqpOptions<TContract extends AnyAmqpContract, H extends AnyPort> = {
   readonly contract: TContract;
-  /**
-   * Handlers as the worker will see them — already final, and checked against
-   * the contract: `WorkerInferHandlers<TContract, MessageUnitContext<Needs>>`
-   * rejects a typo'd or missing key at compile time, the same guarantee
-   * `-temporal`'s `declareActivitiesHandler` gets from validating the whole
-   * record in one call. Built through `amqp-contract`'s
-   * `declareHandler`/`declareHandlers`, with this package's `messageUnits` in
-   * the middleware slot. A builder rather than a finished record because the
-   * middleware needs the `RuntimeHost`, which does not exist until `start`
-   * calls this runtime.
-   */
-  readonly handlers: (
-    host: RuntimeHost<Needs>,
-  ) => WorkerInferHandlers<TContract, MessageUnitContext<Needs>>;
-  readonly middleware?: (host: RuntimeHost<Needs>) => MessageMiddleware<Needs>;
-  readonly needs: readonly Needs[];
+  /** The port the application provides its handlers on — one per `consumers` / `rpcs` key of `contract`. */
+  readonly handlers: H & HandlersPort<H, TContract>;
+  /** Pins the broker instead of reading `AMQP_URL` — a test's container. */
+  readonly url?: string;
   readonly connectionOptions?: Record<string, unknown>;
   readonly defaultConsumerOptions?: Record<string, unknown>;
   /**
@@ -46,13 +59,53 @@ export type AmqpOptions<TContract extends AnyAmqpContract, Needs extends AnyPort
   readonly connectTimeoutMs?: number;
 };
 
-export const amqpRuntime = <TContract extends AnyAmqpContract, Needs extends AnyPort>(
-  options: AmqpOptions<TContract, Needs>,
-): Runtime<Needs, AmqpInfo> => ({
-  name: "amqp",
-  needs: options.needs,
-  start: (host: RuntimeHost<Needs>) => createWorker(host, options),
-});
+/**
+ * The AMQP starter: a module providing the runtime (`AmqpRuntime`) and its
+ * configuration (`AmqpConfig`, bound from `AMQP_URL` unless pinned here),
+ * built over the handlers port the application provides. Import it next to
+ * the application, provide `handlers`, export `AmqpRuntime` — that is the
+ * whole of the transport wiring. The handlers port is the module's one need,
+ * which di's own gate checks where the composition root is declared.
+ *
+ * With `url` pinned the module reads nothing — no `Env` need, no
+ * `ConfigInvalid` — which is what the overloads say.
+ */
+export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
+  options: AmqpOptions<TContract, H> & { readonly url: string },
+): Module<AmqpRuntime | AmqpConfig, never, InstanceType<H>>;
+export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
+  options: AmqpOptions<TContract, H>,
+): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | InstanceType<H>>;
+export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
+  options: AmqpOptions<TContract, H>,
+): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | InstanceType<H>> {
+  const config =
+    options.url === undefined
+      ? Config.provider(
+          AmqpConfig,
+          Config.object({
+            url: Config.string("AMQP_URL", { default: "amqp://127.0.0.1:5672" }),
+          }),
+        )
+      : Provider(AmqpConfig)({ value: { url: options.url } });
+  return Module("Amqp")({
+    provides: [
+      config,
+      Provider(AmqpRuntime)([AmqpConfig, options.handlers], {
+        sync: (c, handlers): Runtime<never, AmqpInfo> => ({
+          name: "amqp",
+          needs: [],
+          // The one cast in the package: `HandlersPort` proved the service is
+          // the contract's handlers at the call site, and `H` alone cannot
+          // say so again here.
+          start: (host) =>
+            createWorker(host, c, options, handlers as WorkerInferHandlers<TContract>),
+        }),
+      }),
+    ],
+    exports: [AmqpRuntime, AmqpConfig],
+  });
+}
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>
   new RuntimeStartFailed({ runtime: "amqp", cause });
@@ -69,37 +122,27 @@ const queuesOf = (contract: AnyAmqpContract): readonly string[] =>
     ),
   ].sort();
 
-const createWorker = <TContract extends AnyAmqpContract, Needs extends AnyPort>(
-  host: RuntimeHost<Needs>,
-  options: AmqpOptions<TContract, Needs>,
+const createWorker = <TContract extends AnyAmqpContract, H extends AnyPort>(
+  host: RuntimeHost<never>,
+  config: ServiceOf<AmqpConfig>,
+  options: AmqpOptions<TContract, H>,
+  handlers: WorkerInferHandlers<TContract>,
 ): AsyncResult<Serving<AmqpInfo>, RuntimeStartFailed> =>
-  // The builders run INSIDE the qualifier rather than before it. `handlers`
-  // and `middleware` are consumer-supplied closures — `declareHandler` throws
-  // on a contract it cannot satisfy, the same way `-temporal`'s
-  // `declareActivitiesHandler` does — and that throw is a startup failure like
-  // any other: `Err(RuntimeStartFailed)`, exit 1, not a `Defect` and exit 70.
-  fromThrowable(
-    () => ({ handlers: options.handlers(host), middleware: options.middleware?.(host) }),
-    startFailed,
-  )()
-    .toAsync()
-    .flatMap(({ handlers, middleware }) =>
-      TypedAmqpWorker.create({
-        contract: options.contract,
-        handlers,
-        ...(middleware === undefined ? {} : { middleware }),
-        urls: [...options.urls],
-        ...(options.connectionOptions === undefined
-          ? {}
-          : { connectionOptions: options.connectionOptions }),
-        ...(options.defaultConsumerOptions === undefined
-          ? {}
-          : { defaultConsumerOptions: options.defaultConsumerOptions }),
-        ...(options.connectTimeoutMs === undefined
-          ? {}
-          : { connectTimeoutMs: options.connectTimeoutMs }),
-      }),
-    )
+  TypedAmqpWorker.create({
+    contract: options.contract,
+    handlers,
+    middleware: messageUnits(host),
+    urls: [config.url],
+    ...(options.connectionOptions === undefined
+      ? {}
+      : { connectionOptions: options.connectionOptions }),
+    ...(options.defaultConsumerOptions === undefined
+      ? {}
+      : { defaultConsumerOptions: options.defaultConsumerOptions }),
+    ...(options.connectTimeoutMs === undefined
+      ? {}
+      : { connectTimeoutMs: options.connectTimeoutMs }),
+  })
     .map((worker) => consume(worker, queuesOf(options.contract)))
     // `create` reports a connection failure on the DEFECT channel with a
     // `TechnicalError` cause — never a modeled `Err`. This is the one place

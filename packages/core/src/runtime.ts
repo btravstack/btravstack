@@ -97,7 +97,7 @@ export type Runtime<Needs extends AnyPort = never, Info = never> = {
  * The port the kernel resolves its runtime from. A runtime is a **service the
  * module provides**, not an option handed to `start`: a runtime package
  * declares its own port over this one — `class HttpRuntime extends
- * RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}` — and ships a module
+ * RuntimePort<Runtime<never, HttpInfo>> {}` — and ships a module
  * providing it, so the runtime is built by di like everything else and reads
  * its collaborators the same way. The kernel then owns nothing but the graph's
  * lifecycle: it builds the module, resolves this port, and drives what it

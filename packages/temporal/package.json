@@ -50,6 +50,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@btravstack/config": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
@@ -71,8 +72,11 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
+    "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "^0.1.0",
+    "@temporal-contract/contract": "^8.0.0-beta",
+    "@temporal-contract/worker": "^8.0.0-beta",
     "@temporalio/activity": "^1.22.0",
     "@temporalio/common": "^1.22.0",
     "@temporalio/worker": "^1.22.0",

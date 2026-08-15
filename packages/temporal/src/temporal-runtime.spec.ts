@@ -1,8 +1,8 @@
 import { describe, expect, vi } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it, undeclared } from "./test-fixtures.js";
 
-describe("temporalRuntime", () => {
+describe("temporal", () => {
   it("publishes the task queue and namespace it polls", async ({ serve }) => {
     // GIVEN a worker polling a queue of this test's own
     const { app, taskQueue } = await serve();
@@ -12,6 +12,89 @@ describe("temporalRuntime", () => {
 
     // THEN it is the pair that identifies a Temporal worker to an operator
     await expect(info).toBeOkWith({ taskQueue, namespace: "default" });
+  });
+
+  it("binds TEMPORAL_ADDRESS and TEMPORAL_NAMESPACE from the environment when nothing is pinned", async ({
+    env,
+    serve,
+    configured,
+  }) => {
+    // GIVEN an environment naming both, and a starter pinning neither
+    await serve({
+      env: { TEMPORAL_ADDRESS: env.address, TEMPORAL_NAMESPACE: "default" },
+      tap: configured.tap,
+    });
+
+    // WHEN the graph has bound `TemporalConfig`
+    // THEN both came from the environment
+    expect(configured.bound()).toEqual({ address: env.address, namespace: "default" });
+  });
+
+  it("pins what it is given and reads the rest from the environment", async ({
+    env,
+    serve,
+    configured,
+  }) => {
+    // GIVEN the address pinned and the namespace left to the environment
+    await serve({ address: env.address, env: {}, tap: configured.tap });
+
+    // WHEN the graph has bound `TemporalConfig`
+    // THEN the pin won for the address and the environment's default for the rest
+    expect(configured.bound()).toEqual({ address: env.address, namespace: "default" });
+  });
+
+  it("reads nothing from the environment when both are pinned", async ({
+    env,
+    serve,
+    configured,
+  }) => {
+    // GIVEN both pinned, over an environment that would be a configuration
+    // error if it were read — a blank variable is never an absent one
+    await serve({
+      address: env.address,
+      namespace: "default",
+      env: { TEMPORAL_ADDRESS: "" },
+      tap: configured.tap,
+    });
+
+    // WHEN the graph has bound `TemporalConfig`
+    // THEN the pins are what it holds, and the environment was never consulted
+    expect(configured.bound()).toEqual({ address: env.address, namespace: "default" });
+  });
+
+  it("fails startup with ConfigInvalid for TemporalConfig when TEMPORAL_NAMESPACE is blank", async ({
+    env,
+    serveBroken,
+  }) => {
+    // GIVEN a namespace that is set but empty
+    const app = await serveBroken({
+      env: { TEMPORAL_ADDRESS: env.address, TEMPORAL_NAMESPACE: " " },
+    });
+
+    // WHEN the application is started
+    // THEN the failure names the port and the variable, on the modeled channel
+    await expect(app.exited).toBeErrTagged(
+      "ConfigInvalid",
+      expect.objectContaining({
+        port: "TemporalConfig",
+        issues: [{ message: "is set but empty", path: ["TEMPORAL_NAMESPACE"] }],
+      }),
+    );
+  });
+
+  it("reports a Temporal service it cannot reach as TemporalUnreachable, not a defect", async ({
+    serveBroken,
+  }) => {
+    // GIVEN an address nothing listens on
+    const app = await serveBroken({ env: { TEMPORAL_ADDRESS: "127.0.0.1:1" } });
+
+    // WHEN the application is started
+    // THEN the connection failure is the starter's own modeled Err, naming the
+    // address an operator would go and check
+    await expect(app.exited).toBeErrTagged(
+      "TemporalUnreachable",
+      expect.objectContaining({ address: "127.0.0.1:1" }),
+    );
   });
 
   it("reports a workflow bundle that will not build as Err, not a defect", async ({
@@ -34,20 +117,18 @@ describe("temporalRuntime", () => {
     );
   });
 
-  it("reports an activities builder that throws as Err, not a defect", async ({ serveBroken }) => {
-    // GIVEN a builder that throws the way `declareActivitiesHandler` does on a
-    // contract it cannot satisfy — two implementations for one activity name,
-    // or an implementation the contract never declared
-    const app = await serveBroken(() => {
-      // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test; `declareActivitiesHandler` has no Result-returning form to mint it with
-      throw new Error("two implementations for one activity name");
-    });
+  it("reports an activities record the contract cannot satisfy as Err, not a defect", async ({
+    serveBroken,
+  }) => {
+    // GIVEN an implementation the contract never declared, which is one of the
+    // things `declareActivitiesHandler` throws on
+    const app = await serveBroken({ activities: undeclared });
 
     // WHEN the application is started
-    // THEN the builder's throw lands in the kernel's modeled channel rather
-    // than on the defect one, which is the difference between `runMain`
-    // exiting 1 and exiting 70. It is the reason `options.activities(host)` is
-    // called inside `fromThrowable` rather than before the qualified chain.
+    // THEN the throw lands in the kernel's modeled channel rather than on the
+    // defect one, which is the difference between `runMain` exiting 1 and
+    // exiting 70. It is the reason `declareActivitiesHandler` is called inside
+    // `fromThrowable` rather than before the qualified chain.
     await expect(app.exited).toBeErrTagged(
       "RuntimeStartFailed",
       expect.objectContaining({ runtime: "temporal" }),
@@ -55,8 +136,8 @@ describe("temporalRuntime", () => {
   });
 
   it("opens one kernel unit per activity attempt", async ({ serve, contractSeam }) => {
-    // GIVEN activities declared through temporal-contract with the middleware
-    const { client, taskQueue } = await serve(contractSeam.build);
+    // GIVEN activities that read the ambient record from inside the attempt
+    const { client, taskQueue } = await serve({ activities: contractSeam.activities });
 
     // WHEN a workflow drives one attempt
     await client.workflow.execute("runEcho", {
@@ -65,21 +146,19 @@ describe("temporalRuntime", () => {
       args: ["x"],
     });
 
-    // THEN the attempt ran inside a unit whose meta identifies it by Temporal's
-    // task token, with the workflow id as the correlation id — `id` must be
-    // unique per unit, and a workflow id is not: an activity is retried under
-    // the same execution.
-    expect(contractSeam.seen()).toEqual([
-      { kind: "activity", id: contractSeam.taskToken(), traceId: "wf-unit-1" },
-    ]);
+    // THEN the attempt ran inside exactly one unit, and the workflow id is its
+    // correlation id — `traceId` was supplied rather than left to default to
+    // the unit's own `id`, which is the task token: an activity is retried
+    // under the same execution, so a workflow id could never be the id
+    expect(contractSeam.seen().map((unit) => unit?.traceId)).toEqual(["wf-unit-1"]);
   });
 
-  it("injects the application context through the contract's own channel", async ({
+  it("builds the activities from the graph, closing over the services their provider declared", async ({
     serve,
     contractSeam,
   }) => {
-    // GIVEN the same wiring
-    const { client, taskQueue } = await serve(contractSeam.build);
+    // GIVEN the same wiring: the activities provider depends on `Greeting`
+    const { client, taskQueue } = await serve({ activities: contractSeam.activities });
 
     // WHEN a workflow drives one attempt
     await client.workflow.execute("runEcho", {
@@ -88,9 +167,9 @@ describe("temporalRuntime", () => {
       args: ["x"],
     });
 
-    // THEN the implementation reached the DI graph without the package
-    // inventing a channel of its own — which is what makes the seam cost one
-    // line
+    // THEN the implementation reached the application's service the way every
+    // other service does — through its own provider, with nothing injected
+    // by the runtime and nothing resolved from a context
     expect(contractSeam.greeting()).toBe("hello");
   });
 
@@ -99,7 +178,7 @@ describe("temporalRuntime", () => {
     // `execute`: a drained worker stops polling Workflow Tasks too, so the
     // execution never reaches a terminal state and awaiting its result would
     // hang the test on a fact that is not under test.
-    const { app, client, taskQueue } = await serve(gate.build);
+    const { app, client, taskQueue } = await serve({ activities: gate.activities });
     await client.workflow.start("runEcho", {
       taskQueue,
       workflowId: "wf-drain-1",
@@ -125,7 +204,10 @@ describe("temporalRuntime", () => {
 
   it("releases the kernel at its own deadline, not Temporal's", async ({ serve, gate }) => {
     // GIVEN an activity that never finishes, and a drain with no time to give it
-    const { app, client, taskQueue } = await serve(gate.build, { drainTimeoutMs: 100 });
+    const { app, client, taskQueue } = await serve({
+      activities: gate.activities,
+      drainTimeoutMs: 100,
+    });
     await client.workflow.start("runEcho", {
       taskQueue,
       workflowId: "wf-hung-1",

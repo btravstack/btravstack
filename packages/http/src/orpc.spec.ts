@@ -2,10 +2,10 @@ import { describe, expect } from "vitest";
 
 import { it } from "./test-fixtures.js";
 
-describe("orpc", () => {
-  it("serves the router the port provides, with its dependencies injected", async ({ serve }) => {
+describe("http, over a router", () => {
+  it("serves the router the port provides, with its dependencies injected", async ({ rpc }) => {
     // GIVEN an application whose router is a provider over a Greeter
-    const { client } = await serve();
+    const { client } = await rpc();
 
     // WHEN a procedure is called over the wire
     const greeting = await client.hello();
@@ -14,9 +14,9 @@ describe("orpc", () => {
     expect(greeting).toBe("hello world");
   });
 
-  it("mounts under the prefix it is given", async ({ serve }) => {
+  it("mounts under the prefix it is given", async ({ rpc }) => {
     // GIVEN the endpoint mounted somewhere other than /rpc
-    const { client } = await serve("/api");
+    const { client } = await rpc("/api");
 
     // WHEN a procedure is called through a link pointed there
     const greeting = await client.hello();
@@ -25,9 +25,9 @@ describe("orpc", () => {
     expect(greeting).toBe("hello world");
   });
 
-  it("answers an unmatched path with Hono's 404", async ({ serve }) => {
+  it("answers an unmatched path with Hono's 404", async ({ rpc }) => {
     // GIVEN a path nothing is mounted on
-    const { origin } = await serve();
+    const { origin } = await rpc();
 
     // WHEN it is requested
     const response = await fetch(`${origin}/nowhere`);
@@ -36,9 +36,9 @@ describe("orpc", () => {
     expect(response.status).toBe(404);
   });
 
-  it("falls through to Hono when nothing under the prefix matches", async ({ serve }) => {
+  it("falls through to Hono when nothing under the prefix matches", async ({ rpc }) => {
     // GIVEN a path under the RPC prefix that names no procedure
-    const { origin } = await serve();
+    const { origin } = await rpc();
 
     // WHEN it is requested
     const response = await fetch(`${origin}/rpc/nope`);
@@ -48,19 +48,19 @@ describe("orpc", () => {
     expect(response.status).toBe(404);
   });
 
-  it("collapses a defect inside a procedure to oRPC's INTERNAL_SERVER_ERROR", async ({ serve }) => {
+  it("collapses a defect inside a procedure to oRPC's INTERNAL_SERVER_ERROR", async ({ rpc }) => {
     // GIVEN a procedure that throws
-    const { client } = await serve();
+    const { client } = await rpc();
 
     // WHEN it is called
     // THEN the client sees oRPC's own collapse, not a reset
     await expect(client.boom()).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
   });
 
-  it("leaves the global Request and Response alone", async ({ serve }) => {
+  it("leaves the global Request and Response alone", async ({ rpc }) => {
     // GIVEN the platform's own Response, captured before any request is served
     const NativeResponse = globalThis.Response;
-    const { client } = await serve();
+    const { client } = await rpc();
 
     // WHEN a request has been served through the listener
     await client.hello();

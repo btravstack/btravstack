@@ -126,23 +126,6 @@ describe("httpRuntime", () => {
     );
   });
 
-  it("resolves a handler the unit module provides, built once per request", async ({ perUnit }) => {
-    // GIVEN an application whose HttpHandler is provided by the unit module,
-    // built from a counter the application scope holds
-    const { origin, builds } = await perUnit();
-
-    // WHEN two requests are served
-    const statuses = await Promise.all([fetch(origin), fetch(origin)]).then((responses) =>
-      responses.map((response) => response.status),
-    );
-
-    // THEN each was answered by a handler constructed for it alone — the
-    // runtime resolves the port out of the unit's context, not the
-    // application's, which is what lets a handler take per-request
-    // dependencies through di rather than through a context argument
-    expect({ statuses, builds: builds() }).toEqual({ statuses: [200, 200], builds: 2 });
-  });
-
   it("answers 404 when the handler declines to respond", async ({ serve }) => {
     // GIVEN a handler that resolves without writing — oRPC's `matched: false`
     // path, which is how a router says "not mine"

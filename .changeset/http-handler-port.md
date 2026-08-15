@@ -2,31 +2,39 @@
 "@btravstack/http": minor
 ---
 
-**Breaking.** The handler is a port, not an option. `@btravstack/http` now
-exports `HttpHandler` — a di `Port` whose service is
-`(request, response, signal) => PromiseLike<unknown>` — and `httpRuntime`
-takes only `{ port, hostname? }`, needing exactly that port and resolving it
-out of **each request's** context. Provide it in the module `start` boots:
+**Breaking.** `@btravstack/http` is the HTTP starter, and there is one way HTTP
+is answered: **oRPC on Hono**. `http({ router })` takes the application's
+**router port** — a di `Port` whose service is a context-free oRPC router,
+provided by the application from the use cases its procedures call — mounts it
+on Hono under `prefix` (default `/rpc`) and provides the runtime on
+**`HttpRuntime`** (declared over core's `RuntimePort`, `Runtime<never,
+HttpInfo>` — no `needs`), which the composition root imports and exports so
+`start` finds it. The runtime provider depends on the router port through di,
+so a composition that imports the starter without providing its router is
+refused at `start`, at compile time.
 
 ```ts
-Provider(HttpHandler)([OrderRouter], { sync: (router) => getRequestListener(…) });
-```
+class OrderRouter extends Port("OrderRouter")<ReturnType<typeof routerOf>> {}
+const orderRouter = Provider(OrderRouter)([PlaceOrder, FindOrder], {
+  sync: routerOf,
+});
 
-Because the runtime resolves it per request, the provider may live in the
-`StartOptions.unit` module instead, where it is built once per request with
-per-request dependencies constructor-injected — the reason there is no
-`ctx` argument any more. `needs` and `handler` are gone from `HttpOptions`;
-the `HttpHandler<Needs>` function type is replaced by the port class.
-
-**Breaking, in the same release.** The runtime is a module, not an option:
-the `http()` starter provides the runtime on the new **`HttpRuntime`** port
-(declared over core's `RuntimePort`), which the composition root imports and
-exports — `start(module)` resolves it from there, since `StartOptions.runtime`
-is gone. `httpRuntime` is no longer exported.
-
-```ts
 const OrderApi = Module("OrderApi")({
-  imports: [ApplicationModule, ApiModule, http()],
-  exports: [HttpRuntime, HttpHandler],
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    http({ router: OrderRouter }),
+  ],
+  provides: [orderRouter],
+  exports: [HttpRuntime],
 });
 ```
+
+`@btravstack/orpc` is folded into this package and no longer exists. `needs`
+and `handler` are gone from `HttpOptions`; `httpRuntime` is no longer
+exported; the node listener port `HttpHandler` is internal — an application
+provides a router, never a handler, and a handler built per request by the
+`StartOptions.unit` module is gone with it. An unmatched path is Hono's `404`
+and a defect inside a procedure is oRPC's own `INTERNAL_SERVER_ERROR`;
+`Result` → HTTP status stays the router's `.result()` triage. `hono`,
+`@hono/node-server` and `@orpc/server` are peer dependencies.

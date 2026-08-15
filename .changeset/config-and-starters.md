@@ -21,9 +21,9 @@ before `stopping`, so a bad environment is named on stderr instead of exiting
 silently. An empty or blank variable is an error, never an absent one; `PORT=0`
 stays expressible.
 
-`@btravstack/http` becomes a starter: `http(options?)` provides `HttpRuntime`
-and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST` (default
-`0.0.0.0`) unless pinned (`http({ port: 0 })` for a test — explicit beats
-environment beats default, per field; pin both and the module reads nothing).
-`httpModule` is gone. `RuntimeNeedsGate` is renamed `StartGate`, since it now
-also states `NO RUNTIME`.
+`@btravstack/http` becomes a starter: `http({ router })` provides
+`HttpRuntime` and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST`
+(default `0.0.0.0`) unless pinned (`http({ router, port: 0 })` for a test —
+explicit beats environment beats default, per field; pin both and the module
+reads nothing). `RuntimeNeedsGate` is renamed `StartGate`, since it now also
+states `NO RUNTIME`.

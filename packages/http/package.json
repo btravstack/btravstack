@@ -1,12 +1,15 @@
 {
   "name": "@btravstack/http",
   "version": "0.0.0",
-  "description": "The HTTP runtime for @btravstack/core: one unit per request, and a drain that actually stops accepting",
+  "description": "The HTTP starter for @btravstack/core: oRPC on Hono, one unit per request, and a drain that actually stops accepting",
   "keywords": [
     "graceful-shutdown",
+    "hono",
     "http",
     "lifecycle",
+    "orpc",
     "runtime",
+    "starter",
     "typescript",
     "unthrown"
   ],
@@ -53,9 +56,13 @@
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
+    "@hono/node-server": "catalog:",
+    "@orpc/client": "catalog:",
+    "@orpc/server": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "hono": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unthrown": "catalog:",
@@ -65,6 +72,9 @@
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "^0.1.0",
+    "@hono/node-server": "^2.0.0",
+    "@orpc/server": "^2.0.0-beta",
+    "hono": "^4.0.0",
     "unthrown": "^5.0.0"
   },
   "engines": {

@@ -11,32 +11,14 @@ import {
   type Serving,
   type UnitMeta,
 } from "@btravstack/core";
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
+
+import { HttpHandler } from "./handler.js";
+import { orpc, type RouterPort } from "./orpc.js";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */
 export type HttpInfo = { readonly port: number };
-
-/**
- * The one port this runtime needs: the application's HTTP surface, as a
- * service. Provide it in the module `start` boots — at application scope, or
- * in the `StartOptions.unit` module when the handler wants per-request
- * dependencies (a transaction) constructor-injected — and the runtime resolves
- * it out of each unit's context. Nothing else about the transport is the
- * application's to wire.
- *
- * Everything the client receives must be written from inside the handler —
- * the unit stays open until the response completes, so there is no way to be
- * late. It returns `PromiseLike<unknown>` rather than `void`: the package
- * needs to know when the handler is finished so it can answer a request the
- * handler declined, and a `void`-returning handler writing asynchronously
- * would draw a premature `404` over a response still in flight. `unknown`
- * because oRPC's `handle` resolves `{ matched: boolean }`; the value is never
- * the unit's result.
- */
-export class HttpHandler extends Port("HttpHandler")<
-  (request: IncomingMessage, response: ServerResponse, signal: AbortSignal) => PromiseLike<unknown>
-> {}
 
 /**
  * What the socket is bound with, as a service: `http()` binds it from the
@@ -50,19 +32,31 @@ export class HttpConfig extends Port("HttpConfig")<{
   readonly hostname: string;
 }> {}
 
-/** What `http(options)` lets a caller pin instead of reading from the environment — a test's `{ port: 0 }`. */
-export type HttpOptions = {
+/**
+ * `http()`'s options: the router port (required — the application's oRPC
+ * router as a service, a provider that declares the use cases its procedures
+ * call), where to mount it, and what a caller pins instead of reading from the
+ * environment — a test's `{ port: 0 }`.
+ */
+export type HttpOptions<R extends AnyPort> = {
+  /** Intersected with `RouterPort<R>` so a port whose service is not a context-free oRPC router fails here, at the call. */
+  readonly router: R & RouterPort<R>;
+  /** Where the RPC endpoint is mounted. Default `/rpc`. */
+  readonly prefix?: `/${string}`;
   readonly port?: number;
   readonly hostname?: string;
 };
 
 /** The runtime's port: what `http()` provides, and what the module `start` boots must export. */
-export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}
+export class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}
 
-const httpRuntime = (config: ServiceOf<HttpConfig>): Runtime<typeof HttpHandler, HttpInfo> => ({
+const httpRuntime = (
+  config: ServiceOf<HttpConfig>,
+  handler: ServiceOf<HttpHandler>,
+): Runtime<never, HttpInfo> => ({
   name: "http",
-  needs: [HttpHandler],
-  start: (host) => listen(host, config),
+  needs: [],
+  start: (host) => listen(host, config, handler),
 });
 
 // Explicit beats environment beats default, per field: `http({ port: 0 })`
@@ -71,22 +65,27 @@ const pinned = <T>(value: T | undefined, fromEnv: ConfigField<T>): ConfigField<T
   value === undefined ? fromEnv : { variable: fromEnv.variable, parse: () => Ok(value) };
 
 /**
- * The HTTP starter: a module providing the runtime (`HttpRuntime`) and its
- * configuration (`HttpConfig`, bound from `PORT`/`HOST` unless pinned here).
- * Import it next to the application, export `HttpRuntime`, and provide the
- * `HttpHandler` port — that is the whole of the transport wiring.
+ * The runtime and its configuration as a module, over whichever `HttpHandler`
+ * provider it is handed: `http()` hands it the oRPC one; the package's own
+ * transport specs hand it a bare listener. INTERNAL for that second reason
+ * only.
  *
  * With every field pinned the module reads nothing — no `Env` need, no
- * `ConfigInvalid` — which is what the overloads say; pin only some and the
+ * `ConfigInvalid` — which is what `http`'s overloads say; pin only some and the
  * rest still comes from the environment.
  */
-export function http(
-  options: Required<HttpOptions>,
-): Module<HttpRuntime | HttpConfig, never, never>;
-export function http(options?: HttpOptions): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env>;
-export function http(
-  options: HttpOptions = {},
-): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env> {
+export function httpModule<N>(
+  options: { readonly port: number; readonly hostname: string },
+  handler: Provider<HttpHandler, never, N>,
+): Module<HttpRuntime | HttpConfig, never, N>;
+export function httpModule<N>(
+  options: { readonly port?: number; readonly hostname?: string },
+  handler: Provider<HttpHandler, never, N>,
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
+export function httpModule<N>(
+  options: { readonly port?: number; readonly hostname?: string },
+  handler: Provider<HttpHandler, never, N>,
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N> {
   const { port, hostname } = options;
   const config =
     port !== undefined && hostname !== undefined
@@ -99,14 +98,48 @@ export function http(
           }),
         );
   return Module("Http")({
-    provides: [config, Provider(HttpRuntime)([HttpConfig], { sync: (c) => httpRuntime(c) })],
+    provides: [
+      config,
+      handler,
+      Provider(HttpRuntime)([HttpConfig, HttpHandler], { sync: (c, h) => httpRuntime(c, h) }),
+    ],
     exports: [HttpRuntime, HttpConfig],
-  });
+  }) as unknown as Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
+}
+
+/**
+ * The HTTP starter, and the one way HTTP is answered here: oRPC on Hono. A
+ * module providing the runtime (`HttpRuntime`), its configuration
+ * (`HttpConfig`, bound from `PORT`/`HOST` unless pinned) and the HTTP surface
+ * built from the application's **router port** — the router is a provider
+ * that declares the use cases its procedures call, `http({ router })` mounts
+ * it under `prefix` and puts the listener on the socket. Import it next to
+ * the application, export `HttpRuntime`, and that is the whole of the
+ * transport wiring: no handler, no `needs`, no context handed to a procedure.
+ *
+ * With `port` and `hostname` both pinned the module reads nothing from the
+ * environment — no `Env` need, no `ConfigInvalid` — which is what the
+ * overloads say; pin only some and the rest still comes from the environment.
+ * A port whose service is not an oRPC router `RPCHandler` can serve with no
+ * initial context fails to typecheck at the call.
+ */
+export function http<R extends AnyPort>(
+  options: HttpOptions<R> & { readonly port: number; readonly hostname: string },
+): Module<HttpRuntime | HttpConfig, never, InstanceType<R>>;
+export function http<R extends AnyPort>(
+  options: HttpOptions<R>,
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<R>>;
+export function http<R extends AnyPort>(
+  options: HttpOptions<R>,
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<R>> {
+  const { router, prefix, ...socket } = options;
+  return httpModule(socket, orpc(router, prefix === undefined ? {} : { prefix }));
 }
 
 const listen = (
-  host: RuntimeHost<typeof HttpHandler>,
+  host: RuntimeHost<never>,
   options: ServiceOf<HttpConfig>,
+  handler: ServiceOf<HttpHandler>,
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   fromSafePromise(
     new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
@@ -146,8 +179,8 @@ const listen = (
         // statically `never` at this call site, so a `match`'s `errCases` arm
         // would be an always-dead branch with no case to name.
         void host
-          .run(metaFor(request), (ctx, signal) => {
-            void answer(ctx.get(HttpHandler)(request, response, signal), response);
+          .run(metaFor(request), (_ctx, signal) => {
+            void answer(handler(request, response, signal), response);
             // The unit's lifetime IS the response's. This is what makes the
             // kernel's "flush inside the unit" contract structural rather than
             // documented: there is no way to write late, because the unit is

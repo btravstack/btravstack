@@ -1,9 +1,10 @@
 import { Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
-import { HttpHandler } from "@btravstack/http";
 import { getRequestListener } from "@hono/node-server";
 import type { Router } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
+
+import { HttpHandler } from "./handler.js";
 
 export type OrpcOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
@@ -32,7 +33,7 @@ export type OrpcOptions = {
  * than at the first request. A router that declares an initial context is
  * rejected too: this starter has none to hand it.
  */
-type RouterPort<R extends AnyPort> =
+export type RouterPort<R extends AnyPort> =
   ServiceOf<R> extends Router<Record<never, never>> ? unknown : never;
 
 export const orpc = <R extends AnyPort>(router: R & RouterPort<R>, options: OrpcOptions = {}) => {

@@ -5,14 +5,14 @@ import { start, type RunningApp, type StartOptions } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { ApplicationModule, Logger, OrderRepository } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
-import { HttpHandler, HttpRuntime, http, type HttpInfo } from "@btravstack/http";
+import { HttpRuntime, http, type HttpInfo } from "@btravstack/http";
 import { fromSafePromise, OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
-import { ApiModule } from "./api.js";
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { OrderApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
+import { OrderRouter, orderRouter } from "./router.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
@@ -30,8 +30,9 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
  */
 const apiWith = (repository: ServiceOf<OrderRepository>) =>
   Module("StubApi")({
-    imports: [ApplicationModule, persistenceOf(repository), ApiModule, http()],
-    exports: [HttpRuntime, HttpHandler, Logger],
+    imports: [ApplicationModule, persistenceOf(repository), http({ router: OrderRouter })],
+    provides: [orderRouter],
+    exports: [HttpRuntime, Logger],
   });
 
 /**
@@ -55,7 +56,7 @@ const tappedApi = () => {
           },
         }),
       ],
-      exports: [HttpRuntime, HttpHandler, Logger],
+      exports: [HttpRuntime, Logger],
     }),
     traces: (): readonly string[] => read().map((line) => line.slice(0, line.indexOf("]") + 1)),
   };
@@ -123,16 +124,15 @@ export type ApiFixtures = {
    * hand-roll — and it keeps the assertion those blocks carried: the app
    * exited `Ok`.
    *
-   * The module's `X` is pinned to the three ports every composition here
-   * exports rather than left generic: `start`'s needs gate is a phantom rest
+   * The module's `X` is pinned to the two ports every composition here
+   * exports rather than left generic: `start`'s gate is a phantom rest
    * parameter proven at the call site, and no proof is available inside a
    * helper generic in the module's own exports. `HttpRuntime` is what `start`
-   * resolves, `HttpHandler` what that runtime needs, and `Logger` is for the
-   * gate's OTHER half — `RequestModule`, passed as `StartOptions.unit`, reads
-   * it out of the parent.
+   * resolves, and `Logger` is for the gate's OTHER half — `RequestModule`,
+   * passed as `StartOptions.unit`, reads it out of the parent.
    */
   readonly serve: <E>(
-    module: Module<HttpRuntime | HttpHandler | Logger, E, Scope | Env>,
+    module: Module<HttpRuntime | Logger, E, Scope | Env>,
     options?: Pick<StartOptions, "drainTimeoutMs" | "probes">,
   ) => RunningApp<E, HttpInfo>;
   readonly clientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;

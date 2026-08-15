@@ -1,62 +1,19 @@
 import { randomUUID } from "node:crypto";
 
+import type { WorkerMiddleware } from "@amqp-contract/worker";
 import type { RuntimeHost, UnitMeta } from "@btravstack/core";
-import type { AnyPort, Context } from "@btravstack/di";
-import type { AsyncResult } from "unthrown";
-
-/** What the middleware injects downstream: the application context, and nothing else. */
-export type MessageUnitContext<Needs extends AnyPort> = {
-  readonly ctx: Context<InstanceType<Needs>>;
-};
 
 /**
- * The shape of `amqp-contract`'s `WorkerMiddleware`, declared here rather than
- * imported. Structural typing makes the two compatible, and it keeps
- * `amqp-contract` out of this package's peer range.
- */
-export type MessageMiddleware<Needs extends AnyPort> = (
-  args: {
-    readonly message: { readonly payload: unknown; readonly headers: unknown };
-    readonly rawMessage: RawDelivery;
-    readonly handlerName: string;
-    readonly isRpc: boolean;
-    readonly context: Record<never, never>;
-  },
-  next: (patch?: {
-    readonly payload?: unknown;
-    readonly context?: MessageUnitContext<Needs>;
-    // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- the chain's failure union is `amqp-contract`'s to name; this package is transparent to it and must accept whatever arrives
-  }) => AsyncResult<unknown, unknown>,
-) => AsyncResult<unknown, never>;
-
-type RawDelivery = {
-  readonly properties: {
-    readonly messageId?: string | undefined;
-    readonly correlationId?: string | undefined;
-  };
-};
-
-/**
- * Open one kernel unit per delivery, and hand the unit's context — the
- * application context, or the per-unit fork when `StartOptions.unit` is set —
- * downstream through `amqp-contract`'s own per-message context channel.
- *
- * **Pass the type argument** — `messageUnits<typeof PlaceOrder | typeof Logger>(host)`
- * — whenever a handler reads `context.ctx`. TypeScript infers the injected
- * context from the middleware's own type and infers nothing from a generic
- * call it is still resolving.
+ * Open one kernel unit per delivery. It injects nothing: a handler is built by
+ * di from the services it declares, and the ambient `currentUnit()` record is
+ * what the unit leaves for the adapters that read it. `next()` unchanged is
+ * the whole of the chain — the handler's own `Result` is what the worker
+ * routes, and this package is transparent to it.
  */
 export const messageUnits =
-  <Needs extends AnyPort>(host: RuntimeHost<Needs>): MessageMiddleware<Needs> =>
+  (host: RuntimeHost<never>): WorkerMiddleware =>
   (args, next) =>
-    // The one cast in the package; see `-temporal`'s `activityUnits` for the
-    // full reasoning. `never` on the way out is the only channel that types:
-    // the value must be assignable to the failure union `amqp-contract` names
-    // and this package deliberately does not import.
-    host.run(metaFor(args.rawMessage), (ctx) => next({ context: { ctx } })) as AsyncResult<
-      unknown,
-      never
-    >;
+    host.run(metaFor(args.rawMessage), () => next());
 
 /**
  * `UnitMeta.id` must be unique per unit, and a **delivery tag is not one**:
@@ -78,7 +35,12 @@ export const messageUnits =
  * exactly as a category-as-id would. `-http` refuses a blank `x-request-id`
  * for the same reason.
  */
-const metaFor = (raw: RawDelivery): UnitMeta => {
+const metaFor = (raw: {
+  readonly properties: {
+    readonly messageId?: string | undefined;
+    readonly correlationId?: string | undefined;
+  };
+}): UnitMeta => {
   const id = randomUUID();
   const inbound = [raw.properties.messageId, raw.properties.correlationId]
     .map((value) => value?.trim() ?? "")

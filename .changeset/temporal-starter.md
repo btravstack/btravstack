@@ -1,0 +1,28 @@
+---
+"@btravstack/temporal": minor
+---
+
+**`@btravstack/temporal` becomes a starter, and everything is a provider.**
+`temporal({ contract, activities, workflows, address?, namespace?, gracePeriod?,
+forceAfter? })` is a module providing `TemporalRuntime` (a `Runtime<never,
+TemporalInfo>` on the package's own port over `RuntimePort`), `TemporalConfig`
+(`{ address, namespace }`, bound from `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE`
+unless pinned — explicit beats environment beats default, per field; pin both
+and the module reads nothing) and `TemporalConnection` (the `NativeConnection`
+as a resource of the graph, opened with the scope and closed on every exit
+path; a service that will not answer is the modeled `TemporalUnreachable`).
+Import it next to the application, export `TemporalRuntime`, and provide the
+`activities` port.
+
+**Breaking.** `temporalRuntime`, `activityUnits`, `ActivityMiddleware`,
+`ActivityUnitContext` and `TemporalOptions.needs` / `connection` / `taskQueue`
+/ `activities(host)` are gone. `activities` is now a **port** the application
+provides — its service the implementations record `declareActivitiesHandler`
+takes for `contract`, with no injected context, built by a provider closing
+over the application's own services — and a need of the starter's module: the
+runtime resolves nothing from a `ctx`, `needs` is `never`, and a composition
+root without the activities module is rejected by `start` for still owing the
+port. The starter calls `declareActivitiesHandler` itself, inside its error
+qualifier, with its unit middleware in place; the middleware injects nothing.
+`@temporal-contract/worker`, `@temporal-contract/contract` and
+`@btravstack/config` join the peer dependencies.

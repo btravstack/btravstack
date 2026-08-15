@@ -28,41 +28,74 @@ import { connect, type Socket } from "node:net";
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { currentUnit, start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
+import { os, type RouterClient } from "@orpc/server";
 import { fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 
-import {
-  HttpConfig,
-  HttpHandler,
-  HttpRuntime,
-  http,
-  type HttpInfo,
-  type HttpOptions,
-} from "./http-runtime.js";
+import { HttpHandler } from "./handler.js";
+import { HttpConfig, HttpRuntime, http, httpModule, type HttpInfo } from "./http-runtime.js";
 
 type Handler = ServiceOf<HttpHandler>;
 
-const loopback = (port = 0) => http({ port, hostname: "127.0.0.1" });
-
-/** The application, reduced to the runtime and the one port it needs: its HTTP surface, provided as a value. */
+/**
+ * The transport under test with a bare listener where `http()` would put the
+ * oRPC one — the internal seam `httpModule` exists for, so the guarantees
+ * (`404`/`500`, the unit open until `'close'`, the drain) are exercised without
+ * a router in the way. Loopback and an ephemeral port unless told otherwise.
+ */
 const appOf = (handler: Handler, port = 0) =>
   Module("App")({
-    imports: [loopback(port)],
-    provides: [Provider(HttpHandler)({ value: handler })],
-    exports: [HttpRuntime, HttpHandler],
+    imports: [
+      httpModule({ port, hostname: "127.0.0.1" }, Provider(HttpHandler)({ value: handler })),
+    ],
+    exports: [HttpRuntime],
+  });
+
+/** A greeting service, so the router has a real dependency to declare. */
+class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
+
+const routerOf = (greeter: ServiceOf<Greeter>) =>
+  os.router({
+    hello: os.handler(() => greeter.greet("world")),
+    boom: os.handler(() => {
+      // oxlint-disable-next-line unthrown/no-throw -- the defect IS the subject under test: oRPC's own collapse to INTERNAL_SERVER_ERROR
+      throw new Error("bug");
+    }),
+  });
+
+/** The router as a service, built from the greeter it declares. */
+class GreetingRouter extends Port("GreetingRouter")<ReturnType<typeof routerOf>> {}
+
+/** The starter as an application uses it: `http({ router })` over a router provider. */
+const rpcAppOf = (prefix?: `/${string}`) =>
+  Module("RpcApp")({
+    imports: [
+      http({
+        router: GreetingRouter,
+        port: 0,
+        hostname: "127.0.0.1",
+        ...(prefix === undefined ? {} : { prefix }),
+      }),
+    ],
+    provides: [
+      Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } }),
+      Provider(GreetingRouter)([Greeter], { sync: (greeter) => routerOf(greeter) }),
+    ],
+    exports: [HttpRuntime],
   });
 
 /** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
 class BoundConfig extends Port("BoundConfig")<{ readonly value: ServiceOf<HttpConfig> }> {}
 
 /** The starter left to configure itself — from the environment, plus whatever `options` pins. */
-const configuredAppOf = (options: HttpOptions) => {
+const configuredAppOf = (options: { readonly port?: number; readonly hostname?: string }) => {
   let bound: ServiceOf<HttpConfig> | undefined;
   return {
     module: Module("ConfiguredApp")({
-      imports: [http(options)],
+      imports: [httpModule(options, Provider(HttpHandler)({ value: noop }))],
       provides: [
-        Provider(HttpHandler)({ value: noop }),
         Provider(BoundConfig)([HttpConfig], {
           sync: (config) => {
             bound = config;
@@ -70,40 +103,11 @@ const configuredAppOf = (options: HttpOptions) => {
           },
         }),
       ],
-      exports: [HttpRuntime, HttpHandler],
+      exports: [HttpRuntime],
     }),
     config: () => bound,
   };
 };
-
-/** An application-scoped counter the per-unit handler below reads, so the fork's parent seeding is exercised too. */
-class Builds extends Port("Builds")<{ count: number }> {}
-
-const countingAppOf = () => {
-  const builds = { count: 0 };
-  return {
-    module: Module("CountingApp")({
-      imports: [loopback()],
-      provides: [Provider(Builds)({ value: builds })],
-      exports: [HttpRuntime, Builds],
-    }),
-    builds,
-  };
-};
-
-/** The HTTP surface provided by the UNIT module: built once per request, from the application-scoped counter. */
-const PerUnitHandler = Module("PerUnitHandler")({
-  provides: [
-    Provider(HttpHandler)([Builds], {
-      sync: (builds) => {
-        builds.count += 1;
-        return (_request, response) =>
-          new Promise<void>((done) => response.end("ok", () => done()));
-      },
-    }),
-  ],
-  exports: [HttpHandler],
-});
 
 /** A unit-scoped port whose construction is held open, so a unit's work can be delayed past its client's patience. */
 class Slow extends Port("Slow")<{ readonly built: true }> {}
@@ -164,17 +168,20 @@ export type HttpFixtures = {
    */
   readonly configured: (
     env: Environment,
-    options?: HttpOptions,
+    options?: { readonly port?: number; readonly hostname?: string },
   ) => {
     readonly app: RunningApp<ConfigInvalid, HttpInfo>;
     readonly config: () => ServiceOf<HttpConfig> | undefined;
   };
   /**
-   * An app whose `HttpHandler` is provided by the `StartOptions.unit` module
-   * rather than the application one — built per request, reading a counter
-   * out of the application scope. Shut down by the fixture.
+   * The starter proper — `http({ router })` over a router provider — on an
+   * ephemeral port, with a typed oRPC client pointed at it. Shut down by the
+   * fixture.
    */
-  readonly perUnit: () => Promise<{ readonly origin: string; readonly builds: () => number }>;
+  readonly rpc: (prefix?: `/${string}`) => Promise<{
+    readonly origin: string;
+    readonly client: RouterClient<ReturnType<typeof routerOf>>;
+  }>;
   /** A `StartOptions.unit` module whose provider builds only once `release()` is called. */
   readonly slowUnit: SlowUnit;
   /** An app started on an explicit port, for the failure paths. Shut down by the fixture. */
@@ -265,23 +272,24 @@ export const it = test.extend<HttpFixtures>({
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
-  perUnit: async ({}, use) => {
+  rpc: async ({}, use) => {
     const started: App[] = [];
 
-    await use(async () => {
-      const { module, builds } = countingAppOf();
-      const app = start(module, {
-        unit: PerUnitHandler,
+    await use(async (prefix) => {
+      const app = start(rpcAppOf(prefix), {
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
         onEvent: () => {},
       });
       started.push(app);
-
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
-      return { origin: `http://127.0.0.1:${info.port}`, builds: () => builds.count };
+      const origin = `http://127.0.0.1:${info.port}`;
+      const client: RouterClient<ReturnType<typeof routerOf>> = createORPCClient(
+        new RPCLink({ origin, url: prefix ?? "/rpc" }),
+      );
+      return { origin, client };
     });
 
     for (const app of started) {

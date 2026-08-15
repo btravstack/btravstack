@@ -1,31 +1,33 @@
-import { start } from "@btravstack/core";
 /**
  * The compile-time half of the broadcast deployment: `start` resolves its
- * runtime from the `OrderAmqpRuntime` port the composition root exports, and
- * that runtime declares two ports in `needs` — so a module that exports no
- * runtime, or one that does not export both ports, is a call-site arity
- * error. Type-checked by this package's `test:types` script, never executed.
+ * runtime from the `AmqpRuntime` port `@btravstack/amqp`'s starter provides
+ * and the composition root exports, so a module that exports no runtime is a
+ * call-site arity error. Type-checked by this package's `test:types` script,
+ * never executed.
  *
- * Together with `order-api`'s and `order-temporal-worker`'s, this is what
- * makes the claim testable rather than asserted: runtimes with non-empty
- * `needs`, all proven against the same application graph at the `start(...)`
- * call site.
+ * There is no UNSATISFIED RUNTIME NEEDS negative any more: the runtime has
+ * none. What used to be its needs — the handlers, and what they read — is now
+ * a port the starter DEPENDS on, so a composition without a provider for it is
+ * di's own gate: the module's needs channel carries `OrderHandlers`, and
+ * `start` accepts only `Scope | Env` there.
  */
+import { AmqpRuntime, amqp } from "@btravstack/amqp";
+import { start } from "@btravstack/core";
 import { Module } from "@btravstack/di";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { ApplicationModule, Logger, PlaceOrder } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 
-import { OrderAmqpRuntime, amqpModule } from "./amqp-runtime.js";
+import { OrderHandlers } from "./handlers.js";
 import { OrderAmqpWorker } from "./module.js";
 
 const options = { signals: false, probes: false } as const;
 
-// Positive: the composition root exports the runtime and both ports it needs
-// (and a writer's port it does not), so the gate collapses to an empty tuple
-// and this is an ordinary two-argument call.
+// Positive: the composition root exports the runtime, so the gate collapses to
+// an empty tuple and this is an ordinary two-argument call.
 const _wired = start(OrderAmqpWorker, options);
 
-// The same graph without `amqpModule`: nothing declared over `RuntimePort` is
+// The same graph without `amqp()`: nothing declared over `RuntimePort` is
 // exported, so there is no runtime for `start` to resolve.
 const RuntimelessAmqp = Module("RuntimelessAmqp")({
   imports: [ApplicationModule, PersistenceModule],
@@ -37,15 +39,18 @@ const RuntimelessAmqp = Module("RuntimelessAmqp")({
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _noRuntime = start(RuntimelessAmqp, options);
 
-// The same graph, one port short: `Outbox` is provided (the persistence layer
-// carries it) but not exported, so it is not in the application context the
-// runtime is handed.
-const PartialAmqp = Module("PartialAmqp")({
-  imports: [ApplicationModule, PersistenceModule, amqpModule],
-  exports: [OrderAmqpRuntime, PlaceOrder, Logger],
+// The starter without the handlers it depends on: `OrderHandlers` is neither
+// provided nor imported, so it stays in the module's needs channel.
+const HandlerlessAmqp = Module("HandlerlessAmqp")({
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    amqp({ contract: orderContract, handlers: OrderHandlers }),
+  ],
+  exports: [AmqpRuntime, PlaceOrder, Logger],
 });
 
-// Negative: the gate becomes a required two-element tuple naming the unmet need,
-// and the call fails on arity.
-// @ts-expect-error — UNSATISFIED RUNTIME NEEDS: the module does not export Outbox.
-const _missingOutbox = start(PartialAmqp, options);
+// Negative, di's gate rather than the kernel's: `start` takes a
+// `Module<X, E, Scope | Env>`, and this one still needs `OrderHandlers`.
+// @ts-expect-error — the module's needs channel carries OrderHandlers, which nothing provides.
+const _missingHandlers = start(HandlerlessAmqp, options);

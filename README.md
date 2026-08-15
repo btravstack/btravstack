@@ -676,19 +676,17 @@ verifies.
 ## The runtime map
 
 The `Runtime` contract is the whole of what this package owes the transports.
-Three have shipped. [`@btravstack/http`](./packages/http): bind, one
-unit per request, a drain that retires busy keep-alive connections, stop —
-routing, middleware and `Result` → HTTP status are deliberately not included,
-see its README's _"What it does not do"_.
+Three have shipped. [`@btravstack/http`](./packages/http): the
+application's oRPC router port mounted on Hono, bind, one unit per request, a
+drain that retires busy keep-alive connections, stop — any other router,
+middleware and `Result` → HTTP status are deliberately not included, see its
+README's _"What it does not do"_.
 [`@btravstack/temporal`](./packages/temporal): a Temporal worker,
 one unit per activity attempt, and a drain that releases the kernel at the
 kernel's deadline rather than Temporal's `shutdownForceTime`.
 [`@btravstack/amqp`](./packages/amqp): an `amqp-contract` worker,
 one unit per delivery, and a drain with exactly one deadline — the library is
 told to wait forever, so there is no second timeout to keep in sync at all.
-Beside them, one **starter** that is not a runtime:
-[`@btravstack/orpc`](./packages/orpc) turns an oRPC router port into the
-`HttpHandler` `@btravstack/http` needs, Hono underneath.
 The rest are planned, not published:
 
 | Planned package          | Would own                                          |

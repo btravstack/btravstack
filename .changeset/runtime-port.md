@@ -7,8 +7,8 @@
 options?, exit?)` and `withApp(module, options, use)` build the module,
 resolve its runtime through the kernel's new **`RuntimePort`** — `Port("Runtime")`,
 exported generic so a runtime package (or an application) declares its own
-concrete port over it, `class HttpRuntime extends RuntimePort<Runtime<typeof
-HttpHandler, HttpInfo>> {}` — and drive what they find. The kernel is DI
+concrete port over it, `class HttpRuntime extends
+RuntimePort<Runtime<never, HttpInfo>> {}` — and drive what they find. The kernel is DI
 initialisation and lifecycle, nothing else; every runtime port shares one id,
 which is how a graph holds exactly one.
 

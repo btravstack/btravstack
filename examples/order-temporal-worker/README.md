@@ -13,35 +13,42 @@ starts these workflows needs it and needs none of this.
 
 ```
 src/workflows.ts        fulfillOrder — the saga, in Temporal's deterministic sandbox
-src/temporal-runtime.ts the runtime: five activities and their triage into contract errors,
-                        provided on OrderTemporalRuntime by temporalModule({ contract, workflows }),
-                        with TemporalConfig (the environment) and TemporalConnection (a resource)
+src/activities.ts       OrderActivities — the five activities and their triage into contract
+                        errors, as a service: a provider closing over the use case and the
+                        services it declares, exported by ActivitiesModule
 src/fulfillment.ts      FulfillmentModule — the two external services, as stand-ins
-src/module.ts           OrderTemporalWorker — the composition root, runtime included
+src/module.ts           OrderTemporalWorker — the composition root, temporal() included
 src/main.ts             the process: runMain(OrderTemporalWorker)
 src/test-fixtures.ts    serve / fulfilling / outOfStock / noShipping, against the time-skipping env
 ```
 
-## The runtime is a service the graph provides
+## Everything is a provider
 
-`start` takes no runtime option: it resolves the worker from a port the module
-exports, declared over the kernel's `RuntimePort`. The worker's `needs` are
-this application's five ports, so the port — `OrderTemporalRuntime` — is this
-package's to declare, and `temporalModule({ contract, workflows })` provides
-`temporalWorkerRuntime(...)` on it. Inside that module the transport is wired
-like any other service: `TemporalConfig` is bound from the environment with
-`Config.provider`, and `TemporalConnection` is a **resourceful** provider —
-di opens the `NativeConnection` with the scope and closes it on every exit
-path, startup failure included, which is what a `main.ts` opening it by hand
-had to `.finally` around `runMain`. A service that will not answer is a
-modeled `TemporalUnreachable` (exit `1`), not a defect: an operator can act
-on it. The composition root, `OrderTemporalWorker`, is therefore a constant;
-it exports the runtime's port alongside the five the activities resolve, and
-`start`'s gate reads both halves off the exports (`src/needs-gate.test-d.ts`
-pins a root with no runtime and one a port short). The two arguments the
-module factory keeps are the deployment's static facts: `main.ts` hands
-`orderContract` and the workflow module's path, a spec a per-test queue and
-a prebuilt bundle.
+`start` takes no runtime option: it resolves the worker from `TemporalRuntime`,
+the port `@btravstack/temporal`'s `temporal()` starter provides and the
+composition root exports. The starter is imported next to the application like
+any other module — `temporal({ contract: orderContract, activities:
+OrderActivities, workflows })` — and inside it the transport is wired like any
+other service: `TemporalConfig` is bound from the environment, and
+`TemporalConnection` is a **resourceful** provider — di opens the
+`NativeConnection` with the scope and closes it on every exit path, startup
+failure included. A service that will not answer is the starter's modeled
+`TemporalUnreachable` (exit `1`), not a defect: an operator can act on it.
+
+The application's half is `OrderActivities`: a port whose service is the
+activities record `declareActivitiesHandler` takes for `orderContract`,
+provided by `ActivitiesModule` from the four ports the activities close over —
+`PlaceOrder`, `OrderRepository`, `StockService`, `ShippingService`. There is
+no `needs` list and no context to read from: an activity is a closure over the
+services its provider declared, and di verifies the root supplies them. The
+starter depends on that port through di, so `OrderActivities` is a **need** of
+`temporal(...)`, and a root that forgets `ActivitiesModule` is rejected by
+`start` for still owing it (`src/needs-gate.test-d.ts` pins that, and a root
+with no runtime). The composition root, `OrderTemporalWorker`, is therefore a
+constant exporting exactly one port — the runtime's — and the two arguments the
+starter reads as static facts are the contract and the workflow source:
+`main.ts` hands `orderContract` and the workflow module's path, a spec a
+per-test queue and a prebuilt bundle.
 
 ## The saga
 
@@ -88,8 +95,8 @@ saga used and finds the placement gone.
 
 ## The environment
 
-Read inside the graph — `TemporalConfig` for the first two, the kernel for
-`PROBE_PORT` — never by `main.ts`. A blank or malformed value is a
+Read inside the graph — the starter's `TemporalConfig` for the first two, the
+kernel for `PROBE_PORT` — never by `main.ts`. A blank or malformed value is a
 `ConfigInvalid` the kernel reports as a `startFailed` event and exit `78`.
 
 | Variable             | Default          | What it is           |
@@ -98,7 +105,7 @@ Read inside the graph — `TemporalConfig` for the first two, the kernel for
 | `TEMPORAL_NAMESPACE` | `default`        | must not be blank    |
 | `PROBE_PORT`         | `9000`           | `/livez` / `/readyz` |
 
-The specs boot the real `temporalModule` with `env: { TEMPORAL_ADDRESS }`
+The specs boot the real `temporal()` starter with `env: { TEMPORAL_ADDRESS }`
 pointing at the time-skipping server, so every test opens and closes a
 connection of its own — the environment's shared `nativeConnection` is never
 handed to a scope that would close it.

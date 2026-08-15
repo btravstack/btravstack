@@ -23,7 +23,6 @@
     "@btravstack/example-order-domain": "workspace:*",
     "@btravstack/example-order-infrastructure": "workspace:*",
     "@btravstack/http": "workspace:*",
-    "@btravstack/orpc": "workspace:*",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",

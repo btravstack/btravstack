@@ -152,34 +152,28 @@ tag is not unique per attempt (see
 [`@btravstack/amqp`'s README](../packages/amqp/README.md) for why), where a
 queue job id or a task token already is.
 
-## The runtimes with a non-empty `needs`
+## What each runtime needs, and how the gate sees it
 
-`order-api`'s `http()` starter declares `[HttpHandler]` — the package's own port
-for the HTTP surface, which the example provides over a router provider that
-declares the two use cases it calls —
-`temporalWorkerRuntime` declares the five ports its activities resolve, and
-`orderAmqpRuntime` declares `[Outbox, Logger]` — each a selection of what the
-module exports, because a
-runtime declares what _it_ needs. A runtime is itself a service the composition
-root exports, on a port declared over the kernel's `RuntimePort`: `http` ships
-its (`HttpRuntime`, its needs being fixed), the other two examples declare their
-own (`OrderTemporalRuntime`, `OrderAmqpRuntime`), because those runtimes' needs
-are the application's. The kernel's own `testRuntime` needs nothing,
-so these three are what exercise `start`'s phantom rest-tuple gate and
-`RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
-_classes_ while di parameterises contexts by port _instances_ — against a real
-module here. `@btravstack/http`'s own fixtures
-(`packages/http/src/test-fixtures.ts`, driving its 15
-`http-runtime.spec.ts` specs) exercise the same runtime-side path a second
-way now — including a `HttpHandler` provided by the `unit` module. `examples/` stays the only place the gate is pinned by a **type
-test**: `@btravstack/http` ships no `*.test-d.ts`.
+A runtime is a service the composition root exports, on a port each starter
+ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
+`AmqpRuntime`), and every application-specific thing a runtime used to
+resolve is now a **port its provider depends on** through di: `order-api`
+provides `OrderRouter` (a router provider that declares the two use cases it
+calls, handed to `http({ router: OrderRouter })`); `order-temporal-worker`
+provides `OrderActivities` from the four ports the saga's activities touch;
+`order-amqp-worker` provides `OrderHandlers` from `Logger`. No starter
+declares a `needs` any more — all three runtimes are `Runtime<never, Info>`
+— so `start`'s `UNSATISFIED RUNTIME NEEDS` arm is exercised only by the
+kernel's own type test now; what the examples pin is the other two gates.
 
-All three directions are pinned, in `order-api/src/needs-gate.test-d.ts`,
-`order-temporal-worker/src/needs-gate.test-d.ts`
-and `order-amqp-worker/src/needs-gate.test-d.ts`: the wired call is an ordinary
-one, a module one port short fails on **arity**, naming the missing need, and a
-composition that forgets its runtime module fails the same way with
-`NO RUNTIME`.
+Pinned in `order-api/src/needs-gate.test-d.ts`,
+`order-temporal-worker/src/needs-gate.test-d.ts` and
+`order-amqp-worker/src/needs-gate.test-d.ts`: the wired call is an ordinary
+one; a composition that forgets its starter fails on **arity** with
+`NO RUNTIME`; and a composition that imports the starter without providing its
+router / activities / handlers port fails at `start` — di's own
+`UNSATISFIED DEPENDENCIES` gate, since the runtime provider depends on that
+port. `order-api` also pins both halves of the `unit` gate.
 
 ## Why these are tests, not just illustrations
 

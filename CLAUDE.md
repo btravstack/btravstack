@@ -19,11 +19,10 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds seven published packages,
+pnpm workspace + turbo monorepo. `packages/` holds six published packages,
 `di` (the container), `config` (configuration from the environment, as
-providers), `core` (the kernel), `http` (the HTTP starter), `orpc` (the oRPC
-starter over it), `temporal` (the Temporal worker runtime) and `amqp` (the
-AMQP consumer runtime). `di` was its own repository until it was merged here
+providers), `core` (the kernel), `http` (the HTTP starter — oRPC on Hono),
+`temporal` (the Temporal starter) and `amqp` (the AMQP starter). `di` was its own repository until it was merged here
 **with its history**; it is the one package that depends on nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
 back. Its own spec is `packages/di/CLAUDE.md`.
@@ -286,16 +285,22 @@ UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   the fork's own direction — all three at the call site, on arity.
 - **`RuntimePort`** — `Port("Runtime")`, exported **generic** (no fixed
   service): a runtime package declares its own concrete port over it —
-  `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}`
+  `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
   — so every runtime is one id at runtime while each carries its own
   `Needs`/`Info` in the type. `RuntimeOf<X>` / `RuntimeNeedsOf<X>` /
   `RuntimeInfoOf<X>` read those back out of a module's exports; `RuntimeInstance`
-  is the shared instance type (`InstanceType<PortClass<"Runtime">>`). A
-  runtime whose needs are fixed ships its port and a starter (`http()`); one
-  whose needs are the application's (`temporalRuntime`, `amqpRuntime`) is
-  provided on a port the **application** declares over `RuntimePort`, since a
-  port's service type is fixed at declaration and `PortInstance` is not
-  nameable outside di.
+  is the shared instance type (`InstanceType<PortClass<"Runtime">>`). Every
+  runtime package ships its port and a starter — `HttpRuntime`/`http()`,
+  `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
+  has `needs` any more: each takes the application's router / activities /
+  handlers as a **port its runtime provider depends on** through di, so their
+  `Needs` is `never` and `RuntimeHost.ctx` goes unread by every shipped
+  runtime. The kernel keeps `Runtime.needs`, `RunUnit`'s typed `ctx` and the
+  `UNSATISFIED RUNTIME NEEDS` arm as the general contract (`testRuntime` and a
+  hand-rolled runtime still use it), but no starter does. A port's service
+  type is fixed at declaration, which is why a runtime with application-specific
+  needs could not ship its port — the reason the needs went, not a constraint
+  to work around.
 - **`StartOptions<UnitX, UnitNeeds>`** — `env` (the environment the graph is
   configured from, provided to it as `@btravstack/config`'s `Env` port and
   what the kernel reads its own `PROBE_PORT` from; default `process.env`, a
@@ -481,28 +486,38 @@ never, never>` providing the runtime on **`TestRuntimePort`** (its port,
   stopped and rethrown unchanged, so a shutdown defect can never mask the
   assertion that actually failed.
 
-### `@btravstack/http`, `@btravstack/orpc`, `@btravstack/temporal` and `@btravstack/amqp`
+### `@btravstack/http`, `@btravstack/temporal` and `@btravstack/amqp`
 
 Their public surfaces live in `packages/http/CLAUDE.md`,
-`packages/orpc/CLAUDE.md`, `packages/temporal/CLAUDE.md` and
+`packages/temporal/CLAUDE.md` and
 `packages/amqp/CLAUDE.md`, which load only when you work under those
 directories — the same split `packages/core/CLAUDE.md` already uses for the
 kernel's internals. Read the one you are changing before you change it, and
 update it in the same commit as the code.
 
-**Starters.** `http()` and `orpc()` are the first two, in the Spring Boot
-sense: a module (or provider) that brings the default behaviour for the
-standard case — `http()` binds `PORT`/`HOST` onto `HttpConfig` and provides
-`HttpRuntime`; `orpc(RouterPort)` turns a router port into the `HttpHandler`
-provider — so an application with an ordinary need writes none of that
-plumbing, and every piece is a port an application may provide itself instead
-(its own `HttpHandler`, its own `HttpConfig` by pinning). A starter has real
-dependencies (`@btravstack/orpc` peers on `hono`, `@hono/node-server`,
-`@orpc/server`); the kernel and `@btravstack/http` still have none.
-`temporalRuntime`/`amqpRuntime` are not yet starters — their needs are the
-application's, so the application declares the runtime port — and the same
-shape (a `TemporalConfig`/`AmqpConfig` bound from env, a resourceful
-connection provider) is what the examples show by hand.
+**Starters.** All three are, in the Spring Boot sense: a module that brings
+the default behaviour for the standard case, opinionated about the one way it
+is done and configurable where a deployment differs. `http({ router })` binds
+`PORT`/`HOST` onto `HttpConfig`, mounts the application's **router port** —
+an oRPC router as a provider that declares the use cases its procedures call
+— on Hono under `prefix`, and provides `HttpRuntime`; **oRPC on Hono is the
+one way HTTP is answered here** (oRPC shares this stack's convictions — a
+contract, typed errors, `Result` at the boundary — so it is enforced, not
+offered among alternatives; the former `@btravstack/orpc` was folded in for
+that reason, and the node listener port `HttpHandler` is internal to the
+package). `temporal({ contract, activities, workflows })`
+binds `TEMPORAL_ADDRESS`/`TEMPORAL_NAMESPACE` onto `TemporalConfig`, opens
+`TemporalConnection` as a resource and provides `TemporalRuntime` from the
+application's **activities port** — implementations built by a provider from
+the application's own services, closures, no `context.ctx`; `amqp({ contract,
+handlers })` binds `AMQP_URL` onto `AmqpConfig` and provides `AmqpRuntime`
+from the application's **handlers port** the same way. The runtime provider
+depends on that port through di, which is what deleted `needs` from all
+three: what a handler needs is its provider's business. A starter has real
+dependencies — peers, so an application holds one copy: `@btravstack/http` on
+`hono`/`@hono/node-server`/`@orpc/server`, `@btravstack/temporal` on
+`@temporal-contract/*` and `@temporalio/*`, `@btravstack/amqp` on
+`@amqp-contract/*` — while the kernel and `config` still have none.
 
 ## Toolchain & conventions
 
@@ -512,19 +527,19 @@ connection provider) is what the examples show by hand.
   `hexagonal-order-api`'s `index.test-d.ts` —
   so an example that stops compiling, stops linting or stops passing fails CI
   exactly as `packages/core` would. Three of the four needs-gate files pin
-  **`start`'s** runtime-needs gate (`order-api`, `order-temporal-worker`,
-  `order-amqp-worker`); the fourth, `order-application`'s, pins
-  **di's** `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`. They are
-  different gates and easy to conflate.
+  **`start`'s** gate (`order-api`, `order-temporal-worker`,
+  `order-amqp-worker` — all three its `NO RUNTIME` arm; `order-api` alone its
+  `UNSATISFIED RUNTIME NEEDS` arm, since only `http()` still declares a need);
+  the fourth, `order-application`'s, pins **di's** `UNSATISFIED DEPENDENCIES`
+  gate on `Module.scoped`. They are different gates and easy to conflate.
   A runtime with a **non-empty `needs`** meeting a real module now exercises
   `start`'s phantom rest-tuple gate and `RuntimeHost`'s
   `Context<InstanceType<Needs>>` in two places: here, and in
-  `packages/http/src/test-fixtures.ts`, whose modules import `http()` and
-  provide the package's own `HttpHandler` port — at application scope, and
-  once from the `unit` module — driven by its 15 `http-runtime.spec.ts`
-  specs. Every needs-gate file also pins the third arm, `NO RUNTIME`: a
-  composition that forgets the runtime module fails on arity like one a port
-  short. `examples/` stays the only
+  `packages/http/src/test-fixtures.ts`, whose transport specs hand the
+  internal `httpModule` a bare listener — driven by its 23 specs across
+  `http-runtime.spec.ts` and `orpc.spec.ts`. Every needs-gate file also pins
+  the third arm, `NO RUNTIME`: a composition that forgets the starter fails on
+  arity like one a port short. `examples/` stays the only
   place the gate is pinned by a **type test** — `@btravstack/http` ships no
   `*.test-d.ts`.
 - **`examples/order-temporal-worker` is the one workspace whose suite needs the
@@ -582,35 +597,37 @@ connection provider) is what the examples show by hand.
   workspace's README, since a suite that needs a daemon is a fact a contributor
   discovers the hard way otherwise.
 - **`examples/order-temporal-worker` consumes `@btravstack/temporal`**, the same
-  way `order-api` consumes `@btravstack/http`: it supplies the contract, the two ports its
-  activity resolves and the `mapErrCases` triage, and reads `{ taskQueue,
+  way `order-api` consumes `@btravstack/http`: it supplies the contract, the
+  activities port and the `mapErrCases` triage, and reads `{ taskQueue,
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
-  attempt and the deadline race are the package's. It is the second place the
-  package's needs gate is a real one. Its runtime port is the **example's**
-  (`OrderTemporalRuntime`, declared over `RuntimePort` and provided by the
-  example's own module factory), because `temporalRuntime`'s needs are the
-  application's — the same is true of `order-amqp-worker`; only `@btravstack/http`
-  ships its port, since `HttpHandler` is the one need it ever has.
+  attempt and the deadline race are the package's. Its activities are a
+  **port** (`OrderActivities`), provided from `PlaceOrder`, `OrderRepository`,
+  `StockService` and `ShippingService` — closures over the services, no
+  context read at call time — and `temporal({ contract, activities:
+OrderActivities, workflows })` is what the composition root imports; the
+  connection and `TEMPORAL_*` come from the starter. `order-amqp-worker` is
+  the same shape (`OrderHandlers` from `Logger`, `amqp({ contract, handlers:
+OrderHandlers })`), with its outbox relay a resourceful provider of its own
+  rather than something layered onto the runtime.
 - **`examples/order-api` consumes `@btravstack/http` rather than
-  hand-rolling a transport, and its HTTP stack is deliberately ONE way: Hono +
-  oRPC + `@unthrown/orpc`.** The surface itself is a di-provided service —
-  `ApiModule` provides `@btravstack/http`'s **`HttpHandler` port** (a Hono app
-  with oRPC's fetch adapter mounted, built by a provider from the `OrderRouter`
-  port — itself a provider that **declares** `PlaceOrder` and `FindOrder`, so
-  oRPC's context stays empty and nothing is located from a context at call
-  time — never a module-level singleton) through **`orpc(OrderRouter)`**, the
-  `@btravstack/orpc` starter; the runtime is **`http()` imported into the
-  composition root** — `OrderApi` is a constant, `PORT`/`HOST` come from the
-  environment inside the graph — and exported as `HttpRuntime`, whose one
-  need is `HttpHandler`, resolved out of each request's context; and
-  `RequestModule` rides `StartOptions.unit` so the per-request fork is the
-  kernel's. There is no `runtime`, `needs`, `handler`, `port` or env-reading
-  to spell anywhere: `main.ts` is `await runMain(OrderApi, { unit:
-RequestModule })`. The router uses `@unthrown/orpc`'s `.result()` builder
-  extension. It reads `port` back off `Serving.info`; binding, the drain and
-  the trace-id policy are the package's. This is what makes the package's
-  needs gate a real one: a composition that does not export `HttpHandler` —
-  or forgets `http()` altogether — fails on arity at the `runMain` call.
+  hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
+  on Hono, `@unthrown/orpc` at the boundary.** The router is a di-provided
+  service — `orderRouter` is a provider that **declares** `PlaceOrder` and
+  `FindOrder`, so oRPC's context stays empty and nothing is located from a
+  context at call time, never a module-level singleton — and
+  **`http({ router: OrderRouter })` imported into the composition root** is
+  the whole transport: `OrderApi` is a constant, `PORT`/`HOST` come from the
+  environment inside the graph, the router is mounted under `/rpc`, and the
+  root exports `HttpRuntime`. `RequestModule` rides `StartOptions.unit` so
+  the per-request fork is the kernel's. There is no `runtime`, `needs`,
+  `handler`, `port` or env-reading to spell anywhere: `main.ts` is `await
+runMain(OrderApi, { unit: RequestModule })`. The router uses
+  `@unthrown/orpc`'s `.result()` builder extension. It reads `port` back off
+  `Serving.info`; binding, the drain and the trace-id policy are the
+  package's. Two gates keep the composition honest at compile time: a root
+  that forgets `http(...)` fails on arity (`NO RUNTIME`), and one that imports
+  it without providing `OrderRouter` fails di's own gate at `start`, since the
+  starter's runtime provider depends on the router.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
@@ -635,16 +652,16 @@ RequestModule })`. The router uses `@unthrown/orpc`'s `.result()` builder
   so a consumer still installs one copy of it themselves. `di` itself peers on
   `unthrown` and depends on nothing; `config` peers on `di` and `unthrown`;
   `core` peers on all three. A **starter** is the exception by definition:
-  `@btravstack/orpc` peers on `hono`, `@hono/node-server` and `@orpc/server` —
+  `@btravstack/http` peers on `hono`, `@hono/node-server` and `@orpc/server` —
   peers, not dependencies, so an application holds one copy of each.
-- `declarationMap: false` on all seven published packages — the published
+- `declarationMap: false` on all six published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All seven published packages claim `engines: { node: ">=20" }` while the root
+- All six published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -695,10 +712,10 @@ RequestModule })`. The router uses `@unthrown/orpc`'s `.result()` builder
   both READMEs **and** `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/core/src/` internals or the invariants guarding
   them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
-  `packages/config/CLAUDE.md`, `packages/http/CLAUDE.md`, `packages/orpc/CLAUDE.md`,
+  `packages/config/CLAUDE.md`, `packages/http/CLAUDE.md`,
   `packages/temporal/CLAUDE.md` or `packages/amqp/CLAUDE.md`, whichever is
   where that package's public surface lives — or `packages/di/CLAUDE.md` for
-  the container. There are **eight** `CLAUDE.md` files; naming the wrong one
+  the container. There are **seven** `CLAUDE.md` files; naming the wrong one
   is how the last drift happened.
 
 ## Test conventions

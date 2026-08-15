@@ -1,2 +1,3 @@
+export { OrderHandlers, orderHandlers } from "./handlers.js";
 export { OrderAmqpWorker } from "./module.js";
-export { AmqpConfig, OrderAmqpRuntime, amqpModule } from "./amqp-runtime.js";
+export { OutboxRelay, RelayConfig, outboxRelay, relayConfig } from "./outbox-relay.js";

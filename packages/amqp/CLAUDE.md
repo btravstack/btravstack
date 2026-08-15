@@ -1,76 +1,70 @@
 # packages/amqp
 
-The AMQP consumer runtime's public surface. The root `CLAUDE.md` is the
-authoritative spec for the kernel and the conventions; this file holds what only
-matters when you are working under `packages/amqp/`. Keep it in sync
-with the code in the same commit, and with `README.md` — the package ships no
+The AMQP starter's public surface. The root `CLAUDE.md` is the authoritative
+spec for the kernel and the conventions; this file holds what only matters
+when you are working under `packages/amqp/`. Keep it in sync with the code in
+the same commit, and with `README.md` — the package ships no
 `docs-examples.test-d.ts`, so nothing else compiles these claims.
 
 ## Public surface
 
-- **`amqpRuntime(options)` → `Runtime<Needs, AmqpInfo>`** — runs an
-  `@amqp-contract/worker` `TypedAmqpWorker` under the kernel's lifecycle.
-  It is a **value**, not a module: `Needs` is per application, so the port
-  is the application's to declare over `@btravstack/core`'s `RuntimePort`
-  (`class OrderAmqpRuntime extends RuntimePort<Runtime<typeof Outbox | typeof
-Logger, AmqpInfo>> {}`) and provide the runtime on
-  (`Provider(OrderAmqpRuntime)({ value: amqpRuntime({...}) })`), exported
-  from the module `start` boots. `@btravstack/http` ships a port and a
-  starter module (`http()`) of its own because its needs are fixed; this
-  package's are not, so it ships neither.
-  `AmqpOptions<TContract, Needs>` — `urls`, `contract: TContract` (`TContract`
-  bounded by `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, never
-  imported by name), `handlers`, `middleware`, `needs`, `connectionOptions`,
-  `defaultConsumerOptions`, `connectTimeoutMs` (a top-level
-  `CreateWorkerOptions` field, **not** nested under `connectionOptions`, where
-  setting it is silently inert — an unreachable broker takes the library's 30s
-  default to report without it). `AmqpInfo` is `{ queues }`, published on
-  `Serving.info` once consuming.
+- **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | H>`**
+  — the starter, the same shape as `@btravstack/http`'s `http()`. It provides
+  the runtime on **`AmqpRuntime`** (`extends RuntimePort<Runtime<never,
+AmqpInfo>>` — the runtime has **no** needs) and the broker on
+  **`AmqpConfig`** (`{ url }`, bound from `AMQP_URL`, default
+  `amqp://127.0.0.1:5672`), and it **needs** the handlers port `H` the
+  application provides. The composition root imports it, provides `handlers`,
+  exports `AmqpRuntime`; di's own gate checks the need where the root is
+  declared, and `start` refuses a module whose needs channel still carries it
+  (`examples/order-amqp-worker/src/needs-gate.test-d.ts` pins that
+  diagnostic, since `start`'s own gate has no `UNSATISFIED RUNTIME NEEDS` arm
+  to fire any more).
+  `AmqpOptions<TContract, H>` — `contract: TContract` (`TContract` bounded by
+  `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, never imported
+  by name), `handlers: H & HandlersPort<H, TContract>`, `url?` (pinning it
+  yields the narrower `Module<AmqpRuntime | AmqpConfig, never, H>`: no `Env`,
+  no `ConfigInvalid`), `connectionOptions`, `defaultConsumerOptions`,
+  `connectTimeoutMs` (a top-level `CreateWorkerOptions` field, **not** nested
+  under `connectionOptions`, where setting it is silently inert — an
+  unreachable broker takes the library's 30s default to report without it).
+  `AmqpInfo` is `{ queues }`, published on `Serving.info` once consuming.
+- **`handlers` is a PORT whose service is `WorkerInferHandlers<TContract>`** —
+  the record `TypedAmqpWorker.create` takes, with **no injected context**.
+  `HandlersPort<H, TContract>` is `unknown` when `ServiceOf<H>` is that record
+  and `never` otherwise, intersected with `H` at the call site — the same
+  trick the oRPC starter's `RouterPort` uses for its router port — so a port
+  whose service misses a consumer or names one the contract does not declare
+  fails to typecheck at `amqp(...)`, not on the first delivery
+  (`amqp-runtime.test-d.ts` pins both directions). Inside, `handlers as
+WorkerInferHandlers<TContract>` is **the one cast in the package**: the
+  constraint proved it at the call site and `H` alone cannot say so again.
+  There is no `needs`, no builder, no `messageUnits(host)` for a consumer to
+  place, and no `MessageUnitContext`: a handler is built by di from the
+  services its provider declares, and reads nothing out of a context.
 - **`queuesOf`** derives `AmqpInfo.queues` from `contract.consumers` and
   `contract.rpcs` — sorted, de-duplicated, never a separate option — so
   `Serving.info` cannot disagree with what the worker actually consumes.
-- **`handlers`** is a **builder** —
-  `(host: RuntimeHost<Needs>) => WorkerInferHandlers<TContract, MessageUnitContext<Needs>>`
-  — because `messageUnits` needs the host and the host does not exist until
-  `start` calls the runtime. Checked against the contract, not erased to
-  `Record<string, unknown>`: a typo'd key or a missing one is a compile error
-  here rather than a defect on the first delivery (`amqp-runtime.test-d.ts`
-  pins both directions). `middleware`, when supplied, is typed
-  `(host: RuntimeHost<Needs>) => MessageMiddleware<Needs>` — the package's own
-  structural type, not `unknown` — though the field itself stays optional, so
-  a handler reading `context.ctx` while no `middleware` builder is configured
-  at all is still a gap the type cannot close. The package never wraps what
-  either builder returns, which is what makes double-wrapping impossible
-  rather than something to detect. Both builders are called **inside** the
-  qualified chain (`fromThrowable`), not before it: `declareHandler` throws on
-  a contract it cannot satisfy, and that throw is a startup failure like any
-  other — `Err(RuntimeStartFailed)`, exit `1`, not a `Defect` and exit `70`
-  (`amqp-runtime.spec.ts`'s `"reports a throwing handlers builder as Err, not
-a defect"` and `"...middleware builder..."` guard it, mutation-verified).
-  `TypedAmqpWorker.create` itself reports a connection failure on the
-  **defect** channel with a `TechnicalError` cause — never a modeled `Err` —
-  and `createWorker` calls it inside `.recoverDefect(...)`, turning that
-  defect into `Err(RuntimeStartFailed({ runtime: "amqp", cause }))`. Dropping
-  that `recoverDefect` is the one-line regression that turns every
-  unreachable broker into `runMain` exit `70` where a startup failure earns
-  `1` (`amqp-runtime.spec.ts`'s `"reports a broker that will not answer as
-Err, not a defect"` guards it).
-- **`messageUnits(host)` → `MessageMiddleware<Needs>`** — the one line a
-  consumer adds to the `middleware` slot. It opens one kernel unit per
-  **delivery** (`id` a minted `randomUUID()`, `traceId` the publisher's
-  `messageId` — falling back to `correlationId`, then to the minted id) and
-  injects `MessageUnitContext<Needs>` — `{ ctx }` — through `amqp-contract`'s
-  own per-message context channel; `ctx` is whatever the kernel hands unit
-  work, so a `StartOptions.unit` module reaches a handler with no change here. **Pass the type argument** (or
-  hoist the call) when a handler reads `context.ctx`: TypeScript infers the
-  injected context from the middleware's own type and infers nothing from a
-  generic call it is still resolving — and unlike `@btravstack/temporal`'s single
-  `declareActivitiesHandler`, `amqp-contract` splits the handler from the
-  middleware into **two independent generic calls**, so `declareHandler<...>`
-  needs the same treatment; leaving either bare defaults it to `EmptyContext`.
-  Caught **twice** in this package's own development, once for each call —
-  stated in the README's worked example rather than left for the next
-  consumer to find the same way.
+- **`TypedAmqpWorker.create` reports a connection failure on the defect
+  channel** with a `TechnicalError` cause — never a modeled `Err` — and
+  `createWorker` calls it inside `.recoverDefect(...)`, turning that defect
+  into `Err(RuntimeStartFailed({ runtime: "amqp", cause }))`. Dropping that
+  `recoverDefect` is the one-line regression that turns every unreachable
+  broker into `runMain` exit `70` where a startup failure earns `1`
+  (`amqp-runtime.spec.ts`'s `"reports a broker that will not answer as Err,
+not a defect"` guards it). `create` never throws synchronously (its own
+  handler-record checks come back as defects too), so there is no
+  `fromThrowable` around it any more — the builders that could throw are gone
+  with `needs`.
+- **`messageUnits(host)` is internal** (`message-units.ts`, typed as
+  `@amqp-contract/worker`'s own `WorkerMiddleware`, since the peer is already
+  there). It opens one kernel unit per **delivery** (`id` a minted
+  `randomUUID()`, `traceId` the publisher's `messageId` — falling back to
+  `correlationId`, then to the minted id) and calls `next()` **unchanged** — it
+  injects nothing. The ambient `currentUnit()` record is what a delivery
+  leaves for the adapters that read it, and it is how the package's own suite
+  observes the trace id (`seam` in `test-fixtures.ts` records
+  `currentUnit()` inside the handler).
 - **A delivery tag is not a valid unit id.** Tags are per-**channel** and
   restart at `1` after a reconnect, which `amqp-connection-manager` performs
   silently underneath this worker — the one identifier that looks unique per
@@ -78,20 +72,17 @@ Err, not a defect"` guards it).
   `consumerTag + deliveryTag` almost fixes it, until `ConsumerOptions` lets a
   caller pin `consumerTag`. Minting is the only form of the rule that
   survives.
-- **`amqp-contract` is not a peer.** `@amqp-contract/worker` **is** — the
-  package's one value import (`TypedAmqpWorker`) lives here, and bundling it
-  cost two orders of magnitude of dist size: 344 KB, measured at the commit
-  where it was still bundled, against **~5 KB** peered (`pnpm --filter
-@btravstack/amqp build`'s own report — re-measure rather than trust
-  this number, since it moves with the package's own surface, not with the
-  peer boundary).
-  `@opentelemetry/api` is a peer transitively, because `@amqp-contract/worker`
-  itself peers on it. `@amqp-contract/contract` stays a devDependency only —
-  used to type this package's own tests, never appearing in the published
-  type surface — and `MessageMiddleware`'s shape is declared **structurally**
-  in `message-units.ts`, the same technique `@btravstack/temporal`'s `ActivityMiddleware`
-  uses, so a consumer who does not import `amqp-contract/contract` never
-  inherits it either.
+- **`@amqp-contract/worker` is a peer; `@amqp-contract/contract` is not.**
+  The package's value imports (`TypedAmqpWorker`) and its public types
+  (`WorkerInferHandlers`, through `HandlersPort`) live in `worker`, and
+  bundling it cost two orders of magnitude of dist size: 344 KB, measured at
+  the commit where it was still bundled, against **~6 KB** peered (`pnpm
+--filter @btravstack/amqp build`'s own report — re-measure rather than
+  trust this number). `@opentelemetry/api` is a peer transitively, because
+  `@amqp-contract/worker` itself peers on it. `@amqp-contract/contract` stays
+  a devDependency only — used to type this package's own tests, never
+  appearing in the published type surface. `@btravstack/config` is a peer
+  since the starter binds `AmqpConfig` through `Config.provider`.
 - **The drain has exactly one deadline, and that is the point of the
   package.** `Serving.drain(signal)` calls `worker.close({ drainTimeoutMs:
 null })` **raced against `signal`**, and `stop()` reuses whatever deadline
@@ -116,5 +107,9 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   transport. `retry: { mode: "ttl-backoff", maxRetries: 3 }` also means
   **four** total attempts (first plus three retries), not the same count as
   Temporal's `maximumAttempts: 3`.
-- Peer dependencies: `@btravstack/core`, `@btravstack/di`, `unthrown`,
-  `@amqp-contract/worker`, `@opentelemetry/api`.
+- **The suite needs Docker** (`@amqp-contract/testing` boots one RabbitMQ per
+  run); its fixtures compose `amqp({ contract: echoContract, handlers:
+EchoHandlers, url: amqpConnectionUrl })` with a provider for `EchoHandlers`
+  per test — from `Greeting`, or a value — so the module reads no environment.
+- Peer dependencies: `@btravstack/core`, `@btravstack/config`,
+  `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`.

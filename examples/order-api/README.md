@@ -1,20 +1,18 @@
 # `@btravstack/core` example: the order API layer
 
 The transport. A router implementing
-[`order-api-contract`](../order-api-contract), turned into an HTTP surface by
-[`@btravstack/orpc`](../../packages/orpc) and served under the kernel's
-lifecycle by [`@btravstack/http`](../../packages/http). One stack, all of it in
-the graph: oRPC owns the contract, `@unthrown/orpc` owns the `Result` bridge,
-the `orpc` starter owns Hono and the fetch adapter, and the whole HTTP surface
-is a di-provided service. The contract itself lives in its own package, because
-a client needs it and needs none of this.
+[`order-api-contract`](../order-api-contract), provided as a port and served
+under the kernel's lifecycle by [`@btravstack/http`](../../packages/http). One
+stack, all of it in the graph: oRPC owns the contract, `@unthrown/orpc` owns
+the `Result` bridge, the `http` starter owns Hono, the fetch adapter and the
+socket, and the router itself is a di-provided service. The contract lives in
+its own package, because a client needs it and needs none of this.
 
 ```
 src/router.ts         the implementation as a provider, and the one place a domain error becomes an ORPCError
 src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
-src/api.ts            ApiModule — the router port, and orpc(OrderRouter) as @btravstack/http's HttpHandler port
 src/client.ts         an AsyncResult client for the same contract
-src/module.ts         OrderApi — the composition root, importing http()
+src/module.ts         OrderApi — the composition root, importing http({ router: OrderRouter })
 src/main.ts           the process: runMain(OrderApi, { unit: RequestModule })
 src/test-fixtures.ts  serve / clientFor / gate / tapped, as Vitest fixtures
 ```
@@ -66,43 +64,45 @@ has to decide what a client sees. A `Defect` is never named: it has no code
 because it was never modelled, and collapsing it to a 500 is the correct
 treatment rather than a fallback.
 
-## The transport is `@btravstack/http`, the surface is `@btravstack/orpc`
+## The transport is `@btravstack/http`, all of it
 
 Binding the socket, one unit per request, the drain that retires a busy
-keep-alive connection, and the trace-id policy all live in
-[`@btravstack/http`](../../packages/http) — see its README for the runtime
-contract and the guarantee it makes. Hono, oRPC's fetch adapter mounted under
-`/rpc`, and the bridge onto the node request pair all live in
-[`@btravstack/orpc`](../../packages/orpc). What this example writes is the
-router — a provider built from the two use cases it declares — and the module
-that hands it to the starter:
+keep-alive connection, the trace-id policy, Hono and oRPC's fetch adapter
+mounted under `/rpc` all live in [`@btravstack/http`](../../packages/http) —
+see its README for the guarantee it makes and the one way it answers HTTP.
+What this example writes is the router — a provider built from the two use
+cases it declares — and the composition root that hands its port to the
+starter:
 
 ```ts
-export const ApiModule = Module("Api")({
-  provides: [orderRouter, orpc(OrderRouter)],
-  exports: [HttpHandler],
+export const OrderApi = Module("OrderApi")({
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    http({ router: OrderRouter }),
+  ],
+  provides: [orderRouter],
+  exports: [HttpRuntime, Logger],
 });
 ```
 
-`orpc(OrderRouter)` is a provider of the package's own **`HttpHandler` port**
-that declares the router port, so even the transport wiring exists because the
-composition root said so; oRPC's own context stays empty, since one container
-is enough. The runtime is `http()`, imported by the composition root and
-exported as `HttpRuntime` — which is how `runMain` finds it — and its one need
-is `HttpHandler`; a module that exports neither fails on arity at the `runMain`
-call. `port` is read back off `Serving.info` the same way any caller of the
-package does.
+`http({ router: OrderRouter })` is the whole surface. Its runtime provider
+depends on the router port through di, so even the transport wiring exists
+because the composition root said so — a composition that imports the starter
+without providing `OrderRouter` carries an unmet need `start` refuses — and
+oRPC's own context stays empty, since one container is enough. The runtime is
+exported as `HttpRuntime`, which is how `runMain` finds it; a module that
+exports none fails on arity at the `runMain` call. `port` is read back off
+`Serving.info` the same way any caller of the package does.
 
 ### One unit per call
 
-The runtime resolves `HttpHandler` out of each request's context — the kernel
-forked it (see below), so a handler that wants per-request dependencies is
-provided by `RequestModule` instead and built once per request. This one needs
-none, so it lives at application scope. The unit's lifetime **is** the
-response's: `@btravstack/http` keeps it open until the response completes, so
-there is no seam for a late write to land in. An unmatched path is Hono's 404;
-a defect inside a procedure is oRPC's own `INTERNAL_SERVER_ERROR` collapse —
-nothing left to dispatch or end by hand.
+The unit's lifetime **is** the response's: `@btravstack/http` keeps it open
+until the response completes, so there is no seam for a late write to land in.
+An unmatched path is Hono's 404; a defect inside a procedure is oRPC's own
+`INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or end by hand.
+The router itself needs nothing per request, so it lives at application scope;
+what does is forked by the kernel, below.
 
 ### A request scope over the application scope
 

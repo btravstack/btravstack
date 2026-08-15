@@ -1,25 +1,24 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import type { AmqpInfo } from "@btravstack/amqp";
+import { AmqpRuntime, type AmqpInfo } from "@btravstack/amqp";
 import type { Env } from "@btravstack/config";
 import { start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { Logger, OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { expect, type TestAPI } from "vitest";
 
-import { OrderAmqpRuntime } from "./amqp-runtime.js";
 import { OrderAmqpWorker } from "./module.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
 /**
  * `X` is pinned to the ports the composition root exports rather than left
- * generic: `start`'s needs gate is a phantom rest parameter proven at the call
- * site, and no proof is available inside a helper generic in the module's own
- * exports. `OrderAmqpRuntime` is what `start` resolves, the runtime needs two
- * of the rest; `PlaceOrder` is the writer's.
+ * generic: `start`'s gate is a phantom rest parameter proven at the call site,
+ * and no proof is available inside a helper generic in the module's own
+ * exports. `AmqpRuntime` is what `start` resolves; the rest is the writer's
+ * surface, which the tap below reads.
  */
-type AmqpPorts = OrderAmqpRuntime | PlaceOrder | OrderRepository | Outbox | Logger;
+type AmqpPorts = AmqpRuntime | PlaceOrder | OrderRepository | Outbox | Logger;
 
 type ServeOptions = { readonly drainTimeoutMs: number };
 
@@ -57,7 +56,7 @@ const tappedAmqp = () => {
           },
         }),
       ],
-      exports: [OrderAmqpRuntime, PlaceOrder, OrderRepository, Outbox, Logger],
+      exports: [AmqpRuntime, PlaceOrder, OrderRepository, Outbox, Logger],
     }),
     services: (): ServiceOf<ServicesTap> => {
       // oxlint-disable-next-line unthrown/no-throw -- a fixture misused before `serve` is a broken test, and the loudest possible answer is the right one

@@ -1,20 +1,22 @@
 import { Module } from "@btravstack/di";
 import { ApplicationModule, Logger } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
-import { HttpHandler, HttpRuntime, http } from "@btravstack/http";
+import { HttpRuntime, http } from "@btravstack/http";
 
-import { ApiModule } from "./api.js";
+import { OrderRouter, orderRouter } from "./router.js";
 
 /**
  * The composition root, and the only file in the example that knows the three
  * halves exist. `ApplicationModule` leaves `OrderRepository` unmet;
- * `PersistenceModule` provides it; `ApiModule` provides the HTTP surface as
- * `@btravstack/http`'s `HttpHandler` port; and `http()` provides the runtime
- * itself, on `HttpRuntime`, bound from `PORT` and `HOST` in the environment.
- * Importing them is what closes di's arity gate — and the exports here are
- * exactly what `start` resolves (`HttpRuntime`), what that runtime needs
- * (`HttpHandler`) and what the per-request `RequestModule` reads (`Logger`),
- * which closes the kernel's.
+ * `PersistenceModule` provides it; `orderRouter` provides the oRPC router as a
+ * service that declares the two use cases its procedures call; and
+ * `http({ router: OrderRouter })` is the whole transport — the runtime on
+ * `HttpRuntime`, bound from `PORT` and `HOST` in the environment, and the
+ * router mounted on Hono under `/rpc`. Importing them is what closes di's
+ * arity gate (a composition without the router provider does not compile —
+ * the starter's provider depends on it), and the exports here are exactly
+ * what `start` resolves (`HttpRuntime`) and what the per-request
+ * `RequestModule` reads (`Logger`), which closes the kernel's.
  *
  * A constant, not a function: configuration is read inside the graph, from the
  * `Env` port the kernel provides, so nothing has to be passed in from
@@ -25,6 +27,7 @@ import { ApiModule } from "./api.js";
  * does, once, for the whole process.
  */
 export const OrderApi = Module("OrderApi")({
-  imports: [ApplicationModule, PersistenceModule, ApiModule, http()],
-  exports: [HttpRuntime, HttpHandler, Logger],
+  imports: [ApplicationModule, PersistenceModule, http({ router: OrderRouter })],
+  provides: [orderRouter],
+  exports: [HttpRuntime, Logger],
 });

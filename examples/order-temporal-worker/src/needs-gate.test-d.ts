@@ -1,50 +1,44 @@
 import { start } from "@btravstack/core";
 /**
- * The compile-time half of the orchestration deployment: the runtime is a
- * service the module provides on `OrderTemporalRuntime`, it declares five
- * ports in `needs`, and `start`'s phantom rest-tuple gate turns a module that
- * exports no runtime — or one that does not export every port the runtime
- * needs — into a call-site arity error. Type-checked by this package's
- * `test:types` script, never executed.
- *
- * Together with `order-api`'s and `order-amqp-worker`'s, this is what makes the
- * claim testable rather than asserted: three runtimes with non-empty `needs`,
- * all proven against the same application graph at the `start(...)` call site.
+ * The compile-time half of the orchestration deployment: `start` resolves its
+ * runtime from the `TemporalRuntime` port the composition root exports, and
+ * that runtime needs nothing from the application context — its activities
+ * reach it as a port `temporal()` depends on through di. So there is no
+ * `UNSATISFIED RUNTIME NEEDS` arm to pin here, as there was when the runtime
+ * declared five `needs` of its own; what replaces it is di's gate: a root that
+ * imports `temporal({ activities: OrderActivities })` without providing
+ * `OrderActivities` carries it as an unmet need, and `start` — which accepts
+ * only `Scope` and `Env` outstanding — rejects the module at the call site.
+ * Type-checked by this package's `test:types` script, never executed.
  */
 import { Module } from "@btravstack/di";
-import {
-  ApplicationModule,
-  FindOrder,
-  Logger,
-  OrderRepository,
-  PlaceOrder,
-  ShippingService,
-  StockService,
-} from "@btravstack/example-order-application";
+import { ApplicationModule } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { TemporalRuntime, temporal } from "@btravstack/temporal";
 
+import { ActivitiesModule, OrderActivities } from "./activities.js";
 import { FulfillmentModule } from "./fulfillment.js";
 import { OrderTemporalWorker } from "./module.js";
-import { OrderTemporalRuntime, temporalModule } from "./temporal-runtime.js";
 
 const transport = {
   contract: orderContract,
+  activities: OrderActivities,
   workflows: { workflowsPath: "./workflows.js" },
 } as const;
 
 const options = { signals: false, probes: false } as const;
 
-// Positive: the composition root exports the runtime port and every port the
-// runtime needs, so the gate collapses to an empty tuple and this is an
-// ordinary two-argument call.
+// Positive: the composition root exports the runtime port, and the starter's
+// one need is met by `ActivitiesModule`, so the gate collapses to an empty
+// tuple and this is an ordinary two-argument call.
 const _wired = start(OrderTemporalWorker, options);
 
-// The same graph without the runtime: nothing declared over `RuntimePort` is
+// The same graph without the starter: nothing declared over `RuntimePort` is
 // exported, so there is nothing for `start` to boot.
 const RuntimelessTemporal = Module("RuntimelessTemporal")({
-  imports: [ApplicationModule, PersistenceModule, FulfillmentModule],
-  exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger],
+  imports: [ApplicationModule, PersistenceModule, FulfillmentModule, ActivitiesModule],
+  exports: [OrderActivities],
 });
 
 // Negative: the gate becomes a required two-element tuple naming the absence,
@@ -52,22 +46,16 @@ const RuntimelessTemporal = Module("RuntimelessTemporal")({
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _noRuntime = start(RuntimelessTemporal, options);
 
-// The same graph, one port short: `Logger` is provided (the interactors depend
-// on it) but not exported, so it is not in the application context the runtime
-// is handed.
-const PartialTemporal = Module("PartialTemporal")({
-  imports: [ApplicationModule, PersistenceModule, FulfillmentModule, temporalModule(transport)],
-  exports: [
-    OrderTemporalRuntime,
-    PlaceOrder,
-    FindOrder,
-    OrderRepository,
-    StockService,
-    ShippingService,
-  ],
+// The same graph without `ActivitiesModule`: `temporal()` depends on
+// `OrderActivities`, and nothing provides it, so the module carries it as a
+// need — di lets the composition stand and reports the hole where the module
+// is booted.
+const ActivitylessTemporal = Module("ActivitylessTemporal")({
+  imports: [ApplicationModule, PersistenceModule, FulfillmentModule, temporal(transport)],
+  exports: [TemporalRuntime],
 });
 
-// Negative: the gate becomes a required two-element tuple naming the unmet need,
-// and the call fails on arity.
-// @ts-expect-error — UNSATISFIED RUNTIME NEEDS: the module does not export Logger.
-const _missingLogger = start(PartialTemporal, options);
+// Negative: `start` accepts a module whose outstanding needs are `Scope` and
+// `Env` alone, and this one still owes `OrderActivities`.
+// @ts-expect-error — UNMET NEED: `OrderActivities` is not assignable to `Env | Scope`.
+const _missingActivities = start(ActivitylessTemporal, options);
