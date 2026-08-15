@@ -8,7 +8,6 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import { declareHandler } from "@amqp-contract/worker";
 import type { ConfigInvalid } from "@btravstack/config";
 import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -79,8 +78,8 @@ type ServeOptions = { readonly drainTimeoutMs: number };
 
 /**
  * Handlers declared the way a consumer declares them — a provider built from
- * the application's own services, `declareHandler` on the contract — that
- * record what each delivery ran under.
+ * the application's own services, plain functions typed by the contract —
+ * that record what each delivery ran under.
  *
  * `currentUnit()` is the seam: the ambient record is what the unit leaves for
  * the adapters that read it, so what the handler sees there IS the claim —
@@ -93,11 +92,11 @@ const seamOf = () => {
   return {
     handlers: echoHandlers([Greeting], {
       sync: (g) => ({
-        echo: declareHandler(echoContract, "echo", () => {
+        echo: () => {
           seen.push(currentUnit());
           greeting = g.text;
           return OkAsync(undefined);
-        }),
+        },
       }),
     }),
     seen: (): readonly (UnitRecord | undefined)[] => seen,

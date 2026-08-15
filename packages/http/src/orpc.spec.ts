@@ -14,6 +14,17 @@ describe("http, over a router", () => {
     expect(greeting).toBe("hello world");
   });
 
+  it("serves a nested procedure the contract declares", async ({ rpc }) => {
+    // GIVEN a router implementation shaped like its contract, one level deep
+    const { client } = await rpc();
+
+    // WHEN the nested procedure is called
+    const pong = await client.nested.ping();
+
+    // THEN the walk found it under its parent and mounted it there
+    expect(pong).toBe("pong");
+  });
+
   it("mounts under the prefix it is given", async ({ rpc }) => {
     // GIVEN the endpoint mounted somewhere other than /rpc
     const { client } = await rpc("/api");

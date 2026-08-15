@@ -1,4 +1,3 @@
-import { declareHandler } from "@amqp-contract/worker";
 import { AmqpHandlers } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Logger } from "@btravstack/example-order-application";
@@ -9,7 +8,9 @@ import { OkAsync } from "unthrown";
  * consumer, as a service the starter resolves like any other. `AmqpHandlers`
  * mints the port (`orderHandlers.port`) and hands back di's own `Provider`,
  * so the provider declares what the handlers need — here `Logger` — and is
- * built by di from it, exactly as a use case is.
+ * built by di from it, exactly as a use case is. The contract is what types
+ * the record: `orderChanged` is a plain function of the message it declares,
+ * with nothing to wrap it in.
  *
  * The one handler — a subscriber like any other service would write, reacting
  * to a fact somebody else committed. It has no domain errors to triage:
@@ -23,7 +24,7 @@ import { OkAsync } from "unthrown";
  */
 export const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logger], {
   sync: (logger) => ({
-    orderChanged: declareHandler(orderContract, "orderChanged", (message) => {
+    orderChanged: (message) => {
       const { id, payload } = message.payload;
       logger.info(
         payload === null
@@ -31,6 +32,6 @@ export const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logge
           : `order ${id} placed — notifying (${payload.quantity} items)`,
       );
       return OkAsync();
-    }),
+    },
   }),
 });

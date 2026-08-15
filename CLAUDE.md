@@ -511,14 +511,20 @@ have declared (spelled from di's exported typing pieces, inline — see
 `packages/di/CLAUDE.md`), so the kernel and both gates see nothing new; the
 plain starter (`http({ router })`, …) stays exported as the primitive it
 delegates to. And each ships the **port-and-provider sugar** for what the
-application supplies — `HttpRouter(name)(deps, arm)`,
+application supplies — `HttpRouter(contract)(name)(deps, { sync })`,
 `TemporalActivities(contract)(name)(deps, arm)`,
 `AmqpHandlers(contract)(name)(deps, arm)`, and `Config.provider(name,
 schema)` for a config slice — the first call minting the port (its service
 known from the contract or schema) and returning di's own `Provider(port)`, so
-the second call is `Provider(port)(deps, arm)` exactly as everywhere else and
+the last call is `Provider(port)(deps, arm)` exactly as everywhere else and
 the provider carries its port typed (`provider.port` — di's `Provider(port)(…)`
-now returns `Provider<P, E, N> & { port: typeof port }`). The class line and
+now returns `Provider<P, E, N> & { port: typeof port }`). **The contract types
+the record, and nothing wraps a leaf**: an oRPC procedure, a Temporal activity
+and an AMQP handler are each a plain function typed by the contract at the
+call (`HttpRouter` does `implement`/`.result`/`os.router` itself; the
+temporal starter calls `declareActivitiesHandler`; `WorkerInferHandlers`
+accepts a bare function), so an application never writes `implement`,
+`os.…`, `declareHandler` or `declareActivitiesHandler`. The class line and
 its service type are what disappear; the port stays a real di port. Two rules
 from di's CLAUDE.md apply to writing one: return a type spelled through the
 exported `PortInstance` (the class expression's own type is not nameable in
@@ -650,8 +656,10 @@ Persistence], exports: [Logger] })`** is the whole composition root — the
   environment inside the graph, the router is mounted under `/rpc`. `RequestModule` rides `StartOptions.unit` so
   the per-request fork is the kernel's. There is no `runtime`, `needs`,
   `handler`, `port` or env-reading to spell anywhere: `main.ts` is `await
-runMain(OrderApi, { unit: RequestModule })`. The router uses
-  `@unthrown/orpc`'s `.result()` builder extension. It reads `port` back off
+runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
+  `Result`-returning function typed by the contract (`@unthrown/orpc`'s
+  `.result()` handler, attached by `HttpRouter(orderContract)`). It reads
+  `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the
   package's. Two gates keep the composition honest at compile time: a root
   that forgets `http(...)` fails on arity (`NO RUNTIME`), and one that imports

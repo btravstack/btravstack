@@ -158,8 +158,8 @@ A runtime is a service the composition root exports, on a port each starter
 ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
 `AmqpRuntime`), and every application-specific thing a runtime used to
 resolve is now a **port its provider depends on** through di, minted with the
-starter's own sugar: `order-api`'s `orderRouter = HttpRouter("OrderRouter")([PlaceOrder,
-FindOrder], { sync: routerOf })`; `order-temporal-worker`'s `orderActivities =
+starter's own sugar: `order-api`'s `orderRouter = HttpRouter(orderContract)("OrderRouter")([PlaceOrder,
+FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`; `order-temporal-worker`'s `orderActivities =
 TemporalActivities(orderContract)("OrderActivities")([…four ports…], { sync })`;
 `order-amqp-worker`'s `orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logger],
 { sync })` — port and provider in one call, `provider.port` where the port is

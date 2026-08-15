@@ -37,13 +37,29 @@ router and exports `HttpRuntime`, and hands back exactly the module
 
 ```ts
 import { runMain } from "@btravstack/core";
-import type { ServiceOf } from "@btravstack/di";
 import { HttpModule, HttpRouter } from "@btravstack/http";
+import { P } from "unthrown";
 
-const routerOf = (place: ServiceOf<PlaceOrder>, find: ServiceOf<FindOrder>) =>
-  os.router({ orders: { place: /* … */, find: /* … */ } });
-
-const orderRouter = HttpRouter("OrderRouter")([PlaceOrder, FindOrder], { sync: routerOf });
+const orderRouter = HttpRouter(orderContract)("OrderRouter")(
+  [PlaceOrder, FindOrder],
+  {
+    sync: (place, find) => ({
+      orders: {
+        place: ({ errors }, input) =>
+          place
+            .execute(input.id, input.quantity)
+            .map(view)
+            .mapErrCases((m) =>
+              m.with(P.tag("DuplicateOrder"), (e) =>
+                errors.CONFLICT({ data: { id: e.id } }),
+              ),
+            ),
+        find: ({ errors }, input) =>
+          find.execute(input.id).map(view).mapErrCases(/* … */),
+      },
+    }),
+  },
+);
 
 const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
@@ -53,16 +69,20 @@ const OrderApi = HttpModule("OrderApi")({
 await runMain(OrderApi);
 ```
 
-`HttpRouter("OrderRouter")` mints the router's port — its service is a
-context-free oRPC router, the one shape this starter serves — and returns
-di's own `Provider(port)`, so the second call is `Provider(port)(deps, arm)`
-exactly as everywhere else (any arm, same typing) and the provider it returns
-carries the port typed: `orderRouter.port`. No class line, no
-`ReturnType<typeof routerOf>`. `http({ router: orderRouter.port })` — the
-starter module itself, taking the port class — stays exported for a
-composition root written by hand (`Module("OrderApi")({ imports:
-[Application, Persistence, http({ router: orderRouter.port })], provides:
-[orderRouter], exports: [HttpRuntime] })` is what `HttpModule` produces).
+`HttpRouter(orderContract)("OrderRouter")` is **contract-first**: the
+implementation is a record shaped like the contract whose leaves are plain
+`Result`-returning functions — `(helpers, input) => AsyncResult<Output,
+ORPCError>`, the `.result()` handler `@unthrown/orpc` gives an implementer —
+typed by the contract at the call: a typo'd key, a missing procedure, a wrong
+output are compile errors there. `implement(contract)`, `os.…`, `.result(...)`
+and `os.router(...)` are what the call does for you. Its first two calls mint
+the router's port and its last is di's `Provider(port)(deps, { sync })`, so the
+provider it returns carries the port typed: `orderRouter.port`. No class line,
+no `implement`, no builder. `http({ router: orderRouter.port })` — the starter
+module itself, taking the port class — stays exported for a composition root
+written by hand (`Module("OrderApi")({ imports: [Application, Persistence,
+http({ router: orderRouter.port })], provides: [orderRouter], exports:
+[HttpRuntime] })` is what `HttpModule` produces).
 
 That is a whole `main.ts`: `PORT` (default `3000`), `HOST` (default
 `0.0.0.0`) and the kernel's `PROBE_PORT` are read inside the graph, from the

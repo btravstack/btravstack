@@ -116,7 +116,9 @@ export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
 
 /**
  * The handlers' port and provider in one call: `AmqpHandlers(orderContract)("OrderHandlers")([Logger],
- * { sync: (logger) => ({ orderChanged: declareHandler(orderContract, "orderChanged", …) }) })`.
+ * { sync: (logger) => ({ orderChanged: (message) => … }) })` — each handler a plain
+ * function of the message its consumer declares, typed by the contract, with
+ * nothing to wrap it in (`WorkerInferHandlers<C>` accepts the bare function).
  * The first two calls mint a port named `name` whose service is the handlers
  * record `contract` wants — `WorkerInferHandlers<C>`, the one shape `amqp()`
  * accepts — and return di's own `Provider(port)`, so the last call is exactly

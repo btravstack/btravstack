@@ -34,7 +34,7 @@ between publish and mark re-publishes on the next sweep, a broker outage
 leaves rows pending and the sweep after the outage drains them. What is never
 possible is the inverse — a committed order whose event evaporated.
 
-**The consumer** is one `declareHandler` on the contract's
+**The consumer** is one plain function on the contract's
 `order-notifications` queue, reacting to the fact like any other service
 would. It is intentionally the least interesting part: a broadcast's
 publisher does not know it exists, and the spec proves that by binding a
@@ -47,9 +47,9 @@ _foreign_ queue to the same exchange and receiving the same event.
 `AmqpHandlers(orderContract)("OrderHandlers")([Logger], { sync: … })` — which
 mints the port (its service the record `orderContract` wants,
 `WorkerInferHandlers<OrderContract>`, no injected context) and provides it
-from `Logger`: the one handler is `declareHandler(orderContract,
-"orderChanged", …)` closing over the logger it was built with, the way every
-service in the graph is built. No port class is declared here;
+from `Logger`: the one handler is `orderChanged: (message) => …`, a plain
+function typed by the contract, closing over the logger it was built with, the
+way every service in the graph is built. No port class is declared here;
 `orderHandlers.port` is the port where one is needed (the needs gate). The
 composition root is `AmqpModule("OrderAmqpWorker")({ contract: orderContract,
 handlers: orderHandlers, imports, provides, exports })` — a `Module(...)` that

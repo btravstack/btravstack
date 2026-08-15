@@ -30,8 +30,8 @@ import { currentUnit, start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import { os, type RouterClient } from "@orpc/server";
-import { fromSafePromise } from "unthrown";
+import { oc, type RouterContractClient } from "@orpc/contract";
+import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 
 import { HttpHandler } from "./handler.js";
@@ -58,18 +58,19 @@ const appOf = (handler: Handler, port = 0) =>
 /** A greeting service, so the router has a real dependency to declare. */
 class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
 
-const routerOf = (greeter: ServiceOf<Greeter>) =>
-  os.router({
-    hello: os.handler(() => greeter.greet("world")),
-    boom: os.handler(() => {
+/** Three bare procedures, one nested — the contract is what types the implementation below and the client. */
+const greetingContract = oc.router({ hello: oc, boom: oc, nested: { ping: oc } });
+
+/** The router as a service, built from the greeter it declares — contract-first, port and provider minted by `HttpRouter`. */
+const greetingRouter = HttpRouter(greetingContract)("GreetingRouter")([Greeter], {
+  sync: (greeter) => ({
+    hello: () => OkAsync(greeter.greet("world")),
+    boom: () => {
       // oxlint-disable-next-line unthrown/no-throw -- the defect IS the subject under test: oRPC's own collapse to INTERNAL_SERVER_ERROR
       throw new Error("bug");
-    }),
-  });
-
-/** The router as a service, built from the greeter it declares — port and provider minted by `HttpRouter`. */
-const greetingRouter = HttpRouter("GreetingRouter")([Greeter], {
-  sync: (greeter) => routerOf(greeter),
+    },
+    nested: { ping: () => OkAsync("pong") },
+  }),
 });
 
 /** The starter as an application uses it: `HttpModule` sugar over a router provider. */
@@ -176,7 +177,7 @@ export type HttpFixtures = {
    */
   readonly rpc: (prefix?: `/${string}`) => Promise<{
     readonly origin: string;
-    readonly client: RouterClient<ReturnType<typeof routerOf>>;
+    readonly client: RouterContractClient<typeof greetingContract>;
   }>;
   /** A `StartOptions.unit` module whose provider builds only once `release()` is called. */
   readonly slowUnit: SlowUnit;
@@ -282,7 +283,7 @@ export const it = test.extend<HttpFixtures>({
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       const origin = `http://127.0.0.1:${info.port}`;
-      const client: RouterClient<ReturnType<typeof routerOf>> = createORPCClient(
+      const client: RouterContractClient<typeof greetingContract> = createORPCClient(
         new RPCLink({ origin, url: prefix ?? "/rpc" }),
       );
       return { origin, client };

@@ -36,9 +36,10 @@ very same `Result` into typed contract errors over the very same composition
 root, and [`order-amqp-worker`](../order-amqp-worker) by never folding it at a
 consumer at all — its writes broadcast facts instead.
 
-`.result(...)` — `@unthrown/orpc`'s builder extension — performs that
-elimination, and the `mapErrCases` inside it
-is the triage point — the boundary where the application's vocabulary stops:
+Each procedure is a plain `Result`-returning function — `@unthrown/orpc`'s
+`.result(...)` handler, which `HttpRouter(orderContract)` attaches for you —
+and that is what performs the elimination; the `mapErrCases` inside it is the
+triage point — the boundary where the application's vocabulary stops:
 
 ```ts
 place
@@ -70,10 +71,12 @@ Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, the trace-id policy, Hono and oRPC's fetch adapter
 mounted under `/rpc` all live in [`@btravstack/http`](../../packages/http) —
 see its README for the guarantee it makes and the one way it answers HTTP.
-What this example writes is the router — `HttpRouter("OrderRouter")([PlaceOrder,
-FindOrder], { sync: routerOf })`, port and provider in one call, built from
-the two use cases it declares — and a composition root that is a `Module(...)`
-which also knows about it:
+What this example writes is the router — `HttpRouter(orderContract)("OrderRouter")([PlaceOrder,
+FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`,
+contract-first: port and provider in one call, each procedure a plain
+`Result`-returning function typed by the contract, built from the two use
+cases it declares — and a composition root that is a `Module(...)` which also
+knows about it:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({

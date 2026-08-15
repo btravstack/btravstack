@@ -335,9 +335,6 @@ importers:
       '@orpc/contract':
         specifier: 'catalog:'
         version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
-      '@orpc/server':
-        specifier: 'catalog:'
-        version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       '@unthrown/orpc':
         specifier: 'catalog:'
         version: 0.1.2(@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1))
@@ -756,12 +753,18 @@ importers:
       '@orpc/client':
         specifier: 'catalog:'
         version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       '@orpc/server':
         specifier: 'catalog:'
         version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: 'catalog:'
         version: 26.1.2
+      '@unthrown/orpc':
+        specifier: 'catalog:'
+        version: 0.1.2(@orpc/client@2.0.0-beta.23(@opentelemetry/api@1.9.1))(@orpc/server@2.0.0-beta.23(@opentelemetry/api@1.9.1))
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.5.0(unthrown@5.5.0)(vitest@4.1.10)

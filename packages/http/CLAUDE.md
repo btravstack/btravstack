@@ -27,17 +27,26 @@ the same commit, and with `README.md` — the package ships no
   di module (`Module(name)({...} as never) as never` — di computes the
   declared type from a literal, and generic tuples are not one). Options
   `port`/`hostname` pin as for `http()`.
-- **`HttpRouter(name)`** (`orpc.ts`) → di's `Provider(port)` builder over a
-  port minted for the router: `class extends Port(name)<Router<Record<never,
-never>>> {}`, cast to **`RouterPortClass<Name>`** (`{ portId: Name; new ():
-PortInstance<Name, Router<…>> }` — the nameable spelling through di's
-  exported `PortInstance`; the class expression's own type expands the brand
-  keys in declaration emit, TS4023 measured), with the return typed explicitly
-  as `ReturnType<typeof Provider<RouterPortClass<Name>>>`. So
-  `HttpRouter("OrderRouter")([PlaceOrder, FindOrder], { sync: routerOf })` is
-  a plain di provider whose `.port` is typed, and `HttpModule({ router:
-orderRouter })` / `http({ router: orderRouter.port })` take it from there.
-  Covered by the `rpc` fixture's `greetingRouter`.
+- **`HttpRouter(contract)(name)(deps, { sync })`** (`orpc.ts`) — contract-first
+  router provider. `Implementation<C>` is the record type: recursing the
+  contract's shape, each `ProcedureContract<I, O, E>` becomes
+  `Parameters<ProcedureImplementer<DefaultInitialContext & object, object, I,
+O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
+  procedure's implementer (`import "@unthrown/orpc/extensions/result"` here;
+  `@orpc/contract` and `@unthrown/orpc` are peers for it) — so `sync`'s return
+  is typed by the contract at the call. At runtime `implement(contract)` is
+  walked next to the record (`routerOf`: a function leaf → `node.result(fn)`,
+  an object → recurse), and `os.router(built)` is the port's service. The port
+  is minted `class extends Port(name)<Router<Record<never, never>>> {}` and
+  cast to **`RouterPortClass<Name>`** (`{ portId: Name; new (): PortInstance<Name,
+Router<…>> }` — the nameable spelling through di's exported `PortInstance`;
+  the class expression's own type expands the brand keys in declaration emit,
+  TS4023 measured); the return is `Provider<PortInstance<Name, Router<…>>,
+never, InstanceType<D[number]>> & { port: RouterPortClass<Name> }`, spelled
+  explicitly for the same reason. Only the `sync` arm: a router is built, not
+  acquired. `HttpModule({ router: orderRouter })` / `http({ router:
+orderRouter.port })` take it from there. Covered by the `rpc` fixture's
+  `greetingRouter` (a bare-procedure `oc.router`, one nested).
 - **`http({ router, prefix?, port?, hostname? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<RouterPort>>`**
   — the starter, and **the one way HTTP is answered here: oRPC on Hono**. The

@@ -55,7 +55,7 @@ const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")(
   [PlaceOrder],
   {
     sync: (placeOrder) => ({
-      placeOrder: declareHandler(orderContract, "placeOrder", (message) =>
+      placeOrder: (message) =>
         placeOrder
           .execute(message.payload.orderId, message.payload.quantity)
           .map(() => undefined)
@@ -69,7 +69,6 @@ const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")(
           .recoverDefect((cause) =>
             ErrAsync(new RetryableError("placing the order failed", cause)),
           ),
-      ),
     }),
   },
 );

@@ -47,8 +47,12 @@ have declared over the augmented imports/provides/exports — sugar over the sam
 primitives, nothing new for the kernel or the gates. `http({ router })` stays
 exported as the primitive it delegates to.
 
-`HttpRouter(name)(deps, arm)` mints the router's port (service: a context-free
-oRPC router) and returns di's own `Provider(port)` builder — the second call
-is `Provider(port)(deps, arm)` exactly as everywhere else, and the provider
-carries the port typed (`orderRouter.port`). `HttpModule({ router: orderRouter })`
-takes it from there; no class line, no `ReturnType<typeof routerOf>`.
+`HttpRouter(contract)(name)(deps, { sync })` — contract-first: `sync` returns a
+record shaped like the contract whose leaves are plain `Result`-returning
+functions (the `.result()` handler `@unthrown/orpc` gives an implementer),
+typed by the contract at the call; `implement`, `os.…`, `.result(...)` and
+`os.router(...)` are done for you. It mints the router's port and returns di's
+own `Provider(port)`, carrying the port typed (`orderRouter.port`);
+`HttpModule({ router: orderRouter })` takes it from there. No class line, no
+`implement`, no builder in an application. `@orpc/contract` and
+`@unthrown/orpc` join the peers.
