@@ -14,8 +14,7 @@ which is how a graph holds exactly one.
 
 The phantom gate grows a third arm: `NO RUNTIME` when the module exports no
 runtime port, alongside `UNSATISFIED RUNTIME NEEDS` and `UNSATISFIED UNIT
-NEEDS`. `Needs` and `Info` are read off the module (`RuntimeNeedsOf<X>`,
-`RuntimeInfoOf<X>`, `RuntimeOf<X>`, `RuntimeInstance` are exported), so
+NEEDS`. `Needs` and `Info` are read off the module (`RuntimeInfoOf<X>` is exported), so
 `RunningApp<E, RuntimeInfoOf<X>>` types `runtimeInfo()` from the composition
 alone.
 

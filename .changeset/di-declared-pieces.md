@@ -2,14 +2,17 @@
 "@btravstack/di": minor
 ---
 
-The pieces `Module(name)({ imports, provides, exports })`'s declared type is
-built from are exported as types — `AnyModule`, `AnyProvider`, `Exportable`,
-`ResolvedExports`, `ErrOf`, `NeedOf`, `PortOf`, `ErrOfModule`, `NeedsOfModule`,
-`ExportsOfModule`, `Available` — so a package offering a shaped module (a
-starter's `HttpModule(name)({ router, imports, provides, exports })` sugar,
-which appends its own import and export to what the application wrote) can
-hand back exactly the type `Module(...)` would have over the augmented tuples.
-Spell it inline, never through a generic alias.
+`AnyModule`, `AnyProvider` and `Exportable` — the constraints
+`Module(name)({ imports, provides, exports })` puts on its three tuples — are
+exported as types, so a package offering a shaped module (a starter's
+`HttpModule(name)({ router, imports, provides, exports })` sugar, which appends
+its own import and export to what the application wrote) can constrain its
+tuples the same way and hand them to `Module(name)({...})` itself, whose
+return type is then the sugar's, spelled once. `PortClassOf<Id, Service>`
+(`{ portId: Id; new (): PortInstance<Id, Service> }`) is exported as the one
+nameable type of a port class minted inside a helper — what
+`Config.provider(name)(schema)`, `HttpRouter`, `TemporalActivities` and
+`AmqpHandlers` return as `provider.port`.
 
 `Provider(port)(deps, arm)` now returns `Provider<P, E, N> & { readonly port:
 typeof port }` — the provider carries the port class it was declared for,

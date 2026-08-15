@@ -42,17 +42,19 @@ and a defect inside a procedure is oRPC's own `INTERNAL_SERVER_ERROR`;
 **`HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })`**
 is the way an application declares an HTTP deployment: `Module(name)({...})`
 plus the router **provider**. It imports the starter, provides the router,
-exports `HttpRuntime`, and returns exactly the di module `Module(...)` would
-have declared over the augmented imports/provides/exports — sugar over the same
-primitives, nothing new for the kernel or the gates. `http({ router })` stays
-exported as the primitive it delegates to.
+exports `HttpRuntime`, and hands the augmented imports/provides/exports to
+di's own `Module(name)({...})`, whose return type is the sugar's — sugar over
+the same primitives, nothing new for the kernel or the gates. `router` is a
+plain `Provider` whose instance is constrained to a context-free oRPC router.
+`http({ router })` stays exported as the primitive it delegates to.
 
 `HttpRouter(contract)(name)(deps, { sync })` — contract-first: `sync` returns a
 record shaped like the contract whose leaves are plain `Result`-returning
 functions (the `.result()` handler `@unthrown/orpc` gives an implementer),
 typed by the contract at the call; `implement`, `os.…`, `.result(...)` and
 `os.router(...)` are done for you. It mints the router's port and returns di's
-own `Provider(port)`, carrying the port typed (`orderRouter.port`);
-`HttpModule({ router: orderRouter })` takes it from there. No class line, no
+own `Provider(port)`, carrying the port typed (`orderRouter.port`, di's
+`PortClassOf<Name, Router<…>>`); `HttpModule({ router: orderRouter })` takes it
+from there. No class line, no
 `implement`, no builder in an application. `@orpc/contract` and
 `@unthrown/orpc` join the peers.

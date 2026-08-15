@@ -119,15 +119,15 @@ Beyond the nine:
   runtime is serving"_ and _"resolves undefined when the runtime never serves,
   so a caller cannot hang"_.
 
-- **Configuration is bound once, names every fault at once, and never
-  defaults a set-but-empty variable.** `config.spec.ts` guards `Config.object`'s
-  semantics (defaults, parsed values, `PORT=0`, empty, blank ×2 + malformed in
-  one validation, `3.5`, bounds, a required field, a
-  defecting field reported against its variable) and `ConfigInvalid.message`;
-  `Config.provider` end to end (_"binds the port from the environment the
-  kernel provides"_ — the fixture's `Witness` provider captures what di
-  injected; _"fails startup with ConfigInvalid, naming the port and the
-  variables"_; _"exits 78 under runMain"_); and the kernel's own `PROBE_PORT`
+- **A bad environment is a modeled startup `Err`, exit `78`, and the kernel
+  binds its own `PROBE_PORT` the same way.** The binding itself — field
+  semantics, `Config.object`, `Config.provider` reading `Env` — is
+  `@btravstack/config`'s own spec's business; the kernel's `config.spec.ts`
+  guards only how the kernel reports it: `Config.provider` through `start`
+  (_"fails startup with ConfigInvalid, naming the port and the variables"_ —
+  the `configured` fixture's `Settings` port, bound from `StartOptions.env`
+  next to an in-memory runtime; _"exits 78 under runMain"_) and the kernel's
+  own `PROBE_PORT`
   (_"binds the probe server from the environment when no option is given"_
   with `PROBE_PORT=0`, _"exits 78 when PROBE_PORT is not a port"_, and the
   `RuntimeStartFailed`-for-`"probes"`-carrying-`ConfigInvalid` shape `runMain`
@@ -146,8 +146,10 @@ Type-level invariants live in `start.test-d.ts` and are checked by
   `InstanceType<never>` is `never`, so a needs-free runtime works against any
   module. `Needs` and `Info` are not type parameters of `start` any more: they
   are read off `X` (`RuntimeNeedsOf<X>`, `RuntimeInfoOf<X>` — `ServiceOf` of
-  `Extract<X, RuntimeInstance>`), which is what lets `RunningApp<E,
-RuntimeInfoOf<X>>` type `runtimeInfo()` from the module alone.
+  `Extract<X, RuntimeInstance>`, all in `runtime.ts`; only `RuntimeInfoOf` is
+  exported from the package, the rest are the gate's internals), which is what
+  lets `RunningApp<E, RuntimeInfoOf<X>>` type `runtimeInfo()` from the module
+  alone.
 - **The gate is bypassable, deliberately.** A caller who spells the phantom
   arguments out by hand (`start(M, o, "UNSATISFIED RUNTIME NEEDS", new Clock())`)
   does typecheck — asserted, not assumed. This is the same escape hatch di's own

@@ -24,9 +24,11 @@ stays expressible.
 `@btravstack/http` becomes a starter: `http({ router })` provides
 `HttpRuntime` and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST`
 (default `0.0.0.0`) unless pinned (`http({ router, port: 0 })` for a test —
-explicit beats environment beats default, per field; pin both and the module
-reads nothing). `RuntimeNeedsGate` is renamed `StartGate`, since it now also
-states `NO RUNTIME`.
+explicit beats environment beats default, per field, through
+`Config.pinned(value, field)`; a pinned field reads nothing from the
+environment, and the module's declared `Env` need and `ConfigInvalid` stay
+whatever is pinned). `RuntimeNeedsGate` is renamed `StartGate`, since it now
+also states `NO RUNTIME`.
 
 `Config.provider("Name")(schema)` — the name form — mints the port (its
 service is the schema's output) and returns the provider carrying it typed
