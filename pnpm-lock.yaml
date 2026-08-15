@@ -39,9 +39,6 @@ catalogs:
     '@commitlint/cli':
       specifier: 21.2.1
       version: 21.2.1
-    '@hono/node-server':
-      specifier: 2.1.1
-      version: 2.1.1
     '@opentelemetry/api':
       specifier: 1.9.1
       version: 1.9.1
@@ -111,9 +108,6 @@ catalogs:
     '@vitest/coverage-v8':
       specifier: 4.1.10
       version: 4.1.10
-    hono:
-      specifier: 4.13.2
-      version: 4.13.2
     knip:
       specifier: 6.32.0
       version: 6.32.0
@@ -747,9 +741,6 @@ importers:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0
-      '@hono/node-server':
-        specifier: 'catalog:'
-        version: 2.1.1(hono@4.13.2)
       '@orpc/client':
         specifier: 'catalog:'
         version: 2.0.0-beta.23(@opentelemetry/api@1.9.1)
@@ -771,9 +762,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.10(vitest@4.1.10)
-      hono:
-        specifier: 'catalog:'
-        version: 4.13.2
       tsdown:
         specifier: 'catalog:'
         version: 0.22.14(oxc-resolver@11.24.2)(typescript@7.0.2)
@@ -1122,12 +1110,6 @@ packages:
     resolution: {integrity: sha512-wtF6h+DY6M3YaDBPAmvuuA6jV8Sif9MjtOI5euKFWRgCDl5PeDpPsHR9u2l6St5ceY8AZgoNDww5+HvEsXFsGg==}
     engines: {node: '>=6'}
     hasBin: true
-
-  '@hono/node-server@2.1.1':
-    resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      hono: ^4
 
   '@inquirer/external-editor@1.0.3':
     resolution: {integrity: sha512-RWbSrDiYmO4LbejWY7ttpxczuwQyZLBUyygsA9Nsv95hpzUWwnNTVQmAq3xuh7vNwCp07UTmE5i11XAEExx4RA==}
@@ -3519,10 +3501,6 @@ packages:
     resolution: {integrity: sha512-EQfezRg0NCZGNlhlDR3Evrw1FVL2G3LhU7EgPoxufQKruNBSYA8MiRPHeWbU+36o+Fhel0wMwM+sLEiBAlNLJA==}
     engines: {node: '>=10.0.0'}
 
-  hono@4.13.2:
-    resolution: {integrity: sha512-JydRilDRkYBQMt9qR9U92mXxmbGqsqSn/IKOrh4e7/gEbn+0zSr8igTu0obwJoNGN4sez28DIql7FBHWydoJpA==}
-    engines: {node: '>=16.9.0'}
-
   hookable@6.1.1:
     resolution: {integrity: sha512-U9LYDy1CwhMCnprUfeAZWZGByVbhd54hwepegYTK7Pi5NvqEj63ifz5z+xukznehT7i6NIZRu89Ay1AZmRsLEQ==}
 
@@ -5204,10 +5182,6 @@ snapshots:
       long: 5.3.2
       protobufjs: 7.6.5
       yargs: 17.7.3
-
-  '@hono/node-server@2.1.1(hono@4.13.2)':
-    dependencies:
-      hono: 4.13.2
 
   '@inquirer/external-editor@1.0.3(@types/node@26.1.2)':
     dependencies:
@@ -7278,8 +7252,6 @@ snapshots:
   has-flag@4.0.0: {}
 
   heap-js@2.7.1: {}
-
-  hono@4.13.2: {}
 
   hookable@6.1.1: {}
 

@@ -1,5 +1,12 @@
 import { Config, ConfigInvalid, Env, type Environment } from "@btravstack/config";
-import { Module, Provider, type Context, type Scope, type ScopedOptions } from "@btravstack/di";
+import {
+  Module,
+  Provider,
+  type AnyModule,
+  type Context,
+  type Scope,
+  type ScopedOptions,
+} from "@btravstack/di";
 import { fromSafePromise, Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
@@ -22,6 +29,10 @@ import {
 import { createUnitRegistry } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
+
+const providesEnv = (module: AnyModule): boolean =>
+  module.provides.some((provider) => provider.port.portId === Env.portId) ||
+  module.imports.some(providesEnv);
 
 export type ExitReport = {
   readonly reason: "signal" | "runtimeStopped" | "uncaught";
@@ -122,24 +133,22 @@ export type RunningApp<E, Info = never> = {
  * `unknown`. Same shape, and the same reasoning, as di's own UNSATISFIED
  * DEPENDENCIES gate on `Module.scoped`.
  *
- * With a `unit` module in play it checks both directions of the fork: the
- * runtime's needs may draw on the unit's exports as well as the module's —
- * unit work receives the forked context — and the unit module's own needs
- * must be covered by the module's exports or `Scope`, which is `forkScope`'s
- * own gate stated at `start`'s call site, where the parent is actually known.
+ * With a `unit` module in play it also checks the fork's own direction: the
+ * unit module's needs must be covered by the module's exports, `Scope` or
+ * `Env` — `forkScope`'s gate stated at `start`'s call site, where the parent
+ * is actually known. A runtime's needs are checked against the module's
+ * exports ONLY, never the unit's: `RuntimeHost.ctx` is the application
+ * context, and a runtime that resolved a unit-only port at start would find
+ * nothing there — so the gate rejects it rather than letting it type-check
+ * into a startup defect.
  */
-export type StartGate<X, UnitX = never, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [
-  never,
-]
+export type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [never]
   ? [error: "NO RUNTIME", hint: "the module exports no port declared over RuntimePort"]
-  : [InstanceType<RuntimeNeedsOf<X>>] extends [X | UnitX]
+  : [InstanceType<RuntimeNeedsOf<X>>] extends [X]
     ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
       ? []
       : [error: "UNSATISFIED UNIT NEEDS", missing: Exclude<UnitNeeds, X | Scope | Env>]
-    : [
-        error: "UNSATISFIED RUNTIME NEEDS",
-        missing: Exclude<InstanceType<RuntimeNeedsOf<X>>, X | UnitX>,
-      ];
+    : [error: "UNSATISFIED RUNTIME NEEDS", missing: Exclude<InstanceType<RuntimeNeedsOf<X>>, X>];
 
 // `Module<X, E, Scope | Env>`, not `Module<X, E, never>`: `Needs` sits in
 // covariant position on `Module`, so this accepts a module with no needs at
@@ -152,7 +161,7 @@ export type StartGate<X, UnitX = never, UnitNeeds = never> = [Extract<X, Runtime
 export const start = <X, E, UnitX = never, UnitNeeds = never>(
   module: Module<X, E, Scope | Env>,
   options: StartOptions<UnitX, UnitNeeds> = {},
-  ...gate: StartGate<X, UnitX, UnitNeeds>
+  ...gate: StartGate<X, UnitNeeds>
 ): RunningApp<E, RuntimeInfoOf<X>> => {
   void gate;
   type Info = RuntimeInfoOf<X>;
@@ -336,12 +345,17 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   // The environment is a service of every graph the kernel boots — the one
   // twelve-factor source of configuration, provided here so nothing below
   // reaches for `process.env` and a test can hand in a record of its own.
-  // Re-exporting `module` keeps `X` exactly what the caller composed.
+  // Unless the module already provides `Env` itself (a test, an embedder that
+  // owns its environment): di refuses two providers for one port, and the
+  // module's is the deliberate one. Re-exporting `module` keeps `X` exactly
+  // what the caller composed.
   const root = Module("Kernel")({
-    imports: [
-      module,
-      Module("Environment")({ provides: [Provider(Env)({ value: env })], exports: [Env] }),
-    ],
+    imports: providesEnv(module)
+      ? [module]
+      : [
+          module,
+          Module("Environment")({ provides: [Provider(Env)({ value: env })], exports: [Env] }),
+        ],
     exports: [module],
   }) as unknown as Module<X, E, Scope>;
 
@@ -495,7 +509,13 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
       // without this the event stream just stops and `phase()` lies about an
       // application that has already exited.
     ).tapFailure((failure) => {
-      emit({ type: "startFailed", cause: failure.tag === "Err" ? failure.error : failure.cause });
+      // A failure that reaches here after `finish` moved the phase to
+      // `stopping` is a SHUTDOWN defect (`serving.stop()` blew up), not a
+      // startup one — it is already the exit report's business, and naming it
+      // `startFailed` would mislead an operator reading the stream.
+      if (tracker.current() !== "stopping") {
+        emit({ type: "startFailed", cause: failure.tag === "Err" ? failure.error : failure.cause });
+      }
       runtimePublished.resolve(undefined);
       tracker.advanceTo("stopping");
       disposeSignals();

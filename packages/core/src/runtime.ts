@@ -55,11 +55,11 @@ export type RunUnit<Needs extends AnyPort> = <T, E>(
  * work callback (see {@link RunUnit}), and `UnitMeta.id` must be unique per
  * unit unless a `traceId` is supplied (see {@link UnitMeta}).
  *
- * `ctx` is the **application** context. A port a `StartOptions.unit` module
- * provides exists only while a unit is open and reaches the runtime through
- * `run`'s work callback alone; `start`'s gate lets a runtime's `needs` name
- * such a port, so `ctx.get(...)` of one here type-checks and is a defect at
- * startup. Resolve at `start` only what the application module itself exports.
+ * `ctx` is the **application** context, and `start`'s gate checks a
+ * runtime's `needs` against the application module's exports only — a port a
+ * `StartOptions.unit` module provides exists only while a unit is open, and a
+ * runtime naming it as a need is rejected at the call site rather than left
+ * to `ctx.get(...)` throwing at startup.
  */
 export type RuntimeHost<Needs extends AnyPort> = {
   readonly ctx: Context<InstanceType<Needs>>;

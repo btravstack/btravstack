@@ -248,7 +248,9 @@ const descriptor = (
 function ProviderDeclaration<P extends AnyPort, S = ServiceOf<P>>(port: P) {
   // `& { readonly port: P }`: the provider carries the very port class it was
   // declared for, typed — so a provider minted by a helper that also minted
-  // its port (a starter's `HttpRouter(name)(deps, arm)`, `Config.provider(name)(// schema)`) is the one value an application needs to hold: `provider.port`
+  // its port (a starter's `HttpRouter(name)(deps, arm)`,
+  // `Config.provider(name)(schema)`) is the one value an application needs to
+  // hold: `provider.port`
   // is what another provider lists in its deps or a starter reads the port
   // off. Purely additive — the intersection is still a `Provider<P, E, N>`.
   function build<const D extends readonly AnyPort[], O extends Qualification<ServicesOf<D>, S>>(

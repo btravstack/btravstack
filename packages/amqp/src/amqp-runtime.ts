@@ -133,8 +133,6 @@ export const AmqpHandlers =
       >,
     );
 
-/** The port `AmqpHandlers(contract)(name)` mints: id `Name`, service the contract's handlers record. */
-
 const startFailed = (cause: unknown): RuntimeStartFailed =>
   new RuntimeStartFailed({ runtime: "amqp", cause });
 

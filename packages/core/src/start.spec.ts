@@ -174,6 +174,33 @@ describe("start", () => {
     expect(events).toEqual(["building", "startFailed", "stopping", "exited"]);
   });
 
+  it("does not report a shutdown defect as startFailed", async () => {
+    // GIVEN a runtime that serves, then defects in `stop()`
+    const events: KernelEvent["type"][] = [];
+    const runtime = testRuntime();
+    const broken = {
+      ...runtime,
+      start: (host: RuntimeHost<never>) =>
+        runtime.start(host).map((serving) => ({
+          ...serving,
+          stop: () => fromSafePromise(Promise.reject(new Error("stop blew up"))),
+        })),
+    };
+    const app = start(runtimeModule(broken), {
+      signals: false,
+      probes: false,
+      onEvent: (event) => events.push(event.type),
+    });
+    await runtime.untilStarted();
+
+    // WHEN it is stopped
+    app.stop();
+    await app.exited;
+
+    // THEN the defect rides `exited`, and the event stream names no startup failure
+    expect(events).toEqual(["building", "serving", "stopping", "exited"]);
+  });
+
   it("surfaces a failing release in the exit report's teardown errors", async () => {
     const boom = new Error("release failed");
     const runtime = testRuntime();

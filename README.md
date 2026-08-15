@@ -265,8 +265,8 @@ open units, so `drain` means only "stop accepting" and `DrainReport.abandoned`
 is accurate without any cooperation from the runtime.
 
 **The kernel never maps an outcome to a transport.** `Result` → HTTP status
-belongs to the handler an application hands the HTTP runtime (oRPC, Hono, a
-bare function — `@btravstack/http` itself declines that mapping),
+belongs to the router an application hands the HTTP runtime (oRPC's
+`.result()` triage — `@btravstack/http` itself declines that mapping),
 `Result` → ack/nack/DLQ to the AMQP runtime, `Result` → activity failure to
 the Temporal runtime. The kernel hands back the `Result` and stays out of it.
 
@@ -674,7 +674,7 @@ verifies.
 
 The `Runtime` contract is the whole of what this package owes the transports.
 Three have shipped. [`@btravstack/http`](./packages/http): the
-application's oRPC router port mounted on Hono, bind, one unit per request, a
+application's oRPC router port mounted through oRPC's node adapter, bind, one unit per request, a
 drain that retires busy keep-alive connections, stop — any other router,
 middleware and `Result` → HTTP status are deliberately not included, see its
 README's _"What it does not do"_.

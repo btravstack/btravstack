@@ -140,7 +140,7 @@ Type-level invariants live in `start.test-d.ts` and are checked by
 
 - **The module must export a runtime, and that runtime's declared `needs` are
   checked against the module's exports at the `start` call site** (the phantom
-  rest-tuple gate, `StartGate<X, UnitX, UnitNeeds>`). A composition with
+  rest-tuple gate, `StartGate<X, UnitNeeds>`). A composition with
   no port declared over `RuntimePort` among its exports fails on arity with
   `NO RUNTIME`; a missing need fails with `UNSATISFIED RUNTIME NEEDS`.
   `InstanceType<never>` is `never`, so a needs-free runtime works against any
@@ -168,6 +168,10 @@ gate.
 - **`Env` is provided by wrapping, not seeding.** `start` builds
   `Module("Kernel")({ imports: [module, Module("Environment")({ provides:
 [Provider(Env)({ value: env })], exports: [Env] })], exports: [module] })`
+  — unless the module (or a module it imports, recursively: `providesEnv`)
+  already provides `Env` itself, in which case the wrap imports the module
+  alone, so an application supplying its own environment provider is not
+  handed a second `Env` and di's duplicate-provider gate does not fire —
   and hands THAT to `Module.scoped`: di lets a module re-export an imported
   module, so `X` stays exactly what the caller composed, and `Env` reaches
   every provider — and every unit fork, since the built context holds all
@@ -189,7 +193,11 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   and `Module.scoped`'s — because a failed probe bind short-circuits the
   `flatMap` that would otherwise reach the second; the cause is
   `failure.tag === "Err" ? failure.error : failure.cause`, the `FailureView`
-  unthrown hands a `tapFailure` callback.
+  unthrown hands a `tapFailure` callback. The second site is guarded by
+  `tracker.current() !== "stopping"`: a `serving.stop()` that defects
+  reaches the same `tapFailure` after `finish` has already moved the phase
+  on, and that is a shutdown failure the exit report owns, not a startup one
+  (`start.spec.ts` → _"does not report a shutdown defect as startFailed"_).
 
 - **`Config.object`'s `~standard.validate` is synchronous and never throws.**
   It walks every field, so an operator sees every fault at once; a field whose
@@ -201,8 +209,12 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
 
 - **The needs check is a trailing phantom rest tuple, not a conditional on an
   inference-bearing parameter.**
-  `...gate: [InstanceType<RuntimeNeedsOf<X>>] extends [X | UnitX] ? [] : [error: "UNSATISFIED RUNTIME NEEDS", missing: …]`
-  (preceded by the `NO RUNTIME` arm on `Extract<X, RuntimeInstance>`).
+  `...gate: [InstanceType<RuntimeNeedsOf<X>>] extends [X] ? [] : [error: "UNSATISFIED RUNTIME NEEDS", missing: …]`
+  (preceded by the `NO RUNTIME` arm on `Extract<X, RuntimeInstance>`) —
+  against the module's exports alone, never the `unit` module's: a unit-only
+  port exists only while a unit is open, and `RuntimeHost.ctx` is the
+  application context, so accepting it would type-check into a startup defect
+  (`start.test-d.ts`'s `SpanApp` pins the rejection).
   A conditional type on `module` or `options` would make TypeScript defer that
   parameter's inference and can collapse `X` or `E` to `unknown` — the same
   shape, and the same reasoning, as di's own gate on `Module.scoped`, and the

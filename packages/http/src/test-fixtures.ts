@@ -61,27 +61,44 @@ class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string
 /** Three bare procedures, one nested — the contract is what types the implementation below and the client. */
 const greetingContract = oc.router({ hello: oc, boom: oc, nested: { ping: oc } });
 
+const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
+  hello: () => OkAsync(greeter.greet("world")),
+  boom: () => {
+    // oxlint-disable-next-line unthrown/no-throw -- the defect IS the subject under test: oRPC's own collapse to INTERNAL_SERVER_ERROR
+    throw new Error("bug");
+  },
+  nested: { ping: () => OkAsync("pong") },
+});
+
 /** The router as a service, built from the greeter it declares — contract-first, port and provider minted by `HttpRouter`. */
 const greetingRouter = HttpRouter(greetingContract)("GreetingRouter")([Greeter], {
-  sync: (greeter) => ({
-    hello: () => OkAsync(greeter.greet("world")),
-    boom: () => {
-      // oxlint-disable-next-line unthrown/no-throw -- the defect IS the subject under test: oRPC's own collapse to INTERNAL_SERVER_ERROR
-      throw new Error("bug");
-    },
-    nested: { ping: () => OkAsync("pong") },
-  }),
+  sync: greetingImplementation,
+});
+
+/**
+ * The same implementation carrying a key the contract never declared — only
+ * reachable past the types (the assertion is the bypass), which is what
+ * `routerOf`'s own guard exists for: the stray key is dropped, not defected on.
+ */
+const strayRouter = HttpRouter(greetingContract)("StrayRouter")([Greeter], {
+  sync: (greeter) =>
+    ({ ...greetingImplementation(greeter), stray: () => OkAsync("stray") }) as ReturnType<
+      typeof greetingImplementation
+    >,
 });
 
 /** The starter as an application uses it: `HttpModule` sugar over a router provider. */
-const rpcAppOf = (prefix?: `/${string}`) =>
-  HttpModule("RpcApp")({
-    router: greetingRouter,
+const rpcAppOf = (prefix?: `/${string}`, stray = false) => {
+  const options = {
     port: 0,
     hostname: "127.0.0.1",
     ...(prefix === undefined ? {} : { prefix }),
     provides: [Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } })],
-  });
+  } as const;
+  return stray
+    ? HttpModule("RpcApp")({ router: strayRouter, ...options })
+    : HttpModule("RpcApp")({ router: greetingRouter, ...options });
+};
 
 /** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
 class BoundConfig extends Port("BoundConfig")<{ readonly value: ServiceOf<HttpConfig> }> {}
@@ -175,7 +192,11 @@ export type HttpFixtures = {
    * ephemeral port, with a typed oRPC client pointed at it. Shut down by the
    * fixture.
    */
-  readonly rpc: (prefix?: `/${string}`) => Promise<{
+  readonly rpc: (
+    prefix?: `/${string}`,
+    /** Serve `strayRouter` — the implementation with a key the contract never declared — instead. */
+    stray?: boolean,
+  ) => Promise<{
     readonly origin: string;
     readonly client: RouterContractClient<typeof greetingContract>;
   }>;
@@ -272,8 +293,8 @@ export const it = test.extend<HttpFixtures>({
   rpc: async ({}, use) => {
     const started: RunningApp<ConfigInvalid, HttpInfo>[] = [];
 
-    await use(async (prefix) => {
-      const app = start(rpcAppOf(prefix), {
+    await use(async (prefix, stray) => {
+      const app = start(rpcAppOf(prefix, stray), {
         signals: false,
         probes: false,
         preDrainDelayMs: 0,

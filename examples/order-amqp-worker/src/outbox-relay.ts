@@ -4,7 +4,7 @@ import { Config } from "@btravstack/config";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Logger, Outbox } from "@btravstack/example-order-application";
-import { P, fromSafePromise, type AsyncResult } from "unthrown";
+import { ErrAsync, P, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
  * What only the relay knows, as a service: its idle sleep, bound from
@@ -54,90 +54,108 @@ const BATCH = 32;
  * application owns — `Outbox` and `Logger`, handed in by `outboxRelay`'s
  * provider — which is the boundary that matters.
  */
+/**
+ * The broker at `AMQP_URL` did not answer when the relay opened its client.
+ * Modeled rather than left the defect `TypedAmqpClient.create` reports it as:
+ * an operator can act on it — the URL is wrong or the broker is down, and
+ * neither is a bug in this code — so `runMain` exits `1`, a startup `Err`,
+ * not the `70` a defect earns. The relay is built as the graph builds, before
+ * the consumer's own worker connects, so this is the first place that outage
+ * surfaces.
+ */
+export class BrokerUnreachable extends TaggedError("BrokerUnreachable")<{
+  readonly url: string;
+  readonly cause: unknown;
+}> {}
+
 const startOutboxRelay = (
   outbox: ServiceOf<Outbox>,
   logger: ServiceOf<Logger>,
   { url, pollMs }: { readonly url: string; readonly pollMs: number },
-): AsyncResult<ServiceOf<OutboxRelay>, never> =>
-  TypedAmqpClient.create({ contract: orderContract, urls: [url] }).map((client) => {
-    let stopped = false;
-    let wake: (() => void) | undefined;
-    const sleep = (): Promise<void> =>
-      new Promise((resolve) => {
-        // The timer is cleared on an early wake and `unref`ed besides: a
-        // stray timeout would keep the event loop alive past `stop()` for up
-        // to `pollMs`, and an idle relay must not pin the process on its own.
-        const timer = setTimeout(resolve, pollMs);
-        timer.unref();
-        wake = () => {
-          clearTimeout(timer);
-          resolve();
-        };
-      });
+): AsyncResult<ServiceOf<OutboxRelay>, BrokerUnreachable> =>
+  TypedAmqpClient.create({ contract: orderContract, urls: [url] })
+    .recoverDefect((cause) => ErrAsync(new BrokerUnreachable({ url, cause })))
+    .map((client) => {
+      let stopped = false;
+      let wake: (() => void) | undefined;
+      const sleep = (): Promise<void> =>
+        new Promise((resolve) => {
+          // The timer is cleared on an early wake and `unref`ed besides: a
+          // stray timeout would keep the event loop alive past `stop()` for up
+          // to `pollMs`, and an idle relay must not pin the process on its own.
+          const timer = setTimeout(resolve, pollMs);
+          timer.unref();
+          wake = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
 
-    const sweep = async (): Promise<void> => {
-      await outbox.pending(BATCH).match({
-        ok: async (events) => {
-          const published: number[] = [];
-          for (const event of events) {
-            await client
-              .publish("orderChanged", {
-                kind: event.kind,
-                id: event.subjectId,
-                occurredAt: event.occurredAt.toISOString(),
-                payload: event.payload,
-              })
-              .match({
-                ok: () => {
-                  published.push(event.id);
-                },
-                errCases: (matcher) =>
-                  matcher.with(P.tag("@amqp-contract/MessageValidationError"), () => {
-                    logger.info(`outbox event ${event.id} does not fit the contract; left pending`);
-                  }),
+      const sweep = async (): Promise<void> => {
+        await outbox.pending(BATCH).match({
+          ok: async (events) => {
+            const published: number[] = [];
+            for (const event of events) {
+              await client
+                .publish("orderChanged", {
+                  kind: event.kind,
+                  id: event.subjectId,
+                  occurredAt: event.occurredAt.toISOString(),
+                  payload: event.payload,
+                })
+                .match({
+                  ok: () => {
+                    published.push(event.id);
+                  },
+                  errCases: (matcher) =>
+                    matcher.with(P.tag("@amqp-contract/MessageValidationError"), () => {
+                      logger.info(
+                        `outbox event ${event.id} does not fit the contract; left pending`,
+                      );
+                    }),
+                  defect: (cause) => {
+                    logger.info(
+                      `publishing outbox event ${event.id} failed, will retry: ${String(cause)}`,
+                    );
+                  },
+                });
+            }
+            if (published.length > 0) {
+              await outbox.markPublished(published).match({
+                ok: () => {},
+                // `E = never`: the untouched builder is already exhaustive.
+                errCases: (matcher) => matcher,
                 defect: (cause) => {
-                  logger.info(
-                    `publishing outbox event ${event.id} failed, will retry: ${String(cause)}`,
-                  );
+                  logger.info(`marking outbox events published failed: ${String(cause)}`);
                 },
               });
-          }
-          if (published.length > 0) {
-            await outbox.markPublished(published).match({
-              ok: () => {},
-              // `E = never`: the untouched builder is already exhaustive.
-              errCases: (matcher) => matcher,
-              defect: (cause) => {
-                logger.info(`marking outbox events published failed: ${String(cause)}`);
-              },
-            });
-          }
-        },
-        errCases: (matcher) => matcher,
-        defect: (cause) => {
-          logger.info(`reading the outbox failed, will retry: ${String(cause)}`);
-        },
-      });
-    };
+            }
+          },
+          errCases: (matcher) => matcher,
+          defect: (cause) => {
+            logger.info(`reading the outbox failed, will retry: ${String(cause)}`);
+          },
+        });
+      };
 
-    const running = (async () => {
-      while (!stopped) {
-        await sweep();
-        if (!stopped) await sleep();
-      }
-    })();
+      const running = (async () => {
+        while (!stopped) {
+          await sweep();
+          if (!stopped) await sleep();
+        }
+      })();
 
-    return {
-      stop: () =>
-        fromSafePromise(
-          (async () => {
-            stopped = true;
-            wake?.();
-            await running;
-          })(),
-        ).flatMap(() => client.close()),
-    };
-  });
+      return {
+        stop: () =>
+          fromSafePromise(
+            (async () => {
+              stopped = true;
+              wake?.();
+              await running;
+            })(),
+          ).flatMap(() => client.close()),
+      };
+    });
 
 /**
  * The relay as a resourceful provider: acquired as the graph builds — from the

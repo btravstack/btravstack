@@ -42,7 +42,7 @@ export const withApp = async <X, E, A, UnitX = never, UnitNeeds = never>(
   use: (app: RunningApp<E, RuntimeInfoOf<X>>) => Promise<A>,
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: StartGate<X, UnitX, UnitNeeds>
+  ...gate: StartGate<X, UnitNeeds>
 ): Promise<A> => {
   void gate;
 

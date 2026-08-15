@@ -21,7 +21,7 @@ throws to callers: every fallible operation returns an
 
 pnpm workspace + turbo monorepo. `packages/` holds six published packages,
 `di` (the container), `config` (configuration from the environment, as
-providers), `core` (the kernel), `http` (the HTTP starter — oRPC on Hono),
+providers), `core` (the kernel), `http` (the HTTP starter — oRPC),
 `temporal` (the Temporal starter) and `amqp` (the AMQP starter). `di` was its own repository until it was merged here
 **with its history**; it is the one package that depends on nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
@@ -103,8 +103,8 @@ hook). User-facing changes need a changeset.
    convention with no enforcement. Do not describe it as enforced.
 
 3. **The kernel never maps an outcome to a transport.** `Result` → HTTP status
-   belongs to the handler an application hands `@btravstack/http`
-   (oRPC, Hono, a bare function) — the package itself declines that mapping,
+   belongs to the router an application hands `@btravstack/http`
+   (oRPC's `.result()` triage) — the package itself declines that mapping,
    deliberately — `Result` → activity failure to `@btravstack/temporal`, likewise. `@btravstack/amqp`
    declines it too, and more starkly: `Result` → ack/nack/DLQ is a **three-way**
    split between `amqp-contract`'s own dispatch and the handler, not something
@@ -271,18 +271,23 @@ so a production bundle never pulls the fakes in.
 ### `@btravstack/core`
 
 - **`start(module, options?)` → `RunningApp<E, RuntimeInfoOf<X>>`** — the
-  entry point. Takes a `Module<X, E, Scope>` (not `Module<X, E, never>`:
-  `Needs` is covariant on `Module`, so this accepts both a needs-free module
-  and the resourceful one whose `acquire`/`release` provider adds `Scope` —
-  the single need `Module.scoped` discharges itself). **The runtime is a
+  entry point. Takes a `Module<X, E, Scope | Env>` (not `Module<X, E,
+never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
+  module, the resourceful one whose `acquire`/`release` provider adds `Scope`
+  — the single need `Module.scoped` discharges itself — and one whose
+  configuration reads `Env`, which the kernel wraps in as it builds; a module
+  that provides `Env` itself is wrapped without it, and its own wins).
+  **The runtime is a
   service of that module**, not an option: the module exports a port declared
   over `RuntimePort`, the kernel builds the graph, resolves that port and
   drives what it finds. The kernel is DI initialisation and lifecycle, nothing
   else. Followed by the phantom `...gate` rest tuple, `StartGate<X,
-UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
+UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   `UNSATISFIED RUNTIME NEEDS` when the runtime's declared needs are not among
-  the module's exports (or the unit module's), `UNSATISFIED UNIT NEEDS` for
-  the fork's own direction — all three at the call site, on arity.
+  the module's exports (the module's alone — a unit-only port exists only
+  while a unit is open, and `RuntimeHost.ctx` is the application context),
+  `UNSATISFIED UNIT NEEDS` for the fork's own direction — all three at the
+  call site, on arity.
 - **`RuntimePort`** — `Port("Runtime")`, exported **generic** (no fixed
   service): a runtime package declares its own concrete port over it —
   `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
@@ -534,8 +539,9 @@ nameable in declaration emit) and mint with `class extends Port(name)<Service>
 starter. `http({ router })` binds
 `PORT`/`HOST` onto `HttpConfig`, mounts the application's **router port** —
 an oRPC router as a provider that declares the use cases its procedures call
-— on Hono under `prefix`, and provides `HttpRuntime`; **oRPC on Hono is the
-one way HTTP is answered here** (oRPC shares this stack's convictions — a
+— under `prefix` through oRPC's own node adapter, and provides
+`HttpRuntime`; **oRPC is the one way HTTP is answered here** (oRPC shares this
+stack's convictions — a
 contract, typed errors, `Result` at the boundary — so it is enforced, not
 offered among alternatives; the former `@btravstack/orpc` was folded in for
 that reason, and the node listener port `HttpHandler` is internal to the
@@ -549,7 +555,7 @@ from the application's **handlers port** the same way. The runtime provider
 depends on that port through di, which is what deleted `needs` from all
 three: what a handler needs is its provider's business. A starter has real
 dependencies — peers, so an application holds one copy: `@btravstack/http` on
-`hono`/`@hono/node-server`/`@orpc/server`, `@btravstack/temporal` on
+`@orpc/server`/`@orpc/contract`/`@unthrown/orpc`, `@btravstack/temporal` on
 `@temporal-contract/*` and `@temporalio/*`, `@btravstack/amqp` on
 `@amqp-contract/*` — while the kernel and `config` still have none.
 
@@ -562,20 +568,20 @@ dependencies — peers, so an application holds one copy: `@btravstack/http` on
   so an example that stops compiling, stops linting or stops passing fails CI
   exactly as `packages/core` would. Three of the four needs-gate files pin
   **`start`'s** gate (`order-api`, `order-temporal-worker`,
-  `order-amqp-worker` — all three its `NO RUNTIME` arm; `order-api` alone its
-  `UNSATISFIED RUNTIME NEEDS` arm, since only `http()` still declares a need);
-  the fourth, `order-application`'s, pins **di's** `UNSATISFIED DEPENDENCIES`
-  gate on `Module.scoped`. They are different gates and easy to conflate.
-  A runtime with a **non-empty `needs`** meeting a real module now exercises
-  `start`'s phantom rest-tuple gate and `RuntimeHost`'s
-  `Context<InstanceType<Needs>>` in two places: here, and in
-  `packages/http/src/test-fixtures.ts`, whose transport specs hand the
-  internal `httpModule` a bare listener — driven by its 23 specs across
-  `http-runtime.spec.ts` and `orpc.spec.ts`. Every needs-gate file also pins
-  the third arm, `NO RUNTIME`: a composition that forgets the starter fails on
-  arity like one a port short. `examples/` stays the only
-  place the gate is pinned by a **type test** — `@btravstack/http` ships no
-  `*.test-d.ts`.
+  `order-amqp-worker` — its `NO RUNTIME` arm, since no starter's runtime
+  declares a `needs` any more; `order-api`'s also pins the `unit` halves) and
+  **di's** need on the starter's port (a composition importing `http({ router
+})` / `temporal({ activities })` / `amqp({ handlers })` without providing
+  that port carries an unmet need `start` refuses); the fourth,
+  `order-application`'s, pins **di's** `UNSATISFIED DEPENDENCIES` gate on
+  `Module.scoped`. They are different gates and easy to conflate. `start`'s
+  `UNSATISFIED RUNTIME NEEDS` arm is pinned only by `packages/core`'s own
+  `start.test-d.ts`, since every shipped runtime declares `needs: []`.
+  `examples/` stays the only place the gate is pinned by a **type test** —
+  `@btravstack/http` ships no `*.test-d.ts`; its 24 specs across
+  `http-runtime.spec.ts` and `orpc.spec.ts` drive the transport through the
+  internal `httpModule` with a bare listener, and the starter proper through
+  `HttpModule`.
 - **`examples/order-temporal-worker` is the one workspace whose suite needs the
   network, and only on a cold cache.** It runs a real `@temporalio/worker`
   Worker against `@temporalio/testing`'s **time-skipping test server** — a
@@ -647,7 +653,7 @@ orderActivities, workflows, imports })`, the sugar importing the starter;
   something layered onto the runtime.
 - **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
-  on Hono, `@unthrown/orpc` at the boundary.** The router is a di-provided
+  over its own node adapter, `@unthrown/orpc` at the boundary.** The router is a di-provided
   service — `orderRouter` is a provider that **declares** `PlaceOrder` and
   `FindOrder`, so oRPC's context stays empty and nothing is located from a
   context at call time, never a module-level singleton — and
@@ -691,8 +697,9 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   so a consumer still installs one copy of it themselves. `di` itself peers on
   `unthrown` and depends on nothing; `config` peers on `di` and `unthrown`;
   `core` peers on all three. A **starter** is the exception by definition:
-  `@btravstack/http` peers on `hono`, `@hono/node-server` and `@orpc/server` —
-  peers, not dependencies, so an application holds one copy of each.
+  `@btravstack/http` peers on `@orpc/server`, `@orpc/contract` and
+  `@unthrown/orpc` — peers, not dependencies, so an application holds one
+  copy of each.
 - `declarationMap: false` on all six published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
@@ -857,8 +864,8 @@ A sixth rule is about production code that tests keep honest:
    message and an exit code itself; `examples/order-api/src/main.ts` is one
    line. A schema's own `.parse()` **throws**, which `unthrown/no-throw` bans.
    The semantics `Config.*` fixes once (pinned by `config.spec.ts`'s cases:
-   absent, `""`, whitespace, `abc`, `3.5`, valid, out of range, boolean
-   spellings, a required field): an **empty or blank value is a configuration
+   absent, `""`, whitespace, `abc`, `3.5`, valid, out of range, a pin, a
+   required field): an **empty or blank value is a configuration
    error, not an absent one** — `default` applies only to a variable nobody
    set — because `Number("")` is `0`, and `PORT=` would otherwise bind the
    ephemeral port; a **port's floor is `0`** so an ephemeral bind stays

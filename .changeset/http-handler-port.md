@@ -3,10 +3,10 @@
 ---
 
 **Breaking.** `@btravstack/http` is the HTTP starter, and there is one way HTTP
-is answered: **oRPC on Hono**. `http({ router })` takes the application's
+is answered: **oRPC, over its own node adapter**. `http({ router })` takes the application's
 **router port** — a di `Port` whose service is a context-free oRPC router,
 provided by the application from the use cases its procedures call — mounts it
-on Hono under `prefix` (default `/rpc`) and provides the runtime on
+under `prefix` (default `/rpc`) and provides the runtime on
 **`HttpRuntime`** (declared over core's `RuntimePort`, `Runtime<never,
 HttpInfo>` — no `needs`), which the composition root imports and exports so
 `start` finds it. The runtime provider depends on the router port through di,
@@ -34,10 +34,12 @@ const OrderApi = Module("OrderApi")({
 and `handler` are gone from `HttpOptions`; `httpRuntime` is no longer
 exported; the node listener port `HttpHandler` is internal — an application
 provides a router, never a handler, and a handler built per request by the
-`StartOptions.unit` module is gone with it. An unmatched path is Hono's `404`
-and a defect inside a procedure is oRPC's own `INTERNAL_SERVER_ERROR`;
-`Result` → HTTP status stays the router's `.result()` triage. `hono`,
-`@hono/node-server` and `@orpc/server` are peer dependencies.
+`StartOptions.unit` module is gone with it. An unmatched path is declined
+unwritten by oRPC and answered by the runtime's own `404`, and a defect inside
+a procedure is oRPC's own `INTERNAL_SERVER_ERROR`; `Result` → HTTP status
+stays the router's `.result()` triage. `@orpc/server`, `@orpc/contract` and
+`@unthrown/orpc` are peer dependencies — not `hono` or `@hono/node-server`,
+which routed one pattern to oRPC's fetch adapter and are gone.
 
 **`HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })`**
 is the way an application declares an HTTP deployment: `Module(name)({...})`

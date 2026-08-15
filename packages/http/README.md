@@ -1,11 +1,11 @@
 # @btravstack/http
 
 **The HTTP starter for [`@btravstack/core`](https://github.com/btravstack/start):
-oRPC on Hono, one unit per request, and a drain that actually stops
+oRPC over `node:http`, one unit per request, and a drain that actually stops
 accepting.**
 
-Routing is oRPC's; the fetch idiom is Hono's. What is genuinely hard is the
-lifecycle underneath them — flushing the response inside the unit the kernel is
+Routing is oRPC's, through its own node adapter. What is genuinely hard is the
+lifecycle underneath it — flushing the response inside the unit the kernel is
 tracking, and a drain that stops accepting rather than merely saying it does.
 This package owns exactly that, plus the one decision a starter is for: how an
 application's router becomes an HTTP surface. There is **one** way, and it is
@@ -14,7 +14,7 @@ enforced rather than offered among alternatives.
 ## Install
 
 ```sh
-pnpm add @btravstack/http @btravstack/core @btravstack/config @btravstack/di unthrown hono @hono/node-server @orpc/server
+pnpm add @btravstack/http @btravstack/core @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc
 ```
 
 All of those are peer dependencies — install every one, so the application
@@ -31,7 +31,7 @@ else and oRPC's own context stays empty — and `HttpModule(name)({...})` is a
 `Module(name)({...})` that also knows about it: everything a di module takes,
 plus `router`, and nothing else to know. Under the hood it imports the starter
 (`http({ router })` — the runtime on `HttpRuntime`, `HttpConfig` bound from
-`PORT` and `HOST`, the router mounted on Hono under `/rpc`), provides the
+`PORT` and `HOST`, the router mounted under `/rpc`), provides the
 router and exports `HttpRuntime`, and hands back exactly the module
 `Module(...)` would have declared: syntax over the same primitives.
 
@@ -129,16 +129,18 @@ over it.
 | ------------------------------------------- | --------------------------------------------------------------------- | ---------------- |
 | a procedure under `prefix`                  | the procedure's output, or the `ORPCError` its `Result` was mapped to | oRPC, the router |
 | a defect thrown inside a procedure          | oRPC's own `INTERNAL_SERVER_ERROR` collapse                           | oRPC             |
-| a path under `prefix` naming no procedure   | falls through to Hono — its `404`                                     | Hono             |
-| any path outside `prefix`                   | Hono's `404`                                                          | Hono             |
+| a path under `prefix` naming no procedure   | `404 {"error":"NotFound"}` — oRPC declines it unwritten               | this package     |
+| any path outside `prefix`                   | `404 {"error":"NotFound"}` — likewise                                 | this package     |
 | the listener resolved without writing       | `404 {"error":"NotFound"}`                                            | this package     |
 | the listener failed before headers were out | `500 {"error":"InternalError"}`                                       | this package     |
 | a failure with headers already on the wire  | the socket is destroyed — a reset the client sees, not a hang         | this package     |
 
-The last three are the package's own fallbacks and, over the oRPC surface it
-ships, unreachable in practice: Hono answers every path and oRPC collapses
-every defect. They exist because the transport is proven on its own, against a
-bare listener, and a listener that declines or fails must still produce
+The last three are the package's own fallbacks. The `404` is how every
+unmatched path is answered — oRPC's adapter resolves `{ matched: false }`
+without writing, and the runtime answers a listener that declined; the two
+`500` shapes are unreachable over the oRPC surface, which collapses every
+defect itself. They exist because the transport is proven on its own, against
+a bare listener, and a listener that declines or fails must still produce
 exactly one response. "Failed" there covers a rejected promise, a
 **synchronous** throw before anything awaitable was returned, and a
 `StartOptions.unit` provider that failed to build — the last two never reach
@@ -188,7 +190,7 @@ what a port is, once, and `PORT=0` is legal.
 
 ## What it does not do
 
-- **Any other router or handler.** oRPC on Hono is the one way HTTP is
+- **Any other router or handler.** oRPC is the one way HTTP is
   answered here — oRPC shares this stack's convictions (a contract, typed
   errors, `Result` at the boundary), so it is enforced, not offered among
   alternatives. There is no `handler` option and no listener port to provide
@@ -223,12 +225,6 @@ built on it gets them for free rather than having to get them right by hand:
   non-blank `x-request-id` becomes `traceId` — the correlation id an outside
   caller supplies — and a blank one is ignored rather than winning over the
   minted id.
-
-One more thing the package does on the caller's behalf: `@hono/node-server`'s
-`getRequestListener` runs with `overrideGlobalObjects: false`. Its default
-swaps `globalThis.Request`/`Response` for Hono's own on the first request
-served — a process-wide side effect no composition root should get by
-surprise.
 
 ## License
 

@@ -36,26 +36,39 @@ describe("http, over a router", () => {
     expect(greeting).toBe("hello world");
   });
 
-  it("answers an unmatched path with Hono's 404", async ({ rpc }) => {
-    // GIVEN a path nothing is mounted on
+  it("drops an implementation key the contract never declared", async ({ rpc }) => {
+    // GIVEN a router implementation carrying a key past the types
+    const { client } = await rpc(undefined, true);
+
+    // WHEN a declared procedure is called
+    const greeting = await client.hello();
+
+    // THEN the router was built — the stray key was skipped, not defected on
+    expect(greeting).toBe("hello world");
+  });
+
+  it("answers an unmatched path with the runtime's 404", async ({ rpc }) => {
+    // GIVEN a path outside the prefix
     const { origin } = await rpc();
 
     // WHEN it is requested
     const response = await fetch(`${origin}/nowhere`);
 
-    // THEN Hono's own 404 is the answer, not a hang and not the package's
+    // THEN oRPC declined it unwritten and the runtime's own 404 answered
     expect(response.status).toBe(404);
   });
 
-  it("falls through to Hono when nothing under the prefix matches", async ({ rpc }) => {
+  it("answers a path under the prefix naming no procedure with the runtime's 404", async ({
+    rpc,
+  }) => {
     // GIVEN a path under the RPC prefix that names no procedure
     const { origin } = await rpc();
 
     // WHEN it is requested
     const response = await fetch(`${origin}/rpc/nope`);
 
-    // THEN oRPC declined and Hono's 404 answered — the two compose rather than
-    // the adapter claiming the whole prefix
+    // THEN oRPC declined and the runtime answered — the adapter does not claim
+    // the whole prefix
     expect(response.status).toBe(404);
   });
 
@@ -66,17 +79,5 @@ describe("http, over a router", () => {
     // WHEN it is called
     // THEN the client sees oRPC's own collapse, not a reset
     await expect(client.boom()).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
-  });
-
-  it("leaves the global Request and Response alone", async ({ rpc }) => {
-    // GIVEN the platform's own Response, captured before any request is served
-    const NativeResponse = globalThis.Response;
-    const { client } = await rpc();
-
-    // WHEN a request has been served through the listener
-    await client.hello();
-
-    // THEN nothing was swapped out from under the rest of the process
-    expect(globalThis.Response).toBe(NativeResponse);
   });
 });

@@ -37,7 +37,11 @@ O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   `@orpc/contract` and `@unthrown/orpc` are peers for it) — so `sync`'s return
   is typed by the contract at the call. At runtime `implement(contract)` is
   walked next to the record (`routerOf`: a function leaf → `node.result(fn)`,
-  an object → recurse), and `os.router(built)` is the port's service. The port
+  an object → recurse, a key the implementer has no node for — reachable only
+  past the types — dropped rather than defected on; `implement()` returns
+  `undefined` for an undeclared key, measured), and `os.router(built)` is the
+  port's service. `C` is bounded `Record<string, RouterContract>` — a router
+  record, not a bare procedure, since a bare procedure has no keys to walk. The port
   is minted `class extends Port(name)<Router<Record<never, never>>> {}` and
   cast to di's **`PortClassOf<Name, Router<…>>`** (`{ portId: Name; new ():
 PortInstance<Name, Router<…>> }` — the one nameable spelling of a minted port
@@ -47,10 +51,13 @@ Router<…>>, never, InstanceType<D[number]>> & { port: PortClassOf<Name,
 Router<…>> }`, spelled explicitly for the same reason. Only the `sync` arm: a router is built, not
   acquired. `HttpModule({ router: orderRouter })` / `http({ router:
 orderRouter.port })` take it from there. Covered by the `rpc` fixture's
-  `greetingRouter` (a bare-procedure `oc.router`, one nested).
+  `greetingRouter` (a bare-procedure `oc.router`, one nested) and the stray-key
+  guard by `strayRouter` (the same implementation with an undeclared key,
+  cast past the types).
 - **`http({ router, prefix?, port?, hostname? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<RouterPort>>`**
-  — the starter, and **the one way HTTP is answered here: oRPC on Hono**. The
+  — the starter, and **the one way HTTP is answered here: oRPC, over its own
+  node adapter**. The
   former `@btravstack/orpc` was folded in for that reason — oRPC shares this
   stack's convictions (a contract, typed errors, `Result` at the boundary), so
   it is enforced, not offered among alternatives. `router` is the
@@ -90,11 +97,12 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   the `ORPCError` the router's `.result()` triage mapped its `Result` to
   (`@unthrown/orpc`, in the application — this package maps nothing); a defect
   inside a procedure is oRPC's own `INTERNAL_SERVER_ERROR` collapse; a path
-  under `prefix` naming no procedure falls through to Hono, and any other path
-  is Hono's `404`. Underneath, the package's own fallbacks — `404` when the
-  listener resolved without writing, `500` when it failed before headers were
-  out, socket destroyed once they were — are unreachable over the oRPC surface
-  and exist because the transport is proven against a bare listener. A defect
+  under `prefix` naming no procedure, and any path outside it, is declined
+  unwritten by oRPC's adapter (`{ matched: false }`) and answered by the
+  package's own `404`. The other two fallbacks — `500` when the listener
+  failed before headers were out, socket destroyed once they were — are
+  unreachable over the oRPC surface and exist because the transport is proven
+  against a bare listener. A defect
   that never reaches the listener's promise — a synchronous throw, a
   `StartOptions.unit` provider failing to build — gets its `500` from the
   unit's `recoverDefect`, which destroys the socket only once headers are
@@ -118,16 +126,22 @@ false`, so `globalThis.Request`/`Response` are left alone.
   `Result` → HTTP status, HTTPS, HTTP/2 — see the package README's _"What it
   does not do"_ for why each is a non-goal.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
-  `@btravstack/di`, `unthrown`, `hono`, `@hono/node-server`, `@orpc/server`.
+  `@btravstack/di`, `unthrown`, `@orpc/server`, `@orpc/contract`,
+  `@unthrown/orpc`. Hono and `@hono/node-server` were peers until the second
+  code review of PR #40: Hono routed exactly one pattern (`${prefix}/*`) to
+  oRPC's fetch adapter and 404'd the rest, which `@orpc/server/node`'s
+  `RPCHandler.handle(req, res, { prefix })` plus the runtime's own `404` do
+  with two dependencies fewer — and no `overrideGlobalObjects` footgun to
+  disarm.
 
 ## Internal seam
 
 - **`HttpHandler`** (`src/handler.ts`, **not** exported from `index.ts`) — a
   di `Port` whose service is the node listener,
   `(request, response, signal) => PromiseLike<unknown>`. `http()` provides it
-  from the router (`orpc.ts`'s `orpc(router, { prefix })`: a Hono app,
-  `RPCHandler` mounted under `prefix`, unmatched → `next()`, wrapped by
-  `getRequestListener`), and the `HttpRuntime` provider depends on it through
+  from the router (`orpc.ts`'s `orpc(router, { prefix })`: `@orpc/server/node`'s
+  `RPCHandler`, `(request, response) => rpc.handle(request, response, {
+prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider depends on it through
   di. It returns `PromiseLike<unknown>` rather than `void` because the
   package must know when the listener is finished to write a `404` over a
   declined request without racing a response still in flight; `unknown`
@@ -149,8 +163,9 @@ false`, so `globalThis.Request`/`Response` are left alone.
   _"fails startup with ConfigInvalid for HttpConfig when PORT is not a port"_,
   through the `configured` fixture, whose `BoundConfig` provider captures what
   the graph bound). `orpc.spec.ts` carries the 7 the starter proper answers
-  for, through the `rpc` fixture — `http({ router: GreetingRouter, port: 0,
-hostname: "127.0.0.1" })` over a router provider that declares a `Greeter`,
-  with a typed `RPCLink` client: dependencies injected, a nested procedure, `prefix` honoured, Hono's 404 outside and under the prefix, oRPC's
-  `INTERNAL_SERVER_ERROR` collapse, and the global `Request`/`Response` left
-  alone.
+  for, through the `rpc` fixture — `HttpModule("RpcApp")({ router:
+greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
+  a router provider that declares a `Greeter`, with a typed `RPCLink` client:
+  dependencies injected, a nested procedure, a stray implementation key
+  dropped, `prefix` honoured, the runtime's 404 outside and under the prefix,
+  and oRPC's `INTERNAL_SERVER_ERROR` collapse.

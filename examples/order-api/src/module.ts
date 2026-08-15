@@ -11,7 +11,7 @@ import { orderRouter } from "./router.js";
  * service that declares the two use cases its procedures call; and
  * `http({ router: orderRouter.port })` is the whole transport — the runtime on
  * `HttpRuntime`, bound from `PORT` and `HOST` in the environment, and the
- * router mounted on Hono under `/rpc`. Importing them is what closes di's
+ * router mounted under `/rpc`. Importing them is what closes di's
  * arity gate (a composition without the router provider does not compile —
  * the starter's provider depends on it), and the exports here are exactly
  * what `start` resolves (`HttpRuntime`) and what the per-request

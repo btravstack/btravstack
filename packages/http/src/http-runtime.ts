@@ -95,7 +95,7 @@ export const httpModule = <N>(
 };
 
 /**
- * The HTTP starter, and the one way HTTP is answered here: oRPC on Hono. A
+ * The HTTP starter, and the one way HTTP is answered here: oRPC. A
  * module providing the runtime (`HttpRuntime`), its configuration
  * (`HttpConfig`, bound from `PORT`/`HOST` unless pinned) and the HTTP surface
  * built from the application's **router port** — the router is a provider

@@ -1,5 +1,5 @@
 ---
-"@btravstack/di": minor
+"@btravstack/di": patch
 ---
 
 `AnyModule`, `AnyProvider` and `Exportable` — the constraints

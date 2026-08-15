@@ -157,7 +157,18 @@ export const temporal = <C extends ContractDefinition, A extends AnyPort>(
             NativeConnection.connect({ address: bound.address }),
             (cause) => new TemporalUnreachable({ address: bound.address, cause }),
           ),
-        release: (connection) => connection.close(),
+        // On the drain-deadline path the kernel has already been handed its
+        // thread back while `worker.run()` is still winding down on Temporal's
+        // own clock, and `NativeConnection.close()` refuses while a Worker
+        // holds it (`IllegalStateError`). That is not a teardown failure to
+        // report — the worker releases the connection when its force-stop
+        // lands, and the process is exiting — so only that refusal is
+        // absorbed; any other close failure is still the finaliser's to
+        // surface.
+        release: (connection) =>
+          connection
+            .close()
+            .catch((cause: unknown) => (heldByWorker(cause) ? undefined : Promise.reject(cause))),
       }),
       Provider(TemporalRuntime)([TemporalConnection, TemporalConfig, activities], {
         sync: (connection, bound, impls): Runtime<never, TemporalInfo> => ({
@@ -173,6 +184,9 @@ export const temporal = <C extends ContractDefinition, A extends AnyPort>(
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>
   new RuntimeStartFailed({ runtime: "temporal", cause });
+
+const heldByWorker = (cause: unknown): boolean =>
+  cause instanceof Error && cause.name === "IllegalStateError";
 
 const createWorker = <C extends ContractDefinition>(
   host: RuntimeHost<never>,

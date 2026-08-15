@@ -174,5 +174,3 @@ export const TemporalActivities =
     name: Name,
   ): ReturnType<typeof Provider<PortClassOf<Name, ActivitiesOf<C>>>> =>
     Provider(class extends Port(name)<ActivitiesOf<C>> {} as PortClassOf<Name, ActivitiesOf<C>>);
-
-/** The port `TemporalActivities(contract)(name)` mints: id `Name`, service the implementations record for `C`. */

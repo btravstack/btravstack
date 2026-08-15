@@ -6,7 +6,7 @@ import { Port } from "@btravstack/di";
  * The HTTP surface as a service — the node listener the runtime hands every
  * request to. INTERNAL: `http()` provides it from the application's router
  * (`orpc`), and the runtime provider depends on it through di; there is one
- * way to answer HTTP here, oRPC on Hono, so nothing outside this package
+ * way to answer HTTP here, oRPC, so nothing outside this package
  * provides or names it. The package's own transport specs do, which is why it
  * is exported from this file and not from `index.ts`.
  *

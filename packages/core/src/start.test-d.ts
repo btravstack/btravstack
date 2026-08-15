@@ -93,10 +93,10 @@ start(Satisfied, { unit: ClockyUnit });
 // which is also what pins WHICH branch of the gate rejected the call above.
 start(Satisfied, { unit: ClockyUnit }, "UNSATISFIED UNIT NEEDS", new Clock());
 
-// A runtime may draw a need from the unit module's exports: `Span` is nowhere
-// in `SpanApp`, and the fork is what puts it in front of unit work — so with a
-// unit module whose own needs the module covers, the gate collapses to an
-// ordinary call.
+// A runtime may NOT draw a need from the unit module's exports: `Span` exists
+// only while a unit is open, and `RuntimeHost.ctx` is the application context
+// — so a runtime that names it is rejected here rather than left to `ctx.get`
+// throwing at startup.
 const GreetingSpanUnit = Module("GreetingSpanUnit")({
   provides: [
     Provider(Span)([Greeting], {
@@ -120,4 +120,5 @@ const SpanApp = Module("SpanApp")({
   provides: [Provider(NeedsSpan)({ value: needsSpan })],
   exports: [Greeting, NeedsSpan],
 });
-expectTypeOf(start(SpanApp, { unit: GreetingSpanUnit })).toEqualTypeOf<RunningApp<never>>();
+// @ts-expect-error -- UNSATISFIED RUNTIME NEEDS: `Span` is a unit-only port, not among `SpanApp`'s exports
+start(SpanApp, { unit: GreetingSpanUnit });

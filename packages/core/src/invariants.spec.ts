@@ -463,7 +463,9 @@ describe("probe wiring", () => {
 
   it("binds 9000 when no probe port is given", async () => {
     const runtime = testRuntime();
-    const app = start(runtime.module, { signals: false, onEvent: () => {} });
+    // `env: {}` — the default is the kernel's, not whatever `PROBE_PORT` the
+    // shell running this suite happens to carry.
+    const app = start(runtime.module, { env: {}, signals: false, onEvent: () => {} });
 
     // Asserted positively — the bound port *is* 9000, and answers there —
     // rather than inferred from a deliberate conflict on 9000, which proved

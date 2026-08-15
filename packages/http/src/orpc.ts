@@ -6,7 +6,6 @@ import {
   type PortInstance,
   type ServiceOf,
 } from "@btravstack/di";
-import { getRequestListener } from "@hono/node-server";
 import type { ProcedureContract, RouterContract } from "@orpc/contract";
 import {
   implement,
@@ -14,9 +13,8 @@ import {
   type ProcedureImplementer,
   type Router,
 } from "@orpc/server";
+import { RPCHandler } from "@orpc/server/node";
 import "@unthrown/orpc/extensions/result";
-import { RPCHandler } from "@orpc/server/fetch";
-import { Hono } from "hono";
 
 import { HttpHandler } from "./handler.js";
 
@@ -25,21 +23,6 @@ export type OrpcOptions = {
   readonly prefix?: `/${string}`;
 };
 
-/**
- * The oRPC starter: a provider of `@btravstack/http`'s `HttpHandler` built
- * from a **router port** — the application provides its router as a service
- * (a provider that declares the use cases its procedures call), and this
- * turns it into the HTTP surface. Hono owns routing and the fetch idiom;
- * oRPC's fetch adapter is mounted under `prefix`; an unmatched path is Hono's
- * 404 and a defect inside a procedure is oRPC's own `INTERNAL_SERVER_ERROR`
- * collapse. Nothing here maps a `Result` to a status — that is the router's
- * `.result()` triage, at the one place a domain error becomes an `ORPCError`.
- *
- * `getRequestListener` runs with `overrideGlobalObjects: false`: its default
- * swaps `globalThis.Request`/`Response` for Hono's own on the first request
- * served, a process-wide side effect no composition root should get by
- * surprise.
- */
 /**
  * `unknown` when the port's service is a router `RPCHandler` can serve with no
  * initial context, `never` otherwise — intersected with `R` at the call site,
@@ -50,18 +33,23 @@ export type OrpcOptions = {
 export type RouterPort<R extends AnyPort> =
   ServiceOf<R> extends Router<Record<never, never>> ? unknown : never;
 
+/**
+ * The oRPC starter: a provider of `@btravstack/http`'s `HttpHandler` built
+ * from a **router port** — the application provides its router as a service
+ * (a provider that declares the use cases its procedures call), and this
+ * turns it into the HTTP surface through oRPC's own node adapter, mounted
+ * under `prefix`. A request oRPC does not match resolves unwritten and the
+ * runtime answers its `404`; a defect inside a procedure is oRPC's own
+ * `INTERNAL_SERVER_ERROR` collapse. Nothing here maps a `Result` to a status —
+ * that is the router's `.result()` triage, at the one place a domain error
+ * becomes an `ORPCError`.
+ */
 export const orpc = <R extends AnyPort>(router: R & RouterPort<R>, options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
   return Provider(HttpHandler)([router], {
     sync: (service) => {
       const rpc = new RPCHandler(service as Router<Record<never, never>>);
-      const app = new Hono();
-      app.all(`${prefix}/*`, async (c, next) => {
-        const { matched, response } = await rpc.handle(c.req.raw, { prefix });
-        if (matched) return response;
-        return next();
-      });
-      return getRequestListener((raw) => app.fetch(raw), { overrideGlobalObjects: false });
+      return (request, response) => rpc.handle(request, response, { prefix });
     },
   });
 };
@@ -97,7 +85,7 @@ export const orpc = <R extends AnyPort>(router: R & RouterPort<R>, options: Orpc
  * whoever else names it.
  */
 export const HttpRouter =
-  <C extends RouterContract>(contract: C) =>
+  <C extends Record<string, RouterContract>>(contract: C) =>
   <const Name extends string>(name: Name) =>
   <const D extends readonly AnyPort[]>(
     deps: D,
@@ -114,7 +102,9 @@ export const HttpRouter =
       Router<Record<never, never>>
     >;
     // The implementer is walked untyped: `Implementation<C>` above is the
-    // whole check, and `implement(contract)`'s own type is a per-contract
+    // whole check — a key the contract does not declare is a compile error
+    // there, and `routerOf` skips one anyway rather than reading `.result` off
+    // `undefined` — and `implement(contract)`'s own type is a per-contract
     // intersection this generic body cannot index into.
     const os = implement(contract) as unknown as Record<string, unknown> & {
       readonly router: (record: Record<string, unknown>) => Router<Record<never, never>>;
@@ -138,18 +128,20 @@ export type Implementation<C extends RouterContract> =
 
 // Walks the implementation record next to the implementer: a function is a
 // procedure and becomes `implementer.result(fn)`, anything else is a nested
-// router. The types above are the whole check; the walk trusts them.
+// router. The types above are the whole check; the walk trusts them, and
+// drops a key the implementer has no node for rather than defecting on it.
 const routerOf = (
   implementer: Record<string, unknown>,
   implementation: Record<string, unknown>,
 ): Record<string, unknown> =>
   Object.fromEntries(
-    Object.entries(implementation).map(([key, value]) => {
-      const node = implementer[key] as Record<string, unknown> & {
-        readonly result?: (fn: unknown) => unknown;
-      };
+    Object.entries(implementation).flatMap(([key, value]) => {
+      const node = implementer[key] as
+        | (Record<string, unknown> & { readonly result: (fn: unknown) => unknown })
+        | undefined;
+      if (node === undefined) return [];
       return typeof value === "function"
-        ? [key, node.result?.(value)]
-        : [key, routerOf(node, value as Record<string, unknown>)];
+        ? [[key, node.result(value)]]
+        : [[key, routerOf(node, value as Record<string, unknown>)]];
     }),
   );

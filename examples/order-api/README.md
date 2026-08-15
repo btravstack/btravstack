@@ -4,7 +4,7 @@ The transport. A router implementing
 [`order-api-contract`](../order-api-contract), provided as a port and served
 under the kernel's lifecycle by [`@btravstack/http`](../../packages/http). One
 stack, all of it in the graph: oRPC owns the contract, `@unthrown/orpc` owns
-the `Result` bridge, the `http` starter owns Hono, the fetch adapter and the
+the `Result` bridge, the `http` starter owns oRPC's node adapter and the
 socket, and the router itself is a di-provided service. The contract lives in
 its own package, because a client needs it and needs none of this.
 
@@ -68,8 +68,8 @@ treatment rather than a fallback.
 ## The transport is `@btravstack/http`, all of it
 
 Binding the socket, one unit per request, the drain that retires a busy
-keep-alive connection, the trace-id policy, Hono and oRPC's fetch adapter
-mounted under `/rpc` all live in [`@btravstack/http`](../../packages/http) —
+keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
+`/rpc` all live in [`@btravstack/http`](../../packages/http) —
 see its README for the guarantee it makes and the one way it answers HTTP.
 What this example writes is the router — `HttpRouter(orderContract)("OrderRouter")([PlaceOrder,
 FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`,
@@ -87,13 +87,14 @@ export const OrderApi = HttpModule("OrderApi")({
 ```
 
 `HttpModule` is sugar over the same primitives: it imports the starter
-(`http({ router: OrderRouter })` — the whole surface), provides the router and
-exports `HttpRuntime`, and returns exactly the di module `Module("OrderApi")({
-imports: [ApplicationModule, PersistenceModule, http({ router: OrderRouter })],
-provides: [orderRouter], exports: [HttpRuntime, Logger] })` would have. The
-runtime provider depends on the router port through di, so even the transport
-wiring exists because the composition root said so — a composition that
-imports the starter without providing `OrderRouter` carries an unmet need
+(`http({ router: orderRouter.port })` — the whole surface), provides the
+router and exports `HttpRuntime`, and returns exactly the di module
+`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule, http({
+router: orderRouter.port })], provides: [orderRouter], exports: [HttpRuntime,
+Logger] })` would have. The runtime provider depends on the router port
+through di, so even the transport wiring exists because the composition root
+said so — a composition that imports the starter without providing
+`orderRouter` carries an unmet need
 `start` refuses (`needs-gate.test-d.ts` pins it with the hand-written form) —
 and oRPC's own context stays empty, since one container is enough. `port` is
 read back off `Serving.info` the same way any caller of the package does.
@@ -102,7 +103,7 @@ read back off `Serving.info` the same way any caller of the package does.
 
 The unit's lifetime **is** the response's: `@btravstack/http` keeps it open
 until the response completes, so there is no seam for a late write to land in.
-An unmatched path is Hono's 404; a defect inside a procedure is oRPC's own
+An unmatched path is the starter's 404; a defect inside a procedure is oRPC's own
 `INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or end by hand.
 The router itself needs nothing per request, so it lives at application scope;
 what does is forked by the kernel, below.
