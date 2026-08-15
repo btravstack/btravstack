@@ -8,15 +8,16 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import { declareHandler, type WorkerInferHandlers } from "@amqp-contract/worker";
-import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
-import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import type { WorkerInferHandlers } from "@amqp-contract/worker";
+import type { ConfigInvalid } from "@btravstack/config";
+import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
+import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
+import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, type TestAPI } from "vitest";
 import { z } from "zod";
 
-import { amqpRuntime, type AmqpInfo, type AmqpOptions } from "./amqp-runtime.js";
-import { messageUnits, type MessageMiddleware, type MessageUnitContext } from "./message-units.js";
+import { AmqpModule } from "./amqp-module.js";
+import { AmqpHandlers, type AmqpInfo } from "./amqp-runtime.js";
 
 const echoExchange = defineExchange("amqp-test");
 const echoDlx = defineExchange("amqp-test-dlx", { type: "direct" });
@@ -40,73 +41,66 @@ export const echoContract = defineContract({
 
 export class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 
+/** The handlers port the suite hands the starter, and its provider builder — both minted by `AmqpHandlers`. */
+const echoHandlers = AmqpHandlers(echoContract)("EchoHandlers");
+type EchoHandlers = PortClassOf<"EchoHandlers", WorkerInferHandlers<typeof echoContract>>;
+
 const AppModule = Module("App")({
   provides: [Provider(Greeting)({ value: { text: "hello" } })],
   exports: [Greeting],
 });
 
-type App = RunningApp<never, AmqpInfo>;
+/** A handlers provider the suite composes in: built from `Greeting`, or from nothing. */
+type EchoProvider = Provider<InstanceType<EchoHandlers>, never, Greeting>;
+
+/**
+ * The runtime is a service the module provides, so each fixture composes the
+ * application with the starter it is testing — the same shape a real
+ * deployment's composition root has, sized for one test — through the
+ * `AmqpModule` sugar, so the package's own suite covers it. `url` is pinned to
+ * the test's own broker, so the module reads no environment.
+ */
+const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: number) =>
+  AmqpModule("Consuming")({
+    contract: echoContract,
+    handlers,
+    url,
+    ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
+    imports: [AppModule],
+  });
+
+const plainHandlers: EchoProvider = echoHandlers({
+  value: { echo: () => OkAsync(undefined) },
+});
+
+type App = RunningApp<ConfigInvalid, AmqpInfo>;
 
 type ServeOptions = { readonly drainTimeoutMs: number };
 
-type BuiltHandlers = {
-  readonly handlers: WorkerInferHandlers<typeof echoContract, MessageUnitContext<typeof Greeting>>;
-  readonly middleware?: MessageMiddleware<typeof Greeting> | undefined;
-};
-
 /**
- * The middleware slot's identity when a test deliberately leaves it unset —
- * `next()` unchanged, exactly what `TypedAmqpWorker.create` does on its own
- * when no `middleware` key is passed at all. `AmqpOptions.middleware`'s
- * builder, once supplied, must always produce a real `MessageMiddleware`
- * (Blocker D closed the `unknown` hole that let it produce nothing), so a
- * `BuiltHandlers` that omits one still needs something to hand `amqpRuntime`.
- */
-const passthroughMiddleware: MessageMiddleware<typeof Greeting> = (_args, next) =>
-  next() as AsyncResult<unknown, never>;
-
-/**
- * Handlers declared the way a consumer declares them — through
- * `declareHandler`, with `messageUnits` as the one line added — plus a
- * **recording proxy** over the host.
+ * Handlers declared the way a consumer declares them — a provider built from
+ * the application's own services, plain functions typed by the contract —
+ * that record what each delivery ran under.
  *
- * The proxy is what makes the meta assertable: `currentUnit()` exposes the
- * kernel's own `unitId` counter, not the `UnitMeta` the runtime passed, so
- * reading it back through the ambient record could only ever assert
- * `expect.any(String)` — which would test nothing.
+ * `currentUnit()` is the seam: the ambient record is what the unit leaves for
+ * the adapters that read it, so what the handler sees there IS the claim —
+ * `traceId` the publisher's message id, or the minted one when there is none.
  */
 const seamOf = () => {
-  const seen: UnitMeta[] = [];
+  const seen: (UnitRecord | undefined)[] = [];
   let greeting = "";
 
-  // The type argument is required, not stylistic: `declareHandler` infers
-  // `TContext` from the handler function it is passed, and a call with
-  // nothing to infer from defaults it to `EmptyContext`, leaving
-  // `context.ctx` untyped — the same trap `messageUnits` documents below.
-  const echoHandler = declareHandler<
-    typeof echoContract,
-    "echo",
-    MessageUnitContext<typeof Greeting>
-  >(echoContract, "echo", (_message, _raw, { context }) => {
-    greeting = context.ctx.get(Greeting).text;
-    return OkAsync(undefined);
-  });
-
   return {
-    build: (host: RuntimeHost<typeof Greeting>): BuiltHandlers => {
-      const watched: RuntimeHost<typeof Greeting> = {
-        ctx: host.ctx,
-        run: (meta, work) => {
-          seen.push(meta);
-          return host.run(meta, work);
+    handlers: echoHandlers([Greeting], {
+      sync: (g) => ({
+        echo: () => {
+          seen.push(currentUnit());
+          greeting = g.text;
+          return OkAsync(undefined);
         },
-      };
-      return {
-        handlers: { echo: echoHandler },
-        middleware: messageUnits<typeof Greeting>(watched),
-      };
-    },
-    seen: (): readonly UnitMeta[] => seen,
+      }),
+    }),
+    seen: (): readonly (UnitRecord | undefined)[] => seen,
     greeting: (): string => greeting,
   };
 };
@@ -115,9 +109,7 @@ const seamOf = () => {
  * A handler that never finishes until `release()` is called, and whose
  * `arrived` promise reports the moment the delivery reached it. Both drain
  * specs turn on knowing a unit is genuinely in flight before the drain
- * starts — polling a wall clock instead would be the flake. Built on the same
- * `declareHandler` + `messageUnits` shape as `seam`, minus the recording proxy
- * `seam` needs and this does not.
+ * starts — polling a wall clock instead would be the flake.
  */
 const gatedHandler = () => {
   let entered!: () => void;
@@ -129,43 +121,22 @@ const gatedHandler = () => {
     release = resolve;
   });
 
-  const echoHandler = declareHandler<
-    typeof echoContract,
-    "echo",
-    MessageUnitContext<typeof Greeting>
-  >(echoContract, "echo", () => {
-    entered();
-    return fromSafePromise(held.then(() => undefined));
+  const handlers: EchoProvider = echoHandlers({
+    value: {
+      echo: () => {
+        entered();
+        return fromSafePromise(held.then(() => undefined));
+      },
+    },
   });
 
-  return {
-    build: (host: RuntimeHost<typeof Greeting>): BuiltHandlers => ({
-      handlers: { echo: echoHandler },
-      middleware: messageUnits<typeof Greeting>(host),
-    }),
-    arrived,
-    release: () => release(),
-  };
+  return { handlers, arrived, release: () => release() };
 };
 
 export type AmqpFixtures = {
-  readonly serve: (
-    build: (host: RuntimeHost<typeof Greeting>) => BuiltHandlers,
-    options?: ServeOptions,
-  ) => Promise<App>;
+  /** Boots the starter over `handlers` — a record that acks everything when none is given. */
+  readonly serve: (handlers?: EchoProvider, options?: ServeOptions) => Promise<App>;
   readonly serveBroken: () => Promise<App>;
-  /**
-   * Starts a worker whose `handlers` or `middleware` builder throws — never
-   * dialling the broker at all, since a throwing builder is qualified before
-   * `TypedAmqpWorker.create` runs. Synchronous, unlike `serve`/`serveBroken`:
-   * there is no `runtimeInfo()` to await, because the runtime never reaches
-   * serving.
-   */
-  readonly serveFailingBuild: (
-    overrides: Partial<
-      Pick<AmqpOptions<typeof echoContract, typeof Greeting>, "handlers" | "middleware">
-    >,
-  ) => App;
   readonly seam: ReturnType<typeof seamOf>;
   readonly gate: ReturnType<typeof gatedHandler>;
 };
@@ -177,15 +148,8 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   serve: async ({ amqpConnectionUrl }, use) => {
     const started: App[] = [];
 
-    await use(async (build, options) => {
-      const app = start(AppModule, {
-        runtime: amqpRuntime({
-          urls: [amqpConnectionUrl],
-          contract: echoContract,
-          handlers: (host) => build(host).handlers,
-          middleware: (host) => build(host).middleware ?? passthroughMiddleware,
-          needs: [Greeting],
-        }),
+    await use(async (handlers = plainHandlers, options) => {
+      const app = start(consuming(amqpConnectionUrl, handlers), {
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
@@ -209,21 +173,14 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     const started: App[] = [];
 
     await use(() => {
-      const app = start(AppModule, {
-        // A port nothing listens on: amqp-connection-manager retries the
-        // connect on its own reconnect clock regardless of the failure mode
-        // (ECONNREFUSED included — it is built for HA, not for failing fast),
-        // so `TypedAmqpWorker.create` only settles once `connectTimeoutMs`
-        // gives up and reports the DEFECT the runtime recovers. Set short so
-        // this test fails fast instead of waiting out the library's 30s
-        // default.
-        runtime: amqpRuntime({
-          urls: ["amqp://127.0.0.1:1"],
-          contract: echoContract,
-          handlers: () => ({ echo: () => OkAsync(undefined) }),
-          needs: [Greeting],
-          connectTimeoutMs: 2_000,
-        }),
+      // A port nothing listens on: amqp-connection-manager retries the
+      // connect on its own reconnect clock regardless of the failure mode
+      // (ECONNREFUSED included — it is built for HA, not for failing fast),
+      // so `TypedAmqpWorker.create` only settles once `connectTimeoutMs`
+      // gives up and reports the DEFECT the runtime recovers. Set short so
+      // this test fails fast instead of waiting out the library's 30s
+      // default.
+      const app = start(consuming("amqp://127.0.0.1:1", plainHandlers, 2_000), {
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
@@ -239,37 +196,6 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     }
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
-  serveFailingBuild: async ({}, use) => {
-    const started: App[] = [];
-
-    await use((overrides) => {
-      const app = start(AppModule, {
-        // A port nothing listens on, and — unlike `serveBroken` — never
-        // dialled: `handlers`/`middleware` are qualified before
-        // `TypedAmqpWorker.create` ever runs, so a throw in either never
-        // reaches the connection attempt at all.
-        runtime: amqpRuntime({
-          urls: ["amqp://127.0.0.1:1"],
-          contract: echoContract,
-          handlers: () => ({ echo: () => OkAsync(undefined) }),
-          needs: [Greeting],
-          ...overrides,
-        }),
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-      });
-      started.push(app);
-      return app;
-    });
-
-    for (const app of started) {
-      app.stop();
-      await expect(app.exited).toBeErr();
-    }
-  },
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   seam: async ({}, use) => {
     await use(seamOf());
   },

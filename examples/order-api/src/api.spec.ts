@@ -2,13 +2,16 @@ import { ORPCError } from "@orpc/client";
 import { Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
-import { OrderApiModule } from "./module.js";
 import { it } from "./test-fixtures.js";
 
 describe("order-api", () => {
-  it("carries a real oRPC call through to the DI-wired use case", async ({ serve, clientFor }) => {
+  it("carries a real oRPC call through to the DI-wired use case", async ({
+    serve,
+    clientFor,
+    api,
+  }) => {
     // GIVEN the real composition root, served on an ephemeral port
-    const client = await clientFor(serve(OrderApiModule));
+    const client = await clientFor(serve(api));
 
     // WHEN a call goes over the wire
     // THEN it reached the use case behind the transport
@@ -21,9 +24,10 @@ describe("order-api", () => {
   it("serves every call from the one application scope, so a write outlives its request", async ({
     serve,
     clientFor,
+    api,
   }) => {
     // GIVEN the real composition root, served on an ephemeral port
-    const client = await clientFor(serve(OrderApiModule));
+    const client = await clientFor(serve(api));
 
     // WHEN a second request looks up what the first wrote. A second request is
     // a second unit — and the same database, because the application scope is
@@ -36,9 +40,9 @@ describe("order-api", () => {
     expect(found).toBeOkWith({ id: "o-1", quantity: 2 });
   });
 
-  it("publishes the bound port on Serving.info", async ({ serve }) => {
+  it("publishes the bound port on Serving.info", async ({ serve, api }) => {
     // GIVEN a runtime that bound `port: 0`
-    const app = serve(OrderApiModule);
+    const app = serve(api);
 
     // WHEN the kernel is asked what the runtime published about itself
     const info = app.runtimeInfo();
@@ -50,9 +54,10 @@ describe("order-api", () => {
   it("turns a domain Err into a typed, inferable CONFLICT — a value, not a thrown 500", async ({
     serve,
     clientFor,
+    api,
   }) => {
     // GIVEN an order already placed
-    const client = await clientFor(serve(OrderApiModule));
+    const client = await clientFor(serve(api));
 
     // WHEN the same id is placed again — chained, so the first call's `Result`
     // is consumed and a failure there cannot be mistaken for the conflict
@@ -79,9 +84,10 @@ describe("order-api", () => {
   it("turns a rejected invariant into a typed, inferable INVALID_QUANTITY", async ({
     serve,
     clientFor,
+    api,
   }) => {
     // GIVEN the real composition root, served on an ephemeral port
-    const client = await clientFor(serve(OrderApiModule));
+    const client = await clientFor(serve(api));
 
     // WHEN a quantity the domain rejects is placed
     const invalid = await client.orders.place({ id: "o-2", quantity: 0 });
@@ -100,9 +106,10 @@ describe("order-api", () => {
   it("lets the client match that error channel exhaustively, by code", async ({
     serve,
     clientFor,
+    api,
   }) => {
     // GIVEN an error the contract declares
-    const client = await clientFor(serve(OrderApiModule));
+    const client = await clientFor(serve(api));
     const invalid = await client.orders.place({ id: "o-2", quantity: 0 });
 
     // WHEN the channel is folded — the mirror of the `mapErrCases` that

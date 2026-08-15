@@ -12,5 +12,5 @@ refusing new work, and stops by destroying what is left.
 Its guarantee is that every request produces exactly one completed response,
 and the unit stays open until that response is on the wire — which makes the
 kernel's least-checkable contract structural rather than documented. Routing,
-middleware and `Result` → HTTP status are deliberately not included: bring
-oRPC, Hono, or a bare function.
+middleware and `Result` → HTTP status are deliberately not included: bring an
+oRPC router (see the starter entry below).

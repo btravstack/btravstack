@@ -25,23 +25,144 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
+import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { currentUnit, start, type RunningApp } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
+import { oc, type RouterContractClient } from "@orpc/contract";
+import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 
-import { httpRuntime, type HttpHandler, type HttpInfo } from "./http-runtime.js";
+import { HttpHandler } from "./handler.js";
+import { HttpModule } from "./http-module.js";
+import { HttpConfig, HttpRuntime, httpModule, type HttpInfo } from "./http-runtime.js";
+import { HttpRouter } from "./orpc.js";
 
-/** A port so the runtime's `needs` are non-empty, which is what makes the gate mean something. */
-export class Greeting extends Port("Greeting")<{ readonly text: string }> {}
+type Handler = ServiceOf<HttpHandler>;
 
-const AppModule = Module("App")({
-  provides: [Provider(Greeting)({ value: { text: "hello" } })],
-  exports: [Greeting],
+/**
+ * The transport under test with a bare listener where `http()` would put the
+ * oRPC one — the internal seam `httpModule` exists for, so the guarantees
+ * (`404`/`500`, the unit open until `'close'`, the drain) are exercised without
+ * a router in the way. Loopback and an ephemeral port unless told otherwise.
+ */
+const appOf = (handler: Handler, port = 0) =>
+  Module("App")({
+    imports: [
+      httpModule({ port, hostname: "127.0.0.1" }, Provider(HttpHandler)({ value: handler })),
+    ],
+    exports: [HttpRuntime],
+  });
+
+/** A greeting service, so the router has a real dependency to declare. */
+class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
+
+/** Three bare procedures, one nested — the contract is what types the implementation below and the client. */
+const greetingContract = oc.router({ hello: oc, boom: oc, nested: { ping: oc } });
+
+const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
+  hello: () => OkAsync(greeter.greet("world")),
+  boom: () => {
+    // oxlint-disable-next-line unthrown/no-throw -- the defect IS the subject under test: oRPC's own collapse to INTERNAL_SERVER_ERROR
+    throw new Error("bug");
+  },
+  nested: { ping: () => OkAsync("pong") },
 });
 
-type App = RunningApp<never, HttpInfo>;
+/** The router as a service, built from the greeter it declares — contract-first, port and provider minted by `HttpRouter`. */
+const greetingRouter = HttpRouter(greetingContract)("GreetingRouter")([Greeter], {
+  sync: greetingImplementation,
+});
 
-const noop: HttpHandler<typeof Greeting> = (_request, response, _ctx, _signal) =>
+/**
+ * The same implementation carrying a key the contract never declared — only
+ * reachable past the types (the assertion is the bypass), which is what
+ * `routerOf`'s own guard exists for: the stray key is dropped, not defected on.
+ */
+const strayRouter = HttpRouter(greetingContract)("StrayRouter")([Greeter], {
+  sync: (greeter) =>
+    ({ ...greetingImplementation(greeter), stray: () => OkAsync("stray") }) as ReturnType<
+      typeof greetingImplementation
+    >,
+});
+
+/** The starter as an application uses it: `HttpModule` sugar over a router provider. */
+const rpcAppOf = (prefix?: `/${string}`, stray = false) => {
+  const options = {
+    port: 0,
+    hostname: "127.0.0.1",
+    ...(prefix === undefined ? {} : { prefix }),
+    provides: [Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } })],
+  } as const;
+  return stray
+    ? HttpModule("RpcApp")({ router: strayRouter, ...options })
+    : HttpModule("RpcApp")({ router: greetingRouter, ...options });
+};
+
+/** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
+class BoundConfig extends Port("BoundConfig")<{ readonly value: ServiceOf<HttpConfig> }> {}
+
+/** The starter left to configure itself — from the environment, plus whatever `options` pins. */
+const configuredAppOf = (options: { readonly port?: number; readonly hostname?: string }) => {
+  let bound: ServiceOf<HttpConfig> | undefined;
+  return {
+    module: Module("ConfiguredApp")({
+      imports: [httpModule(options, Provider(HttpHandler)({ value: noop }))],
+      provides: [
+        Provider(BoundConfig)([HttpConfig], {
+          sync: (config) => {
+            bound = config;
+            return { value: config };
+          },
+        }),
+      ],
+      exports: [HttpRuntime],
+    }),
+    config: () => bound,
+  };
+};
+
+/** A unit-scoped port whose construction is held open, so a unit's work can be delayed past its client's patience. */
+class Slow extends Port("Slow")<{ readonly built: true }> {}
+
+type SlowUnit = {
+  readonly module: Module<Slow, never, never>;
+  /** Resolves once a unit has started building the module. */
+  readonly arrived: Promise<void>;
+  /** Lets every held construction finish. */
+  readonly release: () => void;
+};
+
+const slowUnitOf = (): SlowUnit => {
+  let entered!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    module: Module("SlowUnit")({
+      provides: [
+        Provider(Slow)({
+          make: () => {
+            entered();
+            return fromSafePromise(held.then(() => ({ built: true }) as const));
+          },
+        }),
+      ],
+      exports: [Slow],
+    }),
+    arrived,
+    release: () => release(),
+  };
+};
+
+type App = RunningApp<ConfigInvalid, HttpInfo>;
+
+const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
 export type HttpFixtures = {
@@ -51,8 +172,36 @@ export type HttpFixtures = {
    * `finally` used to carry: the app exited `Ok`.
    */
   readonly serve: (
-    handler?: HttpHandler<typeof Greeting>,
+    handler?: Handler,
+    unit?: SlowUnit["module"],
   ) => Promise<{ readonly app: App; readonly origin: string }>;
+  /**
+   * An app whose starter binds `HttpConfig` from `env` (plus whatever `options`
+   * pins), and what it bound. Shut down by the fixture; a startup failure is
+   * the test's to assert on `app.exited`.
+   */
+  readonly configured: (
+    env: Environment,
+    options?: { readonly port?: number; readonly hostname?: string },
+  ) => {
+    readonly app: RunningApp<ConfigInvalid, HttpInfo>;
+    readonly config: () => ServiceOf<HttpConfig> | undefined;
+  };
+  /**
+   * The starter proper — `http({ router })` over a router provider — on an
+   * ephemeral port, with a typed oRPC client pointed at it. Shut down by the
+   * fixture.
+   */
+  readonly rpc: (
+    prefix?: `/${string}`,
+    /** Serve `strayRouter` — the implementation with a key the contract never declared — instead. */
+    stray?: boolean,
+  ) => Promise<{
+    readonly origin: string;
+    readonly client: RouterContractClient<typeof greetingContract>;
+  }>;
+  /** A `StartOptions.unit` module whose provider builds only once `release()` is called. */
+  readonly slowUnit: SlowUnit;
   /** An app started on an explicit port, for the failure paths. Shut down by the fixture. */
   readonly appOnPort: (port: number) => App;
   readonly occupied: { readonly appOnTakenPort: App };
@@ -60,7 +209,7 @@ export type HttpFixtures = {
   readonly boundServer: () => Server;
   /** A handler held open until `release()`, so a test can observe a unit in flight. */
   readonly gate: {
-    readonly handler: HttpHandler<typeof Greeting>;
+    readonly handler: Handler;
     readonly arrived: Promise<void>;
     readonly release: () => void;
   };
@@ -72,13 +221,13 @@ export type HttpFixtures = {
    * handler is free to.
    */
   readonly streamedGate: {
-    readonly handler: HttpHandler<typeof Greeting>;
+    readonly handler: Handler;
     readonly arrived: Promise<void>;
     readonly release: () => void;
   };
   /** A handler that records the ambient record the kernel opened for its unit. */
   readonly traced: {
-    readonly handler: HttpHandler<typeof Greeting>;
+    readonly handler: Handler;
     readonly seen: () => readonly (string | undefined)[];
   };
   /**
@@ -102,14 +251,9 @@ export const it = test.extend<HttpFixtures>({
   serve: async ({}, use) => {
     const started: App[] = [];
 
-    await use(async (handler = noop) => {
-      const app = start(AppModule, {
-        runtime: httpRuntime({
-          port: 0,
-          hostname: "127.0.0.1",
-          needs: [Greeting],
-          handler,
-        }),
+    await use(async (handler = noop, unit) => {
+      const app = start(appOf(handler), {
+        ...(unit === undefined ? {} : { unit }),
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
@@ -129,12 +273,60 @@ export const it = test.extend<HttpFixtures>({
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
+  configured: async ({}, use) => {
+    const started: RunningApp<ConfigInvalid, HttpInfo>[] = [];
+
+    await use((env, options = {}) => {
+      const { module, config } = configuredAppOf(options);
+      const app = start(module, { env, signals: false, probes: false, onEvent: () => {} });
+      started.push(app);
+      return { app, config };
+    });
+
+    for (const app of started) {
+      app.stop();
+      await app.exited;
+    }
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  rpc: async ({}, use) => {
+    const started: RunningApp<ConfigInvalid, HttpInfo>[] = [];
+
+    await use(async (prefix, stray) => {
+      const app = start(rpcAppOf(prefix, stray), {
+        signals: false,
+        probes: false,
+        preDrainDelayMs: 0,
+        onEvent: () => {},
+      });
+      started.push(app);
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      const client: RouterContractClient<typeof greetingContract> = createORPCClient(
+        new RPCLink({ origin, url: prefix ?? "/rpc" }),
+      );
+      return { origin, client };
+    });
+
+    for (const app of started) {
+      app.stop();
+      await expect(app.exited).toBeOk();
+    }
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  slowUnit: async ({}, use) => {
+    await use(slowUnitOf());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
   appOnPort: async ({}, use) => {
     const started: App[] = [];
 
     await use((port) => {
-      const app = start(AppModule, {
-        runtime: httpRuntime({ port, hostname: "127.0.0.1", needs: [Greeting], handler: noop }),
+      const app = start(appOf(noop, port), {
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
@@ -183,7 +375,7 @@ export const it = test.extend<HttpFixtures>({
     });
 
     await use({
-      handler: (_request, response, _ctx, _signal) => {
+      handler: (_request, response, _signal) => {
         entered();
         return held.then(() => new Promise<void>((done) => response.end("late", () => done())));
       },
@@ -206,7 +398,7 @@ export const it = test.extend<HttpFixtures>({
     });
 
     await use({
-      handler: (_request, response, _ctx, _signal) => {
+      handler: (_request, response, _signal) => {
         response.writeHead(200);
         entered();
         return held.then(() => new Promise<void>((done) => response.end("late", () => done())));
@@ -222,7 +414,7 @@ export const it = test.extend<HttpFixtures>({
   traced: async ({}, use) => {
     const seen: (string | undefined)[] = [];
     await use({
-      handler: (_request, response, _ctx, _signal) => {
+      handler: (_request, response, _signal) => {
         seen.push(currentUnit()?.traceId);
         return new Promise<void>((done) => response.end("ok", () => done()));
       },

@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import type { ConfigInvalid } from "@btravstack/config";
 import { start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
@@ -14,7 +15,7 @@ import {
 import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domain";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
-import type { TemporalInfo } from "@btravstack/temporal";
+import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import { createTimeSkippingTest } from "@temporal-contract/testing/time-skipping";
 import {
@@ -27,8 +28,8 @@ import type { TestWorkflowEnvironment } from "@temporalio/testing";
 import { ErrAsync, OkAsync } from "unthrown";
 import { expect } from "vitest";
 
+import { orderActivities } from "./activities.js";
 import { FulfillmentModule } from "./fulfillment.js";
-import { temporalWorkerRuntime } from "./temporal-runtime.js";
 
 /**
  * The time-skipping server binary, cached where **we** decide rather than in the
@@ -53,15 +54,9 @@ const downloadDir = fileURLToPath(
 // keeps the fixture's failure mode "no network" rather than "no directory".
 mkdirSync(downloadDir, { recursive: true });
 
-type App<E> = RunningApp<E, TemporalInfo>;
-
-/**
- * `X` is pinned to the five ports the composition root exports rather than
- * left generic: `start`'s needs gate is a phantom rest parameter proven at the
- * call site, and no proof is available inside a helper generic in the module's
- * own exports.
- */
-type TemporalPorts = PlaceOrder | OrderRepository | StockService | ShippingService | Logger;
+// The starter's own errors join the app's: a bad environment, or a service
+// that will not answer.
+type App<E> = RunningApp<E | ConfigInvalid | TemporalUnreachable, TemporalInfo>;
 
 /** One booted deployment: the kernel's handle, and a client that can reach it. */
 type Deployment<E> = {
@@ -69,7 +64,15 @@ type Deployment<E> = {
   readonly client: ContractClient<OrderContract>;
 };
 
-type Serve = <E>(module: Module<TemporalPorts, E, Scope>) => Promise<Deployment<E>>;
+/**
+ * `X` is pinned to the four ports the activities provider depends on rather
+ * than left generic: `start`'s gate is a phantom rest parameter proven at the
+ * call site, and no proof is available inside a helper generic in the module's
+ * own exports.
+ */
+type Serve = <E>(
+  module: Module<PlaceOrder | OrderRepository | StockService | ShippingService, E, Scope>,
+) => Promise<Deployment<E>>;
 
 /**
  * `start` hands the application context to the runtime alone, so a spec cannot
@@ -92,10 +95,12 @@ const tapProvider = (capture: (services: ServiceOf<ServicesTap>) => void) =>
   });
 
 /**
- * A composition root shaped like the real one, with this test's fulfillment
- * module swapped in: same `ApplicationModule`, same `PersistenceModule`, same
- * runtime, same five exported ports, so the orchestration under test is
- * unchanged and only the external services' answers differ.
+ * The application half of a root shaped like the real one, with this test's
+ * fulfillment module swapped in: same `ApplicationModule`, same
+ * `PersistenceModule`, so the orchestration under test is unchanged and only
+ * the external services' answers differ. It exports what `orderActivities`
+ * closes over; the sugar joins in `serve`, which is where the per-test queue
+ * and the memoised bundle are known.
  */
 const rootWith = (
   fulfillment: typeof FulfillmentModule,
@@ -104,7 +109,7 @@ const rootWith = (
   Module("StubTemporal")({
     imports: [ApplicationModule, PersistenceModule, fulfillment],
     provides: [tapProvider(capture)],
-    exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger],
+    exports: [PlaceOrder, OrderRepository, StockService, ShippingService],
   });
 
 const deployment = (fulfillment: typeof FulfillmentModule) => {
@@ -204,12 +209,21 @@ export const it = createTimeSkippingTest({
       // each other's tasks.
       const contract = withTaskQueue(orderContract, nextTaskQueueId("orders"));
 
-      const app = start(module, {
-        runtime: temporalWorkerRuntime({
-          contract,
-          connection: testEnv.nativeConnection,
-          workflows: { workflowBundle },
-        }),
+      // The same `TemporalModule` sugar `OrderTemporalWorker` is — built from
+      // what only this test knows: its queue and the memoised bundle. The
+      // connection is the starter's own resource, opened against the
+      // environment's address per test and closed with the scope; the shared
+      // `testEnv.nativeConnection` is never handed over, so no test can close
+      // it under the next.
+      const worker = TemporalModule("StubTemporalWorker")({
+        contract,
+        activities: orderActivities,
+        workflows: { workflowBundle },
+        imports: [module],
+      });
+
+      const app = start(worker, {
+        env: { TEMPORAL_ADDRESS: testEnv.address },
         signals: false,
         probes: false,
         preDrainDelayMs: 0,

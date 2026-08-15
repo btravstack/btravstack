@@ -1,19 +1,23 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import type { ConfigInvalid, Environment } from "@btravstack/config";
+import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
+import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
-import { declareActivitiesHandler } from "@temporal-contract/worker/activity";
-import { activityInfo } from "@temporalio/activity";
 import type { Client } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 import { z } from "zod";
 
-import { activityUnits } from "./activity-units.js";
-import { temporalRuntime, type TemporalInfo } from "./temporal-runtime.js";
+import { TemporalActivities, TemporalModule } from "./temporal-module.js";
+import {
+  TemporalConfig,
+  type TemporalInfo,
+  type TemporalUnreachable,
+  type WorkflowSource,
+} from "./temporal-runtime.js";
 
 /**
  * The time-skipping server binary, cached where we decide rather than in the
@@ -26,24 +30,6 @@ const downloadDir = fileURLToPath(
 mkdirSync(downloadDir, { recursive: true });
 
 export class Greeting extends Port("Greeting")<{ readonly text: string }> {}
-
-const AppModule = Module("App")({
-  provides: [Provider(Greeting)({ value: { text: "hello" } })],
-  exports: [Greeting],
-});
-
-type App = RunningApp<never, TemporalInfo>;
-
-let queueSeq = 0;
-const nextTaskQueue = (): string => `t-${(queueSeq += 1)}-${process.pid}`;
-
-type ActivityBuilder = (
-  host: RuntimeHost<typeof Greeting>,
-) => Record<string, (...args: never[]) => unknown>;
-
-const defaultActivities: ActivityBuilder = () => ({
-  echo: (value: string) => Promise.resolve(value),
-});
 
 /**
  * The smallest contract that exercises the seam: one workflow, one activity,
@@ -67,47 +53,47 @@ const echoContract = defineContract({
   },
 });
 
+/** The activities port the way a consumer mints one: `TemporalActivities(contract)(name)`, then di's own `Provider(port)` builder for each provider of it. */
+const EchoActivities = TemporalActivities(echoContract)("EchoActivities");
+
+const echoing = EchoActivities({
+  value: { runEcho: { echo: (value) => OkAsync(value) } },
+});
+
 /**
- * Activities declared the way a consumer declares them — through
- * `declareActivitiesHandler`, with `activityUnits` as the one line added — plus
- * a **recording proxy** over the host.
- *
- * The proxy is what makes the meta assertable: `currentUnit()` exposes the
- * kernel's own `unitId` counter, not the `UnitMeta` the runtime passed, so
- * reading it back through the ambient record could only ever assert
- * `expect.any(String)` — which would test nothing.
+ * An activity the contract never declared. Built as a variable, not a literal
+ * in the provider call, so it reaches `declareActivitiesHandler` — which
+ * rejects it at startup — instead of the excess-property check.
+ */
+const undeclaredEcho = {
+  runEcho: { echo: (value: string) => OkAsync(value), undeclared: () => OkAsync(undefined) },
+};
+export const undeclared = EchoActivities({ value: undeclaredEcho });
+
+/**
+ * The application's own module: a service, and the activities built from it —
+ * the implementation closes over `Greeting` the way a provider does, and
+ * records what it saw so the specs can assert on it. `seen` reads the ambient
+ * record from inside the attempt: `undefined` outside a unit, so its length is
+ * the unit count and its `traceId` the correlation id the runtime supplied.
  */
 const contractSeamOf = () => {
-  const seen: UnitMeta[] = [];
-  let taskToken = "";
+  const seen: (UnitRecord | undefined)[] = [];
   let greeting = "";
 
   return {
-    build: (host: RuntimeHost<typeof Greeting>) => {
-      const watched: RuntimeHost<typeof Greeting> = {
-        ctx: host.ctx,
-        run: (meta, work) => {
-          seen.push(meta);
-          return host.run(meta, work);
-        },
-      };
-
-      return declareActivitiesHandler({
-        contract: echoContract,
-        middleware: activityUnits<typeof Greeting>(watched),
-        activities: {
-          runEcho: {
-            echo: (value, { context }) => {
-              taskToken = activityInfo().base64TaskToken;
-              greeting = context.ctx.get(Greeting).text;
-              return OkAsync(value);
-            },
+    activities: EchoActivities([Greeting], {
+      sync: (service) => ({
+        runEcho: {
+          echo: (value) => {
+            seen.push(currentUnit());
+            greeting = service.text;
+            return OkAsync(value);
           },
         },
-      });
-    },
-    seen: (): readonly UnitMeta[] => seen,
-    taskToken: (): string => taskToken,
+      }),
+    }),
+    seen: (): readonly (UnitRecord | undefined)[] => seen,
     greeting: (): string => greeting,
   };
 };
@@ -129,131 +115,159 @@ const gateOf = () => {
   });
 
   return {
-    build: (host: RuntimeHost<typeof Greeting>) =>
-      declareActivitiesHandler({
-        contract: echoContract,
-        middleware: activityUnits(host),
-        activities: {
-          runEcho: {
-            echo: (value) => {
-              entered();
-              return fromSafePromise(held.then(() => value));
-            },
+    activities: EchoActivities({
+      value: {
+        runEcho: {
+          echo: (value) => {
+            entered();
+            return fromSafePromise(held.then(() => value));
           },
         },
-      }),
+      },
+    }),
     arrived,
     release: (): void => release(),
   };
 };
 
-/** The kernel options a test may override — only the drain budget, so far. */
-type ServeOptions = { readonly drainTimeoutMs: number };
+/**
+ * Captures the `TemporalConfig` the graph actually bound, so the starter's
+ * three configuration specs can assert on it without a probe of their own.
+ */
+const configuredOf = () => {
+  let bound: ServiceOf<TemporalConfig> | undefined;
+  return {
+    tap: Provider(BoundConfig)([TemporalConfig], {
+      sync: (config) => {
+        bound = config;
+        return config;
+      },
+    }),
+    bound: (): ServiceOf<TemporalConfig> | undefined => bound,
+  };
+};
+
+class BoundConfig extends Port("BoundConfig")<ServiceOf<TemporalConfig>> {}
+
+type App = RunningApp<ConfigInvalid | TemporalUnreachable, TemporalInfo>;
+
+let queueSeq = 0;
+const nextTaskQueue = (): string => `t-${(queueSeq += 1)}-${process.pid}`;
+
+const echoWorkflows: WorkflowSource = {
+  workflowsPath: fileURLToPath(new URL("./test-workflows.ts", import.meta.url)),
+};
+const missingWorkflows: WorkflowSource = {
+  workflowsPath: fileURLToPath(new URL("./does-not-exist.js", import.meta.url)),
+};
+
+type ActivitiesProvider = typeof echoing | ReturnType<typeof contractSeamOf>["activities"];
+
+/** What a spec may vary: the activities, the starter's pins, the environment, the kernel's drain budget. */
+type BootOptions = {
+  readonly activities?: ActivitiesProvider;
+  readonly address?: string;
+  readonly namespace?: string;
+  readonly env?: Environment;
+  readonly workflows?: WorkflowSource;
+  readonly drainTimeoutMs?: number;
+  readonly tap?: ReturnType<typeof configuredOf>["tap"];
+};
 
 export type TemporalFixtures = {
-  readonly serve: (
-    build?: ActivityBuilder,
-    options?: ServeOptions,
-  ) => Promise<{
+  readonly env: TestWorkflowEnvironment;
+  readonly serve: (options?: BootOptions) => Promise<{
     readonly app: App;
     readonly client: Client;
     readonly taskQueue: string;
   }>;
-  readonly serveBroken: (build?: ActivityBuilder) => Promise<App>;
+  readonly serveBroken: (options?: BootOptions) => Promise<App>;
   readonly contractSeam: ReturnType<typeof contractSeamOf>;
   readonly gate: ReturnType<typeof gateOf>;
+  readonly configured: ReturnType<typeof configuredOf>;
+};
+
+/**
+ * One booted application: the starter composed the way a composition root
+ * composes it — `TemporalModule(name)({ contract, activities, workflows })`
+ * over the application's providers — and started with the environment's
+ * address in `env`, so every test opens and closes a connection of its own
+ * rather than sharing the environment's.
+ */
+const boot = (env: TestWorkflowEnvironment, options: BootOptions) => {
+  const taskQueue = nextTaskQueue();
+  const worker = TemporalModule("Worker")({
+    contract: { ...echoContract, taskQueue },
+    activities: options.activities ?? echoing,
+    workflows: options.workflows ?? echoWorkflows,
+    ...(options.address === undefined ? {} : { address: options.address }),
+    ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
+    provides: [
+      Provider(Greeting)({ value: { text: "hello" } }),
+      ...(options.tap === undefined ? [] : [options.tap]),
+    ],
+  });
+  const app: App = start(worker, {
+    env: options.env ?? { TEMPORAL_ADDRESS: env.address },
+    signals: false,
+    probes: false,
+    preDrainDelayMs: 0,
+    onEvent: () => {},
+    ...(options.drainTimeoutMs === undefined ? {} : { drainTimeoutMs: options.drainTimeoutMs }),
+  });
+  return { app, taskQueue };
 };
 
 export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  serve: async ({}, use) => {
+  env: async ({}, use) => {
     const env = await TestWorkflowEnvironment.createTimeSkipping({
       server: {
         executable: { type: "cached-download", downloadDir, ttl: "365d" },
       },
     });
+    // Torn down after `serve`/`serveBroken` stopped their apps — a fixture's
+    // cleanup runs in reverse dependency order — so the time-skipping server
+    // process cannot leak even if an app assertion throws.
+    await use(env);
+    await env.teardown();
+  },
+  serve: async ({ env }, use) => {
     const started: App[] = [];
 
-    await use(async (build, options) => {
-      const taskQueue = nextTaskQueue();
-      const app = start(AppModule, {
-        runtime: temporalRuntime({
-          connection: env.nativeConnection,
-          taskQueue,
-          workflows: {
-            workflowsPath: fileURLToPath(new URL("./test-workflows.ts", import.meta.url)),
-          },
-          activities: build ?? defaultActivities,
-          needs: [Greeting],
-        }),
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-        ...options,
-      });
+    await use(async (options = {}) => {
+      const { app, taskQueue } = boot(env, options);
       started.push(app);
       await app.runtimeInfo();
       return { app, client: env.client, taskQueue };
     });
 
-    // `env.teardown()` must run even if an app assertion below throws —
-    // otherwise the time-skipping server process leaks (see git history for
-    // the carried finding this fixes).
-    try {
-      for (const app of started) {
-        app.stop();
-        await expect(app.exited).toBeOk();
-      }
-    } finally {
-      await env.teardown();
+    for (const app of started) {
+      app.stop();
+      await expect(app.exited).toBeOk();
     }
   },
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  serveBroken: async ({}, use) => {
-    const env = await TestWorkflowEnvironment.createTimeSkipping({
-      server: {
-        executable: { type: "cached-download", downloadDir, ttl: "365d" },
-      },
-    });
+  serveBroken: async ({ env }, use) => {
     const started: App[] = [];
 
-    // A builder that throws is served against a workflow module that exists, so
-    // the failure under test is the only one available.
-    await use((build) => {
-      const app = start(AppModule, {
-        runtime: temporalRuntime({
-          connection: env.nativeConnection,
-          taskQueue: nextTaskQueue(),
-          workflows: {
-            workflowsPath: fileURLToPath(
-              new URL(
-                build === undefined ? "./does-not-exist.js" : "./test-workflows.ts",
-                import.meta.url,
-              ),
-            ),
-          },
-          activities: build ?? defaultActivities,
-          needs: [Greeting],
-        }),
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
+    // A failure under test is served against a workflow module that exists, so
+    // it is the only failure available; with nothing under test the module is
+    // the failure.
+    await use((options = {}) => {
+      const { app } = boot(env, {
+        workflows:
+          options.activities === undefined && options.env === undefined
+            ? missingWorkflows
+            : echoWorkflows,
+        ...options,
       });
       started.push(app);
       return Promise.resolve(app);
     });
 
-    // Same fix as `serve`: `env.teardown()` must run regardless of whether
-    // the assertion below throws.
-    try {
-      for (const app of started) {
-        app.stop();
-        await expect(app.exited).toBeErr();
-      }
-    } finally {
-      await env.teardown();
+    for (const app of started) {
+      app.stop();
+      await expect(app.exited).toBeErr();
     }
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
@@ -267,5 +281,9 @@ export const it = test.extend<TemporalFixtures>({
     // Released on every exit path, so an activity a test deliberately stranded
     // cannot outlive the test that stranded it.
     gate.release();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  configured: async ({}, use) => {
+    await use(configuredOf());
   },
 });

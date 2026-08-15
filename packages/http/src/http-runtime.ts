@@ -2,58 +2,126 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 
+import { Config, type ConfigInvalid, type Env } from "@btravstack/config";
 import {
+  RuntimePort,
   RuntimeStartFailed,
   type Runtime,
   type RuntimeHost,
   type Serving,
   type UnitMeta,
 } from "@btravstack/core";
-import type { AnyPort, Context } from "@btravstack/di";
+import { Module, Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
+
+import { HttpHandler } from "./handler.js";
+import { orpc, type RouterPort } from "./orpc.js";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */
 export type HttpInfo = { readonly port: number };
 
 /**
- * One request. Everything the client receives must be written from here — the
- * unit stays open until the response completes, so there is no way to be late.
- *
- * Returns `PromiseLike<unknown>` rather than `void`: the package needs to know
- * when the handler is finished so it can answer a request the handler declined,
- * and a `void`-returning handler writing asynchronously would draw a premature
- * `404` over a response still in flight. `unknown` because oRPC's `handle`
- * resolves `{ matched: boolean }`; the value is never the unit's result.
+ * What the socket is bound with, as a service: `http()` binds it from the
+ * environment — `PORT` (default `3000`; `0` lets the OS pick, read it back
+ * from `RunningApp.runtimeInfo()`) and `HOST` (default `0.0.0.0`: the
+ * deployment target is a pod, not a laptop) — and anything else in the graph
+ * may read it.
  */
-export type HttpHandler<Needs extends AnyPort> = (
-  request: IncomingMessage,
-  response: ServerResponse,
-  ctx: Context<InstanceType<Needs>>,
-  signal: AbortSignal,
-) => PromiseLike<unknown>;
-
-export type HttpOptions<Needs extends AnyPort> = {
-  /** `0` lets the OS pick — read it back from `RunningApp.runtimeInfo()`. */
+export class HttpConfig extends Port("HttpConfig")<{
   readonly port: number;
-  /** Default `0.0.0.0`: the deployment target is a pod, not a laptop. */
+  readonly hostname: string;
+}> {}
+
+/**
+ * `http()`'s options: the router port (required — the application's oRPC
+ * router as a service, a provider that declares the use cases its procedures
+ * call), where to mount it, and what a caller pins instead of reading from the
+ * environment — a test's `{ port: 0 }`.
+ */
+export type HttpOptions<R extends AnyPort> = {
+  /** Intersected with `RouterPort<R>` so a port whose service is not a context-free oRPC router fails here, at the call. */
+  readonly router: R & RouterPort<R>;
+  /** Where the RPC endpoint is mounted. Default `/rpc`. */
+  readonly prefix?: `/${string}`;
+  readonly port?: number;
   readonly hostname?: string;
-  readonly needs: readonly Needs[];
-  readonly handler: HttpHandler<Needs>;
 };
 
-const DEFAULT_HOSTNAME = "0.0.0.0";
+/** The runtime's port: what `http()` provides, and what the module `start` boots must export. */
+export class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}
 
-export const httpRuntime = <Needs extends AnyPort>(
-  options: HttpOptions<Needs>,
-): Runtime<Needs, HttpInfo> => ({
+const httpRuntime = (
+  config: ServiceOf<HttpConfig>,
+  handler: ServiceOf<HttpHandler>,
+): Runtime<never, HttpInfo> => ({
   name: "http",
-  needs: options.needs,
-  start: (host: RuntimeHost<Needs>) => listen(host, options),
+  needs: [],
+  start: (host) => listen(host, config, handler),
 });
 
-const listen = <Needs extends AnyPort>(
-  host: RuntimeHost<Needs>,
-  options: HttpOptions<Needs>,
+/**
+ * The runtime and its configuration as a module, over whichever `HttpHandler`
+ * provider it is handed: `http()` hands it the oRPC one; the package's own
+ * transport specs hand it a bare listener. INTERNAL for that second reason
+ * only.
+ *
+ * With every field pinned the module reads nothing from the environment; the
+ * declared `Env` need and `ConfigInvalid` stay (the kernel discharges the
+ * one, a pinned config never produces the other) — one signature, no
+ * overload pair to keep in step.
+ */
+export const httpModule = <N>(
+  options: { readonly port?: number; readonly hostname?: string },
+  handler: Provider<HttpHandler, never, N>,
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N> => {
+  const { port, hostname } = options;
+  const config =
+    port !== undefined && hostname !== undefined
+      ? Provider(HttpConfig)({ value: { port, hostname } })
+      : Config.provider(HttpConfig)(
+          Config.object({
+            port: Config.pinned(port, Config.port("PORT", { default: 3000 })),
+            hostname: Config.pinned(hostname, Config.string("HOST", { default: "0.0.0.0" })),
+          }),
+        );
+  return Module("Http")({
+    provides: [
+      config,
+      handler,
+      Provider(HttpRuntime)([HttpConfig, HttpHandler], { sync: (c, h) => httpRuntime(c, h) }),
+    ],
+    exports: [HttpRuntime, HttpConfig],
+  }) as unknown as Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
+};
+
+/**
+ * The HTTP starter, and the one way HTTP is answered here: oRPC. A
+ * module providing the runtime (`HttpRuntime`), its configuration
+ * (`HttpConfig`, bound from `PORT`/`HOST` unless pinned) and the HTTP surface
+ * built from the application's **router port** — the router is a provider
+ * that declares the use cases its procedures call, `http({ router })` mounts
+ * it under `prefix` and puts the listener on the socket. Import it next to
+ * the application, export `HttpRuntime`, and that is the whole of the
+ * transport wiring: no handler, no `needs`, no context handed to a procedure.
+ *
+ * Pin `port`/`hostname` and the module reads nothing from the environment
+ * (the declared `Env` need and `ConfigInvalid` stay — the kernel discharges
+ * the one, a pinned config never produces the other); pin only some and the
+ * rest still comes from the environment. A port whose service is not an oRPC
+ * router `RPCHandler` can serve with no initial context fails to typecheck at
+ * the call.
+ */
+export const http = <R extends AnyPort>(
+  options: HttpOptions<R>,
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<R>> => {
+  const { router, prefix, ...socket } = options;
+  return httpModule(socket, orpc(router, prefix === undefined ? {} : { prefix }));
+};
+
+const listen = (
+  host: RuntimeHost<never>,
+  options: ServiceOf<HttpConfig>,
+  handler: ServiceOf<HttpHandler>,
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   fromSafePromise(
     new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
@@ -93,8 +161,8 @@ const listen = <Needs extends AnyPort>(
         // statically `never` at this call site, so a `match`'s `errCases` arm
         // would be an always-dead branch with no case to name.
         void host
-          .run(metaFor(request), (ctx, signal) => {
-            void answer(options.handler(request, response, ctx, signal), response);
+          .run(metaFor(request), (_ctx, signal) => {
+            void answer(handler(request, response, signal), response);
             // The unit's lifetime IS the response's. This is what makes the
             // kernel's "flush inside the unit" contract structural rather than
             // documented: there is no way to write late, because the unit is
@@ -102,12 +170,17 @@ const listen = <Needs extends AnyPort>(
             return closedOf(response);
           })
           .recoverDefect((cause) => {
-            // `destroy` is the last courtesy left when the response machinery
-            // itself failed: a client that would otherwise hang gets a reset.
-            // Guarded so this callback cannot throw — `recoverDefect` would wrap
-            // a throw here into a FRESH defect, and the `void` below would drop it.
+            // The unit failed outside `answer`'s reach — the handler threw
+            // synchronously, or a `StartOptions.unit` provider failed to build —
+            // so this is where the `500` is written; `destroy` is the last
+            // courtesy left once headers are already on the wire, so a client
+            // that would otherwise hang gets a reset. Guarded so this callback
+            // cannot throw — `recoverDefect` would wrap a throw here into a
+            // FRESH defect, and the `void` below would drop it.
             try {
-              response.destroy(cause instanceof Error ? cause : undefined);
+              end(response, 500, "InternalError");
+              if (!response.writableEnded)
+                response.destroy(cause instanceof Error ? cause : undefined);
             } catch {
               // nothing left to try; the socket is already unusable
             }
@@ -155,7 +228,7 @@ const listen = <Needs extends AnyPort>(
       // rejects the promise, and reaches the caller as a Defect, bypassing the
       // `AsyncResult<Serving, RuntimeStartFailed>` this function declares.
       try {
-        server.listen(options.port, options.hostname ?? DEFAULT_HOSTNAME, () => {
+        server.listen(options.port, options.hostname, () => {
           server.removeListener("error", onBindError);
           server.on("error", ignoreServingError);
 
@@ -186,8 +259,15 @@ const listen = <Needs extends AnyPort>(
     }),
   ).flatMap((result) => result);
 
+// `closed` is checked first because the unit's work is not always synchronous
+// with the request: under a `StartOptions.unit` module it runs once the fork is
+// built, and a client that hung up in the meantime has already emitted
+// `'close'` — subscribing then would hold the unit open for the process
+// lifetime.
 const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
-  fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
+  response.closed
+    ? OkAsync()
+    : fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
 
 /**
  * `UnitMeta.traceId` defaults to `id`, so `id` is minted fresh per request and

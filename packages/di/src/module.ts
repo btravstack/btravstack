@@ -24,9 +24,9 @@ import { createScope } from "./scope.js";
  * in this repo, and because a bound that compares channels it does not read is
  * a variance bug waiting for the next rule change.
  */
-type AnyProvider = { readonly port: AnyPort; readonly deps: readonly AnyPort[] };
+export type AnyProvider = { readonly port: AnyPort; readonly deps: readonly AnyPort[] };
 
-type AnyModule = {
+export type AnyModule = {
   readonly name: string;
   readonly imports: readonly AnyModule[];
   readonly provides: readonly AnyProvider[];
@@ -136,7 +136,7 @@ type Available<I extends readonly AnyModule[], P extends readonly AnyProvider[]>
  * against the intersection individually when the `exports` literal is
  * checked against `readonly Exportable<I, P>[]`.
  */
-type Exportable<I extends readonly AnyModule[], P extends readonly AnyProvider[]> =
+export type Exportable<I extends readonly AnyModule[], P extends readonly AnyProvider[]> =
   | (AnyPort & (new () => Available<I, P>))
   | I[number];
 

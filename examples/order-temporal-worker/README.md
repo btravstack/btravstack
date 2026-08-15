@@ -13,13 +13,47 @@ starts these workflows needs it and needs none of this.
 
 ```
 src/workflows.ts        fulfillOrder — the saga, in Temporal's deterministic sandbox
-src/temporal-runtime.ts the runtime: five activities and their triage into contract errors
+src/activities.ts       orderActivities — the five activities and their triage into contract
+                        errors, as a service: port and provider minted by TemporalActivities,
+                        closing over the use case and the services it declares
 src/fulfillment.ts      FulfillmentModule — the two external services, as stand-ins
-src/module.ts           OrderTemporalModule — the composition root
-src/env.ts              process.env validated through a schema, as a Result
-src/main.ts             the process: readEnv + connect + start + runMain
+src/module.ts           OrderTemporalWorker — the composition root, TemporalModule sugar
+src/main.ts             the process: runMain(OrderTemporalWorker)
 src/test-fixtures.ts    serve / fulfilling / outOfStock / noShipping, against the time-skipping env
 ```
+
+## Everything is a provider
+
+`start` takes no runtime option: it resolves the worker from `TemporalRuntime`,
+the port `@btravstack/temporal`'s `temporal()` starter provides and the
+composition root exports. The root is written with the package's sugar —
+`TemporalModule("OrderTemporalWorker")({ contract: orderContract, activities:
+orderActivities, workflows, imports: [ApplicationModule, PersistenceModule,
+FulfillmentModule] })` — which is `Module(...)` with the starter imported, the
+activities provided and `TemporalRuntime` exported, and inside the starter the
+transport is wired like any other service: `TemporalConfig` is bound from the environment, and
+`TemporalConnection` is a **resourceful** provider — di opens the
+`NativeConnection` with the scope and closes it on every exit path, startup
+failure included. A service that will not answer is the starter's modeled
+`TemporalUnreachable` (exit `1`), not a defect: an operator can act on it.
+
+The application's half is `orderActivities`:
+`TemporalActivities(orderContract)("OrderActivities")([PlaceOrder,
+OrderRepository, StockService, ShippingService], { sync })` — the port (its
+service the activities record `declareActivitiesHandler` takes for
+`orderContract`) and its provider in one call, the port reachable as
+`orderActivities.port` and declared by no class. There is
+no `needs` list and no context to read from: an activity is a closure over the
+services its provider declared, and di verifies the root supplies them. The
+starter depends on that port through di, and the sugar provides it; a root
+that leaves `FulfillmentModule` out still owes the two services the provider
+declared, and is rejected by `start` for it (`src/needs-gate.test-d.ts` pins
+that, and a root with no runtime). The composition root, `OrderTemporalWorker`,
+is therefore a constant exporting exactly one port — the runtime's — and the
+two arguments the starter reads as static facts are the contract and the
+workflow source:
+`main.ts` hands `orderContract` and the workflow module's path, a spec a
+per-test queue and a prebuilt bundle.
 
 ## The saga
 
@@ -66,11 +100,20 @@ saga used and finds the placement gone.
 
 ## The environment
 
+Read inside the graph — the starter's `TemporalConfig` for the first two, the
+kernel for `PROBE_PORT` — never by `main.ts`. A blank or malformed value is a
+`ConfigInvalid` the kernel reports as a `startFailed` event and exit `78`.
+
 | Variable             | Default          | What it is           |
 | -------------------- | ---------------- | -------------------- |
 | `TEMPORAL_ADDRESS`   | `127.0.0.1:7233` | the Temporal service |
 | `TEMPORAL_NAMESPACE` | `default`        | must not be blank    |
 | `PROBE_PORT`         | `9000`           | `/livez` / `/readyz` |
+
+The specs boot the same `TemporalModule` sugar with `env: { TEMPORAL_ADDRESS }`
+pointing at the time-skipping server, so every test opens and closes a
+connection of its own — the environment's shared `nativeConnection` is never
+handed to a scope that would close it.
 
 ## Running the specs
 
@@ -81,7 +124,7 @@ saga fulfills, both refusals compensate, and the duplicate-order answer
 arrives at the client as a typed contract error it can branch on by name.
 
 ```bash
-pnpm --filter @btravstack/example-order-temporal-worker test        # the saga + env specs
+pnpm --filter @btravstack/example-order-temporal-worker test        # the saga specs
 pnpm --filter @btravstack/example-order-temporal-worker typecheck   # the needs gate
 ```
 

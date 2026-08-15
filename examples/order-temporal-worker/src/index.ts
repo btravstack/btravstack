@@ -1,2 +1,2 @@
-export { OrderTemporalModule } from "./module.js";
-export { temporalWorkerRuntime } from "./temporal-runtime.js";
+export { orderActivities } from "./activities.js";
+export { OrderTemporalWorker } from "./module.js";

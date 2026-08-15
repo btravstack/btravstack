@@ -4,12 +4,12 @@ import { Logger } from "@btravstack/example-order-application";
 /**
  * A service that exists for the length of one request and is torn down with it.
  *
- * It is the reason the runtime forks a scope per request instead of handing the
- * application context straight to the router: the application scope is opened
- * once, by the kernel, and holds the database — reopening it per request would
- * give every request its own empty in-memory database. `Module.forkScope` layers
- * a short-lived scope over the one already built, so a request-scoped provider
- * can read what the parent constructed (`Logger`, here) without rebuilding it.
+ * The application scope is opened once, by the kernel, and holds the database —
+ * reopening it per request would give every request its own empty in-memory
+ * database. Passing this module as `StartOptions.unit` (see `main.ts`) makes
+ * the kernel fork a short-lived scope over the one already built, per request:
+ * a request-scoped provider reads what the parent constructed (`Logger`, here)
+ * without rebuilding it, and no handler code manages the fork.
  */
 export class RequestSpan extends Port("RequestSpan")<{ readonly finish: () => void }> {}
 

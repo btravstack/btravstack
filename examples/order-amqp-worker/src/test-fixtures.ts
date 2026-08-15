@@ -1,27 +1,31 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import type { AmqpInfo } from "@btravstack/amqp";
+import { AmqpRuntime, type AmqpInfo } from "@btravstack/amqp";
+import type { Env } from "@btravstack/config";
 import { start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { Logger, OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { expect, type TestAPI } from "vitest";
 
-import { orderAmqpRuntime } from "./amqp-runtime.js";
-import { OrderAmqpModule } from "./module.js";
+import { OrderAmqpWorker } from "./module.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
 /**
- * `X` is pinned to the three ports the composition root exports rather than
- * left generic: `start`'s needs gate is a phantom rest parameter proven at the
- * call site, and no proof is available inside a helper generic in the module's
- * own exports. The runtime needs two of them; `PlaceOrder` is the writer's.
+ * `X` is pinned to the ports the composition root exports rather than left
+ * generic: `start`'s gate is a phantom rest parameter proven at the call site,
+ * and no proof is available inside a helper generic in the module's own
+ * exports. `AmqpRuntime` is what `start` resolves; the rest is the writer's
+ * surface, which the tap below reads.
  */
-type AmqpPorts = PlaceOrder | OrderRepository | Outbox | Logger;
+type AmqpPorts = AmqpRuntime | PlaceOrder | OrderRepository | Outbox | Logger;
 
 type ServeOptions = { readonly drainTimeoutMs: number };
 
-type Serve = <E>(module: Module<AmqpPorts, E, Scope>, options?: ServeOptions) => Promise<App<E>>;
+type Serve = <E>(
+  module: Module<AmqpPorts, E, Scope | Env>,
+  options?: ServeOptions,
+) => Promise<App<E>>;
 
 /**
  * `start` hands the application context to the runtime alone, so a spec cannot
@@ -43,7 +47,7 @@ const tappedAmqp = () => {
 
   return {
     module: Module("TappedAmqp")({
-      imports: [OrderAmqpModule],
+      imports: [OrderAmqpWorker],
       provides: [
         Provider(ServicesTap)([PlaceOrder, OrderRepository, Outbox, Logger], {
           sync: (placeOrder, repository, outbox, logger) => {
@@ -52,7 +56,7 @@ const tappedAmqp = () => {
           },
         }),
       ],
-      exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+      exports: [AmqpRuntime, PlaceOrder, OrderRepository, Outbox, Logger],
     }),
     services: (): ServiceOf<ServicesTap> => {
       // oxlint-disable-next-line unthrown/no-throw -- a fixture misused before `serve` is a broken test, and the loudest possible answer is the right one
@@ -64,12 +68,16 @@ const tappedAmqp = () => {
 
 export type AmqpFixtures = {
   /**
-   * Boots an app whose relay publishes to — and whose consumer reads from —
-   * this test's own vhost, and registers its shutdown. The teardown runs even
-   * when the test fails, and it keeps the assertion the old `try`/`finally`
-   * blocks carried: the app exited `Ok`.
+   * Boots an app and registers its shutdown. The teardown runs even when the
+   * test fails, and it keeps the assertion the old `try`/`finally` blocks
+   * carried: the app exited `Ok`.
    */
   readonly serve: Serve;
+  /**
+   * The composition root, plus a tap on the very service instances it runs.
+   * `serve` points it at this test's own vhost — its relay publishes to, and
+   * its consumer reads from, a broker no other test shares.
+   */
   readonly tapped: ReturnType<typeof tappedAmqp>;
 };
 
@@ -79,15 +87,13 @@ export type AmqpFixtures = {
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
   serve: async ({ amqpConnectionUrl }, use) => {
     const shutdowns: (() => Promise<void>)[] = [];
+    // `OUTBOX_POLL_MS` tight on purpose: the specs wait on real broker round
+    // trips, and a production-sized idle sleep would be most of every test's clock.
+    const env = { AMQP_URL: amqpConnectionUrl, OUTBOX_POLL_MS: "25" };
 
     const serve: Serve = async (module, options) => {
       const app = start(module, {
-        runtime: orderAmqpRuntime({
-          urls: [amqpConnectionUrl],
-          // Tight on purpose: the specs wait on real broker round trips, and
-          // a production-sized idle sleep would be most of every test's clock.
-          relay: { pollMs: 25 },
-        }),
+        env,
         signals: false,
         probes: false,
         preDrainDelayMs: 0,

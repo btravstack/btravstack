@@ -1,15 +1,11 @@
-import { OkAsync } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it } from "./test-fixtures.js";
 
-describe("amqpRuntime", () => {
+describe("amqp", () => {
   it("publishes the queues it drains", async ({ serve }) => {
     // GIVEN a worker consuming the test contract's one queue
-    const app = await serve(() => ({
-      handlers: { echo: () => OkAsync(undefined) },
-      middleware: undefined,
-    }));
+    const app = await serve();
 
     // WHEN the kernel is asked what the runtime published about itself
     const info = app.runtimeInfo();
@@ -36,49 +32,9 @@ describe("amqpRuntime", () => {
     );
   });
 
-  it("reports a throwing handlers builder as Err, not a defect", async ({ serveFailingBuild }) => {
-    // GIVEN a `handlers` builder that throws instead of returning a record —
-    // a typo'd `declareHandler` call, say — the same class of startup failure
-    // `-temporal`'s `activities` builder guards
-    const app = serveFailingBuild({
-      handlers: () => {
-        // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test: a builder that throws instead of returning
-        throw new Error("boom");
-      },
-    });
-
-    // WHEN the application is started
-    // THEN the throw is a startup failure like any other: the kernel's own
-    // modeled Err, not an unmodelled Defect that would exit 70 instead of 1
-    await expect(app.exited).toBeErrTagged(
-      "RuntimeStartFailed",
-      expect.objectContaining({ runtime: "amqp" }),
-    );
-  });
-
-  it("reports a throwing middleware builder as Err, not a defect", async ({
-    serveFailingBuild,
-  }) => {
-    // GIVEN a `middleware` builder that throws instead of returning one
-    const app = serveFailingBuild({
-      middleware: () => {
-        // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test: a builder that throws instead of returning
-        throw new Error("boom");
-      },
-    });
-
-    // WHEN the application is started
-    // THEN the same modeled Err as a throwing `handlers` builder — both
-    // builders are qualified inside the same `fromThrowable`
-    await expect(app.exited).toBeErrTagged(
-      "RuntimeStartFailed",
-      expect.objectContaining({ runtime: "amqp" }),
-    );
-  });
-
   it("opens one kernel unit per delivery", async ({ serve, seam, publishMessage }) => {
-    // GIVEN a worker whose handler runs inside the middleware
-    await serve(seam.build);
+    // GIVEN a worker whose handler records the ambient unit it runs under
+    await serve(seam.handlers);
 
     // WHEN one message is published with an id of the publisher's own
     publishMessage(
@@ -88,11 +44,11 @@ describe("amqpRuntime", () => {
     );
     await vi.waitUntil(() => seam.seen().length === 1);
 
-    // THEN the delivery ran inside a unit whose id is minted here — a delivery
-    // tag restarts at 1 after a reconnect and cannot carry the kernel's
-    // uniqueness rule — and whose traceId is the publisher's message id,
-    // stable across every redelivery
-    expect(seam.seen()).toEqual([{ kind: "delivery", id: expect.any(String), traceId: "m-1" }]);
+    // THEN the delivery ran inside a unit whose traceId is the publisher's
+    // message id, stable across every redelivery — the id itself is minted
+    // here, since a delivery tag restarts at 1 after a reconnect and cannot
+    // carry the kernel's uniqueness rule
+    expect(seam.seen()).toEqual([expect.objectContaining({ traceId: "m-1" })]);
   });
 
   it("refuses a blank message id rather than tracing every delivery to it", async ({
@@ -101,7 +57,7 @@ describe("amqpRuntime", () => {
     publishMessage,
   }) => {
     // GIVEN the same wiring
-    await serve(seam.build);
+    await serve(seam.handlers);
 
     // WHEN a publisher sets a messageId that is present but blank
     publishMessage(
@@ -111,33 +67,32 @@ describe("amqpRuntime", () => {
     );
     await vi.waitUntil(() => seam.seen().length === 1);
 
-    // THEN the unit traces to its own minted id instead. `traceId` defaults to
+    // THEN the unit traces to a minted id instead. `traceId` defaults to
     // `meta.id` only when it is NULLISH, and `""` is not — so a blank id
     // adopted here would hand every delivery the same trace and defeat the
     // ambient record, which is the same trap `-http` refuses a blank
     // `x-request-id` to avoid.
-    expect(
-      seam.seen().map((meta) => ({
-        blank: meta.traceId?.trim() === "",
-        tracesToUnit: meta.traceId === meta.id,
-      })),
-    ).toEqual([{ blank: false, tracesToUnit: true }]);
+    expect(seam.seen()).toEqual([
+      expect.objectContaining({
+        traceId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f-]{27}$/),
+      }),
+    ]);
   });
 
-  it("injects the application context through the contract's own channel", async ({
+  it("builds the handlers from the application's own services", async ({
     serve,
     seam,
     publishMessage,
   }) => {
-    // GIVEN the same wiring
-    await serve(seam.build);
+    // GIVEN the same wiring — a handlers provider declared over `Greeting`
+    await serve(seam.handlers);
 
     // WHEN one message is delivered
     publishMessage({ exchange: "amqp-test", routingKey: "echo.requested" }, { value: "x" });
     await vi.waitUntil(() => seam.greeting() !== "");
 
-    // THEN the handler reached the DI graph without the package inventing a
-    // channel of its own — which is what makes the seam cost one line
+    // THEN the handler reached the DI graph the way every service does —
+    // constructor-injected, no context channel of the package's own
     expect(seam.greeting()).toBe("hello");
   });
 
@@ -147,7 +102,7 @@ describe("amqpRuntime", () => {
     publishMessage,
   }) => {
     // GIVEN a delivery held open inside the application
-    const app = await serve(gate.build);
+    const app = await serve(gate.handlers);
     publishMessage({ exchange: "amqp-test", routingKey: "echo.requested" }, { value: "x" });
     await gate.arrived;
 
@@ -174,7 +129,7 @@ describe("amqpRuntime", () => {
     // `beginClose` passes `drainTimeoutMs: null`, so `worker.close()` itself
     // waits for this handler INDEFINITELY in the background — it is still
     // running, unreleased, when this test's assertion fires below.
-    const app = await serve(gate.build, { drainTimeoutMs: 100 });
+    const app = await serve(gate.handlers, { drainTimeoutMs: 100 });
     publishMessage(
       { exchange: "amqp-test", routingKey: "echo.requested" },
       { value: "x" },

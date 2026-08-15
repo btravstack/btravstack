@@ -1,4 +1,4 @@
-import type { AnyPort, Context } from "@btravstack/di";
+import { Port, type AnyPort, type Context, type PortClass, type ServiceOf } from "@btravstack/di";
 import { TaggedError, type AsyncResult } from "unthrown";
 
 import type { UnitMeta, UnitWork } from "./units.js";
@@ -29,6 +29,11 @@ export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
  *
  * `UnitMeta.id` must be unique per unit unless a `traceId` is supplied — see
  * {@link UnitMeta}.
+ *
+ * With a `StartOptions.unit` module in play, `work` runs only once the fork is
+ * built — after an `await` when a unit provider is async — not synchronously
+ * inside `host.run`. A runtime that subscribes to an event from inside `work`
+ * (a response's `'close'`) must first check whether it has already fired.
  */
 // `Context<InstanceType<Needs>>`, not `Context<Needs>`: di parameterises
 // `Context<in R>` by port *instance* types, while a runtime declares its needs
@@ -49,6 +54,12 @@ export type RunUnit<Needs extends AnyPort> = <T, E>(
  * checkable by the kernel: a unit's response must be flushed **inside** the
  * work callback (see {@link RunUnit}), and `UnitMeta.id` must be unique per
  * unit unless a `traceId` is supplied (see {@link UnitMeta}).
+ *
+ * `ctx` is the **application** context, and `start`'s gate checks a
+ * runtime's `needs` against the application module's exports only — a port a
+ * `StartOptions.unit` module provides exists only while a unit is open, and a
+ * runtime naming it as a need is rejected at the call site rather than left
+ * to `ctx.get(...)` throwing at startup.
  */
 export type RuntimeHost<Needs extends AnyPort> = {
   readonly ctx: Context<InstanceType<Needs>>;
@@ -76,8 +87,35 @@ export type Serving<Info = never> = {
   readonly info?: Info;
 };
 
-export type Runtime<Needs extends AnyPort, Info = never> = {
+export type Runtime<Needs extends AnyPort = never, Info = never> = {
   readonly name: string;
   readonly needs: readonly Needs[];
   readonly start: (host: RuntimeHost<Needs>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
 };
+
+/**
+ * The port the kernel resolves its runtime from. A runtime is a **service the
+ * module provides**, not an option handed to `start`: a runtime package
+ * declares its own port over this one — `class HttpRuntime extends
+ * RuntimePort<Runtime<never, HttpInfo>> {}` — and ships a module
+ * providing it, so the runtime is built by di like everything else and reads
+ * its collaborators the same way. The kernel then owns nothing but the graph's
+ * lifecycle: it builds the module, resolves this port, and drives what it
+ * finds through `start` → `serving` → `drain` → `stop`.
+ *
+ * Left generic on purpose (`Port("Runtime")` without a fixed service): every
+ * runtime port is one id at runtime — a process boots exactly one — while each
+ * carries its own `Needs`/`Info` in the type, which is what `start`'s gate and
+ * `RunningApp.runtimeInfo()` read back out of the module's exports.
+ */
+export const RuntimePort = Port("Runtime");
+
+/** The instance type every runtime port shares — `Extract` this from a module's exports to find its runtime. */
+export type RuntimeInstance = InstanceType<PortClass<"Runtime">>;
+
+/** The `Runtime<Needs, Info>` a module exports, or `never` when it exports none. */
+export type RuntimeOf<X> = ServiceOf<Extract<X, RuntimeInstance>>;
+
+export type RuntimeNeedsOf<X> = RuntimeOf<X> extends Runtime<infer Needs, unknown> ? Needs : never;
+
+export type RuntimeInfoOf<X> = RuntimeOf<X> extends Runtime<AnyPort, infer Info> ? Info : never;

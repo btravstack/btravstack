@@ -246,25 +246,34 @@ const descriptor = (
  * ordinary `Provider(port)` call site keeps the default.
  */
 function ProviderDeclaration<P extends AnyPort, S = ServiceOf<P>>(port: P) {
+  // `& { readonly port: P }`: the provider carries the very port class it was
+  // declared for, typed — so a provider minted by a helper that also minted
+  // its port (a starter's `HttpRouter(name)(deps, arm)`,
+  // `Config.provider(name)(schema)`) is the one value an application needs to
+  // hold: `provider.port`
+  // is what another provider lists in its deps or a starter reads the port
+  // off. Purely additive — the intersection is still a `Provider<P, E, N>`.
   function build<const D extends readonly AnyPort[], O extends Qualification<ServicesOf<D>, S>>(
     deps: D,
     options: O,
-  ): Provider<InstanceType<P>, ErrorOf<O>, NeedsOf<D> | ScopeOf<O>>;
+  ): Provider<InstanceType<P>, ErrorOf<O>, NeedsOf<D> | ScopeOf<O>> & { readonly port: P };
   function build<O extends Qualification<readonly [], S>>(
     options: O,
-  ): Provider<InstanceType<P>, ErrorOf<O>, ScopeOf<O>>;
+  ): Provider<InstanceType<P>, ErrorOf<O>, ScopeOf<O>> & { readonly port: P };
   function build(
     depsOrOptions: readonly AnyPort[] | Record<string, unknown>,
     maybeOptions?: Record<string, unknown>,
-  ): Provider<unknown, never, never> {
+  ): Provider<unknown, never, never> & { readonly port: P } {
     // `Array.isArray`'s predicate is `arg is any[]` — a *mutable* array type,
     // which a `readonly AnyPort[]` in the union is not assignable to, so the
     // false branch does not narrow away the array member on its own. The cast
     // is a true narrowing (the runtime check already ruled the array case
     // out), not a workaround for something unsound.
-    return Array.isArray(depsOrOptions)
-      ? descriptor(port, depsOrOptions, maybeOptions ?? {})
-      : descriptor(port, [], depsOrOptions as Record<string, unknown>);
+    return (
+      Array.isArray(depsOrOptions)
+        ? descriptor(port, depsOrOptions, maybeOptions ?? {})
+        : descriptor(port, [], depsOrOptions as Record<string, unknown>)
+    ) as Provider<unknown, never, never> & { readonly port: P };
   }
   return build;
 }

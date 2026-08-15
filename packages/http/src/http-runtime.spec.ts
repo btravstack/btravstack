@@ -82,6 +82,50 @@ describe("httpRuntime", () => {
     );
   });
 
+  it("binds PORT and HOST from the environment when nothing is pinned", async ({ configured }) => {
+    // GIVEN a starter left to configure itself, and an environment naming the socket
+    const { app, config } = configured({ PORT: "0", HOST: "127.0.0.1" });
+
+    // WHEN the graph has been built and the runtime is serving
+    const info = (await app.runtimeInfo()).get();
+
+    // THEN the config was bound from the environment, parsed, and the runtime
+    // published the ephemeral port the OS picked for it
+    expect({ config: config(), listening: (info?.port ?? 0) > 0 }).toEqual({
+      config: { port: 0, hostname: "127.0.0.1" },
+      listening: true,
+    });
+  });
+
+  it("pins what it is given and reads the rest from the environment", async ({ configured }) => {
+    // GIVEN a starter with the port pinned, and a HOST in the environment
+    const { app, config } = configured({ PORT: "9", HOST: "127.0.0.1" }, { port: 0 });
+
+    // WHEN the graph has been built
+    await app.runtimeInfo();
+
+    // THEN the pin won over the environment for the port, and the environment
+    // was still read for the host — explicit beats environment beats default,
+    // per field
+    expect(config()).toEqual({ port: 0, hostname: "127.0.0.1" });
+  });
+
+  it("fails startup with ConfigInvalid for HttpConfig when PORT is not a port", async ({
+    configured,
+  }) => {
+    // GIVEN an environment whose PORT the OS would refuse
+    const { app } = configured({ PORT: "http" });
+
+    // WHEN the application boots
+    // THEN the modeled startup Err names the starter's config port and the variable
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        port: "HttpConfig",
+        issues: [{ message: 'is not a whole number: "http"', path: ["PORT"] }],
+      }),
+    );
+  });
+
   it("answers 404 when the handler declines to respond", async ({ serve }) => {
     // GIVEN a handler that resolves without writing — oRPC's `matched: false`
     // path, which is how a router says "not mine"
@@ -106,9 +150,7 @@ describe("httpRuntime", () => {
     expect(response.status).toBe(500);
   });
 
-  it("resets the connection when the handler throws before returning a promise", async ({
-    serve,
-  }) => {
+  it("answers 500 when the handler throws before returning a promise", async ({ serve }) => {
     // GIVEN a handler that throws synchronously — not a rejected promise, so
     // there is nothing `answer`'s own try/catch can reach. The throw escapes
     // the unit's work callback itself, which the kernel folds to a Defect.
@@ -118,9 +160,60 @@ describe("httpRuntime", () => {
     });
 
     // WHEN a request arrives
-    // THEN there is nothing left to write, so the one remaining courtesy —
-    // killing the socket — is what the client observes.
-    await expect(fetch(origin)).rejects.toThrow();
+    const response = await fetch(origin);
+
+    // THEN the unit's defect path still answers it — the same path a
+    // `StartOptions.unit` construction failure takes
+    expect(response.status).toBe(500);
+  });
+
+  it("resets the connection when the handler throws with headers already on the wire", async ({
+    serve,
+  }) => {
+    // GIVEN a handler that flushes its headers and then throws synchronously —
+    // no status left to write, and a body the client is still waiting on
+    const { origin } = await serve((_request, response) => {
+      response.writeHead(200, { "content-length": "2" });
+      response.flushHeaders();
+      // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject under test
+      throw new Error("boom");
+    });
+
+    // WHEN a request arrives
+    // THEN the one courtesy left — killing the socket rather than leaving the
+    // client to hang on a body that never comes — is what it observes
+    await expect(fetch(origin).then((response) => response.text())).rejects.toThrow();
+  });
+
+  it("closes the unit when the client hung up before its work began", async ({
+    serve,
+    slowUnit,
+    boundServer,
+  }) => {
+    // GIVEN a unit module that builds only when released, and a request whose
+    // client gives up while it is building — the server has already seen the
+    // response close by the time the unit's work runs
+    const { app, origin } = await serve(undefined, slowUnit.module);
+    const hungUp = new Promise<void>((done) => {
+      boundServer().once("request", (_request, response) => response.once("close", () => done()));
+    });
+    const controller = new AbortController();
+    const abandonedByClient = fetch(origin, { signal: controller.signal }).catch(() => undefined);
+    await slowUnit.arrived;
+    controller.abort();
+    await hungUp;
+
+    // WHEN the unit is released and its work runs to completion
+    slowUnit.release();
+    await abandonedByClient;
+    await new Promise<void>((tick) => setImmediate(tick));
+
+    // THEN a drain finds nothing in flight: the unit closed on the response that
+    // was already closed, rather than waiting for a `'close'` that had fired
+    app.requestDrain();
+    await expect(app.exited).toBeOkWith(
+      expect.objectContaining({ drain: { inFlightAtStart: 0, completed: 0, abandoned: 0 } }),
+    );
   });
 
   it("adopts a non-blank x-request-id as the trace id", async ({ serve, traced }) => {

@@ -62,6 +62,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
+    "@btravstack/config": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
@@ -73,6 +74,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@btravstack/config": "workspace:^",
     "@btravstack/di": "^0.1.0",
     "unthrown": "^5.0.0"
   },

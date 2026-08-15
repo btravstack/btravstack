@@ -1,12 +1,14 @@
 {
   "name": "@btravstack/http",
   "version": "0.0.0",
-  "description": "The HTTP runtime for @btravstack/core: one unit per request, and a drain that actually stops accepting",
+  "description": "The HTTP starter for @btravstack/core: oRPC over node:http, one unit per request, and a drain that actually stops accepting",
   "keywords": [
     "graceful-shutdown",
     "http",
     "lifecycle",
+    "orpc",
     "runtime",
+    "starter",
     "typescript",
     "unthrown"
   ],
@@ -49,10 +51,15 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@btravstack/config": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
+    "@orpc/client": "catalog:",
+    "@orpc/contract": "catalog:",
+    "@orpc/server": "catalog:",
     "@types/node": "catalog:",
+    "@unthrown/orpc": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",
@@ -61,8 +68,12 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
+    "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "^0.1.0",
+    "@orpc/contract": "^2.0.0-beta",
+    "@orpc/server": "^2.0.0-beta",
+    "@unthrown/orpc": "^0.1.0",
     "unthrown": "^5.0.0"
   },
   "engines": {

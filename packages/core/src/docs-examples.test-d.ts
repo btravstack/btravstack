@@ -7,6 +7,7 @@
 // inside its own source tree, and those two specifiers are exactly what
 // `package.json`'s `exports` map points at.
 
+import { Config, type ConfigInvalid } from "@btravstack/config";
 import { Module, Port, Provider, type AnyPort, type Context } from "@btravstack/di";
 // The matcher augmentation `src/vitest.d.ts` carries for the specs: this
 // config compiles `*.test-d.ts` alone, so the testing sample below needs it in
@@ -16,10 +17,12 @@ import { Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
 import { expect, expectTypeOf } from "vitest";
 
 import {
+  RuntimePort,
   currentUnit,
   runMain,
   start,
   type DrainReport,
+  type ExitReport,
   type RunUnit,
   type Runtime,
   type RuntimeHost,
@@ -27,7 +30,7 @@ import {
   type Serving,
   type UnitMeta,
 } from "./index.js";
-import { createFakeClock, testRuntime, withApp } from "./testing.js";
+import { TestRuntimePort, createFakeClock, testRuntime, withApp } from "./testing.js";
 
 // ---------------------------------------------------------------------------
 // "A worked example" — both READMEs.
@@ -79,7 +82,78 @@ const ticker: Runtime<typeof Greeter> = {
   },
 };
 
-await runMain(AppModule, { runtime: ticker });
+// A runtime is a service the module provides, on a port declared over
+// `RuntimePort` — `start` finds it by that port in the module's exports. The
+// composition root is what differs between an `api`, a `worker` and a
+// `consumer` process; the application module is the same in all three.
+class Ticker extends RuntimePort<Runtime<typeof Greeter>> {}
+
+const TickerApp = Module("TickerApp")({
+  imports: [AppModule],
+  provides: [Provider(Ticker)({ value: ticker })],
+  exports: [Greeter, Ticker],
+});
+
+await runMain(TickerApp);
+
+// ---------------------------------------------------------------------------
+// "Per-unit ports" — both READMEs and the root CLAUDE.md. `StartOptions.unit`
+// is forked around every unit; its needs must be covered by the module's
+// exports, or by `Scope` — which `onStop` puts in the unit module's NEEDS,
+// and which the fork discharges by opening a scope, as `Module.forkScope`
+// always does.
+// ---------------------------------------------------------------------------
+
+class TickSpan extends Port("TickSpan")<{ readonly finish: () => void }> {}
+
+const TickModule = Module("Tick")({
+  provides: [
+    Provider(TickSpan)([Greeter], {
+      sync: (greeter) => ({
+        finish: () => process.stderr.write(`${greeter.greet("span")}\n`),
+      }),
+      onStop: (span) => span.finish(),
+    }),
+  ],
+  exports: [TickSpan],
+});
+
+await runMain(TickerApp, { unit: TickModule });
+
+// ---------------------------------------------------------------------------
+// "Configuration" — both READMEs. A port bound from the environment inside
+// the graph: the module's own error channel carries `ConfigInvalid`, still
+// typed, and its `Env` need is the one the kernel discharges.
+// ---------------------------------------------------------------------------
+
+class Settings extends Port("Settings")<{
+  readonly port: number;
+}> {}
+
+const SettingsModule = Module("Settings")({
+  provides: [
+    Config.provider(Settings)(
+      Config.object({
+        port: Config.port("PORT", { default: 3000 }),
+      }),
+    ),
+  ],
+  exports: [Settings],
+});
+
+const ConfiguredApp = Module("ConfiguredApp")({
+  imports: [TickerApp, SettingsModule],
+  exports: [Greeter, Ticker, Settings],
+});
+
+// `process.env` in production; a test hands in the record it wants, and reads
+// `PROBE_PORT` from it too unless `probes` is set.
+await runMain(ConfiguredApp);
+const configured = start(ConfiguredApp, { env: { PORT: "0" }, probes: false });
+
+expectTypeOf(configured.exited).toEqualTypeOf<
+  AsyncResult<ExitReport, ConfigInvalid | RuntimeStartFailed>
+>();
 
 // ---------------------------------------------------------------------------
 // "The Runtime contract" — root README. Asserted equal to the shipped types
@@ -92,7 +166,7 @@ type ReadmeServing<Info = never> = {
   readonly info?: Info;
 };
 
-type ReadmeRuntime<Needs extends AnyPort, Info = never> = {
+type ReadmeRuntime<Needs extends AnyPort = never, Info = never> = {
   readonly name: string;
   readonly needs: readonly Needs[];
   readonly start: (host: RuntimeHost<Needs>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
@@ -133,7 +207,15 @@ const httpish: Runtime<typeof Greeter, HttpInfo> = {
     }),
 };
 
-const app = start(AppModule, { runtime: httpish });
+class Httpish extends RuntimePort<Runtime<typeof Greeter, HttpInfo>> {}
+
+const HttpishApp = Module("HttpishApp")({
+  imports: [AppModule],
+  provides: [Provider(Httpish)({ value: httpish })],
+  exports: [Greeter, Httpish],
+});
+
+const app = start(HttpishApp);
 const info = await app.runtimeInfo(); // Result<HttpInfo | undefined, never>
 
 expectTypeOf(info).toEqualTypeOf<Result<HttpInfo | undefined, never>>();
@@ -176,7 +258,7 @@ const log = (message: string): void => {
 // ---------------------------------------------------------------------------
 
 const embed = async (): Promise<void> => {
-  const app = start(AppModule, { runtime: ticker, signals: true });
+  const app = start(TickerApp, { signals: true });
   const report = await app.exited;
 
   process.exitCode = report.match({
@@ -193,8 +275,14 @@ const embed = async (): Promise<void> => {
 const drainTest = async (): Promise<void> => {
   const clock = createFakeClock();
   const runtime = testRuntime();
+  // The in-memory runtime ships as a module: import it next to the application
+  // and export its port, exactly as a real runtime package is composed in.
+  const TestApp = Module("TestApp")({
+    imports: [AppModule, runtime.module],
+    exports: [TestRuntimePort],
+  });
 
-  const report = await withApp(AppModule, { runtime, clock }, async (app) => {
+  const report = await withApp(TestApp, { clock }, async (app) => {
     await runtime.untilStarted();
     const unit = runtime.submit<string>();
 

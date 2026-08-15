@@ -1,19 +1,19 @@
 # `@btravstack/core` example: the order API layer
 
 The transport. A router implementing
-[`order-api-contract`](../order-api-contract), served over `node:http` under
-the kernel's lifecycle by [`@btravstack/http`](../../packages/http).
-The contract itself lives in its own package, because a client needs it and
-needs none of this.
+[`order-api-contract`](../order-api-contract), provided as a port and served
+under the kernel's lifecycle by [`@btravstack/http`](../../packages/http). One
+stack, all of it in the graph: oRPC owns the contract, `@unthrown/orpc` owns
+the `Result` bridge, the `http` starter owns oRPC's node adapter and the
+socket, and the router itself is a di-provided service. The contract lives in
+its own package, because a client needs it and needs none of this.
 
 ```
-src/router.ts         the implementation, and the one place a domain error becomes an ORPCError
-src/request-scope.ts  RequestModule — a scope forked per request over the application's
-src/handler.ts        apiHandler — the per-request forkScope, handed to httpRuntime
+src/router.ts         the implementation as a provider, and the one place a domain error becomes an ORPCError
+src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts         an AsyncResult client for the same contract
-src/module.ts         OrderApiModule — the composition root
-src/env.ts            process.env validated through a schema, as a Result
-src/main.ts           the process: readEnv + start + runMain
+src/module.ts         OrderApi — the composition root, HttpModule("OrderApi")({ router: orderRouter, … })
+src/main.ts           the process: runMain(OrderApi, { unit: RequestModule })
 src/test-fixtures.ts  serve / clientFor / gate / tapped, as Vitest fixtures
 ```
 
@@ -36,12 +36,13 @@ very same `Result` into typed contract errors over the very same composition
 root, and [`order-amqp-worker`](../order-amqp-worker) by never folding it at a
 consumer at all — its writes broadcast facts instead.
 
-`handlerResult` performs that elimination, and the `mapErrCases` in front of it
-is the triage point — the boundary where the application's vocabulary stops:
+Each procedure is a plain `Result`-returning function — `@unthrown/orpc`'s
+`.result(...)` handler, which `HttpRouter(orderContract)` attaches for you —
+and that is what performs the elimination; the `mapErrCases` inside it is the
+triage point — the boundary where the application's vocabulary stops:
 
 ```ts
-context.scope
-  .get(PlaceOrder)
+place
   .execute(input.id, input.quantity)
   .map(view)
   .mapErrCases((matcher) =>
@@ -64,45 +65,59 @@ has to decide what a client sees. A `Defect` is never named: it has no code
 because it was never modelled, and collapsing it to a 500 is the correct
 treatment rather than a fallback.
 
-## The transport is `@btravstack/http`
+## The transport is `@btravstack/http`, all of it
 
 Binding the socket, one unit per request, the drain that retires a busy
-keep-alive connection, and the trace-id policy all live in
-[`@btravstack/http`](../../packages/http) now — see its README for
-the runtime contract and the guarantee it makes. This example supplies only
-`apiHandler`, the function the package calls once per request, and reads
-`port` back off `Serving.info` the same way any caller of the package does.
+keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
+`/rpc` all live in [`@btravstack/http`](../../packages/http) —
+see its README for the guarantee it makes and the one way it answers HTTP.
+What this example writes is the router — `HttpRouter(orderContract)("OrderRouter")([PlaceOrder,
+FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`,
+contract-first: port and provider in one call, each procedure a plain
+`Result`-returning function typed by the contract, built from the two use
+cases it declares — and a composition root that is a `Module(...)` which also
+knows about it:
+
+```ts
+export const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  imports: [ApplicationModule, PersistenceModule],
+  exports: [Logger],
+});
+```
+
+`HttpModule` is sugar over the same primitives: it imports the starter
+(`http({ router: orderRouter.port })` — the whole surface), provides the
+router and exports `HttpRuntime`, and returns exactly the di module
+`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule, http({
+router: orderRouter.port })], provides: [orderRouter], exports: [HttpRuntime,
+Logger] })` would have. The runtime provider depends on the router port
+through di, so even the transport wiring exists because the composition root
+said so — a composition that imports the starter without providing
+`orderRouter` carries an unmet need
+`start` refuses (`needs-gate.test-d.ts` pins it with the hand-written form) —
+and oRPC's own context stays empty, since one container is enough. `port` is
+read back off `Serving.info` the same way any caller of the package does.
 
 ### One unit per call
 
-```ts
-export const apiHandler = (
-  request: IncomingMessage,
-  response: ServerResponse,
-  ctx: Context<InstanceType<ApiNeeds>>,
-): AsyncResult<unknown, never> =>
-  Module.forkScope(ctx, RequestModule, (scope) =>
-    fromSafePromise(
-      handler.handle(request, response, { prefix: PREFIX, context: { scope } }),
-    ),
-  );
-```
-
-The unit's lifetime **is** the response's: `@btravstack/http` keeps it
-open until the response completes, so there is no seam for a late write to
-land in. An unmatched or failing call is answered by the package itself
-(`404` NotFound / `500` InternalError), so there is nothing left here to
-dispatch or end by hand — `apiHandler` only has to fork the request scope and
-hand the request to oRPC.
+The unit's lifetime **is** the response's: `@btravstack/http` keeps it open
+until the response completes, so there is no seam for a late write to land in.
+An unmatched path is the starter's 404; a defect inside a procedure is oRPC's own
+`INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or end by hand.
+The router itself needs nothing per request, so it lives at application scope;
+what does is forked by the kernel, below.
 
 ### A request scope over the application scope
 
 The application scope is opened once, by the kernel, and holds the database.
 Opening another per request would give every request its own empty in-memory
-database — so the runtime **forks**: `Module.forkScope` layers a short-lived
-scope over the one already built, and a request-scoped provider reads what the
-parent constructed instead of rebuilding it. `RequestSpan`'s `onStop` runs while
-the unit is still open, which is what gives its line the request's own trace id.
+database — so the **kernel forks**: `RequestModule`, passed as
+`StartOptions.unit`, is layered as a short-lived scope over the one already
+built, per request, and a request-scoped provider reads what the parent
+constructed instead of rebuilding it. `RequestSpan`'s `onStop` runs while the
+unit is still open, which is what gives its line the request's own trace id —
+and no handler code manages any of it.
 
 ## The client half
 
@@ -128,7 +143,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-api test  # 15 api specs + 6 env specs
+pnpm --filter @btravstack/example-order-api test  # 15 api specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
@@ -149,53 +164,23 @@ it("lets an in-flight call finish while draining", async ({ serve, clientFor, ga
 });
 ```
 
-`src/main.ts` is the process itself — and it reads its configuration the same way
-it reads everything else, as a value:
+`serve` boots whatever composition it is handed with
+`env: { PORT: "0", HOST: "127.0.0.1" }` — the real `OrderApi` included, since
+`http()` reads its port from the environment the kernel provides — and reads
+the port it got back from `runtimeInfo()`.
+
+`src/main.ts` is the process itself, and it is one call:
 
 ```ts
-await readEnv().match({
-  ok: (env) =>
-    runMain(
-      start(OrderApiModule, {
-        runtime: httpRuntime({
-          port: env.PORT,
-          needs: [PlaceOrder, FindOrder, Logger],
-          handler: apiHandler,
-        }),
-        probes: { port: env.PROBE_PORT },
-      }),
-    ),
-  errCases: (matcher) =>
-    matcher.with(P._, (issues) => abort(describeEnvIssues(issues))),
-  defect: (cause) =>
-    abort(`the environment could not be validated: ${String(cause)}`),
-});
+await runMain(OrderApi, { unit: RequestModule });
 ```
 
-`src/env.ts` is where `PORT` and `PROBE_PORT` are validated. It goes through
-`@unthrown/standard-schema`'s `fromSchema` rather than a schema's own `.parse()`,
-because `.parse()` throws — which `unthrown/no-throw` bans, and which would
-contradict the example it appears in. The issues are the modeled `E`, folded
-above into a message and a non-zero exit code.
-
-A port is a **non-empty string piped into a coercion**, never a bare
-`z.coerce.number()`:
-
-```ts
-z.string()
-  .trim()
-  .min(1)
-  .pipe(z.coerce.number<string>().int().min(0).max(65_535))
-  .default(fallback);
-```
-
-Coercion is `Number()` underneath, so `PORT=abc` would bind `NaN` and `PORT=`
-would bind `0`, the ephemeral port. The bounds catch the first — and every
-`PORT=3.5` or `PORT=99999` after it — but they cannot catch the second, because
-a port's `min` **is** `0` so that an ephemeral bind stays expressible. The
-non-empty string in front is what closes it: an empty value is a configuration
-error, not an absent one, and `.default(...)` applies only when the variable is
-genuinely missing. A malformed value is a validation issue instead.
+Configuration is read **inside the graph**: `http()` binds `PORT` (default
+`3000`) and `HOST` (default `0.0.0.0`) from the `Env` port the kernel provides,
+and the kernel binds its own `PROBE_PORT` (default `9000`). A malformed value —
+`PORT=abc`, `PORT=` — is a `ConfigInvalid` the kernel reports as a
+`startFailed` event and exit code `78`, sysexits(3)'s `EX_CONFIG`; nothing in
+this package validates, prints or exits.
 
 It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there

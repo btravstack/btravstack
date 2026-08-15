@@ -2,34 +2,33 @@
 
 Eleven small packages, none of them published, all of them in the gate.
 
-The **`order-*` ten** are one application booted three ways: a clean
+The **`order-*` nine** are one application booted three ways: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a
 Temporal worker and once as an AMQP consumer, with each transport's contract in a
 package of its own — and, at the same time, exercising `@btravstack/core` end to
 end from a consumer's own workspace, `workspace:*` and all.
 
-The **eleventh**, [`hexagonal-order-api`](#the-containers-one), came with
+The **tenth**, [`hexagonal-order-api`](#the-containers-one), came with
 `@btravstack/di` and is the container's own: it composes a `Module` and never
 calls `start`.
 
-| Package                                                | Layer     | Shows                                                                                                                                                             |
-| ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                               |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.                                  |
-| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need.                        |
-| [`order-config`](./order-config)                       | config    | The one environment-variable idiom the three deployments share: a non-empty string piped into a coercion, validated as a value, with the seven cases pinned once. |
-| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                               |
-| [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router over `node:http`, a scope forked per request, and `Result` → `ORPCError`.                                                    |
-| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client.           |
-| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: a fulfillment saga on `@btravstack/temporal` — place, reserve, ship, and compensation in reverse on a permanent no.             |
-| [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, one subscriber queue with a retry/dead-letter policy — read by the relay and by any subscriber.           |
-| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: a transactional outbox relayed onto RabbitMQ by `@btravstack/amqp`'s worker — every committed write becomes an event.               |
+| Package                                                | Layer     | Shows                                                                                                                                                   |
+| ------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                     |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.                        |
+| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need.              |
+| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                     |
+| [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router as a provider, served by the `http()` and `orpc()` starters, and `Result` → `ORPCError`.                           |
+| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client. |
+| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: a fulfillment saga on `@btravstack/temporal` — place, reserve, ship, and compensation in reverse on a permanent no.   |
+| [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, one subscriber queue with a retry/dead-letter policy — read by the relay and by any subscriber. |
+| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: a transactional outbox relayed onto RabbitMQ by `@btravstack/amqp`'s worker — every committed write becomes an event.     |
 
 ## The layering, and which way the arrows point
 
 ```
   order-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
-       └────────────────┼──────────────────┘  ─────▶ order-config  ← how all three read the environment
+       └────────────────┼──────────────────┘  ─────▶ Config (the kernel's)  ← how all three read the environment
                         ▼
              order-infrastructure                    ← Prisma, SQLite, P-codes
                         │  provides OrderRepository
@@ -153,27 +152,31 @@ tag is not unique per attempt (see
 [`@btravstack/amqp`'s README](../packages/amqp/README.md) for why), where a
 queue job id or a task token already is.
 
-## The runtimes with a non-empty `needs`
+## What each runtime needs, and how the gate sees it
 
-`order-api`'s `httpRuntime` call declares `[PlaceOrder, FindOrder, Logger]`,
-`temporalWorkerRuntime` declares the five ports its activities resolve, and
-`orderAmqpRuntime` declares `[Outbox, Logger]` — each a selection of what the
-module exports, because a
-runtime declares what _it_ needs. The kernel's own `testRuntime` needs nothing,
-so these three are what exercise `start`'s phantom rest-tuple gate and
-`RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
-_classes_ while di parameterises contexts by port _instances_ — against a real
-module here. `@btravstack/http`'s own `AppModule`/`Greeting` fixture
-(`packages/http/src/test-fixtures.ts`, driving its 12
-`http-runtime.spec.ts` specs) exercises the same runtime-side path a second
-way now. `examples/` stays the only place the gate is pinned by a **type
-test**: `@btravstack/http` ships no `*.test-d.ts`.
+A runtime is a service the composition root exports, on a port each starter
+ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
+`AmqpRuntime`), and every application-specific thing a runtime used to
+resolve is now a **port its provider depends on** through di, minted with the
+starter's own sugar: `order-api`'s `orderRouter = HttpRouter(orderContract)("OrderRouter")([PlaceOrder,
+FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`; `order-temporal-worker`'s `orderActivities =
+TemporalActivities(orderContract)("OrderActivities")([…four ports…], { sync })`;
+`order-amqp-worker`'s `orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logger],
+{ sync })` — port and provider in one call, `provider.port` where the port is
+named, and each composition root the matching `HttpModule` / `TemporalModule` /
+`AmqpModule` taking the provider. No starter
+declares a `needs` any more — all three runtimes are `Runtime<never, Info>`
+— so `start`'s `UNSATISFIED RUNTIME NEEDS` arm is exercised only by the
+kernel's own type test now; what the examples pin is the other two gates.
 
-All three directions are pinned, in `order-api/src/needs-gate.test-d.ts`,
-`order-temporal-worker/src/needs-gate.test-d.ts`
-and `order-amqp-worker/src/needs-gate.test-d.ts`: the wired call is an ordinary
-two-argument one, and a module one port short fails on **arity**, naming the
-missing need.
+Pinned in `order-api/src/needs-gate.test-d.ts`,
+`order-temporal-worker/src/needs-gate.test-d.ts` and
+`order-amqp-worker/src/needs-gate.test-d.ts`: the wired call is an ordinary
+one; a composition that forgets its starter fails on **arity** with
+`NO RUNTIME`; and a composition that imports the starter without providing its
+router / activities / handlers port fails at `start` — di's own
+`UNSATISFIED DEPENDENCIES` gate, since the runtime provider depends on that
+port. `order-api` also pins both halves of the `unit` gate.
 
 ## Why these are tests, not just illustrations
 

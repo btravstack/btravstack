@@ -1,11 +1,13 @@
-import type { AnyPort, Module, Scope } from "@btravstack/di";
+import { ConfigInvalid, type Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
 import { P } from "unthrown";
 
+import { RuntimeStartFailed, type RuntimeInfoOf } from "./runtime.js";
 import {
   start,
   type ExitReport,
   type RunningApp,
-  type RuntimeNeedsGate,
+  type StartGate,
   type StartOptions,
 } from "./start.js";
 
@@ -13,6 +15,16 @@ import {
 // that — a failure nobody modelled — so it gets its own code rather than
 // sharing `1` with a startup failure the operator can act on.
 const EX_SOFTWARE = 70;
+// sysexits(3)'s `EX_CONFIG`: the deployment is wrong, not the code. A
+// configuration port that could not be bound — or the kernel's own
+// `PROBE_PORT`, which arrives as a `RuntimeStartFailed` for `"probes"` with
+// the `ConfigInvalid` as its cause — is the one startup failure an operator
+// fixes without a rebuild, and the code says so.
+const EX_CONFIG = 78;
+
+const isConfig = (error: unknown): boolean =>
+  error instanceof ConfigInvalid ||
+  (error instanceof RuntimeStartFailed && error.cause instanceof ConfigInvalid);
 
 // The precedence is deliberate and must stay explicit.
 //
@@ -68,9 +80,10 @@ export const awaitExit = async <E>(
       // arm list can prove exhaustiveness against it and the catch-all is the
       // only arm that can terminate the match — the generic-`E` case the
       // wildcard is kept for. Every modeled startup failure means the same
-      // thing to the operating system anyway: the process never came up.
+      // thing to the operating system anyway — the process never came up —
+      // except the one the operator can fix in the deployment.
       // oxlint-disable-next-line unthrown/no-catch-all-pattern -- generic `E`: the catch-all is the only arm that can terminate a match over an unresolved type parameter
-      errCases: (matcher) => matcher.with(P._, () => 1),
+      errCases: (matcher) => matcher.with(P._, (error) => (isConfig(error) ? EX_CONFIG : 1)),
       defect: () => EX_SOFTWARE,
     }),
   );
@@ -92,6 +105,7 @@ export const awaitExit = async <E>(
  * | --- | --- |
  * | exited cleanly | `0` |
  * | startup failure (a modeled `Err`) | `1` |
+ * | a configuration port that could not be bound (`ConfigInvalid`, `PROBE_PORT` included) | `78` |
  * | drained with work abandoned | `2` |
  * | exited with teardown errors | `2` |
  * | stopped by an uncaught exception or unhandled rejection | `70` |
@@ -99,38 +113,40 @@ export const awaitExit = async <E>(
  *
  * The two `70`s are the same statement — sysexits(3)'s `EX_SOFTWARE`, an
  * internal software error — reached through the two channels a bug can take.
- * A crash takes precedence over abandoned work.
+ * A crash takes precedence over abandoned work. `78` is `EX_CONFIG`: the
+ * deployment is wrong, not the code.
  *
  * @example
  * ```ts
- * await runMain(AppModule, {
- *   runtime: httpRuntime({ port: 3000, needs: [Greeting], handler }),
- * });
+ * // `OrderApi` imports the application next to `@btravstack/http`'s `http()`
+ * // starter and exports `HttpRuntime` — the port `start` resolves the runtime
+ * // from. `PORT`, `HOST` and `PROBE_PORT` are read inside the graph.
+ * await runMain(OrderApi);
  * ```
  */
 // The one async surface in this package that returns a bare `Promise<void>`
 // rather than an `AsyncResult`, deliberately: its whole job is to LEAVE the
 // Result world and become a process exit code. It is the boundary, and a
 // top-level `await runMain(...)` in an entry point is the intended shape.
-export const runMain = async <X, E, Needs extends AnyPort, Info = never>(
-  module: Module<X, E, Scope>,
-  options: StartOptions<Needs, Info>,
+export const runMain = async <X, E, UnitX = never, UnitNeeds = never>(
+  module: Module<X, E, Scope | Env>,
+  options: StartOptions<UnitX, UnitNeeds> = {},
   exit: (code: number) => void = (code) => {
     process.exitCode = code;
   },
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: RuntimeNeedsGate<Needs, X>
+  ...gate: StartGate<X, UnitNeeds>
 ): Promise<void> => {
   void gate;
 
   // The gate above proves the needs at the call site, but that proof is not
-  // visible inside a body where `X` and `Needs` are still unresolved type
-  // parameters — the same reason `withApp` discharges the tuple the same way.
+  // visible inside a body where `X` is still an unresolved type parameter —
+  // the same reason `withApp` discharges the tuple the same way.
   const boot = start as (
-    module: Module<X, E, Scope>,
-    options: StartOptions<Needs, Info>,
-  ) => RunningApp<E, Info>;
+    module: Module<X, E, Scope | Env>,
+    options: StartOptions<UnitX, UnitNeeds>,
+  ) => RunningApp<E, RuntimeInfoOf<X>>;
 
   await awaitExit(boot(module, options), exit);
 };

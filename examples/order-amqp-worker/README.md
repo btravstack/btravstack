@@ -12,11 +12,10 @@ served by `@btravstack/http`; the contract lives in
 binding its own queue to the `orders` exchange needs it and needs none of this.
 
 ```
-src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent
-src/amqp-runtime.ts    the runtime: amqp's consumer with the relay layered on
-src/module.ts          OrderAmqpModule — the composition root
-src/env.ts             process.env validated through a schema, as a Result
-src/main.ts            the process: readEnv + start + runMain
+src/handlers.ts        the consuming half: orderHandlers, port and provider minted by AmqpHandlers, from Logger
+src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
+src/module.ts          OrderAmqpWorker — the composition root, an AmqpModule, a constant
+src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
 src/test-fixtures.ts   serve / tapped, as Vitest fixtures, against a real RabbitMQ
 ```
 
@@ -35,53 +34,76 @@ between publish and mark re-publishes on the next sweep, a broker outage
 leaves rows pending and the sweep after the outage drains them. What is never
 possible is the inverse — a committed order whose event evaporated.
 
-**The consumer** is one `declareHandler` on the contract's
+**The consumer** is one plain function on the contract's
 `order-notifications` queue, reacting to the fact like any other service
 would. It is intentionally the least interesting part: a broadcast's
 publisher does not know it exists, and the spec proves that by binding a
 _foreign_ queue to the same exchange and receiving the same event.
 
-## Where the relay lives, and what it takes from di
+## Everything is a provider
 
-The relay resolves `Outbox` and `Logger` from the application context — the
-boundary that matters — but creates its own `TypedAmqpClient` rather than
-receiving one as a port, and is not itself a di provider. Both are deliberate:
-a transport connection is a **runtime** concern in this repo (configured from
-the environment in `main.ts`, exactly as `@btravstack/amqp` creates its worker and
-`order-temporal-worker` opens its `NativeConnection`), while a di provider
-holds something the _application_ depends on — which is why `OrderDatabase` is
-one and this publisher is not. Nothing in the graph resolves the relay, and a
-provider exists to be resolved.
+`@btravstack/amqp`'s starter needs one thing from the application: its
+**handlers, as a service**. `src/handlers.ts` is one call —
+`AmqpHandlers(orderContract)("OrderHandlers")([Logger], { sync: … })` — which
+mints the port (its service the record `orderContract` wants,
+`WorkerInferHandlers<OrderContract>`, no injected context) and provides it
+from `Logger`: the one handler is `orderChanged: (message) => …`, a plain
+function typed by the contract, closing over the logger it was built with, the
+way every service in the graph is built. No port class is declared here;
+`orderHandlers.port` is the port where one is needed (the needs gate). The
+composition root is `AmqpModule("OrderAmqpWorker")({ contract: orderContract,
+handlers: orderHandlers, imports, provides, exports })` — a `Module(...)` that
+also takes the handlers provider: under the hood it imports the starter
+(`amqp({ contract, handlers: orderHandlers.port })`, the runtime on
+`AmqpRuntime` and the broker on `AmqpConfig`), provides `orderHandlers`, and
+exports `AmqpRuntime` for `start` to resolve. There is no `needs`, no
+`context.ctx.get(...)`, and no port declared here over `RuntimePort` — the
+package ships it.
 
-It is not a second connection either: `@amqp-contract/core` pools by URL and
-reference-counts leases, so the relay's client and the consumer's worker share
-one TCP connection, and `close()` releases a lease rather than the socket.
+The **relay** is a provider too, a resourceful one: `OutboxRelay` is acquired
+as the graph builds — from `Outbox`, `Logger`, the `AmqpConfig` the starter
+bound and its own `relayConfig.port` (`RelayConfig`, `OUTBOX_POLL_MS`, minted
+by `Config.provider("RelayConfig")(schema)` since the slice is this
+deployment's own) — and released when the application scope closes. Nothing resolves it, and nothing needs to; di
+constructs every provider in the tree, and a resourceful one exists to be
+started and stopped. It creates its own `TypedAmqpClient` rather than
+receiving one as a port, because a transport connection is the transport's
+own — and it is not a second connection either: `@amqp-contract/core` pools by
+URL and reference-counts leases, so the relay's client and the consumer's
+worker share one TCP connection, and `close()` releases a lease rather than
+the socket.
 
-## Where the relay lives
+That ordering is worth stating. The relay now starts **before** the consumer —
+as the graph builds, where a broker it cannot reach fails startup, as it
+always did — and stops **after** it, when the scope closes rather than inside
+the runtime's `stop`. That is fine: the relay's client holds its own lease, so
+the consumer's close does not pull the connection from under it, and pending
+rows published during the drain window are safer out than abandoned to the
+next boot. `drain` stays the consumer's alone — draining means "stop taking new
+work", and the relay's work is outbound.
 
-`orderAmqpRuntime` layers the relay onto the runtime `@btravstack/amqp` hands back:
-started after the consumer, stopped before it, so a relay that cannot reach
-the broker fails startup the way a consumer that cannot would. `drain` stays
-the consumer's alone — draining means "stop taking new work", and the relay's
-work is outbound: pending rows are safer published during the drain window
-than abandoned to the next boot.
-
-The relay's needs are ports (`Outbox`, `Logger`), resolved from the same
-application context the consumer's handler resolves — `start`'s needs gate
-(`src/needs-gate.test-d.ts`) proves the composition root exports both, at
-compile time.
+Configuration is read inside the graph, so the composition root is a
+**constant**: `main.ts` is `await runMain(OrderAmqpWorker)`, and the specs boot
+the same value with `env: { AMQP_URL: <this test's vhost>, OUTBOX_POLL_MS: "25" }`.
+The compile-time half (`src/needs-gate.test-d.ts`) pins that `start` finds the
+runtime, and that a composition which forgets to provide `orderHandlers` is
+refused — by di's needs channel now, since the runtime itself has no needs
+left for `start`'s gate to check (spelled with the `amqp()` primitive, since
+the sugar cannot leave the handlers out).
 
 ## The environment
 
-| Variable         | Default                 | What it is                            |
-| ---------------- | ----------------------- | ------------------------------------- |
-| `AMQP_URL`       | `amqp://127.0.0.1:5672` | the broker, for consumer and relay    |
-| `PROBE_PORT`     | `9000`                  | `/livez` / `/readyz`                  |
-| `OUTBOX_POLL_MS` | `200`                   | the relay's idle sleep between sweeps |
+| Variable         | Default                 | What it is                                    |
+| ---------------- | ----------------------- | --------------------------------------------- |
+| `AMQP_URL`       | `amqp://127.0.0.1:5672` | the broker (`AmqpConfig`), consumer and relay |
+| `PROBE_PORT`     | `9000`                  | `/livez` / `/readyz`                          |
+| `OUTBOX_POLL_MS` | `200`                   | the relay's idle sleep (`RelayConfig`)        |
 
 `OUTBOX_POLL_MS=0` is rejected at boot — a relay that never sleeps is a busy
-loop, and the deployment's own spec pins that where the shared `wholeNumber`
-fragment's bounds would not.
+loop — and so is anything above `60000`. A bad value, or an empty one, is a
+`ConfigInvalid` the kernel reports itself: a `startFailed` event naming the
+variable, and exit code 78 (`EX_CONFIG`) under `runMain`. `PROBE_PORT` is the
+kernel's own, read the same way.
 
 ## Running the specs
 
@@ -93,7 +115,7 @@ arriving as a tombstone behind its placement, and the same event delivered to
 a subscriber this contract never heard of.
 
 ```bash
-pnpm --filter @btravstack/example-order-amqp-worker test        # broadcast e2e + env specs
+pnpm --filter @btravstack/example-order-amqp-worker test        # broadcast e2e
 pnpm --filter @btravstack/example-order-amqp-worker typecheck   # the needs gate
 ```
 

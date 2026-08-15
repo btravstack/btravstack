@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/amqp",
   "version": "0.0.0",
-  "description": "The AMQP consumer runtime for @btravstack/core: one unit per delivery, and a drain the kernel's deadline releases",
+  "description": "The AMQP starter for @btravstack/core: the handlers as a port, one unit per delivery, and a drain the kernel's deadline releases",
   "keywords": [
     "amqp",
     "graceful-shutdown",
@@ -54,6 +54,7 @@
     "@amqp-contract/contract": "catalog:",
     "@amqp-contract/testing": "catalog:",
     "@amqp-contract/worker": "catalog:",
+    "@btravstack/config": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
@@ -69,6 +70,7 @@
   },
   "peerDependencies": {
     "@amqp-contract/worker": "^3.0.0-beta.6",
+    "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "^0.1.0",
     "@opentelemetry/api": "^1",

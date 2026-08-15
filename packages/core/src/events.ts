@@ -2,6 +2,7 @@ import type { DrainReport } from "./drain.js";
 
 export type KernelEvent =
   | { readonly type: "building" }
+  | { readonly type: "startFailed"; readonly cause: unknown }
   | { readonly type: "serving"; readonly runtime: string }
   | { readonly type: "draining"; readonly inFlight: number }
   | { readonly type: "drained"; readonly report: DrainReport }

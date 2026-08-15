@@ -1,20 +1,8 @@
-import type { Context } from "@btravstack/di";
 import { orderContract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
-import { implement } from "@orpc/server";
-import { handlerResult } from "@unthrown/orpc/server";
+import { HttpRouter } from "@btravstack/http";
 import { P } from "unthrown";
-
-/**
- * What every procedure is handed: the request's own di `Context`, seeded from
- * the application scope the kernel built. Passing the context rather than the
- * services keeps the router indifferent to how the request scope was made — the
- * runtime forks it, and this file only reads out of it.
- */
-export type ApiContext = { readonly scope: Context<PlaceOrder | FindOrder> };
-
-const os = implement(orderContract).$context<ApiContext>();
 
 const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quantity });
 
@@ -22,20 +10,31 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * The transport boundary, and the only place in this example where a domain
  * error becomes something else.
  *
- * `handlerResult` eliminates the `Result`: `Ok` is the output, an `Err` holding
- * an `ORPCError` is *returned* (so oRPC marks it inferable and the client gets
- * it typed), and a `Defect` rethrows its cause onto oRPC's own defect path,
- * where it collapses to `INTERNAL_SERVER_ERROR`. The `mapErrCases` in between is
- * the triage point: every case of the use case's error type is named, because
- * the matcher has no wildcard to fall back on. A new domain error is a compile
+ * `HttpRouter(orderContract)` is contract-first: the implementation is a
+ * record shaped like the contract whose leaves are plain `Result`-returning
+ * functions, typed by the contract at the call — the input is the contract's
+ * parsed input, the output its declared view, `errors` its declared error
+ * map, and a typo'd or missing procedure is a compile error. `implement`,
+ * `os.…`, `.result(...)` and `os.router(...)` are what the starter does with
+ * it. In each handler, `Ok` is the output, an `Err` holding an `ORPCError` is
+ * *returned* (so oRPC marks it inferable and the client gets it typed), and a
+ * `Defect` rethrows its cause onto oRPC's own defect path, where it collapses
+ * to `INTERNAL_SERVER_ERROR`. The `mapErrCases` in between is the triage
+ * point: every case of the use case's error type is named, because the
+ * matcher has no wildcard to fall back on. A new domain error is a compile
  * error here, at the one place that has to decide what the client sees.
+ *
+ * The use cases arrive as arguments, not through oRPC's context: di injects
+ * them into the provider — `HttpRouter` mints the port (`orderRouter.port`)
+ * and hands back di's own `Provider(port)`, so this is a provider like any
+ * other in the graph — and oRPC's context is left for what only the HTTP
+ * layer knows (nothing, today). One container, not two.
  */
-export const orderRouter = os.router({
-  orders: {
-    place: os.orders.place.handler(
-      handlerResult(({ context, errors }, input) =>
-        context.scope
-          .get(PlaceOrder)
+export const orderRouter = HttpRouter(orderContract)("OrderRouter")([PlaceOrder, FindOrder], {
+  sync: (place, find) => ({
+    orders: {
+      place: ({ errors }, input) =>
+        place
           .execute(input.id, input.quantity)
           .map(view)
           .mapErrCases((matcher) =>
@@ -47,12 +46,8 @@ export const orderRouter = os.router({
                 errors.CONFLICT({ message: error.message, data: { id: error.id } }),
               ),
           ),
-      ),
-    ),
-    find: os.orders.find.handler(
-      handlerResult(({ context, errors }, input) =>
-        context.scope
-          .get(FindOrder)
+      find: ({ errors }, input) =>
+        find
           .execute(input.id)
           .map(view)
           .mapErrCases((matcher) =>
@@ -60,7 +55,6 @@ export const orderRouter = os.router({
               errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
             ),
           ),
-      ),
-    ),
-  },
+    },
+  }),
 });

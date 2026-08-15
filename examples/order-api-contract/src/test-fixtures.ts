@@ -8,11 +8,11 @@ import type { orderContract, OrderView } from "./contract.js";
 
 /**
  * The caller's view of the API, derived from the **contract** —
- * `RouterContractClient<typeof orderContract>`, not `RouterClient<typeof
- * orderRouter>`. `order-api`'s own client type is the router-derived one
- * because that package holds the router; this is what a consumer who has only
- * this package gets, and it types the same two calls, the same inputs and the
- * same declared error codes.
+ * `RouterContractClient<typeof orderContract>`, never the server's router.
+ * `order-api` ships the same type as `OrderApiClient`; it is restated here
+ * rather than imported because this package must not reach `order-api`
+ * (see `layering.test-d.ts`), and it types the same two calls, the same
+ * inputs and the same declared error codes.
  */
 type OrderApiClient = ResultClient<RouterContractClient<typeof orderContract>>;
 

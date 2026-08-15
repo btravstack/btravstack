@@ -119,13 +119,37 @@ Beyond the nine:
   runtime is serving"_ and _"resolves undefined when the runtime never serves,
   so a caller cannot hang"_.
 
+- **A bad environment is a modeled startup `Err`, exit `78`, and the kernel
+  binds its own `PROBE_PORT` the same way.** The binding itself — field
+  semantics, `Config.object`, `Config.provider` reading `Env` — is
+  `@btravstack/config`'s own spec's business; the kernel's `config.spec.ts`
+  guards only how the kernel reports it: `Config.provider` through `start`
+  (_"fails startup with ConfigInvalid, naming the port and the variables"_ —
+  the `configured` fixture's `Settings` port, bound from `StartOptions.env`
+  next to an in-memory runtime; _"exits 78 under runMain"_) and the kernel's
+  own `PROBE_PORT`
+  (_"binds the probe server from the environment when no option is given"_
+  with `PROBE_PORT=0`, _"exits 78 when PROBE_PORT is not a port"_, and the
+  `RuntimeStartFailed`-for-`"probes"`-carrying-`ConfigInvalid` shape `runMain`
+  reads the `78` off). `start.spec.ts` → _"reaches the exited phase when the
+  runtime refuses to start"_ pins the `startFailed` event's place in the
+  sequence (`building`, `startFailed`, `stopping`, `exited`).
+
 Type-level invariants live in `start.test-d.ts` and are checked by
 `pnpm typecheck`:
 
-- **A runtime's declared `needs` are checked against the module's exports at the
-  `start` call site** (the phantom rest-tuple gate). A missing port does not
-  compile. `InstanceType<never>` is `never`, so a needs-free runtime works
-  against any module.
+- **The module must export a runtime, and that runtime's declared `needs` are
+  checked against the module's exports at the `start` call site** (the phantom
+  rest-tuple gate, `StartGate<X, UnitNeeds>`). A composition with
+  no port declared over `RuntimePort` among its exports fails on arity with
+  `NO RUNTIME`; a missing need fails with `UNSATISFIED RUNTIME NEEDS`.
+  `InstanceType<never>` is `never`, so a needs-free runtime works against any
+  module. `Needs` and `Info` are not type parameters of `start` any more: they
+  are read off `X` (`RuntimeNeedsOf<X>`, `RuntimeInfoOf<X>` — `ServiceOf` of
+  `Extract<X, RuntimeInstance>`, all in `runtime.ts`; only `RuntimeInfoOf` is
+  exported from the package, the rest are the gate's internals), which is what
+  lets `RunningApp<E, RuntimeInfoOf<X>>` type `runtimeInfo()` from the module
+  alone.
 - **The gate is bypassable, deliberately.** A caller who spells the phantom
   arguments out by hand (`start(M, o, "UNSATISFIED RUNTIME NEEDS", new Clock())`)
   does typecheck — asserted, not assumed. This is the same escape hatch di's own
@@ -141,15 +165,75 @@ gate.
 
 `packages/core/src/` is one concept per file.
 
+- **`Env` is provided by wrapping, not seeding.** `start` builds
+  `Module("Kernel")({ imports: [module, Module("Environment")({ provides:
+[Provider(Env)({ value: env })], exports: [Env] })], exports: [module] })`
+  — unless the module (or a module it imports, recursively: `providesEnv`)
+  already provides `Env` itself, in which case the wrap imports the module
+  alone, so an application supplying its own environment provider is not
+  handed a second `Env` and di's duplicate-provider gate does not fire —
+  and hands THAT to `Module.scoped`: di lets a module re-export an imported
+  module, so `X` stays exactly what the caller composed, and `Env` reaches
+  every provider — and every unit fork, since the built context holds all
+  services, not only the exports — through the ordinary graph. The cast to
+  `Module<X, E, Scope>` restates what the signature already promised
+  (`Module<X, E, Scope | Env>` in, `Env` discharged here). `Port("Env")` is
+  declared once, in `@btravstack/config`.
+
+- **`PROBE_PORT` is read through the same `Config.port` field the public API
+  ships**, not a private parser — one definition of what a port is — and its
+  failure is wrapped in `RuntimeStartFailed({ runtime: "probes", cause:
+ConfigInvalid })` rather than widening `exited`'s error union for every
+  caller; `runMain`'s `isConfig` reads through that one level. `probes: false`
+  or an explicit `{ port }` skips the read entirely, which is why every kernel
+  spec that does not test probes passes one of them (an unset `probes` in a
+  test would try to bind 9000).
+
+- **`startFailed` is emitted from both `tapFailure` sites** — the probe bind's
+  and `Module.scoped`'s — because a failed probe bind short-circuits the
+  `flatMap` that would otherwise reach the second; the cause is
+  `failure.tag === "Err" ? failure.error : failure.cause`, the `FailureView`
+  unthrown hands a `tapFailure` callback. The second site is guarded by
+  `tracker.current() !== "stopping"`: a `serving.stop()` that defects
+  reaches the same `tapFailure` after `finish` has already moved the phase
+  on, and that is a shutdown failure the exit report owns, not a startup one
+  (`start.spec.ts` → _"does not report a shutdown defect as startFailed"_).
+
+- **`Config.object`'s `~standard.validate` is synchronous and never throws.**
+  It walks every field, so an operator sees every fault at once; a field whose
+  `parse` defects (a bug in the field) is folded into an issue against its
+  variable rather than thrown through a validation that promised issues.
+  `Config.provider` still awaits `validate` (`fromSafePromise` over an `async`
+  wrapper) because a third-party Standard Schema may be async — and may throw,
+  which the wrapper turns into the defect it is.
+
 - **The needs check is a trailing phantom rest tuple, not a conditional on an
   inference-bearing parameter.**
-  `...gate: [InstanceType<Needs>] extends [X] ? [] : [error: "UNSATISFIED RUNTIME NEEDS", missing: …]`.
+  `...gate: [InstanceType<RuntimeNeedsOf<X>>] extends [X] ? [] : [error: "UNSATISFIED RUNTIME NEEDS", missing: …]`
+  (preceded by the `NO RUNTIME` arm on `Extract<X, RuntimeInstance>`) —
+  against the module's exports alone, never the `unit` module's: a unit-only
+  port exists only while a unit is open, and `RuntimeHost.ctx` is the
+  application context, so accepting it would type-check into a startup defect
+  (`start.test-d.ts`'s `SpanApp` pins the rejection).
   A conditional type on `module` or `options` would make TypeScript defer that
   parameter's inference and can collapse `X` or `E` to `unknown` — the same
   shape, and the same reasoning, as di's own gate on `Module.scoped`, and the
   same rule unthrown records for `fromPromise`. It **is** bypassable by a caller
   who hand-writes the phantom arguments (proved in `start.test-d.ts`); that is
   accepted, exactly as di accepts it.
+
+- **The runtime is resolved from the built graph, through the one generic
+  port.** `RuntimePort` is `Port("Runtime")` left generic (its construct
+  signature is `new <Service>()`), so it is never itself in `X`; every runtime
+  package — or application — declares a concrete port over it, and they all
+  share the id `"Runtime"`. Inside `start`'s `use` callback the kernel does
+  `ctx.get(RuntimePort)` through a cast, because the gate has already proven at
+  the call site that a port with that id is exported, and the checker cannot
+  see that proof in a body where `X` is unresolved. `runtimeName` is filled in
+  there, which is why the `serving` event's `runtime` field is a `let` rather
+  than read off an option. `Port("Runtime")` is called exactly once, in
+  `runtime.ts`, so di's duplicate-id warning never fires however many packages
+  subclass it.
 
 - **`Context<in R>`'s contravariance is what makes the check free.** An
   application context whose exports cover the runtime's needs is assignable to
@@ -273,12 +357,27 @@ gate.
   the inner `Result` is unwrapped — and there is no cause a `qualify` could
   triage into a modeled error.
 
-- **`RunUnit` is typed for a per-unit fork it does not yet perform.** `start`
-  builds `run` as `(meta, work) => registry.run(meta, (signal) => work(runtimeCtx, signal))`
-  — an **annotation**, not an assertion, so a future divergence from `RunUnit` is
-  reported here rather than absorbed. When the `unit` module lands, the
-  `Module.forkScope` call goes exactly there, replacing `runtimeCtx` with the
-  fork's context; no signature changes.
+- **The `unit` module forks INSIDE `registry.run`, and both halves of that
+  placement are load-bearing** (`unit-module.spec.ts` guards them). Inside
+  `registry.run`'s work means the fork's teardown runs while the unit's
+  ambient record is still open — a span's `onStop` logs under the request's
+  own trace id (_"builds and tears down inside the unit's own ambient
+  record"_) — and the unit is not counted closed until the scope is, so a
+  drain waits for unit teardown too (_"keeps a unit in flight until its scope
+  has closed"_: the teardown is held open across `requestDrain()`, and the
+  report says `inFlightAtStart: 1, completed: 1`). The fork passes its own
+  `onTeardownError`, which **emits and does not push**: `teardownErrors` is
+  the application scope's array and rides the exit report, and a per-unit
+  finaliser failing on every request would grow it without bound (_"reports
+  a failing unit teardown as an event and keeps it off the exit report"_).
+  `run` stays an **annotation** against
+  `RunUnit` (a divergence is reported, not absorbed); with no `unit` option
+  the work receives `runtimeCtx` exactly as before, zero overhead. The
+  `forkScope` call goes through a discharged-signature cast — the same move
+  `withApp` and `runMain` make on `start` — because the fork's gates are
+  proven by `start`'s rest tuple at the call site and invisible in a body
+  where `X`, `Needs` and `UnitX` are unresolved. The work's return union is
+  normalised by an `async` wrapper exactly as `registry.run` does it.
 
 - **`options.signals === false` disables the uncaught handlers too.** One flag,
   two handler families, because both are process-global and a test harness needs

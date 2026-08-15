@@ -1,6 +1,8 @@
-import type { AnyPort, Module, Scope } from "@btravstack/di";
+import type { Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
 
-import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from "./start.js";
+import type { RuntimeInfoOf } from "./runtime.js";
+import { start, type RunningApp, type StartGate, type StartOptions } from "./start.js";
 
 /**
  * Start an application, hand it to `use`, and stop it again — whatever `use`
@@ -13,7 +15,7 @@ import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from
  *
  * @example
  * ```ts
- * const report = await withApp(AppModule, { runtime }, async (app) => {
+ * const report = await withApp(AppModule, {}, async (app) => {
  *   app.requestDrain();
  *   return await app.exited;
  * });
@@ -34,13 +36,13 @@ import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from
  * asserting. A test that wants to assert the defect itself calls `start`
  * directly, the same escape hatch a test needing the real probe server uses.
  */
-export const withApp = async <X, E, Needs extends AnyPort, A, Info = never>(
-  module: Module<X, E, Scope>,
-  options: StartOptions<Needs, Info>,
-  use: (app: RunningApp<E, Info>) => Promise<A>,
+export const withApp = async <X, E, A, UnitX = never, UnitNeeds = never>(
+  module: Module<X, E, Scope | Env>,
+  options: StartOptions<UnitX, UnitNeeds>,
+  use: (app: RunningApp<E, RuntimeInfoOf<X>>) => Promise<A>,
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: RuntimeNeedsGate<Needs, X>
+  ...gate: StartGate<X, UnitNeeds>
 ): Promise<A> => {
   void gate;
 
@@ -50,9 +52,9 @@ export const withApp = async <X, E, Needs extends AnyPort, A, Info = never>(
   // the forwarding call goes through a signature with the phantom tuple
   // already discharged.
   const boot = start as (
-    module: Module<X, E, Scope>,
-    options: StartOptions<Needs, Info>,
-  ) => RunningApp<E, Info>;
+    module: Module<X, E, Scope | Env>,
+    options: StartOptions<UnitX, UnitNeeds>,
+  ) => RunningApp<E, RuntimeInfoOf<X>>;
 
   const app = boot(module, { ...options, signals: false, probes: false });
 
