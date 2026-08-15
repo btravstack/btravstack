@@ -503,8 +503,9 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   hand-rolling a transport, and its HTTP stack is deliberately ONE way: Hono +
   oRPC + `@unthrown/orpc`.** The surface itself is a di-provided service —
   `ApiModule` provides the `ApiHandler` port (a Hono app with oRPC's fetch
-  adapter mounted, built by a provider that **declares** `PlaceOrder` and
-  `FindOrder` rather than locating them from a context at call time, never a
+  adapter mounted, built by a provider from the `OrderRouter` port — itself a
+  provider that **declares** `PlaceOrder` and `FindOrder`, so oRPC's context
+  stays empty and nothing is located from a context at call time — never a
   module-level singleton), `apiRuntime` is `httpRuntime` needing that one port
   and resolving it in one line — the single definition `main.ts`, the fixtures
   and the type test all call — and `RequestModule` rides `StartOptions.unit`

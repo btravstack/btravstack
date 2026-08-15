@@ -10,7 +10,7 @@ The contract itself lives in its own package, because a client needs it and
 needs none of this.
 
 ```
-src/router.ts         the implementation, and the one place a domain error becomes an ORPCError
+src/router.ts         the implementation as a provider, and the one place a domain error becomes an ORPCError
 src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/handler.ts        ApiModule — the Hono app and the oRPC handler, provided as the ApiHandler port
 src/client.ts         an AsyncResult client for the same contract
@@ -44,7 +44,7 @@ elimination, and the `mapErrCases` inside it
 is the triage point — the boundary where the application's vocabulary stops:
 
 ```ts
-context.place
+place
   .execute(input.id, input.quantity)
   .map(view)
   .mapErrCases((matcher) =>
@@ -74,8 +74,10 @@ keep-alive connection, and the trace-id policy all live in
 [`@btravstack/http`](../../packages/http) now — see its README for
 the runtime contract and the guarantee it makes. This example supplies the
 `ApiHandler` **port** — the Hono app with oRPC's fetch adapter mounted under
-`/rpc`, built by `ApiModule`'s provider from the two use cases it declares, so
-even the transport wiring exists because the composition root said so — and
+`/rpc`, built by a provider from the `OrderRouter` port, itself a provider
+built from the two use cases it declares, so even the transport wiring exists
+because the composition root said so; oRPC's own context stays empty, since
+one container is enough — and
 reads `port` back off `Serving.info` the same way any caller of the package
 does. The runtime is `apiRuntime`: `httpRuntime` needing that one port, its
 handler one line — resolve the port, call it — defined once and called by

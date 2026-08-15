@@ -156,7 +156,7 @@ queue job id or a task token already is.
 ## The runtimes with a non-empty `needs`
 
 `order-api`'s `apiRuntime` declares `[ApiHandler]` — the HTTP surface itself, a
-provider that declares the two use cases it calls —
+provider over the router provider that declares the two use cases it calls —
 `temporalWorkerRuntime` declares the five ports its activities resolve, and
 `orderAmqpRuntime` declares `[Outbox, Logger]` — each a selection of what the
 module exports, because a
