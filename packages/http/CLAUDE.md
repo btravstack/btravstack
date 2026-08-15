@@ -8,8 +8,13 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`httpRuntime(options)` → `Runtime<typeof HttpHandler, HttpInfo>`** — binds
-  `node:http`, one kernel unit per request. `HttpOptions` — `port` (required;
+- **`httpModule(options)` → `Module<HttpRuntime, never, never>`** — the
+  runtime as a module: it provides `Runtime<typeof HttpHandler, HttpInfo>` on
+  the **`HttpRuntime`** port (a class over core's `RuntimePort`), which the
+  composition root imports next to the application and exports so `start`
+  finds it. The runtime value's own factory, `httpRuntime`, is internal — not
+  exported. The runtime binds `node:http`, one kernel unit per request.
+  `HttpOptions` — `port` (required;
   `0` lets the OS pick, read back via `runtimeInfo()`), `hostname` (default
   `0.0.0.0` — a pod, not a laptop). `HttpInfo` is `{ port }`, published on
   `Serving.info` once bound. Its one need is `HttpHandler`, resolved out of

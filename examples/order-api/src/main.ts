@@ -1,9 +1,8 @@
 import { runMain } from "@btravstack/core";
-import { httpRuntime } from "@btravstack/http";
 import { P } from "unthrown";
 
 import { describeEnvIssues, readEnv, type Env } from "./env.js";
-import { OrderApiModule } from "./module.js";
+import { orderApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
 /**
@@ -19,10 +18,10 @@ import { RequestModule } from "./request-scope.js";
  * This file is the shape a real entry point takes.
  */
 const serve = (env: Env): Promise<void> =>
-  runMain(OrderApiModule, {
-    // The HTTP surface is a service the module provides — `@btravstack/http`'s
-    // `HttpHandler` port — and the runtime resolves it per request.
-    runtime: httpRuntime({ port: env.PORT }),
+  // The runtime is a service the composition root provides — `@btravstack/http`'s
+  // `httpModule`, exported as `HttpRuntime` — and the HTTP surface another,
+  // the `HttpHandler` port, which the runtime resolves per request.
+  runMain(orderApi({ port: env.PORT }), {
     // Forked around every request by the kernel: `RequestSpan` is built as the
     // request opens and torn down as it closes, reading `Logger` out of the
     // application scope. The handler never sees the fork happen.

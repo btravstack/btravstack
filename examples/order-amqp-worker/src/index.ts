@@ -1,2 +1,2 @@
-export { OrderAmqpModule } from "./module.js";
-export { orderAmqpRuntime } from "./amqp-runtime.js";
+export { orderAmqpWorker } from "./module.js";
+export { OrderAmqpRuntime, amqpModule, orderAmqpRuntime } from "./amqp-runtime.js";

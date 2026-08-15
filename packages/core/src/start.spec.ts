@@ -7,19 +7,15 @@ import type { KernelEvent } from "./events.js";
 import { createFakeClock } from "./fake-clock.js";
 import { RuntimeStartFailed, type Runtime, type RuntimeHost } from "./runtime.js";
 import { start } from "./start.js";
-import { testRuntime } from "./test-runtime.js";
+import { runtimeModule } from "./test-fixtures.js";
+import { TestRuntimePort, testRuntime } from "./test-runtime.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
-
-const AppModule = Module("App")({
-  provides: [Provider(Greeting)({ value: { text: "hello" } })],
-  exports: [Greeting],
-});
 
 describe("start", () => {
   it("builds the graph, serves, and exits cleanly when stopped", async () => {
     const runtime = testRuntime();
-    const app = start(AppModule, { runtime, signals: false, probes: false });
+    const app = start(runtime.module, { signals: false, probes: false });
 
     let settledEarly = false;
     void app.exited.then(() => {
@@ -52,16 +48,16 @@ describe("start", () => {
     const runtime = testRuntime();
     const built = createDeferred<void>();
     const Slow = Module("Slow")({
+      imports: [runtime.module],
       provides: [
         Provider(Greeting)({
           make: () => fromSafePromise(built.promise).map(() => ({ text: "hello" })),
         }),
       ],
-      exports: [Greeting],
+      exports: [Greeting, TestRuntimePort],
     });
 
     const app = start(Slow, {
-      runtime,
       clock,
       signals: false,
       probes: false,
@@ -91,7 +87,7 @@ describe("start", () => {
   it("aborts in-flight units when the exit skips the drain", async () => {
     // GIVEN a serving application holding one unit open
     const runtime = testRuntime();
-    const app = start(AppModule, { runtime, signals: false, probes: false });
+    const app = start(runtime.module, { signals: false, probes: false });
     await runtime.untilStarted();
     const unit = runtime.submit();
 
@@ -111,11 +107,12 @@ describe("start", () => {
 
   it("reports a construction failure without wrapping the module's own error", async () => {
     const Failing = Module("Failing")({
+      imports: [testRuntime().module],
       provides: [Provider(Greeting)({ make: () => ErrAsync("no-config" as const) })],
-      exports: [Greeting],
+      exports: [Greeting, TestRuntimePort],
     });
 
-    const app = start(Failing, { runtime: testRuntime(), signals: false, probes: false });
+    const app = start(Failing, { signals: false, probes: false });
 
     await expect(app.exited).toBeErrWith("no-config");
   });
@@ -126,7 +123,7 @@ describe("start", () => {
       start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
     };
 
-    const app = start(AppModule, { runtime: broken, signals: false, probes: false });
+    const app = start(runtimeModule(broken), { signals: false, probes: false });
 
     await expect(app.exited).toBeErrTagged(
       "RuntimeStartFailed",
@@ -136,7 +133,9 @@ describe("start", () => {
 
   it("closes the application scope on a clean stop", async () => {
     const released: string[] = [];
+    const runtime = testRuntime();
     const Resourceful = Module("Resourceful")({
+      imports: [runtime.module],
       provides: [
         Provider(Greeting)({
           acquire: () => OkAsync({ text: "hi" }),
@@ -145,11 +144,10 @@ describe("start", () => {
           },
         }),
       ],
-      exports: [Greeting],
+      exports: [Greeting, TestRuntimePort],
     });
 
-    const runtime = testRuntime();
-    const app = start(Resourceful, { runtime, signals: false, probes: false });
+    const app = start(Resourceful, { signals: false, probes: false });
     await runtime.untilStarted();
     app.stop();
     await app.exited;
@@ -164,8 +162,7 @@ describe("start", () => {
       start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "port in use" })),
     };
 
-    const app = start(AppModule, {
-      runtime: broken,
+    const app = start(runtimeModule(broken), {
       signals: false,
       probes: false,
       onEvent: (event) => events.push(event.type),
@@ -179,18 +176,19 @@ describe("start", () => {
 
   it("surfaces a failing release in the exit report's teardown errors", async () => {
     const boom = new Error("release failed");
+    const runtime = testRuntime();
     const Leaky = Module("Leaky")({
+      imports: [runtime.module],
       provides: [
         Provider(Greeting)({
           acquire: () => OkAsync({ text: "hi" }),
           release: () => Promise.reject(boom),
         }),
       ],
-      exports: [Greeting],
+      exports: [Greeting, TestRuntimePort],
     });
 
-    const runtime = testRuntime();
-    const app = start(Leaky, { runtime, signals: false, probes: false, onEvent: () => {} });
+    const app = start(Leaky, { signals: false, probes: false, onEvent: () => {} });
     await runtime.untilStarted();
     app.stop();
 
@@ -209,8 +207,7 @@ describe("start", () => {
     const before = listenerCount();
 
     const runtime = testRuntime();
-    const app = start(AppModule, {
-      runtime,
+    const app = start(runtime.module, {
       probes: false,
       preDrainDelayMs: 60_000,
       drainTimeoutMs: 60_000,
@@ -237,7 +234,7 @@ describe("start", () => {
     const before = uncaughtListenerCount();
 
     const runtime = testRuntime();
-    const app = start(AppModule, { runtime, probes: false, preDrainDelayMs: 60_000 });
+    const app = start(runtime.module, { probes: false, preDrainDelayMs: 60_000 });
     await runtime.untilStarted();
     expect(uncaughtListenerCount()).toBe(before + 2);
 
@@ -255,7 +252,7 @@ describe("start", () => {
 describe("runtimeInfo", () => {
   it("hands back what a serving runtime published about itself", async () => {
     const runtime = testRuntime("greeter");
-    const app = start(AppModule, { runtime, signals: false, probes: false });
+    const app = start(runtime.module, { signals: false, probes: false });
 
     await expect(app.runtimeInfo()).toBeOkWith({ name: "greeter" });
 
@@ -271,7 +268,7 @@ describe("runtimeInfo", () => {
       needs: [],
       start: () => OkAsync({ drain: () => OkAsync(), stop: () => OkAsync() }),
     };
-    const app = start(AppModule, { runtime: silent, signals: false, probes: false });
+    const app = start(runtimeModule(silent), { signals: false, probes: false });
 
     await expect(app.runtimeInfo()).toBeOkWith(undefined);
 
@@ -287,7 +284,7 @@ describe("runtimeInfo", () => {
       start: (host: RuntimeHost<never>) =>
         fromSafePromise(gate.promise).flatMap(() => inner.start(host)),
     };
-    const app = start(AppModule, { runtime: stalled, signals: false, probes: false });
+    const app = start(runtimeModule(stalled), { signals: false, probes: false });
 
     // Asked for before the runtime is anywhere near serving — the deferred is
     // what lets this be read at any point rather than only after a hook fires.
@@ -313,8 +310,7 @@ describe("runtimeInfo", () => {
       ...testRuntime(),
       start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })),
     };
-    const app = start(AppModule, {
-      runtime: broken,
+    const app = start(runtimeModule(broken), {
       signals: false,
       probes: false,
       onEvent: () => {},

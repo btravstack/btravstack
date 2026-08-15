@@ -1,7 +1,8 @@
+import { Module, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { createDeferred } from "./deferred.js";
-import type { Runtime, RuntimeHost, Serving } from "./runtime.js";
+import { RuntimePort, type Runtime, type RuntimeHost, type Serving } from "./runtime.js";
 import type { RunUnit } from "./runtime.js";
 
 export type SubmittedUnit<T, E> = {
@@ -18,7 +19,21 @@ export type SubmittedUnit<T, E> = {
  */
 export type TestRuntimeInfo = { readonly name: string };
 
+/** The in-memory runtime's port: what `TestRuntime.module` provides, and what a test composition exports. */
+export class TestRuntimePort extends RuntimePort<Runtime<never, TestRuntimeInfo>> {}
+
 export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
+  /**
+   * A module providing this very runtime on `TestRuntimePort` — the shape a
+   * runtime package ships (`httpModule(...)`), sized for a test: import it
+   * next to the module under test and export the port, and `start` finds it.
+   *
+   * It provides **this** object. A wrapper built by spreading (`{ ...runtime,
+   * start }`) copies the module too, so its module still boots the inner,
+   * unwrapped runtime — a wrapper provides itself on `TestRuntimePort` with a
+   * module of its own.
+   */
+  readonly module: Module<TestRuntimePort, never, never>;
   readonly started: () => boolean;
   /** Resolves the first time the kernel calls `start` — `start` itself stays pending until shutdown. */
   readonly untilStarted: () => AsyncResult<void, never>;
@@ -52,8 +67,14 @@ export const testRuntime = (name = "test"): TestRuntime => {
     },
   });
 
-  return {
+  const runtime: TestRuntime = {
     name,
+    get module() {
+      return Module("TestRuntime")({
+        provides: [Provider(TestRuntimePort)({ value: runtime })],
+        exports: [TestRuntimePort],
+      });
+    },
     needs: [],
     start: (host: RuntimeHost<never>) => {
       run = host.run;
@@ -96,4 +117,6 @@ export const testRuntime = (name = "test"): TestRuntime => {
       return { settle, result, signal: forwarded.signal };
     },
   };
+
+  return runtime;
 };

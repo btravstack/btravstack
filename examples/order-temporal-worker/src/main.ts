@@ -5,8 +5,7 @@ import { NativeConnection } from "@temporalio/worker";
 import { OkAsync, P, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { describeEnvIssues, readEnv, type Env } from "./env.js";
-import { OrderTemporalModule } from "./module.js";
-import { temporalWorkerRuntime } from "./temporal-runtime.js";
+import { orderTemporalWorker } from "./module.js";
 
 /**
  * The third process, and — apart from the runtime it names and the connection
@@ -38,15 +37,15 @@ const work = (env: Env): AsyncResult<void, never> =>
   fromSafePromise(NativeConnection.connect({ address: env.TEMPORAL_ADDRESS })).flatMap(
     (connection) =>
       fromSafePromise(
-        runMain(OrderTemporalModule, {
-          runtime: temporalWorkerRuntime({
+        runMain(
+          orderTemporalWorker({
             contract: orderContract,
             connection,
             namespace: env.TEMPORAL_NAMESPACE,
             workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
           }),
-          probes: { port: env.PROBE_PORT },
-        })
+          { probes: { port: env.PROBE_PORT } },
+        )
           // `.finally`, not a `flatTap`: an open `NativeConnection` holds the
           // event loop, so a startup that ends in a defect is exactly the path
           // that must still close it. `runMain`'s bare `Promise` is the one

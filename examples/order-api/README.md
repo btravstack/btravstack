@@ -14,7 +14,7 @@ src/router.ts         the implementation as a provider, and the one place a doma
 src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/handler.ts        ApiModule — the Hono app and the oRPC handler, provided as @btravstack/http's HttpHandler port
 src/client.ts         an AsyncResult client for the same contract
-src/module.ts         OrderApiModule — the composition root
+src/module.ts         orderApi(http) — the composition root, importing httpModule
 src/env.ts            process.env validated through a schema, as a Result
 src/main.ts           the process: readEnv + runMain
 src/test-fixtures.ts  serve / clientFor / gate / tapped, as Vitest fixtures
@@ -78,9 +78,10 @@ mounted under `/rpc`, built by a provider from the `OrderRouter` port, itself a
 provider built from the two use cases it declares, so even the transport wiring
 exists because the composition root said so; oRPC's own context stays empty,
 since one container is enough — and reads `port` back off `Serving.info` the
-same way any caller of the package does. The runtime is `httpRuntime({ port })`,
-whose one need is that port; a module that does not export it fails on arity at
-the `runMain` call.
+same way any caller of the package does. The runtime is `httpModule({ port })`,
+imported by the composition root and exported as `HttpRuntime` — which is how
+`runMain` finds it — and its one need is that port; a module that exports
+neither fails on arity at the `runMain` call.
 
 ### One unit per call
 
@@ -169,8 +170,7 @@ it reads everything else, as a value:
 ```ts
 await readEnv().match({
   ok: (env) =>
-    runMain(OrderApiModule, {
-      runtime: httpRuntime({ port: env.PORT }),
+    runMain(orderApi({ port: env.PORT }), {
       unit: RequestModule,
       probes: { port: env.PROBE_PORT },
     }),

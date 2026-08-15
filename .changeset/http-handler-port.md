@@ -17,3 +17,16 @@ Because the runtime resolves it per request, the provider may live in the
 per-request dependencies constructor-injected — the reason there is no
 `ctx` argument any more. `needs` and `handler` are gone from `HttpOptions`;
 the `HttpHandler<Needs>` function type is replaced by the port class.
+
+**Breaking, in the same release.** The runtime is a module, not an option:
+`httpModule(options)` provides the runtime on the new **`HttpRuntime`** port
+(declared over core's `RuntimePort`), which the composition root imports and
+exports — `start(module)` resolves it from there, since `StartOptions.runtime`
+is gone. `httpRuntime` is no longer exported.
+
+```ts
+const OrderApiModule = Module("OrderApi")({
+  imports: [ApplicationModule, ApiModule, httpModule({ port: env.PORT })],
+  exports: [HttpRuntime, HttpHandler],
+});
+```

@@ -155,13 +155,17 @@ queue job id or a task token already is.
 
 ## The runtimes with a non-empty `needs`
 
-`order-api`'s `httpRuntime` declares `[HttpHandler]` — the package's own port
+`order-api`'s `httpModule` declares `[HttpHandler]` — the package's own port
 for the HTTP surface, which the example provides over a router provider that
 declares the two use cases it calls —
 `temporalWorkerRuntime` declares the five ports its activities resolve, and
 `orderAmqpRuntime` declares `[Outbox, Logger]` — each a selection of what the
 module exports, because a
-runtime declares what _it_ needs. The kernel's own `testRuntime` needs nothing,
+runtime declares what _it_ needs. A runtime is itself a service the composition
+root exports, on a port declared over the kernel's `RuntimePort`: `http` ships
+its (`HttpRuntime`, its needs being fixed), the other two examples declare their
+own (`OrderTemporalRuntime`, `OrderAmqpRuntime`), because those runtimes' needs
+are the application's. The kernel's own `testRuntime` needs nothing,
 so these three are what exercise `start`'s phantom rest-tuple gate and
 `RuntimeHost`'s `Context<InstanceType<Needs>>` — where a runtime names port
 _classes_ while di parameterises contexts by port _instances_ — against a real
@@ -174,8 +178,9 @@ test**: `@btravstack/http` ships no `*.test-d.ts`.
 All three directions are pinned, in `order-api/src/needs-gate.test-d.ts`,
 `order-temporal-worker/src/needs-gate.test-d.ts`
 and `order-amqp-worker/src/needs-gate.test-d.ts`: the wired call is an ordinary
-two-argument one, and a module one port short fails on **arity**, naming the
-missing need.
+one, a module one port short fails on **arity**, naming the missing need, and a
+composition that forgets its runtime module fails the same way with
+`NO RUNTIME`.
 
 ## Why these are tests, not just illustrations
 

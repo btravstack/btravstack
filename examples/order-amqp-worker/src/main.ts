@@ -1,13 +1,12 @@
 import { runMain } from "@btravstack/core";
 import { P } from "unthrown";
 
-import { orderAmqpRuntime } from "./amqp-runtime.js";
 import { describeEnvIssues, readEnv, type Env } from "./env.js";
-import { OrderAmqpModule } from "./module.js";
+import { orderAmqpWorker } from "./module.js";
 
 /**
- * The broadcast process, and — apart from the runtime it names — the same
- * shape every deployment's `main.ts` is: validate the environment, build the
+ * The broadcast process, and — apart from the composition root it names — the
+ * same shape every deployment's `main.ts` is: validate the environment, build the
  * graph, serve it, and turn the exit report into a process exit code. No connection
  * dance here — `TypedAmqpWorker` owns its own connection, so unlike
  * `order-temporal-worker`'s `main.ts` there is nothing to open before `start` and
@@ -17,11 +16,7 @@ import { OrderAmqpModule } from "./module.js";
  * source-only, and every spec drives `start` directly.
  */
 const work = (env: Env): Promise<void> =>
-  runMain(OrderAmqpModule, {
-    runtime: orderAmqpRuntime({
-      urls: [env.AMQP_URL],
-      relay: { pollMs: env.OUTBOX_POLL_MS },
-    }),
+  runMain(orderAmqpWorker({ urls: [env.AMQP_URL], relay: { pollMs: env.OUTBOX_POLL_MS } }), {
     probes: { port: env.PROBE_PORT },
   });
 

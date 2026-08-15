@@ -1,4 +1,4 @@
-import { Module, type AnyPort, type Context, type Scope, type ScopedOptions } from "@btravstack/di";
+import { Module, type Context, type Scope, type ScopedOptions } from "@btravstack/di";
 import { fromSafePromise, OkAsync, type AsyncResult } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
@@ -8,7 +8,16 @@ import { safeSink, stderrSink, type EventSink } from "./events.js";
 import { createPhaseTracker, type Phase } from "./phase.js";
 import { startProbeServer } from "./probes.js";
 import { installSignalHandlers, installUncaughtHandlers } from "./process-handlers.js";
-import type { RunUnit, Runtime, RuntimeStartFailed, Serving } from "./runtime.js";
+import {
+  RuntimePort,
+  type RunUnit,
+  type Runtime,
+  type RuntimeInfoOf,
+  type RuntimeInstance,
+  type RuntimeNeedsOf,
+  type RuntimeStartFailed,
+  type Serving,
+} from "./runtime.js";
 import { createUnitRegistry } from "./units.js";
 
 export type TeardownError = { readonly port: string; readonly cause: unknown };
@@ -20,8 +29,7 @@ export type ExitReport = {
   readonly uptimeMs: number;
 };
 
-export type StartOptions<Needs extends AnyPort, Info = never, UnitX = never, UnitNeeds = never> = {
-  readonly runtime: Runtime<Needs, Info>;
+export type StartOptions<UnitX = never, UnitNeeds = never> = {
   /**
    * A module forked around **every unit**: its providers are constructed when
    * a unit opens and torn down when it closes, reading anything the
@@ -94,13 +102,14 @@ export type RunningApp<E, Info = never> = {
 
 /**
  * The phantom rest tuple `start`, `runMain` and `withApp` all carry: empty —
- * and invisible — when the module's exports cover the runtime's declared
- * needs, a named error tuple otherwise, so an unmet need fails to typecheck at
- * the call site. A trailing rest tuple rather than a conditional type on
- * `module` or `options` is deliberate: a conditional on an inference-bearing
- * parameter makes TypeScript defer that parameter's inference and can collapse
- * `X` or `E` to `unknown`. Same shape, and the same reasoning, as di's own
- * UNSATISFIED DEPENDENCIES gate on `Module.scoped`.
+ * and invisible — when the module exports a runtime and its exports cover
+ * that runtime's declared needs, a named error tuple otherwise, so a missing
+ * runtime or an unmet need fails to typecheck at the call site. A trailing
+ * rest tuple rather than a conditional type on `module` or `options` is
+ * deliberate: a conditional on an inference-bearing parameter makes
+ * TypeScript defer that parameter's inference and can collapse `X` or `E` to
+ * `unknown`. Same shape, and the same reasoning, as di's own UNSATISFIED
+ * DEPENDENCIES gate on `Module.scoped`.
  *
  * With a `unit` module in play it checks both directions of the fork: the
  * runtime's needs may draw on the unit's exports as well as the module's —
@@ -108,13 +117,18 @@ export type RunningApp<E, Info = never> = {
  * must be covered by the module's exports or `Scope`, which is `forkScope`'s
  * own gate stated at `start`'s call site, where the parent is actually known.
  */
-export type RuntimeNeedsGate<Needs extends AnyPort, X, UnitX = never, UnitNeeds = never> = [
-  InstanceType<Needs>,
-] extends [X | UnitX]
-  ? [Exclude<UnitNeeds, X | Scope>] extends [never]
-    ? []
-    : [error: "UNSATISFIED UNIT NEEDS", missing: Exclude<UnitNeeds, X | Scope>]
-  : [error: "UNSATISFIED RUNTIME NEEDS", missing: Exclude<InstanceType<Needs>, X | UnitX>];
+export type RuntimeNeedsGate<X, UnitX = never, UnitNeeds = never> = [
+  Extract<X, RuntimeInstance>,
+] extends [never]
+  ? [error: "NO RUNTIME", hint: "the module exports no port declared over RuntimePort"]
+  : [InstanceType<RuntimeNeedsOf<X>>] extends [X | UnitX]
+    ? [Exclude<UnitNeeds, X | Scope>] extends [never]
+      ? []
+      : [error: "UNSATISFIED UNIT NEEDS", missing: Exclude<UnitNeeds, X | Scope>]
+    : [
+        error: "UNSATISFIED RUNTIME NEEDS",
+        missing: Exclude<InstanceType<RuntimeNeedsOf<X>>, X | UnitX>,
+      ];
 
 // `Module<X, E, Scope>`, not `Module<X, E, never>`: `Needs` sits in covariant
 // position on `Module`, so this accepts a module with no needs at all *and* the
@@ -122,16 +136,20 @@ export type RuntimeNeedsGate<Needs extends AnyPort, X, UnitX = never, UnitNeeds 
 // need `Module.scoped` discharges by opening the scope itself. A module with a
 // genuine unmet dependency is rejected here, as di's own gate would reject it.
 // The `gate` rest parameter is a phantom: it never carries a runtime argument.
-export const start = <X, E, Needs extends AnyPort, Info = never, UnitX = never, UnitNeeds = never>(
+export const start = <X, E, UnitX = never, UnitNeeds = never>(
   module: Module<X, E, Scope>,
-  options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
-  ...gate: RuntimeNeedsGate<Needs, X, UnitX, UnitNeeds>
-): RunningApp<E, Info> => {
+  options: StartOptions<UnitX, UnitNeeds> = {},
+  ...gate: RuntimeNeedsGate<X, UnitX, UnitNeeds>
+): RunningApp<E, RuntimeInfoOf<X>> => {
   void gate;
+  type Info = RuntimeInfoOf<X>;
+  type Needs = RuntimeNeedsOf<X>;
   const clock = options.clock ?? systemClock;
   const emit = safeSink(options.onEvent ?? stderrSink);
+  // Known only once the graph is built — the runtime is one of its services.
+  let runtimeName = "";
   const tracker = createPhaseTracker((phase) => {
-    if (phase === "serving") emit({ type: "serving", runtime: options.runtime.name });
+    if (phase === "serving") emit({ type: "serving", runtime: runtimeName });
     if (phase === "stopping") emit({ type: "stopping" });
     if (phase === "exited") emit({ type: "exited" });
   });
@@ -342,6 +360,17 @@ export const start = <X, E, Needs extends AnyPort, Info = never, UnitX = never, 
       (ctx: Context<X>): AsyncResult<ExitReport, RuntimeStartFailed> => {
         tracker.advanceTo("starting");
 
+        // The runtime is a service of the graph, resolved through the one port
+        // every runtime package declares its own over. `RuntimePort` is the
+        // generic base — its construct signature is `new <Service>()` — so it
+        // is not itself in `X`, and the gate has already proven, at the call
+        // site, that a port with its id is; the assertion restates that proof
+        // where the checker cannot see it.
+        const runtime = (ctx as unknown as Context<RuntimeInstance>).get(
+          RuntimePort as unknown as abstract new () => RuntimeInstance,
+        ) as Runtime<Needs, Info>;
+        runtimeName = runtime.name;
+
         // `Context<in R>` is contravariant, so an application context whose
         // exports cover the runtime's needs is assignable here. The assertion is
         // needed only because the `gate` rest parameter proves
@@ -395,7 +424,7 @@ export const start = <X, E, Needs extends AnyPort, Info = never, UnitX = never, 
 
         const host = { ctx: runtimeCtx, run };
 
-        return options.runtime.start(host).flatMap((serving: Serving<Info>) => {
+        return runtime.start(host).flatMap((serving: Serving<Info>) => {
           tracker.advanceTo("serving");
           runtimePublished.resolve(serving.info);
 

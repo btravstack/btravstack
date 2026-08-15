@@ -38,7 +38,13 @@ The kernel itself has no runtime dependencies beyond `node:` builtins.
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
-import { runMain, start, type Runtime, type Serving } from "@btravstack/core";
+import {
+  RuntimePort,
+  runMain,
+  start,
+  type Runtime,
+  type Serving,
+} from "@btravstack/core";
 import { Ok, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{
@@ -89,7 +95,19 @@ const ticker: Runtime<typeof Greeter> = {
   },
 };
 
-await runMain(AppModule, { runtime: ticker });
+// A runtime is a service the module provides, on a port declared over
+// `RuntimePort` — `start` finds it by that port in the module's exports. The
+// composition root is what differs between an `api`, a `worker` and a
+// `consumer` process; the application module is the same in all three.
+class Ticker extends RuntimePort<Runtime<typeof Greeter>> {}
+
+const TickerApp = Module("TickerApp")({
+  imports: [AppModule],
+  provides: [Provider(Ticker)({ value: ticker })],
+  exports: [Greeter, Ticker],
+});
+
+await runMain(TickerApp);
 ```
 
 `runMain` is the front door: it boots the module, awaits the application's
@@ -98,9 +116,9 @@ of a `main.ts`. Underneath it is `start`, which returns immediately with a
 `RunningApp` and decides nothing about the process: reach for it when the
 handle itself is wanted (a test, an embedder, a dev runner booting two
 applications). The runtime's declared
-`needs` are checked against the module's exports **at compile time** — booting
-`ticker` against a module that does not export `Greeter` is a type error at the
-call, not a boot-time crash.
+`needs` are checked against the module's exports **at compile time** — a
+`TickerApp` that does not export `Greeter` is a type error at the call, not a
+boot-time crash, and so is a module that exports no runtime port at all.
 
 Every code sample on this page is compiled by
 [`packages/core/src/docs-examples.test-d.ts`](./packages/core/src/docs-examples.test-d.ts),
@@ -148,7 +166,7 @@ dead-letter on the other.
 ## The `Runtime` contract
 
 ```ts
-type Runtime<Needs extends AnyPort, Info = never> = {
+type Runtime<Needs extends AnyPort = never, Info = never> = {
   readonly name: string;
   readonly needs: readonly Needs[];
   readonly start: (
@@ -205,7 +223,15 @@ const httpish: Runtime<typeof Greeter, HttpInfo> = {
     }),
 };
 
-const app = start(AppModule, { runtime: httpish });
+class Httpish extends RuntimePort<Runtime<typeof Greeter, HttpInfo>> {}
+
+const HttpishApp = Module("HttpishApp")({
+  imports: [AppModule],
+  provides: [Provider(Httpish)({ value: httpish })],
+  exports: [Greeter, Httpish],
+});
+
+const app = start(HttpishApp);
 const info = await app.runtimeInfo(); // Result<HttpInfo | undefined, never>
 ```
 
@@ -460,7 +486,7 @@ Use `runMain`, or decide the code yourself:
 
 ```ts
 const embed = async (): Promise<void> => {
-  const app = start(AppModule, { runtime: ticker, signals: true });
+  const app = start(TickerApp, { signals: true });
   const report = await app.exited;
 
   process.exitCode = report.match({
@@ -524,8 +550,14 @@ swallowed: a broken reporter must not take the process down mid-shutdown.
 const drainTest = async (): Promise<void> => {
   const clock = createFakeClock();
   const runtime = testRuntime();
+  // The in-memory runtime ships as a module: import it next to the application
+  // and export its port, exactly as a real runtime package is composed in.
+  const TestApp = Module("TestApp")({
+    imports: [AppModule, runtime.module],
+    exports: [TestRuntimePort],
+  });
 
-  const report = await withApp(AppModule, { runtime, clock }, async (app) => {
+  const report = await withApp(TestApp, { clock }, async (app) => {
     await runtime.untilStarted();
     const unit = runtime.submit<string>();
 

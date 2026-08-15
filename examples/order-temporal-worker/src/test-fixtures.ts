@@ -28,7 +28,7 @@ import { ErrAsync, OkAsync } from "unthrown";
 import { expect } from "vitest";
 
 import { FulfillmentModule } from "./fulfillment.js";
-import { temporalWorkerRuntime } from "./temporal-runtime.js";
+import { OrderTemporalRuntime, temporalModule } from "./temporal-runtime.js";
 
 /**
  * The time-skipping server binary, cached where **we** decide rather than in the
@@ -94,8 +94,9 @@ const tapProvider = (capture: (services: ServiceOf<ServicesTap>) => void) =>
 /**
  * A composition root shaped like the real one, with this test's fulfillment
  * module swapped in: same `ApplicationModule`, same `PersistenceModule`, same
- * runtime, same five exported ports, so the orchestration under test is
- * unchanged and only the external services' answers differ.
+ * five exported ports, so the orchestration under test is unchanged and only
+ * the external services' answers differ. The runtime joins in `serve`, which
+ * is where the per-test queue and the environment's connection are known.
  */
 const rootWith = (
   fulfillment: typeof FulfillmentModule,
@@ -204,16 +205,29 @@ export const it = createTimeSkippingTest({
       // each other's tasks.
       const contract = withTaskQueue(orderContract, nextTaskQueueId("orders"));
 
-      const app = start(module, {
-        runtime: temporalWorkerRuntime({
-          contract,
-          connection: testEnv.nativeConnection,
-          workflows: { workflowBundle },
-        }),
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
+      // The runtime joins the graph the way `orderTemporalWorker` adds it —
+      // built from what only this test knows: its queue, the environment's
+      // connection, the memoised bundle.
+      const worker = Module("StubTemporalWorker")({
+        imports: [
+          module,
+          temporalModule({
+            contract,
+            connection: testEnv.nativeConnection,
+            workflows: { workflowBundle },
+          }),
+        ],
+        exports: [
+          OrderTemporalRuntime,
+          PlaceOrder,
+          OrderRepository,
+          StockService,
+          ShippingService,
+          Logger,
+        ],
       });
+
+      const app = start(worker, { signals: false, probes: false, preDrainDelayMs: 0 });
 
       shutdowns.push(async () => {
         app.stop();

@@ -30,15 +30,18 @@ import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 
-import { HttpHandler, httpRuntime, type HttpInfo } from "./http-runtime.js";
+import { HttpHandler, HttpRuntime, httpModule, type HttpInfo } from "./http-runtime.js";
 
 type Handler = ServiceOf<HttpHandler>;
 
-/** The application, reduced to the one port the runtime needs: its HTTP surface, provided as a value. */
-const appOf = (handler: Handler) =>
+const loopback = (port = 0) => httpModule({ port, hostname: "127.0.0.1" });
+
+/** The application, reduced to the runtime and the one port it needs: its HTTP surface, provided as a value. */
+const appOf = (handler: Handler, port = 0) =>
   Module("App")({
+    imports: [loopback(port)],
     provides: [Provider(HttpHandler)({ value: handler })],
-    exports: [HttpHandler],
+    exports: [HttpRuntime, HttpHandler],
   });
 
 /** An application-scoped counter the per-unit handler below reads, so the fork's parent seeding is exercised too. */
@@ -48,8 +51,9 @@ const countingAppOf = () => {
   const builds = { count: 0 };
   return {
     module: Module("CountingApp")({
+      imports: [loopback()],
       provides: [Provider(Builds)({ value: builds })],
-      exports: [Builds],
+      exports: [HttpRuntime, Builds],
     }),
     builds,
   };
@@ -180,7 +184,6 @@ export const it = test.extend<HttpFixtures>({
 
     await use(async (handler = noop, unit) => {
       const app = start(appOf(handler), {
-        runtime: httpRuntime({ port: 0, hostname: "127.0.0.1" }),
         ...(unit === undefined ? {} : { unit }),
         signals: false,
         probes: false,
@@ -207,7 +210,6 @@ export const it = test.extend<HttpFixtures>({
     await use(async () => {
       const { module, builds } = countingAppOf();
       const app = start(module, {
-        runtime: httpRuntime({ port: 0, hostname: "127.0.0.1" }),
         unit: PerUnitHandler,
         signals: false,
         probes: false,
@@ -237,8 +239,7 @@ export const it = test.extend<HttpFixtures>({
     const started: App[] = [];
 
     await use((port) => {
-      const app = start(appOf(noop), {
-        runtime: httpRuntime({ port, hostname: "127.0.0.1" }),
+      const app = start(appOf(noop, port), {
         signals: false,
         probes: false,
         preDrainDelayMs: 0,

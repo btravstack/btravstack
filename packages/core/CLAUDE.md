@@ -122,10 +122,16 @@ Beyond the nine:
 Type-level invariants live in `start.test-d.ts` and are checked by
 `pnpm typecheck`:
 
-- **A runtime's declared `needs` are checked against the module's exports at the
-  `start` call site** (the phantom rest-tuple gate). A missing port does not
-  compile. `InstanceType<never>` is `never`, so a needs-free runtime works
-  against any module.
+- **The module must export a runtime, and that runtime's declared `needs` are
+  checked against the module's exports at the `start` call site** (the phantom
+  rest-tuple gate, `RuntimeNeedsGate<X, UnitX, UnitNeeds>`). A composition with
+  no port declared over `RuntimePort` among its exports fails on arity with
+  `NO RUNTIME`; a missing need fails with `UNSATISFIED RUNTIME NEEDS`.
+  `InstanceType<never>` is `never`, so a needs-free runtime works against any
+  module. `Needs` and `Info` are not type parameters of `start` any more: they
+  are read off `X` (`RuntimeNeedsOf<X>`, `RuntimeInfoOf<X>` — `ServiceOf` of
+  `Extract<X, RuntimeInstance>`), which is what lets `RunningApp<E,
+RuntimeInfoOf<X>>` type `runtimeInfo()` from the module alone.
 - **The gate is bypassable, deliberately.** A caller who spells the phantom
   arguments out by hand (`start(M, o, "UNSATISFIED RUNTIME NEEDS", new Clock())`)
   does typecheck — asserted, not assumed. This is the same escape hatch di's own
@@ -143,13 +149,27 @@ gate.
 
 - **The needs check is a trailing phantom rest tuple, not a conditional on an
   inference-bearing parameter.**
-  `...gate: [InstanceType<Needs>] extends [X] ? [] : [error: "UNSATISFIED RUNTIME NEEDS", missing: …]`.
+  `...gate: [InstanceType<RuntimeNeedsOf<X>>] extends [X | UnitX] ? [] : [error: "UNSATISFIED RUNTIME NEEDS", missing: …]`
+  (preceded by the `NO RUNTIME` arm on `Extract<X, RuntimeInstance>`).
   A conditional type on `module` or `options` would make TypeScript defer that
   parameter's inference and can collapse `X` or `E` to `unknown` — the same
   shape, and the same reasoning, as di's own gate on `Module.scoped`, and the
   same rule unthrown records for `fromPromise`. It **is** bypassable by a caller
   who hand-writes the phantom arguments (proved in `start.test-d.ts`); that is
   accepted, exactly as di accepts it.
+
+- **The runtime is resolved from the built graph, through the one generic
+  port.** `RuntimePort` is `Port("Runtime")` left generic (its construct
+  signature is `new <Service>()`), so it is never itself in `X`; every runtime
+  package — or application — declares a concrete port over it, and they all
+  share the id `"Runtime"`. Inside `start`'s `use` callback the kernel does
+  `ctx.get(RuntimePort)` through a cast, because the gate has already proven at
+  the call site that a port with that id is exported, and the checker cannot
+  see that proof in a body where `X` is unresolved. `runtimeName` is filled in
+  there, which is why the `serving` event's `runtime` field is a `let` rather
+  than read off an option. `Port("Runtime")` is called exactly once, in
+  `runtime.ts`, so di's duplicate-id warning never fires however many packages
+  subclass it.
 
 - **`Context<in R>`'s contravariance is what makes the check free.** An
   application context whose exports cover the runtime's needs is assignable to

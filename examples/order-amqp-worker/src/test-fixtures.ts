@@ -6,18 +6,19 @@ import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/
 import { Logger, OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { expect, type TestAPI } from "vitest";
 
-import { orderAmqpRuntime } from "./amqp-runtime.js";
-import { OrderAmqpModule } from "./module.js";
+import { OrderAmqpRuntime } from "./amqp-runtime.js";
+import { orderAmqpWorker } from "./module.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
 /**
- * `X` is pinned to the three ports the composition root exports rather than
- * left generic: `start`'s needs gate is a phantom rest parameter proven at the
- * call site, and no proof is available inside a helper generic in the module's
- * own exports. The runtime needs two of them; `PlaceOrder` is the writer's.
+ * `X` is pinned to the ports the composition root exports rather than left
+ * generic: `start`'s needs gate is a phantom rest parameter proven at the call
+ * site, and no proof is available inside a helper generic in the module's own
+ * exports. `OrderAmqpRuntime` is what `start` resolves, the runtime needs two
+ * of the rest; `PlaceOrder` is the writer's.
  */
-type AmqpPorts = PlaceOrder | OrderRepository | Outbox | Logger;
+type AmqpPorts = OrderAmqpRuntime | PlaceOrder | OrderRepository | Outbox | Logger;
 
 type ServeOptions = { readonly drainTimeoutMs: number };
 
@@ -38,12 +39,14 @@ class ServicesTap extends Port("ServicesTap")<{
   readonly logger: ServiceOf<Logger>;
 }> {}
 
-const tappedAmqp = () => {
+const tappedAmqp = (amqpConnectionUrl: string) => {
   let services: ServiceOf<ServicesTap> | undefined;
 
   return {
     module: Module("TappedAmqp")({
-      imports: [OrderAmqpModule],
+      // Tight on purpose: the specs wait on real broker round trips, and
+      // a production-sized idle sleep would be most of every test's clock.
+      imports: [orderAmqpWorker({ urls: [amqpConnectionUrl], relay: { pollMs: 25 } })],
       provides: [
         Provider(ServicesTap)([PlaceOrder, OrderRepository, Outbox, Logger], {
           sync: (placeOrder, repository, outbox, logger) => {
@@ -52,7 +55,7 @@ const tappedAmqp = () => {
           },
         }),
       ],
-      exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+      exports: [OrderAmqpRuntime, PlaceOrder, OrderRepository, Outbox, Logger],
     }),
     services: (): ServiceOf<ServicesTap> => {
       // oxlint-disable-next-line unthrown/no-throw -- a fixture misused before `serve` is a broken test, and the loudest possible answer is the right one
@@ -64,12 +67,16 @@ const tappedAmqp = () => {
 
 export type AmqpFixtures = {
   /**
-   * Boots an app whose relay publishes to — and whose consumer reads from —
-   * this test's own vhost, and registers its shutdown. The teardown runs even
-   * when the test fails, and it keeps the assertion the old `try`/`finally`
-   * blocks carried: the app exited `Ok`.
+   * Boots an app and registers its shutdown. The teardown runs even when the
+   * test fails, and it keeps the assertion the old `try`/`finally` blocks
+   * carried: the app exited `Ok`.
    */
   readonly serve: Serve;
+  /**
+   * The composition root on this test's own vhost — its relay publishes to,
+   * and its consumer reads from, a broker no other test shares — plus a tap
+   * on the very service instances it runs.
+   */
   readonly tapped: ReturnType<typeof tappedAmqp>;
 };
 
@@ -77,22 +84,12 @@ export type AmqpFixtures = {
 // since `AmqpTestFixtures` reaches back into amqplib's `Channel` /
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
-  serve: async ({ amqpConnectionUrl }, use) => {
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  serve: async ({}, use) => {
     const shutdowns: (() => Promise<void>)[] = [];
 
     const serve: Serve = async (module, options) => {
-      const app = start(module, {
-        runtime: orderAmqpRuntime({
-          urls: [amqpConnectionUrl],
-          // Tight on purpose: the specs wait on real broker round trips, and
-          // a production-sized idle sleep would be most of every test's clock.
-          relay: { pollMs: 25 },
-        }),
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        ...options,
-      });
+      const app = start(module, { signals: false, probes: false, preDrainDelayMs: 0, ...options });
       shutdowns.push(async () => {
         app.stop();
         await expect(app.exited).toBeOk();
@@ -108,8 +105,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     for (const shutdown of shutdowns) await shutdown();
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  tapped: async ({}, use) => {
-    await use(tappedAmqp());
+  tapped: async ({ amqpConnectionUrl }, use) => {
+    await use(tappedAmqp(amqpConnectionUrl));
   },
 });

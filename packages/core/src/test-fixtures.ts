@@ -2,12 +2,30 @@ import { Module, Port, Provider } from "@btravstack/di";
 import { expect, test } from "vitest";
 
 import type { KernelEvent } from "./events.js";
+import type { Runtime } from "./runtime.js";
 import { start, type RunningApp } from "./start.js";
-import { testRuntime, type TestRuntime, type TestRuntimeInfo } from "./test-runtime.js";
+import {
+  TestRuntimePort,
+  testRuntime,
+  type TestRuntime,
+  type TestRuntimeInfo,
+} from "./test-runtime.js";
 import { currentUnit } from "./units.js";
 
 class Parent extends Port("UnitFixtureParent")<{ readonly mark: () => void }> {}
 class Span extends Port("UnitFixtureSpan")<{ readonly openedIn: string | undefined }> {}
+
+/**
+ * A wrapped or ad-hoc runtime as the module `start` boots — the shape
+ * `TestRuntime.module` already has for the plain one, for a runtime a spec
+ * built by hand (`{ ...testRuntime(), start }`, whose spread `.module` still
+ * provides the inner runtime).
+ */
+export const runtimeModule = (runtime: Runtime<never, TestRuntimeInfo>) =>
+  Module("TestRuntime")({
+    provides: [Provider(TestRuntimePort)({ value: runtime })],
+    exports: [TestRuntimePort],
+  });
 
 export type UnitApp = {
   readonly runtime: TestRuntime;
@@ -54,7 +72,9 @@ export const it = test.extend<{ unitApp: UnitApp }>({
       teardown = () => Promise.reject(cause);
     };
 
+    const runtime = testRuntime();
     const AppModule = Module("UnitFixtureApp")({
+      imports: [runtime.module],
       provides: [
         Provider(Parent)({
           sync: () => {
@@ -63,7 +83,7 @@ export const it = test.extend<{ unitApp: UnitApp }>({
           },
         }),
       ],
-      exports: [Parent],
+      exports: [Parent, TestRuntimePort],
     });
 
     const UnitModule = Module("UnitFixtureUnit")({
@@ -84,9 +104,7 @@ export const it = test.extend<{ unitApp: UnitApp }>({
       exports: [Span],
     });
 
-    const runtime = testRuntime();
     const app = start(AppModule, {
-      runtime,
       unit: UnitModule,
       signals: false,
       probes: false,

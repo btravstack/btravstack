@@ -1,4 +1,5 @@
-import type { Runtime } from "@btravstack/core";
+import { RuntimePort, type Runtime } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
 import {
   Logger,
   OrderRepository,
@@ -60,6 +61,42 @@ type TemporalNeeds =
   | typeof ShippingService
   | typeof Logger;
 
+export type TemporalWorkerOptions = {
+  /**
+   * The contract, and with it the task queue this worker polls. Specs scope a
+   * per-test queue with `withTaskQueue`, so the queue is read off the contract
+   * rather than passed separately.
+   */
+  readonly contract: OrderContract;
+  /**
+   * An open connection to the Temporal service. Handed in rather than opened
+   * here, exactly as the queue runtime is handed its broker: `main.ts` builds
+   * one from the environment, and a spec passes the test environment's.
+   */
+  readonly connection: NativeConnection;
+  readonly namespace?: string;
+  readonly workflows: WorkflowSource;
+};
+
+/**
+ * The port `start` resolves this deployment's runtime from. The runtime's
+ * `needs` are the application's, so the port is the application's to declare
+ * — over the kernel's `RuntimePort` — rather than something
+ * `@btravstack/temporal` could ship.
+ */
+export class OrderTemporalRuntime extends RuntimePort<Runtime<TemporalNeeds, TemporalInfo>> {}
+
+/**
+ * The runtime as a module: what the composition root imports so the worker is
+ * built by di like every other service, and what a spec swaps a per-test
+ * queue and the test environment's connection into.
+ */
+export const temporalModule = (options: TemporalWorkerOptions) =>
+  Module("OrderTemporal")({
+    provides: [Provider(OrderTemporalRuntime)({ value: temporalWorkerRuntime(options) })],
+    exports: [OrderTemporalRuntime],
+  });
+
 /**
  * A `Runtime` serving the order application as a Temporal worker — and, since
  * `@btravstack/temporal` shipped, no longer a hand-rolled one.
@@ -80,22 +117,7 @@ type TemporalNeeds =
 export const temporalWorkerRuntime = ({
   contract,
   ...transport
-}: {
-  /**
-   * The contract, and with it the task queue this worker polls. Specs scope a
-   * per-test queue with `withTaskQueue`, so the queue is read off the contract
-   * rather than passed separately.
-   */
-  readonly contract: OrderContract;
-  /**
-   * An open connection to the Temporal service. Handed in rather than opened
-   * here, exactly as the queue runtime is handed its broker: `main.ts` builds
-   * one from the environment, and a spec passes the test environment's.
-   */
-  readonly connection: NativeConnection;
-  readonly namespace?: string;
-  readonly workflows: WorkflowSource;
-}): Runtime<TemporalNeeds, TemporalInfo> =>
+}: TemporalWorkerOptions): Runtime<TemporalNeeds, TemporalInfo> =>
   // `...transport` rather than three named fields: `connection`, `namespace`
   // and `workflows` are the package's own options under the package's own
   // names, and spreading them keeps `namespace` optional instead of

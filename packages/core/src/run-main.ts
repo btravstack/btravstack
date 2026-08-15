@@ -1,6 +1,7 @@
-import type { AnyPort, Module, Scope } from "@btravstack/di";
+import type { Module, Scope } from "@btravstack/di";
 import { P } from "unthrown";
 
+import type { RuntimeInfoOf } from "./runtime.js";
 import {
   start,
   type ExitReport,
@@ -103,41 +104,34 @@ export const awaitExit = async <E>(
  *
  * @example
  * ```ts
- * await runMain(AppModule, {
- *   runtime: httpRuntime({ port: 3000 }),
- * });
+ * // `OrderApiModule` imports the application next to `httpModule({ port })`
+ * // and exports `HttpRuntime` — the port `start` resolves the runtime from.
+ * await runMain(OrderApiModule);
  * ```
  */
 // The one async surface in this package that returns a bare `Promise<void>`
 // rather than an `AsyncResult`, deliberately: its whole job is to LEAVE the
 // Result world and become a process exit code. It is the boundary, and a
 // top-level `await runMain(...)` in an entry point is the intended shape.
-export const runMain = async <
-  X,
-  E,
-  Needs extends AnyPort,
-  Info = never,
-  UnitX = never,
-  UnitNeeds = never,
->(
+export const runMain = async <X, E, UnitX = never, UnitNeeds = never>(
   module: Module<X, E, Scope>,
-  options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
+  options: StartOptions<UnitX, UnitNeeds> = {},
   exit: (code: number) => void = (code) => {
     process.exitCode = code;
   },
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: RuntimeNeedsGate<Needs, X, UnitX, UnitNeeds>
+  ...gate: RuntimeNeedsGate<X, UnitX, UnitNeeds>
 ): Promise<void> => {
   void gate;
 
   // The gate above proves the needs at the call site, but that proof is not
-  // visible inside a body where `X` and `Needs` are still unresolved type
-  // parameters — the same reason `withApp` discharges the tuple the same way.
+  // visible inside a body where `X` is still an unresolved type parameter —
+  // the same reason `withApp` discharges the tuple the same way.
   const boot = start as (
     module: Module<X, E, Scope>,
-    options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
-  ) => RunningApp<E, Info>;
+    options: StartOptions<UnitX, UnitNeeds>,
+  ) => RunningApp<E, RuntimeInfoOf<X>>;
 
   await awaitExit(boot(module, options), exit);
 };

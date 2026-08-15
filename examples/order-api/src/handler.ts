@@ -16,9 +16,10 @@ export const PREFIX = "/rpc" as const;
  * composition root said so, and di's own arity gate sees the transport's real
  * dependencies. Nothing about the HTTP surface is a free-floating singleton or
  * a service located from a context at call time: one container, and oRPC's
- * own context is left empty. `HttpHandler` is the one port `httpRuntime`
- * needs, resolved out of each request's context; a module that does not
- * export it fails to compile at the `runMain(...)` call, before anything runs.
+ * own context is left empty. `HttpHandler` is the one port the runtime
+ * `httpModule` provides needs, resolved out of each request's context; a
+ * module that does not export it fails to compile at the `runMain(...)` call,
+ * before anything runs.
  *
  * The handler flushes the response before its promise settles, which is the
  * one obligation the runtime's unit-per-request design needs from it.

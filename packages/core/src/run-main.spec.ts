@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createFakeClock } from "./fake-clock.js";
 import { awaitExit, runMain } from "./run-main.js";
 import { start, type ExitReport } from "./start.js";
-import { testRuntime } from "./test-runtime.js";
+import { TestRuntimePort, testRuntime } from "./test-runtime.js";
 
 const clean: ExitReport = {
   reason: "signal",
@@ -22,25 +22,17 @@ const appWith = (exited: unknown) => ({ exited, stop: () => {}, phase: () => "ex
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 
-const AppModule = Module("App")({
-  provides: [Provider(Greeting)({ value: { text: "hello" } })],
-  exports: [Greeting],
-});
+// `runMain` boots for real, so every call needs a runtime — fresh each time,
+// since a `testRuntime` is stateful across starts — and the harness options a
+// spec always passes to `start`.
+const failing = () =>
+  Module("Failing")({
+    imports: [testRuntime().module],
+    provides: [Provider(Greeting)({ make: () => Err("no-config" as const) })],
+    exports: [Greeting, TestRuntimePort],
+  });
 
-const FailingModule = Module("Failing")({
-  provides: [Provider(Greeting)({ make: () => Err("no-config" as const) })],
-  exports: [Greeting],
-});
-
-// `runMain` boots for real, so every call needs the harness options a spec
-// always passes to `start` — fresh each time, since a `testRuntime` is
-// stateful across starts.
-const quiet = () => ({
-  runtime: testRuntime(),
-  signals: false as const,
-  probes: false as const,
-  onEvent: () => {},
-});
+const quiet = { signals: false as const, probes: false as const, onEvent: () => {} };
 
 describe("runMain", () => {
   it("exits 0 on a clean report", async () => {
@@ -171,7 +163,7 @@ describe("runMain", () => {
     const codes: number[] = [];
 
     // WHEN the process is run through the front door
-    await runMain(FailingModule, quiet(), (code) => codes.push(code));
+    await runMain(failing(), quiet, (code) => codes.push(code));
 
     // THEN the modeled Err came back out as the startup exit code — proof the
     // module and options actually reached `start`
@@ -183,7 +175,7 @@ describe("runMain", () => {
     const previous = process.exitCode;
 
     // WHEN runMain is called without one
-    await runMain(FailingModule, quiet());
+    await runMain(failing(), quiet);
 
     // THEN the code landed on process.exitCode itself
     expect(process.exitCode).toBe(1);
@@ -195,7 +187,7 @@ describe("runMain", () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
 
     // WHEN a whole boot-and-exit cycle runs
-    await runMain(FailingModule, quiet(), () => {});
+    await runMain(failing(), quiet, () => {});
 
     // THEN the fate was decided through the exit sink alone
     expect(exitSpy).not.toHaveBeenCalled();
@@ -212,8 +204,7 @@ describe("runMain", () => {
     const codes: number[] = [];
     const clock = createFakeClock();
     const runtime = testRuntime();
-    const app = start(AppModule, {
-      runtime,
+    const app = start(runtime.module, {
       clock,
       signals: false,
       probes: false,

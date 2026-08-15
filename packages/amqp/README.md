@@ -30,36 +30,58 @@ on npm to install yet. The command above is what it will be once it has.
 ## A worked example
 
 ```ts
-start(AppModule, {
-  runtime: amqpRuntime({
-    urls: ["amqp://localhost"],
-    contract: orderContract,
-    needs: [PlaceOrder, Logger],
-    handlers: () => ({
-      placeOrder: declareHandler<
-        typeof orderContract,
-        "placeOrder",
-        MessageUnitContext<typeof PlaceOrder | typeof Logger>
-      >(orderContract, "placeOrder", (message, _raw, { context }) =>
-        context.ctx
-          .get(PlaceOrder)
-          .execute(message.payload.orderId, message.payload.quantity)
-          .map(() => undefined)
-          .mapErrCases((matcher) =>
-            matcher.with(
-              P.tag("InvalidQuantity"),
-              P.tag("DuplicateOrder"),
-              (error) => new NonRetryableError(error._tag, error),
-            ),
-          )
-          .recoverDefect((cause) =>
-            ErrAsync(new RetryableError("placing the order failed", cause)),
+// The runtime is a service the module provides. Its `needs` are the
+// application's own, so the port is the application's to declare — over
+// `RuntimePort`, with the runtime's needs and info in the type.
+class OrderAmqpRuntime extends RuntimePort<
+  Runtime<typeof PlaceOrder | typeof Logger, AmqpInfo>
+> {}
+
+const AmqpModule = Module("Amqp")({
+  provides: [
+    Provider(OrderAmqpRuntime)({
+      value: amqpRuntime({
+        urls: ["amqp://localhost"],
+        contract: orderContract,
+        needs: [PlaceOrder, Logger],
+        handlers: () => ({
+          placeOrder: declareHandler<
+            typeof orderContract,
+            "placeOrder",
+            MessageUnitContext<typeof PlaceOrder | typeof Logger>
+          >(orderContract, "placeOrder", (message, _raw, { context }) =>
+            context.ctx
+              .get(PlaceOrder)
+              .execute(message.payload.orderId, message.payload.quantity)
+              .map(() => undefined)
+              .mapErrCases((matcher) =>
+                matcher.with(
+                  P.tag("InvalidQuantity"),
+                  P.tag("DuplicateOrder"),
+                  (error) => new NonRetryableError(error._tag, error),
+                ),
+              )
+              .recoverDefect((cause) =>
+                ErrAsync(new RetryableError("placing the order failed", cause)),
+              ),
           ),
-      ),
+        }),
+        middleware: (host) =>
+          messageUnits<typeof PlaceOrder | typeof Logger>(host),
+      }),
     }),
-    middleware: (host) => messageUnits<typeof PlaceOrder | typeof Logger>(host),
-  }),
+  ],
+  exports: [OrderAmqpRuntime],
 });
+
+// `start` resolves the runtime from the module's exports; the gate checks
+// the module also exports the ports the runtime needs.
+start(
+  Module("Worker")({
+    imports: [AppModule, AmqpModule],
+    exports: [OrderAmqpRuntime, PlaceOrder, Logger],
+  }),
+);
 ```
 
 `amqp-contract` separates the handler from the middleware slot entirely —

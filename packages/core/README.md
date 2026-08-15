@@ -26,7 +26,13 @@ Node `>=20`.
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
-import { runMain, start, type Runtime, type Serving } from "@btravstack/core";
+import {
+  RuntimePort,
+  runMain,
+  start,
+  type Runtime,
+  type Serving,
+} from "@btravstack/core";
 import { Ok, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{
@@ -77,15 +83,27 @@ const ticker: Runtime<typeof Greeter> = {
   },
 };
 
-await runMain(AppModule, { runtime: ticker });
+// A runtime is a service the module provides, on a port declared over
+// `RuntimePort` — `start` finds it by that port in the module's exports. The
+// composition root is what differs between an `api`, a `worker` and a
+// `consumer` process; the application module is the same in all three.
+class Ticker extends RuntimePort<Runtime<typeof Greeter>> {}
+
+const TickerApp = Module("TickerApp")({
+  imports: [AppModule],
+  provides: [Provider(Ticker)({ value: ticker })],
+  exports: [Greeter, Ticker],
+});
+
+await runMain(TickerApp);
 ```
 
 `runMain` is the front door — boot the module, await the exit, set the process
 exit code, one call. `start` is the same boot returning the `RunningApp`
 instead of deciding the process's fate; it is what tests and embedders use.
 The runtime's declared `needs` are checked against the module's exports at
-compile time: booting `ticker` against a module that does not export `Greeter`
-is a type error at the call.
+compile time: a `TickerApp` that does not export `Greeter` is a type error at
+the call, and so is a module that exports no runtime port at all.
 
 ## What you get
 
@@ -198,7 +216,7 @@ Use `runMain`, or decide the code yourself:
 
 ```ts
 const embed = async (): Promise<void> => {
-  const app = start(AppModule, { runtime: ticker, signals: true });
+  const app = start(TickerApp, { signals: true });
   const report = await app.exited;
 
   process.exitCode = report.match({
@@ -214,15 +232,21 @@ together — the other way out, at the cost of no signal-driven drain.)
 
 ## Testing
 
-`@btravstack/core/testing` ships `createFakeClock`, `testRuntime` and
-`withApp`.
+`@btravstack/core/testing` ships `createFakeClock`, `testRuntime` (and its
+port, `TestRuntimePort`) and `withApp`.
 
 ```ts
 const drainTest = async (): Promise<void> => {
   const clock = createFakeClock();
   const runtime = testRuntime();
+  // The in-memory runtime ships as a module: import it next to the application
+  // and export its port, exactly as a real runtime package is composed in.
+  const TestApp = Module("TestApp")({
+    imports: [AppModule, runtime.module],
+    exports: [TestRuntimePort],
+  });
 
-  const report = await withApp(AppModule, { runtime, clock }, async (app) => {
+  const report = await withApp(TestApp, { clock }, async (app) => {
     await runtime.untilStarted();
     const unit = runtime.submit<string>();
 
@@ -255,7 +279,6 @@ asserting.
 
 | Option            | Default          |                                                               |
 | ----------------- | ---------------- | ------------------------------------------------------------- |
-| `runtime`         | —                | required; the one runtime this process boots                  |
 | `unit`            | none             | a module forked around every unit; see above                  |
 | `clock`           | `systemClock`    | injectable, so drain tests are instant                        |
 | `signals`         | `true`           | `false` disables the SIGTERM/SIGINT **and** uncaught handlers |

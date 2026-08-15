@@ -4,16 +4,19 @@ import { start, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { ApplicationModule, Logger, OrderRepository } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
-import { HttpHandler, httpRuntime, type HttpInfo } from "@btravstack/http";
+import { HttpHandler, HttpRuntime, httpModule, type HttpInfo } from "@btravstack/http";
 import { fromSafePromise, OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { ApiModule } from "./handler.js";
-import { OrderApiModule } from "./module.js";
+import { orderApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
+
+/** Every composition here binds `port: 0` on loopback and reads the port back from `Serving.info`. */
+const loopback = { port: 0, hostname: "127.0.0.1" } as const;
 
 const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
   Module("StubPersistence")({
@@ -23,13 +26,13 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
 
 /**
  * A composition root shaped like the real one but with the repository swapped:
- * same `ApplicationModule`, same runtime, same two exported ports, so the
+ * same `ApplicationModule`, same runtime, same three exported ports, so the
  * transport under test is unchanged.
  */
 const apiWith = (repository: ServiceOf<OrderRepository>) =>
   Module("StubApi")({
-    imports: [ApplicationModule, persistenceOf(repository), ApiModule],
-    exports: [HttpHandler, Logger],
+    imports: [ApplicationModule, persistenceOf(repository), ApiModule, httpModule(loopback)],
+    exports: [HttpRuntime, HttpHandler, Logger],
   });
 
 /**
@@ -44,7 +47,7 @@ const tappedApi = () => {
 
   return {
     api: Module("TappedApi")({
-      imports: [OrderApiModule],
+      imports: [orderApi(loopback)],
       provides: [
         Provider(LoggerTap)([Logger], {
           sync: (logger) => {
@@ -53,7 +56,7 @@ const tappedApi = () => {
           },
         }),
       ],
-      exports: [HttpHandler, Logger],
+      exports: [HttpRuntime, HttpHandler, Logger],
     }),
     traces: (): readonly string[] => read().map((line) => line.slice(0, line.indexOf("]") + 1)),
   };
@@ -118,14 +121,16 @@ export type ApiFixtures = {
    * test fails, which is what the `try`/`finally` blocks used to hand-roll —
    * and it keeps the assertion those blocks carried: the app exited `Ok`.
    *
-   * The module's `X` is pinned to the two ports every composition here exports
-   * rather than left generic: `start`'s needs gate is a phantom rest parameter
-   * proven at the call site, and no proof is available inside a helper generic
-   * in the module's own exports. `Logger` is for the gate's OTHER half —
-   * `RequestModule`, passed as `StartOptions.unit`, reads it out of the parent.
+   * The module's `X` is pinned to the three ports every composition here
+   * exports rather than left generic: `start`'s needs gate is a phantom rest
+   * parameter proven at the call site, and no proof is available inside a
+   * helper generic in the module's own exports. `HttpRuntime` is what `start`
+   * resolves, `HttpHandler` what that runtime needs, and `Logger` is for the
+   * gate's OTHER half — `RequestModule`, passed as `StartOptions.unit`, reads
+   * it out of the parent.
    */
   readonly serve: <E>(
-    module: Module<HttpHandler | Logger, E, Scope>,
+    module: Module<HttpRuntime | HttpHandler | Logger, E, Scope>,
     options?: {
       readonly drainTimeoutMs?: number;
       readonly probes?: { readonly port: number } | false;
@@ -134,15 +139,17 @@ export type ApiFixtures = {
   readonly clientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;
   readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<string>;
   readonly statusOf: (url: string) => Promise<number>;
+  /** The real composition root, on loopback. */
+  readonly api: ReturnType<typeof orderApi>;
   readonly unmodelled: ReturnType<typeof unmodelledApi>;
   readonly gate: ReturnType<typeof gatedApi>;
   readonly tapped: ReturnType<typeof tappedApi>;
 };
 
 /**
- * Every spec binds `port: 0` and reads the port back from `Serving.info` — the
- * kernel's own channel for it, which is why this runtime has no `onListening`
- * hook and no `boundPort()` accessor of its own.
+ * The port comes back from `Serving.info` — the kernel's own channel for it,
+ * which is why this runtime has no `onListening` hook and no `boundPort()`
+ * accessor of its own.
  */
 const originOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<string> =>
   `http://127.0.0.1:${await portOf(app)}`;
@@ -154,7 +161,6 @@ export const it = test.extend<ApiFixtures>({
 
     const serve: ApiFixtures["serve"] = (module, options) => {
       const app = start(module, {
-        runtime: httpRuntime({ port: 0, hostname: "127.0.0.1" }),
         unit: RequestModule,
         signals: false,
         probes: false,
@@ -190,6 +196,11 @@ export const it = test.extend<ApiFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   statusOf: async ({}, use) => {
     await use(async (url) => (await fetch(url)).status);
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  api: async ({}, use) => {
+    await use(orderApi(loopback));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

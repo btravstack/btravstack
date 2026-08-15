@@ -29,26 +29,47 @@ on npm to install yet. The command above is what it will be once it has.
 ## A worked example
 
 ```ts
-start(AppModule, {
-  runtime: temporalRuntime({
-    connection,
-    taskQueue: contract.taskQueue,
-    needs: [PlaceOrder, Logger],
-    workflows: { workflowsPath },
-    activities: (host) =>
-      declareActivitiesHandler({
-        contract,
-        middleware: activityUnits<typeof PlaceOrder | typeof Logger>(host),
-        activities: {
-          placeOrder: {
-            place: (args, { context }) =>
-              context.ctx.get(PlaceOrder).execute(args.orderId, args.quantity),
-          },
-        },
+// The runtime is a service the module provides. Its `needs` are the
+// application's, so the port is the application's to declare — over the
+// kernel's `RuntimePort` — and `start` resolves the worker from it.
+class OrderWorkerRuntime extends RuntimePort<
+  Runtime<typeof PlaceOrder | typeof Logger, TemporalInfo>
+> {}
+
+const WorkerModule = Module("OrderWorker")({
+  imports: [AppModule],
+  provides: [
+    Provider(OrderWorkerRuntime)({
+      value: temporalRuntime({
+        connection,
+        taskQueue: contract.taskQueue,
+        needs: [PlaceOrder, Logger],
+        workflows: { workflowsPath },
+        activities: (host) =>
+          declareActivitiesHandler({
+            contract,
+            middleware: activityUnits<typeof PlaceOrder | typeof Logger>(host),
+            activities: {
+              placeOrder: {
+                place: (args, { context }) =>
+                  context.ctx
+                    .get(PlaceOrder)
+                    .execute(args.orderId, args.quantity),
+              },
+            },
+          }),
       }),
-  }),
+    }),
+  ],
+  exports: [OrderWorkerRuntime, PlaceOrder, Logger],
 });
+
+start(WorkerModule);
 ```
+
+The module exports the runtime port **and** the ports the runtime needs —
+`start`'s gate reads both off the exports, and rejects a composition that
+misses either at the call site.
 
 One line — the middleware — is what a
 [`temporal-contract`](https://github.com/btravstack/temporal-contract) user

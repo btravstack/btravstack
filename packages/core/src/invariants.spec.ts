@@ -8,15 +8,11 @@ import { createDeferred } from "./deferred.js";
 import { createFakeClock } from "./fake-clock.js";
 import { RuntimeStartFailed, type RuntimeHost } from "./runtime.js";
 import { start, type RunningApp } from "./start.js";
-import { testRuntime } from "./test-runtime.js";
+import { runtimeModule } from "./test-fixtures.js";
+import { TestRuntimePort, testRuntime } from "./test-runtime.js";
 import { withApp } from "./with-app.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
-
-const AppModule = Module("App")({
-  provides: [Provider(Greeting)({ value: { text: "hello" } })],
-  exports: [Greeting],
-});
 
 const get = async (port: number, path: string): Promise<{ status: number; body: string }> => {
   const response = await fetch(`http://127.0.0.1:${port}${path}`);
@@ -85,7 +81,7 @@ describe("load-bearing invariants", () => {
     const clock = createFakeClock();
     const runtime = testRuntime();
 
-    const report = await withApp(AppModule, { runtime, clock, onEvent: () => {} }, async (app) => {
+    const report = await withApp(runtime.module, { clock, onEvent: () => {} }, async (app) => {
       await runtime.untilStarted();
       const unit = runtime.submit<string>();
 
@@ -114,7 +110,7 @@ describe("load-bearing invariants", () => {
     const clock = createFakeClock();
     const runtime = testRuntime();
 
-    const report = await withApp(AppModule, { runtime, clock, onEvent: () => {} }, async (app) => {
+    const report = await withApp(runtime.module, { clock, onEvent: () => {} }, async (app) => {
       await runtime.untilStarted();
       runtime.submit<string>();
 
@@ -135,7 +131,7 @@ describe("load-bearing invariants", () => {
     const runtime = testRuntime();
     let aborted = false;
 
-    await withApp(AppModule, { runtime, clock, onEvent: () => {} }, async (app) => {
+    await withApp(runtime.module, { clock, onEvent: () => {} }, async (app) => {
       await runtime.untilStarted();
       const unit = runtime.submit<string>();
       unit.signal.addEventListener("abort", () => {
@@ -158,7 +154,12 @@ describe("load-bearing invariants", () => {
 
   it("5. the application scope closes on a startup failure", async () => {
     const released: string[] = [];
+    const broken = {
+      ...testRuntime(),
+      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })),
+    };
     const Half = Module("Half")({
+      imports: [runtimeModule(broken)],
       provides: [
         Provider(Greeting)({
           acquire: () => OkAsync({ text: "hi" }),
@@ -167,15 +168,10 @@ describe("load-bearing invariants", () => {
           },
         }),
       ],
-      exports: [Greeting],
+      exports: [Greeting, TestRuntimePort],
     });
-    const broken = {
-      ...testRuntime(),
-      start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })),
-    };
 
     const app = start(Half, {
-      runtime: broken,
       signals: false,
       probes: false,
       onEvent: () => {},
@@ -198,20 +194,20 @@ describe("load-bearing invariants", () => {
 
   it("7. teardown errors are collected without masking the exit reason", async () => {
     const boom = new Error("release failed");
+    const runtime = testRuntime();
     const Leaky = Module("Leaky")({
+      imports: [runtime.module],
       provides: [
         Provider(Greeting)({
           acquire: () => OkAsync({ text: "hi" }),
           release: () => Promise.reject(boom),
         }),
       ],
-      exports: [Greeting],
+      exports: [Greeting, TestRuntimePort],
     });
 
     const clock = createFakeClock();
-    const runtime = testRuntime();
     const app = start(Leaky, {
-      runtime,
       clock,
       signals: false,
       probes: false,
@@ -239,7 +235,7 @@ describe("load-bearing invariants", () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     const runtime = testRuntime();
 
-    await withApp(AppModule, { runtime, onEvent: () => {} }, async (app) => {
+    await withApp(runtime.module, { onEvent: () => {} }, async (app) => {
       await runtime.untilStarted();
       // `untilStarted` resolves from inside `Runtime.start`, before the
       // kernel's own continuation advances the tracker — so the live phase
@@ -272,8 +268,7 @@ describe("probe wiring", () => {
         fromSafePromise(gate.promise).flatMap(() => inner.start(host)),
     };
 
-    const app = start(AppModule, {
-      runtime: stalled,
+    const app = start(runtimeModule(stalled), {
       signals: false,
       probes: { port: 0 },
       onEvent: () => {},
@@ -298,8 +293,7 @@ describe("probe wiring", () => {
         fromSafePromise(gate.promise).flatMap(() => inner.start(host)),
     };
 
-    const app = start(AppModule, {
-      runtime: stalled,
+    const app = start(runtimeModule(stalled), {
       signals: false,
       probes: { port: 0 },
       onEvent: () => {},
@@ -318,8 +312,7 @@ describe("probe wiring", () => {
   it("the drain flips readiness false before the runtime stops accepting", async () => {
     const clock = createFakeClock();
     const runtime = testRuntime();
-    const app = start(AppModule, {
-      runtime,
+    const app = start(runtime.module, {
       clock,
       signals: false,
       probes: { port: 0 },
@@ -369,7 +362,7 @@ describe("probe wiring", () => {
         })),
     };
 
-    const app = start(AppModule, { runtime: held, probes: { port: 0 }, onEvent: () => {} });
+    const app = start(runtimeModule(held), { probes: { port: 0 }, onEvent: () => {} });
 
     await inner.untilStarted();
     const port = await boundPort(app);
@@ -405,8 +398,7 @@ describe("probe wiring", () => {
         })),
     };
 
-    const app = start(AppModule, {
-      runtime: held,
+    const app = start(runtimeModule(held), {
       clock,
       signals: false,
       probes: { port: 0 },
@@ -435,8 +427,7 @@ describe("probe wiring", () => {
 
   it("both dispose sites close the probe socket", async () => {
     const runtime = testRuntime();
-    const app = start(AppModule, {
-      runtime,
+    const app = start(runtime.module, {
       signals: false,
       probes: { port: 0 },
       onEvent: () => {},
@@ -455,8 +446,7 @@ describe("probe wiring", () => {
       ...testRuntime(),
       start: () => ErrAsync(new RuntimeStartFailed({ runtime: "broken", cause: "nope" })),
     };
-    const failing = start(AppModule, {
-      runtime: broken,
+    const failing = start(runtimeModule(broken), {
       signals: false,
       probes: { port: 0 },
       onEvent: () => {},
@@ -473,7 +463,7 @@ describe("probe wiring", () => {
 
   it("binds 9000 when no probe port is given", async () => {
     const runtime = testRuntime();
-    const app = start(AppModule, { runtime, signals: false, onEvent: () => {} });
+    const app = start(runtime.module, { signals: false, onEvent: () => {} });
 
     // Asserted positively — the bound port *is* 9000, and answers there —
     // rather than inferred from a deliberate conflict on 9000, which proved
@@ -494,6 +484,7 @@ describe("probe wiring", () => {
     const before = handlerCounts();
     let built = false;
     const Watched = Module("Watched")({
+      imports: [testRuntime().module],
       provides: [
         Provider(Greeting)({
           make: () => {
@@ -502,11 +493,10 @@ describe("probe wiring", () => {
           },
         }),
       ],
-      exports: [Greeting],
+      exports: [Greeting, TestRuntimePort],
     });
 
     const app = start(Watched, {
-      runtime: testRuntime(),
       probes: { port: blocker.port },
       onEvent: () => {},
     });

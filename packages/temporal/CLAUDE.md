@@ -9,14 +9,23 @@ with the code in the same commit, and with `README.md` — the package ships no
 ## Public surface
 
 - **`temporalRuntime(options)` → `Runtime<Needs, TemporalInfo>`** — runs a
-  `@temporalio/worker` Worker under the kernel's lifecycle.
-  `TemporalOptions<Needs>` — `connection` (a `NativeConnection` the caller
-  opened, and therefore closes), `taskQueue`, `namespace` (default
-  `"default"`), `workflows` (a `WorkflowSource`: `{ workflowsPath }` or
-  `{ workflowBundle }`), `activities`, `needs`, `forceAfter` (Temporal's
-  `shutdownForceTime`, default `15 seconds`) and `gracePeriod`
-  (`shutdownGraceTime`, default `10 seconds`). `TemporalInfo` is
-  `{ taskQueue, namespace }`, published on `Serving.info` once polling.
+  `@temporalio/worker` Worker under the kernel's lifecycle. It is a **value
+  the application provides**, not an option handed to `start`: `Needs` is per
+  application, so the port is the application's to declare over the kernel's
+  `RuntimePort` — `class OrderWorkerRuntime extends
+RuntimePort<Runtime<typeof PlaceOrder | typeof Logger, TemporalInfo>> {}` —
+  and its module provides `Provider(OrderWorkerRuntime)({ value:
+temporalRuntime({...}) })` and exports the port alongside the ports the
+  runtime needs. This package ships no port and no module of its own, which
+  is where it differs from `@btravstack/http` (fixed needs, so `HttpRuntime`
+  - `httpModule` are the package's).
+    `TemporalOptions<Needs>` — `connection` (a `NativeConnection` the caller
+    opened, and therefore closes), `taskQueue`, `namespace` (default
+    `"default"`), `workflows` (a `WorkflowSource`: `{ workflowsPath }` or
+    `{ workflowBundle }`), `activities`, `needs`, `forceAfter` (Temporal's
+    `shutdownForceTime`, default `15 seconds`) and `gracePeriod`
+    (`shutdownGraceTime`, default `10 seconds`). `TemporalInfo` is
+    `{ taskQueue, namespace }`, published on `Serving.info` once polling.
 - **`activities`** is a **builder** — `(host: RuntimeHost<Needs>) => Record<…>`
   — because the middleware needs the host and the host does not exist until
   `start` calls the runtime. The package never wraps what it returns, which is

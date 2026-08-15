@@ -1,7 +1,14 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/core";
+import {
+  RuntimePort,
+  start,
+  type Runtime,
+  type RunningApp,
+  type RuntimeHost,
+  type UnitMeta,
+} from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
 import { declareActivitiesHandler } from "@temporal-contract/worker/activity";
@@ -31,6 +38,16 @@ const AppModule = Module("App")({
   provides: [Provider(Greeting)({ value: { text: "hello" } })],
   exports: [Greeting],
 });
+
+/** The runtime is a service the module provides: this is the port `start` resolves it from. */
+class WorkerRuntime extends RuntimePort<Runtime<typeof Greeting, TemporalInfo>> {}
+
+const appWith = (runtime: Runtime<typeof Greeting, TemporalInfo>) =>
+  Module("Worker")({
+    imports: [AppModule],
+    provides: [Provider(WorkerRuntime)({ value: runtime })],
+    exports: [WorkerRuntime, Greeting],
+  });
 
 type App = RunningApp<never, TemporalInfo>;
 
@@ -176,16 +193,16 @@ export const it = test.extend<TemporalFixtures>({
 
     await use(async (build, options) => {
       const taskQueue = nextTaskQueue();
-      const app = start(AppModule, {
-        runtime: temporalRuntime({
-          connection: env.nativeConnection,
-          taskQueue,
-          workflows: {
-            workflowsPath: fileURLToPath(new URL("./test-workflows.ts", import.meta.url)),
-          },
-          activities: build ?? defaultActivities,
-          needs: [Greeting],
-        }),
+      const runtime = temporalRuntime({
+        connection: env.nativeConnection,
+        taskQueue,
+        workflows: {
+          workflowsPath: fileURLToPath(new URL("./test-workflows.ts", import.meta.url)),
+        },
+        activities: build ?? defaultActivities,
+        needs: [Greeting],
+      });
+      const app = start(appWith(runtime), {
         signals: false,
         probes: false,
         preDrainDelayMs: 0,
@@ -221,21 +238,21 @@ export const it = test.extend<TemporalFixtures>({
     // A builder that throws is served against a workflow module that exists, so
     // the failure under test is the only one available.
     await use((build) => {
-      const app = start(AppModule, {
-        runtime: temporalRuntime({
-          connection: env.nativeConnection,
-          taskQueue: nextTaskQueue(),
-          workflows: {
-            workflowsPath: fileURLToPath(
-              new URL(
-                build === undefined ? "./does-not-exist.js" : "./test-workflows.ts",
-                import.meta.url,
-              ),
+      const runtime = temporalRuntime({
+        connection: env.nativeConnection,
+        taskQueue: nextTaskQueue(),
+        workflows: {
+          workflowsPath: fileURLToPath(
+            new URL(
+              build === undefined ? "./does-not-exist.js" : "./test-workflows.ts",
+              import.meta.url,
             ),
-          },
-          activities: build ?? defaultActivities,
-          needs: [Greeting],
-        }),
+          ),
+        },
+        activities: build ?? defaultActivities,
+        needs: [Greeting],
+      });
+      const app = start(appWith(runtime), {
         signals: false,
         probes: false,
         preDrainDelayMs: 0,

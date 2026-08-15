@@ -9,7 +9,14 @@ import {
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { declareHandler, type WorkerInferHandlers } from "@amqp-contract/worker";
-import { start, type RunningApp, type RuntimeHost, type UnitMeta } from "@btravstack/core";
+import {
+  RuntimePort,
+  start,
+  type RunningApp,
+  type Runtime,
+  type RuntimeHost,
+  type UnitMeta,
+} from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { expect, type TestAPI } from "vitest";
@@ -44,6 +51,20 @@ const AppModule = Module("App")({
   provides: [Provider(Greeting)({ value: { text: "hello" } })],
   exports: [Greeting],
 });
+
+/**
+ * The runtime is a service the module provides, so each fixture composes the
+ * application with the consumer it is testing — the same shape a real
+ * deployment's composition root has, sized for one test.
+ */
+class ConsumerRuntime extends RuntimePort<Runtime<typeof Greeting, AmqpInfo>> {}
+
+const consuming = (runtime: Runtime<typeof Greeting, AmqpInfo>) =>
+  Module("Consuming")({
+    imports: [AppModule],
+    provides: [Provider(ConsumerRuntime)({ value: runtime })],
+    exports: [ConsumerRuntime, Greeting],
+  });
 
 type App = RunningApp<never, AmqpInfo>;
 
@@ -178,20 +199,24 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     const started: App[] = [];
 
     await use(async (build, options) => {
-      const app = start(AppModule, {
-        runtime: amqpRuntime({
-          urls: [amqpConnectionUrl],
-          contract: echoContract,
-          handlers: (host) => build(host).handlers,
-          middleware: (host) => build(host).middleware ?? passthroughMiddleware,
-          needs: [Greeting],
-        }),
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-        ...options,
-      });
+      const app = start(
+        consuming(
+          amqpRuntime({
+            urls: [amqpConnectionUrl],
+            contract: echoContract,
+            handlers: (host) => build(host).handlers,
+            middleware: (host) => build(host).middleware ?? passthroughMiddleware,
+            needs: [Greeting],
+          }),
+        ),
+        {
+          signals: false,
+          probes: false,
+          preDrainDelayMs: 0,
+          onEvent: () => {},
+          ...options,
+        },
+      );
       started.push(app);
       // `runtimeInfo()` resolves once the worker is consuming — await it here
       // so the caller's test body never races the worker's own startup.
@@ -209,26 +234,25 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     const started: App[] = [];
 
     await use(() => {
-      const app = start(AppModule, {
-        // A port nothing listens on: amqp-connection-manager retries the
-        // connect on its own reconnect clock regardless of the failure mode
-        // (ECONNREFUSED included — it is built for HA, not for failing fast),
-        // so `TypedAmqpWorker.create` only settles once `connectTimeoutMs`
-        // gives up and reports the DEFECT the runtime recovers. Set short so
-        // this test fails fast instead of waiting out the library's 30s
-        // default.
-        runtime: amqpRuntime({
-          urls: ["amqp://127.0.0.1:1"],
-          contract: echoContract,
-          handlers: () => ({ echo: () => OkAsync(undefined) }),
-          needs: [Greeting],
-          connectTimeoutMs: 2_000,
-        }),
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-      });
+      // A port nothing listens on: amqp-connection-manager retries the
+      // connect on its own reconnect clock regardless of the failure mode
+      // (ECONNREFUSED included — it is built for HA, not for failing fast),
+      // so `TypedAmqpWorker.create` only settles once `connectTimeoutMs`
+      // gives up and reports the DEFECT the runtime recovers. Set short so
+      // this test fails fast instead of waiting out the library's 30s
+      // default.
+      const app = start(
+        consuming(
+          amqpRuntime({
+            urls: ["amqp://127.0.0.1:1"],
+            contract: echoContract,
+            handlers: () => ({ echo: () => OkAsync(undefined) }),
+            needs: [Greeting],
+            connectTimeoutMs: 2_000,
+          }),
+        ),
+        { signals: false, probes: false, preDrainDelayMs: 0, onEvent: () => {} },
+      );
       started.push(app);
       return Promise.resolve(app);
     });
@@ -243,23 +267,22 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     const started: App[] = [];
 
     await use((overrides) => {
-      const app = start(AppModule, {
-        // A port nothing listens on, and — unlike `serveBroken` — never
-        // dialled: `handlers`/`middleware` are qualified before
-        // `TypedAmqpWorker.create` ever runs, so a throw in either never
-        // reaches the connection attempt at all.
-        runtime: amqpRuntime({
-          urls: ["amqp://127.0.0.1:1"],
-          contract: echoContract,
-          handlers: () => ({ echo: () => OkAsync(undefined) }),
-          needs: [Greeting],
-          ...overrides,
-        }),
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-      });
+      // A port nothing listens on, and — unlike `serveBroken` — never
+      // dialled: `handlers`/`middleware` are qualified before
+      // `TypedAmqpWorker.create` ever runs, so a throw in either never
+      // reaches the connection attempt at all.
+      const app = start(
+        consuming(
+          amqpRuntime({
+            urls: ["amqp://127.0.0.1:1"],
+            contract: echoContract,
+            handlers: () => ({ echo: () => OkAsync(undefined) }),
+            needs: [Greeting],
+            ...overrides,
+          }),
+        ),
+        { signals: false, probes: false, preDrainDelayMs: 0, onEvent: () => {} },
+      );
       started.push(app);
       return app;
     });

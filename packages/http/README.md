@@ -23,11 +23,12 @@ on npm to install yet. The command above is what it will be once it has.
 
 ## A worked example
 
-The HTTP surface is a service your module provides — the package's own
-`HttpHandler` port — and the runtime needs exactly that:
+The runtime is a module you import, and the HTTP surface is a service your
+module provides — the package's own `HttpHandler` port, the one thing the
+runtime needs:
 
 ```ts
-import { HttpHandler, httpRuntime } from "@btravstack/http";
+import { HttpHandler, HttpRuntime, httpModule } from "@btravstack/http";
 
 const ApiModule = Module("Api")({
   provides: [
@@ -39,8 +40,16 @@ const ApiModule = Module("Api")({
   exports: [HttpHandler],
 });
 
-start(OrderApiModule, { runtime: httpRuntime({ port: env.PORT }) });
+const OrderApiModule = Module("OrderApi")({
+  imports: [ApplicationModule, ApiModule, httpModule({ port: env.PORT })],
+  exports: [HttpRuntime, HttpHandler],
+});
+
+start(OrderApiModule);
 ```
+
+`start` finds the runtime by the `HttpRuntime` port the composition root
+exports; a module that exports none fails to compile at the call.
 
 Or with [Hono](https://hono.dev), via `@hono/node-server`'s
 `getRequestListener` — **not** its `serve()`, which creates and owns its own
@@ -54,9 +63,9 @@ Provider(HttpHandler)({
 });
 ```
 
-A module that does not export `HttpHandler` fails to compile at the `start`
-call — that is `start`'s own needs gate, and `HttpHandler` is the one need
-this runtime declares. What the handler itself needs is its provider's
+A module that exports `HttpRuntime` but not `HttpHandler` fails to compile at
+the `start` call too — that is `start`'s own needs gate, and `HttpHandler` is
+the one need this runtime declares. What the handler itself needs is its provider's
 business, so it is injected by di like anything else; and because the runtime
 resolves the port out of **each request's** context, the provider may live in
 the `StartOptions.unit` module instead, where it is built once per request
@@ -100,7 +109,7 @@ own job from that point on; the package will not double-write over it.
 ## Options
 
 The handler is not an option — it is the `HttpHandler` port your module
-provides. `httpRuntime` takes only what the socket needs:
+provides. `httpModule` takes only what the socket needs:
 
 | Option     | Default   |                                                                                                                               |
 | ---------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- |

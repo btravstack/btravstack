@@ -62,8 +62,10 @@ hook). User-facing changes need a changeset.
    They scale, fail and deploy independently — which is what Kubernetes wants
    anyway — and it deletes a whole class of design problem: there is never a
    question of how two runtimes in one process share a drain deadline, or whose
-   failure takes the process down. `StartOptions.runtime` is therefore a single
-   value, not an array, and no future option should make it plural.
+   failure takes the process down. The runtime is therefore **one port** —
+   every runtime package's port is declared over the kernel's `RuntimePort`, so
+   they share one id and a graph can hold exactly one — and no future surface
+   should make it plural.
    `examples/order-api`, `examples/order-temporal-worker` and
    `examples/order-amqp-worker`
    make this testable rather than asserted: the same `ApplicationModule` +
@@ -268,13 +270,32 @@ so a production bundle never pulls the fakes in.
 
 ### `@btravstack/core`
 
-- **`start(module, options)` → `RunningApp<E>`** — the entry point. Takes a
-  `Module<X, E, Scope>` (not `Module<X, E, never>`: `Needs` is covariant on
-  `Module`, so this accepts both a needs-free module and the resourceful one
-  whose `acquire`/`release` provider adds `Scope` — the single need
-  `Module.scoped` discharges itself). Followed by the phantom `...gate` rest
-  tuple that makes the runtime's needs a compile-time check.
-- **`StartOptions<Needs, Info, UnitX, UnitNeeds>`** — `runtime` (required);
+- **`start(module, options?)` → `RunningApp<E, RuntimeInfoOf<X>>`** — the
+  entry point. Takes a `Module<X, E, Scope>` (not `Module<X, E, never>`:
+  `Needs` is covariant on `Module`, so this accepts both a needs-free module
+  and the resourceful one whose `acquire`/`release` provider adds `Scope` —
+  the single need `Module.scoped` discharges itself). **The runtime is a
+  service of that module**, not an option: the module exports a port declared
+  over `RuntimePort`, the kernel builds the graph, resolves that port and
+  drives what it finds. The kernel is DI initialisation and lifecycle, nothing
+  else. Followed by the phantom `...gate` rest tuple, `RuntimeNeedsGate<X,
+UnitX, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
+  `UNSATISFIED RUNTIME NEEDS` when the runtime's declared needs are not among
+  the module's exports (or the unit module's), `UNSATISFIED UNIT NEEDS` for
+  the fork's own direction — all three at the call site, on arity.
+- **`RuntimePort`** — `Port("Runtime")`, exported **generic** (no fixed
+  service): a runtime package declares its own concrete port over it —
+  `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}`
+  — so every runtime is one id at runtime while each carries its own
+  `Needs`/`Info` in the type. `RuntimeOf<X>` / `RuntimeNeedsOf<X>` /
+  `RuntimeInfoOf<X>` read those back out of a module's exports; `RuntimeInstance`
+  is the shared instance type (`InstanceType<PortClass<"Runtime">>`). A
+  runtime whose needs are fixed ships its port and a module (`httpModule`); one
+  whose needs are the application's (`temporalRuntime`, `amqpRuntime`) is
+  provided on a port the **application** declares over `RuntimePort`, since a
+  port's service type is fixed at declaration and `PortInstance` is not
+  nameable outside di.
+- **`StartOptions<UnitX, UnitNeeds>`** —
   `unit` (a `Module<UnitX, never, UnitNeeds>` the kernel forks around **every
   unit**: built as the unit opens, torn down as it closes — while the unit's
   ambient record is still open — reading anything the application context
@@ -323,7 +344,8 @@ so a production bundle never pulls the fakes in.
   not a bug), `abandoned` (units still open at the deadline; **the field the
   exit code keys on**).
 - **`Runtime<Needs, Info>` / `RuntimeHost<Needs>` / `RunUnit<Needs>` /
-  `Serving<Info>`** — the runtime contract. All parameterised by port **classes**
+  `Serving<Info>`** — the runtime contract (the _service_ behind a runtime
+  port). All parameterised by port **classes**
   (`Needs extends AnyPort`) but handing out `Context<InstanceType<Needs>>`,
   because di parameterises `Context<in R>` by port **instance** types.
   `Serving.drain(signal)` returns `AsyncResult<void, never>` — **not** a
@@ -363,7 +385,7 @@ so a production bundle never pulls the fakes in.
   events as `{"cause":{}}`. A cause it cannot serialise at all (a circular
   object) falls back to `"[unserialisable]"` rather than throwing, since
   `safeSink` would swallow the throw and the event would be reported nowhere.
-- **`runMain(module, options, exit?)`** — the front door: `start` composed
+- **`runMain(module, options?, exit?)`** — the front door: `start` composed
   with the wait for `exited`, carrying the same phantom needs gate
   (`RuntimeNeedsGate`, the shared alias all three gated surfaces use). Every
   `main.ts` calls this one function; `start` is for callers that want the
@@ -387,7 +409,11 @@ checker already verifies.
 
 - **`testRuntime(name?)`** — an in-memory `Runtime<never, TestRuntimeInfo>` plus
   `started()`, `untilStarted()` (an `AsyncResult<void, never>`), `accepting()`,
-  `serving()`, `submit<T, E>()`. It publishes `{ name }` on `Serving.info` — the
+  `serving()`, `submit<T, E>()`, and **`module`** — a `Module<TestRuntimePort,
+never, never>` providing the runtime on **`TestRuntimePort`** (its port,
+  declared over `RuntimePort`, exported too), which is how a test composition
+  gets a runtime: import `runtime.module`, export `TestRuntimePort`. It
+  publishes `{ name }` on `Serving.info` — the
   one thing an in-memory runtime genuinely knows about itself — so the
   `runtimeInfo()` channel is exercised end to end by the suite. `submit`
   returns a `SubmittedUnit` (`settle`, `result`, `signal`) so a test can hold a
@@ -435,9 +461,12 @@ the code.
   A runtime with a **non-empty `needs`** meeting a real module now exercises
   `start`'s phantom rest-tuple gate and `RuntimeHost`'s
   `Context<InstanceType<Needs>>` in two places: here, and in
-  `packages/http/src/test-fixtures.ts`, whose modules provide the package's
-  own `HttpHandler` port — at application scope, and once from the `unit`
-  module — driven by its 15 `http-runtime.spec.ts` specs. `examples/` stays the only
+  `packages/http/src/test-fixtures.ts`, whose modules import `httpModule` and
+  provide the package's own `HttpHandler` port — at application scope, and
+  once from the `unit` module — driven by its 15 `http-runtime.spec.ts`
+  specs. Every needs-gate file also pins the third arm, `NO RUNTIME`: a
+  composition that forgets the runtime module fails on arity like one a port
+  short. `examples/` stays the only
   place the gate is pinned by a **type test** — `@btravstack/http` ships no
   `*.test-d.ts`.
 - **`examples/order-temporal-worker` is the one workspace whose suite needs the
@@ -499,7 +528,11 @@ the code.
   activity resolves and the `mapErrCases` triage, and reads `{ taskQueue,
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. It is the second place the
-  package's needs gate is a real one.
+  package's needs gate is a real one. Its runtime port is the **example's**
+  (`OrderTemporalRuntime`, declared over `RuntimePort` and provided by the
+  example's own module factory), because `temporalRuntime`'s needs are the
+  application's — the same is true of `order-amqp-worker`; only `@btravstack/http`
+  ships its port, since `HttpHandler` is the one need it ever has.
 - **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport, and its HTTP stack is deliberately ONE way: Hono +
   oRPC + `@unthrown/orpc`.** The surface itself is a di-provided service —
@@ -507,18 +540,22 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   with oRPC's fetch adapter mounted, built by a provider from the `OrderRouter`
   port — itself a provider that **declares** `PlaceOrder` and `FindOrder`, so
   oRPC's context stays empty and nothing is located from a context at call
-  time — never a module-level singleton), `httpRuntime({ port })` needs that
-  one port and resolves it out of each request's context, and `RequestModule`
-  rides `StartOptions.unit` so the per-request fork is the kernel's. There is
-  no `needs`/`handler` option to spell anywhere: `main.ts`, the fixtures and
-  the type test all call `httpRuntime({ port })`. `getRequestListener` is
+  time — never a module-level singleton), the runtime is **`httpModule({ port })`
+  imported into the composition root** (`orderApi(http)`, a function of the
+  one thing only the process knows) and exported as `HttpRuntime`, whose one
+  need is `HttpHandler`, resolved out of each request's context; and
+  `RequestModule` rides `StartOptions.unit` so the per-request fork is the
+  kernel's. There is no `runtime`, `needs` or `handler` option to spell
+  anywhere: `main.ts` is `runMain(orderApi({ port: env.PORT }), { unit, probes })`.
+  `getRequestListener` is
   called with `overrideGlobalObjects: false`: its default replaces
   `globalThis.Request` / `Response` on the first request served, a
   process-wide side effect. The router uses `@unthrown/orpc`'s `.result()`
   builder extension. It reads `port` back off `Serving.info`; binding, the
   drain and the trace-id policy are the package's. This is what makes the
-  package's needs gate a real one: a module that does not export `HttpHandler`
-  fails on arity at the `runMain` call.
+  package's needs gate a real one: a composition that does not export
+  `HttpHandler` — or forgets `httpModule` altogether — fails on arity at the
+  `runMain` call.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned

@@ -13,8 +13,8 @@ binding its own queue to the `orders` exchange needs it and needs none of this.
 
 ```
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent
-src/amqp-runtime.ts    the runtime: amqp's consumer with the relay layered on
-src/module.ts          OrderAmqpModule — the composition root
+src/amqp-runtime.ts    the runtime: amqp's consumer with the relay layered on, and its port
+src/module.ts          orderAmqpWorker — the composition root
 src/env.ts             process.env validated through a schema, as a Result
 src/main.ts            the process: readEnv + start + runMain
 src/test-fixtures.ts   serve / tapped, as Vitest fixtures, against a real RabbitMQ
@@ -66,10 +66,18 @@ the consumer's alone — draining means "stop taking new work", and the relay's
 work is outbound: pending rows are safer published during the drain window
 than abandoned to the next boot.
 
+The runtime is a service the composition root provides: `amqpModule` puts
+`orderAmqpRuntime` on the `OrderAmqpRuntime` port — declared here, over the
+kernel's `RuntimePort`, because `@btravstack/amqp` ships no port of its own
+(a consumer's `needs` are the application's, so the port carrying them is the
+application's to declare) — and `orderAmqpWorker` exports it next to the
+application. `main.ts` calls `orderAmqpWorker` once with the environment's
+broker URL, the specs with each test's own vhost.
+
 The relay's needs are ports (`Outbox`, `Logger`), resolved from the same
 application context the consumer's handler resolves — `start`'s needs gate
-(`src/needs-gate.test-d.ts`) proves the composition root exports both, at
-compile time.
+(`src/needs-gate.test-d.ts`) proves the composition root exports the runtime
+and both ports, at compile time.
 
 ## The environment
 

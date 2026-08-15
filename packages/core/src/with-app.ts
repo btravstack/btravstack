@@ -1,5 +1,6 @@
-import type { AnyPort, Module, Scope } from "@btravstack/di";
+import type { Module, Scope } from "@btravstack/di";
 
+import type { RuntimeInfoOf } from "./runtime.js";
 import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from "./start.js";
 
 /**
@@ -13,7 +14,7 @@ import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from
  *
  * @example
  * ```ts
- * const report = await withApp(AppModule, { runtime }, async (app) => {
+ * const report = await withApp(AppModule, {}, async (app) => {
  *   app.requestDrain();
  *   return await app.exited;
  * });
@@ -34,21 +35,13 @@ import { start, type RunningApp, type RuntimeNeedsGate, type StartOptions } from
  * asserting. A test that wants to assert the defect itself calls `start`
  * directly, the same escape hatch a test needing the real probe server uses.
  */
-export const withApp = async <
-  X,
-  E,
-  Needs extends AnyPort,
-  A,
-  Info = never,
-  UnitX = never,
-  UnitNeeds = never,
->(
+export const withApp = async <X, E, A, UnitX = never, UnitNeeds = never>(
   module: Module<X, E, Scope>,
-  options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
-  use: (app: RunningApp<E, Info>) => Promise<A>,
+  options: StartOptions<UnitX, UnitNeeds>,
+  use: (app: RunningApp<E, RuntimeInfoOf<X>>) => Promise<A>,
   // The same phantom gate `start` carries, for the same reason: it makes the
   // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: RuntimeNeedsGate<Needs, X, UnitX, UnitNeeds>
+  ...gate: RuntimeNeedsGate<X, UnitX, UnitNeeds>
 ): Promise<A> => {
   void gate;
 
@@ -59,8 +52,8 @@ export const withApp = async <
   // already discharged.
   const boot = start as (
     module: Module<X, E, Scope>,
-    options: StartOptions<Needs, Info, UnitX, UnitNeeds>,
-  ) => RunningApp<E, Info>;
+    options: StartOptions<UnitX, UnitNeeds>,
+  ) => RunningApp<E, RuntimeInfoOf<X>>;
 
   const app = boot(module, { ...options, signals: false, probes: false });
 

@@ -3,13 +3,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Socket } from "node:net";
 
 import {
+  RuntimePort,
   RuntimeStartFailed,
   type Runtime,
   type RuntimeHost,
   type Serving,
   type UnitMeta,
 } from "@btravstack/core";
-import { Port } from "@btravstack/di";
+import { Module, Port, Provider } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */
@@ -45,11 +46,21 @@ export type HttpOptions = {
 
 const DEFAULT_HOSTNAME = "0.0.0.0";
 
-export const httpRuntime = (options: HttpOptions): Runtime<typeof HttpHandler, HttpInfo> => ({
+/** The runtime's port: what `httpModule` provides, and what the module `start` boots must export. */
+export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}
+
+const httpRuntime = (options: HttpOptions): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
   needs: [HttpHandler],
   start: (host) => listen(host, options),
 });
+
+/** The runtime as a module: import it next to the application and export `HttpRuntime`. */
+export const httpModule = (options: HttpOptions): Module<HttpRuntime, never, never> =>
+  Module("Http")({
+    provides: [Provider(HttpRuntime)({ value: httpRuntime(options) })],
+    exports: [HttpRuntime],
+  });
 
 const listen = (
   host: RuntimeHost<typeof HttpHandler>,

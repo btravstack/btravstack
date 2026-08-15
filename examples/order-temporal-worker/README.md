@@ -13,13 +13,26 @@ starts these workflows needs it and needs none of this.
 
 ```
 src/workflows.ts        fulfillOrder — the saga, in Temporal's deterministic sandbox
-src/temporal-runtime.ts the runtime: five activities and their triage into contract errors
+src/temporal-runtime.ts the runtime: five activities and their triage into contract errors,
+                        provided on OrderTemporalRuntime by temporalModule(options)
 src/fulfillment.ts      FulfillmentModule — the two external services, as stand-ins
-src/module.ts           OrderTemporalModule — the composition root
+src/module.ts           orderTemporalWorker(options) — the composition root, runtime included
 src/env.ts              process.env validated through a schema, as a Result
-src/main.ts             the process: readEnv + connect + start + runMain
+src/main.ts             the process: readEnv + connect + runMain
 src/test-fixtures.ts    serve / fulfilling / outOfStock / noShipping, against the time-skipping env
 ```
+
+## The runtime is a service the graph provides
+
+`start` takes no runtime option: it resolves the worker from a port the module
+exports, declared over the kernel's `RuntimePort`. The worker's `needs` are
+this application's five ports, so the port — `OrderTemporalRuntime` — is this
+package's to declare, and `temporalModule(options)` provides
+`temporalWorkerRuntime(options)` on it. The composition root is a function of
+what only the process knows (the connection it opened, its namespace, where
+the workflow code lives) and exports that port alongside the five the
+activities resolve; `start`'s gate reads both halves off the exports, and
+`src/needs-gate.test-d.ts` pins a root with no runtime and one a port short.
 
 ## The saga
 

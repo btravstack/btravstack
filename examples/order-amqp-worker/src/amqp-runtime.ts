@@ -5,7 +5,8 @@ import {
   type AmqpInfo,
   type MessageUnitContext,
 } from "@btravstack/amqp";
-import type { Runtime } from "@btravstack/core";
+import { RuntimePort, type Runtime } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
 import { orderContract, type OrderContract } from "@btravstack/example-order-amqp-contract";
 import { Logger, Outbox } from "@btravstack/example-order-application";
 import { OkAsync } from "unthrown";
@@ -22,6 +23,34 @@ import { startOutboxRelay, type RelayOptions } from "./outbox-relay.js";
  * (`src/needs-gate.test-d.ts` pins both directions).
  */
 type AmqpNeeds = typeof Outbox | typeof Logger;
+
+/**
+ * The port `start` resolves this deployment's runtime from. `@btravstack/amqp`
+ * ships no port of its own — a consumer's `needs` are the application's, so
+ * the port carrying them in its type is the application's to declare — which
+ * is why it is declared here, over the kernel's `RuntimePort`, and not
+ * imported.
+ */
+export class OrderAmqpRuntime extends RuntimePort<Runtime<AmqpNeeds, AmqpInfo>> {}
+
+/** What only the process knows: the broker, and the relay's own knobs. */
+export type OrderAmqpOptions = {
+  /** The broker URLs the worker and the relay both connect to. */
+  readonly urls: readonly string[];
+  /** The relay's own knobs. */
+  readonly relay: Pick<RelayOptions, "pollMs">;
+};
+
+/**
+ * The runtime as a module — `orderAmqpRuntime` provided on `OrderAmqpRuntime`,
+ * the way `@btravstack/http`'s `httpModule` provides `HttpRuntime`. The
+ * composition root imports it and exports the port, and `start` finds it.
+ */
+export const amqpModule = (options: OrderAmqpOptions) =>
+  Module("Amqp")({
+    provides: [Provider(OrderAmqpRuntime)({ value: orderAmqpRuntime(options) })],
+    exports: [OrderAmqpRuntime],
+  });
 
 /**
  * A `Runtime` broadcasting the order application's facts over AMQP — both
@@ -50,12 +79,7 @@ type AmqpNeeds = typeof Outbox | typeof Logger;
 export const orderAmqpRuntime = ({
   relay,
   ...transport
-}: {
-  /** The broker URLs the worker and the relay both connect to. */
-  readonly urls: readonly string[];
-  /** The relay's own knobs. */
-  readonly relay: Pick<RelayOptions, "pollMs">;
-}): Runtime<AmqpNeeds, AmqpInfo> => {
+}: OrderAmqpOptions): Runtime<AmqpNeeds, AmqpInfo> => {
   const consumer = amqpRuntime({
     ...transport,
     contract: orderContract,

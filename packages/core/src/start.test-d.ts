@@ -2,8 +2,9 @@ import { Module, Port, Provider } from "@btravstack/di";
 import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
-import type { Runtime, Serving } from "./runtime.js";
+import { RuntimePort, type Runtime, type Serving } from "./runtime.js";
 import { start, type RunningApp } from "./start.js";
+import { testRuntime, type TestRuntimeInfo } from "./test-runtime.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 class Clock extends Port("Clock")<{ readonly now: () => number }> {}
@@ -18,10 +19,16 @@ const serving: Serving = {
   stop: () => OkAsync(),
 };
 
-const needsGreeting: Runtime<typeof Greeting> = {
+// A runtime is a service on a port declared over `RuntimePort`; the port
+// carries the runtime's `Needs` and `Info`, and the module exporting it is
+// what `start` reads both back from.
+class NeedsGreeting extends RuntimePort<Runtime<typeof Greeting, { readonly port: number }>> {}
+class NeedsClock extends RuntimePort<Runtime<typeof Clock>> {}
+
+const needsGreeting: Runtime<typeof Greeting, { readonly port: number }> = {
   name: "needs-greeting",
   needs: [Greeting],
-  start: () => OkAsync(serving),
+  start: () => OkAsync({ ...serving, info: { port: 8080 } }),
 };
 
 const needsClock: Runtime<typeof Clock> = {
@@ -30,29 +37,40 @@ const needsClock: Runtime<typeof Clock> = {
   start: () => OkAsync(serving),
 };
 
-// The gate is satisfied: the module exports the port the runtime needs.
-const satisfied = start(AppModule, { runtime: needsGreeting });
-expectTypeOf(satisfied).toEqualTypeOf<RunningApp<never>>();
+// The gate is satisfied: the module exports the port the runtime needs — and
+// `Info` is read off the module, not passed in.
+const Satisfied = Module("Satisfied")({
+  imports: [AppModule],
+  provides: [Provider(NeedsGreeting)({ value: needsGreeting })],
+  exports: [Greeting, NeedsGreeting],
+});
+expectTypeOf(start(Satisfied)).toEqualTypeOf<RunningApp<never, { readonly port: number }>>();
 
-// The gate bites: `AppModule` does not export `Clock`, so the phantom rest
-// tuple is non-empty and the two-argument call no longer typechecks.
+// The gate bites: `Unsatisfied` does not export `Clock`, so the phantom rest
+// tuple is non-empty and the one-argument call no longer typechecks.
+const Unsatisfied = Module("Unsatisfied")({
+  imports: [AppModule],
+  provides: [Provider(NeedsClock)({ value: needsClock })],
+  exports: [Greeting, NeedsClock],
+});
 // @ts-expect-error -- UNSATISFIED RUNTIME NEEDS: the runtime needs `Clock`, which the module does not export
-start(AppModule, { runtime: needsClock });
+start(Unsatisfied);
 
 // Documented, deliberate limit (verified, not assumed): a caller who spells the
 // phantom arguments out by hand does typecheck. That is the same escape hatch
 // di's own UNSATISFIED DEPENDENCIES gate leaves open — it takes a deliberate
 // act, and the gate exists to catch the accident, not to be unforgeable.
-start(AppModule, { runtime: needsClock }, "UNSATISFIED RUNTIME NEEDS", new Clock());
+start(Unsatisfied, {}, "UNSATISFIED RUNTIME NEEDS", new Clock());
+
+// The other way the gate bites: a module that exports no runtime port at all.
+// @ts-expect-error -- NO RUNTIME: `AppModule` exports no port declared over `RuntimePort`
+start(AppModule);
+start(AppModule, {}, "NO RUNTIME", "the module exports no port declared over RuntimePort");
 
 // A needs-free runtime works against any module: `InstanceType<never>` is
-// `never`, and `[never] extends [X]` holds for every `X`.
-const needsNothing: Runtime<never> = {
-  name: "needs-nothing",
-  needs: [],
-  start: () => OkAsync(serving),
-};
-expectTypeOf(start(AppModule, { runtime: needsNothing })).toEqualTypeOf<RunningApp<never>>();
+// `never`, and `[never] extends [X]` holds for every `X`. `testRuntime` ships
+// its own module, so nothing else needs composing.
+expectTypeOf(start(testRuntime().module)).toEqualTypeOf<RunningApp<never, TestRuntimeInfo>>();
 
 // The unit half of the gate, isolated: the runtime's needs are satisfied, so
 // only the unit module's unmet `Clock` can be what rejects the call.
@@ -69,21 +87,16 @@ const ClockyUnit = Module("ClockyUnit")({
 });
 
 // @ts-expect-error -- UNSATISFIED UNIT NEEDS: the unit module reads `Clock`, which the module does not export
-start(AppModule, { runtime: needsGreeting, unit: ClockyUnit });
+start(Satisfied, { unit: ClockyUnit });
 
 // The same escape hatch as the runtime half, naming the unit error literal —
 // which is also what pins WHICH branch of the gate rejected the call above.
-start(
-  AppModule,
-  { runtime: needsGreeting, unit: ClockyUnit },
-  "UNSATISFIED UNIT NEEDS",
-  new Clock(),
-);
+start(Satisfied, { unit: ClockyUnit }, "UNSATISFIED UNIT NEEDS", new Clock());
 
 // A runtime may draw a need from the unit module's exports: `Span` is nowhere
-// in `AppModule`, and the fork is what puts it in front of unit work — so
-// with a unit module whose own needs the module covers, the gate collapses to
-// an ordinary two-argument call.
+// in `SpanApp`, and the fork is what puts it in front of unit work — so with a
+// unit module whose own needs the module covers, the gate collapses to an
+// ordinary call.
 const GreetingSpanUnit = Module("GreetingSpanUnit")({
   provides: [
     Provider(Span)([Greeting], {
@@ -94,11 +107,17 @@ const GreetingSpanUnit = Module("GreetingSpanUnit")({
   exports: [Span],
 });
 
+class NeedsSpan extends RuntimePort<Runtime<typeof Span>> {}
+
 const needsSpan: Runtime<typeof Span> = {
   name: "needs-span",
   needs: [Span],
   start: () => OkAsync(serving),
 };
-expectTypeOf(start(AppModule, { runtime: needsSpan, unit: GreetingSpanUnit })).toEqualTypeOf<
-  RunningApp<never>
->();
+
+const SpanApp = Module("SpanApp")({
+  imports: [AppModule],
+  provides: [Provider(NeedsSpan)({ value: needsSpan })],
+  exports: [Greeting, NeedsSpan],
+});
+expectTypeOf(start(SpanApp, { unit: GreetingSpanUnit })).toEqualTypeOf<RunningApp<never>>();
