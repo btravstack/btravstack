@@ -13,24 +13,6 @@ import { ApiModule } from "./handler.js";
 import { OrderApiModule } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
-type App<E> = RunningApp<E, HttpInfo>;
-
-/**
- * `X` is pinned to the ports every stub composition exports rather than left
- * generic: `start`'s needs gate is a phantom rest parameter proven at the call
- * site, and no proof is available inside a helper generic in the module's own
- * exports. `Logger` rides along for the gate's OTHER half — `RequestModule`,
- * passed as `StartOptions.unit`, reads it out of the parent scope.
- */
-type ApiPorts = HttpHandler | Logger;
-
-type ServeOptions = {
-  readonly drainTimeoutMs?: number;
-  readonly probes?: { readonly port: number } | false;
-};
-
-type Serve = <E>(module: Module<ApiPorts, E, Scope>, options?: ServeOptions) => App<E>;
-
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
 const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
@@ -124,7 +106,7 @@ const gatedApi = () => {
  * — the empty error channel is the point. `get()` plus an assertion is the shape
  * the whole fixture module uses.
  */
-const portOf = async <E>(app: App<E>): Promise<number> => {
+const portOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<number> => {
   const info = (await app.runtimeInfo()).get();
   assert.ok(info !== undefined, "the runtime published no Serving.info");
   return info.port;
@@ -135,10 +117,22 @@ export type ApiFixtures = {
    * Starts an app and registers its shutdown. The teardown runs even when the
    * test fails, which is what the `try`/`finally` blocks used to hand-roll —
    * and it keeps the assertion those blocks carried: the app exited `Ok`.
+   *
+   * The module's `X` is pinned to the two ports every composition here exports
+   * rather than left generic: `start`'s needs gate is a phantom rest parameter
+   * proven at the call site, and no proof is available inside a helper generic
+   * in the module's own exports. `Logger` is for the gate's OTHER half —
+   * `RequestModule`, passed as `StartOptions.unit`, reads it out of the parent.
    */
-  readonly serve: Serve;
-  readonly clientFor: <E>(app: App<E>) => Promise<OrderApiClient>;
-  readonly probesFor: <E>(app: App<E>) => Promise<string>;
+  readonly serve: <E>(
+    module: Module<HttpHandler | Logger, E, Scope>,
+    options?: {
+      readonly drainTimeoutMs?: number;
+      readonly probes?: { readonly port: number } | false;
+    },
+  ) => RunningApp<E, HttpInfo>;
+  readonly clientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;
+  readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<string>;
   readonly statusOf: (url: string) => Promise<number>;
   readonly unmodelled: ReturnType<typeof unmodelledApi>;
   readonly gate: ReturnType<typeof gatedApi>;
@@ -150,14 +144,15 @@ export type ApiFixtures = {
  * kernel's own channel for it, which is why this runtime has no `onListening`
  * hook and no `boundPort()` accessor of its own.
  */
-const originOf = async <E>(app: App<E>): Promise<string> => `http://127.0.0.1:${await portOf(app)}`;
+const originOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<string> =>
+  `http://127.0.0.1:${await portOf(app)}`;
 
 export const it = test.extend<ApiFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   serve: async ({}, use) => {
     const shutdowns: (() => Promise<void>)[] = [];
 
-    const serve: Serve = (module, options) => {
+    const serve: ApiFixtures["serve"] = (module, options) => {
       const app = start(module, {
         runtime: httpRuntime({ port: 0, hostname: "127.0.0.1" }),
         unit: RequestModule,
