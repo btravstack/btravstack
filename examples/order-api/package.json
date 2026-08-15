@@ -25,6 +25,7 @@
     "@btravstack/http": "workspace:*",
     "@hono/node-server": "catalog:",
     "@orpc/client": "catalog:",
+    "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
     "@unthrown/orpc": "catalog:",
     "@unthrown/standard-schema": "catalog:",

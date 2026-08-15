@@ -1,10 +1,11 @@
-import type { ServiceOf } from "@btravstack/di";
+import type { orderContract } from "@btravstack/example-order-api-contract";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import type { RouterClient } from "@orpc/server";
+import type { RouterContractClient } from "@orpc/contract";
 import { createResultClient, type ResultClient } from "@unthrown/orpc/client";
 
-import type { OrderRouter } from "./router.js";
+/** What the wire speaks, typed from the contract alone — the router is the server's business. */
+type Wire = RouterContractClient<typeof orderContract>;
 
 /**
  * The caller's view of the API: every procedure returns an `AsyncResult` whose
@@ -13,12 +14,10 @@ import type { OrderRouter } from "./router.js";
  * collapsed to `INTERNAL_SERVER_ERROR` — is a `Defect`, so the two channels
  * survive the wire in both directions.
  */
-export type OrderApiClient = ResultClient<RouterClient<ServiceOf<OrderRouter>>>;
+export type OrderApiClient = ResultClient<Wire>;
 
 export const createOrderApiClient = (
   origin: string,
   prefix: `/${string}` = "/rpc",
 ): OrderApiClient =>
-  createResultClient(
-    createORPCClient<RouterClient<ServiceOf<OrderRouter>>>(new RPCLink({ origin, url: prefix })),
-  );
+  createResultClient(createORPCClient<Wire>(new RPCLink({ origin, url: prefix })));
