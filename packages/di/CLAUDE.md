@@ -62,7 +62,14 @@ missing: N]`.
 - **`index.ts`** — the deliberate public surface. `Scope` is exported as a _type
   only_ (the class value would let consumers provide or alias it);
   `PortClass`/`ManyPortClass` are exported solely so declaration emit works for
-  consumers who export ports. The pieces `Module(name)({...})`'s declared type
+  consumers who export ports, and `PortInstance` (type only) so a provider over
+  a port minted inside a helper — `Config.provider("RelayConfig", schema)`,
+  `HttpRouter("OrderRouter")(deps, arm)` — has a nameable declared type when
+  a consumer exports it (naming the instance type forges nothing: the brand
+  keys stay private). `Provider(port)(deps, arm)`'s return type is
+  `Provider<P, E, N> & { readonly port: typeof port }` — the provider carries
+  its port class typed, so `provider.port` is what a dependent lists in its
+  deps and what a starter reads the port off; purely additive. The pieces `Module(name)({...})`'s declared type
   is built from — `AnyModule`, `AnyProvider`, `Exportable`, `ResolvedExports`,
   `ErrOf`/`NeedOf`/`PortOf`, `ErrOfModule`/`NeedsOfModule`/`ExportsOfModule`,
   `Available` — are exported (types only) so a package offering a **shaped

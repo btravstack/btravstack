@@ -23,7 +23,7 @@ import { OkAsync } from "unthrown";
 import { z } from "zod";
 
 import { AmqpModule } from "./amqp-module.js";
-import { amqp } from "./amqp-runtime.js";
+import { AmqpHandlers, amqp } from "./amqp-runtime.js";
 
 const pinExchange = defineExchange("pin-exchange");
 const pinQueue = defineQueue("pin-queue");
@@ -58,11 +58,19 @@ amqp({ contract: pinContract, handlers: NoHandlers });
 
 // The same three, through the `AmqpModule` sugar: the check is made on the
 // handlers PROVIDER's instance type, not the port class, and it is the same
-// check.
-AmqpModule("Pin")({
-  contract: pinContract,
-  handlers: Provider(PinHandlers)({ value: { echo: () => OkAsync(undefined) } }),
-});
+// check. The positive is minted by `AmqpHandlers`, the sugar's own way to a
+// handlers provider — its port's service IS `WorkerInferHandlers<typeof
+// pinContract>`, so the check passes by construction, and its `.port` is the
+// port `amqp()` accepts.
+const pinHandlers = AmqpHandlers(pinContract)("Pin")({ value: { echo: () => OkAsync(undefined) } });
+AmqpModule("Pin")({ contract: pinContract, handlers: pinHandlers });
+amqp({ contract: pinContract, handlers: pinHandlers.port });
+
+// Negative: `AmqpHandlers` will not build a provider that misses a consumer —
+// the port's service is the contract's own record, so the arm is checked
+// against it before any module sees it.
+// @ts-expect-error -- the `echo` consumer has no handler
+AmqpHandlers(pinContract)("Empty")({ value: {} });
 AmqpModule("Typo")({
   contract: pinContract,
   // @ts-expect-error -- "ecoh" is not one of `pinContract`'s consumer/RPC names, and "echo" is missing

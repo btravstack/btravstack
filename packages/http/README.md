@@ -37,14 +37,13 @@ router and exports `HttpRuntime`, and hands back exactly the module
 
 ```ts
 import { runMain } from "@btravstack/core";
-import { Port, Provider, type ServiceOf } from "@btravstack/di";
-import { HttpModule } from "@btravstack/http";
+import type { ServiceOf } from "@btravstack/di";
+import { HttpModule, HttpRouter } from "@btravstack/http";
 
 const routerOf = (place: ServiceOf<PlaceOrder>, find: ServiceOf<FindOrder>) =>
   os.router({ orders: { place: /* … */, find: /* … */ } });
 
-class OrderRouter extends Port("OrderRouter")<ReturnType<typeof routerOf>> {}
-const orderRouter = Provider(OrderRouter)([PlaceOrder, FindOrder], { sync: routerOf });
+const orderRouter = HttpRouter("OrderRouter")([PlaceOrder, FindOrder], { sync: routerOf });
 
 const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
@@ -54,11 +53,16 @@ const OrderApi = HttpModule("OrderApi")({
 await runMain(OrderApi);
 ```
 
-`http({ router: OrderRouter })` — the starter module itself, taking the port
-rather than the provider — stays exported for a composition root written by
-hand (`Module("OrderApi")({ imports: [Application, Persistence, http({
-router: OrderRouter })], provides: [orderRouter], exports: [HttpRuntime] })`
-is what the sugar produces).
+`HttpRouter("OrderRouter")` mints the router's port — its service is a
+context-free oRPC router, the one shape this starter serves — and returns
+di's own `Provider(port)`, so the second call is `Provider(port)(deps, arm)`
+exactly as everywhere else (any arm, same typing) and the provider it returns
+carries the port typed: `orderRouter.port`. No class line, no
+`ReturnType<typeof routerOf>`. `http({ router: orderRouter.port })` — the
+starter module itself, taking the port class — stays exported for a
+composition root written by hand (`Module("OrderApi")({ imports:
+[Application, Persistence, http({ router: orderRouter.port })], provides:
+[orderRouter], exports: [HttpRuntime] })` is what `HttpModule` produces).
 
 That is a whole `main.ts`: `PORT` (default `3000`), `HOST` (default
 `0.0.0.0`) and the kernel's `PROBE_PORT` are read inside the graph, from the

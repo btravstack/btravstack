@@ -26,33 +26,34 @@ on npm to install yet. The command above is what it will be once it has.
 
 ```ts
 import { Config } from "@btravstack/config";
-import { Module, Port } from "@btravstack/di";
+import { Module, Provider } from "@btravstack/di";
 
-class DatabaseConfig extends Port("DatabaseConfig")<{
-  readonly url: string;
-  readonly poolSize: number;
-  readonly ssl: boolean;
-}> {}
+const databaseConfig = Config.provider(
+  "DatabaseConfig",
+  Config.object({
+    url: Config.string("DATABASE_URL"),
+    poolSize: Config.integer("DATABASE_POOL_SIZE", { min: 1, max: 64, default: 8 }),
+    ssl: Config.boolean("DATABASE_SSL", { default: true }),
+  }),
+);
 
 const Persistence = Module("Persistence")({
   provides: [
-    Config.provider(
-      DatabaseConfig,
-      Config.object({
-        url: Config.string("DATABASE_URL"),
-        poolSize: Config.integer("DATABASE_POOL_SIZE", {
-          min: 1,
-          max: 64,
-          default: 8,
-        }),
-        ssl: Config.boolean("DATABASE_SSL", { default: true }),
-      }),
-    ),
-    // …a Provider(Database)([DatabaseConfig], { acquire, release })
+    databaseConfig,
+    Provider(Database)([databaseConfig.port], { acquire: (config) => …, release: … }),
   ],
-  exports: [DatabaseConfig],
+  exports: [Database],
 });
 ```
+
+`Config.provider("DatabaseConfig", schema)` mints the port — its service is
+the schema's output, `{ url: string; poolSize: number; ssl: boolean }` — and
+hands back the provider carrying it: `databaseConfig.port` is what a
+dependent lists in its deps. That is the shape for a slice that is one
+application's own. A slice that is public API — a starter's `HttpConfig`,
+which other packages name — declares its port and passes the class instead:
+`Config.provider(HttpConfig, schema)`; same provider, same schema, the port
+named once either way.
 
 `Env` is what `Config.provider` reads. Under `@btravstack/core` the kernel
 provides it to every graph it boots — `process.env`, or `StartOptions.env` for

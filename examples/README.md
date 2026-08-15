@@ -157,11 +157,14 @@ queue job id or a task token already is.
 A runtime is a service the composition root exports, on a port each starter
 ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
 `AmqpRuntime`), and every application-specific thing a runtime used to
-resolve is now a **port its provider depends on** through di: `order-api`
-provides `OrderRouter` (a router provider that declares the two use cases it
-calls, handed to `http({ router: OrderRouter })`); `order-temporal-worker`
-provides `OrderActivities` from the four ports the saga's activities touch;
-`order-amqp-worker` provides `OrderHandlers` from `Logger`. No starter
+resolve is now a **port its provider depends on** through di, minted with the
+starter's own sugar: `order-api`'s `orderRouter = HttpRouter("OrderRouter")([PlaceOrder,
+FindOrder], { sync: routerOf })`; `order-temporal-worker`'s `orderActivities =
+TemporalActivities(orderContract)("OrderActivities")([…four ports…], { sync })`;
+`order-amqp-worker`'s `orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logger],
+{ sync })` — port and provider in one call, `provider.port` where the port is
+named, and each composition root the matching `HttpModule` / `TemporalModule` /
+`AmqpModule` taking the provider. No starter
 declares a `needs` any more — all three runtimes are `Runtime<never, Info>`
 — so `start`'s `UNSATISFIED RUNTIME NEEDS` arm is exercised only by the
 kernel's own type test now; what the examples pin is the other two gates.

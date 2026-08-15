@@ -50,3 +50,15 @@ const Worker = AmqpModule("Worker")({
   imports: [AppModule],
 });
 ```
+
+**`AmqpHandlers(contract)(name)`** mints the handlers port and returns di's
+own `Provider(port)`, so the class line goes: the last call is exactly
+`Provider(port)(deps, arm)`, checked against the contract's record, and the
+provider carries the port typed (`orderHandlers.port`) for `amqp()` or a type
+test. **`HandlersPortClass<Name, C>`** is the port's type, exported.
+
+```ts
+const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logger], {
+  sync: (logger) => ({ orderChanged: declareHandler(orderContract, "orderChanged", ...) }),
+});
+```

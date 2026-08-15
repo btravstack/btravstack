@@ -46,3 +46,9 @@ exports `HttpRuntime`, and returns exactly the di module `Module(...)` would
 have declared over the augmented imports/provides/exports — sugar over the same
 primitives, nothing new for the kernel or the gates. `http({ router })` stays
 exported as the primitive it delegates to.
+
+`HttpRouter(name)(deps, arm)` mints the router's port (service: a context-free
+oRPC router) and returns di's own `Provider(port)` builder — the second call
+is `Provider(port)(deps, arm)` exactly as everywhere else, and the provider
+carries the port typed (`orderRouter.port`). `HttpModule({ router: orderRouter })`
+takes it from there; no class line, no `ReturnType<typeof routerOf>`.

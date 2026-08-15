@@ -27,3 +27,9 @@ stays expressible.
 explicit beats environment beats default, per field; pin both and the module
 reads nothing). `RuntimeNeedsGate` is renamed `StartGate`, since it now also
 states `NO RUNTIME`.
+
+`Config.provider("Name", schema)` — the name form — mints the port (its
+service is the schema's output) and returns the provider carrying it typed
+(`provider.port`), the shape for a slice that is one application's own; the
+class form `Config.provider(Port, schema)` stays for a slice that is public
+API another package names.

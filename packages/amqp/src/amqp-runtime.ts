@@ -7,7 +7,14 @@ import {
   type RuntimeHost,
   type Serving,
 } from "@btravstack/core";
-import { Module, Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
+import {
+  Module,
+  Port,
+  Provider,
+  type AnyPort,
+  type PortInstance,
+  type ServiceOf,
+} from "@btravstack/di";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { messageUnits } from "./message-units.js";
@@ -106,6 +113,35 @@ export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
     exports: [AmqpRuntime, AmqpConfig],
   });
 }
+
+/**
+ * The handlers' port and provider in one call: `AmqpHandlers(orderContract)("OrderHandlers")([Logger],
+ * { sync: (logger) => ({ orderChanged: declareHandler(orderContract, "orderChanged", …) }) })`.
+ * The first two calls mint a port named `name` whose service is the handlers
+ * record `contract` wants — `WorkerInferHandlers<C>`, the one shape `amqp()`
+ * accepts — and return di's own `Provider(port)`, so the last call is exactly
+ * what it is everywhere else: any arm, same typing, and the provider it hands
+ * back carries the port typed (`orderHandlers.port`) for
+ * `AmqpModule({ handlers: orderHandlers })` and for whoever else names it.
+ * The class line is what disappears.
+ */
+export const AmqpHandlers =
+  <C extends AnyAmqpContract>(_contract: C) =>
+  <const Name extends string>(
+    name: Name,
+  ): ReturnType<typeof Provider<HandlersPortClass<Name, C>>> =>
+    // The class expression's own type expands the port's brand keys in
+    // declaration emit and cannot be named by a consumer; `HandlersPortClass`
+    // spells the same class through the exported `PortInstance`, and is what
+    // the returned provider's `.port` is typed as. The contract is a value the
+    // type alone needs, so it is not read.
+    Provider(class extends Port(name)<WorkerInferHandlers<C>> {} as HandlersPortClass<Name, C>);
+
+/** The port `AmqpHandlers(contract)(name)` mints: id `Name`, service the contract's handlers record. */
+export type HandlersPortClass<Name extends string, C extends AnyAmqpContract> = {
+  readonly portId: Name;
+  new (): PortInstance<Name, WorkerInferHandlers<C>>;
+};
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>
   new RuntimeStartFailed({ runtime: "amqp", cause });

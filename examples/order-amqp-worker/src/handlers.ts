@@ -1,19 +1,16 @@
-import { declareHandler, type WorkerInferHandlers } from "@amqp-contract/worker";
-import { Port, Provider } from "@btravstack/di";
-import { orderContract, type OrderContract } from "@btravstack/example-order-amqp-contract";
+import { declareHandler } from "@amqp-contract/worker";
+import { AmqpHandlers } from "@btravstack/amqp";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Logger } from "@btravstack/example-order-application";
 import { OkAsync } from "unthrown";
 
 /**
- * The consuming half, as a port: the handlers record `orderContract` wants,
- * one per consumer, which the starter resolves like any other service. It is
- * a port rather than a value so its provider can
- * declare what the handlers need — here `Logger` — and be built by di from
- * it, exactly as a use case is.
- */
-export class OrderHandlers extends Port("OrderHandlers")<WorkerInferHandlers<OrderContract>> {}
-
-/**
+ * The consuming half: the handlers record `orderContract` wants, one per
+ * consumer, as a service the starter resolves like any other. `AmqpHandlers`
+ * mints the port (`orderHandlers.port`) and hands back di's own `Provider`,
+ * so the provider declares what the handlers need — here `Logger` — and is
+ * built by di from it, exactly as a use case is.
+ *
  * The one handler — a subscriber like any other service would write, reacting
  * to a fact somebody else committed. It has no domain errors to triage:
  * notifying is a `Logger.info` here, and a real notifier's failures would be
@@ -24,7 +21,7 @@ export class OrderHandlers extends Port("OrderHandlers")<WorkerInferHandlers<Ord
  * upserts on a payload and drops on a tombstone. There is no second message
  * type to declare, subscribe to, or keep ordered against this one.
  */
-export const orderHandlers = Provider(OrderHandlers)([Logger], {
+export const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logger], {
   sync: (logger) => ({
     orderChanged: declareHandler(orderContract, "orderChanged", (message) => {
       const { id, payload } = message.payload;

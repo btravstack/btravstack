@@ -205,6 +205,19 @@ describe("Config.provider", () => {
     );
   });
 
+  it("mints the port when given a name, and hands it back on the provider", async ({
+    mintedFrom,
+  }) => {
+    // GIVEN a slice bound with `Config.provider("…", schema)` — no port class written anywhere
+    const env = { RETRIES: "5" };
+
+    // WHEN the minted port is resolved through `provider.port`
+    const settings = mintedFrom(env);
+
+    // THEN it holds the parsed value: the port exists, typed by the schema's output
+    await expect(settings).toBeOkWith({ retries: 5 });
+  });
+
   it("accepts any Standard Schema, an async one included", async ({ boundThrough }) => {
     // GIVEN a hand-written asynchronous schema over the environment
     const schema = {

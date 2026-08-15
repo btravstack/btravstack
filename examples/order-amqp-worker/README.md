@@ -12,7 +12,7 @@ served by `@btravstack/http`; the contract lives in
 binding its own queue to the `orders` exchange needs it and needs none of this.
 
 ```
-src/handlers.ts        the consuming half: OrderHandlers, a port provided from Logger
+src/handlers.ts        the consuming half: orderHandlers, port and provider minted by AmqpHandlers, from Logger
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
 src/module.ts          OrderAmqpWorker — the composition root, an AmqpModule, a constant
 src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
@@ -43,23 +43,28 @@ _foreign_ queue to the same exchange and receiving the same event.
 ## Everything is a provider
 
 `@btravstack/amqp`'s starter needs one thing from the application: its
-**handlers, as a port**. `src/handlers.ts` declares `OrderHandlers` — its
-service is the record `orderContract` wants, `WorkerInferHandlers<OrderContract>`,
-with no injected context — and provides it from `Logger`: the one handler is
-`declareHandler(orderContract, "orderChanged", …)` closing over the logger it
-was built with, the way every service in the graph is built. The composition
-root is `AmqpModule("OrderAmqpWorker")({ contract: orderContract, handlers:
-orderHandlers, imports, provides, exports })` — a `Module(...)` that also
-takes the handlers provider: under the hood it imports the starter (`amqp({
-contract, handlers: OrderHandlers })`, the runtime on `AmqpRuntime` and the
-broker on `AmqpConfig`), provides `orderHandlers`, and exports `AmqpRuntime`
-for `start` to resolve. There is no `needs`, no `context.ctx.get(...)`, and no
-port declared here over `RuntimePort` — the package ships it.
+**handlers, as a service**. `src/handlers.ts` is one call —
+`AmqpHandlers(orderContract)("OrderHandlers")([Logger], { sync: … })` — which
+mints the port (its service the record `orderContract` wants,
+`WorkerInferHandlers<OrderContract>`, no injected context) and provides it
+from `Logger`: the one handler is `declareHandler(orderContract,
+"orderChanged", …)` closing over the logger it was built with, the way every
+service in the graph is built. No port class is declared here;
+`orderHandlers.port` is the port where one is needed (the needs gate). The
+composition root is `AmqpModule("OrderAmqpWorker")({ contract: orderContract,
+handlers: orderHandlers, imports, provides, exports })` — a `Module(...)` that
+also takes the handlers provider: under the hood it imports the starter
+(`amqp({ contract, handlers: orderHandlers.port })`, the runtime on
+`AmqpRuntime` and the broker on `AmqpConfig`), provides `orderHandlers`, and
+exports `AmqpRuntime` for `start` to resolve. There is no `needs`, no
+`context.ctx.get(...)`, and no port declared here over `RuntimePort` — the
+package ships it.
 
 The **relay** is a provider too, a resourceful one: `OutboxRelay` is acquired
 as the graph builds — from `Outbox`, `Logger`, the `AmqpConfig` the starter
-bound and its own `RelayConfig` (`OUTBOX_POLL_MS`) — and released when the
-application scope closes. Nothing resolves it, and nothing needs to; di
+bound and its own `relayConfig.port` (`RelayConfig`, `OUTBOX_POLL_MS`, minted
+by `Config.provider("RelayConfig", schema)` since the slice is this
+deployment's own) — and released when the application scope closes. Nothing resolves it, and nothing needs to; di
 constructs every provider in the tree, and a resourceful one exists to be
 started and stopped. It creates its own `TypedAmqpClient` rather than
 receiving one as a port, because a transport connection is the transport's
@@ -81,7 +86,7 @@ Configuration is read inside the graph, so the composition root is a
 **constant**: `main.ts` is `await runMain(OrderAmqpWorker)`, and the specs boot
 the same value with `env: { AMQP_URL: <this test's vhost>, OUTBOX_POLL_MS: "25" }`.
 The compile-time half (`src/needs-gate.test-d.ts`) pins that `start` finds the
-runtime, and that a composition which forgets to provide `OrderHandlers` is
+runtime, and that a composition which forgets to provide `orderHandlers` is
 refused — by di's needs channel now, since the runtime itself has no needs
 left for `start`'s gate to check (spelled with the `amqp()` primitive, since
 the sugar cannot leave the handlers out).

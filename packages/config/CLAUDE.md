@@ -27,11 +27,25 @@ Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   each failure as an issue with `path: [variable]`, and never throws: a field
   whose `parse` defects (a bug in the field) is folded into an issue against
   its variable.
-- **`Config.provider(port, schema)`** — `Provider(port)([Env], { make })`;
-  `make` awaits `schema["~standard"].validate(env)` inside `fromSafePromise`
-  over an `async` wrapper (a third-party schema may be async and may throw —
-  the throw becomes the defect it is) and answers `Ok(value)` or
-  `Err(new ConfigInvalid({ port: port.portId, issues }))`.
+- **`Config.provider(port, schema)` / `Config.provider(name, schema)`** — two
+  overloads over one body: `Provider(port)([Env], { make })`, `make` awaiting
+  `schema["~standard"].validate(env)` inside `fromSafePromise` over an `async`
+  wrapper (a third-party schema may be async and may throw — the throw
+  becomes the defect it is) and answering `Ok(value)` or
+  `Err(new ConfigInvalid({ port: port.portId, issues }))`. The **name** form
+  mints the port (`class extends Port(name)<Output> {}`, service = the
+  schema's output) and returns `Provider<PortInstance<Name, Output>,
+ConfigInvalid, Env> & { readonly port: ConfigPort<Name, Output> }` —
+  `ConfigPort` is the nameable spelling of that class (`{ portId: Name; new
+(): PortInstance<Name, Output> }`, through di's exported `PortInstance`),
+  because the class expression's own type expands the brand keys in
+  declaration emit. The **class** form returns `Provider<InstanceType<P>,
+ConfigInvalid, Env> & { readonly port: P }` (di's own `Provider(port)`
+  return). The implementation signature returns `unknown`: no one type is
+  assignable both ways to both overloads (`Provider` is contravariant in its
+  port). Which to use: the name form for a slice that is one application's
+  own (`relayConfig.port` in a dependent's deps); the class form for a slice
+  that is public API another package names (`HttpConfig`).
 - **`ConfigSchema<Input, Output>`** — the structural slice of Standard Schema
   v1 this package speaks, restated locally so it depends on nothing;
   `ConfigIssue` likewise (`{ message, path? }`). A `zod`/`valibot`/`arktype`

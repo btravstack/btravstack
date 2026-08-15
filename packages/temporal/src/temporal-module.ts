@@ -1,6 +1,8 @@
 import type { ConfigInvalid, Env } from "@btravstack/config";
 import {
   Module,
+  Port,
+  Provider,
   type AnyModule,
   type AnyProvider,
   type Available,
@@ -9,7 +11,7 @@ import {
   type Exportable,
   type NeedOf,
   type NeedsOfModule,
-  type Provider,
+  type PortInstance,
   type ResolvedExports,
   type Scope,
   type ServiceOf,
@@ -167,3 +169,32 @@ export const TemporalModule =
       exports: [TemporalRuntime, ...exports],
     } as never) as never;
   };
+
+/**
+ * The activities' port and provider in one call:
+ * `TemporalActivities(orderContract)("OrderActivities")([PlaceOrder, StockService],
+ * { sync: (place, stock) => ({ fulfillOrder: { … } }) })`. The first call
+ * fixes the contract, the second mints a port named `name` whose service is
+ * the implementations record `declareActivitiesHandler` takes for it — the
+ * one shape `TemporalModule` accepts — and returns di's own `Provider(port)`,
+ * so the third call is exactly what it is everywhere else: any arm, same
+ * typing, and the provider it hands back carries the port typed
+ * (`orderActivities.port`) for whoever names it. The class line and its
+ * `DeclareActivitiesHandlerOptions<C>["activities"]` are what disappear.
+ */
+export const TemporalActivities =
+  <C extends ContractDefinition>(_contract: C) =>
+  <const Name extends string>(
+    name: Name,
+  ): ReturnType<typeof Provider<ActivitiesPortClass<Name, C>>> =>
+    // The class expression's own type expands the port's brand keys in
+    // declaration emit and cannot be named by a consumer; `ActivitiesPortClass`
+    // spells the same class through the exported `PortInstance`, and is what
+    // the returned provider's `.port` is typed as.
+    Provider(class extends Port(name)<ActivitiesOf<C>> {} as ActivitiesPortClass<Name, C>);
+
+/** The port `TemporalActivities(contract)(name)` mints: id `Name`, service the implementations record for `C`. */
+export type ActivitiesPortClass<Name extends string, C extends ContractDefinition> = {
+  readonly portId: Name;
+  new (): PortInstance<Name, ActivitiesOf<C>>;
+};

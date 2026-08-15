@@ -36,6 +36,27 @@ AmqpConfig, ConfigInvalid, Env | HI>` whether or not `url` is pinned — one
   from a literal, and generic tuples are not one). `AmqpModuleOptions` is
   the exported options type. `AnyAmqpContract` is exported from
   `amqp-runtime.ts` for the sugar's bound, not from `index.ts`.
+- **`AmqpHandlers(contract)(name)` → `ReturnType<typeof Provider<HandlersPortClass<Name, C>>>`**
+  (`amqp-runtime.ts`) — the way to the handlers provider `AmqpModule` takes,
+  next to it: the first two calls mint the port (`class extends
+Port(name)<WorkerInferHandlers<C>> {} as HandlersPortClass<Name, C>`) and
+  return di's own `Provider(port)`, so the last call is exactly
+  `Provider(port)(deps, arm)` — any arm, same typing, checked against the
+  contract's record before any module sees it — and the provider carries the
+  port typed (`provider.port`, di's `& { readonly port: P }`). The return
+  type is spelled explicitly through di's exported `PortInstance` because the
+  class expression's own type expands the brand keys in declaration emit and
+  cannot be named (TS4023, measured on `HttpRouter`); `HandlersPortClass<Name,
+C>` (`{ portId: Name; new (): PortInstance<Name, WorkerInferHandlers<C>> }`)
+  is that spelling and is exported for a consumer that names the port type.
+  The contract argument is a value the type alone reads (`_contract`). Same
+  shape as `@btravstack/http`'s `HttpRouter(name)` and
+  `@btravstack/config`'s `Config.provider(name, schema)`. A hand-declared port
+  plus `Provider(port)(…)` still works everywhere the minted one does. The
+  package's fixtures mint `EchoHandlers` through it, and
+  `amqp-runtime.test-d.ts` pins that a minted provider satisfies both
+  `AmqpModule` and `amqp({ handlers: provider.port })`, and that an arm
+  missing a consumer is refused at the `AmqpHandlers` call.
 - **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | H>`**
   — the starter, the same shape as `@btravstack/http`'s `http()`. It provides
   the runtime on **`AmqpRuntime`** (`extends RuntimePort<Runtime<never,
@@ -138,7 +159,7 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
 - **The suite needs Docker** (`@amqp-contract/testing` boots one RabbitMQ per
   run); its fixtures compose `AmqpModule("Consuming")({ contract:
 echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
-  with a provider for `EchoHandlers` per test — from `Greeting`, or a value —
-  so the module reads no environment.
+  with a provider per test from `AmqpHandlers(echoContract)("EchoHandlers")`
+  — from `Greeting`, or a value — so the module reads no environment.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
   `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`.

@@ -1,5 +1,5 @@
-export { TemporalModule } from "./temporal-module.js";
-export type { TemporalModuleOptions } from "./temporal-module.js";
+export { TemporalActivities, TemporalModule } from "./temporal-module.js";
+export type { ActivitiesPortClass, TemporalModuleOptions } from "./temporal-module.js";
 export {
   TemporalConfig,
   TemporalConnection,

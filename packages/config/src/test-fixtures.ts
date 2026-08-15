@@ -46,6 +46,21 @@ const namedThrough = (
     (ctx) => OkAsync(ctx.get(Named)),
   );
 
+/** The name form: the port is minted by `Config.provider`, and read back through the provider it returns. */
+const minted = Config.provider(
+  "ConfigFixtureMinted",
+  Config.object({ retries: Config.integer("RETRIES", { min: 0, max: 10, default: 3 }) }),
+);
+
+const mintedFrom = (env: Environment): AsyncResult<{ readonly retries: number }, ConfigInvalid> =>
+  Module.scoped(
+    Module("ConfigFixture")({
+      provides: [Provider(Env)({ value: env }), minted],
+      exports: [minted.port],
+    }),
+    (ctx) => OkAsync(ctx.get(minted.port)),
+  );
+
 export type ConfigFixtures = {
   /** `Settings` bound from `env` through `settingsSchema`, resolved out of a built graph. */
   readonly bound: (env: Environment) => AsyncResult<
@@ -57,6 +72,10 @@ export type ConfigFixtures = {
     },
     ConfigInvalid
   >;
+  /** A port `Config.provider("…", schema)` minted, bound from `env`, resolved through `provider.port`. */
+  readonly mintedFrom: (
+    env: Environment,
+  ) => AsyncResult<{ readonly retries: number }, ConfigInvalid>;
   /** `Named` bound from `env` through any Standard Schema over the environment. */
   readonly boundThrough: (
     schema: ConfigSchema<Environment, { readonly name: string }>,
@@ -68,6 +87,10 @@ export const it = test.extend<ConfigFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   bound: async ({}, use) => {
     await use(settingsFrom);
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  mintedFrom: async ({}, use) => {
+    await use(mintedFrom);
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   boundThrough: async ({}, use) => {

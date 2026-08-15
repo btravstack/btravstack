@@ -27,6 +27,17 @@ the same commit, and with `README.md` — the package ships no
   di module (`Module(name)({...} as never) as never` — di computes the
   declared type from a literal, and generic tuples are not one). Options
   `port`/`hostname` pin as for `http()`.
+- **`HttpRouter(name)`** (`orpc.ts`) → di's `Provider(port)` builder over a
+  port minted for the router: `class extends Port(name)<Router<Record<never,
+never>>> {}`, cast to **`RouterPortClass<Name>`** (`{ portId: Name; new ():
+PortInstance<Name, Router<…>> }` — the nameable spelling through di's
+  exported `PortInstance`; the class expression's own type expands the brand
+  keys in declaration emit, TS4023 measured), with the return typed explicitly
+  as `ReturnType<typeof Provider<RouterPortClass<Name>>>`. So
+  `HttpRouter("OrderRouter")([PlaceOrder, FindOrder], { sync: routerOf })` is
+  a plain di provider whose `.port` is typed, and `HttpModule({ router:
+orderRouter })` / `http({ router: orderRouter.port })` take it from there.
+  Covered by the `rpc` fixture's `greetingRouter`.
 - **`http({ router, prefix?, port?, hostname? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<RouterPort>>`**
   — the starter, and **the one way HTTP is answered here: oRPC on Hono**. The

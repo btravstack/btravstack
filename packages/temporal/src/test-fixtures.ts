@@ -5,14 +5,13 @@ import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
-import type { DeclareActivitiesHandlerOptions } from "@temporal-contract/worker/activity";
 import type { Client } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { expect, test } from "vitest";
 import { z } from "zod";
 
-import { TemporalModule } from "./temporal-module.js";
+import { TemporalActivities, TemporalModule } from "./temporal-module.js";
 import {
   TemporalConfig,
   type TemporalInfo,
@@ -54,12 +53,10 @@ const echoContract = defineContract({
   },
 });
 
-/** The activities port the way a consumer declares one: its service is the record `declareActivitiesHandler` takes. */
-class EchoActivities extends Port("EchoActivities")<
-  DeclareActivitiesHandlerOptions<typeof echoContract>["activities"]
-> {}
+/** The activities port the way a consumer mints one: `TemporalActivities(contract)(name)`, then di's own `Provider(port)` builder for each provider of it. */
+const EchoActivities = TemporalActivities(echoContract)("EchoActivities");
 
-const echoing = Provider(EchoActivities)({
+const echoing = EchoActivities({
   value: { runEcho: { echo: (value) => OkAsync(value) } },
 });
 
@@ -71,7 +68,7 @@ const echoing = Provider(EchoActivities)({
 const undeclaredEcho = {
   runEcho: { echo: (value: string) => OkAsync(value), undeclared: () => OkAsync(undefined) },
 };
-export const undeclared = Provider(EchoActivities)({ value: undeclaredEcho });
+export const undeclared = EchoActivities({ value: undeclaredEcho });
 
 /**
  * The application's own module: a service, and the activities built from it —
@@ -85,7 +82,7 @@ const contractSeamOf = () => {
   let greeting = "";
 
   return {
-    activities: Provider(EchoActivities)([Greeting], {
+    activities: EchoActivities([Greeting], {
       sync: (service) => ({
         runEcho: {
           echo: (value) => {
@@ -118,7 +115,7 @@ const gateOf = () => {
   });
 
   return {
-    activities: Provider(EchoActivities)({
+    activities: EchoActivities({
       value: {
         runEcho: {
           echo: (value) => {

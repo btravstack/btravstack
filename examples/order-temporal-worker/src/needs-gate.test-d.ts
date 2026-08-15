@@ -18,7 +18,7 @@ import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { TemporalModule } from "@btravstack/temporal";
 
-import { OrderActivities, orderActivities } from "./activities.js";
+import { orderActivities } from "./activities.js";
 import { FulfillmentModule } from "./fulfillment.js";
 import { OrderTemporalWorker } from "./module.js";
 
@@ -34,7 +34,7 @@ const _wired = start(OrderTemporalWorker, options);
 const RuntimelessTemporal = Module("RuntimelessTemporal")({
   imports: [ApplicationModule, PersistenceModule, FulfillmentModule],
   provides: [orderActivities],
-  exports: [OrderActivities],
+  exports: [orderActivities.port],
 });
 
 // Negative: the gate becomes a required two-element tuple naming the absence,

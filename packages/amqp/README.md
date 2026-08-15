@@ -42,36 +42,37 @@ handlers and exports `AmqpRuntime`, and hands back exactly the module
 
 ```ts
 import { runMain } from "@btravstack/core";
-import { Port, Provider } from "@btravstack/di";
-import { AmqpModule } from "@btravstack/amqp";
+import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
 
-// The handlers, as a port: its service is the record the contract wants —
+// The handlers, as a service: `AmqpHandlers(contract)(name)` mints a port
+// whose service is the record the contract wants —
 // `WorkerInferHandlers<typeof orderContract>`, one entry per consumer / RPC,
-// no injected context. Its provider declares what the handlers need and
-// closes over it, the way every service in the graph is built.
-class OrderHandlers extends Port("OrderHandlers")<
-  WorkerInferHandlers<typeof orderContract>
-> {}
-
-const orderHandlers = Provider(OrderHandlers)([PlaceOrder], {
-  sync: (placeOrder) => ({
-    placeOrder: declareHandler(orderContract, "placeOrder", (message) =>
-      placeOrder
-        .execute(message.payload.orderId, message.payload.quantity)
-        .map(() => undefined)
-        .mapErrCases((matcher) =>
-          matcher.with(
-            P.tag("InvalidQuantity"),
-            P.tag("DuplicateOrder"),
-            (error) => new NonRetryableError(error._tag, error),
+// no injected context — and hands back di's own `Provider(port)`, so the
+// last call declares what the handlers need and closes over it, the way
+// every service in the graph is built. `orderHandlers.port` is the port,
+// for whoever needs to name it.
+const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")(
+  [PlaceOrder],
+  {
+    sync: (placeOrder) => ({
+      placeOrder: declareHandler(orderContract, "placeOrder", (message) =>
+        placeOrder
+          .execute(message.payload.orderId, message.payload.quantity)
+          .map(() => undefined)
+          .mapErrCases((matcher) =>
+            matcher.with(
+              P.tag("InvalidQuantity"),
+              P.tag("DuplicateOrder"),
+              (error) => new NonRetryableError(error._tag, error),
+            ),
+          )
+          .recoverDefect((cause) =>
+            ErrAsync(new RetryableError("placing the order failed", cause)),
           ),
-        )
-        .recoverDefect((cause) =>
-          ErrAsync(new RetryableError("placing the order failed", cause)),
-        ),
-    ),
-  }),
-});
+      ),
+    }),
+  },
+);
 
 const Worker = AmqpModule("Worker")({
   contract: orderContract,
@@ -93,12 +94,24 @@ rather than on the first delivery, silently to the DLQ
 (`amqp-runtime.test-d.ts` pins both directions, for the sugar and the
 primitive alike).
 
+`AmqpHandlers(contract)(name)` is the way to that provider: the first two
+calls mint the port — id `name`, service `WorkerInferHandlers<typeof
+contract>` — and return di's own `Provider(port)`, so the last call is exactly
+`Provider(port)(deps, arm)`: any arm, same typing, and the arm is checked
+against the contract's record before any module sees it. The provider carries
+the port typed (`orderHandlers.port`, a `HandlersPortClass<Name, typeof
+contract>`) for the rare place that names it — a hand-written `amqp()` call, a
+type test. A port declared by hand (`class OrderHandlers extends
+Port("OrderHandlers")<WorkerInferHandlers<typeof orderContract>> {}` plus
+`Provider(OrderHandlers)(…)`) still works everywhere the minted one does; the
+class line is what the sugar removes.
+
 `amqp({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?,
 connectTimeoutMs? })` — the starter module itself, taking the handlers **port
 class** rather than the provider — stays exported for a composition root
 written by hand: `Module("Worker")({ imports: [AppModule, amqp({ contract:
-orderContract, handlers: OrderHandlers })], provides: [orderHandlers], exports:
-[AmqpRuntime] })` is what the sugar produces. It returns a `Module<AmqpRuntime
+orderContract, handlers: orderHandlers.port })], provides: [orderHandlers],
+exports: [AmqpRuntime] })` is what the sugar produces. It returns a `Module<AmqpRuntime
 | AmqpConfig, ConfigInvalid, Env | H>` — `H` the handlers port's instance, the
 module's one need — or, with `url` pinned, `Module<AmqpRuntime | AmqpConfig,
 never, H>`: it then reads nothing from the environment. (`AmqpModule` declares

@@ -12,7 +12,7 @@ import { FulfillmentModule } from "./fulfillment.js";
  * and `PersistenceModule` are booted here unchanged — the same pair every
  * other deployment composes — plus `FulfillmentModule`, the two external
  * services only this deployment orchestrates; `orderActivities`, the saga's
- * activities as a service on `OrderActivities`; and `TemporalModule`, the
+ * activities as a service on the port `TemporalActivities` minted for it; and `TemporalModule`, the
  * sugar that imports the starter (`temporal()`, the runtime itself on
  * `TemporalRuntime`, bound from `TEMPORAL_ADDRESS` and `TEMPORAL_NAMESPACE`
  * in the environment, with the connection as a resource of the graph),

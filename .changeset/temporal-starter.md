@@ -37,3 +37,13 @@ activities and exports `TemporalRuntime` — returning exactly the module
 `Module(...)` would have declared over those augmented lists, so `start`'s
 gate and di's see nothing new. `temporal()` stays exported as the primitive
 it delegates to. `TemporalModuleOptions` is exported for the type.
+
+**`TemporalActivities(contract)(name)` mints the activities port and its
+provider in one call.** The first call fixes the contract, the second mints a
+port named `name` whose service is the implementations record
+`declareActivitiesHandler` takes for it, and what comes back is di's own
+`Provider(port)` builder — `(deps, arm)` with the usual typing, returning a
+provider that carries the port typed as `provider.port`. The hand-declared
+`class extends Port(name)<…>` line disappears; `ActivitiesPortClass<Name, C>`
+is exported for the type. A hand-declared port plus `Provider(port)` still
+works.

@@ -70,9 +70,10 @@ Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, the trace-id policy, Hono and oRPC's fetch adapter
 mounted under `/rpc` all live in [`@btravstack/http`](../../packages/http) —
 see its README for the guarantee it makes and the one way it answers HTTP.
-What this example writes is the router — a provider built from the two use
-cases it declares — and a composition root that is a `Module(...)` which also
-knows about it:
+What this example writes is the router — `HttpRouter("OrderRouter")([PlaceOrder,
+FindOrder], { sync: routerOf })`, port and provider in one call, built from
+the two use cases it declares — and a composition root that is a `Module(...)`
+which also knows about it:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({

@@ -31,27 +31,28 @@ on npm to install yet. The command above is what it will be once it has.
 ## A worked example
 
 ```ts
-// The application's half: its activities, as a service. The port's service is
-// the record `declareActivitiesHandler` takes for the contract, and the
-// provider closes over the use cases it declares — no `needs`, no context.
-class OrderActivities extends Port("OrderActivities")<
-  DeclareActivitiesHandlerOptions<typeof contract>["activities"]
-> {}
-
-const orderActivities = Provider(OrderActivities)([PlaceOrder], {
-  sync: (place) => ({
-    placeOrder: {
-      place: (args, { errors }) =>
-        place
-          .execute(args.orderId, args.quantity)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("DuplicateOrder"), (error) =>
-              errors.OrderAlreadyPlaced({ id: error.id }),
+// The application's half: its activities, as a service. `TemporalActivities`
+// mints the port — its service the record `declareActivitiesHandler` takes for
+// the contract — and hands back di's `Provider(port)` builder; the provider
+// closes over the use cases it declares — no `needs`, no context — and carries
+// the port as `orderActivities.port` for whoever else names it.
+const orderActivities = TemporalActivities(contract)("OrderActivities")(
+  [PlaceOrder],
+  {
+    sync: (place) => ({
+      placeOrder: {
+        place: (args, { errors }) =>
+          place
+            .execute(args.orderId, args.quantity)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("DuplicateOrder"), (error) =>
+                errors.OrderAlreadyPlaced({ id: error.id }),
+              ),
             ),
-          ),
-    },
-  }),
-});
+      },
+    }),
+  },
+);
 
 // The composition root: a di module, plus the contract, the activities
 // provider and the workflow source — and nothing else to know.
@@ -77,7 +78,15 @@ declared over those augmented lists — so the kernel, `start`'s gate and di's
 see nothing new. `activities` is the **provider** (not the port), constrained
 on its instance type the way `temporal()` constrains the port: a provider of
 anything but the implementations record for `contract` fails to typecheck
-there. Everything below is the primitive it delegates to; reach for
+there. `TemporalActivities(contract)(name)` is the port-and-provider half of
+the same sugar: the first call fixes the contract, the second mints a port
+named `name` whose service is that record, and what comes back is di's own
+`Provider(port)` — so `(deps, arm)` is any arm with the usual typing, and the
+provider carries the port typed (`orderActivities.port`) for a module that
+exports it or a provider that depends on it. A hand-declared
+`class OrderActivities extends Port("OrderActivities")<ActivitiesOf<typeof contract>> {}`
+plus `Provider(OrderActivities)(…)` is the same thing spelled out, and still
+works. Everything below is the primitive both delegate to; reach for
 `temporal()` directly when the module shape is not the one you want.
 
 `temporal(options)` is a module providing three ports:

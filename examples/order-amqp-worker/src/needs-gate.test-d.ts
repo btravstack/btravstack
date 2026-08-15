@@ -8,7 +8,7 @@
  * There is no UNSATISFIED RUNTIME NEEDS negative any more: the runtime has
  * none. What used to be its needs — the handlers, and what they read — is now
  * a port the starter DEPENDS on, so a composition without a provider for it is
- * di's own gate: the module's needs channel carries `OrderHandlers`, and
+ * di's own gate: the module's needs channel carries `orderHandlers.port`, and
  * `start` accepts only `Scope | Env` there.
  */
 import { AmqpRuntime, amqp } from "@btravstack/amqp";
@@ -18,7 +18,7 @@ import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { ApplicationModule, Logger, PlaceOrder } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 
-import { OrderHandlers } from "./handlers.js";
+import { orderHandlers } from "./handlers.js";
 import { OrderAmqpWorker } from "./module.js";
 
 const options = { signals: false, probes: false } as const;
@@ -39,20 +39,20 @@ const RuntimelessAmqp = Module("RuntimelessAmqp")({
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _noRuntime = start(RuntimelessAmqp, options);
 
-// The starter without the handlers it depends on: `OrderHandlers` is neither
-// provided nor imported, so it stays in the module's needs channel. Spelled
+// The starter without the handlers it depends on: `orderHandlers.port` is
+// neither provided nor imported, so it stays in the module's needs channel. Spelled
 // with the `amqp()` primitive rather than `AmqpModule`, since the sugar cannot
 // leave the handlers out — that is what it is for.
 const HandlerlessAmqp = Module("HandlerlessAmqp")({
   imports: [
     ApplicationModule,
     PersistenceModule,
-    amqp({ contract: orderContract, handlers: OrderHandlers }),
+    amqp({ contract: orderContract, handlers: orderHandlers.port }),
   ],
   exports: [AmqpRuntime, PlaceOrder, Logger],
 });
 
 // Negative, di's gate rather than the kernel's: `start` takes a
-// `Module<X, E, Scope | Env>`, and this one still needs `OrderHandlers`.
-// @ts-expect-error — the module's needs channel carries OrderHandlers, which nothing provides.
+// `Module<X, E, Scope | Env>`, and this one still needs `orderHandlers.port`.
+// @ts-expect-error — the module's needs channel carries orderHandlers.port, which nothing provides.
 const _missingHandlers = start(HandlerlessAmqp, options);

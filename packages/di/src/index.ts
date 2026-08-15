@@ -31,11 +31,16 @@ export { Port } from "./port.js";
 // `{ [ID]: "Logger", [SERVICE]: Shape }` and pass it off as a `Logger` —
 // measured, it type-checks. Exporting the class *types* grants no such thing:
 // the brand keys stay unnameable, so `PortInstance` values remain unforgeable
-// and `MemberOf`'s `[MANY]` discriminant stays unspoofable. `PortInstance` and
-// the `[MANY]` intersection are never named here either — nothing in the emitted
-// output needs them once the class types are reachable, and `emit-guards.ts` in
+// and `MemberOf`'s `[MANY]` discriminant stays unspoofable. `PortInstance` IS
+// exported as a type — naming `PortInstance<"Logger", Shape>` forges nothing
+// (a value still needs the unnameable keys) — because a provider whose port
+// was minted inside a helper (`Config.provider("RelayConfig", schema)`, a
+// starter's `HttpRouter("OrderRouter")(deps, arm)`) has the declared type
+// `Provider<PortInstance<"RelayConfig", Shape>, …> & { port: … }`, and a
+// consumer that exports it needs declaration emit to be able to write that.
+// The `[MANY]` intersection is never named; `emit-guards.ts` in
 // `examples/hexagonal-order-api` is the fixture that keeps that true.
-export type { AnyPort, ManyPortClass, PortClass, Scope, ServiceOf } from "./port.js";
+export type { AnyPort, ManyPortClass, PortClass, PortInstance, Scope, ServiceOf } from "./port.js";
 export { Context } from "./context.js";
 export { Provider } from "./provider.js";
 export { Module } from "./module.js";

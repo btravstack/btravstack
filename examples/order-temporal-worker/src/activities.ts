@@ -1,28 +1,24 @@
-import { Port, Provider } from "@btravstack/di";
 import {
   OrderRepository,
   PlaceOrder,
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
-import type { OrderContract } from "@btravstack/example-order-temporal-contract";
-import type { DeclareActivitiesHandlerOptions } from "@temporal-contract/worker/activity";
+import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { TemporalActivities } from "@btravstack/temporal";
 import { P } from "unthrown";
 
 /**
  * The saga's five activities, as a service: the record `declareActivitiesHandler`
- * takes for `orderContract`, and the port `@btravstack/temporal`'s starter
- * resolves it from. Nothing here is a runtime — the Worker's lifecycle, the
- * unit per activity attempt and the release at the kernel's deadline are the
- * package's. This is the application's half: the triage from a domain `Err`
- * to a declared contract error, closing over the use case and the services
- * its provider declared.
- */
-export class OrderActivities extends Port("OrderActivities")<
-  DeclareActivitiesHandlerOptions<OrderContract>["activities"]
-> {}
-
-/**
+ * takes for `orderContract`, on the port `@btravstack/temporal`'s starter
+ * resolves it from — `TemporalActivities(orderContract)("OrderActivities")`
+ * mints the port and hands back di's provider builder, so the port is
+ * `orderActivities.port` and no class names it. Nothing here is a runtime —
+ * the Worker's lifecycle, the unit per activity attempt and the release at
+ * the kernel's deadline are the package's. This is the application's half:
+ * the triage from a domain `Err` to a declared contract error, closing over
+ * the use case and the services its provider declared.
+ *
  * The provider declares the four ports the activities close over — the
  * placement use case, the repository (its `remove` is `cancelPlacement`'s
  * persistence arm) and the two fulfillment services — and di verifies the
@@ -51,7 +47,7 @@ export class OrderActivities extends Port("OrderActivities")<
  * placement that never landed is the no-op a *repeated* compensation performs,
  * and an activity Temporal may re-run has to answer the same both times.
  */
-export const orderActivities = Provider(OrderActivities)(
+export const orderActivities = TemporalActivities(orderContract)("OrderActivities")(
   [PlaceOrder, OrderRepository, StockService, ShippingService],
   {
     sync: (place, repository, stock, shipping) => ({

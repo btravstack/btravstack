@@ -16,7 +16,7 @@ import { HttpRuntime, http } from "@btravstack/http";
 
 import { OrderApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
-import { OrderRouter, orderRouter } from "./router.js";
+import { orderRouter } from "./router.js";
 
 const options = { signals: false, probes: false } as const;
 
@@ -38,11 +38,12 @@ const RuntimelessApi = Module("RuntimelessApi")({
 const _missingRuntime = start(RuntimelessApi, options);
 
 // The starter imported without its router provided: `http({ router })`'s
-// runtime provider depends on `OrderRouter`, so the composition carries it as
-// an unmet need — di's gate, not the kernel's, and it rejects the module at
-// `start` rather than at arity.
+// runtime provider depends on the router port (`orderRouter.port`, minted by
+// `HttpRouter`), so the composition carries it as an unmet need — di's gate,
+// not the kernel's, and it rejects the module at `start` rather than at
+// arity.
 const RouterlessApi = Module("RouterlessApi")({
-  imports: [ApplicationModule, PersistenceModule, http({ router: OrderRouter })],
+  imports: [ApplicationModule, PersistenceModule, http({ router: orderRouter.port })],
   exports: [HttpRuntime, Logger],
 });
 
@@ -59,7 +60,7 @@ const _withUnit = start(OrderApi, { ...options, unit: RequestModule });
 // has its runtime and router but does not export `Logger`, so only the unit
 // half of the gate can be what rejects the call.
 const UnloggedApi = Module("UnloggedApi")({
-  imports: [ApplicationModule, PersistenceModule, http({ router: OrderRouter })],
+  imports: [ApplicationModule, PersistenceModule, http({ router: orderRouter.port })],
   provides: [orderRouter],
   exports: [HttpRuntime],
 });

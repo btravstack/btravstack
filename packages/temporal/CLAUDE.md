@@ -29,6 +29,24 @@ imports: [...imports, starter], provides: [activities, ...provides], exports:
   is exported for the type. Covered by `test-fixtures.ts`'s `boot`, which is
   written with it. `temporal()` stays exported as the primitive it delegates
   to.
+- **`TemporalActivities(contract)(name)` → `ReturnType<typeof
+Provider<ActivitiesPortClass<Name, C>>>`** — the activities' port and
+  provider in one call, `temporal-module.ts`, the same shape as
+  `@btravstack/http`'s `HttpRouter(name)`. The first call fixes `C` (the
+  contract value is otherwise unused; it exists so `C` is inferred rather than
+  written), the second mints `class extends Port(name)<ActivitiesOf<C>> {}`
+  and returns di's own `Provider(port)` builder, so the third call is di's
+  `(deps, arm)` unchanged and the provider it returns carries the port typed
+  (`orderActivities.port`). The return type is spelled explicitly through
+  di's exported `PortInstance` — the class expression's own type expands the
+  brand keys in declaration emit and cannot be named (TS4023) — and the class
+  is cast to **`ActivitiesPortClass<Name, C>`** (`{ portId: Name; new ():
+PortInstance<Name, ActivitiesOf<C>> }`), exported for the type. This is the
+  way an application declares its activities; a hand-declared port class plus
+  `Provider(port)` remains possible. `test-fixtures.ts` mints `EchoActivities`
+  with it and builds all four fixture providers off the one builder, and
+  `examples/order-temporal-worker/src/activities.ts` is the worked example
+  (no port class anywhere; `orderActivities.port` where the port is named).
 - **`temporal(options)` → `Module<TemporalRuntime | TemporalConfig |
 TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
 InstanceType<A>>`** — the starter, the same shape as `@btravstack/http`'s

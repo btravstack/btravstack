@@ -1,4 +1,4 @@
-import { Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
+import { Port, Provider, type AnyPort, type PortInstance, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, P, TaggedError, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 /** The process environment as it actually arrives: flat, and every value a string or absent. */
@@ -212,20 +212,56 @@ export const Config = {
   }),
 
   /**
-   * A provider binding `port` from the environment through `schema`. Reads
+   * A provider binding a port from the environment through `schema`. Reads
    * {@link Env} — which the kernel provides — so the port is built with the
    * rest of the graph, and a bad environment is a modeled startup `Err`
    * (`ConfigInvalid`, exit code 78 under `runMain`) rather than a crash or,
    * worse, a silently wrong value.
+   *
+   * Two forms. `Config.provider(Port, schema)` binds a port you declared —
+   * the shape for a port that is public API, which a starter or another
+   * package names (`HttpConfig`). `Config.provider("RelayConfig", schema)`
+   * mints the port for you — its service is the schema's output — and hands
+   * back the provider carrying it: `relayConfig.port` is what a dependent
+   * lists in its deps. The shape for a slice that is one application's own,
+   * where a class line for the port would name it twice.
    */
-  provider: <P extends AnyPort>(port: P, schema: ConfigSchema<Environment, ServiceOf<P>>) =>
-    Provider(port)([Env], {
-      make: (env): AsyncResult<ServiceOf<P>, ConfigInvalid> =>
-        fromSafePromise((async () => await schema["~standard"].validate(env))()).flatMap(
-          (result) =>
-            result.issues === undefined
-              ? Ok(result.value)
-              : Err(new ConfigInvalid({ port: port.portId, issues: result.issues })),
-        ),
-    }),
+  provider: configProvider,
 };
+
+/** A port `Config.provider(name, schema)` minted: its instance is `PortInstance<Name, Output>`, and it is what `provider.port` is typed as. */
+export type ConfigPort<Name extends string, Output> = {
+  readonly portId: Name;
+  new (): PortInstance<Name, Output>;
+};
+
+function configProvider<P extends AnyPort>(
+  port: P,
+  schema: ConfigSchema<Environment, ServiceOf<P>>,
+): Provider<InstanceType<P>, ConfigInvalid, Env> & { readonly port: P };
+function configProvider<const Name extends string, Output>(
+  name: Name,
+  schema: ConfigSchema<Environment, Output>,
+): Provider<PortInstance<Name, Output>, ConfigInvalid, Env> & {
+  readonly port: ConfigPort<Name, Output>;
+};
+// The implementation's return type is `unknown` — the two overloads above are
+// the whole contract, and no single type is assignable both ways to
+// `Provider<InstanceType<P>, …> & { port: P }` and
+// `Provider<PortInstance<Name, Output>, …> & { port: ConfigPort<Name, Output> }`
+// (`Provider` is contravariant in its port).
+function configProvider(
+  portOrName: AnyPort | string,
+  schema: ConfigSchema<Environment, unknown>,
+): unknown {
+  const port: AnyPort =
+    typeof portOrName === "string" ? class extends Port(portOrName)<unknown> {} : portOrName;
+  return Provider(port)([Env], {
+    make: (env): AsyncResult<unknown, ConfigInvalid> =>
+      fromSafePromise((async () => await schema["~standard"].validate(env))()).flatMap((result) =>
+        result.issues === undefined
+          ? Ok(result.value)
+          : Err(new ConfigInvalid({ port: port.portId, issues: result.issues })),
+      ),
+  });
+}

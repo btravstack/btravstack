@@ -8,7 +8,7 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import { declareHandler, type WorkerInferHandlers } from "@amqp-contract/worker";
+import { declareHandler } from "@amqp-contract/worker";
 import type { ConfigInvalid } from "@btravstack/config";
 import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -17,7 +17,7 @@ import { expect, type TestAPI } from "vitest";
 import { z } from "zod";
 
 import { AmqpModule } from "./amqp-module.js";
-import type { AmqpInfo } from "./amqp-runtime.js";
+import { AmqpHandlers, type AmqpInfo, type HandlersPortClass } from "./amqp-runtime.js";
 
 const echoExchange = defineExchange("amqp-test");
 const echoDlx = defineExchange("amqp-test-dlx", { type: "direct" });
@@ -41,8 +41,9 @@ export const echoContract = defineContract({
 
 export class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 
-/** The port the application hands `amqp()` its handlers on — here, the suite's. */
-export class EchoHandlers extends Port("EchoHandlers")<WorkerInferHandlers<typeof echoContract>> {}
+/** The handlers port the suite hands the starter, and its provider builder — both minted by `AmqpHandlers`. */
+const echoHandlers = AmqpHandlers(echoContract)("EchoHandlers");
+type EchoHandlers = HandlersPortClass<"EchoHandlers", typeof echoContract>;
 
 const AppModule = Module("App")({
   provides: [Provider(Greeting)({ value: { text: "hello" } })],
@@ -50,7 +51,7 @@ const AppModule = Module("App")({
 });
 
 /** A handlers provider the suite composes in: built from `Greeting`, or from nothing. */
-type EchoProvider = Provider<EchoHandlers, never, Greeting>;
+type EchoProvider = Provider<InstanceType<EchoHandlers>, never, Greeting>;
 
 /**
  * The runtime is a service the module provides, so each fixture composes the
@@ -68,7 +69,7 @@ const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: numbe
     imports: [AppModule],
   });
 
-const plainHandlers: EchoProvider = Provider(EchoHandlers)({
+const plainHandlers: EchoProvider = echoHandlers({
   value: { echo: () => OkAsync(undefined) },
 });
 
@@ -90,7 +91,7 @@ const seamOf = () => {
   let greeting = "";
 
   return {
-    handlers: Provider(EchoHandlers)([Greeting], {
+    handlers: echoHandlers([Greeting], {
       sync: (g) => ({
         echo: declareHandler(echoContract, "echo", () => {
           seen.push(currentUnit());
@@ -120,7 +121,7 @@ const gatedHandler = () => {
     release = resolve;
   });
 
-  const handlers: EchoProvider = Provider(EchoHandlers)({
+  const handlers: EchoProvider = echoHandlers({
     value: {
       echo: () => {
         entered();

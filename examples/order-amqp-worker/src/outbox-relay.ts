@@ -10,11 +10,11 @@ import { P, fromSafePromise, type AsyncResult } from "unthrown";
  * What only the relay knows, as a service: its idle sleep, bound from
  * `OUTBOX_POLL_MS`. `0` is rejected — a relay that never sleeps is a busy
  * loop — and so is anything above a minute, which is a typo, not a policy.
+ * `Config.provider(name, schema)` mints the port (`relayConfig.port`): the
+ * slice is this deployment's own, so nothing else ever names it.
  */
-export class RelayConfig extends Port("RelayConfig")<{ readonly pollMs: number }> {}
-
 export const relayConfig = Config.provider(
-  RelayConfig,
+  "RelayConfig",
   Config.object({
     pollMs: Config.integer("OUTBOX_POLL_MS", { min: 1, max: 60_000, default: 200 }),
   }),
@@ -151,7 +151,7 @@ const startOutboxRelay = (
  * `Promise<void>` a finaliser speaks, rejecting only on a defect — which the
  * kernel then reports as a `teardownError`.
  */
-export const outboxRelay = Provider(OutboxRelay)([Outbox, Logger, AmqpConfig, RelayConfig], {
+export const outboxRelay = Provider(OutboxRelay)([Outbox, Logger, AmqpConfig, relayConfig.port], {
   acquire: (outbox, logger, { url }, { pollMs }) =>
     startOutboxRelay(outbox, logger, { url, pollMs }),
   release: (running) => running.stop().get(),

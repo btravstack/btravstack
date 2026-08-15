@@ -445,7 +445,10 @@ ConfigFieldInvalid> }`). **`Config.object({...})`** composes them into a
   nothing — `ConfigSchema` is the structural slice of Standard Schema v1, and a
   `zod`/`valibot`/`arktype` schema is accepted where it is); every field is
   read so one validation names every offending variable at once.
-  **`Config.provider(Port, schema)`** is a di provider with dep `[Env]` whose
+  **`Config.provider(Port, schema)`** — or `Config.provider("Name", schema)`,
+  which mints the port and hands it back typed on the provider
+  (`provider.port`), the shape for a slice that is one application's own —
+  is a di provider with dep `[Env]` whose
   `make` validates and answers **`ConfigInvalid`** (`{ port, issues }`, message
   one line per variable). Modelled on Effect's `Config` (typed descriptions,
   an environment provider swappable for a test) and Spring Boot's
@@ -507,7 +510,20 @@ runtime port to `exports`, and returns exactly the module `Module(...)` would
 have declared (spelled from di's exported typing pieces, inline — see
 `packages/di/CLAUDE.md`), so the kernel and both gates see nothing new; the
 plain starter (`http({ router })`, …) stays exported as the primitive it
-delegates to. `http({ router })` binds
+delegates to. And each ships the **port-and-provider sugar** for what the
+application supplies — `HttpRouter(name)(deps, arm)`,
+`TemporalActivities(contract)(name)(deps, arm)`,
+`AmqpHandlers(contract)(name)(deps, arm)`, and `Config.provider(name,
+schema)` for a config slice — the first call minting the port (its service
+known from the contract or schema) and returning di's own `Provider(port)`, so
+the second call is `Provider(port)(deps, arm)` exactly as everywhere else and
+the provider carries its port typed (`provider.port` — di's `Provider(port)(…)`
+now returns `Provider<P, E, N> & { port: typeof port }`). The class line and
+its service type are what disappear; the port stays a real di port. Two rules
+from di's CLAUDE.md apply to writing one: return a type spelled through the
+exported `PortInstance` (the class expression's own type is not nameable in
+declaration emit) and mint with `class extends Port(name)<Service> {}` so the
+duplicate-id warning still guards a name used twice. `http({ router })` binds
 `PORT`/`HOST` onto `HttpConfig`, mounts the application's **router port** —
 an oRPC router as a provider that declares the use cases its procedures call
 — on Hono under `prefix`, and provides `HttpRuntime`; **oRPC on Hono is the

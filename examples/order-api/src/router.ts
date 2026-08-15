@@ -1,7 +1,8 @@
-import { Port, Provider, type ServiceOf } from "@btravstack/di";
+import type { ServiceOf } from "@btravstack/di";
 import { orderContract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
+import { HttpRouter } from "@btravstack/http";
 import { implement } from "@orpc/server";
 import "@unthrown/orpc/extensions/result";
 import { P } from "unthrown";
@@ -57,7 +58,9 @@ const routerOf = (place: ServiceOf<PlaceOrder>, find: ServiceOf<FindOrder>) =>
     },
   });
 
-/** The router as a service: built once, from the two use cases it declares. */
-export class OrderRouter extends Port("OrderRouter")<ReturnType<typeof routerOf>> {}
-
-export const orderRouter = Provider(OrderRouter)([PlaceOrder, FindOrder], { sync: routerOf });
+/**
+ * The router as a service, built once from the two use cases it declares —
+ * `HttpRouter` mints the port (`orderRouter.port`) and hands back di's own
+ * `Provider(port)`, so this is a provider like any other in the graph.
+ */
+export const orderRouter = HttpRouter("OrderRouter")([PlaceOrder, FindOrder], { sync: routerOf });

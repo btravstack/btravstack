@@ -1,4 +1,4 @@
-import { Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
+import { Port, Provider, type AnyPort, type PortInstance, type ServiceOf } from "@btravstack/di";
 import { getRequestListener } from "@hono/node-server";
 import type { Router } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
@@ -50,4 +50,29 @@ export const orpc = <R extends AnyPort>(router: R & RouterPort<R>, options: Orpc
       return getRequestListener((raw) => app.fetch(raw), { overrideGlobalObjects: false });
     },
   });
+};
+
+/**
+ * The router's port and provider in one call: `HttpRouter("OrderRouter")([PlaceOrder,
+ * FindOrder], { sync: routerOf })`. The first call mints a port named
+ * `name` whose service is a context-free oRPC router — the one shape
+ * `http()` accepts — and returns di's own `Provider(port)`, so the second
+ * call is exactly what it is everywhere else: any arm, same typing, and the
+ * provider it hands back carries the port typed (`orderRouter.port`) for
+ * `HttpModule({ router: orderRouter })` and for whoever else names it. The
+ * class line and its `ReturnType<typeof routerOf>` are what disappear.
+ */
+export const HttpRouter = <const Name extends string>(
+  name: Name,
+): ReturnType<typeof Provider<RouterPortClass<Name>>> =>
+  // The class expression's own type expands the port's brand keys in
+  // declaration emit and cannot be named by a consumer; `RouterPortClass`
+  // spells the same class through the exported `PortInstance`, and is what
+  // the returned provider's `.port` is typed as.
+  Provider(class extends Port(name)<Router<Record<never, never>>> {} as RouterPortClass<Name>);
+
+/** The port `HttpRouter(name)` mints: id `Name`, service a context-free oRPC router. */
+export type RouterPortClass<Name extends string> = {
+  readonly portId: Name;
+  new (): PortInstance<Name, Router<Record<never, never>>>;
 };

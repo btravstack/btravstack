@@ -37,6 +37,7 @@ import { expect, test } from "vitest";
 import { HttpHandler } from "./handler.js";
 import { HttpModule } from "./http-module.js";
 import { HttpConfig, HttpRuntime, httpModule, type HttpInfo } from "./http-runtime.js";
+import { HttpRouter } from "./orpc.js";
 
 type Handler = ServiceOf<HttpHandler>;
 
@@ -66,13 +67,15 @@ const routerOf = (greeter: ServiceOf<Greeter>) =>
     }),
   });
 
-/** The router as a service, built from the greeter it declares. */
-class GreetingRouter extends Port("GreetingRouter")<ReturnType<typeof routerOf>> {}
+/** The router as a service, built from the greeter it declares — port and provider minted by `HttpRouter`. */
+const greetingRouter = HttpRouter("GreetingRouter")([Greeter], {
+  sync: (greeter) => routerOf(greeter),
+});
 
 /** The starter as an application uses it: `HttpModule` sugar over a router provider. */
 const rpcAppOf = (prefix?: `/${string}`) =>
   HttpModule("RpcApp")({
-    router: Provider(GreetingRouter)([Greeter], { sync: (greeter) => routerOf(greeter) }),
+    router: greetingRouter,
     port: 0,
     hostname: "127.0.0.1",
     ...(prefix === undefined ? {} : { prefix }),
