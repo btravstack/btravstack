@@ -63,7 +63,7 @@ missing: N]`.
   only_ (the class value would let consumers provide or alias it);
   `PortClass`/`ManyPortClass` are exported solely so declaration emit works for
   consumers who export ports, and `PortInstance` (type only) so a provider over
-  a port minted inside a helper — `Config.provider("RelayConfig", schema)`,
+  a port minted inside a helper — `Config.provider("RelayConfig")(schema)`,
   `HttpRouter("OrderRouter")(deps, arm)` — has a nameable declared type when
   a consumer exports it (naming the instance type forges nothing: the brand
   keys stay private). `Provider(port)(deps, arm)`'s return type is

@@ -147,8 +147,7 @@ export function temporal<C extends ContractDefinition, A extends AnyPort>(
   const config =
     address !== undefined && namespace !== undefined
       ? Provider(TemporalConfig)({ value: { address, namespace } })
-      : Config.provider(
-          TemporalConfig,
+      : Config.provider(TemporalConfig)(
           Config.object({
             address: pinned(
               address,

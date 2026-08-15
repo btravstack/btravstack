@@ -63,7 +63,7 @@ package ships it.
 The **relay** is a provider too, a resourceful one: `OutboxRelay` is acquired
 as the graph builds — from `Outbox`, `Logger`, the `AmqpConfig` the starter
 bound and its own `relayConfig.port` (`RelayConfig`, `OUTBOX_POLL_MS`, minted
-by `Config.provider("RelayConfig", schema)` since the slice is this
+by `Config.provider("RelayConfig")(schema)` since the slice is this
 deployment's own) — and released when the application scope closes. Nothing resolves it, and nothing needs to; di
 constructs every provider in the tree, and a resourceful one exists to be
 started and stopped. It creates its own `TypedAmqpClient` rather than

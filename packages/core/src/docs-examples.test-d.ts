@@ -133,8 +133,7 @@ class Settings extends Port("Settings")<{
 
 const SettingsModule = Module("Settings")({
   provides: [
-    Config.provider(
-      Settings,
+    Config.provider(Settings)(
       Config.object({
         port: Config.port("PORT", { default: 3000 }),
         verbose: Config.boolean("VERBOSE", { default: false }),

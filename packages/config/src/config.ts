@@ -129,7 +129,7 @@ const FALSE = new Set(["false", "0", "no", "off"]);
  *
  * `Config.object({...})` describes a slice of the environment as a schema
  * (any Standard Schema does as well — a `zod` object over the raw variables,
- * for instance); `Config.provider(Port, schema)` turns it into a di provider
+ * for instance); `Config.provider(Port)(schema)` turns it into a di provider
  * that reads {@link Env} and answers `ConfigInvalid` when the environment is
  * wrong. A starter provides its own slice — `@btravstack/http` binds `PORT` and
  * `HOST` onto `HttpConfig` — and an application binds whatever else it needs
@@ -218,9 +218,11 @@ export const Config = {
    * (`ConfigInvalid`, exit code 78 under `runMain`) rather than a crash or,
    * worse, a silently wrong value.
    *
-   * Two forms. `Config.provider(Port, schema)` binds a port you declared —
-   * the shape for a port that is public API, which a starter or another
-   * package names (`HttpConfig`). `Config.provider("RelayConfig", schema)`
+   * Curried like di's own `Provider(port)(…)` and the starters' sugars: the
+   * first call names the port, the second says how it is bound. Two forms of
+   * the first call. `Config.provider(Port)(schema)` binds a port you declared
+   * — the shape for a port that is public API, which a starter or another
+   * package names (`HttpConfig`). `Config.provider("RelayConfig")(schema)`
    * mints the port for you — its service is the schema's output — and hands
    * back the provider carrying it: `relayConfig.port` is what a dependent
    * lists in its deps. The shape for a slice that is one application's own,
@@ -229,7 +231,7 @@ export const Config = {
   provider: configProvider,
 };
 
-/** A port `Config.provider(name, schema)` minted: its instance is `PortInstance<Name, Output>`, and it is what `provider.port` is typed as. */
+/** A port `Config.provider(name)(schema)` minted: its instance is `PortInstance<Name, Output>`, and it is what `provider.port` is typed as. */
 export type ConfigPort<Name extends string, Output> = {
   readonly portId: Name;
   new (): PortInstance<Name, Output>;
@@ -237,12 +239,16 @@ export type ConfigPort<Name extends string, Output> = {
 
 function configProvider<P extends AnyPort>(
   port: P,
+): (
   schema: ConfigSchema<Environment, ServiceOf<P>>,
-): Provider<InstanceType<P>, ConfigInvalid, Env> & { readonly port: P };
-function configProvider<const Name extends string, Output>(
+) => Provider<InstanceType<P>, ConfigInvalid, Env> & { readonly port: P };
+function configProvider<const Name extends string>(
   name: Name,
-  schema: ConfigSchema<Environment, Output>,
-): Provider<PortInstance<Name, Output>, ConfigInvalid, Env> & {
+): <Output>(schema: ConfigSchema<Environment, Output>) => Provider<
+  PortInstance<Name, Output>,
+  ConfigInvalid,
+  Env
+> & {
   readonly port: ConfigPort<Name, Output>;
 };
 // The implementation's return type is `unknown` — the two overloads above are
@@ -250,18 +256,17 @@ function configProvider<const Name extends string, Output>(
 // `Provider<InstanceType<P>, …> & { port: P }` and
 // `Provider<PortInstance<Name, Output>, …> & { port: ConfigPort<Name, Output> }`
 // (`Provider` is contravariant in its port).
-function configProvider(
-  portOrName: AnyPort | string,
-  schema: ConfigSchema<Environment, unknown>,
-): unknown {
+function configProvider(portOrName: AnyPort | string): unknown {
   const port: AnyPort =
     typeof portOrName === "string" ? class extends Port(portOrName)<unknown> {} : portOrName;
-  return Provider(port)([Env], {
-    make: (env): AsyncResult<unknown, ConfigInvalid> =>
-      fromSafePromise((async () => await schema["~standard"].validate(env))()).flatMap((result) =>
-        result.issues === undefined
-          ? Ok(result.value)
-          : Err(new ConfigInvalid({ port: port.portId, issues: result.issues })),
-      ),
-  });
+  return (schema: ConfigSchema<Environment, unknown>) =>
+    Provider(port)([Env], {
+      make: (env): AsyncResult<unknown, ConfigInvalid> =>
+        fromSafePromise((async () => await schema["~standard"].validate(env))()).flatMap(
+          (result) =>
+            result.issues === undefined
+              ? Ok(result.value)
+              : Err(new ConfigInvalid({ port: port.portId, issues: result.issues })),
+        ),
+    });
 }

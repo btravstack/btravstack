@@ -140,7 +140,7 @@ process starts.
 | Module privacy     | enforced at runtime                                    | compile error                                             |
 | Cycles             | `forwardRef()`                                         | detected pre-construction, as a defect                    |
 | Request scope      | request-scoped providers bubble up the injection chain | `StartOptions.unit` — forked per unit by the kernel       |
-| Configuration      | `ConfigService.get("PORT")`, a string at runtime       | `Config.provider(Port, schema)`, typed, validated at boot |
+| Configuration      | `ConfigService.get("PORT")`, a string at runtime       | `Config.provider(Port)(schema)`, typed, validated at boot |
 | Lifecycle hooks    | 5 interfaces + `enableShutdownHooks()`                 | `onStart`/`onStop` per provider; `start` owns signals     |
 | Failures           | thrown                                                 | `Result`                                                  |
 
@@ -417,8 +417,7 @@ class Settings extends Port("Settings")<{
 
 const SettingsModule = Module("Settings")({
   provides: [
-    Config.provider(
-      Settings,
+    Config.provider(Settings)(
       Config.object({
         port: Config.port("PORT", { default: 3000 }),
         verbose: Config.boolean("VERBOSE", { default: false }),
@@ -449,7 +448,7 @@ them into a Standard Schema over the environment, reading every field so one
 validation names every offending variable at once; any other Standard Schema
 (a `zod` object over the raw variables) is accepted in its place.
 
-`Config.provider(Port, schema)` is a di provider needing `Env` — the kernel
+`Config.provider(Port)(schema)` is a di provider needing `Env` — the kernel
 discharges it — with error `ConfigInvalid`, a `TaggedError` carrying
 `{ port, issues }`. It flows through `start`'s error channel typed, like any
 application error, and `runMain` exits **`78`** (sysexits' `EX_CONFIG`) on it:

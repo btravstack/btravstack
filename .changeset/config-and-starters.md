@@ -11,7 +11,7 @@ and `Config`:
 `Config.string/integer/port/boolean(variable, { default?, min?, max? })` fields,
 `Config.object({...})` composing them into a Standard Schema over the
 environment (any other Standard Schema, a `zod` object over the raw variables
-for instance, is accepted too), and `Config.provider(Port, schema)` binding a
+for instance, is accepted too), and `Config.provider(Port)(schema)` binding a
 port from `Env` — a modeled `ConfigInvalid` naming every offending variable
 when the environment is wrong, which `runMain` maps to sysexits(3)'s
 `EX_CONFIG` (78) rather than the generic startup `1`. The kernel binds its own
@@ -28,8 +28,8 @@ explicit beats environment beats default, per field; pin both and the module
 reads nothing). `RuntimeNeedsGate` is renamed `StartGate`, since it now also
 states `NO RUNTIME`.
 
-`Config.provider("Name", schema)` — the name form — mints the port (its
+`Config.provider("Name")(schema)` — the name form — mints the port (its
 service is the schema's output) and returns the provider carrying it typed
 (`provider.port`), the shape for a slice that is one application's own; the
-class form `Config.provider(Port, schema)` stays for a slice that is public
+class form `Config.provider(Port)(schema)` stays for a slice that is public
 API another package names.

@@ -90,8 +90,7 @@ export function httpModule<N>(
   const config =
     port !== undefined && hostname !== undefined
       ? Provider(HttpConfig)({ value: { port, hostname } })
-      : Config.provider(
-          HttpConfig,
+      : Config.provider(HttpConfig)(
           Config.object({
             port: pinned(port, Config.port("PORT", { default: 3000 })),
             hostname: pinned(hostname, Config.string("HOST", { default: "0.0.0.0" })),

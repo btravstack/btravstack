@@ -445,7 +445,7 @@ ConfigFieldInvalid> }`). **`Config.object({...})`** composes them into a
   nothing — `ConfigSchema` is the structural slice of Standard Schema v1, and a
   `zod`/`valibot`/`arktype` schema is accepted where it is); every field is
   read so one validation names every offending variable at once.
-  **`Config.provider(Port, schema)`** — or `Config.provider("Name", schema)`,
+  **`Config.provider(Port)(schema)`** — or `Config.provider("Name")(schema)`,
   which mints the port and hands it back typed on the provider
   (`provider.port`), the shape for a slice that is one application's own —
   is a di provider with dep `[Env]` whose
@@ -513,8 +513,7 @@ plain starter (`http({ router })`, …) stays exported as the primitive it
 delegates to. And each ships the **port-and-provider sugar** for what the
 application supplies — `HttpRouter(contract)(name)(deps, { sync })`,
 `TemporalActivities(contract)(name)(deps, arm)`,
-`AmqpHandlers(contract)(name)(deps, arm)`, and `Config.provider(name,
-schema)` for a config slice — the first call minting the port (its service
+`AmqpHandlers(contract)(name)(deps, arm)`, and `Config.provider(name)(schema)` for a config slice — the first call minting the port (its service
 known from the contract or schema) and returning di's own `Provider(port)`, so
 the last call is `Provider(port)(deps, arm)` exactly as everywhere else and
 the provider carries its port typed (`provider.port` — di's `Provider(port)(…)`
@@ -847,7 +846,7 @@ A sixth rule is about production code that tests keep honest:
 
 6. **Configuration is a provider bound from `Env` through a schema, never
    `process.env` read by hand and never `.parse()`d.** The kernel owns it:
-   `Config.provider(Port, Config.object({...}))` reads the `Env` port the
+   `Config.provider(Port)(Config.object({...}))` reads the `Env` port the
    kernel provides, validates once as the graph is built, and answers a
    modeled `ConfigInvalid` — every offending variable named — which `runMain`
    turns into `startFailed` on stderr and exit code `78`. Nothing in an

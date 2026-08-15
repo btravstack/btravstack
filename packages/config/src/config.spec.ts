@@ -208,7 +208,7 @@ describe("Config.provider", () => {
   it("mints the port when given a name, and hands it back on the provider", async ({
     mintedFrom,
   }) => {
-    // GIVEN a slice bound with `Config.provider("…", schema)` — no port class written anywhere
+    // GIVEN a slice bound with `Config.provider("…")(schema)` — no port class written anywhere
     const env = { RETRIES: "5" };
 
     // WHEN the minted port is resolved through `provider.port`

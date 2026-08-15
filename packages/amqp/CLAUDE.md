@@ -51,7 +51,7 @@ C>` (`{ portId: Name; new (): PortInstance<Name, WorkerInferHandlers<C>> }`)
   is that spelling and is exported for a consumer that names the port type.
   The contract argument is a value the type alone reads (`_contract`). Same
   shape as `@btravstack/http`'s `HttpRouter(name)` and
-  `@btravstack/config`'s `Config.provider(name, schema)`. A hand-declared port
+  `@btravstack/config`'s `Config.provider(name)(schema)`. A hand-declared port
   plus `Provider(port)(…)` still works everywhere the minted one does. The
   package's fixtures mint `EchoHandlers` through it, and
   `amqp-runtime.test-d.ts` pins that a minted provider satisfies both

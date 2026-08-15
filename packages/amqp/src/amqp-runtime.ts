@@ -88,8 +88,7 @@ export function amqp<TContract extends AnyAmqpContract, H extends AnyPort>(
 ): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | InstanceType<H>> {
   const config =
     options.url === undefined
-      ? Config.provider(
-          AmqpConfig,
+      ? Config.provider(AmqpConfig)(
           Config.object({
             url: Config.string("AMQP_URL", { default: "amqp://127.0.0.1:5672" }),
           }),

@@ -28,9 +28,7 @@ on npm to install yet. The command above is what it will be once it has.
 import { Config } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 
-const databaseConfig = Config.provider(
-  "DatabaseConfig",
-  Config.object({
+const databaseConfig = Config.provider("DatabaseConfig")(Config.object({
     url: Config.string("DATABASE_URL"),
     poolSize: Config.integer("DATABASE_POOL_SIZE", { min: 1, max: 64, default: 8 }),
     ssl: Config.boolean("DATABASE_SSL", { default: true }),
@@ -46,13 +44,13 @@ const Persistence = Module("Persistence")({
 });
 ```
 
-`Config.provider("DatabaseConfig", schema)` mints the port — its service is
+`Config.provider("DatabaseConfig")(schema)` mints the port — its service is
 the schema's output, `{ url: string; poolSize: number; ssl: boolean }` — and
 hands back the provider carrying it: `databaseConfig.port` is what a
 dependent lists in its deps. That is the shape for a slice that is one
 application's own. A slice that is public API — a starter's `HttpConfig`,
 which other packages name — declares its port and passes the class instead:
-`Config.provider(HttpConfig, schema)`; same provider, same schema, the port
+`Config.provider(HttpConfig)(schema)`; same provider, same schema, the port
 named once either way.
 
 `Env` is what `Config.provider` reads. Under `@btravstack/core` the kernel
@@ -88,7 +86,7 @@ Semantics that hold for every field, pinned by the package's own spec:
 and produces the port's service:
 
 ```ts
-Config.provider(DatabaseConfig, z.object({ DATABASE_URL: z.string().url(), … }).transform(…));
+Config.provider(DatabaseConfig)(z.object({ DATABASE_URL: z.string().url(), … }).transform(…));
 ```
 
 ## Errors

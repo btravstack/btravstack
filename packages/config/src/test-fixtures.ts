@@ -28,7 +28,7 @@ export const settingsSchema = Config.object({
 const settingsFrom = (env: Environment): AsyncResult<ServiceOf<Settings>, ConfigInvalid> =>
   Module.scoped(
     Module("ConfigFixture")({
-      provides: [Provider(Env)({ value: env }), Config.provider(Settings, settingsSchema)],
+      provides: [Provider(Env)({ value: env }), Config.provider(Settings)(settingsSchema)],
       exports: [Settings],
     }),
     (ctx) => OkAsync(ctx.get(Settings)),
@@ -40,15 +40,14 @@ const namedThrough = (
 ): AsyncResult<ServiceOf<Named>, ConfigInvalid> =>
   Module.scoped(
     Module("ConfigFixture")({
-      provides: [Provider(Env)({ value: env }), Config.provider(Named, schema)],
+      provides: [Provider(Env)({ value: env }), Config.provider(Named)(schema)],
       exports: [Named],
     }),
     (ctx) => OkAsync(ctx.get(Named)),
   );
 
 /** The name form: the port is minted by `Config.provider`, and read back through the provider it returns. */
-const minted = Config.provider(
-  "ConfigFixtureMinted",
+const minted = Config.provider("ConfigFixtureMinted")(
   Config.object({ retries: Config.integer("RETRIES", { min: 0, max: 10, default: 3 }) }),
 );
 
@@ -72,7 +71,7 @@ export type ConfigFixtures = {
     },
     ConfigInvalid
   >;
-  /** A port `Config.provider("…", schema)` minted, bound from `env`, resolved through `provider.port`. */
+  /** A port `Config.provider("…")(schema)` minted, bound from `env`, resolved through `provider.port`. */
   readonly mintedFrom: (
     env: Environment,
   ) => AsyncResult<{ readonly retries: number }, ConfigInvalid>;

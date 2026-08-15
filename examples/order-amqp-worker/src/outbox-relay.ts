@@ -10,11 +10,10 @@ import { P, fromSafePromise, type AsyncResult } from "unthrown";
  * What only the relay knows, as a service: its idle sleep, bound from
  * `OUTBOX_POLL_MS`. `0` is rejected — a relay that never sleeps is a busy
  * loop — and so is anything above a minute, which is a typo, not a policy.
- * `Config.provider(name, schema)` mints the port (`relayConfig.port`): the
+ * `Config.provider(name)(schema)` mints the port (`relayConfig.port`): the
  * slice is this deployment's own, so nothing else ever names it.
  */
-export const relayConfig = Config.provider(
-  "RelayConfig",
+export const relayConfig = Config.provider("RelayConfig")(
   Config.object({
     pollMs: Config.integer("OUTBOX_POLL_MS", { min: 1, max: 60_000, default: 200 }),
   }),

@@ -118,8 +118,7 @@ the call, and so is a module that exports no runtime port at all.
   separate `node:http` server (`127.0.0.1`, `unref`'d; the port is `PROBE_PORT`
   from the environment, default `9000`; `probes: false` to disable). A Temporal
   worker with no HTTP runtime gets probes for free.
-- **Configuration from the environment, typed.** `Config.provider(Port,
-Config.object({...}))` binds a port from the `Env` the kernel provides to
+- **Configuration from the environment, typed.** `Config.provider(Port)(Config.object({...}))` binds a port from the `Env` the kernel provides to
   every graph — validated once as the graph is built, every fault named at
   once, exit `78` under `runMain`. See _Configuration_ below.
 - **Teardown on every path.** `start` is a thin wrapper over `Module.scoped`,
@@ -175,8 +174,7 @@ class Settings extends Port("Settings")<{
 
 const SettingsModule = Module("Settings")({
   provides: [
-    Config.provider(
-      Settings,
+    Config.provider(Settings)(
       Config.object({
         port: Config.port("PORT", { default: 3000 }),
         verbose: Config.boolean("VERBOSE", { default: false }),
@@ -208,7 +206,7 @@ default? })` each read one variable. **Unset** takes the default, or is "is
   environment; every field is read, so one validation names every offending
   variable at once. Any other Standard Schema — a `zod` object over the raw
   variables — is accepted in its place, with no adapter.
-- `Config.provider(Port, schema)` is a di provider needing `Env` (which the
+- `Config.provider(Port)(schema)` is a di provider needing `Env` (which the
   kernel discharges) with error `ConfigInvalid` — a `TaggedError` carrying
   `{ port, issues }` whose message names each variable. It flows through
   `start`'s error channel typed, like any application error, and **`runMain`

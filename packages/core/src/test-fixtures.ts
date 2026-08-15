@@ -71,7 +71,7 @@ const settingsApp = () => {
     module: Module("ConfigFixtureApp")({
       imports: [testRuntime().module],
       provides: [
-        Config.provider(Settings, settingsSchema),
+        Config.provider(Settings)(settingsSchema),
         Provider(Witness)([Settings], {
           sync: (settings) => {
             bound = settings;
