@@ -1,6 +1,6 @@
-// The four compile gates the keyed router form exists to provide. Each
+// The five compile gates the keyed router form exists to provide. Each
 // `@ts-expect-error` is an assertion: if one stops erroring, the gate is gone.
-import { Port, Provider } from "@btravstack/di";
+import { Provider } from "@btravstack/di";
 import { oc } from "@orpc/contract";
 import { OkAsync } from "unthrown";
 
@@ -8,9 +8,6 @@ import { HttpController } from "./controller.js";
 import { HttpRouter } from "./orpc.js";
 
 const contract = { orders: { place: oc }, users: { find: oc } };
-
-class Greeter extends Port("GateGreeter")<{ readonly greet: () => string }> {}
-void Provider(Greeter)({ value: { greet: () => "hi" } });
 
 const orders = HttpController("GateOrders", contract.orders)([], {
   sync: () => ({ place: () => OkAsync("placed") }),
@@ -43,7 +40,15 @@ void HttpController("GateTypo", contract.orders)([], {
 void HttpRouter(contract.orders)([], { sync: () => ({ place: () => OkAsync("placed") }) });
 
 // The correct composition, and the positional form, both still compile.
-void HttpRouter(contract)({ orders, users });
+const composed = HttpRouter(contract)({ orders, users });
 void HttpRouter(contract)([], {
   sync: () => ({ orders: { place: () => OkAsync("placed") }, users: { find: () => OkAsync("f") } }),
 });
+
+// The composed provider must DECLARE its controllers as needs — if the
+// exactness intersection on the keyed `build` overload (orpc.ts) ever
+// pollutes the inferred `M`, this collapses to `never` and di stops ordering
+// the controllers before the router, silently.
+type NeedsOf<T> = T extends Provider<infer _P, infer _E, infer N> ? N : never;
+type Expect<T extends true> = T;
+type _ComposedNeedsAreDeclared = Expect<[NeedsOf<typeof composed>] extends [never] ? false : true>;
