@@ -104,8 +104,8 @@ may re-run has to answer the same both times.
 ## Step 2 — the composition root
 
 ```ts
-import { ApplicationModule } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderApplicationModule } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { TemporalModule } from "@btravstack/temporal";
@@ -121,8 +121,8 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
   imports: [
-    ApplicationModule,
-    PersistenceModule,
+    OrderApplicationModule,
+    OrderPersistenceModule,
     FulfillmentModule,
     observability(),
   ],
@@ -183,8 +183,8 @@ export const Pinned = TemporalModule("OrderTemporalWorkerLocal")({
   gracePeriod: "5 seconds",
   forceAfter: "15 seconds",
   imports: [
-    ApplicationModule,
-    PersistenceModule,
+    OrderApplicationModule,
+    OrderPersistenceModule,
     FulfillmentModule,
     observability(),
   ],

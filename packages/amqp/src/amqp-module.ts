@@ -77,7 +77,7 @@ export type AmqpModuleOptions<
  * export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
  *   contract: orderContract,
  *   handlers: orderHandlers,
- *   imports: [ApplicationModule, PersistenceModule],
+ *   imports: [OrderApplicationModule, OrderPersistenceModule],
  *   exports: [Logger],
  * });
  * await runMain(OrderAmqpWorker);

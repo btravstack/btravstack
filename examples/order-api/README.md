@@ -99,22 +99,27 @@ export const OrderApi = HttpModule("OrderApi")({
 ```
 
 The root is a list of **slices**. Each one imports the vertical it needs —
-`ApplicationModule`, whose repositories are unmet needs, and
-`PersistenceModule`, which provides them — and exports only its controller:
+`OrderApplicationModule`, whose repository is an unmet need, and
+`OrderPersistenceModule`, which provides it — and exports only its controller:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],
 });
 ```
 
 So the root names what the process serves, not everything every slice happens
-to depend on. Both slices import the same `PersistenceModule`, which is a
-diamond rather than duplication: di flattens the module tree into a `Set`
-keyed by provider **reference**, so the graph builds one database (measured on
-this composition — a naive walk visits 22 provider slots, di keeps 15).
+to depend on. The customers slice imports `CustomerApplicationModule` and
+`CustomerPersistenceModule` — its own pair — so `FindCustomer` and the
+customer repository are not in the orders graph, and `PlaceOrder` is not in
+the customers one. The two meet on the internal database module both
+persistence halves import, which is a diamond rather than duplication: di
+flattens the module tree into a `Set` keyed by provider **reference**, so the
+graph builds one database (measured on this composition — a naive walk visits
+16 provider slots and di keeps 15, where the same walk over the pre-split
+modules visited 22 for the same 15).
 `exports` takes the provider itself, not `ordersController.port`:
 `HttpController` minted that port, so there is no class to spell back off it.
 

@@ -66,7 +66,7 @@ The worked composition root, from `examples/order-amqp-worker/src/module.ts`:
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });

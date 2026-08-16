@@ -133,7 +133,7 @@ import { HttpModule } from "@btravstack/http";
 
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [OrderApplicationModule, OrderPersistenceModule],
 });
 
 await runMain(OrdersApi);
@@ -144,7 +144,7 @@ await runMain(OrdersApi);
 `/rpc`), provides the router and exports the runtime port, and returns exactly
 the di module a hand-written `Module("OrdersApi")({...})` would have. `runMain`
 builds the graph, serves it, drains it on SIGTERM in three beats, and sets the
-exit code. Boot the **same** `ApplicationModule` under `TemporalModule` or
+exit code. Boot the **same** `OrderApplicationModule` under `TemporalModule` or
 `AmqpModule` and you have the worker and the consumer — one application, three
 deployments.
 

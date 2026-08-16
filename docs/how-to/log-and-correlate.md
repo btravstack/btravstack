@@ -34,7 +34,7 @@ import { Logger, observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 ```
@@ -241,8 +241,8 @@ const lines: Line[] = [];
 const RecordingApi = HttpModule("RecordingApi")({
   router: orderRouter,
   imports: [
-    ApplicationModule,
-    PersistenceModule,
+    OrderApplicationModule,
+    OrderPersistenceModule,
     observability({ sink: (line) => lines.push(line), level: "trace" }),
   ],
   exports: [Logger],

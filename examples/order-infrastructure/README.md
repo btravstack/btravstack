@@ -10,7 +10,7 @@ src/database.ts                    the client, the OrderDatabase port, the acqui
 src/prisma-order-repository.ts     the adapter — where Prisma's errors become the domain's
 src/prisma-customer-repository.ts  the customers vertical's adapter — read-only, because its port is
 src/prisma-outbox.ts               the outbox's read side, for whichever deployment relays it
-src/module.ts                      PersistenceModule
+src/module.ts                      DatabaseModule (internal), OrderPersistenceModule, CustomerPersistenceModule
 src/test-fixtures.ts               the in-memory database and the repositories, as Vitest fixtures
 ```
 
@@ -122,39 +122,55 @@ inline copy concurrently and the two collided on `mkdir`.
 
 Nothing to install, nothing to start.
 
-## `PersistenceModule` closes the application's needs
+## One persistence module per vertical, over one shared connection
 
 ```ts
-export const PersistenceModule = Module("Persistence")({
-  provides: [
-    orderDatabaseProvider,
-    orderRepositoryProvider,
-    customerRepositoryProvider,
-    outboxProvider,
-  ],
-  exports: [OrderRepository, CustomerRepository, Outbox],
+const DatabaseModule = Module("Database")({
+  provides: [orderDatabaseProvider],
+  exports: [OrderDatabase],
+});
+
+export const OrderPersistenceModule = Module("OrderPersistence")({
+  imports: [DatabaseModule],
+  provides: [orderRepositoryProvider, outboxProvider],
+  exports: [OrderRepository, Outbox],
+});
+
+export const CustomerPersistenceModule = Module("CustomerPersistence")({
+  imports: [DatabaseModule],
+  provides: [customerRepositoryProvider],
+  exports: [CustomerRepository],
 });
 ```
 
-It exports the ports the layers above declared and nothing else — the Prisma
-client stays behind the boundary, so no outer module can reach it and start
-speaking SQL, and both verticals share the one connection. A composition root
-imports both halves and the graph is closed:
+Each exports the ports its own vertical declared and nothing else.
+`DatabaseModule` is not exported from `src/index.ts` at all, and neither
+persistence module re-exports `OrderDatabase` — di's `exports` are declared,
+never inherited — so the Prisma client stays behind the boundary and no outer
+module can reach it and start speaking SQL. Sharing the connection between the
+two verticals did not spend that privacy.
+
+One database, not two: di flattens the module tree into a `Set` keyed by
+provider **reference**, so a graph holding both persistence modules holds the
+one `orderDatabaseProvider` they both import. A composition root takes the
+vertical it serves and the graph is closed:
 
 ```ts
 const AppModule = Module("App")({
-  imports: [ApplicationModule, PersistenceModule, observability()],
-  exports: [PlaceOrder, FindOrder, FindCustomer],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  exports: [PlaceOrder, FindOrder],
 });
 ```
 
-`observability()` closes `ApplicationModule`'s remaining need, the `Logger` the
-interactors write to — `PersistenceModule` fills both repository holes, the
-observability starter fills the logging one, and neither layer knows the other
-exists.
+`observability()` closes `OrderApplicationModule`'s remaining need, the `Logger`
+the interactor writes to — `OrderPersistenceModule` fills the repository and
+outbox holes, the observability starter fills the logging one, and neither
+layer knows the other exists. A root that also serves customers imports
+`CustomerApplicationModule` and `CustomerPersistenceModule` next to them; one
+that never does — both workers — carries neither.
 
-The database provider takes di's `acquire`/`release` arm, so the module carries
-a `Scope` need that only `Module.scoped` discharges — forgetting the scope is a
+The database provider takes di's `acquire`/`release` arm, so every module that
+imports `DatabaseModule` carries a `Scope` need that only `Module.scoped` discharges — forgetting the scope is a
 compile error, and closing it disconnects a real client. The spec proves that by
 holding on to the repository past the end of the scope and watching the next
 query come back as a defect.

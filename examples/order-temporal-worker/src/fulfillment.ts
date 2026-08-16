@@ -13,7 +13,7 @@ import { OkAsync, fromSafePromise } from "unthrown";
  *
  * A module of its own so the swap is one import: the composition root takes
  * `FulfillmentModule`, a spec takes its own failing twin, and
- * `ApplicationModule` — which owns the ports — never knows the difference.
+ * `OrderApplicationModule` — which owns the ports — never knows the difference.
  *
  * `arrange` honours the kernel's deadline, and an adapter is where reading the
  * ambient record is legitimate (thesis 2: it carries data about this unit, and

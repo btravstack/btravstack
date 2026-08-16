@@ -13,8 +13,8 @@ import { start } from "@btravstack/core";
  * Type-checked by this package's `test:types` script, never executed.
  */
 import { Module } from "@btravstack/di";
-import { ApplicationModule } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderApplicationModule } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { TemporalModule } from "@btravstack/temporal";
 
@@ -32,7 +32,7 @@ const _wired = start(OrderTemporalWorker, options);
 // The same graph without the starter: nothing declared over `RuntimePort` is
 // exported, so there is nothing for `start` to boot.
 const RuntimelessTemporal = Module("RuntimelessTemporal")({
-  imports: [ApplicationModule, PersistenceModule, FulfillmentModule],
+  imports: [OrderApplicationModule, OrderPersistenceModule, FulfillmentModule],
   provides: [orderActivities],
   exports: [orderActivities.port],
 });
@@ -50,7 +50,7 @@ const FulfillmentlessTemporal = TemporalModule("FulfillmentlessTemporal")({
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: "./workflows.js" },
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [OrderApplicationModule, OrderPersistenceModule],
 });
 
 // Negative: `start` accepts a module whose outstanding needs are `Scope` and

@@ -1,18 +1,21 @@
 import { Module } from "@btravstack/di";
-import { ApplicationModule } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { CustomerApplicationModule } from "@btravstack/example-order-application";
+import { CustomerPersistenceModule } from "@btravstack/example-order-infrastructure";
 
 import { customersController } from "./controller.js";
 
 /**
  * The customers slice, on `OrdersSlice`'s shape exactly: its own vertical
  * imported here, its controller provided, and only that controller exported.
- * Importing the same two modules is not duplication — di dedupes by provider
- * reference, so the second import costs nothing and the slice stays readable
- * on its own.
+ * A different vertical, so a different pair of modules — the slice boundary
+ * reaches all the way down to the adapter, and `PlaceOrder` is as invisible
+ * here as `FindCustomer` is over there.
+ *
+ * What the two slices do share is the connection underneath both persistence
+ * modules: one provider reference, so one database.
  */
 export const CustomersSlice = Module("CustomersSlice")({
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [CustomerApplicationModule, CustomerPersistenceModule],
   provides: [customersController],
   exports: [customersController],
 });

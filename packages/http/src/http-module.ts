@@ -56,7 +56,7 @@ export type HttpModuleOptions<
  * ```ts
  * export const OrderApi = HttpModule("OrderApi")({
  *   router: orderRouter,
- *   imports: [ApplicationModule, PersistenceModule],
+ *   imports: [OrderApplicationModule, OrderPersistenceModule],
  *   exports: [Logger],
  * });
  * await runMain(OrderApi);

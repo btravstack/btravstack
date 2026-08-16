@@ -5,14 +5,14 @@ import type { ConfigInvalid, Env } from "@btravstack/config";
 import type { RunningApp } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
-  ApplicationModule,
+  OrderApplicationModule,
   OrderRepository,
   PlaceOrder,
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
 import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domain";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { observability, type Line, type Sink } from "@btravstack/observability";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
@@ -76,8 +76,8 @@ type Serve = <E>(
 
 /**
  * The application half of a root shaped like the real one, with this test's
- * fulfillment module swapped in: same `ApplicationModule`, same
- * `PersistenceModule`, same `observability()` — so the orchestration under
+ * fulfillment module swapped in: same `OrderApplicationModule`, same
+ * `OrderPersistenceModule`, same `observability()` — so the orchestration under
  * test is unchanged and only the external services' answers differ, and the
  * lines the saga writes land in `sink` instead of the runner's stdout. It
  * exports what `orderActivities` closes over; the sugar joins in `serve`,
@@ -85,7 +85,7 @@ type Serve = <E>(
  */
 const rootWith = (fulfillment: typeof FulfillmentModule, sink: Sink) =>
   Module("StubTemporal")({
-    imports: [ApplicationModule, PersistenceModule, fulfillment, observability({ sink })],
+    imports: [OrderApplicationModule, OrderPersistenceModule, fulfillment, observability({ sink })],
     exports: [PlaceOrder, OrderRepository, StockService, ShippingService],
   });
 

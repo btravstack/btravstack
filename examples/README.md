@@ -15,7 +15,7 @@ calls `start`.
 | Package                                                | Layer     | Shows                                                                                                                                                            |
 | ------------------------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                              |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose two repositories and `Logger` are deliberately **unmet needs**.                      |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and one module per vertical whose repository — and, for orders, `Logger` — is deliberately an **unmet need**.         |
 | [`order-infrastructure`](./order-infrastructure)       | adapters  | Prisma-backed repositories over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's repository needs.               |
 | [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                              |
 | [`order-api`](./order-api)                             | runtime   | The first deployment: a two-slice modulith — a controller per contract fragment, composed into one oRPC router — served by `http()`, and `Result` → `ORPCError`. |
@@ -43,9 +43,11 @@ Every arrow points **inwards**, and the one that looks like it goes the wrong
 way is the whole idea: `order-infrastructure` imports `order-application`,
 because the port it implements — `OrderRepository`, spelled in the domain's
 vocabulary — is declared by the caller that needs it, not by the database that
-happens to satisfy it. `ApplicationModule` therefore leaves that need **unmet**,
-which is not documentation but a type: `Module.scoped(ApplicationModule, …)`
-does not compile until an outer module provides one.
+happens to satisfy it. `OrderApplicationModule` therefore leaves that need
+**unmet**, which is not documentation but a type:
+`Module.scoped(OrderApplicationModule, …)` does not compile until an outer
+module provides one. There is one such module per vertical, so the gate names
+the repository that vertical actually uses.
 
 ## The contract tier, which depends on nothing and is depended upon
 
@@ -89,10 +91,12 @@ publisher makes before sending a message.
 
 ## One application, three deployments — each doing what its transport is for
 
-Every composition root imports the same pair — `ApplicationModule`,
-`PersistenceModule` — and exports its own selection of ports: nothing in
+Every composition root imports the same pair — `OrderApplicationModule`,
+`OrderPersistenceModule` — and exports its own selection of ports: nothing in
 `order-application` or `order-infrastructure` differs between deployments, and
-nothing could. What differs is what each transport is **for**:
+nothing could. The two workers import that pair and nothing else: the customers
+vertical is a pair of modules of its own, so a deployment that never answers a
+customer question does not carry its use case or its repository. What differs is what each transport is **for**:
 
 - **`order-api`** answers a caller: a request arrives, a typed answer leaves.
 - **`order-temporal-worker`** owns a journey: the fulfillment saga runs steps
@@ -207,14 +211,18 @@ mints and hands back on `.port`. A **slice** is an ordinary di `Module` that
 **only** that controller, so nothing outside the slice can reach anything else
 it holds. Neither slice owns a private adapter: both go through the use cases,
 the entities and the Prisma repositories, and each controller converts its own
-entity to its own wire shape. Both import the same `PersistenceModule` — a
-diamond, not duplication, since di flattens the tree into a `Set` keyed by
-provider reference and builds one database. The **root** is then a list of
-slices plus what no slice owns (`observability()`), composed with the
-keyed `HttpRouter(contract)({ orders: ordersController, customers:
+entity to its own wire shape. Each imports its **own** vertical —
+`OrderApplicationModule` + `OrderPersistenceModule`, `CustomerApplicationModule`
+
+- `CustomerPersistenceModule` — so neither slice carries the other's use case or
+  adapter. They converge only on the internal database module both persistence
+  halves import: a diamond, not duplication, since di flattens the tree into a
+  `Set` keyed by provider reference and builds one database. The **root** is then a list of
+  slices plus what no slice owns (`observability()`), composed with the
+  keyed `HttpRouter(contract)({ orders: ordersController, customers:
 customersController })` form, which is exact against the contract — a missing
-key, an undeclared key and a controller under the wrong key are all compile
-errors at that call.
+  key, an undeclared key and a controller under the wrong key are all compile
+  errors at that call.
 
 Nothing here is a new concept: a controller is a provider, a slice is a
 module, a modulith is several slice modules in one root — and `exports:

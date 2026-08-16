@@ -118,8 +118,8 @@ Decide it deliberately; do not let a routine `pnpm run version` decide it.
    should make it plural.
    `examples/order-api`, `examples/order-temporal-worker` and
    `examples/order-amqp-worker`
-   make this testable rather than asserted: the same `ApplicationModule` +
-   `PersistenceModule` composition under three runtimes, with the same
+   make this testable rather than asserted: the same `OrderApplicationModule` +
+   `OrderPersistenceModule` composition under three runtimes, with the same
    `DuplicateOrder` arriving as a typed `CONFLICT` on the first and a
    `nonRetryable` typed contract error on the second — the third is a
    broadcast, where a placement's `Err` never crosses the broker and only the
@@ -456,15 +456,15 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   `StockService` and `ShippingService` — closures over the services, no
   context read at call time — and the composition root is
   `TemporalModule("OrderTemporalWorker")({ contract, activities:
-orderActivities, workflows, imports: [Application, Persistence, Fulfillment,
-observability()] })`, the sugar importing the starter;
+orderActivities, workflows, imports: [OrderApplicationModule,
+OrderPersistenceModule, FulfillmentModule, observability()] })`, the sugar importing the starter;
   the connection and `TEMPORAL_*` come from the starter, and `LOG_LEVEL` and
   the `Logger` the saga's stand-in services write to come from
   `observability()`. `order-amqp-worker` is
   the same shape (`orderHandlers = AmqpHandlers(orderContract)([Logger], {
 sync })`,
   `AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers, imports:
-[Application, Persistence, observability()], … })`),
+[OrderApplicationModule, OrderPersistenceModule, observability()], … })`),
   with its outbox relay a resourceful provider of its own rather than
   something layered onto the runtime — the relay is also the one place in the
   examples that logs a **failure**, `logger.error(message, cause, { eventId })`
@@ -503,14 +503,19 @@ sync })`,
   two-slice modulith on the shape above: `slices/orders/` and
   `slices/customers/`, each its own contract fragment, its own
   `HttpController` and its own di module — which **imports the vertical it
-  needs** (`ApplicationModule`, `PersistenceModule`) and exports only its
-  controller, in di's provider form (`exports: [ordersController]`, since
+  needs** (`OrderApplicationModule` + `OrderPersistenceModule`,
+  `CustomerApplicationModule` + `CustomerPersistenceModule`) and exports only
+  its controller, in di's provider form (`exports: [ordersController]`, since
   `HttpController` mints the port and there is no class to name; the two
-  slices are that form's first call sites). Both slices import the same
-  `PersistenceModule`: a diamond, not duplication, since `build.ts`'s
-  `flatten` collapses the tree into a `Set` keyed by provider **reference**
-  — measured on this composition, a naive walk visits 22 provider slots and
-  di keeps 15, one `OrderDatabase` among them. The root composes them —
+  slices are that form's first call sites). One module per vertical in **both**
+  layers, not one per layer: a slice, and each worker, carries its own
+  vertical and none of the other's. What the slices still share is the
+  internal `DatabaseModule` both persistence modules import: a diamond, not
+  duplication, since `build.ts`'s `flatten` collapses the tree into a `Set`
+  keyed by provider **reference** — measured on this composition, a naive walk
+  visits 16 provider slots and di keeps 15, one `OrderDatabase` among them
+  (the same walk over the pre-split modules visited 22 for the same 15, and
+  the difference is the over-inclusion the split removed). The root composes them —
   `orderRouter = HttpRouter(contract)({ orders: ordersController,
 customers: customersController })`, the keyed form — and
   **`HttpModule("OrderApi")({ router: orderRouter, imports: [OrdersSlice,

@@ -172,22 +172,31 @@ export const OrderApi = HttpModule("OrderApi")({
 });
 ```
 
-Each slice imports its own vertical — `ApplicationModule`, whose repositories
-are unmet needs, and `PersistenceModule`, which provides them — so the root
-names what the process serves rather than everything every slice happens to
-depend on:
+Each slice imports its own vertical — `OrderApplicationModule`, whose
+repository is an unmet need, and `OrderPersistenceModule`, which provides it —
+so the root names what the process serves rather than everything every slice
+happens to depend on:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],
 });
 ```
 
-Both slices import the same `PersistenceModule`. That is a diamond, not
-duplication: di flattens the module tree into a `Set` keyed by provider
-**reference**, so the graph builds one database. `exports` takes the provider
+The customers slice imports `CustomerApplicationModule` and
+`CustomerPersistenceModule` — a different vertical, so a different pair. The
+boundary reaches all the way down to the adapter: `FindCustomer` is not in the
+orders graph, and `PlaceOrder` is not in the customers one. It is also what
+lets the two workers, which have nothing to do with customers, import the
+orders vertical alone.
+
+Where the slices do meet is one level below: both persistence modules import
+the same internal `DatabaseModule`, which owns the connection and is the only
+module that exports `OrderDatabase`. That is a diamond, not duplication: di
+flattens the module tree into a `Set` keyed by provider **reference**, so the
+graph builds one database. `exports` takes the provider
 rather than `ordersController.port` — `HttpController` minted that port, so
 there is no class to spell back off it.
 
@@ -332,7 +341,7 @@ on arity.
 
 ```ts
 const RouterlessApi = Module("RouterlessApi")({
-  imports: [ApplicationModule, PersistenceModule, observability(), http()],
+  imports: [OrdersSlice, CustomersSlice, observability(), http()],
   exports: [HttpRuntime, Logger],
 });
 

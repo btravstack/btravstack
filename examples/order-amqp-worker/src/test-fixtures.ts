@@ -6,12 +6,12 @@ import type { RunningApp } from "@btravstack/core";
 import type { Module, Scope } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
-  ApplicationModule,
+  OrderApplicationModule,
   OrderRepository,
   Outbox,
   PlaceOrder,
 } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { observability, type Line } from "@btravstack/observability";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import type { TestAPI } from "vitest";
@@ -57,8 +57,8 @@ const tappedAmqp = () => {
     contract: orderContract,
     handlers: orderHandlers,
     imports: [
-      ApplicationModule,
-      PersistenceModule,
+      OrderApplicationModule,
+      OrderPersistenceModule,
       observability({ sink: (line) => lines.push(line) }),
     ],
     provides: [relayConfig, outboxRelay],

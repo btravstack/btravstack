@@ -114,8 +114,8 @@ const lines: Line[] = [];
 const recordingApi = HttpModule("RecordingApi")({
   router: orderRouter,
   imports: [
-    ApplicationModule,
-    PersistenceModule,
+    OrderApplicationModule,
+    OrderPersistenceModule,
     // Pinned rather than bound: the fixture's `LOG_LEVEL` silences the real
     // root, and this root exists to be read.
     observability({ sink: (line) => lines.push(line), level: "trace" }),
@@ -273,8 +273,8 @@ const recordingApi = () => {
     api: HttpModule("RecordingApi")({
       router: orderRouter,
       imports: [
-        ApplicationModule,
-        PersistenceModule,
+        OrderApplicationModule,
+        OrderPersistenceModule,
         observability({ sink: recorder.sink, level: "trace" }),
       ],
       exports: [Logger],

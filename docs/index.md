@@ -43,8 +43,8 @@ import { HttpModule, HttpRouter } from "@btravstack/http";
 import { oc, type } from "@orpc/contract";
 import { P } from "unthrown";
 
-import { ApplicationModule, PlaceOrder } from "./application.js";
-import { PersistenceModule } from "./persistence.js";
+import { OrderApplicationModule, PlaceOrder } from "./application.js";
+import { OrderPersistenceModule } from "./persistence.js";
 
 // The contract comes first; a client can take it without the server.
 const ordersContract = {
@@ -86,7 +86,7 @@ const ordersRouter = HttpRouter(ordersContract)([PlaceOrder], {
 // The composition root. The runtime is a service of this module.
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [OrderApplicationModule, OrderPersistenceModule],
 });
 
 // main.ts — the whole process.

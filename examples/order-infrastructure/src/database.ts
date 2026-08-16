@@ -52,9 +52,10 @@ const createClient = () =>
 export type OrderDatabaseClient = ReturnType<typeof createClient>;
 
 /**
- * Internal to this layer: `PersistenceModule` provides it but does not export
- * it, so no outer module can reach the client and start speaking SQL. The only
- * thing that crosses the boundary is `OrderRepository`.
+ * Internal to this layer: `DatabaseModule` provides and exports it so the two
+ * persistence modules can depend on it, and neither of those re-exports it —
+ * so no outer module can reach the client and start speaking SQL. The only
+ * things that cross the boundary are the repositories and the outbox.
  */
 export class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
 

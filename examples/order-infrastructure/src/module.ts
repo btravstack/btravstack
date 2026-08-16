@@ -1,28 +1,51 @@
 import { Module } from "@btravstack/di";
 import { CustomerRepository, OrderRepository, Outbox } from "@btravstack/example-order-application";
 
-import { orderDatabaseProvider } from "./database.js";
+import { OrderDatabase, orderDatabaseProvider } from "./database.js";
 import { customerRepositoryProvider } from "./prisma-customer-repository.js";
 import { orderRepositoryProvider } from "./prisma-order-repository.js";
 import { outboxProvider } from "./prisma-outbox.js";
 
 /**
- * The other half of `ApplicationModule`'s arity gate: this module provides the
- * ports the application layer leaves open, so importing both is what makes
- * `Module.scoped` compile. It exports the two repositories and the outbox —
- * the Prisma client stays behind the boundary, and one connection serves every
- * vertical.
+ * The one connection, as a module of its own so the two persistence modules
+ * can share it without either owning it. It is **not** exported from this
+ * package's `index.ts`: `OrderDatabase` crosses this file's boundary and no
+ * further.
  *
- * Its database provider takes di's `acquire`/`release` arm, so the module also
- * carries a `Scope` need, and only `Module.scoped` discharges it. A composition
- * root that forgets the scope does not compile.
+ * Its provider takes di's `acquire`/`release` arm, so every module that
+ * imports this one carries a `Scope` need, and only `Module.scoped`
+ * discharges it. A composition root that forgets the scope does not compile.
  */
-export const PersistenceModule = Module("Persistence")({
-  provides: [
-    orderDatabaseProvider,
-    orderRepositoryProvider,
-    customerRepositoryProvider,
-    outboxProvider,
-  ],
-  exports: [OrderRepository, CustomerRepository, Outbox],
+const DatabaseModule = Module("Database")({
+  provides: [orderDatabaseProvider],
+  exports: [OrderDatabase],
+});
+
+/**
+ * The other half of `OrderApplicationModule`'s arity gate: this module
+ * provides the ports the orders vertical leaves open, so importing both is
+ * what makes `Module.scoped` compile.
+ *
+ * `DatabaseModule` is imported and **not re-exported** — di's `exports` are
+ * declared, never inherited, so importing this module gives a consumer
+ * `OrderRepository` and `Outbox` and no way to reach the Prisma client behind
+ * them. That is the same privacy the single `PersistenceModule` had; sharing
+ * the connection with the customers vertical did not spend it.
+ */
+export const OrderPersistenceModule = Module("OrderPersistence")({
+  imports: [DatabaseModule],
+  provides: [orderRepositoryProvider, outboxProvider],
+  exports: [OrderRepository, Outbox],
+});
+
+/**
+ * The customers vertical's adapter, importing the same `DatabaseModule`
+ * value. di flattens the module tree into a `Set` keyed by provider
+ * **reference**, so a graph holding both persistence modules opens one
+ * database, not two — the diamond that makes splitting the layer free.
+ */
+export const CustomerPersistenceModule = Module("CustomerPersistence")({
+  imports: [DatabaseModule],
+  provides: [customerRepositoryProvider],
+  exports: [CustomerRepository],
 });

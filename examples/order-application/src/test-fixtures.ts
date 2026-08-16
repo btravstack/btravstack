@@ -12,10 +12,11 @@ import { ErrAsync, OkAsync } from "unthrown";
 import { test } from "vitest";
 
 import {
-  ApplicationModule,
+  CustomerApplicationModule,
   CustomerRepository,
   FindCustomer,
   FindOrder,
+  OrderApplicationModule,
   OrderRepository,
   PlaceOrder,
 } from "./index.js";
@@ -25,8 +26,10 @@ import {
  * repositories provided by a module that exists only in this file. No database,
  * no HTTP, no kernel — the application layer is exercised with the
  * infrastructure hole still open, and `TestModule` compiles only because
- * providing both repositories (and importing a logger) is what closes
- * `ApplicationModule`'s three needs.
+ * providing both repositories (and importing a logger) is what closes the two
+ * verticals' needs. One module here rather than two because one spec file
+ * exercises each vertical and a fixture with two shapes would only be a
+ * fixture with two shapes.
  */
 const stubRepository = Provider(OrderRepository)({
   sync: () => {
@@ -68,7 +71,11 @@ const stubCustomerRepository = Provider(CustomerRepository)({
  */
 const testModuleWith = (sink: Sink) =>
   Module("Test")({
-    imports: [ApplicationModule, observability({ sink, level: "trace" })],
+    imports: [
+      OrderApplicationModule,
+      CustomerApplicationModule,
+      observability({ sink, level: "trace" }),
+    ],
     provides: [stubRepository, stubCustomerRepository, Provider(Env)({ value: {} })],
     exports: [PlaceOrder, FindOrder, FindCustomer],
   });
@@ -82,7 +89,7 @@ const recorderOf = () => {
 export type ApplicationFixtures = {
   /** Everything the graph's logger wrote during this test. */
   readonly recorder: ReturnType<typeof recorderOf>;
-  /** `ApplicationModule` with all its needs closed: two in-memory stubs, and the observability starter. */
+  /** Both verticals with all their needs closed: two in-memory stubs, and the observability starter. */
   readonly testModule: ReturnType<typeof testModuleWith>;
 };
 

@@ -72,7 +72,7 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   workflows: {
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
-  imports: [ApplicationModule, PersistenceModule, FulfillmentModule],
+  imports: [OrderApplicationModule, OrderPersistenceModule, FulfillmentModule],
 });
 ```
 

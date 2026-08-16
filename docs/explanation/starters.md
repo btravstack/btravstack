@@ -91,7 +91,7 @@ spelled once. From [`examples/order-api`](/examples/order-api):
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 ```

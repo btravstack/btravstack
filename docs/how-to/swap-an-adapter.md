@@ -143,8 +143,7 @@ it and stops it again when the test ends, whatever the body does.
 `examples/order-api`'s `test-fixtures.ts` does exactly this — a
 `persistenceOf(repository)` module providing `OrderRepository` as a `value`,
 and an `apiWith(repository)` root that is `HttpModule` over the real
-`ApplicationModule` plus that stub. The application module never learns which
-one it got. See [Test an application](/how-to/test-an-application).
+application modules plus that stub. They never learn which one they got. See [Test an application](/how-to/test-an-application).
 
 ## See also
 

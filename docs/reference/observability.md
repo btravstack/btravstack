@@ -252,7 +252,7 @@ application and export `Logger` if anything outside the root reads it —
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 ```

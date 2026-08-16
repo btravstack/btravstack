@@ -123,7 +123,12 @@ fails on arity with `UNSATISFIED UNIT NEEDS`:
 
 ```ts
 const UnloggedApi = Module("UnloggedApi")({
-  imports: [ApplicationModule, PersistenceModule, observability(), http()],
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    observability(),
+    http(),
+  ],
   provides: [orderRouter],
   exports: [HttpRuntime],
 });
@@ -135,8 +140,8 @@ const unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
 The port exists in that graph — `observability()` provides it — but exporting
 is what the gate reads, and `UnloggedApi` does not. That is why `OrderApi`
 exports `Logger` next to `HttpRuntime`:
-`HttpModule("OrderApi")({ router: orderRouter, imports: [ApplicationModule,
-PersistenceModule, observability()], exports: [Logger] })`.
+`HttpModule("OrderApi")({ router: orderRouter, imports: [OrderApplicationModule,
+OrderPersistenceModule, observability()], exports: [Logger] })`.
 
 ::: warning `RuntimeHost.ctx` is the application context
 A unit-provided port exists only while a unit is open, and reaches a runtime

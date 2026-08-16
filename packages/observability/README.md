@@ -46,7 +46,7 @@ const placeOrder = Provider(PlaceOrder)([OrderRepository, Logger], {
 // fallback to `info`.
 const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 

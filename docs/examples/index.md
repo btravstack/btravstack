@@ -45,18 +45,24 @@ depended upon, depending on nothing.
 
 `order-infrastructure` imports `order-application`, not the other way round:
 the port it implements, `OrderRepository`, is declared by the use cases that
-need it, in the domain's vocabulary. `ApplicationModule` therefore leaves that
-need **unmet** — as a type, not a comment — and `Module.scoped(ApplicationModule, …)`
-does not compile until an outer module provides one. Each package boundary
+need it, in the domain's vocabulary. `OrderApplicationModule` therefore leaves
+that need **unmet** — as a type, not a comment — and
+`Module.scoped(OrderApplicationModule, …)` does not compile until an outer
+module provides one. There is one such module per vertical —
+`CustomerApplicationModule` owes `CustomerRepository` and nothing else — so
+the gate names the repository the vertical actually uses. Each package boundary
 that must not be crossed is pinned by a `layering.test-d.ts` importing the
 forbidden package under a `@ts-expect-error`, so adding the dependency makes
 the directive unused and fails `pnpm typecheck`.
 
 ## One application, three deployments
 
-Every composition root imports the same pair — `ApplicationModule`,
-`PersistenceModule` — and nothing in either differs between deployments. What
-differs is what each transport is **for**:
+Every composition root imports the same pair — `OrderApplicationModule`,
+`OrderPersistenceModule` — and nothing in either differs between deployments.
+The two workers import that pair alone: the customers vertical is a separate
+pair of modules, and a deployment that never answers a customer question does
+not carry its use case, its repository or its table access. What differs
+between the three is what each transport is **for**:
 
 - **`order-api`** answers a caller: a request arrives, a typed answer leaves.
 - **`order-temporal-worker`** owns a journey: place, reserve, ship, and

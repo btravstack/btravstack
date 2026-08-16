@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/example-order-infrastructure",
   "private": true,
-  "description": "The outermost layer of the clean-architecture example: a Prisma-backed OrderRepository and the PersistenceModule that closes the application's one unmet need",
+  "description": "The outermost layer of the clean-architecture example: Prisma-backed repositories over one shared database, and a persistence module per vertical closing that vertical's unmet needs",
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "type": "module",

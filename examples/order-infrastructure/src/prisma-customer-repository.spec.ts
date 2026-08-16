@@ -2,7 +2,7 @@ import { Module } from "@btravstack/di";
 import { CustomerRepository } from "@btravstack/example-order-application";
 import { describe, expect } from "vitest";
 
-import { PersistenceModule } from "./index.js";
+import { CustomerPersistenceModule } from "./index.js";
 import { it } from "./test-fixtures.js";
 
 describe("the Prisma CustomerRepository", () => {
@@ -26,12 +26,12 @@ describe("the Prisma CustomerRepository", () => {
   });
 });
 
-describe("PersistenceModule", () => {
+describe("CustomerPersistenceModule", () => {
   it("satisfies the application's CustomerRepository need inside a scope", async () => {
     // GIVEN the module the composition root imports
     // WHEN a scope is opened over it and the port is asked about a customer
     // that scope's own fresh database does not hold
-    const result = await Module.scoped(PersistenceModule, (ctx) =>
+    const result = await Module.scoped(CustomerPersistenceModule, (ctx) =>
       ctx.get(CustomerRepository).find("c-absent"),
     );
 

@@ -115,7 +115,7 @@ same privacy di already gives any provider:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],
 });
@@ -125,9 +125,13 @@ export const OrdersSlice = Module("OrdersSlice")({
 minted inside `HttpController`, so there is no class to spell back off it.
 Importing the vertical here rather than leaving `PlaceOrder` and `FindOrder`
 as needs for the root is what makes the slice a unit — the reason to open this
-directory is the whole reason it exists. Several slices importing the same
-`PersistenceModule` is a diamond, not duplication: di flattens the module tree
-into a `Set` keyed by provider **reference**, so one database is built.
+directory is the whole reason it exists. A vertical is a pair of modules of
+its own — the customers slice imports `CustomerApplicationModule` and
+`CustomerPersistenceModule` — so importing one slice's vertical brings none of
+another's. Where slices do converge, on the internal database module both
+persistence modules import, it is a diamond and not duplication: di flattens
+the module tree into a `Set` keyed by provider **reference**, so one database
+is built.
 
 ## Step 3 — the keyed root
 

@@ -127,8 +127,8 @@ oRPC's context stays empty: what a procedure needs, the provider declared.
 ## Step 3 — the composition root
 
 ```ts
-import { ApplicationModule } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderApplicationModule } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
@@ -136,7 +136,7 @@ import { ordersRouter } from "./router.js";
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 ```
@@ -147,7 +147,12 @@ exactly the module the hand-written form would:
 
 ```ts
 Module("OrdersApi")({
-  imports: [ApplicationModule, PersistenceModule, observability(), http()],
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    observability(),
+    http(),
+  ],
   provides: [ordersRouter],
   exports: [HttpRuntime, Logger],
 });

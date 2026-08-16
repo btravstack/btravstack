@@ -4,8 +4,9 @@ import type { Env } from "@btravstack/config";
 import type { RunningApp, StartOptions } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
-  ApplicationModule,
+  CustomerApplicationModule,
   CustomerRepository,
+  OrderApplicationModule,
   OrderRepository,
 } from "@btravstack/example-order-application";
 import {
@@ -32,10 +33,10 @@ import { OrdersSlice } from "./slices/orders/module.js";
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
 /**
- * Both repositories, so a stub root closes `ApplicationModule`'s needs the way
- * `PersistenceModule` does. Only the orders half varies per spec; the
- * customers one holds a single registered customer, which is all the slice's
- * one procedure needs to answer.
+ * Both repositories in one stub module, so a root closes both verticals' needs
+ * the way the two persistence modules do. Only the orders half varies per
+ * spec; the customers one holds a single registered customer, which is all
+ * that slice's one procedure needs to answer.
  */
 const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
   Module("StubPersistence")({
@@ -61,7 +62,7 @@ const recorderOf = () => {
 
 /**
  * A composition root shaped like the real one but with persistence swapped:
- * same `ApplicationModule`, same controllers, same `HttpModule` sugar —
+ * same application modules, same controllers, same `HttpModule` sugar —
  * unpinned, so `serve`'s `env` is what binds it to an ephemeral loopback port
  * — same exports, so the transport under test is unchanged. The sink defaults
  * to a no-op: these roots are booted to exercise the transport, and the real
@@ -77,7 +78,12 @@ const recorderOf = () => {
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
     router: orderRouter,
-    imports: [ApplicationModule, persistenceOf(repository), observability({ sink })],
+    imports: [
+      OrderApplicationModule,
+      CustomerApplicationModule,
+      persistenceOf(repository),
+      observability({ sink }),
+    ],
     provides: [ordersController, customersController],
     exports: [Logger],
   });
