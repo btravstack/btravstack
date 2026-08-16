@@ -49,11 +49,12 @@ jobs:
         uses: ./.github/actions/setup
 
       # The docs build runs TypeDoc (straight from each packages/*/src into
-      # docs/api/<pkg>) and then VitePress — see docs/package.json. `turbo
-      # build` builds the six packages first (`@btravstack/docs#build`'s
-      # dependsOn), so a documented cross-package import resolves.
+      # docs/api/<pkg>) and then VitePress — see docs/package.json. Filtered
+      # to the docs package, so Turbo runs `@btravstack/docs#build` and only
+      # what its `dependsOn` names — the six packages, built first so a
+      # documented cross-package import resolves.
       - name: Build documentation
-        run: pnpm --filter ./docs exec turbo build
+        run: pnpm turbo run build --filter=@btravstack/docs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
