@@ -314,6 +314,15 @@ describe("order-api", () => {
     expect(probed).toEqual({ livez: 200, readyz: 200, ready: true });
   });
 
+  it("serves the customers slice alongside the orders slice", async ({ serve, clientFor, api }) => {
+    // GIVEN an API composed from two slices, each with its own controller
+    const client = await clientFor(serve(api));
+
+    // WHEN a procedure from the second slice is called
+    // THEN it answers from that slice's own directory, with the contract's shape
+    await expect(client.customers.find({ id: "c-1" })).toBeOkWith({ id: "c-1", name: "Ada" });
+  });
+
   it("goes unready on drain while staying live", async ({
     serve,
     clientFor,

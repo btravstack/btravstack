@@ -1,17 +1,17 @@
-import { orderContract, type OrderView } from "@btravstack/example-order-api-contract";
+import { ordersContract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
-import { HttpRouter } from "@btravstack/http";
+import { HttpController } from "@btravstack/http";
 import { P } from "unthrown";
 
 const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quantity });
 
 /**
- * The transport boundary, and the only place in this example where a domain
+ * The transport boundary, and the only place in this slice where a domain
  * error becomes something else.
  *
- * `HttpRouter(orderContract)` is contract-first: the implementation is a
- * record shaped like the contract whose leaves are plain `Result`-returning
+ * `HttpController(name, ordersContract)` is contract-first: the implementation
+ * is a record shaped like the fragment whose leaves are plain `Result`-returning
  * functions, typed by the contract at the call — the input is the contract's
  * parsed input, the output its declared view, `errors` its declared error
  * map, and a typo'd or missing procedure is a compile error. `implement`,
@@ -25,15 +25,14 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * error here, at the one place that has to decide what the client sees.
  *
  * The use cases arrive as arguments, not through oRPC's context: di injects
- * them into the provider — `HttpRouter(contract)` is di's own `Provider(port)`
- * on the starter's router port, so this is a provider like any other in the
- * graph, and there is no name to give it: a process serves one router — and
- * oRPC's context is left for what only the HTTP layer knows (nothing, today).
- * One container, not two.
+ * them into the provider — `HttpController(name, contract)` is di's own
+ * `Provider(port)` on a port it mints for this controller, so this is a
+ * provider like any other in the graph.
  */
-export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
-  sync: (place, find) => ({
-    orders: {
+export const ordersController = HttpController("OrdersController", ordersContract)(
+  [PlaceOrder, FindOrder],
+  {
+    sync: (place, find) => ({
       place: ({ errors }, input) =>
         place
           .execute(input.id, input.quantity)
@@ -56,6 +55,6 @@ export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
               errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
             ),
           ),
-    },
-  }),
-});
+    }),
+  },
+);

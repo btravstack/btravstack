@@ -13,9 +13,10 @@ import { fromSafePromise, OkAsync } from "unthrown";
 import { test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
-import { OrderApi } from "./module.js";
+import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
-import { orderRouter } from "./router.js";
+import { CustomersSlice } from "./slices/customers/module.js";
+import { OrdersSlice } from "./slices/orders/module.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
@@ -42,7 +43,13 @@ const recorderOf = () => {
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
     router: orderRouter,
-    imports: [ApplicationModule, persistenceOf(repository), observability({ sink })],
+    imports: [
+      ApplicationModule,
+      persistenceOf(repository),
+      OrdersSlice,
+      CustomersSlice,
+      observability({ sink }),
+    ],
     exports: [Logger],
   });
 
@@ -69,6 +76,8 @@ const recordingApi = () => {
       imports: [
         ApplicationModule,
         PersistenceModule,
+        OrdersSlice,
+        CustomersSlice,
         observability({ sink: recorder.sink, level: "trace" }),
       ],
       exports: [Logger],

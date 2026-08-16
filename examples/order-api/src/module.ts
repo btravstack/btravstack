@@ -1,18 +1,32 @@
+import { orderContract } from "@btravstack/example-order-api-contract";
 import { ApplicationModule } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule, HttpRouter } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
-import { orderRouter } from "./router.js";
+import { customersController } from "./slices/customers/controller.js";
+import { CustomersSlice } from "./slices/customers/module.js";
+import { ordersController } from "./slices/orders/controller.js";
+import { OrdersSlice } from "./slices/orders/module.js";
 
 /**
- * The composition root, and the only file in the example that knows the three
+ * The router, composed from each slice's own controller — keyed by the
+ * contract's own top-level keys, so a key the contract does not declare is a
+ * compile error and a declared key with no controller is too.
+ */
+export const orderRouter = HttpRouter(orderContract)({
+  orders: ordersController,
+  customers: customersController,
+});
+
+/**
+ * The composition root, and the only file in the example that knows the
  * halves exist. `ApplicationModule` leaves `OrderRepository` unmet;
- * `PersistenceModule` provides it; `orderRouter` provides the oRPC router as a
- * service that declares the two use cases its procedures call;
- * `observability()` provides the `Logger` the interactors and the request
- * scope write to, bound from `LOG_LEVEL` and writing one JSON object per line
- * on stdout; and `http()` is the whole transport — the runtime on
+ * `PersistenceModule` provides it; `OrdersSlice` and `CustomersSlice` each
+ * provide their own controller, which `orderRouter` composes into the oRPC
+ * router; `observability()` provides the `Logger` the interactors and the
+ * request scope write to, bound from `LOG_LEVEL` and writing one JSON object
+ * per line on stdout; and `http()` is the whole transport — the runtime on
  * `HttpRuntime`, bound from
  * `PORT` and `HOST` in the environment, and the router mounted under `/rpc`,
  * needing the router the root provides. Importing them is what closes di's
@@ -31,6 +45,6 @@ import { orderRouter } from "./router.js";
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [ApplicationModule, PersistenceModule, OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });

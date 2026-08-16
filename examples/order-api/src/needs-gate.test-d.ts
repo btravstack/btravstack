@@ -15,9 +15,8 @@ import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpRuntime, http } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
-import { OrderApi } from "./module.js";
+import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
-import { orderRouter } from "./router.js";
 
 const options = { signals: false, probes: false } as const;
 
