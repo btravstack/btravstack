@@ -488,10 +488,15 @@ sync })`,
   keyed `HttpRouter(contract)(controllers)` form, exact against the contract
   (see `packages/http/CLAUDE.md`). **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
-  controller changing at all — extracting it is deleting an import at the
-  root, not a rewrite. This is what makes composing several slices into one
-  router a starting point rather than a trap, and it is the one property
-  marked do-not-break in the design.
+  controller changing at all: the lifted root is
+  `HttpRouter(ordersContract)([ordersController.port], { sync: (implementation) => implementation })`,
+  declaring the very provider the modulith composed and handing back what it
+  built — a new composition root and one fewer import,
+  not a rewrite of the slice. That exact call is `controller.test-d.ts`'s fifth
+  gate, deliberately naming the controller: a fresh `sync` over the fragment
+  would pin only the weaker "a fragment is a valid contract" half. This is what
+  makes composing several slices into one router a starting point rather than a
+  trap, and it is the one property marked do-not-break in the design.
 - **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
   over its own node adapter, `@unthrown/orpc` at the boundary.** It is a

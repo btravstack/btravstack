@@ -94,12 +94,16 @@ framework-owned like `HttpConfig` — and two router providers in one graph are
 di's duplicate-provider defect at build. Returns
 `Provider<PortInstance<"HttpRouter", Router<…>>, never, InstanceType<D[number]>> & { readonly port: PortClassOf<"HttpRouter", Router<…>> }` —
 `provider.port` is the port class, for a hand-declared provider or a type
-test. From `examples/order-api/src/router.ts`:
+test. The implementation below is the one in
+`examples/order-api/src/slices/orders/controller.ts`, served through the
+positional form — the example composes it as a controller instead (see the
+keyed form), and a fragment is a contract, so the same `sync` reads either way:
 
 ```ts
-export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
-  sync: (place, find) => ({
-    orders: {
+export const ordersRouter = HttpRouter(ordersContract)(
+  [PlaceOrder, FindOrder],
+  {
+    sync: (place, find) => ({
       place: ({ errors }, input) =>
         place
           .execute(input.id, input.quantity)
@@ -131,9 +135,9 @@ export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
               }),
             ),
           ),
-    },
-  }),
-});
+    }),
+  },
+);
 ```
 
 An implementation key the contract does not declare is unreachable through
@@ -164,9 +168,10 @@ Five gates are pinned by
 a key the contract does not declare is rejected; a controller wired under the
 wrong key is rejected (its fragment does not match that key's); a
 procedure a controller's own fragment does not declare is rejected inside the
-controller, before the root ever sees it; and a fragment is itself a valid
-contract, so the very same controller's `sync` still compiles through the
-positional form alone — the property a slice's independent deployability
+controller, before the root ever sees it; and a slice lifts into a process of
+its own with its controller untouched —
+`HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`
+compiles — the property a slice's independent deployability
 rests on. The positional `(deps, { sync })`
 form is unchanged and stays correct for a small API — the two are
 discriminated at the call the same way `Provider(port)(depsOrOptions, …)`
@@ -215,12 +220,21 @@ export const OrdersSlice = Module("OrdersSlice")({
 
 The controller does no oRPC work: it is a plain record, and `HttpRouter`'s
 own walk wraps each leaf in `.result(...)` when the keyed form composes the
-router. **A fragment is itself a valid contract** —
-`HttpRouter(fragment)([deps], { sync })` compiles with the very same `sync`
-the controller was built from — so a slice lifts out into a process of its
-own without its controller changing at all. That property is marked
-do-not-break: it is what makes composing several slices into one router a
-starting point rather than a trap.
+router. **A fragment is itself a valid contract**, so a slice lifts out into a
+process of its own without its controller changing at all — the lifted root
+declares the controller's own port and hands back what it built:
+
+```ts
+export const ordersRouter = HttpRouter(ordersContract)(
+  [ordersController.port],
+  {
+    sync: (implementation) => implementation,
+  },
+);
+```
+
+That property is marked do-not-break: it is what makes composing several
+slices into one router a starting point rather than a trap.
 
 ## `http(options)`
 

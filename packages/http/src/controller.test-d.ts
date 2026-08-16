@@ -34,10 +34,13 @@ void HttpController("GateTypo", contract.orders)([], {
   sync: () => ({ plce: () => OkAsync("placed") }),
 });
 
-// 5. A fragment is a valid contract in its own right, so a slice lifts out into
-//    its own process with its controller unchanged. The spec marks this
-//    "do not break"; this is what would catch breaking it.
-void HttpRouter(contract.orders)([], { sync: () => ({ place: () => OkAsync("placed") }) });
+// 5. A slice lifts out into its own process with its controller UNCHANGED: a
+//    fragment is a valid contract in its own right, and the lifted root takes
+//    the very controller the modulith composed as its only dep and returns what
+//    that controller built. Strictly stronger than re-implementing the fragment
+//    with a fresh `sync`, which would prove nothing about the controller. The
+//    spec marks this "do not break"; this is what would catch breaking it.
+void HttpRouter(contract.orders)([orders.port], { sync: (implementation) => implementation });
 
 // The correct composition, and the positional form, both still compile.
 const composed = HttpRouter(contract)({ orders, users });

@@ -89,11 +89,15 @@ never }` — the exactness intersection is on the parameter, not on `M`: a key
   Five compile-time gates are pinned by `controller.test-d.ts`: every contract
   key covered, an undeclared key rejected, a controller under the wrong key
   rejected, a procedure a controller's fragment does not declare rejected
-  inside the controller, and — the fifth, marked "do not break" — a fragment
-  compiling as a contract in its own right, so `HttpRouter(contract.orders)([],
-{ sync })` with the same shape as `ordersController`'s own `sync` still
-  compiles: a slice lifts out of the composed router without its controller
-  changing. Covered at runtime by the `rpcSliced` fixture, composing
+  inside the controller, and — the fifth, marked "do not break" — a slice
+  lifting out of the composed router **with its controller unchanged**:
+  `HttpRouter(contract.orders)([orders.port], { sync: (implementation) => implementation })`
+  compiles, so the lifted root declares the very controller the modulith
+  composed and hands back what it built. The gate names the controller
+  deliberately — a fresh `sync` literal over the fragment would pin only that
+  a fragment is a valid contract, the weaker half, which says nothing about
+  the controller surviving the lift.
+  Covered at runtime by the `rpcSliced` fixture, composing
   `helloController` and `echoesController` over `slicedContract`'s two
   fragments.
 - **`HttpController(name, fragment)([deps], { sync })`** (`controller.ts`) —

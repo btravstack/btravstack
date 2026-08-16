@@ -31,8 +31,11 @@ features:
 
 ## At a glance
 
-The real `examples/order-api`, condensed: a contract, a router that is a
-provider, a composition root, and one call.
+`examples/order-api`'s **orders slice**, served on its own and condensed to one
+procedure: a contract, a router that is a provider, a composition root, and one
+call. The example itself composes that slice and a `customers` one into a
+single router through
+[controllers](/how-to/split-a-router-into-controllers).
 
 ```ts
 import { runMain } from "@btravstack/core";
@@ -44,54 +47,50 @@ import { ApplicationModule, PlaceOrder } from "./application.js";
 import { PersistenceModule } from "./persistence.js";
 
 // The contract comes first; a client can take it without the server.
-const orderContract = {
-  orders: {
-    place: oc
-      .input(type<{ readonly id: string; readonly quantity: number }>())
-      .output(type<{ readonly id: string; readonly quantity: number }>())
-      .errors({
-        INVALID_QUANTITY: { data: type<{ readonly id: string }>() },
-        CONFLICT: { data: type<{ readonly id: string }>() },
-      }),
-  },
+const ordersContract = {
+  place: oc
+    .input(type<{ readonly id: string; readonly quantity: number }>())
+    .output(type<{ readonly id: string; readonly quantity: number }>())
+    .errors({
+      INVALID_QUANTITY: { data: type<{ readonly id: string }>() },
+      CONFLICT: { data: type<{ readonly id: string }>() },
+    }),
 };
 
 // The router is a provider: it declares the use case its procedure calls.
 // Every domain error is named here — the one place a Result becomes HTTP.
-const orderRouter = HttpRouter(orderContract)([PlaceOrder], {
+const ordersRouter = HttpRouter(ordersContract)([PlaceOrder], {
   sync: (place) => ({
-    orders: {
-      place: ({ errors }, input) =>
-        place
-          .execute(input.id, input.quantity)
-          .map((order) => ({ id: order.id, quantity: order.quantity }))
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          ),
-    },
+    place: ({ errors }, input) =>
+      place
+        .execute(input.id, input.quantity)
+        .map((order) => ({ id: order.id, quantity: order.quantity }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            ),
+        ),
   }),
 });
 
 // The composition root. The runtime is a service of this module.
-const OrderApi = HttpModule("OrderApi")({
-  router: orderRouter,
+const OrdersApi = HttpModule("OrdersApi")({
+  router: ordersRouter,
   imports: [ApplicationModule, PersistenceModule],
 });
 
 // main.ts — the whole process.
-await runMain(OrderApi);
+await runMain(OrdersApi);
 ```
 
 **The runtime is a service of the module, not an option.** `HttpModule` imports

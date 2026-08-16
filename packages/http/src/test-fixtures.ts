@@ -85,9 +85,11 @@ export const helloController = HttpController("HelloController", helloFragment)(
 });
 
 /**
- * A two-level contract whose every top-level key is itself a fragment — the
- * shape the keyed `HttpRouter` form requires (`greetingContract` mixes bare
- * procedures in with `nested`, so it cannot take a controller at every key).
+ * The keyed form's own contract, over the same two fragments. Not a constraint
+ * — a bare procedure is a `RouterContract` too, so a controller sits at such a
+ * key as happily as at a nested one — but `greetingContract` is the positional
+ * form's fixture, carrying its `boom` defect and the stray key smuggled past
+ * the types, and the two arms are worth exercising side by side.
  */
 const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
 

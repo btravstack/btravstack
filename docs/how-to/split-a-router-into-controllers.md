@@ -150,15 +150,33 @@ contract does not declare, and a controller wired under the wrong key are all
 compile errors at the `HttpRouter(orderContract)({...})` call, not runtime
 surprises the first time a client hits the missing slice.
 
-## A fragment is a contract
+## Step 4 — lifting a slice into its own process
 
 Because a fragment is itself a valid `RouterContract`, a slice can be served
-**alone**, its controller unchanged — `HttpRouter(ordersContract)([PlaceOrder,
-FindOrder], { sync })` with the very same `sync` `ordersController` was built
-from compiles today. Extracting a slice out of the modulith into a process of
-its own is deleting an import at the root, not rewriting the slice. That
-property is deliberately preserved: it is what makes composing slices into
-one router a starting point rather than a trap.
+**alone** — and none of the files above change. The lifted root declares the
+controller's own port as its single dependency and hands back what that
+controller built:
+
+```ts
+export const ordersRouter = HttpRouter(ordersContract)(
+  [ordersController.port],
+  {
+    sync: (implementation) => implementation,
+  },
+);
+
+export const OrdersApi = HttpModule("OrdersApi")({
+  router: ordersRouter,
+  imports: [ApplicationModule, PersistenceModule, OrdersSlice],
+});
+```
+
+`OrdersSlice` is the very module the modulith imported and `ordersController`
+the very provider it composed — not a copy, not a rewritten `sync`. Extraction
+is a new composition root and one fewer import, and the slice itself is
+untouched. `packages/http/src/controller.test-d.ts` pins that call as its
+fifth gate: the property is marked do-not-break, and it is what makes
+composing slices into one router a starting point rather than a trap.
 
 ## See also
 

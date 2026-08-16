@@ -144,11 +144,12 @@ not declare, and a controller wired under the wrong key are all compile
 errors at this call — see
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the recipe, and `packages/http/src/controller.test-d.ts` for the five gates
-that pin these errors and the fragment-as-contract property below. Because a
-fragment is itself a valid contract, `ordersController` would compile
-unchanged as the whole implementation of a service serving `ordersContract`
-alone — extracting a slice out of this modulith is deleting an import, not a
-rewrite.
+that pin these errors and the lift below. Because a fragment is itself a valid
+contract, `ordersController` serves `ordersContract` alone unchanged: the
+lifted root is
+`HttpRouter(ordersContract)([ordersController.port], { sync: (implementation) => implementation })`
+over `OrdersSlice`, so extracting a slice out of this modulith is a new
+composition root and one fewer import, not a rewrite.
 
 ## The composition root, and the process
 

@@ -15,7 +15,7 @@ import type { Implementation } from "./orpc.js";
  *
  * A large API is several controllers, each owning a fragment of the contract
  * and declaring the use cases its procedures call; `HttpRouter(contract)(...)`
- * composes them. `_contract` is read for its **type** only — it is what shapes
+ * composes them. `contract` is read for its **type** only — it is what shapes
  * `sync`, so a procedure the fragment does not declare, or a handler whose
  * input or output has drifted, is a compile error here rather than at the root.
  *
@@ -27,7 +27,7 @@ import type { Implementation } from "./orpc.js";
  * measured on `examples/order-api`).
  */
 export const HttpController =
-  <const Name extends string, C extends RouterContract>(name: Name, _contract: C) =>
+  <const Name extends string, C extends RouterContract>(name: Name, contract: C) =>
   <const D extends readonly AnyPort[]>(
     deps: D,
     options: {
@@ -38,6 +38,9 @@ export const HttpController =
   ): Provider<PortInstance<Name, Implementation<C>>, never, InstanceType<D[number]>> & {
     readonly port: PortClassOf<Name, Implementation<C>>;
   } => {
+    // The parameter is named, not `_`-prefixed, so it reads as `contract` in the
+    // published `.d.ts` and in an editor hint; nothing needs its value.
+    void contract;
     // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
     const port = class extends Port(name)<Implementation<C>> {};
     return Provider(port as never)(deps, options as never) as never;
