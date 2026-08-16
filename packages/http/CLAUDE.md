@@ -70,12 +70,16 @@ PortInstance<…> }`) rather than the class's own type because a class
 - **`HttpRouter(contract)(controllers)` — the keyed form** (`orpc.ts`, a
   second overload of `build`) — for `contract: Record<string, RouterContract>`,
   a record keyed by the contract's own top-level keys, one
-  `HttpController` per key, instead of `(deps, { sync })`. Typed
-  `M extends { readonly [K in keyof C]: ControllerFor<C[K]> } & { readonly
-[K in Exclude<keyof M, keyof C>]: never }` — the intersection's second half is
-  what makes the form **exact**: a key `M` has that `C` does not declare types
+  `HttpController` per key, instead of `(deps, { sync })`. `M` is constrained
+  `{ readonly [K in keyof C]: ControllerFor<C[K]> }`, and the `controllers`
+  **parameter** is typed `M & { readonly [K in Exclude<keyof M, keyof C>]:
+never }` — the exactness intersection is on the parameter, not on `M`: a key
+  `M` has that `C` does not declare types
   as `never` there, so the call fails to compile rather than silently
-  dropping the key. `Array.isArray(depsOrControllers)` discriminates this arm
+  dropping the key, without the intersection leaking into `M` and collapsing
+  the needs channel di orders the controllers by (the failure mode
+  `controller.test-d.ts`'s `_ComposedNeedsAreDeclared` check exists to catch).
+  `Array.isArray(depsOrControllers)` discriminates this arm
   from the positional one, the same way `Provider(port)(depsOrOptions, …)`
   discriminates its own two forms. `deps` for the underlying
   `Provider(HttpRouterPort)(...)` are the record's values' `.port`, in

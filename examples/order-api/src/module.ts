@@ -21,19 +21,11 @@ export const orderRouter = HttpRouter(orderContract)({
 
 /**
  * The composition root, and the only file in the example that knows the five
- * halves exist. `ApplicationModule` leaves `OrderRepository` unmet;
- * `PersistenceModule` provides it; `OrdersSlice` and `CustomersSlice` each
- * provide their own controller, which `orderRouter` composes into the oRPC
- * router; `observability()` provides the `Logger` the interactors and the
- * request scope write to, bound from `LOG_LEVEL` and writing one JSON object
- * per line on stdout; and `http()` is the whole transport — the runtime on
- * `HttpRuntime`, bound from
- * `PORT` and `HOST` in the environment, and the router mounted under `/rpc`,
- * needing the router the root provides. Importing them is what closes di's
- * arity gate (a composition without the router provider does not compile —
- * the starter's provider depends on it), and the exports here are exactly
- * what `start` resolves (`HttpRuntime`) and what the per-request
- * `RequestModule` reads (`Logger`), which closes the kernel's.
+ * pieces exist. Importing them is what closes di's arity gate (a composition
+ * without the router provider does not compile — the starter's provider
+ * depends on it), and the exports here are exactly what `start` resolves
+ * (`HttpRuntime`) and what the per-request `RequestModule` reads (`Logger`),
+ * which closes the kernel's.
  *
  * A constant, not a function: configuration is read inside the graph, from the
  * `Env` port the kernel provides, so nothing has to be passed in from

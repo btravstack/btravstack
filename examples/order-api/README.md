@@ -9,10 +9,10 @@ socket, and the router itself is a di-provided service. The contract lives in
 its own package, because a client needs it and needs none of this.
 
 ```
-src/slices/orders/controller.ts       HttpController("OrdersController", ordersContract)([PlaceOrder, FindOrder], { sync }) — the one place a domain error becomes an ORPCError
+src/slices/orders/controller.ts       HttpController("OrdersController", ordersContract)([PlaceOrder, FindOrder], { sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only its port
 src/slices/customers/directory.ts     CustomerDirectory — the customers slice's own adapter
-src/slices/customers/controller.ts    HttpController("CustomersController", customersContract)([CustomerDirectory], { sync })
+src/slices/customers/controller.ts    HttpController("CustomersController", customersContract)([CustomerDirectory], { sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts                         an AsyncResult client for the same contract

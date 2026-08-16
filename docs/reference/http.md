@@ -152,17 +152,22 @@ export const orderRouter = HttpRouter(orderContract)({
 });
 ```
 
-Each value is what [`HttpController`](#httpcontroller-name-fragment-deps-sync)
-returns. The call is **exact**: `Provider<PortInstance<"HttpRouter", Router<…>>,
-never, InstanceType<M[keyof M]["port"]>>`, built from `M extends { readonly
-[K in keyof C]: ControllerFor<C[K]> } & { readonly [K in Exclude<keyof M, keyof
-C>]: never }` — a key `C` does not declare is typed `never`, so it fails to
-compile rather than being silently dropped. Four gates are pinned by
+Each value is what [`HttpController`](#httpcontrollername-fragment)
+returns. The call is **exact**: `M` is constrained to
+`{ readonly [K in keyof C]: ControllerFor<C[K]> }`, and the `controllers`
+**parameter** itself is typed `M & { readonly [K in Exclude<keyof M, keyof
+C>]: never }` — the exactness intersection sits on the parameter, not on `M`,
+so a key `C` does not declare is typed `never` there without collapsing `M`
+(and with it the needs channel di orders the controllers by) to `never` too.
+Five gates are pinned by
 `packages/http/src/controller.test-d.ts`: every contract key must be covered;
 a key the contract does not declare is rejected; a controller wired under the
-wrong key is rejected (its fragment does not match that key's); and a
+wrong key is rejected (its fragment does not match that key's); a
 procedure a controller's own fragment does not declare is rejected inside the
-controller, before the root ever sees it. The positional `(deps, { sync })`
+controller, before the root ever sees it; and a fragment is itself a valid
+contract, so the very same controller's `sync` still compiles through the
+positional form alone — the property a slice's independent deployability
+rests on. The positional `(deps, { sync })`
 form is unchanged and stays correct for a small API — the two are
 discriminated at the call the same way `Provider(port)(depsOrOptions, …)`
 discriminates its own two forms. See
@@ -210,9 +215,10 @@ export const OrdersSlice = Module("OrdersSlice")({
 
 The controller does no oRPC work: it is a plain record, and `HttpRouter`'s
 own walk wraps each leaf in `.result(...)` when the keyed form composes the
-router. **A fragment is itself a valid contract** — `HttpRouter(fragment)(...)`
-compiles with the very same controller — so a slice lifts out into a process
-of its own without its controller changing at all. That property is marked
+router. **A fragment is itself a valid contract** —
+`HttpRouter(fragment)([deps], { sync })` compiles with the very same `sync`
+the controller was built from — so a slice lifts out into a process of its
+own without its controller changing at all. That property is marked
 do-not-break: it is what makes composing several slices into one router a
 starting point rather than a trap.
 

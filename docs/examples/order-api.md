@@ -62,7 +62,8 @@ src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSli
 ```
 
 `slices/orders/controller.ts` is the transport boundary and the only place in
-the example where a domain error becomes something else:
+this slice where a domain error becomes something else — `slices/customers/controller.ts`
+below does the same for its own slice:
 
 ```ts
 export const ordersController = HttpController(
@@ -142,7 +143,8 @@ This form is exact: a slice missing from the record, a key the contract does
 not declare, and a controller wired under the wrong key are all compile
 errors at this call — see
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
-the four gates `packages/http/src/controller.test-d.ts` pins. Because a
+the recipe, and `packages/http/src/controller.test-d.ts` for the five gates
+that pin these errors and the fragment-as-contract property below. Because a
 fragment is itself a valid contract, `ordersController` would compile
 unchanged as the whole implementation of a service serving `ordersContract`
 alone — extracting a slice out of this modulith is deleting an import, not a
