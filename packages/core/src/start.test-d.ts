@@ -1,10 +1,10 @@
 import { Module, Port, Provider } from "@btravstack/di";
+import { testRuntime, type TestRuntimeInfo } from "@btravstack/testing";
 import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
 import { RuntimePort, type Runtime, type Serving } from "./runtime.js";
 import { start, type RunningApp } from "./start.js";
-import { testRuntime, type TestRuntimeInfo } from "./test-runtime.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 class Clock extends Port("Clock")<{ readonly now: () => number }> {}

@@ -1,7 +1,7 @@
 {
   "extends": "@btravstack/typedoc/base.json",
   "name": "@btravstack/core",
-  "entryPoints": ["../packages/core/src/index.ts", "../packages/core/src/testing.ts"],
+  "entryPoints": ["../packages/core/src/index.ts"],
   "tsconfig": "../packages/core/tsconfig.json",
   "out": "api/core",
   "intentionallyNotExported": ["RuntimeInstance", "RuntimeNeedsOf", "RuntimeOf"]

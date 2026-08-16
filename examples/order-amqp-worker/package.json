@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@amqp-contract/testing": "catalog:",
+    "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",

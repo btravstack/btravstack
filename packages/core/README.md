@@ -136,9 +136,12 @@ is a module that exports no runtime port at all.
 
 Every sample above is compiled by
 [`src/docs-examples.test-d.ts`](./src/docs-examples.test-d.ts). The rest —
-the `Runtime` contract, the drain, embedding without `runMain`, testing with
-`@btravstack/core/testing` — is on the
+the `Runtime` contract, the drain, embedding without `runMain` — is on the
 [documentation site](https://btravstack.github.io/start/reference/core/start).
+Testing what the kernel boots is [`@btravstack/testing`](../testing)'s job — a
+`bootFixture` for `test.extend`, `tapped` to read services out of a running
+app, an in-memory runtime and a fake clock — kept out of this package so a
+production bundle never pulls the fakes in.
 
 ## License
 

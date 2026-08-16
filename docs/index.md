@@ -109,9 +109,9 @@ Beat two is the whole point — see [Draining, in three beats](/explanation/drai
 
 ## Packages
 
-Six packages, one dependency direction — `core` → `config` → `di`, and every
-starter on top of `core`. Details and install lines in
-[Packages and install](/reference/packages).
+Seven packages, one dependency direction — `core` → `config` → `di`, every
+starter on top of `core`, and a test harness beside them. Details and install
+lines in [Packages and install](/reference/packages).
 
 - **`@btravstack/di`** — the container: `Port`, `Provider`, `Module`, `Context`.
   Proves the wiring before the process exists.
@@ -125,3 +125,7 @@ starter on top of `core`. Details and install lines in
   activity attempt, `TemporalActivities` and `TemporalModule`.
 - **`@btravstack/amqp`** — the AMQP consumer starter: one unit per message,
   `AmqpHandlers` and `AmqpModule`.
+- **`@btravstack/testing`** — the test harness, a dev dependency:
+  `bootFixture` boots and stops applications inside a vitest fixture,
+  `tapped` reaches a service of the running graph, `testRuntime` and
+  `createFakeClock` stand in for a transport and a clock.

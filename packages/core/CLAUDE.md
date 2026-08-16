@@ -6,6 +6,16 @@ conventions live there; this file holds the two sections that only matter when
 you are editing `packages/core` itself. Both are load-bearing: keep them in
 sync with the code in the same commit.
 
+The specs import `@btravstack/testing` (`testRuntime`, `createFakeClock`,
+`withApp`), which peers on this package and is therefore **not** a
+devDependency here — `tsconfig.json`'s `paths` (the built d.ts, ordered by
+`turbo.json`'s `@btravstack/core#typecheck` edge), `vitest.config.ts`'s
+aliases and `knip.json` carry it instead, and `tsconfig.build.json` is what
+`tsdown` compiles so the published `dist` never sees it. The arrangement and
+its reason are spelled out under _Toolchain & conventions_ in the root
+`CLAUDE.md`. `test-fixtures.ts`'s `runtimeModule(runtime)` wraps a hand-built
+runtime the way `TestRuntime.module` wraps the plain one.
+
 ## Load-bearing runtime invariants (tests must guard these)
 
 The nine from the design, each with the test that guards it, plus the ones that
@@ -30,8 +40,9 @@ that proves them, rather than duplicated).
 4. **The unit `AbortSignal` fires at the drain deadline.**
    `invariants.spec.ts` → _"4. the unit AbortSignal fires at the drain
    deadline"_. The abort comes from `registry.abortAll()`, not from the runtime
-   honouring `Serving.drain(signal)` — `testRuntime` deliberately ignores that
-   signal, which is what makes it a test of the kernel.
+   honouring `Serving.drain(signal)` — `@btravstack/testing`'s `testRuntime`
+   deliberately ignores that signal, which is what makes it a test of the
+   kernel.
 5. **The application scope closes on every path.**
    `invariants.spec.ts` → _"5. the application scope closes on a startup
    failure"_; `start.spec.ts` → _"closes the application scope on a clean
@@ -98,9 +109,12 @@ Beyond the nine:
   exceptions, each carrying its reason inline.** `AsyncResult<T, never>` empties
   the **error** channel only; a `Defect` can still be there, and a `Serving`
   written by a third party is where one comes from. `drain.spec.ts`'s four
-  _"propagates a Defect from …"_ tests guard the drain; `with-app.spec.ts` →
-  _"surfaces a shutdown Defect that `use` never looked at"_ and _"lets a failure
-  thrown by `use` win over a shutdown Defect"_ guard the harness. The two
+  _"propagates a Defect from …"_ tests guard the drain;
+  `packages/testing/src/with-app.spec.ts` → _"surfaces a shutdown Defect that
+  `use` never looked at"_ and _"lets a failure thrown by `use` win over a
+  shutdown Defect"_ guard the harness, and
+  `packages/testing/src/boot-fixture.spec.ts` → _"fails the test on a shutdown
+  defect, and only on a defect"_ the fixture. The two
   survivors are `start.ts`'s `void server.close()` (our own `fromSafePromise`
   over `server.close(cb)`, so no third-party code can defect inside it — and it
   must not be awaited: the socket is `unref`'d and `close` waits out live
@@ -156,10 +170,11 @@ Type-level invariants live in `start.test-d.ts` and are checked by
   UNSATISFIED DEPENDENCIES gate leaves: it takes a deliberate act, and the gate
   exists to catch the accident, not to be unforgeable.
 
-`docs-examples.test-d.ts` compiles every code sample the two READMEs ship, and
-asserts the contract types they print are **equal** to the shipped ones — so the
-READMEs cannot drift from `runtime.ts` or `drain.ts` without failing the
-gate.
+`docs-examples.test-d.ts` compiles every code sample the two READMEs ship —
+the `@btravstack/testing` ones (`testRuntime`, `createFakeClock`, `withApp`)
+imported by name, since that is a separate package — and asserts the contract
+types they print are **equal** to the shipped ones, so the READMEs cannot drift
+from `runtime.ts` or `drain.ts` without failing the gate.
 
 ## Internal design (don't break these)
 
@@ -241,9 +256,10 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   `ctx as unknown as Context<InstanceType<Needs>>` inside `start`'s `use`
   callback is needed only because the gate proves `InstanceType<Needs> extends X`
   at the **call site**, and that proof is not visible to the checker inside a
-  body where `X` and `Needs` are still unresolved type parameters. `withApp` has
-  the same problem and solves it the same way — by forwarding through a
-  signature with the phantom tuple already discharged.
+  body where `X` and `Needs` are still unresolved type parameters.
+  `@btravstack/testing`'s `withApp` and `bootFixture` have the same problem
+  and solve it the same way — by forwarding through a signature with the
+  phantom tuple already discharged.
 
 - **`finish` skips the drain for every reason but `"signal"` — and aborts the
   registry on exactly those paths.**
@@ -312,7 +328,8 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   go unwaited, then be aborted and reported `abandoned` with the entire budget
   unspent. That window is wide for any runtime whose `drain` is a real wait — an
   HTTP server closing out keep-alive connections is the motivating one — and
-  invisible to `testRuntime`, whose `drain` resolves synchronously. Guarded by
+  invisible to `@btravstack/testing`'s `testRuntime`, whose `drain` resolves
+  synchronously. Guarded by
   `drain.spec.ts` → _"waits for a unit that opens while the runtime is still
   stopping accepting"_.
 
@@ -374,7 +391,8 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   `RunUnit` (a divergence is reported, not absorbed); with no `unit` option
   the work receives `runtimeCtx` exactly as before, zero overhead. The
   `forkScope` call goes through a discharged-signature cast — the same move
-  `withApp` and `runMain` make on `start` — because the fork's gates are
+  `runMain` and `@btravstack/testing`'s `withApp` make on `start` — because
+  the fork's gates are
   proven by `start`'s rest tuple at the call site and invisible in a body
   where `X`, `Needs` and `UnitX` are unresolved. The work's return union is
   normalised by an `async` wrapper exactly as `registry.run` does it.

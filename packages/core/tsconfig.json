@@ -4,7 +4,15 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "declarationMap": false,
-    "types": ["node"]
+    "types": ["node"],
+    // The specs use `@btravstack/testing`, which peers on THIS package: listing
+    // it as a devDependency would be a package-graph cycle turbo refuses, so
+    // the type checker is pointed at its built declarations here (its source
+    // would fall outside `rootDir`), which `turbo.json` orders before this
+    // package's `typecheck`; `vitest.config.ts` aliases the source at run
+    // time. `tsconfig.build.json` — what `tsdown` compiles — drops the mapping
+    // and the test files with it, so the published `dist` never sees it.
+    "paths": { "@btravstack/testing": ["../testing/dist/index.d.mts"] }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/**/*.test-d.ts"]

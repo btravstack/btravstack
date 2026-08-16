@@ -25,10 +25,10 @@ with it a runtime constructed outside the graph that reaches back into it.
 
 ## The gate is a phantom rest tuple, and it is bypassable on purpose
 
-`start`, `runMain` and `withApp` end in `...gate: StartGate<X, UnitNeeds>` —
-empty when the module exports a runtime whose needs its exports cover, a named
-error tuple (`NO RUNTIME`, `UNSATISFIED RUNTIME NEEDS`, `UNSATISFIED UNIT
-NEEDS`) otherwise. A conditional type on `module` or `options` would make
+`start`, `runMain` and `@btravstack/testing`'s `withApp` and `Boot` end in
+`...gate: StartGate<X, UnitNeeds>` — empty when the module exports a runtime
+whose needs its exports cover, a named error tuple (`NO RUNTIME`,
+`UNSATISFIED RUNTIME NEEDS`, `UNSATISFIED UNIT NEEDS`) otherwise. A conditional type on `module` or `options` would make
 TypeScript defer that parameter's inference and can collapse `X` or `E` to
 `unknown`; a trailing rest tuple leaves inference alone. It is the same shape
 as di's `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`. A caller who
@@ -159,6 +159,27 @@ of the kernel; a starter's libraries (`@orpc/server`, `@temporalio/worker`,
 one of each; and bundling `@amqp-contract/worker` was measured at two orders
 of magnitude of dist size. It rules out the convenience of `pnpm add
 @btravstack/core` alone. See [Peer dependencies](/explanation/peer-dependencies).
+
+## The test harness is a package
+
+`@btravstack/testing` is where `withApp`, `testRuntime`, `createFakeClock`,
+`bootFixture` and `tapped` live — a package of its own, the way
+`@nestjs/testing` is, and a dev dependency peering on `core`, `config`, `di`
+and `unthrown`. It replaced `@btravstack/core/testing`, a second entry point
+of the kernel. The entry point kept the fakes out of a production bundle,
+which a separate package does equally well; what it could not do was grow.
+The example suites had each hand-rolled the same two things — a `start(...)`
+followed by `stop(); expect(exited).toBeOk()` in a fixture's teardown, because
+a callback harness like `withApp` cannot be handed to `test.extend`'s `use()`,
+and a `LoggerTap` / `ServicesTap` provider written only to reach a service of
+the running graph — and a harness that grows belongs beside the kernel, not
+inside it. It rules out `@btravstack/core/testing` (gone, unreleased), a
+`vitest` peer anywhere in the family — `bootFixture` is a plain `(ctx, use)
+=> Promise<void>`, vitest's fixture protocol met without the import — and the
+kernel keeping any test double of its own: its specs consume the package like
+everyone else. It also rules out a `@btravstack/testing/vitest` subpath: the
+fixture imports nothing from vitest, so there is nothing runner-specific to
+isolate, and a runner with the same `use` shape takes it as it is.
 
 ## `Config.boolean` was removed
 

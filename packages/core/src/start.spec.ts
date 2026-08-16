@@ -1,14 +1,13 @@
 import { Module, Port, Provider } from "@btravstack/di";
+import { createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testing";
 import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { createDeferred } from "./deferred.js";
 import type { KernelEvent } from "./events.js";
-import { createFakeClock } from "./fake-clock.js";
 import { RuntimeStartFailed, type Runtime, type RuntimeHost } from "./runtime.js";
 import { start } from "./start.js";
 import { runtimeModule } from "./test-fixtures.js";
-import { TestRuntimePort, testRuntime } from "./test-runtime.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 

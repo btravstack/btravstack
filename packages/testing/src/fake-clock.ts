@@ -1,6 +1,5 @@
+import type { Clock } from "@btravstack/core";
 import { fromSafePromise, type AsyncResult } from "unthrown";
-
-import type { Clock } from "./clock.js";
 
 type Sleeper = {
   readonly due: number;

@@ -48,8 +48,9 @@ There is deliberately **no startup probe**: `/livez` answers `200` from
 | `{ port: number }`    | Bind that port. `{ port: 0 }` lets the OS choose; read it back from `RunningApp.probePort()`.                                                                                                                                                                                    |
 | `false`               | No probe server. `probePort()` resolves `undefined`. `ready()` still works — it is what an embedder wires into a health endpoint of its own.                                                                                                                                     |
 
-`withApp` from `@btravstack/core/testing` forces `probes: false`; a test that
-needs the real server calls `start` directly.
+`@btravstack/testing`'s `withApp` forces `probes: false`, and its
+`bootFixture` defaults to it; a test that needs the real server passes
+`boot(module, { probes: { port: 0 } })` or calls `start` directly.
 
 ## Binding
 

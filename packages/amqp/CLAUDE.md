@@ -180,6 +180,10 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   run); its fixtures compose `AmqpModule("Consuming")({ contract:
 echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
   with a provider per test from `AmqpHandlers(echoContract)` — from
-  `Greeting`, or a value — so the module reads no environment.
+  `Greeting`, or a value — so the module reads no environment, and hand it to
+  the `boot` fixture, `@btravstack/testing`'s `bootFixture()`, which `serve`
+  and `serveBroken` depend on: every app is stopped when the test ends, and
+  the teardown is Defect-only, so `serveBroken`'s `Err` exit (the unreachable
+  broker, `connectTimeoutMs` set short) is the test's own to assert.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
   `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`.

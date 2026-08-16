@@ -1,6 +1,6 @@
 ---
 title: Test an application
-description: Boot a module under test with withApp, drive the drain on a fake clock, and test through the real starters on an ephemeral port.
+description: Boot a module in a vitest fixture with bootFixture, reach a running service with tapped, drive the drain on a fake clock, and test through the real starters on an ephemeral port.
 ---
 
 # Test an application
@@ -9,34 +9,123 @@ description: Boot a module under test with withApp, drive the drain on a fake cl
 > and assert on what the kernel reports. For _why_ the harness is shaped this
 > way, see [Nothing throws](/explanation/nothing-throws) and
 > [Draining, in three beats](/explanation/draining-in-three-beats); for the
-> full surface, see [Testing entry point](/reference/core/testing).
+> full surface, see [@btravstack/testing](/reference/testing).
 
-Everything you need is in `@btravstack/core/testing`, a second entry point kept
-out of the main one so a production bundle never pulls the fakes in. Three
-tools: `withApp` starts and stops, `testRuntime` stands in for a transport,
+Everything you need is in `@btravstack/testing`, a dev dependency
+(`pnpm add -D @btravstack/testing`) that peers on `@btravstack/core`,
+`@btravstack/config`, `@btravstack/di` and `unthrown` — the copies your
+application already holds. Five tools: `bootFixture` boots and stops inside a
+vitest fixture, `tapped` reaches a service of a running graph, `withApp`
+starts and stops around a callback, `testRuntime` stands in for a transport,
 `createFakeClock` moves time when you say so.
 
-## Boot, use, stop with `withApp`
+## Boot in a fixture with `bootFixture`
 
+The recipe is one fixture module per package, exporting the `it` every spec
+imports:
+
+```ts
+// src/test-fixtures.ts
+import { bootFixture, type Boot } from "@btravstack/testing";
+import { test } from "vitest";
+
+export const it = test.extend<{ boot: Boot }>({
+  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
+});
+```
+
+`boot` is `start` with a test's defaults baked in — `signals: false` always,
+`probes: false`, `preDrainDelayMs: 0`, a silent `onEvent` — and **every
+application it starts is stopped when the test ends**, on every exit path.
+A call's own options win over the fixture's (`boot(module, { probes: { port:
+0 } })` binds an ephemeral probe port), and `unit` goes on the call, because a
+unit module is the composition's choice, not the fixture's:
+
+```ts
+// src/api.spec.ts
+import { describe, expect } from "vitest";
+import { it } from "./test-fixtures.js";
+
+describe("order-api", () => {
+  it("answers a real oRPC call on an ephemeral port", async ({ boot }) => {
+    // GIVEN the real composition root, bound to a loopback port the OS picks
+    const app = boot(OrderApi, { unit: RequestModule });
+    const info = (await app.runtimeInfo()).get();
+    const client = createOrderApiClient(`http://127.0.0.1:${info?.port}`);
+
+    // WHEN a call goes over the wire
+    // THEN it reached the use case behind the transport
+    await expect(client.orders.place({ id: "o-1", quantity: 2 })).toBeOkWith({
+      id: "o-1",
+      quantity: 2,
+    });
+  });
+});
+```
+
+`runtimeInfo()` is whatever the runtime published on `Serving.info` — the
+HTTP starter publishes `{ port }` — and `probePort()` the probe port that
+bound. Both carry `E = never`, so `.get()` is the whole read. The teardown
+mirrors `withApp`: `stop()`, then `exited` is examined, and a **`Defect`**
+there fails the test even if the test never looked at `exited`; a modeled
+`Err` passes through, since a startup failure is an outcome you may be
+asserting.
+
+## Reach a running service with `tapped`
+
+`start` hands the application context to the runtime alone, so a spec has no
+`ctx.get` to reach the very `Logger` the use cases wrote to. `tapped(module,
+[Port, …])` composes one more provider around the module and hands back what
+it was built with; boot `tap.module` in place of the module and read
+`tap.services()` afterwards:
+
+```ts
+it("logs each request under its own trace id", async ({ boot }) => {
+  // GIVEN the real graph, tapped on the very Logger it holds
+  const tap = tapped(OrderApi, [Logger]);
+  const app = boot(tap.module, { unit: RequestModule });
+  const info = (await app.runtimeInfo()).get();
+  const client = createOrderApiClient(`http://127.0.0.1:${info?.port}`);
+
+  // WHEN two calls are served
+  const served = await client.orders
+    .place({ id: "o-1", quantity: 1 })
+    .flatMap(() => client.orders.place({ id: "o-2", quantity: 1 }));
+
+  // THEN the lines carry two distinct trace ids
+  const [logger] = tap.services();
+  const traces = logger
+    .lines()
+    .map((line) => line.slice(0, line.indexOf("]") + 1));
+  expect(served.map(() => new Set(traces).size)).toBeOkWith(2);
+});
+```
+
+The gate refuses a port the module does not export (`NOT EXPORTED`, at the
+call site), and `services()` throws if read before the graph is built — a
+bug in the test, kept loud rather than answered with an `undefined`.
+
+## A one-off with `withApp`
+
+Outside a fixture module — a script, a single test that boots differently —
 `withApp(module, options, use)` starts the module, hands the `RunningApp` to
-`use`, and stops it again whatever `use` does. Two options are **forced off**
-whatever you pass: `signals` (process-wide handlers would fight across a test
-file) and `probes` (a port would collide between tests). A test that needs the
-real probe server calls `start` directly.
+`use`, and stops it again whatever `use` does. `signals` and `probes` are
+forced off whatever you pass. It rethrows a `Defect` on `exited` and holds a
+throw from `use` (a failed `expect`) until the application is stopped, then
+rethrows it unchanged, so a shutdown defect can never mask the assertion that
+failed. Both `use` and `withApp` speak a bare `Promise`, deliberately: an
+`AsyncResult` never rejects, so wrapping the test body would turn a failing
+assertion into a defect you can forget to unwrap.
 
-It **rethrows a `Defect`** on `exited`, so a shutdown that blew up fails the
-test even when `use` never read `exited`; a modeled `Err` passes through, being
-an outcome you may be asserting. A failure thrown by `use` (a failed `expect`)
-is held while the application is stopped, then rethrown unchanged — it outranks
-anything the shutdown says. Both `use` and `withApp` speak a bare `Promise`,
-deliberately: an `AsyncResult` never rejects, so wrapping the test body would
-turn a failing assertion into a defect you can forget to unwrap.
+## Kernel-level: `testRuntime` and `createFakeClock`
 
-## Stand in for the transport with `testRuntime`
-
-`testRuntime(name?)` is an in-memory `Runtime<never, TestRuntimeInfo>`. Its
-`module` provides it on `TestRuntimePort`, so a test composition gets a runtime
-the way a real one does: import the module, export the port.
+To test the lifecycle itself — a drain, an abandonment, an exit report —
+you want no transport and no real clock. `testRuntime(name?)` is an in-memory
+`Runtime<never, TestRuntimeInfo>` whose `module` provides it on
+`TestRuntimePort`, so a test composition gets a runtime the way a real one
+does: import the module, export the port. `createFakeClock()` passed as
+`clock` makes the pre-drain delay and drain deadline elapse only on
+`advance(ms)`.
 
 | Member           | What it gives you                                                                             |
 | ---------------- | --------------------------------------------------------------------------------------------- |
@@ -47,18 +136,6 @@ the way a real one does: import the module, export the port.
 | `serving()`      | the `Serving` it handed the kernel (throws if not started — a bug in the test)                |
 | `submit<T, E>()` | opens a unit and returns `{ settle, result, signal }`, so you can hold it open across a drain |
 
-It publishes `{ name }` on `Serving.info`, and it **ignores the drain
-signal deliberately**: a unit you never `settle` stays open past the deadline,
-which is what makes an abandonment test a test of the kernel, not the fake.
-
-## Move time with `createFakeClock`
-
-Pass `createFakeClock()` as `clock` and the pre-drain delay and drain deadline
-elapse only on `advance(ms)`. Each `advance` brackets itself with a real
-macrotask at both ends, so you can trigger a shutdown and advance in the very
-next statement without racing the kernel arming its next sleep. A drain test
-runs in milliseconds instead of twenty-five seconds.
-
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
 import {
@@ -66,7 +143,7 @@ import {
   createFakeClock,
   testRuntime,
   withApp,
-} from "@btravstack/core/testing";
+} from "@btravstack/testing";
 import { Ok } from "unthrown";
 import { describe, expect, it } from "vitest";
 
@@ -115,97 +192,58 @@ describe("draining", () => {
 
 To prove abandonment instead, never `settle` the unit and advance past the
 deadline too (`await clock.advance(20_000)`): the report reads `abandoned: 1`,
-because `testRuntime` ignores the drain signal and leaves the unit to the
-kernel.
+because `testRuntime` **ignores the drain signal deliberately** and leaves the
+unit to the kernel. The same test reads the same under `boot(TestApp, {
+clock })` with the fixture's teardown doing the stopping.
 
 `toBeOkWith`, `toBeErrWith`, `toBeErrTagged` and `toBeDefectWith` come from
 [`@unthrown/vitest`](https://github.com/btravstack/unthrown/tree/main/packages/vitest);
 register them once through `setupFiles` and add
 `import type {} from "@unthrown/vitest";` to a `vitest.d.ts` so they type.
 
-## Hand in an environment, read back what was bound
-
-`start` takes `env` (a plain record — the `Env` port every config provider
-reads) and `probes` (`{ port: 0 }` for an OS-chosen port, `false` for none).
-Two deferred reads answer with what actually happened: `runtimeInfo()` is
-whatever the runtime published on `Serving.info`, `probePort()` the probe port
-that bound. Both carry `E = never`, so `.get()` is the read.
-
-```ts
-import { start } from "@btravstack/core";
-import { testRuntime, TestRuntimePort } from "@btravstack/core/testing";
-
-it("publishes what the runtime and the probe server bound", async () => {
-  // GIVEN the application started directly, with an environment of its own
-  const runtime = testRuntime("in-memory");
-  const TestApp = Module("TestApp")({
-    imports: [AppModule, runtime.module],
-    exports: [TestRuntimePort],
-  });
-  const app = start(TestApp, {
-    env: { PORT: "0" },
-    probes: { port: 0 },
-    signals: false,
-  });
-
-  // WHEN both deferred reads settle
-  const published = {
-    info: (await app.runtimeInfo()).get(),
-    probePort: (await app.probePort()).get(),
-  };
-  app.stop();
-  await expect(app.exited).toBeOk();
-
-  // THEN the runtime's own info and an OS-chosen probe port came back
-  expect(published).toEqual({
-    info: { name: "in-memory" },
-    probePort: expect.any(Number),
-  });
-});
-```
-
-## Test through the real starter
+## How the examples do it
 
 The examples do not fake the transport: they boot the real composition root
 on an ephemeral loopback port and talk to it with a typed client.
-`examples/order-api` starts `OrderApi` with `env: { PORT: "0", HOST: "127.0.0.1" }`
-and reads the port back off `runtimeInfo()`:
+`examples/order-api/src/test-fixtures.ts` starts from `bootFixture` and layers
+the example's own fixtures on top of `boot`:
 
 ```ts
-import { start } from "@btravstack/core";
-import { createOrderApiClient } from "./client.js";
-import { OrderApi } from "./module.js";
-import { RequestModule } from "./request-scope.js";
+export const it = test.extend<ApiFixtures>({
+  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
 
-it("answers a real oRPC call on an ephemeral port", async () => {
-  // GIVEN the real composition root, bound to a loopback port the OS picks
-  const app = start(OrderApi, {
-    env: { PORT: "0", HOST: "127.0.0.1" },
-    unit: RequestModule,
-    signals: false,
-    probes: false,
-    preDrainDelayMs: 0,
-  });
-  const info = (await app.runtimeInfo()).get();
-  const client = createOrderApiClient(`http://127.0.0.1:${info?.port}`);
-
-  // WHEN a call goes over the wire
-  const placed = await client.orders.place({ id: "o-1", quantity: 2 });
-  app.stop();
-  await expect(app.exited).toBeOk();
-
-  // THEN it reached the use case behind the transport
-  expect(placed).toBeOkWith({ id: "o-1", quantity: 2 });
+  serve: async ({ boot }, use) => {
+    await use((module, options) =>
+      boot(module, { unit: RequestModule, ...options }),
+    );
+  },
+  // …clientFor, probesFor, statusOf, api, unmodelled, gate, tapped
 });
 ```
 
-`examples/order-api/src/test-fixtures.ts` folds that into a `serve` fixture
-whose teardown stops every app it started and asserts the exit was `Ok`;
-`api.spec.ts` then swaps the repository for a stub that holds a request open
-to prove `completed: 1` and `abandoned: 1` against the real HTTP runtime
-(see [Swap an adapter for tests](/how-to/swap-an-adapter)).
+`serve` is `boot` with `RequestModule` forked around every request, so its
+shutdown is still the fixture's; `clientFor` builds the oRPC client from
+`runtimeInfo()`; and `tapped` is the example's tap on the real root:
 
-The other two examples pay a fixture cost, stated in their READMEs:
+```ts
+const tappedApi = () => {
+  const tap = tapped(OrderApi, [Logger]);
+  return {
+    api: tap.module,
+    traces: (): readonly string[] => {
+      const [logger] = tap.services();
+      return logger.lines().map((line) => line.slice(0, line.indexOf("]") + 1));
+    },
+  };
+};
+```
+
+`api.spec.ts` then swaps the repository for a stub that holds a request open
+to prove `completed: 1` and `abandoned: 1` against the real HTTP runtime (see
+[Swap an adapter for tests](/how-to/swap-an-adapter)). The other two examples
+follow the same shape — `boot: bootFixture()`, a `serve` that adds the
+transport's own environment, `tapped` over the services the specs assert
+through — and pay a fixture cost, stated in their READMEs:
 `order-temporal-worker` runs a real Worker against `@temporalio/testing`'s
 **time-skipping test server**, a local binary downloaded once into
 `.cache/temporal-test-server` (network on a cold cache only);
@@ -225,14 +263,16 @@ two bind everywhere.
 | every body carries `// GIVEN`, `// WHEN`, `// THEN`                     | setup is not read as the subject; a test that cannot split is testing two things                      |
 | one deep `expect` per test, on one resource                             | `expect(r).toBeErr(); if (r.isErr()) {…}` goes green when the narrowing is false; a projection cannot |
 
-Two resources means two tests. Waiting is not asserting: synchronise on a
-state with `vi.waitUntil(() => app.phase() === "draining")` and assert that
-state in the one `expect`.
+`bootFixture` is what the second and third rules asked for: a callback
+harness cannot be handed to `use()`, which is why every suite once hand-rolled
+the same `start(...)` plus `stop(); expect(exited).toBeOk()` — now the
+package's. Two resources means two tests. Waiting is not asserting:
+synchronise on a state with `vi.waitUntil(() => app.phase() === "draining")`
+and assert that state in the one `expect`.
 
 ## See also
 
-- [Testing entry point](/reference/core/testing) — every member of
-  `@btravstack/core/testing`, with types.
+- [@btravstack/testing](/reference/testing) — every member, with types.
 - [Swap an adapter for tests](/how-to/swap-an-adapter) — compose a stub
   persistence module instead of overriding a provider.
 - [Order API (HTTP)](/examples/order-api) — the spec and fixture files quoted

@@ -172,7 +172,7 @@ type Clock = {
 `systemClock` is `Date.now` plus a `setTimeout` that resolves early when
 `signal` aborts (a second SIGTERM cuts the pre-drain delay short) and is
 `unref`'d, so a shutdown sleep never keeps the event loop alive.
-`createFakeClock()` from `@btravstack/core/testing` is the other implementation.
+`createFakeClock()` from `@btravstack/testing` is the other implementation.
 
 ## Three contracts a runtime owes
 

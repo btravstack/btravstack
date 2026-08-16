@@ -1,8 +1,12 @@
 import type { Env } from "@btravstack/config";
+import {
+  start,
+  type RunningApp,
+  type RuntimeInfoOf,
+  type StartGate,
+  type StartOptions,
+} from "@btravstack/core";
 import type { Module, Scope } from "@btravstack/di";
-
-import type { RuntimeInfoOf } from "./runtime.js";
-import { start, type RunningApp, type StartGate, type StartOptions } from "./start.js";
 
 /**
  * Start an application, hand it to `use`, and stop it again — whatever `use`

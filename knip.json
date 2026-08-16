@@ -11,6 +11,7 @@
   ],
   "workspaces": {
     "docs": { "entry": ["scripts/*.ts"], "project": ["scripts/**/*.ts"] },
+    "packages/core": { "ignoreDependencies": ["@btravstack/testing"] },
     "examples/hexagonal-order-api": {
       "entry": ["src/emit-guards.ts"],
       "project": ["src/**/*.ts"]

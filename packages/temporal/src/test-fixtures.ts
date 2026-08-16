@@ -2,13 +2,14 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
-import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
+import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
+import { bootFixture, type Boot } from "@btravstack/testing";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
 import type { Client } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
-import { expect, test } from "vitest";
+import { test } from "vitest";
 import { z } from "zod";
 
 import { TemporalActivities, TemporalModule } from "./temporal-module.js";
@@ -182,6 +183,8 @@ export type TemporalFixtures = {
     readonly taskQueue: string;
   }>;
   readonly serveBroken: (options?: BootOptions) => Promise<App>;
+  /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
+  readonly boot: Boot;
   readonly contractSeam: ReturnType<typeof contractSeamOf>;
   readonly gate: ReturnType<typeof gateOf>;
   readonly configured: ReturnType<typeof configuredOf>;
@@ -194,7 +197,7 @@ export type TemporalFixtures = {
  * address in `env`, so every test opens and closes a connection of its own
  * rather than sharing the environment's.
  */
-const boot = (env: TestWorkflowEnvironment, options: BootOptions) => {
+const compose = (env: TestWorkflowEnvironment, boot: Boot, options: BootOptions) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Worker")({
     contract: { ...echoContract, taskQueue },
@@ -207,12 +210,8 @@ const boot = (env: TestWorkflowEnvironment, options: BootOptions) => {
       ...(options.tap === undefined ? [] : [options.tap]),
     ],
   });
-  const app: App = start(worker, {
+  const app: App = boot(worker, {
     env: options.env ?? { TEMPORAL_ADDRESS: env.address },
-    signals: false,
-    probes: false,
-    preDrainDelayMs: 0,
-    onEvent: () => {},
     ...(options.drainTimeoutMs === undefined ? {} : { drainTimeoutMs: options.drainTimeoutMs }),
   });
   return { app, taskQueue };
@@ -232,43 +231,28 @@ export const it = test.extend<TemporalFixtures>({
     await use(env);
     await env.teardown();
   },
-  serve: async ({ env }, use) => {
-    const started: App[] = [];
-
+  boot: bootFixture(),
+  serve: async ({ env, boot }, use) => {
     await use(async (options = {}) => {
-      const { app, taskQueue } = boot(env, options);
-      started.push(app);
+      const { app, taskQueue } = compose(env, boot, options);
       await app.runtimeInfo();
       return { app, client: env.client, taskQueue };
     });
-
-    for (const app of started) {
-      app.stop();
-      await expect(app.exited).toBeOk();
-    }
   },
-  serveBroken: async ({ env }, use) => {
-    const started: App[] = [];
-
+  serveBroken: async ({ env, boot }, use) => {
     // A failure under test is served against a workflow module that exists, so
     // it is the only failure available; with nothing under test the module is
     // the failure.
     await use((options = {}) => {
-      const { app } = boot(env, {
+      const { app } = compose(env, boot, {
         workflows:
           options.activities === undefined && options.env === undefined
             ? missingWorkflows
             : echoWorkflows,
         ...options,
       });
-      started.push(app);
       return Promise.resolve(app);
     });
-
-    for (const app of started) {
-      app.stop();
-      await expect(app.exited).toBeErr();
-    }
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   contractSeam: async ({}, use) => {

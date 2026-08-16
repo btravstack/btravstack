@@ -26,9 +26,9 @@ ActivitiesNeeds>`, readonly and exact — to di's own
   TS2883). The starter's type in that tuple is always `Module<Provided,
 ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C>>`,
   pins or not — `Env` is discharged by `start` anyway. `TemporalModuleOptions`
-  is exported for the type. Covered by `test-fixtures.ts`'s `boot`, which is
-  written with it. `temporal()` stays exported as the primitive it delegates
-  to.
+  is exported for the type. Covered by `test-fixtures.ts`'s `compose`, which
+  is written with it. `temporal()` stays exported as the primitive it
+  delegates to.
 - **`TemporalActivitiesPort` / `ActivitiesPortOf<C>` / `ActivitiesInstanceOf<C>`**
   (`temporal-runtime.ts`, exported from the file for the package's own tests,
   **not** from `index.ts`) — the activities' port, one id, the starter's own:
@@ -147,10 +147,16 @@ TemporalConfig, TemporalActivitiesPort as ActivitiesPortOf<C>], { sync })` —
   the kernel never reads `meta.id` again; _"builds the activities from the
   graph, closing over the services their provider declared"_), two the drain.
   All boot through the `env` fixture (one `TestWorkflowEnvironment` per test)
-  and `test-fixtures.ts`'s `boot`: `TemporalModule("Worker")({ contract: {
+  and `test-fixtures.ts`'s `compose`: `TemporalModule("Worker")({ contract: {
 ...echoContract, taskQueue }, activities: <the provider under test>,
 workflows, provides: [Greeting] })`, `env: { TEMPORAL_ADDRESS: env.address }`
-  — a per-test connection measured as free.
+  — a per-test connection measured as free — handed to the `boot` fixture,
+  `@btravstack/testing`'s `bootFixture()`, which `serve` and `serveBroken`
+  both depend on: every app is stopped when the test ends (`env` is torn
+  down after them, cleanup running in reverse dependency order), and the
+  teardown is **Defect-only** — a shutdown defect fails the test, a modeled
+  `Err` passes — so `serveBroken`'s `Err` exit is the test's own to assert
+  on `app.exited`, not the fixture's.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
   `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`,
   `@temporal-contract/worker`, `@temporal-contract/contract`.

@@ -19,13 +19,16 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds six published packages,
+pnpm workspace + turbo monorepo. `packages/` holds seven published packages,
 `di` (the container), `config` (configuration from the environment, as
-providers), `core` (the kernel), `http` (the HTTP starter — oRPC),
-`temporal` (the Temporal starter) and `amqp` (the AMQP starter). `di` was its own repository until it was merged here
+providers), `core` (the kernel), `testing` (the test harness — `bootFixture`,
+`tapped`, the in-memory runtime, the fake clock; peers on `core`), `http`
+(the HTTP starter — oRPC), `temporal` (the Temporal starter) and `amqp` (the
+AMQP starter). `di` was its own repository until it was merged here
 **with its history**; it is the one package that depends on nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
-back. Its own spec is `packages/di/CLAUDE.md`.
+back, with `testing` and the three starters on `core`. Its own spec is
+`packages/di/CLAUDE.md`; the harness's is `packages/testing/CLAUDE.md`.
 `examples/` holds ten private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
@@ -168,13 +171,15 @@ hook). User-facing changes need a changeset.
    - **`UnitWork`'s `Promise<Result<T, E>>` arm** exists to accept a _caller's_
      `async` handler, and carries a reasoned `prefer-async-result` disable in
      `units.ts`.
-   - **`withApp` and its `use` callback.** `use` is the test body: a thrown
-     assertion failure inside it must reach the test runner, and an
-     `AsyncResult` never rejects — converting either side would turn a failing
-     `expect` into a `Defect` a caller can forget to unwrap, i.e. a green test
-     that asserted nothing (`invariants.spec.ts`'s _"8. start neither throws nor
-     calls process.exit"_ is exactly that shape). `A` is the test author's own
-     type and carries no error channel, so the wrapper would add no information
+   - **`@btravstack/testing`'s `withApp` and its `use` callback** (and
+     `bootFixture`, vitest's own `(ctx, use) => Promise<void>` protocol).
+     `use` is the test body: a thrown assertion failure inside it must reach
+     the test runner, and an `AsyncResult` never rejects — converting either
+     side would turn a failing `expect` into a `Defect` a caller can forget
+     to unwrap, i.e. a green test that asserted nothing
+     (`invariants.spec.ts`'s _"8. start neither throws nor calls
+     process.exit"_ is exactly that shape). `A` is the test author's own type
+     and carries no error channel, so the wrapper would add no information
      either.
 
 7. **The startup error channel is the application's own, unwrapped.** The kernel
@@ -266,9 +271,11 @@ unit open for the process lifetime.
 
 ## Public surface
 
-`packages/core/src/index.ts` is the one place the API is decided. `testing.ts`
-is a second entry point (`@btravstack/core/testing`), kept out of the main one
-so a production bundle never pulls the fakes in.
+`packages/core/src/index.ts` is the one place the kernel's API is decided —
+one entry point. The test doubles are `@btravstack/testing`, a package of its
+own that peers on the kernel (the `@nestjs/testing` shape), so a production
+bundle never pulls the fakes in and the kernel ships none; its surface is
+below and in `packages/testing/CLAUDE.md`.
 
 ### `@btravstack/core`
 
@@ -470,8 +477,56 @@ ConfigFieldInvalid> }`). **`Config.object({...})`** composes them into a
   port. Precedence, wherever a starter takes options, is explicit > env >
   default, per field.
 
-### `@btravstack/core/testing`
+### `@btravstack/testing`
 
+The test harness, `@nestjs/testing`'s shape: a separate package peering on
+`@btravstack/core`, `@btravstack/config`, `@btravstack/di` and `unthrown` — and
+**not** on `vitest`. Its own spec is `packages/testing/CLAUDE.md`.
+
+- **`bootFixture(defaults?)`** — a `test.extend` fixture, a plain `async ({},
+use) => Promise<void>` (vitest's fixture protocol, hence no vitest import or
+  peer) handing the test a **`Boot`**: `start`'s signature and phantom
+  `StartGate` minus `signals`. Defaults, a call's own options winning:
+  `signals: false` always, `probes: false` unless a call passes one (`{ port:
+0 }` binds an ephemeral one), `preDrainDelayMs: 0`, a silent `onEvent`;
+  `defaults` (`BootDefaults`, `StartOptions` minus `signals`/`unit`) sits
+  between. Every app it started is stopped when the test ends, on every exit
+  path; teardown mirrors `withApp` and is **Defect-only** — a `Defect` on
+  `exited` fails the test even when the test never read it, a modeled `Err`
+  passes through, since a startup failure is an outcome a test may be
+  asserting. This is why the examples never used `withApp`: the Test
+  conventions mandate `test.extend` fixtures with teardown in the fixture, and
+  a callback harness cannot be handed to `use()`, so every suite hand-rolled
+  the same `start(...)` + `stop(); expect(exited).toBeOk()` — now the
+  package's, and every starter's and example's `test-fixtures.ts` has a
+  `boot: bootFixture(...)` its `serve` fixtures build on.
+- **`tapped(module, ports)`** → `{ module, services() }` (`ServicesOf<P>`).
+  `start` hands the application context to the runtime alone, so a test that
+  wants the very `Logger` the use cases write to has no `ctx.get`; `tapped`
+  composes one more provider (`Tap`, `Port("@btravstack/testing/Tap")`
+  declared once and never exported — two taps in one graph are di's
+  duplicate-provider defect, and one per application is the case; the id is
+  namespaced because the port is invisible to the application that would
+  collide with it) around `module`, depending on `ports`,
+  and remembers what it was built with. The returned module exports exactly
+  what `module` exports, so the kernel still finds the runtime. **The gate**
+  refuses a port `module` does not export (`"NOT EXPORTED"`, at the call
+  site); **`services()` throws** before the graph is built — reading a tap
+  nobody booted is a bug in the test, not an `undefined` an assertion could
+  swallow. What `order-api`, `order-temporal-worker` and `order-amqp-worker`
+  hand-rolled as `LoggerTap` / `ServicesTap` providers.
+- **`withApp(module, options, use)`** — start, hand to `use`, stop again
+  whatever `use` does. `signals` and `probes` are **forced off** whatever the
+  caller passes; a test needing the real probe server calls `start` directly.
+  It carries the same phantom gate as `start`, and is the one harness-shaped
+  exception to Thesis #6 (both it and `use` speak a bare `Promise`). It
+  **rethrows a `Defect`** on `exited` and only a `Defect`: the harness awaits
+  `exited` to know the application stopped, and dropping that `Result` let a
+  shutdown that blew up pass as a green test when `use` never read `exited`. A
+  modeled `Err` is an outcome a test may be asserting, so it passes through. A
+  failure thrown by `use` outranks both — it is held while the application is
+  stopped and rethrown unchanged, so a shutdown defect can never mask the
+  assertion that actually failed.
 - **`testRuntime(name?)`** — an in-memory `Runtime<never, TestRuntimeInfo>` plus
   `started()`, `untilStarted()` (an `AsyncResult<void, never>`), `accepting()`,
   `serving()`, `submit<T, E>()`, and **`module`** — a `Module<TestRuntimePort,
@@ -489,18 +544,6 @@ never, never>` providing the runtime on **`TestRuntimePort`** (its port,
   `advance(ms)` (an `AsyncResult<void, never>`), which brackets itself with a
   real macrotask at each end so a test can trigger a shutdown and advance in the
   very next statement without racing the kernel arming its next sleep.
-- **`withApp(module, options, use)`** — start, hand to `use`, stop again
-  whatever `use` does. `signals` and `probes` are **forced off** whatever the
-  caller passes; a test needing the real probe server calls `start` directly.
-  It carries the same phantom gate as `start`, and is the one harness-shaped
-  exception to Thesis #6 (both it and `use` speak a bare `Promise`). It
-  **rethrows a `Defect`** on `exited` and only a `Defect`: the harness awaits
-  `exited` to know the application stopped, and dropping that `Result` let a
-  shutdown that blew up pass as a green test when `use` never read `exited`. A
-  modeled `Err` is an outcome a test may be asserting, so it passes through. A
-  failure thrown by `use` outranks both — it is held while the application is
-  stopped and rethrown unchanged, so a shutdown defect can never mask the
-  assertion that actually failed.
 
 ### `@btravstack/http`, `@btravstack/temporal` and `@btravstack/amqp`
 
@@ -724,18 +767,33 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   `workspace:*` in `devDependencies` and stays `^0.1.0` in `peerDependencies`,
   so a consumer still installs one copy of it themselves. `di` itself peers on
   `unthrown` and depends on nothing; `config` peers on `di` and `unthrown`;
-  `core` peers on all three. A **starter** is the exception by definition:
+  `core` peers on all three; `testing` peers on all four (and not on
+  `vitest` — `bootFixture` is a plain function in vitest's fixture shape). A
+  **starter** is the exception by definition:
   `@btravstack/http` peers on `@orpc/server`, `@orpc/contract` and
   `@unthrown/orpc` — peers, not dependencies, so an application holds one
   copy of each.
-- `declarationMap: false` on all six published packages — the published
+- **`packages/core`'s specs use `@btravstack/testing`, which peers on core —
+  and it is NOT a devDependency of core**, because that would be a
+  package-graph cycle turbo refuses. Instead: `packages/core/tsconfig.json`
+  maps `paths: { "@btravstack/testing": ["../testing/dist/index.d.mts"] }`
+  for the type checker (the built d.ts — the source would fall outside
+  `rootDir`), and `tsconfig.build.json`, what `tsdown` compiles, empties
+  `paths` and excludes the specs so the published `dist` never sees it;
+  `packages/core/vitest.config.ts` aliases `@btravstack/testing` to
+  `../testing/src/index.ts` and `@btravstack/core` to `./src/index.ts` (one
+  kernel in play; coverage measures what the specs run); `turbo.json` gives
+  `@btravstack/core#typecheck` an explicit edge on
+  `@btravstack/testing#build`; `knip.json` ignores the dependency for
+  `packages/core`. Four places; a change to one is a change to all.
+- `declarationMap: false` on all seven published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All six published packages claim `engines: { node: ">=20" }` while the root
+- All seven published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -747,14 +805,20 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   the only arm that can terminate the match).
 - The repo dogfoods **every** `@unthrown/oxlint` rule — the five `recommended`
   ones plus all three opt-ins (`no-throw`, `prefer-ensure`, `no-get-or-throw`).
-  So a `throw` is a lint error everywhere, spec files included: the six that
-  survive each carry an `oxlint-disable-next-line unthrown/no-throw` naming
-  why. They fall into two kinds — a **loud test fixture** whose failure means
-  the _test_ is buggy (`test-runtime.ts`'s two misuse guards, `invariants.spec.ts`'s
-  `boundPort`), and a throw that **is the subject under test**
-  (`events.spec.ts`'s throwing sink, `units.spec.ts`'s throwing unit,
-  `run-main.spec.ts`'s defect, which has no public constructor to mint it any
-  other way). `no-get-or-throw` is switched off for the `**/*.spec.ts` **and
+  So a `throw` is a lint error everywhere, spec files included: every one
+  that survives carries an `oxlint-disable-next-line unthrown/no-throw`
+  naming why. In the kernel and the harness they fall into three kinds — a
+  **loud test fixture** whose failure means the _test_ is buggy
+  (`packages/testing`'s `test-runtime.ts`'s two misuse guards and
+  `tapped.ts`'s read-before-boot; `packages/core`'s `invariants.spec.ts`'s
+  `boundPort`), a **harness rethrow** that is the only way a defect or a
+  `use` failure reaches the test runner (`with-app.ts`'s two,
+  `boot-fixture.ts`'s one), and a throw that **is the subject under test**
+  (`events.spec.ts`'s throwing sink, `units.spec.ts`'s throwing unit, and the
+  defects `run-main.spec.ts`, `drain.spec.ts` and `with-app.spec.ts` mint —
+  `Defect` has no public constructor, so a throw inside a combinator is the
+  only way — plus `with-app.spec.ts`'s stand-in for a failing `expect`): five
+  in `packages/core/src`, eight in `packages/testing/src`. `no-get-or-throw` is switched off for the `**/*.spec.ts` **and
   `**/test-fixtures.ts`** globs through an `overrides` entry — the exemption the
   rule's own diagnostic prescribes, since `getOrThrow()` is the right tool in a
   test, and a fixture module is test code that merely does not end in
@@ -772,9 +836,9 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   a plausible "simplification" (the `teardownErrors` aliasing, the `ready()`
   latch, the monotonic `completed`), which is what the surviving comments are.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
-- Coverage thresholds are 100% lines/functions on `packages/core`, with
-  `testing.ts` (a re-export barrel) and `test-fixtures.ts` (test code, per the
-  Test conventions) excluded.
+- Coverage thresholds are 100% lines/functions on `packages/core` and on
+  `packages/testing`, with each package's `test-fixtures.ts` (test code, per
+  the Test conventions) excluded.
 - Test mechanics: `@unthrown/vitest`'s matchers are registered via `setupFiles`
   (`toBeOk`, `toBeOkWith`, `toBeErrTagged`, …). Timing is asserted through
   `createFakeClock`, never a real `setTimeout` — a kernel whose own tests are
@@ -788,11 +852,12 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/core/src/` internals or the invariants guarding
   them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
-  `packages/config/CLAUDE.md`, `packages/http/CLAUDE.md`,
-  `packages/temporal/CLAUDE.md` or `packages/amqp/CLAUDE.md`, whichever is
-  where that package's public surface lives — or `packages/di/CLAUDE.md` for
-  the container. There are **seven** `CLAUDE.md` files; naming the wrong one
-  is how the last drift happened.
+  `packages/config/CLAUDE.md`, `packages/testing/CLAUDE.md`,
+  `packages/http/CLAUDE.md`, `packages/temporal/CLAUDE.md` or
+  `packages/amqp/CLAUDE.md`, whichever is where that package's public
+  surface lives — or `packages/di/CLAUDE.md` for the container. There are
+  **eight** `CLAUDE.md` files; naming the wrong one is how the last drift
+  happened.
 
 ## Documentation site
 
@@ -807,10 +872,11 @@ was folded in here when the container was merged; nothing under
 
 - **TypeDoc runs from `docs/`, not from the packages** — it needs its own
   TypeScript (`catalog:typedoc` pins 6.0.3; 7.x is the native port and ships
-  no `typescript.js`). One `typedoc.<name>.json` per package points at that
-  package's `src/index.ts` (core: `index.ts` and `testing.ts`) and writes
-  straight into `api/<name>/` (gitignored; `docs/api/index.md` is the one
-  committed file there); `scripts/build-api.ts` runs the six concurrently.
+  no `typescript.js`). One `typedoc.<name>.json` per package — seven — points
+  at that package's `src/index.ts` (core's one entry point; the doubles are
+  `typedoc.testing.json`'s) and writes straight into `api/<name>/`
+  (gitignored; `docs/api/index.md` is the one committed file there);
+  `scripts/build-api.ts` runs the seven concurrently.
   The package list is repeated in four places that must stay in sync: the
   configs, `build-api.ts`, `@btravstack/docs#build`'s `dependsOn` in
   `turbo.json` (explicit `<pkg>#build` edges — the site does not _depend_ on
@@ -851,8 +917,11 @@ caught three separate times in review, which is why it is a rule and not a
 preference.
 
 **Rules 1 to 3 are structural and bind `examples/`**, the teaching surface,
-where the shape of a spec is itself read as advice. The kernel's 13 spec files
-predate them and are **deliberately not swept**: they are mutation-verified, hold
+where the shape of a spec is itself read as advice. Ten of the kernel's 12 spec
+files predate them (`config.spec.ts` and `unit-module.spec.ts` are the two
+written since; `test-runtime`, `fake-clock` and `with-app` moved to
+`packages/testing` with the harness and predate them too) and are
+**deliberately not swept**: they are mutation-verified, hold
 the package at 100% line and function coverage, and are the tests guarding the
 shipped invariants — restructuring them buys consistency while risking exactly
 the weakening rules 4 and 5 exist to prevent. A **new or rewritten** kernel spec
@@ -974,7 +1043,9 @@ A sixth rule is about production code that tests keep honest:
   next time one of those samples is found to have drifted, the same way this
   gap itself was found.
 - ~~Bringing `packages/core`'s 13 spec files under the Test conventions.~~
-  **Closed by decision, not by doing it.** An audit of the 93 tests found the
+  **Closed by decision, not by doing it** (three of the 13 — `test-runtime`,
+  `fake-clock`, `with-app` — have since moved to `packages/testing`, on the
+  same terms). An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since
   deleted, and zero optional-chained ones — so the sweep would have been
   structural only: GIVEN/WHEN/THEN markers on all 13, a helper preamble to lift

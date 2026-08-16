@@ -19,7 +19,7 @@ src/activities.ts       orderActivities — the five activities and their triage
 src/fulfillment.ts      FulfillmentModule — the two external services, as stand-ins
 src/module.ts           OrderTemporalWorker — the composition root, TemporalModule sugar
 src/main.ts             the process: runMain(OrderTemporalWorker)
-src/test-fixtures.ts    serve / fulfilling / outOfStock / noShipping, against the time-skipping env
+src/test-fixtures.ts    boot / serve / fulfilling / outOfStock / noShipping, against the time-skipping env — boot and tapped from @btravstack/testing
 ```
 
 ## Everything is a provider
@@ -127,6 +127,12 @@ arrives at the client as a typed contract error it can branch on by name.
 pnpm --filter @btravstack/example-order-temporal-worker test        # the saga specs
 pnpm --filter @btravstack/example-order-temporal-worker typecheck   # the needs gate
 ```
+
+The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
+boots the worker through the `boot` fixture, so it is stopped when the test
+ends, and `fulfilling` / `outOfStock` / `noShipping` are `tapped` compositions
+whose `services()` hand back the very `OrderRepository` and `Logger` the
+running deployment holds — how the compensation specs read the state back.
 
 ## What this deployment deliberately is not
 

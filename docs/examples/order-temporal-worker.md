@@ -178,14 +178,24 @@ export const it = createTimeSkippingTest({
 });
 ```
 
-(the real file goes on to `.extend` that `it` with `serve`, `fulfilling`,
-`outOfStock` and `noShipping`.) Both values are deliberate: the SDK's defaults are the OS temp directory,
-which CI wipes between jobs, and a one-day ttl, so a developer running the
-suite twice in a week would download it twice. The `serve` fixture then boots
-the same `TemporalModule` sugar `main.ts` does, with a per-test task queue
+(the real file goes on to `.extend` that `it` with `boot`, `serve`,
+`fulfilling`, `outOfStock` and `noShipping`.) Both values are deliberate: the
+SDK's defaults are the OS temp directory, which CI wipes between jobs, and a
+one-day ttl, so a developer running the suite twice in a week would download
+it twice. `boot` is `@btravstack/testing`'s `bootFixture()`, which stops every
+app it started when the test ends; the `serve` fixture then boots, through
+it, the same `TemporalModule` sugar `main.ts` does, with a per-test task queue
 (`withTaskQueue(orderContract, nextTaskQueueId("orders"))`), a workflow bundle
 memoised per spec file, and `env: { TEMPORAL_ADDRESS: testEnv.address }` — so
-every test opens and closes a connection of its own.
+every test opens and closes a connection of its own:
+
+```ts
+const app = boot(worker, { env: { TEMPORAL_ADDRESS: testEnv.address } });
+```
+
+The stub deployments (`fulfilling`, `outOfStock`, `noShipping`) are each a
+`tapped(rootWith(fulfillment), [OrderRepository, Logger])`, so a spec reads
+the database through the very repository the saga used.
 
 Four specs: the saga fulfills in order; a stock refusal walks the placement
 back; a shipping refusal releases the reservation and then cancels, in that

@@ -217,6 +217,15 @@ process actually dies, and that is not something a same-process suite can
 observe. See
 [`@btravstack/amqp`'s README](../packages/amqp/README.md#what-abandonment-costs).
 
+The three deployment suites test through
+[`@btravstack/testing`](../packages/testing), the way an application would:
+each `src/test-fixtures.ts` has a `boot` fixture — `bootFixture(...)`, which
+its `serve` builds on — so every app a test starts is stopped when the test
+ends, on every exit path, and `tapped(module, [Logger, …])` hands back the
+very services the running app was built with (the logger the use cases wrote
+to, the repository the compensation assertions read through) instead of a
+provider written into each suite to reach them.
+
 Where a guarantee is compile-time only — an unmet port, a runtime's `needs` —
 the assertion is a `@ts-expect-error` in a `*.test-d.ts` file, checked by `tsc`
 rather than executed.

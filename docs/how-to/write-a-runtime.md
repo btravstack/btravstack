@@ -227,4 +227,4 @@ its port; a provider that depends on `OrderRouter` can. See
 - [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit) —
   what the `traceId` you supply is for.
 - [Test an application](/how-to/test-an-application) — `testRuntime`, the
-  smallest complete runtime, and how to drive yours under `withApp`.
+  smallest complete runtime, and how to drive yours under `bootFixture`.

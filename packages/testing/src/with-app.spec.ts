@@ -1,7 +1,7 @@
+import { RuntimeStartFailed, type RuntimeHost } from "@btravstack/core";
 import { ErrAsync, OkAsync } from "unthrown";
 import { describe, expect, it } from "vitest";
 
-import { RuntimeStartFailed, type RuntimeHost } from "./runtime.js";
 import { runtimeModule } from "./test-fixtures.js";
 import { testRuntime } from "./test-runtime.js";
 import { withApp } from "./with-app.js";

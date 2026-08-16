@@ -1,11 +1,10 @@
 import { Module, Port, Provider } from "@btravstack/di";
+import { createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testing";
 import { Err, ErrAsync, OkAsync } from "unthrown";
 import { describe, expect, it, vi } from "vitest";
 
-import { createFakeClock } from "./fake-clock.js";
 import { awaitExit, runMain } from "./run-main.js";
 import { start, type ExitReport } from "./start.js";
-import { TestRuntimePort, testRuntime } from "./test-runtime.js";
 
 const clean: ExitReport = {
   reason: "signal",

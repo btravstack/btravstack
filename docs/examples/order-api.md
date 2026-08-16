@@ -148,23 +148,29 @@ request's own trace id — and no handler code manages the fork. See
 
 ## The spec: booting the real module on `PORT=0`
 
-`test-fixtures.ts`'s `serve` fixture is where every spec starts, real
-composition root included:
+`test-fixtures.ts` starts from `@btravstack/testing`'s `bootFixture` and
+wraps it in `serve`, where every spec starts, real composition root included:
 
 ```ts
-const app = start(module, {
-  env: { PORT: "0", HOST: "127.0.0.1" },
-  unit: RequestModule,
-  signals: false,
-  probes: false,
-  preDrainDelayMs: 0,
-  ...options,
+export const it = test.extend<ApiFixtures>({
+  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
+
+  serve: async ({ boot }, use) => {
+    await use((module, options) =>
+      boot(module, { unit: RequestModule, ...options }),
+    );
+  },
+  // …
 });
 ```
 
-The port comes back from `Serving.info` through `app.runtimeInfo()` — the
-kernel's own channel for it — and the client is built from the contract
-alone. The suite then pins what matters: a `DuplicateOrder` arrives as an
+`boot` brings a test's defaults (`signals: false`, `probes: false`,
+`preDrainDelayMs: 0`, a silent sink) and stops every app it started when the
+test ends; `serve` adds the per-request `RequestModule`. The port comes back
+from `Serving.info` through `app.runtimeInfo()` — the kernel's own channel
+for it — and the client is built from the contract alone. Where a spec needs
+the very `Logger` the use cases wrote to, `tapped(OrderApi, [Logger])`
+hands back the instance the running graph holds. The suite then pins what matters: a `DuplicateOrder` arrives as an
 `Err` holding an inferable `CONFLICT`, a value the client matches by code, not
 a thrown 500:
 
