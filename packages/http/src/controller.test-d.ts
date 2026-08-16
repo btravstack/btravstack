@@ -1,0 +1,49 @@
+// The four compile gates the keyed router form exists to provide. Each
+// `@ts-expect-error` is an assertion: if one stops erroring, the gate is gone.
+import { Port, Provider } from "@btravstack/di";
+import { oc } from "@orpc/contract";
+import { OkAsync } from "unthrown";
+
+import { HttpController } from "./controller.js";
+import { HttpRouter } from "./orpc.js";
+
+const contract = { orders: { place: oc }, users: { find: oc } };
+
+class Greeter extends Port("GateGreeter")<{ readonly greet: () => string }> {}
+void Provider(Greeter)({ value: { greet: () => "hi" } });
+
+const orders = HttpController("GateOrders", contract.orders)([], {
+  sync: () => ({ place: () => OkAsync("placed") }),
+});
+const users = HttpController("GateUsers", contract.users)([], {
+  sync: () => ({ find: () => OkAsync("found") }),
+});
+
+// 1. Every contract key must be covered.
+// @ts-expect-error — `users` is missing from the record
+void HttpRouter(contract)({ orders });
+
+// 2. A key the contract does not declare is rejected.
+// @ts-expect-error — `billing` is not in the contract
+void HttpRouter(contract)({ orders, users, billing: orders });
+
+// 3. A controller wired under the wrong key is rejected.
+// @ts-expect-error — `users`'s fragment is not `orders`'s
+void HttpRouter(contract)({ orders: users, users: orders });
+
+// 4. A procedure the fragment does not declare is rejected inside the controller.
+void HttpController("GateTypo", contract.orders)([], {
+  // @ts-expect-error — the fragment declares `place`, not `plce`
+  sync: () => ({ plce: () => OkAsync("placed") }),
+});
+
+// 5. A fragment is a valid contract in its own right, so a slice lifts out into
+//    its own process with its controller unchanged. The spec marks this
+//    "do not break"; this is what would catch breaking it.
+void HttpRouter(contract.orders)([], { sync: () => ({ place: () => OkAsync("placed") }) });
+
+// The correct composition, and the positional form, both still compile.
+void HttpRouter(contract)({ orders, users });
+void HttpRouter(contract)([], {
+  sync: () => ({ orders: { place: () => OkAsync("placed") }, users: { find: () => OkAsync("f") } }),
+});
