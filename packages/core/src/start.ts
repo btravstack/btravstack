@@ -123,7 +123,7 @@ export type RunningApp<E, Info = never> = {
 };
 
 /**
- * The phantom rest tuple `start`, `runMain` and `withApp` all carry: empty —
+ * The phantom rest tuple `start`, `runMain` and `Boot` all carry: empty —
  * and invisible — when the module exports a runtime and its exports cover
  * that runtime's declared needs, a named error tuple otherwise, so a missing
  * runtime or an unmet need fails to typecheck at the call site. A trailing
@@ -448,7 +448,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
         // call site; they are invisible in this body, where `X`, `Needs` and
         // `UnitX` are unresolved type parameters, so the forwarding call goes
         // through a signature with the phantom tuple already discharged — the
-        // same move `withApp` and `runMain` make on `start` itself. The
+        // same move `bootFixture` and `runMain` make on `start` itself. The
         // work's return union (`AsyncResult | Promise<Result> | Result`) is
         // normalised by an `async` wrapper exactly as `registry.run` does it.
         const unit = options.unit;

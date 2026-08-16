@@ -193,16 +193,12 @@ hook). User-facing changes need a changeset.
    - **`UnitWork`'s `Promise<Result<T, E>>` arm** exists to accept a _caller's_
      `async` handler, and carries a reasoned `prefer-async-result` disable in
      `units.ts`.
-   - **`@btravstack/testing`'s `withApp` and its `use` callback** (and
-     `bootFixture`, vitest's own `(ctx, use) => Promise<void>` protocol).
-     `use` is the test body: a thrown assertion failure inside it must reach
-     the test runner, and an `AsyncResult` never rejects — converting either
-     side would turn a failing `expect` into a `Defect` a caller can forget
-     to unwrap, i.e. a green test that asserted nothing
-     (`invariants.spec.ts`'s _"8. start neither throws nor calls
-     process.exit"_ is exactly that shape). `A` is the test author's own type
-     and carries no error channel, so the wrapper would add no information
-     either.
+   - **`@btravstack/testing`'s `bootFixture`** — vitest's own
+     `(ctx, use) => Promise<void>` fixture protocol, which the harness does not
+     get to choose. `use` is the test body: a thrown assertion failure inside
+     it must reach the test runner, and an `AsyncResult` never rejects, so
+     wrapping it would turn a failing `expect` into a `Defect` a caller can
+     forget to unwrap — a green test that asserted nothing.
 
 7. **The startup error channel is the application's own, unwrapped.** The kernel
    does **not** wrap a construction failure in a kernel error — that would erase
@@ -293,444 +289,37 @@ unit open for the process lifetime.
 
 ## Public surface
 
+Each package's surface is stated **once**, in that package's own `CLAUDE.md`,
+and again for a reader on the documentation site. It is deliberately **not**
+restated here: this file used to carry a copy, and the copy drifted — it
+described `Logger.error`/`fatal` as taking `(message, cause?, attributes?)`
+while `logger.ts` shipped `(message, attributes?, cause?)` on all six methods
+_and argued for that ordering in its own TSDoc_. Five copies, one gate, and
+the copy with no gate is the one that lies.
+
+| Package                     | Surface lives in                   | Reference page             |
+| --------------------------- | ---------------------------------- | -------------------------- |
+| `@btravstack/di`            | `packages/di/CLAUDE.md`            | `/reference/di/`           |
+| `@btravstack/config`        | `packages/config/CLAUDE.md`        | `/reference/config`        |
+| `@btravstack/core`          | `packages/core/CLAUDE.md`          | `/reference/core/`         |
+| `@btravstack/testing`       | `packages/testing/CLAUDE.md`       | `/reference/testing`       |
+| `@btravstack/observability` | `packages/observability/CLAUDE.md` | `/reference/observability` |
+| `@btravstack/http`          | `packages/http/CLAUDE.md`          | `/reference/http`          |
+| `@btravstack/temporal`      | `packages/temporal/CLAUDE.md`      | `/reference/temporal`      |
+| `@btravstack/amqp`          | `packages/amqp/CLAUDE.md`          | `/reference/amqp`          |
+
+What stays here is what no single package owns: the theses above, the footgun,
+the two contracts a runtime owes, and the conventions below.
+
 `packages/core/src/index.ts` is the one place the kernel's API is decided —
 one entry point. The test doubles are `@btravstack/testing`, a package of its
 own that peers on the kernel (the `@nestjs/testing` shape), so a production
-bundle never pulls the fakes in and the kernel ships none; its surface is
-below and in `packages/testing/CLAUDE.md`.
+bundle never pulls the fakes in and the kernel ships none.
 
-### `@btravstack/core`
-
-- **`start(module, options?)` → `RunningApp<E, RuntimeInfoOf<X>>`** — the
-  entry point. Takes a `Module<X, E, Scope | Env>` (not `Module<X, E,
-never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
-  module, the resourceful one whose `acquire`/`release` provider adds `Scope`
-  — the single need `Module.scoped` discharges itself — and one whose
-  configuration reads `Env`, which the kernel wraps in as it builds; a module
-  that provides `Env` itself is wrapped without it, and its own wins).
-  **The runtime is a
-  service of that module**, not an option: the module exports a port declared
-  over `RuntimePort`, the kernel builds the graph, resolves that port and
-  drives what it finds. The kernel is DI initialisation and lifecycle, nothing
-  else. Followed by the phantom `...gate` rest tuple, `StartGate<X,
-UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
-  `UNSATISFIED RUNTIME NEEDS` when the runtime's declared needs are not among
-  the module's exports (the module's alone — a unit-only port exists only
-  while a unit is open, and `RuntimeHost.ctx` is the application context),
-  `UNSATISFIED UNIT NEEDS` for the fork's own direction — all three at the
-  call site, on arity.
-- **`RuntimePort`** — `Port("Runtime")`, exported **generic** (no fixed
-  service): a runtime package declares its own concrete port over it —
-  `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
-  — so every runtime is one id at runtime while each carries its own
-  `Needs`/`Info` in the type. `RuntimeOf<X>` / `RuntimeNeedsOf<X>` /
-  `RuntimeInfoOf<X>` read those back out of a module's exports (only
-  `RuntimeInfoOf` is exported — the other two are the gate's internals);
-  `RuntimeInstance` is the shared instance type
-  (`InstanceType<PortClass<"Runtime">>`, internal too). Every
-  runtime package ships its port and a starter — `HttpRuntime`/`http()`,
-  `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
-  has `needs` any more: each takes the application's router / activities /
-  handlers as a **port its runtime provider depends on** through di — the
-  starter's own fixed port (`HttpRouterPort`, `TemporalActivitiesPort`,
-  `AmqpHandlersPort`, one id each; the temporal and amqp ones typed per
-  contract at the type level, the same generic-value move `RuntimePort`
-  itself makes), which the application provides and never names — so their
-  `Needs` is `never` and `RuntimeHost.ctx` goes unread by every shipped
-  runtime. The kernel keeps `Runtime.needs`, `RunUnit`'s typed `ctx` and the
-  `UNSATISFIED RUNTIME NEEDS` arm as the general contract (`testRuntime` and a
-  hand-rolled runtime still use it), but no starter does. A port's service
-  type is fixed at declaration, which is why a runtime with application-specific
-  needs could not ship its port — the reason the needs went, not a constraint
-  to work around.
-- **`StartOptions<UnitX, UnitNeeds>`** — `env` (the environment the graph is
-  configured from, provided to it as `@btravstack/config`'s `Env` port and
-  what the kernel reads its own `PROBE_PORT` from; default `process.env`, a
-  test hands in a record);
-  `unit` (a `Module<UnitX, never, UnitNeeds>` the kernel forks around **every
-  unit**: built as the unit opens, torn down as it closes — while the unit's
-  ambient record is still open — reading anything the application context
-  carries; this is what makes a per-request scope transparent, so no handler
-  ever calls `Module.forkScope` itself. Its error channel is pinned to `never`
-  — a construction failure at unit scope has no modeled channel and rides the
-  unit's defect path, which every runtime already answers — `@btravstack/http`
-  writes the `500` from its `recoverDefect`, precisely because that failure
-  happens before the handler is reached. A unit finaliser that fails is
-  emitted as a `teardownError` event only, never pushed into
-  `ExitReport.teardownErrors` (which is the application scope's, and would
-  grow unbounded). With the option, unit work runs only once the fork is
-  built — after an `await` when a unit provider is async — so a runtime that
-  subscribes to an event from inside its work must check it has not already
-  fired (see contract 3 above). The gate checks
-  both directions at the call site: runtime `needs` may draw on `UnitX`, and
-  `UnitNeeds` must be covered by the module's exports or `Scope`. One caveat:
-  `RuntimeHost.ctx` is the **application** context, so a unit-provided port
-  exists only inside unit work — resolving one at runtime startup is a
-  defect); `clock`
-  (default `systemClock`); `signals` (default `true`; **`false` disables the
-  SIGTERM/SIGINT handlers _and_ the uncaught ones together**); `probes`
-  (`{ port }` or `false`; unset, bound from `PROBE_PORT` in `env`, default
-  `9000` — the one piece of configuration the kernel binds itself, because
-  the probe server is up before the graph exists; a bad value is a
-  `RuntimeStartFailed` for `"probes"` whose `cause` is the `ConfigInvalid`,
-  which is what `runMain` reads the `78` off); `preDrainDelayMs` (`5_000`);
-  `drainTimeoutMs` (`20_000`); `onEvent` (default `stderrSink`).
-- **`RunningApp<E, Info>`** — `exited` (`AsyncResult<ExitReport, E | RuntimeStartFailed>`),
-  `stop()`, `requestDrain()`, `phase()`, `ready()`, `probePort()`,
-  `runtimeInfo()`.
-  `stop()` exits without draining; `requestDrain()` takes the signal path.
-  `ready()` is the synchronous read of the same predicate `/readyz` answers
-  from — needed because the uncaught path forces it false while the phase is
-  still `"serving"`, a window no HTTP round trip fits inside; it is also what an
-  embedder wires into a health endpoint of its own when `probes: false`.
-  `probePort()` is an `AsyncResult<number | undefined, never>` resolving the
-  port actually bound (the point of it is `{ port: 0 }`), or `undefined` when
-  probes are disabled or the bind failed. `runtimeInfo()` is the same deferred
-  one layer up, for the **runtime**: an `AsyncResult<Info | undefined, never>`
-  resolving whatever the runtime published on `Serving.info` once it is serving,
-  and `undefined` when it publishes nothing or never got there.
-- **`ExitReport`** — `reason` (`"signal" | "runtimeStopped" | "uncaught"`),
-  `drain` (`DrainReport | undefined` — `undefined` whenever the drain was
-  skipped), `teardownErrors`, `uptimeMs`. **`TeardownError`** is
-  `{ port, cause }`.
-- **`DrainReport`** — `inFlightAtStart` (units in flight when the drain began),
-  `completed` (units that **closed during** the drain — it may exceed
-  `inFlightAtStart` if in-flight work spawned more, which is honest reporting,
-  not a bug), `abandoned` (units still open at the deadline; **the field the
-  exit code keys on**).
-- **`Runtime<Needs, Info>` / `RuntimeHost<Needs>` / `RunUnit<Needs>` /
-  `Serving<Info>`** — the runtime contract (the _service_ behind a runtime
-  port). All parameterised by port **classes**
-  (`Needs extends AnyPort`) but handing out `Context<InstanceType<Needs>>`,
-  because di parameterises `Context<in R>` by port **instance** types.
-  `Serving.drain(signal)` returns `AsyncResult<void, never>` — **not** a
-  `DrainReport`: only the kernel can see the unit registry, so the kernel owns
-  the accounting. `drain` means "stop accepting"; the `AbortSignal` fires when
-  the kernel's deadline passes, so a runtime never does arithmetic on time.
-  `Serving.info?: Info` is what the runtime publishes about **itself** once it
-  is serving, read back through `RunningApp.runtimeInfo()`. `Info` is the
-  runtime's own shape and deliberately **not** a port number — an ephemeral
-  `port: 0` bind is the motivating case, but a queue consumer has none and
-  would publish `{ queue, prefetch }`. It defaults to `never`, so `info` is
-  unwritable and both types read exactly as they did for a runtime with nothing
-  to publish; that default is what makes publishing optional with no ceremony.
-- **`RuntimeStartFailed`** — the one error the kernel mints, a `TaggedError`
-  carrying `{ runtime, cause }`. A probe bind failure uses
-  `runtime: "probes"`.
-- **`UnitMeta` / `UnitWork` / `UnitRegistry`** — `UnitMeta` is
-  `{ kind, id, traceId?, tenantId?, deadline? }`; `traceId` defaults to `id`,
-  which is why **`id` must be unique per unit** unless the runtime supplies one
-  (see _Two contracts a runtime owes_ above).
-  `UnitWork` may return an `AsyncResult`, a `Promise<Result>` or a plain
-  `Result` — the `Promise` arm is Thesis #6's second exception, since it exists
-  to accept a caller's `async` handler. `UnitRegistry.awaitIdle()` returns
-  `AsyncResult<void, never>`.
-- **`UnitRecord`** — the ambient record: `{ unitId, traceId, tenantId, deadline,
-signal }`. `signal` is the same `AbortSignal` `UnitWork` receives as its
-  argument — aborted at the drain deadline, or at once on a path that skips the
-  drain (`abortAll`) — carried here so a runtime whose work callback is a
-  library's `next()` still reaches it. Guarded by `units.spec.ts` → _"carries
-  the work's own AbortSignal on the ambient record"_.
-- **`currentUnit()` → `UnitRecord | undefined`** — the ambient read. `undefined`
-  outside a unit.
-- **`Clock` / `systemClock`** — `{ now, sleep(ms, signal?) }`, where `sleep`
-  returns `AsyncResult<void, never>`. It takes an `AbortSignal` because a second
-  signal must cut the pre-drain delay short, and `systemClock` `unref`s its
-  timer so a shutdown sleep is never the reason the event loop stays alive.
-- **`Phase`** — `"building" | "starting" | "serving" | "draining" | "stopping" | "exited"`.
-- **`KernelEvent` / `EventSink` / `stderrSink`** — nine events: `building`,
-  `startFailed`, `serving`, `draining`, `drained`, `stopping`, `exited`,
-  `teardownError`, `uncaught`. `startFailed` carries the `cause` of any
-  startup failure — a modeled `Err` (a `ConfigInvalid` naming its variables,
-  a `RuntimeStartFailed`) or a defect — and is emitted before `stopping`, so a
-  process that never came up says why on stderr instead of exiting silently.
-  `stderrSink` writes one JSON line per event, normalising an
-  `Error` cause to `{ name, message, stack, cause }` — `JSON.stringify` skips
-  non-enumerable properties, so a bare one renders the two cause-carrying
-  events as `{"cause":{}}`. A cause it cannot serialise at all (a circular
-  object) falls back to `"[unserialisable]"` rather than throwing, since
-  `safeSink` would swallow the throw and the event would be reported nowhere.
-- **`runMain(module, options?, exit?)`** — the front door: `start` composed
-  with the wait for `exited`, carrying the same phantom needs gate
-  (`StartGate`, the shared alias all three gated surfaces use). Every
-  `main.ts` calls this one function; `start` is for callers that want the
-  `RunningApp` itself. It boots the module and sets the exit code:
-  `0` clean, `1` a modeled startup `Err`, `78` a `ConfigInvalid` (or a
-  `RuntimeStartFailed` carrying one — the kernel's own `PROBE_PORT`), `2`
-  drained with work abandoned **or exited with a non-empty
-  `teardownErrors`**, `70` an uncaught exception/rejection, `70` a defect.
-  Both `70`s are sysexits(3)'s `EX_SOFTWARE`; `78` is its `EX_CONFIG` — the
-  deployment is wrong, not the code, the one startup failure fixed without a
-  rebuild. **A crash outranks abandoned work** — written out explicitly
-  rather than left to depend on the fact that the uncaught path skips the drain
-  anyway. `2` means "we stopped, but not cleanly", and a failed finaliser earns
-  it as much as abandoned work does: the kernel goes to real trouble to keep
-  those errors observable (the `teardownErrors` aliasing), which reporting `0`
-  over them would waste.
-
-There is **no** `Defect` construction, no `overrideProvider`, no accumulation of
-runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
-adapter is composing a different module, which di already documents and the type
-checker already verifies.
-
-### `@btravstack/config`
-
-Configuration, the twelve-factor way, in a package of its own because it is
-its own concern — the kernel's thesis says it owns three things — and because
-a starter binds _its_ slice against this package, not the lifecycle machine.
-It depends on `di` and `unthrown` only (peers); `core` peers on it, provides
-`Env` and binds `PROBE_PORT` through it, and maps `ConfigInvalid` to `78`.
-Its own spec is `packages/config/CLAUDE.md`.
-
-- **`Env`** — the environment as a port (`Readonly<Record<string, string |
-undefined>>`), provided by `start` to every graph it boots the same way it
-  discharges `Scope`, so `start` takes `Module<X, E, Scope | Env>` and nothing
-  in an application reaches for `process.env`.
-- **`Config.string` / `integer` / `port` `(variable, { default?,
-min?, max? })`** — `ConfigField<T>`s (`{ variable, parse(raw) → Result<T,
-ConfigFieldInvalid> }`). **`Config.object({...})`** composes them into a
-  Standard Schema over the environment (hand-rolled, so the package depends on
-  nothing — `ConfigSchema` is the structural slice of Standard Schema v1, and a
-  `zod`/`valibot`/`arktype` schema is accepted where it is); every field is
-  read so one validation names every offending variable at once.
-  **`Config.provider(Port)(schema)`** — or `Config.provider("Name")(schema)`,
-  which mints the port and hands it back typed on the provider
-  (`provider.port`), the shape for a slice that is one application's own —
-  is a di provider with dep `[Env]` whose
-  `make` validates and answers **`ConfigInvalid`** (`{ port, issues }`, message
-  one line per variable). Modelled on Effect's `Config` (typed descriptions,
-  an environment provider swappable for a test) and Spring Boot's
-  externalised configuration (a starter binds its own slice: `@btravstack/http`
-  → `HttpConfig` from `PORT`/`HOST`), applied to di: a config slice is just a
-  port. Precedence, wherever a starter takes options, is explicit > env >
-  default, per field.
-
-### `@btravstack/testing`
-
-The test harness, `@nestjs/testing`'s shape: a separate package peering on
-`@btravstack/core`, `@btravstack/config`, `@btravstack/di` and `unthrown` — and
-**not** on `vitest`. Its own spec is `packages/testing/CLAUDE.md`.
-
-- **`bootFixture(defaults?)`** — a `test.extend` fixture, a plain `async ({},
-use) => Promise<void>` (vitest's fixture protocol, hence no vitest import or
-  peer) handing the test a **`Boot`**: `start`'s signature and phantom
-  `StartGate` minus `signals`. Defaults, a call's own options winning:
-  `signals: false` always, `probes: false` unless a call passes one (`{ port:
-0 }` binds an ephemeral one), `preDrainDelayMs: 0`, a silent `onEvent`;
-  `defaults` (`BootDefaults`, `StartOptions` minus `signals`/`unit`) sits
-  between. Every app it started is stopped when the test ends, on every exit
-  path; teardown mirrors `withApp` and is **Defect-only** — a `Defect` on
-  `exited` fails the test even when the test never read it, a modeled `Err`
-  passes through, since a startup failure is an outcome a test may be
-  asserting. This is why the examples never used `withApp`: the Test
-  conventions mandate `test.extend` fixtures with teardown in the fixture, and
-  a callback harness cannot be handed to `use()`, so every suite hand-rolled
-  the same `start(...)` + `stop(); expect(exited).toBeOk()` — now the
-  package's, and every starter's and example's `test-fixtures.ts` has a
-  `boot: bootFixture(...)` its `serve` fixtures build on.
-- **`tapped(module, ports)`** → `{ module, services() }` (`ServicesOf<P>`).
-  `start` hands the application context to the runtime alone, so a test that
-  wants the very `OrderRepository` the use cases wrote through has no
-  `ctx.get`; `tapped`
-  composes one more provider (`Tap`, `Port("@btravstack/testing/Tap")`
-  declared once and never exported — two taps in one graph are di's
-  duplicate-provider defect, and one per application is the case; the id is
-  namespaced because the port is invisible to the application that would
-  collide with it) around `module`, depending on `ports`,
-  and remembers what it was built with. The returned module exports exactly
-  what `module` exports, so the kernel still finds the runtime. **The gate**
-  refuses a port `module` does not export (`"NOT EXPORTED"`, at the call
-  site); **`services()` throws** before the graph is built — reading a tap
-  nobody booted is a bug in the test, not an `undefined` an assertion could
-  swallow. What `order-api`, `order-temporal-worker` and `order-amqp-worker`
-  hand-rolled as `LoggerTap` / `ServicesTap` providers. **Log lines no longer
-  need it**: `observability({ sink })` is a value the composition takes, so
-  the two worker examples tap only their services and `order-api` taps
-  nothing at all — a spec reads `Line` values back through its own sink.
-- **`withApp(module, options, use)`** — start, hand to `use`, stop again
-  whatever `use` does. `signals` and `probes` are **forced off** whatever the
-  caller passes; a test needing the real probe server calls `start` directly.
-  It carries the same phantom gate as `start`, and is the one harness-shaped
-  exception to Thesis #6 (both it and `use` speak a bare `Promise`). It
-  **rethrows a `Defect`** on `exited` and only a `Defect`: the harness awaits
-  `exited` to know the application stopped, and dropping that `Result` let a
-  shutdown that blew up pass as a green test when `use` never read `exited`. A
-  modeled `Err` is an outcome a test may be asserting, so it passes through. A
-  failure thrown by `use` outranks both — it is held while the application is
-  stopped and rethrown unchanged, so a shutdown defect can never mask the
-  assertion that actually failed.
-- **`testRuntime(name?)`** — an in-memory `Runtime<never, TestRuntimeInfo>` plus
-  `started()`, `untilStarted()` (an `AsyncResult<void, never>`), `accepting()`,
-  `serving()`, `submit<T, E>()`, and **`module`** — a `Module<TestRuntimePort,
-never, never>` providing the runtime on **`TestRuntimePort`** (its port,
-  declared over `RuntimePort`, exported too), which is how a test composition
-  gets a runtime: import `runtime.module`, export `TestRuntimePort`. It
-  publishes `{ name }` on `Serving.info` — the
-  one thing an in-memory runtime genuinely knows about itself — so the
-  `runtimeInfo()` channel is exercised end to end by the suite. `submit`
-  returns a `SubmittedUnit` (`settle`, `result`, `signal`) so a test can hold a
-  unit open across a drain. It deliberately **ignores** the
-  `Serving.drain(signal)` deadline, which is what makes the abort tests tests of
-  the kernel.
-- **`createFakeClock(start?)`** — a `Clock` whose time moves only on
-  `advance(ms)` (an `AsyncResult<void, never>`), which brackets itself with a
-  real macrotask at each end so a test can trigger a shutdown and advance in the
-  very next statement without racing the kernel arming its next sleep.
-
-### `@btravstack/observability`
-
-Logging, as a starter. The package is named for the whole of observability
-because logs, traces and metrics share a correlation id, a resource, a config
-slice and a flush-on-shutdown lifecycle; **traces and metrics are not here
-yet** and must never be described as shipped. Its own spec is
-`packages/observability/CLAUDE.md`, which holds the argument in full and the
-deferred shape.
-
-- **`Logger`** — `Port("Logger")<LoggerService>`, the **framework's** port
-  rather than each application's, because the framework logs too
-  (`kernelEvents`) and one port has to serve both. `LoggerService` is
-  `log(level, message, attributes?, cause?)`, one method per level
-  (`trace`/`debug`/`info`/`warn` take `(message, attributes?)`;
-  `error`/`fatal` take `(message, cause?, attributes?)` — the failure second,
-  because that is the argument a caller of those two always has), `with` and
-  `isEnabled`. Six differences from NestJS's `Logger`, each a defect this
-  shape does not have: a port rather than a class you `new`; `with` returning
-  a value rather than `setContext` mutating the shared instance; `Attributes`
-  a flat record of scalars rather than `any` varargs; a dedicated `cause`;
-  it cannot throw; and correlation is the implementation's job. Every method
-  is synchronous `void` — this package's Thesis #6 exemption, since a log call
-  is fire-and-forget and a lost line is not a modeled error.
-- **`Level` / `LEVELS` / `Attributes`** — six levels, ordered, exported as an
-  array so `LOG_LEVEL` validates against one list; `Attributes` is
-  `Readonly<Record<string, string | number | boolean | undefined>>`.
-- **`createLogger(sink, level?)`** — the implementation. `currentUnit()` is
-  read **per call** (capturing it would stamp the first unit's trace id on
-  every line thereafter), a line below `level` never reaches the sink, and
-  every write is wrapped in a `try` that swallows, because a logger that
-  throws turns an observability fault into an outage.
-- **`Line` / `Sink`** — `{ level, message, attributes, cause, time, unit }`,
-  where `unit` is `undefined` outside a unit and
-  `{ unitId, traceId, tenantId? }` inside one. A `Sink` is
-  `(line: Line) => void` and is allowed to throw; `createLogger` is what makes
-  that safe.
-- **`jsonSink(stream?)`** — the default: one JSON object per line on
-  `process.stdout`. The unit's ids are spread at the **top level**, not nested
-  under `unit`, because `traceId` is the field an operator searches; a
-  caller's attribute can never overwrite one of those or `level`/`message`/
-  `time` (spread order); an `Error` `cause` is normalised to
-  `{ name, message, stack, cause }` and walked up to four levels, the same
-  rule and the same reason as the kernel's `stderrSink`; a payload
-  `JSON.stringify` refuses falls back to `"[unserialisable]"`.
-- **`observability({ sink?, level? })`** — the starter, a
-  `Module<Logger | LoggerConfig, ConfigInvalid, Env>`. `level` **pins**
-  through `Config.pinned` (explicit > env > default, per field). An
-  application that wants its own implementation provides `Logger` itself and
-  does not import this.
-- **`LoggerConfig` / `logLevel({ default? })`** — `{ level }`, bound through
-  `Config.provider` from `LOG_LEVEL` (default `info`). A value outside the six
-  is a `ConfigInvalid` naming the variable and the set — `startFailed`, exit
-  `78`, before a line is written — rather than a silent fallback. `logLevel`
-  is that field alone, for an application composing its own schema.
-- **`kernelEvents(logger)`** — the kernel's nine events as an `EventSink` for
-  `StartOptions.onEvent`. The mapping is deliberate: `startFailed` and
-  `uncaught` are `error`; `teardownError` is `warn` (the application is
-  already stopping and the exit code says `2`). All three carry their `cause`
-  — every level takes one, which is what the uniform `(message, attributes?,
-cause?)` bought: a warning that could not say _why_ a finaliser failed was
-  the first draft's bug. Everything else is `info`.
-  Each event's own fields become attributes, and every line carries `event`.
-  The logger is a **parameter**, not resolved from the graph: `building` is
-  emitted while the graph is still being built, so the sink cannot come from
-  the context it is watching — which is why `examples/order-api/src/main.ts`
-  passes `kernelEvents(createLogger(jsonSink()))` by hand, a second logger,
-  deliberately, and the only one the framework asks anybody to construct. It
-  reads no `LOG_LEVEL` for the same reason.
-- **`pinoSink(logger)`** — the `@btravstack/observability/pino` subpath, with
-  `pino` an **optional** peer. The level filter stays **ours** — `createLogger`
-  has already decided the line is worth writing — so pino is configured at
-  `trace`, one filter in the process, and it is the one `LOG_LEVEL` validated.
-  The cause goes over as `err`, which pino's own serialiser renders with the
-  stack.
-
-### `@btravstack/http`, `@btravstack/temporal` and `@btravstack/amqp`
-
-Their public surfaces live in `packages/http/CLAUDE.md`,
-`packages/temporal/CLAUDE.md` and
-`packages/amqp/CLAUDE.md`, which load only when you work under those
-directories — the same split `packages/core/CLAUDE.md` already uses for the
-kernel's internals. Read the one you are changing before you change it, and
-update it in the same commit as the code.
-
-**Starters.** All three are, in the Spring Boot sense: a module that brings
-the default behaviour for the standard case, opinionated about the one way it
-is done and configurable where a deployment differs. Each ships a **module
-sugar** — `HttpModule(name)({ router, imports, provides, exports })`,
-`TemporalModule(name)({ contract, activities, workflows, … })`,
-`AmqpModule(name)({ contract, handlers, … })` — a `Module(name)({...})` that
-also takes the starter's own fields, appends the starter to `imports`,
-prepends the router/activities/handlers **provider** to `provides` and the
-runtime port to `exports`, and hands those tuples to di's own `Module(name)`
-— whose return type is the sugar's, spelled once (see
-`packages/di/CLAUDE.md`) — so the kernel and both gates see nothing new; the
-plain starter (`http()`, `temporal({ contract, workflows })`, `amqp({
-contract })`) stays exported as the primitive it
-delegates to, and each **needs** its router / activities / handlers port
-rather than taking it as an option. And each ships the **provider sugar** for
-what the application supplies — `HttpRouter(contract)(deps, { sync })`,
-`TemporalActivities(contract)(deps, arm)`, `AmqpHandlers(contract)(deps,
-arm)` — the first call fixing the contract and returning di's own
-`Provider(port)` on the starter's **fixed** port, so the second call is
-`Provider(port)(deps, arm)` exactly as everywhere else and the provider
-carries its port typed (`provider.port` — di's `Provider(port)(…)` returns
-`Provider<P, E, N> & { port: typeof port }`). There is no name to give: a
-process serves one router / one activities record / one handlers record as
-it boots one runtime (Thesis #1), so the port is framework-owned like
-`HttpConfig` — `Port("HttpRouter")`, `Port("TemporalActivities")`,
-`Port("AmqpHandlers")`, declared once each — and two providers for it in one
-graph are di's duplicate-provider defect at build. The temporal and amqp
-ports are generic at the value level and typed per contract at the type
-level (`ActivitiesPortOf<C>`, `HandlersPortOf<C>`), so a provider built for
-one contract still cannot be handed to a `TemporalModule` / `AmqpModule`
-declaring another — structural on the record, not on a name. `Config.provider(name)(schema)`
-is the one sugar that **keeps** its name: several config slices per
-application is normal, and the name is what `ConfigInvalid` prints. **The
-contract types
-the record, and nothing wraps a leaf**: an oRPC procedure, a Temporal activity
-and an AMQP handler are each a plain function typed by the contract at the
-call (`HttpRouter` does `implement`/`.result`/`os.router` itself; the
-temporal starter calls `declareActivitiesHandler`; `WorkerInferHandlers`
-accepts a bare function), so an application never writes `implement`,
-`os.…`, `declareHandler` or `declareActivitiesHandler`. The class line, its
-name and its service type are what disappear; the port stays a real di port.
-One rule from di's CLAUDE.md applies to writing one: return a type spelled
-through the exported `PortClassOf`/`PortInstance` (the class expression's own
-type is not nameable in declaration emit — which is also why the fixed ports
-are `Port(name)` cast to `PortClassOf`, not `class` lines). Pinning
-(`http({ port: 0 })`) is `Config.pinned(value, field)`, one helper for every
-starter. `http()` binds
-`PORT`/`HOST` onto `HttpConfig`, mounts the router the application provides
-on **`HttpRouterPort`** —
-an oRPC router as a provider that declares the use cases its procedures call
-— under `prefix` through oRPC's own node adapter, and provides
-`HttpRuntime`; **oRPC is the one way HTTP is answered here** (oRPC shares this
-stack's convictions — a
-contract, typed errors, `Result` at the boundary — so it is enforced, not
-offered among alternatives; the former `@btravstack/orpc` was folded in for
-that reason, and the node listener port `HttpHandler` is internal to the
-package). `temporal({ contract, workflows })`
-binds `TEMPORAL_ADDRESS`/`TEMPORAL_NAMESPACE` onto `TemporalConfig`, opens
-`TemporalConnection` as a resource and provides `TemporalRuntime` from the
-activities the application provides on **`TemporalActivitiesPort`** —
-implementations built by a provider from
-the application's own services, closures, no `context.ctx`; `amqp({ contract
-})` binds `AMQP_URL` onto `AmqpConfig` and provides `AmqpRuntime`
-from the handlers on **`AmqpHandlersPort`** the same way. The runtime provider
-depends on that port through di, which is what deleted `needs` from all
-three: what a handler needs is its provider's business. A starter has real
-dependencies — peers, so an application holds one copy: `@btravstack/http` on
-`@orpc/server`/`@orpc/contract`/`@unthrown/orpc`, `@btravstack/temporal` on
-`@temporal-contract/*` and `@temporalio/*`, `@btravstack/amqp` on
-`@amqp-contract/*` — while the kernel and `config` still have none.
+There is **no** `Defect` construction, no `overrideProvider`, no accumulation
+of runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
+adapter is composing a different module, which di already documents and the
+type checker already verifies.
 
 ## Toolchain & conventions
 

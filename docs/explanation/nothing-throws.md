@@ -47,13 +47,13 @@ where it lives:
 - **`UnitWork`'s `Promise<Result<T, E>>` arm** exists to accept a _caller's_
   `async` handler without a wrapper at every call site; `run` normalises it
   internally.
-- **`withApp` and its `use` callback**, in `@btravstack/testing`. `use` is
-  the test body. A thrown assertion failure inside it must reach the test
-  runner, and an `AsyncResult` never rejects — converting either side would
-  turn a failing `expect` into a `Defect` a caller can forget to unwrap, which
-  is a green test that asserted nothing. `bootFixture` inherits the same
-  shape for the same reason: a vitest fixture body is a bare `Promise`, and
-  its teardown rethrows a shutdown `Defect` so the runner sees it.
+- **`bootFixture`**, in `@btravstack/testing` — vitest's own
+  `(ctx, use) => Promise<void>` fixture protocol, which the harness does not
+  get to choose. `use` is the test body: a thrown assertion failure inside it
+  must reach the test runner, and an `AsyncResult` never rejects, so wrapping
+  it would turn a failing `expect` into a `Defect` a caller can forget to
+  unwrap — a green test that asserted nothing. Its teardown rethrows a
+  shutdown `Defect` so the runner sees that too.
 
 ## The startup channel is the application's own
 
