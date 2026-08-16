@@ -186,21 +186,10 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   // The second signal aborts this, cutting short whichever `drainApp` sleep
   // (pre-drain delay or drain timeout) is currently pending.
   const skipDrain = new AbortController();
-  // Stamped at the FIRST request — the one `createDeferred` keeps — so the
-  // pre-drain delay is measured from when the process was TOLD to stop, not
-  // from when the kernel got around to noticing.
-  //
-  // They are not the same instant: a signal landing mid-build is buffered until
-  // the runtime is serving, since nothing observes `shutdown.promise` until
-  // then. The delay exists to cover Kubernetes' eventually-consistent endpoint
-  // removal after the signal, and a slow construction has already served some or
-  // all of that purpose. Paying it again on top can push the whole shutdown past
-  // `terminationGracePeriodSeconds` and turn a graceful exit into a SIGKILL.
-  // Seeded with `startedAt` rather than left optional so the read needs no
-  // guard: `finish` runs only once `shutdown.promise` has settled, and
-  // `requestShutdown` is the only thing that settles it, so the seed is always
-  // overwritten before `runDrain` reads it. A `number | undefined` here would
-  // buy a branch that can never be taken.
+  // Stamped at the FIRST request, not when the kernel notices: a signal landing
+  // mid-build is buffered until the runtime is serving, and paying the pre-drain
+  // delay in full afterwards charges twice for a window the build already spent
+  // — enough to push the shutdown past `terminationGracePeriodSeconds`.
   let shutdownRequestedAt = startedAt;
   let shutdownRequested = false;
   const sinceShutdownRequested = (): number => clock.now() - shutdownRequestedAt;

@@ -30,7 +30,7 @@ const isConfig = (error: unknown): boolean =>
 //
 // An `"uncaught"` reason means the process died from an uncaught exception or
 // an unhandled rejection. Installing a handler for either suppresses Node's own
-// default exit code of `1` (see `uncaught.ts`), so if this returned `0` the
+// default exit code of `1` (see `process-handlers.ts`), so if this returned `0` the
 // kernel would report *success* to an orchestrator for a process that crashed —
 // the exact opposite of what the uncaught path exists to signal. It is an
 // internal software error, which is what `EX_SOFTWARE` names, so it shares the

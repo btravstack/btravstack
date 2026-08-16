@@ -12,13 +12,14 @@
 
 import { Config, type ConfigInvalid } from "@btravstack/config";
 import { Module, Port, Provider, type AnyPort, type Context } from "@btravstack/di";
-import { createFakeClock, testRuntime, TestRuntimePort, withApp } from "@btravstack/testing";
+import { bootFixture, createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testing";
+import type { Boot } from "@btravstack/testing";
 // The matcher augmentation `src/vitest.d.ts` carries for the specs: this
 // config compiles `*.test-d.ts` alone, so the testing sample below needs it in
 // scope to spell `toBeOkWith`.
 import type {} from "@unthrown/vitest";
 import { Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
-import { expect, expectTypeOf } from "vitest";
+import { expect, expectTypeOf, test } from "vitest";
 
 import {
   RuntimePort,
@@ -279,17 +280,21 @@ const embed = async (): Promise<void> => {
 // "Testing" — docs/how-to/test-an-application.md, docs/reference/testing.md.
 // ---------------------------------------------------------------------------
 
-const drainTest = async (): Promise<void> => {
-  const clock = createFakeClock();
-  const runtime = testRuntime();
-  // The in-memory runtime ships as a module: import it next to the application
-  // and export its port, exactly as a real runtime package is composed in.
-  const TestApp = Module("TestApp")({
-    imports: [AppModule, runtime.module],
-    exports: [TestRuntimePort],
-  });
+const it = test.extend<{ boot: Boot }>({ boot: bootFixture() });
 
-  const report = await withApp(TestApp, { clock }, async (app) => {
+const drainTest = (): void => {
+  it("drains in-flight work", async ({ boot }) => {
+    const clock = createFakeClock();
+    const runtime = testRuntime();
+    // The in-memory runtime ships as a module: import it next to the
+    // application and export its port, exactly as a real runtime package is
+    // composed in.
+    const TestApp = Module("TestApp")({
+      imports: [AppModule, runtime.module],
+      exports: [TestRuntimePort],
+    });
+
+    const app = boot(TestApp, { clock, preDrainDelayMs: 5_000 });
     await runtime.untilStarted();
     const unit = runtime.submit<string>();
 
@@ -301,10 +306,9 @@ const drainTest = async (): Promise<void> => {
     // alone — a bare `await unit.result;` would drop it.
     expect(await unit.result).toBeOkWith("done");
 
-    return await app.exited;
+    const report = await app.exited;
+    // `{ inFlightAtStart: 1, completed: 1, abandoned: 0 }` at runtime; the
+    // drain slot is optional in the type because a non-signal exit skips it.
+    expectTypeOf(report.getOrThrow().drain).toEqualTypeOf<DrainReport | undefined>();
   });
-
-  // `{ inFlightAtStart: 1, completed: 1, abandoned: 0 }` at runtime; the drain
-  // slot is optional in the type because a non-signal exit skips the drain.
-  expectTypeOf(report.getOrThrow().drain).toEqualTypeOf<DrainReport | undefined>();
 };
