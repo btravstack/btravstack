@@ -71,9 +71,10 @@ AmqpInfo>>` — the runtime has **no** needs) and the broker on
   to fire any more).
   `AmqpOptions<TContract, H>` — `contract: TContract` (`TContract` bounded by
   `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, never imported
-  by name), `handlers: H & HandlersPort<H, TContract>`, `url?` (pinning it
-  yields the narrower `Module<AmqpRuntime | AmqpConfig, never, H>`: no `Env`,
-  no `ConfigInvalid`), `connectionOptions`, `defaultConsumerOptions`,
+  by name), `handlers: H & HandlersPort<H, TContract>`, `url?` (pinning it reads
+  nothing from the environment; the declared type stays `Module<AmqpRuntime |
+AmqpConfig, ConfigInvalid, Env | H>` either way, one signature — see the
+  sugar entry above), `connectionOptions`, `defaultConsumerOptions`,
   `connectTimeoutMs` (a top-level `CreateWorkerOptions` field, **not** nested
   under `connectionOptions`, where setting it is silently inert — an
   unreachable broker takes the library's 30s default to report without it).

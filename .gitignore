@@ -34,3 +34,9 @@ docs/superpowers/
 # The scratch database `prisma migrate` reaches for when DATABASE_URL is unset.
 # The migrations it writes are committed; the database it applies them to is not.
 **/.migrate.db
+
+# The docs site's build outputs. TypeDoc runs from `docs/` and writes straight
+# into `docs/api/<name>/` (the hand-written docs/api/index.md overview is kept).
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+docs/api/*/

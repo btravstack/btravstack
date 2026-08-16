@@ -1,6 +1,6 @@
 # Examples
 
-Eleven small packages, none of them published, all of them in the gate.
+Ten small packages, none of them published, all of them in the gate.
 
 The **`order-*` nine** are one application booted three ways: a clean
 architecture split across four layers, deployed once as an oRPC API, once as a

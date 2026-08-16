@@ -7,6 +7,7 @@ strictPeerDependencies: true
 packages:
   - packages/*
   - examples/*
+  - docs
 
 catalog:
   # `@amqp-contract/{contract,testing,worker}` v3 are still in beta and their
@@ -21,7 +22,9 @@ catalog:
   "@btravstack/entity": 0.7.0
   "@btravstack/lefthook": 0.1.1
   "@btravstack/oxlint": 0.2.1
+  "@btravstack/theme": 2.0.0
   "@btravstack/tsconfig": 0.2.0
+  "@btravstack/typedoc": 0.1.0
   "@changesets/cli": 2.31.1
   "@commitlint/cli": 21.2.1
   # `@amqp-contract/core`'s telemetry module (pulled in by
@@ -66,7 +69,10 @@ catalog:
   oxlint: 1.77.0
   prisma: 7.9.1
   tsdown: 0.22.14
+  tsx: 4.23.5
   turbo: 2.10.8
+  typedoc: 0.28.20
+  typedoc-plugin-markdown: 4.12.0
   typescript: 7.0.2
   # The TypeScript a *consumer* is realistically on, for the second
   # declaration-emit pass in `examples/hexagonal-order-api`
@@ -78,8 +84,28 @@ catalog:
   typescript-consumer: "npm:typescript@5.9.3"
   unthrown: 5.5.0
   "@vitest/coverage-v8": 4.1.10
+  vitepress: 1.6.4
   vitest: 4.1.10
   zod: 4.4.3
+
+catalogs:
+  # TypeDoc's own TypeScript: 7.x is the native port and ships no `typescript.js`,
+  # so 6.0.3 is the last release carrying the JS API TypeDoc needs. Only `docs`
+  # resolves this catalog.
+  typedoc:
+    typescript: 6.0.3
+
+# Force patched versions of vulnerable transitive dependencies. Every advisory
+# below reaches us only through dev/build tooling (never a published package's
+# runtime deps). Each selector is version-scoped so only the affected line moves.
+overrides:
+  # GHSA-fx2h-pf6j-xcff, GHSA-4w7w-66w2-5vf9, GHSA-v6wh-96g9-6wx3: vite
+  # `server.fs.deny` bypasses (dev-server only; the docs ship as static HTML).
+  # Reaches us via docs > vitepress > vite. vitepress 1.6.x pins vite ^5.4.14 and
+  # 5.x has no patched release, so lift any pre-6.4.3 vite to 6.4.3 (the first
+  # fixed version), as unthrown does — `vitepress build` is verified against it.
+  # This also drags esbuild up past GHSA-67mh-4wv8-2f99.
+  "vite@<6.4.3": "6.4.3"
 
 allowBuilds:
   # Prisma 7 is engine-less (WASM query compiler); nothing to build or download.
@@ -104,6 +130,9 @@ peerDependencyRules:
     - "@types/react"
 
 minimumReleaseAgeExclude:
+  # First-party shared config (@btravstack scope): adopt immediately, skip the delay.
+  - "@btravstack/theme"
+  - "@btravstack/typedoc"
   - "@amqp-contract/contract@3.0.0-beta.6"
   - "@amqp-contract/core@3.0.0-beta.6"
   - "@amqp-contract/testing@3.0.0-beta.6"

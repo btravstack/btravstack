@@ -1,0 +1,15 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/http",
+  "entryPoints": ["../packages/http/src/index.ts"],
+  "tsconfig": "../packages/http/tsconfig.json",
+  "out": "api/http",
+  "intentionallyNotExported": [
+    "AnyRouterInstance",
+    "HttpStarter",
+    "Implementation",
+    "Imports",
+    "Provides",
+    "RouterPort"
+  ]
+}

@@ -1,0 +1,234 @@
+---
+title: Consume AMQP messages
+description: Provide an amqp-contract's handlers as a di service, compose the consumer with AmqpModule, and decide ack, retry and dead-letter with the three-way split the transport actually has.
+---
+
+# Consume AMQP messages
+
+> **How-to.** Run an [`amqp-contract`](https://github.com/btravstack/amqp-contract)
+> worker under the kernel: handlers built from your own services, one unit per
+> delivery, and a drain with exactly one deadline. For the package's full
+> surface, see [`@btravstack/amqp`](/reference/amqp); for _why_ neither the
+> kernel nor the starter maps a `Result` to ack/nack, see
+> [The kernel maps nothing](/explanation/the-kernel-maps-nothing).
+
+You have a contract with a consumer on a queue, and a service that should
+react to each message. What you write is the handlers record and a
+composition root; the connection, the unit boundary and the release at the
+kernel's deadline are the package's. Everything below is lifted from
+`examples/order-amqp-worker`.
+
+## Recipe
+
+1. Implement the handlers with `AmqpHandlers(contract)(name)(deps, arm)` —
+   one plain function per consumer, typed by the contract.
+2. Decide, per handler, what a domain `Err` and a `Defect` become
+   (see the three-way split below).
+3. Compose with `AmqpModule(name)({ contract, handlers, imports, provides, exports })`.
+4. `await runMain(OrderAmqpWorker)`; set `AMQP_URL` in the deployment.
+
+## Step 1 — the handlers, as a provider
+
+`AmqpHandlers(orderContract)("OrderHandlers")` mints the port (its service the
+record the contract wants, `WorkerInferHandlers<typeof orderContract>`) and
+returns di's `Provider(port)`, so the last call declares what the handlers
+need and closes over it. **Nothing is injected per message** — the middleware
+the package installs opens the unit and calls `next()` unchanged:
+
+```ts
+import { AmqpHandlers } from "@btravstack/amqp";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { Logger } from "@btravstack/example-order-application";
+import { OkAsync } from "unthrown";
+
+export const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")(
+  [Logger],
+  {
+    sync: (logger) => ({
+      orderChanged: (message) => {
+        const { id, payload } = message.payload;
+        logger.info(
+          payload === null
+            ? `order ${id} is gone — notifying`
+            : `order ${id} placed — notifying (${payload.quantity} items)`,
+        );
+        return OkAsync();
+      },
+    }),
+  },
+);
+```
+
+## Step 2 — the three-way split
+
+`amqp-contract`'s dispatch settles a delivery from the handler's `Result`, and
+it is a **three-way** split, not two:
+
+| The handler's `Result` is… | What happens                                                              | Decided by      |
+| -------------------------- | ------------------------------------------------------------------------- | --------------- |
+| `Ok`                       | ack                                                                       | `amqp-contract` |
+| `Err(RetryableError)`      | routed by the queue's `retry` config (e.g. `ttl-backoff`, `maxRetries`)   | `amqp-contract` |
+| `Err(NonRetryableError)`   | nack, straight to the dead-letter exchange                                | `amqp-contract` |
+| a `Defect`                 | nacked **once, immediately**, to the dead-letter — never touching `retry` | `amqp-contract` |
+
+The last row is the one to internalise. An unrecovered infrastructure failure
+is parked on its first attempt exactly like a permanent domain error. **A
+handler that wants "infrastructure comes back" recovers its own defects into a
+`RetryableError` explicitly:**
+
+```ts
+import { AmqpHandlers } from "@btravstack/amqp";
+import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
+import { ErrAsync, P } from "unthrown";
+
+export const placingHandlers = AmqpHandlers(orderContract)("PlacingHandlers")(
+  [PlaceOrder],
+  {
+    sync: (place) => ({
+      orderChanged: (message) =>
+        place
+          .execute(message.payload.id, message.payload.payload?.quantity ?? 0)
+          .map(() => undefined)
+          .mapErrCases((matcher) =>
+            matcher.with(
+              P.tag("InvalidQuantity"),
+              P.tag("DuplicateOrder"),
+              (error) => new NonRetryableError(error._tag, error),
+            ),
+          )
+          .recoverDefect((cause) =>
+            ErrAsync(new RetryableError("placing the order failed", cause)),
+          ),
+    }),
+  },
+);
+```
+
+The queue's policy is contract configuration the broker enforces — the
+example's `order-notifications` queue declares
+`retry: { mode: "ttl-backoff", maxRetries: 3 }` and a dead-letter exchange.
+Read `maxRetries: 3` as **four** total attempts (the first plus three
+retries), not the same number Temporal's `maximumAttempts: 3` names.
+
+## Step 3 — the composition root
+
+```ts
+import { AmqpModule } from "@btravstack/amqp";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
+import {
+  ApplicationModule,
+  Logger,
+  OrderRepository,
+  Outbox,
+  PlaceOrder,
+} from "@btravstack/example-order-application";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+
+import { orderHandlers } from "./handlers.js";
+import { outboxRelay, relayConfig } from "./outbox-relay.js";
+
+export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
+  contract: orderContract,
+  handlers: orderHandlers,
+  imports: [ApplicationModule, PersistenceModule],
+  provides: [relayConfig, outboxRelay],
+  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+});
+```
+
+`AmqpModule` is `Module(name)({...})` plus `contract` and `handlers`: it
+imports `amqp({ contract, handlers: orderHandlers.port })`, provides the
+handlers and exports `AmqpRuntime`. `handlers` is checked against `contract`
+at the call — a provider missing a consumer, or naming one the contract does
+not declare, fails to typecheck there rather than on the first delivery,
+silently to the DLQ.
+
+## Step 4 — `main.ts`
+
+```ts
+import { runMain } from "@btravstack/core";
+
+import { OrderAmqpWorker } from "./module.js";
+
+await runMain(OrderAmqpWorker);
+```
+
+## Configuration and options
+
+`amqp()` provides `AmqpRuntime` and `AmqpConfig` (`{ url }`), and needs the
+handlers port. Options on `AmqpModule` and `amqp()` alike:
+
+| Variable / option        | Default                 | Notes                                                                                        |
+| ------------------------ | ----------------------- | -------------------------------------------------------------------------------------------- |
+| `AMQP_URL` / `url`       | `amqp://127.0.0.1:5672` | `url` pins the broker (a test's container); a blank variable is a `ConfigInvalid`, exit `78` |
+| `connectTimeoutMs`       | the library's `30s`     | how long `create` waits before an unreachable broker is a `RuntimeStartFailed`, exit `1`     |
+| `connectionOptions`      | —                       | passed through to `TypedAmqpWorker.create`                                                   |
+| `defaultConsumerOptions` | —                       | likewise                                                                                     |
+
+Once consuming, the runtime publishes `AmqpInfo` — `{ queues }`, every queue
+the contract's consumers and RPCs drain — on `Serving.info`, read through
+`runtimeInfo()`.
+
+## One unit per delivery
+
+`UnitMeta.id` is a minted `randomUUID()` per delivery; `traceId` is the
+publisher's `messageId`, falling back to `correlationId`, then to the minted
+id. A delivery tag is not used as the id on purpose: tags are per-channel and
+restart at `1` after the silent reconnects `amqp-connection-manager` performs.
+An adapter reads the trace id from `currentUnit()`.
+
+## The drain: one deadline
+
+`Serving.drain(signal)` calls `worker.close({ drainTimeoutMs: null })` —
+cancel every consumer, let in-flight handlers finish so their acks land on a
+still-open channel — **raced against the kernel's signal**. `null` is
+deliberate: the library's own default drain timeout is 30 s, above the
+kernel's 20 s default, and would quietly win. Telling the library to wait
+forever leaves the kernel's `drainTimeoutMs` as the only clock in the process.
+
+::: info When the deadline wins
+The kernel reports the unit `abandoned` (exit `2`), but nothing was dropped:
+the connection stays open and the handler runs on toward its own ack or nack.
+Redelivery happens only once the connection actually drops — when the
+process exits, not when the drain deadline passes.
+:::
+
+## The publishing half: an outbox relay as a resource
+
+The example's producer is not a runtime. `outbox-relay.ts` provides
+`OutboxRelay` with `acquire`/`release`, so di starts it as the graph builds
+and stops it when the application scope closes — after the consumer stopped,
+which is fine: rows published during the drain window are safer out than left
+to the next boot. Its poll interval is a config slice of its own:
+
+```ts
+export const relayConfig = Config.provider("RelayConfig")(
+  Config.object({
+    pollMs: Config.integer("OUTBOX_POLL_MS", {
+      min: 1,
+      max: 60_000,
+      default: 200,
+    }),
+  }),
+);
+
+export const outboxRelay = Provider(OutboxRelay)(
+  [Outbox, Logger, AmqpConfig, relayConfig.port],
+  {
+    acquire: (outbox, logger, { url }, { pollMs }) =>
+      startOutboxRelay(outbox, logger, { url, pollMs }),
+    release: (running) => running.stop().get(),
+  },
+);
+```
+
+It reads `AmqpConfig` — the broker the starter bound — and shares the
+worker's connection lease through `@amqp-contract/core`'s pool. A broker it
+cannot reach is the modeled `BrokerUnreachable`, a startup `Err` and exit `1`.
+
+## See also
+
+- [`@btravstack/amqp`](/reference/amqp) — options, ports, `AmqpInfo`.
+- [Order AMQP worker](/examples/order-amqp-worker) — the outbox pattern end to end, against a real RabbitMQ.
+- [Manage a resource's lifetime](/how-to/manage-a-resource) — `acquire`/`release`, as the relay uses it.
+- [Configure from the environment](/how-to/configure-from-the-environment) — `AMQP_URL` and `OUTBOX_POLL_MS`.

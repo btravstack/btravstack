@@ -1,5 +1,8 @@
-// Every code sample the root `README.md` and `packages/core/README.md` ship,
-// compiled. A sample that stops compiling fails `pnpm typecheck`.
+// The kernel-only code samples `packages/core/README.md` and the documentation
+// site (`docs/`) ship, compiled. A sample that stops compiling fails `pnpm
+// typecheck`. Each section names the page it mirrors; the README's worked
+// example is quoted verbatim, the site's pages carry the same samples in
+// substance (each was also compiled in a scratch file when written).
 //
 // The one deliberate divergence from the published text: the samples import
 // from `./index.js` / `./testing.js` where a reader imports `@btravstack/core`
@@ -33,7 +36,7 @@ import {
 import { TestRuntimePort, createFakeClock, testRuntime, withApp } from "./testing.js";
 
 // ---------------------------------------------------------------------------
-// "A worked example" — both READMEs.
+// "A worked example" — packages/core/README.md; docs/how-to/write-a-runtime.md.
 // ---------------------------------------------------------------------------
 
 class Greeter extends Port("Greeter")<{
@@ -97,7 +100,8 @@ const TickerApp = Module("TickerApp")({
 await runMain(TickerApp);
 
 // ---------------------------------------------------------------------------
-// "Per-unit ports" — both READMEs and the root CLAUDE.md. `StartOptions.unit`
+// "Per-unit ports" — docs/how-to/open-a-per-request-scope.md and the root
+// CLAUDE.md. `StartOptions.unit`
 // is forked around every unit; its needs must be covered by the module's
 // exports, or by `Scope` — which `onStop` puts in the unit module's NEEDS,
 // and which the fork discharges by opening a scope, as `Module.forkScope`
@@ -121,7 +125,8 @@ const TickModule = Module("Tick")({
 await runMain(TickerApp, { unit: TickModule });
 
 // ---------------------------------------------------------------------------
-// "Configuration" — both READMEs. A port bound from the environment inside
+// "Configuration" — docs/how-to/configure-from-the-environment.md,
+// docs/reference/config.md. A port bound from the environment inside
 // the graph: the module's own error channel carries `ConfigInvalid`, still
 // typed, and its `Env` need is the one the kernel discharges.
 // ---------------------------------------------------------------------------
@@ -156,8 +161,9 @@ expectTypeOf(configured.exited).toEqualTypeOf<
 >();
 
 // ---------------------------------------------------------------------------
-// "The Runtime contract" — root README. Asserted equal to the shipped types
-// rather than merely compiled, so the README cannot drift from `runtime.ts`.
+// "The Runtime contract" — docs/reference/core/runtime.md. Asserted equal to
+// the shipped types rather than merely compiled, so the page cannot drift from
+// `runtime.ts`.
 // ---------------------------------------------------------------------------
 
 type ReadmeServing<Info = never> = {
@@ -189,7 +195,8 @@ expectTypeOf<ReadmeRuntimeHost<typeof Greeter>>().toEqualTypeOf<RuntimeHost<type
 expectTypeOf<ReadmeDrainReport>().toEqualTypeOf<DrainReport>();
 
 // ---------------------------------------------------------------------------
-// "What a runtime publishes about itself" — root README.
+// "What a runtime publishes about itself" — docs/reference/core/runtime.md
+// (`Serving.info`), docs/reference/core/running-app.md (`runtimeInfo()`).
 // ---------------------------------------------------------------------------
 
 type HttpInfo = { readonly port: number };
@@ -221,14 +228,14 @@ const info = await app.runtimeInfo(); // Result<HttpInfo | undefined, never>
 expectTypeOf(info).toEqualTypeOf<Result<HttpInfo | undefined, never>>();
 
 // ---------------------------------------------------------------------------
-// "The unit of work" — root README.
+// "The unit of work" — docs/reference/core/runtime.md (`UnitMeta`).
 // ---------------------------------------------------------------------------
 
 const submitOne = (run: RunUnit<typeof Greeter>, meta: UnitMeta): AsyncResult<string, never> =>
   run(meta, (ctx, signal) => (signal.aborted ? Ok("") : Ok(ctx.get(Greeter).greet("world"))));
 
 // ---------------------------------------------------------------------------
-// "Two contracts a runtime owes" — root README.
+// "Two contracts a runtime owes" — docs/how-to/write-a-runtime.md.
 // ---------------------------------------------------------------------------
 
 const serveOne = (
@@ -245,7 +252,7 @@ const serveOne = (
   });
 
 // ---------------------------------------------------------------------------
-// "Ambient carries data" — root README.
+// "Ambient carries data" — docs/how-to/read-the-ambient-unit.md.
 // ---------------------------------------------------------------------------
 
 const log = (message: string): void => {
@@ -254,7 +261,7 @@ const log = (message: string): void => {
 };
 
 // ---------------------------------------------------------------------------
-// "Embedding without runMain" — both READMEs. The footgun.
+// "Embedding without runMain" — docs/how-to/embed-without-run-main.md. The footgun.
 // ---------------------------------------------------------------------------
 
 const embed = async (): Promise<void> => {
@@ -269,7 +276,7 @@ const embed = async (): Promise<void> => {
 };
 
 // ---------------------------------------------------------------------------
-// "Testing" — both READMEs.
+// "Testing" — docs/how-to/test-an-application.md, docs/reference/core/testing.md.
 // ---------------------------------------------------------------------------
 
 const drainTest = async (): Promise<void> => {

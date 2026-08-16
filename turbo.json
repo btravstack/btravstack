@@ -27,6 +27,18 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@btravstack/docs#build": {
+      "dependsOn": [
+        "@btravstack/di#build",
+        "@btravstack/config#build",
+        "@btravstack/core#build",
+        "@btravstack/http#build",
+        "@btravstack/temporal#build",
+        "@btravstack/amqp#build"
+      ],
+      "inputs": ["$TURBO_DEFAULT$", "../packages/*/src/**"],
+      "outputs": [".vitepress/dist/**", "api/*/**"]
+    },
     "db:migrate": {
       "cache": false
     }
