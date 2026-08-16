@@ -9,10 +9,11 @@ import {
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import type { ConfigInvalid } from "@btravstack/config";
-import { currentUnit, start, type RunningApp, type UnitRecord } from "@btravstack/core";
+import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
+import { bootFixture, type Boot } from "@btravstack/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
-import { expect, type TestAPI } from "vitest";
+import type { TestAPI } from "vitest";
 import { z } from "zod";
 
 import { AmqpModule } from "./amqp-module.js";
@@ -133,6 +134,8 @@ const gatedHandler = () => {
 };
 
 export type AmqpFixtures = {
+  /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
+  readonly boot: Boot;
   /** Boots the starter over `handlers` — a record that acks everything when none is given. */
   readonly serve: (handlers?: EchoProvider, options?: ServeOptions) => Promise<App>;
   readonly serveBroken: () => Promise<App>;
@@ -144,55 +147,25 @@ export type AmqpFixtures = {
 // since `AmqpTestFixtures` reaches back into amqplib's `Channel` /
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
-  serve: async ({ amqpConnectionUrl }, use) => {
-    const started: App[] = [];
-
+  boot: bootFixture(),
+  serve: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (handlers = plainHandlers, options) => {
-      const app = start(consuming(amqpConnectionUrl, handlers), {
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-        ...options,
-      });
-      started.push(app);
+      const app = boot(consuming(amqpConnectionUrl, handlers), options);
       // `runtimeInfo()` resolves once the worker is consuming — await it here
       // so the caller's test body never races the worker's own startup.
       await app.runtimeInfo();
       return app;
     });
-
-    for (const app of started) {
-      app.stop();
-      await expect(app.exited).toBeOk();
-    }
   },
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  serveBroken: async ({}, use) => {
-    const started: App[] = [];
-
-    await use(() => {
-      // A port nothing listens on: amqp-connection-manager retries the
-      // connect on its own reconnect clock regardless of the failure mode
-      // (ECONNREFUSED included — it is built for HA, not for failing fast),
-      // so `TypedAmqpWorker.create` only settles once `connectTimeoutMs`
-      // gives up and reports the DEFECT the runtime recovers. Set short so
-      // this test fails fast instead of waiting out the library's 30s
-      // default.
-      const app = start(consuming("amqp://127.0.0.1:1", plainHandlers, 2_000), {
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-      });
-      started.push(app);
-      return Promise.resolve(app);
-    });
-
-    for (const app of started) {
-      app.stop();
-      await expect(app.exited).toBeErr();
-    }
+  serveBroken: async ({ boot }, use) => {
+    // A port nothing listens on: amqp-connection-manager retries the
+    // connect on its own reconnect clock regardless of the failure mode
+    // (ECONNREFUSED included — it is built for HA, not for failing fast),
+    // so `TypedAmqpWorker.create` only settles once `connectTimeoutMs`
+    // gives up and reports the DEFECT the runtime recovers. Set short so
+    // this test fails fast instead of waiting out the library's 30s
+    // default.
+    await use(() => Promise.resolve(boot(consuming("amqp://127.0.0.1:1", plainHandlers, 2_000))));
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   seam: async ({}, use) => {

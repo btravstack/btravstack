@@ -16,7 +16,7 @@ src/handlers.ts        the consuming half: orderHandlers, a provider on the star
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
 src/module.ts          OrderAmqpWorker — the composition root, an AmqpModule, a constant
 src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
-src/test-fixtures.ts   serve / tapped, as Vitest fixtures, against a real RabbitMQ
+src/test-fixtures.ts   boot / serve / tapped, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
 ```
 
 ## The pattern, in three places
@@ -120,6 +120,13 @@ a subscriber this contract never heard of.
 pnpm --filter @btravstack/example-order-amqp-worker test        # broadcast e2e
 pnpm --filter @btravstack/example-order-amqp-worker typecheck   # the needs gate
 ```
+
+The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
+boots the worker against the test's own vhost through the `boot` fixture, so
+it is stopped when the test ends, and `tapped` hands back the very
+`PlaceOrder`, `OrderRepository`, `Outbox` and `Logger` the running app was
+built with — the writer the spec places orders through is the one the relay
+sweeps.
 
 ## What this deployment deliberately is not
 

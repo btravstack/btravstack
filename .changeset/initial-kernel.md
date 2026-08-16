@@ -1,5 +1,6 @@
 ---
 "@btravstack/core": minor
+"@btravstack/testing": minor
 ---
 
 The application kernel: `start` boots a `@btravstack/di` module into a running
@@ -31,7 +32,7 @@ application scope on every path.
   `70`) by setting `process.exitCode`.
 - `currentUnit()` over an `AsyncLocalStorage` record carrying
   `{ unitId, traceId, tenantId, deadline }` — data, never capabilities.
-- A `@btravstack/core/testing` entry point with `testRuntime`,
+- A `@btravstack/testing` package with `testRuntime`,
   `createFakeClock` and `withApp`.
 - **Every async API returns an `AsyncResult`, never a bare `Promise`** — the
   infallible ones included, where `AsyncResult<T, never>` spells "async, and

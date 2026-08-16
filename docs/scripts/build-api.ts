@@ -24,7 +24,7 @@ const TYPEDOC = join(
 // Keep in sync with the `typedoc.<name>.json` files beside this script, with
 // `@btravstack/docs#build`'s `dependsOn` in the root `turbo.json`, and with the
 // `/api/` sidebar in `.vitepress/config.ts`.
-const packages: readonly string[] = ["di", "config", "core", "http", "temporal", "amqp"];
+const packages: readonly string[] = ["di", "config", "core", "testing", "http", "temporal", "amqp"];
 
 const results = await Promise.allSettled(
   packages.map(async (name) => {

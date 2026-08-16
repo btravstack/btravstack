@@ -11,6 +11,9 @@
     "typecheck": {
       "dependsOn": ["build", "generate", "^generate"]
     },
+    "@btravstack/core#typecheck": {
+      "dependsOn": ["build", "@btravstack/testing#build"]
+    },
     "test:types": {
       "dependsOn": ["^build", "generate", "^generate"]
     },
@@ -32,6 +35,7 @@
         "@btravstack/di#build",
         "@btravstack/config#build",
         "@btravstack/core#build",
+        "@btravstack/testing#build",
         "@btravstack/http#build",
         "@btravstack/temporal#build",
         "@btravstack/amqp#build"

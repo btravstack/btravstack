@@ -172,11 +172,27 @@ nothing binds to, and parking is this queue's point.
 ## The specs: against a real broker
 
 `test-fixtures.ts` extends `@amqp-contract/testing`'s `it`, whose
-`amqpConnectionUrl` is this test's own vhost, and boots the same
+`amqpConnectionUrl` is this test's own vhost, with `@btravstack/testing`'s
+`boot: bootFixture()` and a `serve` over it that boots the same
 `OrderAmqpWorker` `main.ts` does with
 `env: { AMQP_URL: amqpConnectionUrl, OUTBOX_POLL_MS: "25" }` — the poll tight
-because every spec waits on real broker round trips. `serve` awaits
-`app.runtimeInfo()` so no test body races the worker's own startup.
+because every spec waits on real broker round trips:
+
+```ts
+await use(async (module, options) => {
+  const app = boot(module, { env, ...options });
+  // `runtimeInfo()` resolves once the worker is consuming — await it here
+  // so the caller's test body never races the worker's own startup.
+  await app.runtimeInfo();
+  return app;
+});
+```
+
+Every app is stopped by `boot`'s teardown when the test ends. The `tapped`
+fixture is `tapped(OrderAmqpWorker, [PlaceOrder, OrderRepository, Outbox,
+Logger])`: the writer the spec places orders through, the outbox it asserts
+against and the logger the consumer writes to — the very instances the
+running app uses, not fresh ones.
 
 Five specs, each a fact crossing the outbox, the broker and the queue: a
 committed write comes back as the consumer's notification, with the write

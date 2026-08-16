@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 
 import type { Env } from "@btravstack/config";
-import { start, type RunningApp, type StartOptions } from "@btravstack/core";
-import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
+import type { RunningApp, StartOptions } from "@btravstack/core";
+import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import { ApplicationModule, Logger, OrderRepository } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
-import { HttpModule, HttpRuntime, type HttpInfo } from "@btravstack/http";
+import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
+import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { fromSafePromise, OkAsync } from "unthrown";
-import { expect, test } from "vitest";
+import { test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { OrderApi } from "./module.js";
@@ -37,28 +38,18 @@ const apiWith = (repository: ServiceOf<OrderRepository>) =>
 
 /**
  * `start` hands the application context to the runtime alone, so a spec cannot
- * reach `Logger` the way `Module.scoped` can. This publishes the very `Logger`
- * service instance the use cases and the request scope write to.
+ * reach `Logger` the way `Module.scoped` can. `@btravstack/testing`'s `tapped`
+ * hands back the very `Logger` service instance the use cases and the request
+ * scope write to, once the graph is built.
  */
-class LoggerTap extends Port("LoggerTap")<{ readonly lines: () => readonly string[] }> {}
-
 const tappedApi = () => {
-  let read: () => readonly string[] = () => [];
-
+  const tap = tapped(OrderApi, [Logger]);
   return {
-    api: Module("TappedApi")({
-      imports: [OrderApi],
-      provides: [
-        Provider(LoggerTap)([Logger], {
-          sync: (logger) => {
-            read = logger.lines;
-            return { lines: logger.lines };
-          },
-        }),
-      ],
-      exports: [HttpRuntime, Logger],
-    }),
-    traces: (): readonly string[] => read().map((line) => line.slice(0, line.indexOf("]") + 1)),
+    api: tap.module,
+    traces: (): readonly string[] => {
+      const [logger] = tap.services();
+      return logger.lines().map((line) => line.slice(0, line.indexOf("]") + 1));
+    },
   };
 };
 
@@ -116,13 +107,13 @@ const portOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<number> => {
 };
 
 export type ApiFixtures = {
+  /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
+  readonly boot: Boot;
   /**
    * Starts an app on an ephemeral loopback port — `env: { PORT: "0", HOST:
    * "127.0.0.1" }`, which is how every composition here, the real one
-   * included, gets bound — and registers its shutdown. The teardown runs even
-   * when the test fails, which is what the `try`/`finally` blocks used to
-   * hand-roll — and it keeps the assertion those blocks carried: the app
-   * exited `Ok`.
+   * included, gets bound — with `RequestModule` forked around every request,
+   * through `boot`: its shutdown is the fixture's, on every exit path.
    *
    * The module's `X` is pinned to the two ports every composition here
    * exports rather than left generic: `start`'s gate is a phantom rest
@@ -154,32 +145,13 @@ const originOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<string> =>
   `http://127.0.0.1:${await portOf(app)}`;
 
 export const it = test.extend<ApiFixtures>({
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  serve: async ({}, use) => {
-    const shutdowns: (() => Promise<void>)[] = [];
+  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
 
-    const serve: ApiFixtures["serve"] = (module, options) => {
-      const app = start(module, {
-        env: { PORT: "0", HOST: "127.0.0.1" },
-        unit: RequestModule,
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        ...options,
-      });
-      shutdowns.push(async () => {
-        app.stop();
-        await expect(app.exited).toBeOk();
-      });
-      return app;
-    };
-
-    await use(serve);
-
-    for (const shutdown of shutdowns) await shutdown();
+  serve: async ({ boot }, use) => {
+    await use((module, options) => boot(module, { unit: RequestModule, ...options }));
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- see above
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   clientFor: async ({}, use) => {
     await use(async (app) => createOrderApiClient(await originOf(app)));
   },

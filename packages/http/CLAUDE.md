@@ -164,7 +164,12 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **24 specs, 100% lines/functions.** `http-runtime.spec.ts` carries 17,
+- **24 specs, 100% lines/functions.** Every app boots through the `boot`
+  fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
+  `configured` and `appOnPort` depend on — so it is stopped when the test
+  ends, on every exit path, and the teardown is Defect-only: a startup
+  failure (`configured`'s `ConfigInvalid`, `occupied`'s port in use) is the
+  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 17,
   through `test-fixtures.ts`'s `appOf` — `httpModule({ port: 0, hostname:
 "127.0.0.1" }, Provider(HttpHandler)({ value: handler }))` — so the
   guarantees (`404`/`500` fallbacks, the unit open until `'close'`, the drain,

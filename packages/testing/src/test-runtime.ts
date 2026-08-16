@@ -1,9 +1,12 @@
+import {
+  RuntimePort,
+  type RunUnit,
+  type Runtime,
+  type RuntimeHost,
+  type Serving,
+} from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
-
-import { createDeferred } from "./deferred.js";
-import { RuntimePort, type Runtime, type RuntimeHost, type Serving } from "./runtime.js";
-import type { RunUnit } from "./runtime.js";
 
 export type SubmittedUnit<T, E> = {
   readonly settle: (result: Result<T, E>) => void;
@@ -52,7 +55,10 @@ export const testRuntime = (name = "test"): TestRuntime => {
   let accepting = false;
   let serving: Serving<TestRuntimeInfo> | undefined;
   let submitted = 0;
-  const started = createDeferred<void>();
+  let onStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    onStarted = resolve;
+  });
 
   const make = (): Serving<TestRuntimeInfo> => ({
     info: { name },
@@ -79,11 +85,11 @@ export const testRuntime = (name = "test"): TestRuntime => {
       run = host.run;
       accepting = true;
       serving = make();
-      started.resolve(undefined);
+      onStarted();
       return OkAsync(serving);
     },
     started: () => serving !== undefined,
-    untilStarted: () => fromSafePromise(started.promise),
+    untilStarted: () => fromSafePromise(started),
     accepting: () => accepting,
     serving: () => {
       if (serving === undefined) {

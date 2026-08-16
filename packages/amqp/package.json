@@ -57,6 +57,7 @@
     "@btravstack/config": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
+    "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@types/node": "catalog:",

@@ -1,5 +1,6 @@
 ---
 "@btravstack/core": minor
+"@btravstack/testing": minor
 ---
 
 `StartOptions.unit` — a module the kernel forks around **every unit**. Its
@@ -31,5 +32,5 @@ whether it already fired. Without the option, unit work receives the
 application context exactly as before, synchronously. This closes the "Per-unit
 ports" deferral: `RunUnit` was typed for this fork from the start.
 
-`@btravstack/core/testing`'s `SubmittedUnit.signal` is now available
+`@btravstack/testing`'s `SubmittedUnit.signal` is now available
 synchronously after `submit()` whether or not a unit module is in play.

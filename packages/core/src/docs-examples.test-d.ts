@@ -5,13 +5,14 @@
 // substance (each was also compiled in a scratch file when written).
 //
 // The one deliberate divergence from the published text: the samples import
-// from `./index.js` / `./testing.js` where a reader imports `@btravstack/core`
-// and `@btravstack/core/testing`. The package cannot resolve its own name from
-// inside its own source tree, and those two specifiers are exactly what
-// `package.json`'s `exports` map points at.
+// from `./index.js` where a reader imports `@btravstack/core`. The package
+// cannot resolve its own name from inside its own source tree, and that
+// specifier is exactly what `package.json`'s `exports` map points at.
+// `@btravstack/testing` is imported by name — it is a separate package.
 
 import { Config, type ConfigInvalid } from "@btravstack/config";
 import { Module, Port, Provider, type AnyPort, type Context } from "@btravstack/di";
+import { createFakeClock, testRuntime, TestRuntimePort, withApp } from "@btravstack/testing";
 // The matcher augmentation `src/vitest.d.ts` carries for the specs: this
 // config compiles `*.test-d.ts` alone, so the testing sample below needs it in
 // scope to spell `toBeOkWith`.
@@ -33,7 +34,6 @@ import {
   type Serving,
   type UnitMeta,
 } from "./index.js";
-import { TestRuntimePort, createFakeClock, testRuntime, withApp } from "./testing.js";
 
 // ---------------------------------------------------------------------------
 // "A worked example" — packages/core/README.md; docs/how-to/write-a-runtime.md.
@@ -276,7 +276,7 @@ const embed = async (): Promise<void> => {
 };
 
 // ---------------------------------------------------------------------------
-// "Testing" — docs/how-to/test-an-application.md, docs/reference/core/testing.md.
+// "Testing" — docs/how-to/test-an-application.md, docs/reference/testing.md.
 // ---------------------------------------------------------------------------
 
 const drainTest = async (): Promise<void> => {

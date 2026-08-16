@@ -106,7 +106,7 @@ it breaks.
 module needing nothing, one owing `Scope` and one reading `Env` all fit — and
 then asks three questions of `X` that di's gate has no reason to ask. They
 arrive as the same shape, a phantom rest tuple named `StartGate<X, UnitNeeds>`
-that `start`, `runMain` and `withApp` all carry:
+that `start`, `runMain` and `@btravstack/testing`'s `withApp` and `Boot` all carry:
 
 | Arm                         | Fires when                                                                                                                                                                                                                                                       |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

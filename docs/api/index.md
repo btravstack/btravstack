@@ -7,8 +7,8 @@ description: The generated reference for every published package — each export
 
 Generated from the source with [TypeDoc](https://typedoc.org/) at build time —
 every exported symbol, with its signature and TSDoc. One page per package,
-following the dependency direction: `di` → `config` → `core`, then the three
-starters on top of `core`.
+following the dependency direction: `di` → `config` → `core`, then the test
+harness and the three starters on top of `core`.
 
 - **[`@btravstack/di`](/api/di/)** — `Port` (and `Port.many`), `Provider`,
   `Module` (`Module.scoped`, `Module.forkScope`), `Context`, and the type
@@ -19,15 +19,17 @@ starters on top of `core`.
   `port`, `pinned`, `object`, `provider`), the `Env` port, the errors
   `ConfigInvalid` and `ConfigFieldInvalid`, and the types `ConfigField`,
   `ConfigIssue`, `ConfigSchema`, `Environment`.
-- **[`@btravstack/core`](/api/core/)** — two entry points. `index`: `start`,
+- **[`@btravstack/core`](/api/core/)** — one entry point: `start`,
   `runMain`, `RuntimePort`, `RuntimeStartFailed`, `currentUnit`,
   `systemClock`, `stderrSink`, and the types `StartOptions`, `StartGate`,
   `RunningApp`, `ExitReport`, `TeardownError`, `DrainReport`, `Runtime`,
   `RuntimeHost`, `RunUnit`, `Serving`, `RuntimeInfoOf`, `UnitMeta`,
   `UnitRecord`, `UnitRegistry`, `UnitWork`, `Clock`, `Phase`, `KernelEvent`,
-  `EventSink`. `testing` (`@btravstack/core/testing`): `testRuntime`,
-  `TestRuntimePort`, `createFakeClock`, `withApp`, and the types
-  `TestRuntime`, `TestRuntimeInfo`, `SubmittedUnit`, `FakeClock`.
+  `EventSink`.
+- **[`@btravstack/testing`](/api/testing/)** — `bootFixture`, `tapped`,
+  `withApp`, `testRuntime`, `TestRuntimePort`, `createFakeClock`, and the
+  types `Boot`, `BootDefaults`, `ServicesOf`, `TestRuntime`,
+  `TestRuntimeInfo`, `SubmittedUnit`, `FakeClock`.
 - **[`@btravstack/http`](/api/http/)** — `HttpModule`, `HttpRouter`, `http`,
   the ports `HttpRuntime` and `HttpConfig`, and the types `HttpModuleOptions`,
   `HttpOptions`, `HttpInfo`.

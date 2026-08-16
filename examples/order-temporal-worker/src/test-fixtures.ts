@@ -2,8 +2,8 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid } from "@btravstack/config";
-import { start, type RunningApp } from "@btravstack/core";
-import { Module, Port, Provider, type Scope, type ServiceOf } from "@btravstack/di";
+import type { RunningApp } from "@btravstack/core";
+import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
   ApplicationModule,
   Logger,
@@ -16,6 +16,7 @@ import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domai
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
+import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import { createTimeSkippingTest } from "@temporal-contract/testing/time-skipping";
 import {
@@ -26,7 +27,6 @@ import {
 } from "@temporal-contract/testing/workflow-bundle";
 import type { TestWorkflowEnvironment } from "@temporalio/testing";
 import { ErrAsync, OkAsync } from "unthrown";
-import { expect } from "vitest";
 
 import { orderActivities } from "./activities.js";
 import { FulfillmentModule } from "./fulfillment.js";
@@ -71,58 +71,40 @@ type Deployment<E> = {
  * own exports.
  */
 type Serve = <E>(
-  module: Module<PlaceOrder | OrderRepository | StockService | ShippingService, E, Scope>,
+  module: Module<PlaceOrder | OrderRepository | StockService | ShippingService | Logger, E, Scope>,
 ) => Promise<Deployment<E>>;
-
-/**
- * `start` hands the application context to the runtime alone, so a spec cannot
- * reach the services the way `Module.scoped` can. This captures the very
- * instances the running app uses — the repository the compensation assertions
- * read through, and the logger the stub services write to.
- */
-class ServicesTap extends Port("ServicesTap")<{
-  readonly repository: ServiceOf<OrderRepository>;
-  readonly logger: ServiceOf<Logger>;
-}> {}
-
-const tapProvider = (capture: (services: ServiceOf<ServicesTap>) => void) =>
-  Provider(ServicesTap)([OrderRepository, Logger], {
-    sync: (repository, logger) => {
-      const services = { repository, logger };
-      capture(services);
-      return services;
-    },
-  });
 
 /**
  * The application half of a root shaped like the real one, with this test's
  * fulfillment module swapped in: same `ApplicationModule`, same
  * `PersistenceModule`, so the orchestration under test is unchanged and only
  * the external services' answers differ. It exports what `orderActivities`
- * closes over; the sugar joins in `serve`, which is where the per-test queue
- * and the memoised bundle are known.
+ * closes over, plus `Logger` for the tap below; the sugar joins in `serve`,
+ * which is where the per-test queue and the memoised bundle are known.
  */
-const rootWith = (
-  fulfillment: typeof FulfillmentModule,
-  capture: (services: ServiceOf<ServicesTap>) => void,
-) =>
+const rootWith = (fulfillment: typeof FulfillmentModule) =>
   Module("StubTemporal")({
     imports: [ApplicationModule, PersistenceModule, fulfillment],
-    provides: [tapProvider(capture)],
-    exports: [PlaceOrder, OrderRepository, StockService, ShippingService],
+    exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger],
   });
 
+/**
+ * `start` hands the application context to the runtime alone, so a spec cannot
+ * reach the services the way `Module.scoped` can. `@btravstack/testing`'s
+ * `tapped` captures the very instances the running app uses — the repository
+ * the compensation assertions read through, and the logger the stub services
+ * write to.
+ */
 const deployment = (fulfillment: typeof FulfillmentModule) => {
-  let services: ServiceOf<ServicesTap> | undefined;
-
+  const tap = tapped(rootWith(fulfillment), [OrderRepository, Logger]);
   return {
-    module: rootWith(fulfillment, (captured) => {
-      services = captured;
-    }),
-    services: (): ServiceOf<ServicesTap> => {
-      // oxlint-disable-next-line unthrown/no-throw -- a fixture misused before `serve` is a broken test, and the loudest possible answer is the right one
-      if (services === undefined) throw new Error("the app has not been served yet");
-      return services;
+    module: tap.module,
+    services: (): {
+      readonly repository: ServiceOf<OrderRepository>;
+      readonly logger: ServiceOf<Logger>;
+    } => {
+      const [repository, logger] = tap.services();
+      return { repository, logger };
     },
   };
 };
@@ -181,11 +163,11 @@ const noShippingTemporal = () => {
 
 export type TemporalFixtures = {
   readonly testEnv: TestWorkflowEnvironment;
+  /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
+  readonly boot: Boot;
   /**
    * Boots an app whose Temporal worker polls a task queue of this test's own,
-   * and registers its shutdown. The teardown runs even when the test fails,
-   * which is what a `try`/`finally` used to hand-roll — and it keeps the
-   * assertion those blocks carried: the app exited `Ok`.
+   * through `boot` — so its shutdown is the fixture's, on every exit path.
    */
   readonly serve: Serve;
   readonly fulfilling: ReturnType<typeof fulfillingTemporal>;
@@ -196,12 +178,12 @@ export type TemporalFixtures = {
 export const it = createTimeSkippingTest({
   server: { executable: { type: "cached-download", downloadDir, ttl: "365d" } },
 }).extend<Omit<TemporalFixtures, "testEnv">>({
-  serve: async ({ testEnv }, use) => {
+  boot: bootFixture(),
+  serve: async ({ testEnv, boot }, use) => {
     // Memoised per spec file by `bundleFor`: webpack over the workflow module
     // is the single most expensive thing in this suite, and every test needs
     // the same bundle.
     const workflowBundle = await bundleFor(fixturePath(import.meta.url, "workflows"));
-    const shutdowns: (() => Promise<void>)[] = [];
 
     const serve: Serve = async (module) => {
       // A queue of this test's own: the environment is shared by every test in
@@ -222,17 +204,7 @@ export const it = createTimeSkippingTest({
         imports: [module],
       });
 
-      const app = start(worker, {
-        env: { TEMPORAL_ADDRESS: testEnv.address },
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-      });
-
-      shutdowns.push(async () => {
-        app.stop();
-        await expect(app.exited).toBeOk();
-      });
+      const app = boot(worker, { env: { TEMPORAL_ADDRESS: testEnv.address } });
 
       // `.get()`, not `.getOrThrow()`: the error channel is empty, so a client
       // that could not be built is a defect and rethrowing its cause is what
@@ -243,8 +215,6 @@ export const it = createTimeSkippingTest({
     };
 
     await use(serve);
-
-    for (const shutdown of shutdowns) await shutdown();
   },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture

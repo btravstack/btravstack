@@ -29,6 +29,7 @@
     "unthrown": "catalog:"
   },
   "devDependencies": {
+    "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",

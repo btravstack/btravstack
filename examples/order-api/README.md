@@ -14,7 +14,7 @@ src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel 
 src/client.ts         an AsyncResult client for the same contract
 src/module.ts         OrderApi — the composition root, HttpModule("OrderApi")({ router: orderRouter, … })
 src/main.ts           the process: runMain(OrderApi, { unit: RequestModule })
-src/test-fixtures.ts  serve / clientFor / gate / tapped, as Vitest fixtures
+src/test-fixtures.ts  boot / serve / clientFor / gate / tapped, as Vitest fixtures — boot and tapped from @btravstack/testing
 ```
 
 ## The two channels survive the wire
@@ -153,9 +153,13 @@ actually happens. No Docker, nothing to install.
 
 Every helper they need is a Vitest fixture in `src/test-fixtures.ts`, so the spec
 opens on `describe` and each test names its dependencies in its own parameter
-list. Shutting an app down is the `serve` fixture's job, which is why no test
-here has a `try`/`finally`: fixture cleanup runs even when the body fails, and it
-still asserts the app exited `Ok`.
+list. Shutting an app down is the `boot` fixture's job —
+[`@btravstack/testing`](../../packages/testing)'s `bootFixture({ env: { PORT:
+"0", HOST: "127.0.0.1" } })`, which `serve` builds on — which is why no test
+here has a `try`/`finally`: fixture cleanup runs even when the body fails, and a
+shutdown that blows up (a `Defect` on `exited`) fails the test. `tapped`, from
+the same package, hands back the very `Logger` the use cases wrote to, so the
+trace assertions read the running app's own lines.
 
 ```ts
 it("lets an in-flight call finish while draining", async ({ serve, clientFor, gate }) => {
@@ -165,10 +169,10 @@ it("lets an in-flight call finish while draining", async ({ serve, clientFor, ga
 });
 ```
 
-`serve` boots whatever composition it is handed with
-`env: { PORT: "0", HOST: "127.0.0.1" }` — the real `OrderApi` included, since
-`http()` reads its port from the environment the kernel provides — and reads
-the port it got back from `runtimeInfo()`.
+`serve` boots whatever composition it is handed with `RequestModule` as the
+unit and that `env` — the real `OrderApi` included, since `http()` reads its
+port from the environment the kernel provides — and `clientFor` reads the port
+it got back from `runtimeInfo()`.
 
 `src/main.ts` is the process itself, and it is one call:
 

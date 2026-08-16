@@ -26,13 +26,14 @@ import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
-import { currentUnit, start, type RunningApp } from "@btravstack/core";
+import { currentUnit, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { oc, type RouterContractClient } from "@orpc/contract";
 import { OkAsync, fromSafePromise } from "unthrown";
-import { expect, test } from "vitest";
+import { test } from "vitest";
 
 import { HttpHandler } from "./handler.js";
 import { HttpModule } from "./http-module.js";
@@ -163,10 +164,11 @@ const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
 export type HttpFixtures = {
+  /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
+  readonly boot: Boot;
   /**
-   * Starts an app on an ephemeral port and registers its shutdown. Teardown runs
-   * on every exit path, including a failing assertion, and keeps the assertion a
-   * `finally` used to carry: the app exited `Ok`.
+   * Starts an app on an ephemeral port through `boot`, so its shutdown is the
+   * fixture's — on every exit path, a failing assertion included.
    */
   readonly serve: (
     handler?: Handler,
@@ -244,60 +246,27 @@ export type HttpFixtures = {
 };
 
 export const it = test.extend<HttpFixtures>({
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  serve: async ({}, use) => {
-    const started: App[] = [];
+  boot: bootFixture(),
 
+  serve: async ({ boot }, use) => {
     await use(async (handler = noop, unit) => {
-      const app = start(appOf(handler), {
-        ...(unit === undefined ? {} : { unit }),
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-      });
-      started.push(app);
-
+      const app = boot(appOf(handler), unit === undefined ? {} : { unit });
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { app, origin: `http://127.0.0.1:${info.port}` };
     });
-
-    for (const app of started) {
-      app.stop();
-      await expect(app.exited).toBeOk();
-    }
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- see above
-  configured: async ({}, use) => {
-    const started: RunningApp<ConfigInvalid, HttpInfo>[] = [];
-
+  configured: async ({ boot }, use) => {
     await use((env, options = {}) => {
       const { module, config } = configuredAppOf(options);
-      const app = start(module, { env, signals: false, probes: false, onEvent: () => {} });
-      started.push(app);
-      return { app, config };
+      return { app: boot(module, { env }), config };
     });
-
-    for (const app of started) {
-      app.stop();
-      await app.exited;
-    }
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- see above
-  rpc: async ({}, use) => {
-    const started: RunningApp<ConfigInvalid, HttpInfo>[] = [];
-
+  rpc: async ({ boot }, use) => {
     await use(async (prefix, stray) => {
-      const app = start(rpcAppOf(prefix, stray), {
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-      });
-      started.push(app);
+      const app = boot(rpcAppOf(prefix, stray));
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       const origin = `http://127.0.0.1:${info.port}`;
@@ -306,34 +275,15 @@ export const it = test.extend<HttpFixtures>({
       );
       return { origin, client };
     });
-
-    for (const app of started) {
-      app.stop();
-      await expect(app.exited).toBeOk();
-    }
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- see above
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   slowUnit: async ({}, use) => {
     await use(slowUnitOf());
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- see above
-  appOnPort: async ({}, use) => {
-    const started: App[] = [];
-
-    await use((port) => {
-      const app = start(appOf(noop, port), {
-        signals: false,
-        probes: false,
-        preDrainDelayMs: 0,
-        onEvent: () => {},
-      });
-      started.push(app);
-      return app;
-    });
-
-    for (const app of started) app.stop();
+  appOnPort: async ({ boot }, use) => {
+    await use((port) => boot(appOf(noop, port)));
   },
 
   occupied: async ({ appOnPort }, use) => {

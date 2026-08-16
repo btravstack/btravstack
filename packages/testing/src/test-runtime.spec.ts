@@ -1,0 +1,107 @@
+import type { RunUnit, RuntimeHost } from "@btravstack/core";
+import { Context } from "@btravstack/di";
+import { Ok, fromSafePromise } from "unthrown";
+import { describe, expect, it } from "vitest";
+
+import { testRuntime } from "./test-runtime.js";
+
+// A `RuntimeHost` sized for the double: the kernel's registry counts open
+// units and hands each an `AbortSignal`; this stub does the same in a dozen
+// lines, so the runtime can be started without booting a kernel around it.
+const hostFor = (
+  signal = new AbortController().signal,
+): RuntimeHost<never> & { readonly inFlight: () => number } => {
+  const ctx = Context.empty();
+  let inFlight = 0;
+  const run: RunUnit<never> = (_meta, work) => {
+    inFlight += 1;
+    return fromSafePromise(
+      Promise.resolve(work(ctx, signal)).finally(() => {
+        inFlight -= 1;
+      }),
+    ).flatMap((result) => result);
+  };
+  return { ctx, run, inFlight: () => inFlight };
+};
+
+describe("testRuntime", () => {
+  it("starts and reports itself started", async () => {
+    const runtime = testRuntime();
+    const serving = await runtime.start(hostFor());
+
+    expect(serving).toBeOk();
+    expect(runtime.started()).toBe(true);
+  });
+
+  it("routes submitted work through the host", async () => {
+    const host = hostFor();
+    const runtime = testRuntime();
+    await runtime.start(host);
+
+    const unit = runtime.submit();
+    expect(host.inFlight()).toBe(1);
+
+    unit.settle(Ok("done"));
+    await expect(unit.result).toBeOkWith("done");
+    expect(host.inFlight()).toBe(0);
+  });
+
+  // The fixture's two misuse guards are loud on purpose — a test that forgot
+  // to start the runtime is a bug in the test, not a modeled outcome, so it
+  // must not be routed into a `Result` a careless assertion could swallow.
+  it("is loud when asked for a Serving it has not produced yet", () => {
+    const runtime = testRuntime();
+
+    expect(runtime.started()).toBe(false);
+    expect(() => runtime.serving()).toThrow("not started");
+  });
+
+  it("refuses work after drain has begun", async () => {
+    const runtime = testRuntime();
+    await runtime.start(hostFor());
+    const serving = runtime.serving();
+
+    void serving.drain(new AbortController().signal);
+
+    expect(() => runtime.submit()).toThrow("not accepting");
+  });
+
+  it("forwards the unit's abort to the submitted unit's own signal", async () => {
+    // GIVEN a host that opens units already aborted (a drain deadline passed)
+    const runtime = testRuntime();
+    await runtime.start(hostFor(AbortSignal.abort("deadline")));
+
+    // WHEN work is submitted
+    const unit = runtime.submit();
+
+    // THEN its signal is aborted, with the host's reason
+    expect({ aborted: unit.signal.aborted, reason: unit.signal.reason }).toEqual({
+      aborted: true,
+      reason: "deadline",
+    });
+  });
+
+  it("forwards an abort that fires while the unit is open", async () => {
+    // GIVEN a host whose units abort on demand
+    const controller = new AbortController();
+    const runtime = testRuntime();
+    await runtime.start(hostFor(controller.signal));
+    const unit = runtime.submit();
+
+    // WHEN the host aborts the open unit
+    controller.abort("later");
+
+    // THEN the submitted unit's signal followed
+    expect(unit.signal.reason).toBe("later");
+  });
+
+  it("reports whether it is accepting, before and after the drain", async () => {
+    const runtime = testRuntime();
+    await runtime.start(hostFor());
+    const before = runtime.accepting();
+
+    void runtime.serving().drain(new AbortController().signal);
+
+    expect({ before, after: runtime.accepting() }).toEqual({ before: true, after: false });
+  });
+});

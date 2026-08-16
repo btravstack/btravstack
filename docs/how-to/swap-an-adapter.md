@@ -138,9 +138,9 @@ matcher — one deep assertion, the style this repo's own suites use.
 
 An application booted by `start` swaps adapters the same way, one level up:
 compose a root that imports the stub persistence module in place of the real
-one and hand it to `withApp` from `@btravstack/core/testing`, which starts it,
-runs your test body against the `RunningApp` and stops it again whatever the
-body does. `examples/order-api`'s `test-fixtures.ts` does exactly this — a
+one and hand it to `@btravstack/testing`'s `boot` (or `withApp`), which starts
+it and stops it again when the test ends, whatever the body does.
+`examples/order-api`'s `test-fixtures.ts` does exactly this — a
 `persistenceOf(repository)` module providing `OrderRepository` as a `value`,
 and an `apiWith(repository)` root that is `HttpModule` over the real
 `ApplicationModule` plus that stub. The application module never learns which

@@ -116,7 +116,7 @@ ordinary di modules is what keeps it from being a cage.
 
 ## The family
 
-`start` sits on three packages and under three more.
+`start` sits on three packages and under four more.
 
 - [`unthrown`](https://github.com/btravstack/unthrown) — errors as values, with a
   separate defect channel. Every fallible surface here returns its `Result`;
@@ -128,6 +128,9 @@ ordinary di modules is what keeps it from being a cage.
 - [`@btravstack/core`](/reference/core/start) — this kernel.
 - [`@btravstack/http`](/reference/http), [`@btravstack/temporal`](/reference/temporal),
   [`@btravstack/amqp`](/reference/amqp) — the starters, one per transport.
+- [`@btravstack/testing`](/reference/testing) — the test harness, a dev
+  dependency: a fixture that boots and stops what a test starts, a tap into
+  the running graph, an in-memory runtime and a fake clock.
 
 The three below `core` are its **peer dependencies**, not dependencies: port
 identity and `isResult` both compare across copies, so an application must

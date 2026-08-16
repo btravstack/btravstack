@@ -152,14 +152,15 @@ deployments.
 
 ## Packages
 
-| Package                                       | Description                                                                                                                                |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`@btravstack/core`](./packages/core)         | The kernel: `start`, `runMain`, the lifecycle state machine, the unit-of-work registry, the `Runtime` contract, probes, exit codes.        |
-| [`@btravstack/di`](./packages/di)             | The container: ports, providers, modules, and wiring checked by the compiler. Depends on nothing but `unthrown`.                           |
-| [`@btravstack/config`](./packages/config)     | Configuration from the environment as providers: `Config.string/integer/port`, `Config.object`, `Config.provider`, `ConfigInvalid` → `78`. |
-| [`@btravstack/http`](./packages/http)         | The HTTP starter: oRPC over `node:http`, `HttpRouter` / `HttpModule`, one unit per request, a drain that retires keep-alive connections.   |
-| [`@btravstack/temporal`](./packages/temporal) | The Temporal starter: `TemporalActivities` / `TemporalModule`, one unit per activity attempt, a drain that honours the kernel's deadline.  |
-| [`@btravstack/amqp`](./packages/amqp)         | The AMQP starter: `AmqpHandlers` / `AmqpModule`, one unit per delivery, one drain deadline.                                                |
+| Package                                       | Description                                                                                                                                    |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@btravstack/core`](./packages/core)         | The kernel: `start`, `runMain`, the lifecycle state machine, the unit-of-work registry, the `Runtime` contract, probes, exit codes.            |
+| [`@btravstack/di`](./packages/di)             | The container: ports, providers, modules, and wiring checked by the compiler. Depends on nothing but `unthrown`.                               |
+| [`@btravstack/config`](./packages/config)     | Configuration from the environment as providers: `Config.string/integer/port`, `Config.object`, `Config.provider`, `ConfigInvalid` → `78`.     |
+| [`@btravstack/testing`](./packages/testing)   | The test harness: `bootFixture` for `test.extend`, `tapped` to read services out of a booted app, `testRuntime`, `createFakeClock`, `withApp`. |
+| [`@btravstack/http`](./packages/http)         | The HTTP starter: oRPC over `node:http`, `HttpRouter` / `HttpModule`, one unit per request, a drain that retires keep-alive connections.       |
+| [`@btravstack/temporal`](./packages/temporal) | The Temporal starter: `TemporalActivities` / `TemporalModule`, one unit per activity attempt, a drain that honours the kernel's deadline.      |
+| [`@btravstack/amqp`](./packages/amqp)         | The AMQP starter: `AmqpHandlers` / `AmqpModule`, one unit per delivery, one drain deadline.                                                    |
 
 ## Examples
 

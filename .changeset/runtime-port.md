@@ -1,5 +1,6 @@
 ---
 "@btravstack/core": minor
+"@btravstack/testing": minor
 ---
 
 **Breaking.** The runtime is a service the module provides, not an option.
@@ -18,6 +19,6 @@ NEEDS`. `Needs` and `Info` are read off the module (`RuntimeInfoOf<X>` is export
 `RunningApp<E, RuntimeInfoOf<X>>` types `runtimeInfo()` from the composition
 alone.
 
-`@btravstack/core/testing`: `testRuntime()` carries `.module`, a module
+`@btravstack/testing`: `testRuntime()` carries `.module`, a module
 providing itself on the exported `TestRuntimePort` — import it next to the
 module under test and export the port.
