@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/config",
-  "version": "0.0.0",
+  "version": "0.2.0",
   "description": "Configuration the twelve-factor way for @btravstack/di: typed values bound from the environment, validated once, injected like any other service",
   "keywords": [
     "12-factor",
@@ -61,7 +61,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@btravstack/di": "^0.1.0",
+    "@btravstack/di": "workspace:^",
     "unthrown": "^5.0.0"
   },
   "engines": {

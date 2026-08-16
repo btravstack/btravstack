@@ -62,6 +62,41 @@ pnpm build            # tsdown dual CJS/ESM + d.ts
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
+## Versioning: all eight packages move as one
+
+The eight published packages share **one version number**, enforced by a
+`fixed` group in `.changeset/config.json`. A release bumps every one of them,
+whether or not it changed — Spring Boot's model, and the reason is the same:
+an application installs a kernel and two or three starters together, and
+"which version of `@btravstack/http` goes with `@btravstack/core@0.4.1`" is a
+question nobody should have to answer.
+
+`@btravstack/di` is the only one with a published history (`0.1.0`, from its
+standalone repository, before the merge). The unified line therefore starts at
+**0.2.0**: above di's published version, and 0.x because the API still moves —
+this repo removed `Port.many` and `withApp` in a single afternoon.
+
+**A minor bump lands on 1.0.0, and that is changesets, not a decision.** Every
+package here peer-depends on `@btravstack/di` and most on `@btravstack/config`
+and `@btravstack/core`, and changesets majors any package whose _peer_
+dependency is bumped by a minor or major. From 0.x a major is `1.0.0`.
+Measured on changesets 2.31.1:
+
+| From 0.2.0          | Result                                 |
+| ------------------- | -------------------------------------- |
+| a `patch` changeset | `0.2.1` — the whole group, as intended |
+| a `minor` changeset | `1.0.0` — the whole group              |
+
+Neither documented escape hatch suppresses it
+(`onlyUpdatePeerDependentsWhenOutOfRange`, `updateInternalDependents`: both
+tried, neither changes the result), and the internal peers cannot become
+ordinary dependencies — the dual-copy hazard is what they exist to prevent.
+So the options at the first feature release are to accept `1.0.0`, or to
+override the computed version by hand as the `0.2.0` release did (run
+`changeset version`, then rewrite the eight `package.json` versions and the
+eight `CHANGELOG.md` headings). Decide it deliberately; do not let a routine
+`pnpm run version` decide it.
+
 ## Thesis (do not drift from these)
 
 1. **One process, one runtime.** The kernel knows several runtime _kinds_; a
@@ -484,9 +519,13 @@ Persistence, observability()], exports: [Logger] })`** is the whole
   peers on both of those plus `@btravstack/core` itself, for the same reason.
   `node:` builtins only otherwise. Do not add a dependency — `Config` is
   hand-rolled Standard Schema for exactly this reason. `@btravstack/di`
-  living in this workspace does **not** change that: it is linked with
-  `workspace:*` in `devDependencies` and stays `^0.1.0` in `peerDependencies`,
-  so a consumer still installs one copy of it themselves. `di` itself peers on
+  living in this workspace does **not** change that: it is `workspace:*` in
+  `devDependencies` and `workspace:^` in `peerDependencies` — the same
+  protocol as every other in-repo peer, which pnpm rewrites to a real `^`
+  range at publish, so a consumer still installs one copy themselves. It was
+  a hardcoded `^0.1.0` until the versions went lockstep; a literal range in a
+  peer field is a pin that goes stale silently the first time the dependency
+  is bumped. `di` itself peers on
   `unthrown` and depends on nothing; `config` peers on `di` and `unthrown`;
   `core` peers on all three; `testing` peers on all four (and not on
   `vitest` — `bootFixture` is a plain function in vitest's fixture shape);

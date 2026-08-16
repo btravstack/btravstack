@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The application kernel: boot a di module into a running process, and stop it without losing work",
   "keywords": [
     "application",
@@ -65,7 +65,7 @@
   },
   "peerDependencies": {
     "@btravstack/config": "workspace:^",
-    "@btravstack/di": "^0.1.0",
+    "@btravstack/di": "workspace:^",
     "unthrown": "^5.0.0"
   },
   "engines": {

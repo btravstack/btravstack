@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/http",
-  "version": "0.0.0",
+  "version": "0.2.0",
   "description": "The HTTP starter for @btravstack/core: oRPC over node:http, one unit per request, and a drain that actually stops accepting",
   "keywords": [
     "graceful-shutdown",
@@ -71,7 +71,7 @@
   "peerDependencies": {
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
-    "@btravstack/di": "^0.1.0",
+    "@btravstack/di": "workspace:^",
     "@orpc/contract": "^2.0.0-beta",
     "@orpc/server": "^2.0.0-beta",
     "@unthrown/orpc": "^0.1.0",

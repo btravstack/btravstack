@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/amqp",
-  "version": "0.0.0",
+  "version": "0.2.0",
   "description": "The AMQP starter for @btravstack/core: the handlers as a port, one unit per delivery, and a drain the kernel's deadline releases",
   "keywords": [
     "amqp",
@@ -73,7 +73,7 @@
     "@amqp-contract/worker": "^3.0.0-beta.6",
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
-    "@btravstack/di": "^0.1.0",
+    "@btravstack/di": "workspace:^",
     "@opentelemetry/api": "^1",
     "unthrown": "^5.0.0"
   },
