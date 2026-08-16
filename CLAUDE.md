@@ -382,11 +382,15 @@ type checker already verifies.
   `Module.scoped`. They are different gates and easy to conflate. `start`'s
   `UNSATISFIED RUNTIME NEEDS` arm is pinned only by `packages/core`'s own
   `start.test-d.ts`, since every shipped runtime declares `needs: []`.
-  `examples/` stays the only place the gate is pinned by a **type test** —
-  `@btravstack/http` ships no `*.test-d.ts`; its 24 specs across
-  `http-runtime.spec.ts` and `orpc.spec.ts` drive the transport through the
-  internal `httpModule` with a bare listener, and the starter proper through
-  `HttpModule`.
+  `examples/` is not the only place the gate is pinned by a **type test**:
+  `packages/amqp/src/amqp-runtime.test-d.ts` pins the handlers-port half of
+  `amqp`'s own gate, and `packages/http/src/controller.test-d.ts` pins the
+  five compile-time gates the keyed `HttpRouter(contract)(controllers)` form
+  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 26 specs, across
+  `http-runtime.spec.ts`, `orpc.spec.ts` and `controller.spec.ts`, drive the
+  transport through the internal `httpModule` with a bare listener, the
+  starter proper through `HttpModule`, and the keyed router form through the
+  `rpcSliced` fixture.
 - **`examples/order-temporal-worker` is the one workspace whose suite needs the
   network, and only on a cold cache.** It runs a real `@temporalio/worker`
   Worker against `@temporalio/testing`'s **time-skipping test server** — a
@@ -474,14 +478,32 @@ sync })`,
   `ShippingService.arrange` fails as a **defect**, which the platform retries
   on another worker — the contract's `ShippingUnavailable` is a permanent no
   and would be the wrong error for "we ran out of time".
+- **A controller is a provider; a slice is a module; a modulith is several
+  slice modules in one root.** No new concept: a slice owns its contract
+  fragment, its controller and (if it needs one) its own adapter, and ships
+  as an ordinary di `Module` that exports only its controller's port —
+  everything else about the slice stays private. `@btravstack/http`'s
+  `HttpController(name, fragment)([deps], { sync })` mints the controller's
+  port; the root composes every slice's controller into one router with the
+  keyed `HttpRouter(contract)(controllers)` form, exact against the contract
+  (see `packages/http/CLAUDE.md`). **A fragment is itself a valid contract**,
+  so a slice lifts out of the modulith into a process of its own without its
+  controller changing at all — extracting it is deleting an import at the
+  root, not a rewrite. This is what makes composing several slices into one
+  router a starting point rather than a trap, and it is the one property
+  marked do-not-break in the design.
 - **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
-  over its own node adapter, `@unthrown/orpc` at the boundary.** The router is a di-provided
-  service — `orderRouter` is a provider that **declares** `PlaceOrder` and
-  `FindOrder`, so oRPC's context stays empty and nothing is located from a
-  context at call time, never a module-level singleton — and
+  over its own node adapter, `@unthrown/orpc` at the boundary.** It is a
+  two-slice modulith on the shape above: `slices/orders/` and
+  `slices/customers/`, each its own contract fragment, its own
+  `HttpController` and its own di module exporting only that controller's
+  port. The root composes them —
+  `orderRouter = HttpRouter(orderContract)({ orders: ordersController,
+customers: customersController })`, the keyed form — and
   **`HttpModule("OrderApi")({ router: orderRouter, imports: [Application,
-Persistence, observability()], exports: [Logger] })`** is the whole
+Persistence, OrdersSlice, CustomersSlice, observability()], exports:
+[Logger] })`** is the whole
   composition root — the
   sugar imports `http()`, provides the router on the starter's
   `HttpRouterPort` and
@@ -499,8 +521,8 @@ Persistence, observability()], exports: [Logger] })`** is the whole
   `building` is emitted while the graph still is. The other two stay one line
   — the kernel's stderr sink is a fine default and this is the upgrade, not
   the requirement. Each procedure is a plain
-  `Result`-returning function typed by the contract (`@unthrown/orpc`'s
-  `.result()` handler, attached by `HttpRouter(orderContract)`). It reads
+  `Result`-returning function typed by its slice's fragment (`@unthrown/orpc`'s
+  `.result()` handler, attached inside each `HttpController`). It reads
   `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the
   package's. Two gates keep the composition honest at compile time: a root

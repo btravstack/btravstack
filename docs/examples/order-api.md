@@ -1,6 +1,6 @@
 ---
 title: Order API example
-description: The HTTP deployment — HttpRouter over the order contract with one exhaustive triage from domain Err to ORPCError, HttpModule as the whole composition root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
+description: The HTTP deployment — two slices, orders and customers, each its own contract fragment and HttpController, composed by the keyed HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
 ---
 
 # Order API (HTTP)
@@ -16,62 +16,103 @@ pnpm turbo run test --filter=@btravstack/example-order-api
 The specs run a real `node:http` server and a real oRPC client over it, on an
 ephemeral port; nothing else is needed.
 
-## The router: contract-first, `Result` at every leaf
+## Two slices, each its own fragment and controller
 
-`router.ts` is the transport boundary and the only place in the example where
-a domain error becomes something else. `HttpRouter(orderContract)` is di's
-`Provider(port)` on the starter's own router port — no class, no name: a
-process serves one router — so the router is a provider like any other: it
-declares the two use cases its procedures call, and di injects them. oRPC's
-own context stays empty.
+The contract splits into two fragments, `orders` and `customers`, each a
+`RouterContract` in its own right:
 
 ```ts
-export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
+export const ordersContract = {
+  place: oc
+    .input(type<{ readonly id: string; readonly quantity: number }>())
+    .output(type<OrderView>())
+    .errors({
+      INVALID_QUANTITY: { data: type<OrderRef>() },
+      CONFLICT: { data: type<OrderRef>() },
+    }),
+  find: oc
+    .input(type<OrderRef>())
+    .output(type<OrderView>())
+    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+};
+
+export const customersContract = {
+  find: oc
+    .input(type<{ readonly id: string }>())
+    .output(type<CustomerView>())
+    .errors({ NOT_FOUND: { data: type<{ readonly id: string }>() } }),
+};
+
+export const orderContract = {
+  orders: ordersContract,
+  customers: customersContract,
+};
+```
+
+Each slice lives under `slices/<name>/` — a `controller.ts` implementing that
+slice's fragment, its own domain (`slices/customers/directory.ts`), and a
+`module.ts` exporting only its controller's port:
+
+```
+src/slices/orders/controller.ts       HttpController("OrdersController", ordersContract)([PlaceOrder, FindOrder], { sync })
+src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only its port
+src/slices/customers/directory.ts     CustomerDirectory — the slice's own adapter
+src/slices/customers/controller.ts    HttpController("CustomersController", customersContract)([CustomerDirectory], { sync })
+src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
+```
+
+`slices/orders/controller.ts` is the transport boundary and the only place in
+the example where a domain error becomes something else:
+
+```ts
+export const ordersController = HttpController(
+  "OrdersController",
+  ordersContract,
+)([PlaceOrder, FindOrder], {
   sync: (place, find) => ({
-    orders: {
-      place: ({ errors }, input) =>
-        place
-          .execute(input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          ),
-      find: ({ errors }, input) =>
-        find
-          .execute(input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
+    place: ({ errors }, input) =>
+      place
+        .execute(input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
+        ),
+    find: ({ errors }, input) =>
+      find
+        .execute(input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({
+              message: error.message,
+              data: { id: error.id },
+            }),
           ),
-    },
+        ),
   }),
 });
 ```
 
 Each leaf is the `.result()` handler `@unthrown/orpc` gives that procedure's
-implementer, typed by the contract at the call — the input is the contract's
+implementer, typed by the contract at the call — the input is the fragment's
 parsed input, `errors` its declared error map, and a typo'd or missing
-procedure is a compile error. In it, `Ok` is the output, an `Err` holding an
-`ORPCError` is **returned** (so oRPC marks it inferable and the client gets it
-typed), and a `Defect` rethrows its cause onto oRPC's own defect path, where
-it collapses to `INTERNAL_SERVER_ERROR`.
+procedure is a compile error **inside the controller**, not at the root. In
+it, `Ok` is the output, an `Err` holding an `ORPCError` is **returned** (so
+oRPC marks it inferable and the client gets it typed), and a `Defect`
+rethrows its cause onto oRPC's own defect path, where it collapses to
+`INTERNAL_SERVER_ERROR`.
 
 The `mapErrCases` in between is the triage. Every case of the use case's
 error type is named — this repository bans `P._`, and the matcher has no
@@ -80,14 +121,47 @@ place that has to decide what a client sees. A `Defect` is never named: it
 was never modeled, and collapsing it to a 500 is the correct treatment rather
 than a fallback.
 
+`slices/customers/controller.ts` is the same shape over one procedure, built
+from `slices/customers/directory.ts`'s own `CustomerDirectory` port — a slice
+owns its adapter, which is what makes it liftable into a service of its own.
+
+## The router: composed from controllers, keyed by the contract
+
+`module.ts`'s `orderRouter` is `HttpRouter(orderContract)`'s **keyed** form —
+a record of controllers, one per top-level contract key, instead of one
+`sync`:
+
+```ts
+export const orderRouter = HttpRouter(orderContract)({
+  orders: ordersController,
+  customers: customersController,
+});
+```
+
+This form is exact: a slice missing from the record, a key the contract does
+not declare, and a controller wired under the wrong key are all compile
+errors at this call — see
+[Split a router into controllers](/how-to/split-a-router-into-controllers) for
+the four gates `packages/http/src/controller.test-d.ts` pins. Because a
+fragment is itself a valid contract, `ordersController` would compile
+unchanged as the whole implementation of a service serving `ordersContract`
+alone — extracting a slice out of this modulith is deleting an import, not a
+rewrite.
+
 ## The composition root, and the process
 
-`module.ts` is the only file that knows the three halves exist:
+`module.ts` is the only file that knows the five halves exist:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    OrdersSlice,
+    CustomersSlice,
+    observability(),
+  ],
   exports: [Logger],
 });
 ```
@@ -96,6 +170,9 @@ export const OrderApi = HttpModule("OrderApi")({
 from `PORT` / `HOST`, the router mounted under `/rpc`, needing the router the
 root provides), provides `orderRouter` and exports `HttpRuntime`, and returns
 exactly the module `Module("OrderApi")({...})` would have.
+`ApplicationModule` leaves `OrderRepository` unmet and `PersistenceModule`
+provides it; `OrdersSlice` and `CustomersSlice` each provide their own
+controller, which `orderRouter` composes above.
 [`observability()`](/reference/observability) brings the `Logger` the
 interactors and the request scope write to — bound from `LOG_LEVEL`, one JSON
 object per line on stdout, every line carrying the unit's trace id — and
@@ -212,7 +289,9 @@ in its own unit with its own trace id (two calls, four log lines, two distinct
 repository finishes during a drain
 and is counted `completed`, one still hung at a zero deadline is counted
 `abandoned`; `/livez` and `/readyz` answer while serving, and readiness goes
-false before liveness during the drain.
+false before liveness during the drain; and the `customers` slice answers
+from its own directory over the same client and the same running root,
+proving the keyed router actually mounted both controllers rather than one.
 
 ## Three gates, pinned at compile time
 

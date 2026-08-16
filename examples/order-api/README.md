@@ -9,13 +9,21 @@ socket, and the router itself is a di-provided service. The contract lives in
 its own package, because a client needs it and needs none of this.
 
 ```
-src/router.ts         the implementation as a provider, and the one place a domain error becomes an ORPCError
-src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
-src/client.ts         an AsyncResult client for the same contract
-src/module.ts         OrderApi — the composition root, HttpModule("OrderApi")({ router: orderRouter, … })
-src/main.ts           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
-src/test-fixtures.ts  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
+src/slices/orders/controller.ts       HttpController("OrdersController", ordersContract)([PlaceOrder, FindOrder], { sync }) — the one place a domain error becomes an ORPCError
+src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only its port
+src/slices/customers/directory.ts     CustomerDirectory — the customers slice's own adapter
+src/slices/customers/controller.ts    HttpController("CustomersController", customersContract)([CustomerDirectory], { sync })
+src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
+src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
+src/client.ts                         an AsyncResult client for the same contract
+src/module.ts                         OrderApi — the composition root: orderRouter = HttpRouter(orderContract)({ orders, customers }), then HttpModule("OrderApi")({ router: orderRouter, … })
+src/main.ts                           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
+src/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
 ```
+
+Each slice owns its contract fragment, its controller and (`customers`) its
+own adapter; the root only composes them — see
+[Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
 
 ## The two channels survive the wire
 
@@ -37,9 +45,10 @@ root, and [`order-amqp-worker`](../order-amqp-worker) by never folding it at a
 consumer at all — its writes broadcast facts instead.
 
 Each procedure is a plain `Result`-returning function — `@unthrown/orpc`'s
-`.result(...)` handler, which `HttpRouter(orderContract)` attaches for you —
-and that is what performs the elimination; the `mapErrCases` inside it is the
-triage point — the boundary where the application's vocabulary stops:
+`.result(...)` handler, which `HttpController` attaches for you inside each
+slice's controller — and that is what performs the elimination; the
+`mapErrCases` inside it is the triage point — the boundary where the
+application's vocabulary stops:
 
 ```ts
 place
@@ -60,8 +69,8 @@ place
 ```
 
 Every case is named — this repo bans `P._`, and `mapErrCases` has no
-`.otherwise()`. A new domain error is a compile error here, at the one file that
-has to decide what a client sees. A `Defect` is never named: it has no code
+`.otherwise()`. A new domain error is a compile error here, at the one slice
+that has to decide what a client sees. A `Defect` is never named: it has no code
 because it was never modelled, and collapsing it to a 500 is the correct
 treatment rather than a fallback.
 
@@ -71,18 +80,25 @@ Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
 `/rpc` all live in [`@btravstack/http`](../../packages/http) —
 see its README for the guarantee it makes and the one way it answers HTTP.
-What this example writes is the router — `HttpRouter(orderContract)([PlaceOrder,
-FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`,
-contract-first: di's own `Provider(port)` on the starter's router port (a
-process serves one router, so there is nothing to name), each procedure a
-plain `Result`-returning function typed by the contract, built from the two
-use cases it declares — and a composition root that is a `Module(...)` which
-also knows about it:
+What this example writes is two slices, each an `HttpController(name, fragment)([deps], { sync })`
+over its own contract fragment, and a root router composed by the **keyed**
+`HttpRouter(orderContract)({ orders: ordersController, customers:
+customersController })` — contract-first, exact (a missing slice, a stray
+key or a controller under the wrong key are all compile errors at that call)
+— each procedure a plain `Result`-returning function typed by the fragment,
+built from the use cases its own controller declares — and a composition
+root that is a `Module(...)` which also knows about it:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    OrdersSlice,
+    CustomersSlice,
+    observability(),
+  ],
   exports: [Logger],
 });
 ```
@@ -91,8 +107,9 @@ export const OrderApi = HttpModule("OrderApi")({
 (`http()` — the whole surface), provides the
 router and exports `HttpRuntime`, and returns exactly the di module
 `Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule,
-observability(), http()], provides: [orderRouter], exports: [HttpRuntime,
-Logger] })` would have. `observability()` is the starter that provides the
+OrdersSlice, CustomersSlice, observability(), http()], provides: [orderRouter],
+exports: [HttpRuntime, Logger] })` would have. `observability()` is the starter
+that provides the
 `Logger` the use cases and the request scope write to — `LOG_LEVEL` bound from
 the environment, one JSON object per line on stdout, and every line stamped
 with the unit the runtime opened around it. It is exported because the
@@ -148,7 +165,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-api test  # 15 api specs
+pnpm --filter @btravstack/example-order-api test  # 16 api specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON

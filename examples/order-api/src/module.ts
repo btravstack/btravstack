@@ -20,7 +20,7 @@ export const orderRouter = HttpRouter(orderContract)({
 });
 
 /**
- * The composition root, and the only file in the example that knows the
+ * The composition root, and the only file in the example that knows the five
  * halves exist. `ApplicationModule` leaves `OrderRepository` unmet;
  * `PersistenceModule` provides it; `OrdersSlice` and `CustomersSlice` each
  * provide their own controller, which `orderRouter` composes into the oRPC

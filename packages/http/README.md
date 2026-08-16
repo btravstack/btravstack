@@ -68,6 +68,66 @@ under `/rpc`; a test boots the same module with
 `start(OrderApi, { env: { PORT: "0", HOST: "127.0.0.1" } })` and reads the bound
 port back from `app.runtimeInfo()`.
 
+## Splitting a large API into slices
+
+`HttpRouter(contract)(deps, { sync })` is right for a small API; a large one
+splits into **controllers**, one per slice of the contract, composed at the
+root by a keyed call instead:
+
+```ts
+const ordersController = HttpController("OrdersController", ordersContract)(
+  [PlaceOrder, FindOrder],
+  {
+    sync: (place, find) => ({
+      place: ({ errors }, input) =>
+        place
+          .execute(input.id, input.quantity)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
+          ),
+      find: ({ errors }, input) =>
+        find
+          .execute(input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            ),
+          ),
+    }),
+  },
+);
+
+const orderRouter = HttpRouter(orderContract)({
+  orders: ordersController,
+  customers: customersController,
+});
+```
+
+`HttpController(name, fragment)([deps], { sync })` is the same two-call shape
+as `HttpRouter`, aimed at one fragment: it mints a port under `name` and
+returns the provider carrying it on `.port`. The keyed form is **exact** — a
+missing slice, an undeclared key and a controller under the wrong key are all
+compile errors — and because a fragment is itself a valid contract, a slice
+can be served alone, its controller unchanged. See
+[Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
+
 ## What it guarantees
 
 Every request produces exactly one completed response, and its unit stays open
