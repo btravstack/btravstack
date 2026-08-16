@@ -74,12 +74,13 @@ export type AnyPort = {
 } & (abstract new () => AnyPortInstance);
 
 /**
- * A concrete port class with `Id` and `Service` fixed — what a helper that mints
- * a port for a caller (`Config.provider("RelayConfig")(schema)`, a starter's
- * `HttpRouter(contract)("OrderRouter")(deps, arm)`) returns as the type of
- * `provider.port`. The class expression itself (`class extends Port(id)<S> {}`)
- * has an anonymous type declaration emit cannot name across packages; this is
- * the nameable spelling of the same thing.
+ * A concrete port class with `Id` and `Service` fixed — what a helper that
+ * hands a port to a caller (`Config.provider("RelayConfig")(schema)`, which
+ * mints one; a starter's `HttpRouter(contract)(deps, arm)`, which targets its
+ * own fixed one) returns as the type of `provider.port`. A class expression
+ * (`class extends Port(id)<S> {}`) has an anonymous type declaration emit
+ * cannot name across packages, and a `Port(id)` left generic and typed per
+ * contract has none of its own; this is the nameable spelling of both.
  */
 export type PortClassOf<Id extends string, Service> = {
   readonly portId: Id;

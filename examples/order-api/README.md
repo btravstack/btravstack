@@ -71,12 +71,13 @@ Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
 `/rpc` all live in [`@btravstack/http`](../../packages/http) —
 see its README for the guarantee it makes and the one way it answers HTTP.
-What this example writes is the router — `HttpRouter(orderContract)("OrderRouter")([PlaceOrder,
+What this example writes is the router — `HttpRouter(orderContract)([PlaceOrder,
 FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`,
-contract-first: port and provider in one call, each procedure a plain
-`Result`-returning function typed by the contract, built from the two use
-cases it declares — and a composition root that is a `Module(...)` which also
-knows about it:
+contract-first: di's own `Provider(port)` on the starter's router port (a
+process serves one router, so there is nothing to name), each procedure a
+plain `Result`-returning function typed by the contract, built from the two
+use cases it declares — and a composition root that is a `Module(...)` which
+also knows about it:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
@@ -87,10 +88,10 @@ export const OrderApi = HttpModule("OrderApi")({
 ```
 
 `HttpModule` is sugar over the same primitives: it imports the starter
-(`http({ router: orderRouter.port })` — the whole surface), provides the
+(`http()` — the whole surface), provides the
 router and exports `HttpRuntime`, and returns exactly the di module
-`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule, http({
-router: orderRouter.port })], provides: [orderRouter], exports: [HttpRuntime,
+`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule,
+http()], provides: [orderRouter], exports: [HttpRuntime,
 Logger] })` would have. The runtime provider depends on the router port
 through di, so even the transport wiring exists because the composition root
 said so — a composition that imports the starter without providing

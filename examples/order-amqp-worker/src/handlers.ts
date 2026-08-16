@@ -5,10 +5,11 @@ import { OkAsync } from "unthrown";
 
 /**
  * The consuming half: the handlers record `orderContract` wants, one per
- * consumer, as a service the starter resolves like any other. `AmqpHandlers`
- * mints the port (`orderHandlers.port`) and hands back di's own `Provider`,
- * so the provider declares what the handlers need — here `Logger` — and is
- * built by di from it, exactly as a use case is. The contract is what types
+ * consumer, as a service the starter resolves like any other.
+ * `AmqpHandlers(orderContract)` is di's own `Provider` on the starter's
+ * handlers port, typed for the contract — no class, no name: a consumer serves
+ * one handlers record — so the provider declares what the handlers need — here
+ * `Logger` — and is built by di from it, exactly as a use case is. The contract is what types
  * the record: `orderChanged` is a plain function of the message it declares,
  * with nothing to wrap it in.
  *
@@ -22,7 +23,7 @@ import { OkAsync } from "unthrown";
  * upserts on a payload and drops on a tombstone. There is no second message
  * type to declare, subscribe to, or keep ordered against this one.
  */
-export const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logger], {
+export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
   sync: (logger) => ({
     orderChanged: (message) => {
       const { id, payload } = message.payload;

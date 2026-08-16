@@ -20,7 +20,7 @@ package's. Everything below is lifted from `examples/order-temporal-worker`.
 
 ## Recipe
 
-1. Implement the activities with `TemporalActivities(contract)(name)(deps, arm)`
+1. Implement the activities with `TemporalActivities(contract)(deps, arm)`
    — a record shaped like the contract, closing over the services `deps` names.
 2. Compose with `TemporalModule(name)({ contract, activities, workflows, imports })`.
 3. `await runMain(OrderTemporalWorker)`.
@@ -29,10 +29,10 @@ package's. Everything below is lifted from `examples/order-temporal-worker`.
 
 ## Step 1 — the activities, as a provider
 
-`TemporalActivities(orderContract)("OrderActivities")` mints the port (its
-service the record `declareActivitiesHandler` takes for the contract) and
-returns di's `Provider(port)`, so the last call is `(deps, arm)` as anywhere
-else. **An activity is a closure over its provider's services** — nothing is
+`TemporalActivities(orderContract)` is di's `Provider(port)` on the starter's
+own activities port, typed for the contract (its service the record
+`declareActivitiesHandler` takes) — no class, no name: a worker serves one
+activities record — so the next call is `(deps, arm)` as anywhere else. **An activity is a closure over its provider's services** — nothing is
 read from a context at call time — and each `mapErrCases` names every domain
 error the contract declares:
 
@@ -48,49 +48,50 @@ import { TemporalActivities } from "@btravstack/temporal";
 import { P } from "unthrown";
 
 export const orderActivities = TemporalActivities(orderContract)(
-  "OrderActivities",
-)([PlaceOrder, OrderRepository, StockService, ShippingService], {
-  sync: (place, repository, stock, shipping) => ({
-    fulfillOrder: {
-      place: (args, { errors }) =>
-        place
-          .execute(args.orderId, args.quantity)
-          .map((order) => ({ id: order.id, quantity: order.quantity }))
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.InvalidQuantity({ id: error.id }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.OrderAlreadyPlaced({ id: error.id }),
+  [PlaceOrder, OrderRepository, StockService, ShippingService],
+  {
+    sync: (place, repository, stock, shipping) => ({
+      fulfillOrder: {
+        place: (args, { errors }) =>
+          place
+            .execute(args.orderId, args.quantity)
+            .map((order) => ({ id: order.id, quantity: order.quantity }))
+            .mapErrCases((matcher) =>
+              matcher
+                .with(P.tag("InvalidQuantity"), (error) =>
+                  errors.InvalidQuantity({ id: error.id }),
+                )
+                .with(P.tag("DuplicateOrder"), (error) =>
+                  errors.OrderAlreadyPlaced({ id: error.id }),
+                ),
+            ),
+        reserveStock: (args, { errors }) =>
+          stock
+            .reserve(args.orderId, args.quantity)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("OutOfStock"), (error) =>
+                errors.OutOfStock({ id: error.id }),
               ),
-          ),
-      reserveStock: (args, { errors }) =>
-        stock
-          .reserve(args.orderId, args.quantity)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OutOfStock"), (error) =>
-              errors.OutOfStock({ id: error.id }),
             ),
-          ),
-      arrangeShipping: (args, { errors }) =>
-        shipping
-          .arrange(args.orderId)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("ShippingUnavailable"), (error) =>
-              errors.ShippingUnavailable({ id: error.id }),
+        arrangeShipping: (args, { errors }) =>
+          shipping
+            .arrange(args.orderId)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("ShippingUnavailable"), (error) =>
+                errors.ShippingUnavailable({ id: error.id }),
+              ),
             ),
-          ),
-      releaseStock: (args) => stock.release(args.orderId),
-      cancelPlacement: (args) =>
-        repository
-          .remove(args.orderId)
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), () => undefined),
-          ),
-    },
-  }),
-});
+        releaseStock: (args) => stock.release(args.orderId),
+        cancelPlacement: (args) =>
+          repository
+            .remove(args.orderId)
+            .recoverErrCases((matcher) =>
+              matcher.with(P.tag("OrderNotFound"), () => undefined),
+            ),
+      },
+    }),
+  },
+);
 ```
 
 The package maps nothing further: `declareActivitiesHandler` already turns a
@@ -123,11 +124,13 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 ```
 
 `TemporalModule` is `Module(name)({...})` plus the starter's fields: it
-imports `temporal({ contract, activities: orderActivities.port, workflows, … })`,
-provides the activities and exports `TemporalRuntime`. The starter's runtime
-provider depends on the activities port through di, so a root whose imports do
-not cover what the provider declared (`FulfillmentModule` here) is refused at
-`start` — di's gate; a root with no starter fails on arity (`NO RUNTIME`).
+imports `temporal({ contract, workflows, … })`, provides the activities and
+exports `TemporalRuntime`. The starter's runtime provider depends on its
+activities port through di, so a root whose imports do not cover what the
+provider declared (`FulfillmentModule` here) is refused at `start` — di's
+gate; a root with no starter fails on arity (`NO RUNTIME`). `activities` is
+typed against the module's own `contract`: a provider built for another
+contract is refused at the call.
 
 `workflows` is a `WorkflowSource`: `{ workflowsPath }` for a process that lets
 Temporal bundle the module, `{ workflowBundle }` for a spec that built one and

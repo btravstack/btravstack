@@ -11,24 +11,33 @@ the same commit, and with `README.md` — the package ships no
 - **`HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
-  `http({ router: provider.port })` to `imports`, prepends the provider to
+  `http({ prefix?, port?, hostname? })` to `imports`, prepends the provider to
   `provides` and `HttpRuntime` to `exports`, and hands the augmented tuples —
-  `Imports<I, RouterInstance>` / `Provides<P, RouterInstance, RouterError,
-RouterNeeds>`, readonly and exact — to di's own `Module(name)({...})`, whose
+  `Imports<I>` / `Provides<P, RouterError, RouterNeeds>`, readonly and exact
+  — to di's own `Module(name)({...})`, whose
   return type IS the sugar's: nothing spelled twice. di exports `AnyModule`,
   `AnyProvider` and `Exportable` for exactly that (constraining the tuples the
   way `Module(name)` does); its other module-typing pieces stay internal.
   (Spelling the return through a named generic alias was tried and removed:
   declaration emit keeps such an alias unreduced and cannot name imported
   modules' internal ports — TS2883, measured.) `router` is a plain
-  `Provider<RouterInstance, RouterError, RouterNeeds>` whose instance is
-  constrained on the type parameter — `RouterInstance extends
-PortInstance<string, Router<Record<never, never>>>` — so a provider of
-  anything but a context-free oRPC router fails at the call; the port class is
-  read off `provider.port` for the delegation (`as never` — the check already
-  happened one level up). Covered by the package's own `rpc` fixture, which
+  `Provider<HttpRouterPort, RouterError, RouterNeeds>` — a provider on the
+  starter's own router port, which is what `HttpRouter(contract)(deps, arm)`
+  returns — so a provider of anything else fails at the call, and there is no
+  port to read off it: the starter needs `HttpRouterPort`, and the sugar's
+  job is to provide it. Covered by the package's own `rpc` fixture, which
   composes `RpcApp` through it. Options `port`/`hostname` pin as for `http()`.
-- **`HttpRouter(contract)(name)(deps, { sync })`** (`orpc.ts`) — contract-first
+- **`HttpRouterPort`** (`orpc.ts`, exported from the file for the package's
+  own tests, **not** from `index.ts`) — the router's port, one id, the
+  starter's own: `Port("HttpRouter")` cast to di's `PortClassOf<"HttpRouter",
+Router<Record<never, never>>>`, with the matching `PortInstance` alias. A
+  process serves one router as it boots one runtime (thesis #1), so there is
+  nothing to name, and the port is framework-owned like `HttpConfig` and
+  `HttpRuntime`; two router providers in one graph are di's duplicate-provider
+  defect at build, which is correct. The service type is contract-agnostic
+  (a context-free oRPC router), so this is one concrete port — unlike the
+  temporal and amqp starters', which are typed per contract.
+- **`HttpRouter(contract)(deps, { sync })`** (`orpc.ts`) — contract-first
   router provider. `Implementation<C>` is the record type: recursing the
   contract's shape, each `ProcedureContract<I, O, E>` becomes
   `Parameters<ProcedureImplementer<DefaultInitialContext & object, object, I,
@@ -41,32 +50,34 @@ O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   past the types — dropped rather than defected on; `implement()` returns
   `undefined` for an undeclared key, measured), and `os.router(built)` is the
   port's service. `C` is bounded `Record<string, RouterContract>` — a router
-  record, not a bare procedure, since a bare procedure has no keys to walk. The port
-  is minted `class extends Port(name)<Router<Record<never, never>>> {}` and
-  cast to di's **`PortClassOf<Name, Router<…>>`** (`{ portId: Name; new ():
-PortInstance<Name, Router<…>> }` — the one nameable spelling of a minted port
-  class; the class expression's own type expands the brand keys in declaration
-  emit, TS4023 measured); the return is `Provider<PortInstance<Name,
-Router<…>>, never, InstanceType<D[number]>> & { port: PortClassOf<Name,
-Router<…>> }`, spelled explicitly for the same reason. Only the `sync` arm: a router is built, not
-  acquired. `HttpModule({ router: orderRouter })` / `http({ router:
-orderRouter.port })` take it from there. Covered by the `rpc` fixture's
+  record, not a bare procedure, since a bare procedure has no keys to walk. The
+  second call is di's `Provider(HttpRouterPort)(deps, { sync })` with the
+  router built from what `sync` returns; there is no name to give. The
+  return is `Provider<PortInstance<"HttpRouter", Router<…>>, never,
+InstanceType<D[number]>> & { port: PortClassOf<"HttpRouter", Router<…>> }`,
+  spelled through di's `PortInstance` / `PortClassOf` (`{ portId; new ():
+PortInstance<…> }`) rather than the class's own type because a class
+  expression's type expands the brand keys in a consumer's declaration emit
+  (TS4023, measured on `examples/order-api`) — which is also why
+  `HttpRouterPort` itself is a cast `Port("HttpRouter")` and not a `class`.
+  `provider.port` stays on the result for a hand-declared provider or a type
+  test. Only the `sync` arm: a router is built, not
+  acquired. `HttpModule({ router: orderRouter })`, or `http()` next to
+  `provides: [orderRouter]`, take it from there. Covered by the `rpc` fixture's
   `greetingRouter` (a bare-procedure `oc.router`, one nested) and the stray-key
   guard by `strayRouter` (the same implementation with an undeclared key,
   cast past the types).
-- **`http({ router, prefix?, port?, hostname? })` →
-  `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<RouterPort>>`**
+- **`http({ prefix?, port?, hostname? })` →
+  `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **the one way HTTP is answered here: oRPC, over its own
   node adapter**. The
   former `@btravstack/orpc` was folded in for that reason — oRPC shares this
   stack's convictions (a contract, typed errors, `Result` at the boundary), so
-  it is enforced, not offered among alternatives. `router` is the
-  application's **router port**: a class over di's `Port` whose service is a
-  context-free oRPC router, provided by the application (a provider that
-  declares the use cases its procedures call — di injects them, oRPC's context
-  stays empty). It is constrained at the call site as `R & RouterPort<R>`
-  (`orpc.ts`): a port whose service `RPCHandler` cannot serve with no initial
-  context fails to typecheck there. The starter provides
+  it is enforced, not offered among alternatives. The router is not an
+  option: the module **needs** `HttpRouterPort`, and the application provides
+  it — a provider that declares the use cases its procedures call (di injects
+  them, oRPC's context stays empty), built by `HttpRouter(contract)(deps,
+arm)`. The starter provides
   `Runtime<never, HttpInfo>` on the **`HttpRuntime`** port (a class over
   core's `RuntimePort`, **no `needs`**), which the composition root imports
   next to the application and exports so `start` finds it, and **`HttpConfig`**
@@ -80,7 +91,7 @@ orderRouter.port })` take it from there. Covered by the `rpc` fixture's
   (the kernel discharges the one, a pinned config never produces the other).
   `prefix` (default `/rpc`) is where the RPC endpoint is mounted. The worked
   example is `Module("OrderApi")({ imports: [Application, Persistence,
-http({ router: OrderRouter })], provides: [orderRouter], exports:
+http()], provides: [orderRouter], exports:
 [HttpRuntime] })` + `runMain(OrderApi)`; a test passes `env: { PORT: "0",
 HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `Serving.info` once bound; `0` lets the OS pick, read back via
@@ -88,8 +99,9 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
 - **Two gates, both compile-time.** `start`'s phantom rest tuple turns a
   composition exporting no `HttpRuntime` into an arity error (`NO RUNTIME`);
   and because the runtime provider depends on the router port **through di**,
-  a composition that imports `http({ router })` without providing the router
-  carries an unmet need `start` refuses — di's gate, not the kernel's.
+  a composition that imports `http()` without providing the router
+  carries `HttpRouterPort` as an unmet need `start` refuses — di's gate, not
+  the kernel's.
   `examples/order-api/src/needs-gate.test-d.ts` pins both, plus the
   `StartOptions.unit` halves. There is no `UNSATISFIED RUNTIME NEEDS` case for
   this runtime any more: it declares none.
@@ -114,8 +126,7 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   there is no seam for a late write to land in, and `id: randomUUID()` is
   minted per request (a non-blank inbound `x-request-id` becomes `traceId`),
   so the two contracts a runtime owes are structural here rather than left to
-  a caller's care. `getRequestListener` runs with `overrideGlobalObjects:
-false`, so `globalThis.Request`/`Response` are left alone.
+  a caller's care.
 - **Drain**: `stopAccepting` retires every open response — an unsent header
   gets `Connection: close`, a sent one ends its socket on `'finish'` — and
   `stop()` destroys what is still open. `closeIdleConnections()` alone would
@@ -139,7 +150,8 @@ false`, so `globalThis.Request`/`Response` are left alone.
 - **`HttpHandler`** (`src/handler.ts`, **not** exported from `index.ts`) — a
   di `Port` whose service is the node listener,
   `(request, response, signal) => PromiseLike<unknown>`. `http()` provides it
-  from the router (`orpc.ts`'s `orpc(router, { prefix })`: `@orpc/server/node`'s
+  from the router port (`orpc.ts`'s `orpc({ prefix })`, a
+  `Provider(HttpHandler)([HttpRouterPort], …)`: `@orpc/server/node`'s
   `RPCHandler`, `(request, response) => rpc.handle(request, response, {
 prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider depends on it through
   di. It returns `PromiseLike<unknown>` rather than `void` because the
@@ -149,7 +161,7 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
 - **`httpModule(options, handlerProvider)`** (`http-runtime.ts`, exported from
   the file, not from `index.ts`) — the runtime and its configuration as a
   module over whichever `HttpHandler` provider it is handed. `http()` is
-  `httpModule(socket, orpc(router, prefix))`; the package's own transport
+  `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
 - **24 specs, 100% lines/functions.** `http-runtime.spec.ts` carries 17,

@@ -84,10 +84,10 @@ queue — the starter reads it from here rather than taking it as an option.
 
 ## Step 3 — Implement the activity
 
-`TemporalActivities(contract)(name)` is the Temporal twin of `HttpRouter`: it
-mints a port whose service is the contract's activities record and hands back
-di's own `Provider(port)`, so the last call declares its dependencies exactly
-as the router did:
+`TemporalActivities(contract)` is the Temporal twin of `HttpRouter`: di's own
+`Provider(port)` on the starter's activities port, typed for the contract —
+its service is the contract's activities record — so the next call declares
+its dependencies exactly as the router did:
 
 ```ts
 // activities.ts
@@ -98,14 +98,15 @@ import { Greeter } from "./greeter.js";
 import { greetingContract } from "./temporal-contract.js";
 
 export const greetingActivities = TemporalActivities(greetingContract)(
-  "GreetingActivities",
-)([Greeter], {
-  sync: (greeter) => ({
-    greeting: {
-      greet: (args) => OkAsync({ message: greeter.greet(args.name) }),
-    },
-  }),
-});
+  [Greeter],
+  {
+    sync: (greeter) => ({
+      greeting: {
+        greet: (args) => OkAsync({ message: greeter.greet(args.name) }),
+      },
+    }),
+  },
+);
 ```
 
 Same `Greeter`, same `greet`, a different transport around it. The activity is

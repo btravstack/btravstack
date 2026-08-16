@@ -34,8 +34,8 @@ export { Port } from "./port.js";
 // and `MemberOf`'s `[MANY]` discriminant stays unspoofable. `PortInstance` IS
 // exported as a type — naming `PortInstance<"Logger", Shape>` forges nothing
 // (a value still needs the unnameable keys) — because a provider whose port
-// was minted inside a helper (`Config.provider("RelayConfig")(schema)`, a
-// starter's `HttpRouter("OrderRouter")(deps, arm)`) has the declared type
+// was minted inside a helper (`Config.provider("RelayConfig")(schema)`) or is a
+// starter's own (`HttpRouter(contract)(deps, arm)`) has the declared type
 // `Provider<PortInstance<"RelayConfig", Shape>, …> & { port: … }`, and a
 // consumer that exports it needs declaration emit to be able to write that.
 // The `[MANY]` intersection is never named; `emit-guards.ts` in

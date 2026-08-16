@@ -64,16 +64,17 @@ missing: N]`.
   `PortClass`/`ManyPortClass` are exported solely so declaration emit works for
   consumers who export ports; `PortInstance` and **`PortClassOf<Id, Service>`**
   (`{ portId: Id; new (): PortInstance<Id, Service> }`, both types only) so a
-  provider over a port minted inside a helper — `Config.provider("RelayConfig")(schema)`,
-  `HttpRouter(contract)("OrderRouter")(deps, { sync })` — has a nameable
+  provider over a port declared inside a helper — one minted per call
+  (`Config.provider("RelayConfig")(schema)`) or the helper's own fixed one
+  (`HttpRouter(contract)(deps, { sync })`, on `@btravstack/http`'s
+  `HttpRouterPort`) — has a nameable
   declared type when a consumer exports it: the class expression
   `class extends Port(id)<S> {}` has an anonymous type declaration emit cannot
   name across packages (TS4023, measured), `PortClassOf` is its nameable
   spelling, and naming the instance type forges nothing (the brand keys stay
   private). `Provider(port)(deps, arm)`'s return type is `Provider<P, E, N> &
 { readonly port: typeof port }` — the provider carries its port class typed,
-  so `provider.port` is what a dependent lists in its deps and what a starter
-  reads the port off; purely additive. `AnyModule`, `AnyProvider` and
+  so `provider.port` is what a dependent lists in its deps; purely additive. `AnyModule`, `AnyProvider` and
   `Exportable` are exported so a package offering a **shaped module** (a
   starter's `HttpModule(name)({ router, imports, provides, exports })` sugar,
   which appends its own import and export to what the application wrote) can

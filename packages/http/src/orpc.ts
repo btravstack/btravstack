@@ -24,18 +24,27 @@ export type OrpcOptions = {
 };
 
 /**
- * `unknown` when the port's service is a router `RPCHandler` can serve with no
- * initial context, `never` otherwise — intersected with `R` at the call site,
- * so a port whose service is not such a router fails to typecheck there rather
- * than at the first request. A router that declares an initial context is
- * rejected too: this starter has none to hand it.
+ * The router's port — one id, the starter's own. A process serves one router
+ * as it boots one runtime, so the port is framework-owned like `HttpConfig`
+ * and `HttpRuntime`, and an application never names it: `HttpRouter(...)`
+ * returns the provider that targets it, and `provider.port` is the class for
+ * the rare caller who needs it (a hand-declared provider, a type test). Two
+ * router providers in one graph are di's duplicate-provider defect at build,
+ * which is the point. Spelled through di's `PortClassOf` / `PortInstance`
+ * rather than a `class` so a consumer's declaration emit can name the
+ * provider's type without this package exporting the port (TS4023 otherwise,
+ * measured on `examples/order-api`). Exported from this file for the
+ * package's own tests, not from `index.ts`.
  */
-export type RouterPort<R extends AnyPort> =
-  ServiceOf<R> extends Router<Record<never, never>> ? unknown : never;
+export const HttpRouterPort = Port("HttpRouter") as PortClassOf<
+  "HttpRouter",
+  Router<Record<never, never>>
+>;
+export type HttpRouterPort = PortInstance<"HttpRouter", Router<Record<never, never>>>;
 
 /**
  * The oRPC starter: a provider of `@btravstack/http`'s `HttpHandler` built
- * from a **router port** — the application provides its router as a service
+ * from the **router port** — the application provides its router as a service
  * (a provider that declares the use cases its procedures call), and this
  * turns it into the HTTP surface through oRPC's own node adapter, mounted
  * under `prefix`. A request oRPC does not match resolves unwritten and the
@@ -44,21 +53,21 @@ export type RouterPort<R extends AnyPort> =
  * that is the router's `.result()` triage, at the one place a domain error
  * becomes an `ORPCError`.
  */
-export const orpc = <R extends AnyPort>(router: R & RouterPort<R>, options: OrpcOptions = {}) => {
+export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
-  return Provider(HttpHandler)([router], {
+  return Provider(HttpHandler)([HttpRouterPort], {
     sync: (service) => {
-      const rpc = new RPCHandler(service as Router<Record<never, never>>);
+      const rpc = new RPCHandler(service);
       return (request, response) => rpc.handle(request, response, { prefix });
     },
   });
 };
 
 /**
- * The router's port and provider in one call, **from the contract**:
+ * The router as a provider, **from the contract**:
  *
  * ```ts
- * const orderRouter = HttpRouter(orderContract)("OrderRouter")([PlaceOrder, FindOrder], {
+ * const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
  *   sync: (place, find) => ({
  *     orders: {
  *       place: ({ errors }, input) => place.execute(input.id, input.quantity).map(view).mapErrCases(…),
@@ -77,16 +86,15 @@ export const orpc = <R extends AnyPort>(router: R & RouterPort<R>, options: Orpc
  * compile errors here. `implement(contract)`, `os.…`, `.result(...)` and
  * `os.router(...)` are what this call does for you.
  *
- * The first two calls mint a port named `name` whose service is the router
- * `http()` serves, and the last is di's `Provider(port)([deps], { sync })`
- * with one difference: `sync` returns the implementation record and the
- * router is built from it. The provider it hands back carries the port typed
- * (`orderRouter.port`) for `HttpModule({ router: orderRouter })` and for
- * whoever else names it.
+ * The first call fixes the contract; the second is di's
+ * `Provider(port)([deps], { sync })` on the starter's own router port, with
+ * one difference: `sync` returns the implementation record and the router is
+ * built from it. There is no name to give — a process serves one router, so
+ * the port is the starter's (`HttpRouterPort`), and the provider carries it
+ * typed (`orderRouter.port`) for whoever else needs the class.
  */
 export const HttpRouter =
   <C extends Record<string, RouterContract>>(contract: C) =>
-  <const Name extends string>(name: Name) =>
   <const D extends readonly AnyPort[]>(
     deps: D,
     options: {
@@ -94,13 +102,13 @@ export const HttpRouter =
         ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
       ) => Implementation<C>;
     },
-  ): Provider<PortInstance<Name, Router<Record<never, never>>>, never, InstanceType<D[number]>> & {
-    readonly port: PortClassOf<Name, Router<Record<never, never>>>;
+  ): Provider<
+    PortInstance<"HttpRouter", Router<Record<never, never>>>,
+    never,
+    InstanceType<D[number]>
+  > & {
+    readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
   } => {
-    const port = class extends Port(name)<Router<Record<never, never>>> {} as PortClassOf<
-      Name,
-      Router<Record<never, never>>
-    >;
     // The implementer is walked untyped: `Implementation<C>` above is the
     // whole check — a key the contract does not declare is a compile error
     // there, and `routerOf` skips one anyway rather than reading `.result` off
@@ -111,7 +119,7 @@ export const HttpRouter =
     };
     const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
       os.router(routerOf(os, options.sync(...(services as never)) as Record<string, unknown>));
-    return Provider(port)(deps, { sync } as never) as never;
+    return Provider(HttpRouterPort)(deps, { sync } as never) as never;
   };
 
 /**

@@ -21,9 +21,9 @@ before `stopping`, so a bad environment is named on stderr instead of exiting
 silently. An empty or blank variable is an error, never an absent one; `PORT=0`
 stays expressible.
 
-`@btravstack/http` becomes a starter: `http({ router })` provides
+`@btravstack/http` becomes a starter: `http()` provides
 `HttpRuntime` and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST`
-(default `0.0.0.0`) unless pinned (`http({ router, port: 0 })` for a test —
+(default `0.0.0.0`) unless pinned (`http({ port: 0 })` for a test —
 explicit beats environment beats default, per field, through
 `Config.pinned(value, field)`; a pinned field reads nothing from the
 environment, and the module's declared `Env` need and `ConfigInvalid` stay
@@ -34,4 +34,7 @@ also states `NO RUNTIME`.
 service is the schema's output) and returns the provider carrying it typed
 (`provider.port`), the shape for a slice that is one application's own; the
 class form `Config.provider(Port)(schema)` stays for a slice that is public
-API another package names.
+API another package names. Config is the one sugar that takes a name — several
+config slices per application is normal, and the name is what `ConfigInvalid`
+prints; the starters' `HttpRouter` / `TemporalActivities` / `AmqpHandlers`
+provide the starter's own fixed port and take none.

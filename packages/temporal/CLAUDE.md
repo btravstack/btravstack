@@ -12,44 +12,54 @@ with the code in the same commit, and with `README.md` — the package ships no
 namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })`** —
   THE way an application writes its worker root; `temporal-module.ts`, the
   same shape as `@btravstack/http`'s `HttpModule`. `activities` is the
-  **provider** of the activities port — a plain `Provider<ActivitiesInstance,
-ActivitiesError, ActivitiesNeeds>` whose instance is constrained on the type
-  parameter (`ActivitiesInstance extends PortInstance<string,
-ActivitiesOf<C>>`), so a provider of anything but the implementations record
-  for `contract` fails there. It delegates to `temporal({ contract,
-activities: activities.port as never, workflows, … })` and hands the augmented
-  tuples — `Imports<I, ActivitiesInstance>` / `Provides<P, ActivitiesInstance,
-ActivitiesError, ActivitiesNeeds>`, readonly and exact — to di's own
+  **provider** of the starter's activities port for THIS contract — a plain
+  `Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds>`, which
+  is what `TemporalActivities(contract)(deps, arm)` returns — so a provider
+  of anything but the implementations record for `contract` fails there
+  (structurally, on the record: one built for another contract is refused).
+  It delegates to `temporal({ contract, workflows, … })` and hands the
+  augmented tuples — `Imports<I, C>` / `Provides<P, C, ActivitiesError,
+ActivitiesNeeds>`, readonly and exact — to di's own
   `Module(name)({...})`, whose return type IS the sugar's: nothing spelled
   twice (di exports `AnyModule`, `AnyProvider`, `Exportable` for the tuple
   constraints; a named generic alias for the return was tried and removed,
   TS2883). The starter's type in that tuple is always `Module<Provided,
-ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstance>`, pins
-  or not — `Env` is discharged by `start` anyway. `TemporalModuleOptions`
+ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C>>`,
+  pins or not — `Env` is discharged by `start` anyway. `TemporalModuleOptions`
   is exported for the type. Covered by `test-fixtures.ts`'s `boot`, which is
   written with it. `temporal()` stays exported as the primitive it delegates
   to.
-- **`TemporalActivities(contract)(name)` → `ReturnType<typeof
-Provider<PortClassOf<Name, ActivitiesOf<C>>>>`** — the activities' port and
-  provider in one call, `temporal-module.ts`, the same shape as
-  `@btravstack/http`'s `HttpRouter(name)`. The first call fixes `C` (the
-  contract value is otherwise unused; it exists so `C` is inferred rather than
-  written), the second mints `class extends Port(name)<ActivitiesOf<C>> {}`
-  and returns di's own `Provider(port)` builder, so the third call is di's
-  `(deps, arm)` unchanged and the provider it returns carries the port typed
-  (`orderActivities.port`). The class is cast to di's **`PortClassOf<Name,
-ActivitiesOf<C>>`** (`{ portId: Name; new (): PortInstance<Name,
-ActivitiesOf<C>> }`, the one nameable spelling of a minted port class) because
-  the class expression's own type expands the brand keys in declaration emit
-  and cannot be named (TS4023). This is the
-  way an application declares its activities; a hand-declared port class plus
-  `Provider(port)` remains possible. `test-fixtures.ts` mints `EchoActivities`
-  with it and builds all four fixture providers off the one builder, and
+- **`TemporalActivitiesPort` / `ActivitiesPortOf<C>` / `ActivitiesInstanceOf<C>`**
+  (`temporal-runtime.ts`, exported from the file for the package's own tests,
+  **not** from `index.ts`) — the activities' port, one id, the starter's own:
+  `Port("TemporalActivities")`, declared once. A worker serves one activities
+  record as it polls one task queue (thesis #1), so there is nothing to name
+  and the port is framework-owned like `TemporalConfig`; two providers for it
+  in one graph are di's duplicate-provider defect at build, which is correct.
+  It is **generic at the value level and typed per contract at the type
+  level** — `ActivitiesPortOf<C>` is `PortClassOf<"TemporalActivities",
+ActivitiesOf<C>>`, `ActivitiesInstanceOf<C>` its `PortInstance` — the same
+  move the kernel's `RuntimePort` makes, so one `Port(...)` call (no
+  duplicate-id warning however many contracts instantiate it) still refuses a
+  provider built for one contract handed to a module declaring another.
+- **`TemporalActivities(contract)` → `ReturnType<typeof
+Provider<ActivitiesPortOf<C>>>`** — the activities' provider builder,
+  `temporal-module.ts`, the same shape as `@btravstack/http`'s
+  `HttpRouter(contract)`. The one call fixes `C` (the contract value is
+  otherwise unused; it exists so `C` is inferred rather than written) and
+  returns di's own `Provider(port)` on `TemporalActivitiesPort as
+ActivitiesPortOf<C>`, so the next call is di's `(deps, arm)` unchanged and
+  the provider it returns carries the port typed (`orderActivities.port`, for a
+  hand-declared provider or a type test). No name, no class line. This is
+  the way an application declares its activities; a hand-written
+  `Provider(port)` over the same port remains possible. `test-fixtures.ts`'s
+  `EchoActivities = TemporalActivities(echoContract)` builds all four fixture
+  providers off the one builder, and
   `examples/order-temporal-worker/src/activities.ts` is the worked example
-  (no port class anywhere; `orderActivities.port` where the port is named).
+  (no port class, no name, anywhere).
 - **`temporal(options)` → `Module<TemporalRuntime | TemporalConfig |
 TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
-InstanceType<A>>`** — the starter, the same shape as `@btravstack/http`'s
+ActivitiesInstanceOf<C>>`** — the starter, the same shape as `@btravstack/http`'s
   `http()`. It provides `Runtime<never, TemporalInfo>` on the **`TemporalRuntime`**
   port (a class over core's `RuntimePort`, the package's own now that the
   runtime has no needs), **`TemporalConfig`** (`{ address, namespace }`) bound
@@ -58,8 +68,9 @@ InstanceType<A>>`** — the starter, the same shape as `@btravstack/http`'s
   **`TemporalConnection`** (a `NativeConnection`) as a **resourceful** provider
   from `[TemporalConfig]` — `acquire: NativeConnection.connect`, `release:
 close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
-  `TemporalOptions<C, A>`: `contract` (a `temporal-contract` contract; the task
-  queue is read off it), `activities` (a **port**, see below), `workflows` (a
+  `TemporalOptions<C>`: `contract` (a `temporal-contract` contract; the task
+  queue is read off it, and the activities port is typed by it — see below;
+  there is no `activities` option, the module **needs** the port), `workflows` (a
   `WorkflowSource`: `{ workflowsPath }` or `{ workflowBundle }`), `address?` /
   `namespace?` (**pins** — explicit > env > default, per field, through
   `Config.pinned(value, field)`; a pinned field reads nothing from the
@@ -73,22 +84,22 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
 activities: orderActivities, workflows, imports: [Application, Persistence,
 Fulfillment] })` + `runMain(OrderTemporalWorker)`; a test passes `env: {
 TEMPORAL_ADDRESS }` to `start`.
-- **`activities` is a port the application provides, and a need of the
-  module.** Its service is `DeclareActivitiesHandlerOptions<C>["activities"]` —
-  the implementations record `declareActivitiesHandler` takes for `C`, with no
-  injected context — built by a provider from the application's own services
-  (closures; nothing resolved from a `ctx`). The constraint is at the call
-  site, `activities: A & ActivitiesPort<A, C>` (`unknown` when `ServiceOf<A>`
-  is that record, `never` otherwise — the same trick as `@btravstack/orpc`'s
-  `RouterPort`), so a wrong port fails on `temporal(...)`. Inside,
-  `Provider(TemporalRuntime)([TemporalConnection, TemporalConfig,
-options.activities], { sync })` — the port rides di, which is why
-  `InstanceType<A>` is in the module's `Needs` and a root without the
-  activities module is rejected by `start` for still owing it (the
+- **The activities port is the starter's, provided by the application, and
+  the module's one need.** Its service is `ActivitiesOf<C>` =
+  `DeclareActivitiesHandlerOptions<C>["activities"]` — the implementations
+  record `declareActivitiesHandler` takes for `C`, with no injected context —
+  built by a provider from the application's own services (closures; nothing
+  resolved from a `ctx`). Inside, `Provider(TemporalRuntime)([TemporalConnection,
+TemporalConfig, TemporalActivitiesPort as ActivitiesPortOf<C>], { sync })` —
+  the port rides di, which is why `ActivitiesInstanceOf<C>` is in the module's
+  `Needs` and a root that imports the starter without providing the
+  activities is rejected by `start` for still owing it (the
   `examples/order-temporal-worker` `needs-gate.test-d.ts` pins that; there is
-  no `UNSATISFIED RUNTIME NEEDS` arm any more, the runtime needs nothing). The
-  one cast in the package is `impls as ActivitiesOf<C>` in that `sync`: the
-  call-site constraint is not visible inside a body where `A` is unresolved.
+  no `UNSATISFIED RUNTIME NEEDS` arm any more, the runtime needs nothing).
+  `TemporalActivitiesPort as ActivitiesPortOf<C>` (here and in
+  `TemporalActivities`) is the only cast the record meets: the port is one
+  generic value, the type it carries for `C` is what `sync` reads `impls`
+  through, and the former `impls as ActivitiesOf<C>` is gone.
 - **The starter calls `declareActivitiesHandler` itself**, in `start(host)`,
   with `activityUnits(host)` in the middleware slot — **inside** the qualified
   chain (`fromThrowable`), not before it: it throws on a contract it cannot

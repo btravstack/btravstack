@@ -23,8 +23,8 @@ description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime,
 | ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `AmqpModule`        | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the handlers provider |
 | `AmqpModuleOptions` | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                        |
-| `AmqpHandlers`      | value | `AmqpHandlers(contract)(name)` — mints the handlers port and returns di's `Provider(port)` builder, so the next call is `(deps, arm)`                                                                              |
-| `amqp`              | value | `amqp({ contract, handlers, … })` — the starter module itself, over a handlers **port class**; what `AmqpModule` imports                                                                                           |
+| `AmqpHandlers`      | value | `AmqpHandlers(contract)` — di's `Provider(port)` builder on the starter's own handlers port, typed for `contract`, so the next call is `(deps, arm)`                                                               |
+| `amqp`              | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                           |
 | `AmqpOptions`       | type  | `amqp()`'s options                                                                                                                                                                                                 |
 | `AmqpRuntime`       | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                          |
 | `AmqpConfig`        | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string }> {}` — the broker, bound from `AMQP_URL`; a publisher sharing the consumer's broker reads it too                                                      |
@@ -33,27 +33,32 @@ description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime,
 `AnyAmqpContract` — `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`,
 the bound on `contract` — lives in `src/amqp-runtime.ts` and is **not**
 exported from the entry point; it is extracted from the worker's own signature
-so `@amqp-contract/contract` stays out of the peer range.
+so `@amqp-contract/contract` stays out of the peer range. Next to it, and
+likewise unexported: `AmqpHandlersPort` — `Port("AmqpHandlers")`, the
+starter's own handlers port, declared once — and `HandlersPortOf<C>` /
+`HandlersInstanceOf<C>`, that port's class and instance typed for `C`
+(service `WorkerInferHandlers<C>`). The port is reached as `provider.port`
+when a caller needs it.
 
 ## `AmqpModule(name)({...})`
 
 Everything `Module(name)({...})` takes, plus the contract, the handlers
 provider and the starter's own options. It appends
-`amqp({ contract, handlers: handlers.port, … })` to `imports`, prepends
+`amqp({ contract, … })` to `imports`, prepends
 `handlers` to `provides`, prepends `AmqpRuntime` to `exports`, and hands the
 augmented tuples to di's own `Module(name)`.
 
-| Option                   | Required | Default              | What it is                                                                                                                                                                                         |
-| ------------------------ | -------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract`               | yes      | —                    | an `amqp-contract` contract; the queues consumed are read off its `consumers` and `rpcs`                                                                                                           |
-| `handlers`               | yes      | —                    | the handlers **provider** — a `Provider<HandlersInstance, E, N>` whose port's service is `WorkerInferHandlers<TContract>`, one entry per `consumers` / `rpcs` key; anything else fails at the call |
-| `url`                    | no       | read from `AMQP_URL` | pins the broker — a test's container                                                                                                                                                               |
-| `connectionOptions`      | no       | —                    | passed through to `TypedAmqpWorker.create`                                                                                                                                                         |
-| `defaultConsumerOptions` | no       | —                    | passed through to `TypedAmqpWorker.create`                                                                                                                                                         |
-| `connectTimeoutMs`       | no       | the library's 30 s   | how long `create` waits for the connection; a **top-level** `CreateWorkerOptions` field, not one under `connectionOptions`, where setting it is silently inert                                     |
-| `imports`                | no       | `[]`                 | the application's modules                                                                                                                                                                          |
-| `provides`               | no       | `[]`                 | the application's own providers                                                                                                                                                                    |
-| `exports`                | no       | `[]`                 | the application's own exports; `AmqpRuntime` is added                                                                                                                                              |
+| Option                   | Required | Default              | What it is                                                                                                                                                                                                                                        |
+| ------------------------ | -------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract`               | yes      | —                    | an `amqp-contract` contract; the queues consumed are read off its `consumers` and `rpcs`                                                                                                                                                          |
+| `handlers`               | yes      | —                    | the handlers **provider** — a `Provider<HandlersInstanceOf<TContract>, E, N>`, what `AmqpHandlers(contract)(deps, arm)` returns for **this** `contract`, one entry per `consumers` / `rpcs` key; one built for another contract fails at the call |
+| `url`                    | no       | read from `AMQP_URL` | pins the broker — a test's container                                                                                                                                                                                                              |
+| `connectionOptions`      | no       | —                    | passed through to `TypedAmqpWorker.create`                                                                                                                                                                                                        |
+| `defaultConsumerOptions` | no       | —                    | passed through to `TypedAmqpWorker.create`                                                                                                                                                                                                        |
+| `connectTimeoutMs`       | no       | the library's 30 s   | how long `create` waits for the connection; a **top-level** `CreateWorkerOptions` field, not one under `connectionOptions`, where setting it is silently inert                                                                                    |
+| `imports`                | no       | `[]`                 | the application's modules                                                                                                                                                                                                                         |
+| `provides`               | no       | `[]`                 | the application's own providers                                                                                                                                                                                                                   |
+| `exports`                | no       | `[]`                 | the application's own exports; `AmqpRuntime` is added                                                                                                                                                                                             |
 
 The worked composition root, from `examples/order-amqp-worker/src/module.ts`:
 
@@ -67,54 +72,60 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
 });
 ```
 
-## `AmqpHandlers(contract)(name)`
+## `AmqpHandlers(contract)`
 
-The first call fixes the contract type (the value is otherwise unused). The
-second mints `class extends Port(name)<WorkerInferHandlers<C>> {}` and
-returns `ReturnType<typeof Provider<PortClassOf<Name, WorkerInferHandlers<C>>>>`
-— di's own `Provider(port)` builder — so the third call is di's `(deps, arm)`
-unchanged, checked against the contract's record before any module sees it,
-and the provider carries the port as `provider.port`. Each handler is a bare
+The first call fixes the contract type (the value is otherwise unused) and
+returns `ReturnType<typeof Provider<HandlersPortOf<C>>>` — di's own
+`Provider(port)` builder on the starter's handlers port, typed for `C` — so
+the second call is di's `(deps, arm)` unchanged, checked against the
+contract's record before any module sees it (a record missing a consumer, or
+with a typo'd key, is refused here), and the provider carries the port as
+`provider.port`. There is no name to give: a consumer serves one handlers
+record as it boots one runtime, so the port is the starter's — one
+`Port("AmqpHandlers")`, generic at the value level and fixed per contract at
+the type level (`HandlersPortOf<C>`, the move the kernel's `RuntimePort`
+makes) — and two handlers providers in one graph are di's duplicate-provider
+defect at build. Each handler is a bare
 function of the message its consumer declares; `WorkerInferHandlers<C>`
 accepts it with nothing wrapped around it, and no context is injected. From
 `examples/order-amqp-worker/src/handlers.ts`:
 
 ```ts
-export const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")(
-  [Logger],
-  {
-    sync: (logger) => ({
-      orderChanged: (message) => {
-        const { id, payload } = message.payload;
-        logger.info(
-          payload === null
-            ? `order ${id} is gone — notifying`
-            : `order ${id} placed — notifying (${payload.quantity} items)`,
-        );
-        return OkAsync();
-      },
-    }),
-  },
-);
+export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
+  sync: (logger) => ({
+    orderChanged: (message) => {
+      const { id, payload } = message.payload;
+      logger.info(
+        payload === null
+          ? `order ${id} is gone — notifying`
+          : `order ${id} placed — notifying (${payload.quantity} items)`,
+      );
+      return OkAsync();
+    },
+  }),
+});
 ```
 
 ## `amqp(options)`
 
 ```ts
-const amqp: <TContract extends AnyAmqpContract, H extends AnyPort>(
-  options: AmqpOptions<TContract, H>,
-) => Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | InstanceType<H>>;
+const amqp: <TContract extends AnyAmqpContract>(
+  options: AmqpOptions<TContract>,
+) => Module<
+  AmqpRuntime | AmqpConfig,
+  ConfigInvalid,
+  Env | HandlersInstanceOf<TContract>
+>;
 ```
 
-The primitive `AmqpModule` delegates to. `AmqpOptions<TContract, H>` has the
-sugar's first six fields, with `handlers` the **port class** constrained
-`H & HandlersPort<H, TContract>` — a port whose service misses a consumer or
-names one the contract does not declare fails to typecheck here, not on the
-first delivery. The module provides and exports `AmqpRuntime` and
-`AmqpConfig`, and **needs** `Env` (the kernel discharges it) and the handlers
-port's instance — the runtime provider depends on it through di, so a root
-that imports the starter without providing the handlers is refused at
-`start` (di's gate). The declared type is the same with `url` pinned or not.
+The primitive `AmqpModule` delegates to. `AmqpOptions<TContract>` has the
+sugar's fields minus `handlers` / `imports` / `provides` / `exports`: the
+handlers are not an option but the module's need. It provides and exports
+`AmqpRuntime` and `AmqpConfig`, and **needs** `Env` (the kernel discharges
+it) and the handlers port typed for `contract` (`HandlersInstanceOf<TContract>`)
+— the runtime provider depends on it through di, so a root that imports the
+starter without providing the handlers, or provides one built for another
+contract, is refused at `start` (di's gate). The declared type is the same with `url` pinned or not.
 
 ## `AmqpConfig`, and the environment
 

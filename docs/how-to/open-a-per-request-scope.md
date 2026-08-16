@@ -110,11 +110,7 @@ fails on arity with `UNSATISFIED UNIT NEEDS`:
 
 ```ts
 const UnloggedApi = Module("UnloggedApi")({
-  imports: [
-    ApplicationModule,
-    PersistenceModule,
-    http({ router: orderRouter.port }),
-  ],
+  imports: [ApplicationModule, PersistenceModule, http()],
   provides: [orderRouter],
   exports: [HttpRuntime],
 });

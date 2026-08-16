@@ -9,9 +9,9 @@ import { orderRouter } from "./router.js";
  * halves exist. `ApplicationModule` leaves `OrderRepository` unmet;
  * `PersistenceModule` provides it; `orderRouter` provides the oRPC router as a
  * service that declares the two use cases its procedures call; and
- * `http({ router: orderRouter.port })` is the whole transport — the runtime on
- * `HttpRuntime`, bound from `PORT` and `HOST` in the environment, and the
- * router mounted under `/rpc`. Importing them is what closes di's
+ * `http()` is the whole transport — the runtime on `HttpRuntime`, bound from
+ * `PORT` and `HOST` in the environment, and the router mounted under `/rpc`,
+ * needing the router the root provides. Importing them is what closes di's
  * arity gate (a composition without the router provider does not compile —
  * the starter's provider depends on it), and the exports here are exactly
  * what `start` resolves (`HttpRuntime`) and what the per-request

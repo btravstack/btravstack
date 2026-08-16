@@ -2,7 +2,7 @@ import { start } from "@btravstack/core";
 /**
  * The compile-time half of the transport layer: `start` resolves its runtime
  * from the `HttpRuntime` port the composition root exports, and
- * `http({ router })`'s runtime provider depends on the router port through
+ * `http()`'s runtime provider depends on the router port through
  * di. Two gates, both at compile time: `start`'s phantom rest-tuple gate turns
  * a module that exports no runtime into a call-site arity error, and di's own
  * `Module` typing turns a composition that imports the starter without
@@ -37,17 +37,17 @@ const RuntimelessApi = Module("RuntimelessApi")({
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _missingRuntime = start(RuntimelessApi, options);
 
-// The starter imported without its router provided: `http({ router })`'s
-// runtime provider depends on the router port (`orderRouter.port`, minted by
-// `HttpRouter`), so the composition carries it as an unmet need — di's gate,
-// not the kernel's, and it rejects the module at `start` rather than at
-// arity.
+// The starter imported without its router provided: `http()`'s runtime
+// provider depends on the starter's own router port (the one
+// `HttpRouter(contract)(deps, arm)` provides), so the composition carries it
+// as an unmet need — di's gate, not the kernel's, and it rejects the module
+// at `start` rather than at arity.
 const RouterlessApi = Module("RouterlessApi")({
-  imports: [ApplicationModule, PersistenceModule, http({ router: orderRouter.port })],
+  imports: [ApplicationModule, PersistenceModule, http()],
   exports: [HttpRuntime, Logger],
 });
 
-// @ts-expect-error — the composition needs OrderRouter and nothing provides it.
+// @ts-expect-error — the composition needs the router port and nothing provides it.
 const _missingRouter = start(RouterlessApi, options);
 
 // Positive: a `unit` module rides the same gate — `RequestModule` needs
@@ -60,7 +60,7 @@ const _withUnit = start(OrderApi, { ...options, unit: RequestModule });
 // has its runtime and router but does not export `Logger`, so only the unit
 // half of the gate can be what rejects the call.
 const UnloggedApi = Module("UnloggedApi")({
-  imports: [ApplicationModule, PersistenceModule, http({ router: orderRouter.port })],
+  imports: [ApplicationModule, PersistenceModule, http()],
   provides: [orderRouter],
   exports: [HttpRuntime],
 });

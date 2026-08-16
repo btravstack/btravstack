@@ -302,7 +302,11 @@ UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   runtime package ships its port and a starter — `HttpRuntime`/`http()`,
   `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
   has `needs` any more: each takes the application's router / activities /
-  handlers as a **port its runtime provider depends on** through di, so their
+  handlers as a **port its runtime provider depends on** through di — the
+  starter's own fixed port (`HttpRouterPort`, `TemporalActivitiesPort`,
+  `AmqpHandlersPort`, one id each; the temporal and amqp ones typed per
+  contract at the type level, the same generic-value move `RuntimePort`
+  itself makes), which the application provides and never names — so their
   `Needs` is `never` and `RuntimeHost.ctx` goes unread by every shipped
   runtime. The kernel keeps `Runtime.needs`, `RunUnit`'s typed `ctx` and the
   `UNSATISFIED RUNTIME NEEDS` arm as the general contract (`testRuntime` and a
@@ -518,30 +522,44 @@ prepends the router/activities/handlers **provider** to `provides` and the
 runtime port to `exports`, and hands those tuples to di's own `Module(name)`
 — whose return type is the sugar's, spelled once (see
 `packages/di/CLAUDE.md`) — so the kernel and both gates see nothing new; the
-plain starter (`http({ router })`, …) stays exported as the primitive it
-delegates to. And each ships the **port-and-provider sugar** for what the
-application supplies — `HttpRouter(contract)(name)(deps, { sync })`,
-`TemporalActivities(contract)(name)(deps, arm)`,
-`AmqpHandlers(contract)(name)(deps, arm)`, and `Config.provider(name)(schema)` for a config slice — the first call minting the port (its service
-known from the contract or schema) and returning di's own `Provider(port)`, so
-the last call is `Provider(port)(deps, arm)` exactly as everywhere else and
-the provider carries its port typed (`provider.port`, a `PortClassOf<Name,
-Service>` — di's `Provider(port)(…)` now returns `Provider<P, E, N> & { port:
-typeof port }`). **The contract types
+plain starter (`http()`, `temporal({ contract, workflows })`, `amqp({
+contract })`) stays exported as the primitive it
+delegates to, and each **needs** its router / activities / handlers port
+rather than taking it as an option. And each ships the **provider sugar** for
+what the application supplies — `HttpRouter(contract)(deps, { sync })`,
+`TemporalActivities(contract)(deps, arm)`, `AmqpHandlers(contract)(deps,
+arm)` — the first call fixing the contract and returning di's own
+`Provider(port)` on the starter's **fixed** port, so the second call is
+`Provider(port)(deps, arm)` exactly as everywhere else and the provider
+carries its port typed (`provider.port` — di's `Provider(port)(…)` returns
+`Provider<P, E, N> & { port: typeof port }`). There is no name to give: a
+process serves one router / one activities record / one handlers record as
+it boots one runtime (Thesis #1), so the port is framework-owned like
+`HttpConfig` — `Port("HttpRouter")`, `Port("TemporalActivities")`,
+`Port("AmqpHandlers")`, declared once each — and two providers for it in one
+graph are di's duplicate-provider defect at build. The temporal and amqp
+ports are generic at the value level and typed per contract at the type
+level (`ActivitiesPortOf<C>`, `HandlersPortOf<C>`), so a provider built for
+one contract still cannot be handed to a `TemporalModule` / `AmqpModule`
+declaring another — structural on the record, not on a name. `Config.provider(name)(schema)`
+is the one sugar that **keeps** its name: several config slices per
+application is normal, and the name is what `ConfigInvalid` prints. **The
+contract types
 the record, and nothing wraps a leaf**: an oRPC procedure, a Temporal activity
 and an AMQP handler are each a plain function typed by the contract at the
 call (`HttpRouter` does `implement`/`.result`/`os.router` itself; the
 temporal starter calls `declareActivitiesHandler`; `WorkerInferHandlers`
 accepts a bare function), so an application never writes `implement`,
-`os.…`, `declareHandler` or `declareActivitiesHandler`. The class line and
-its service type are what disappear; the port stays a real di port. Two rules
-from di's CLAUDE.md apply to writing one: return a type spelled through the
-exported `PortClassOf`/`PortInstance` (the class expression's own type is not
-nameable in declaration emit) and mint with `class extends Port(name)<Service>
-{}` so the duplicate-id warning still guards a name used twice. Pinning
+`os.…`, `declareHandler` or `declareActivitiesHandler`. The class line, its
+name and its service type are what disappear; the port stays a real di port.
+One rule from di's CLAUDE.md applies to writing one: return a type spelled
+through the exported `PortClassOf`/`PortInstance` (the class expression's own
+type is not nameable in declaration emit — which is also why the fixed ports
+are `Port(name)` cast to `PortClassOf`, not `class` lines). Pinning
 (`http({ port: 0 })`) is `Config.pinned(value, field)`, one helper for every
-starter. `http({ router })` binds
-`PORT`/`HOST` onto `HttpConfig`, mounts the application's **router port** —
+starter. `http()` binds
+`PORT`/`HOST` onto `HttpConfig`, mounts the router the application provides
+on **`HttpRouterPort`** —
 an oRPC router as a provider that declares the use cases its procedures call
 — under `prefix` through oRPC's own node adapter, and provides
 `HttpRuntime`; **oRPC is the one way HTTP is answered here** (oRPC shares this
@@ -549,13 +567,14 @@ stack's convictions — a
 contract, typed errors, `Result` at the boundary — so it is enforced, not
 offered among alternatives; the former `@btravstack/orpc` was folded in for
 that reason, and the node listener port `HttpHandler` is internal to the
-package). `temporal({ contract, activities, workflows })`
+package). `temporal({ contract, workflows })`
 binds `TEMPORAL_ADDRESS`/`TEMPORAL_NAMESPACE` onto `TemporalConfig`, opens
 `TemporalConnection` as a resource and provides `TemporalRuntime` from the
-application's **activities port** — implementations built by a provider from
-the application's own services, closures, no `context.ctx`; `amqp({ contract,
-handlers })` binds `AMQP_URL` onto `AmqpConfig` and provides `AmqpRuntime`
-from the application's **handlers port** the same way. The runtime provider
+activities the application provides on **`TemporalActivitiesPort`** —
+implementations built by a provider from
+the application's own services, closures, no `context.ctx`; `amqp({ contract
+})` binds `AMQP_URL` onto `AmqpConfig` and provides `AmqpRuntime`
+from the handlers on **`AmqpHandlersPort`** the same way. The runtime provider
 depends on that port through di, which is what deleted `needs` from all
 three: what a handler needs is its provider's business. A starter has real
 dependencies — peers, so an application holds one copy: `@btravstack/http` on
@@ -574,9 +593,10 @@ dependencies — peers, so an application holds one copy: `@btravstack/http` on
   **`start`'s** gate (`order-api`, `order-temporal-worker`,
   `order-amqp-worker` — its `NO RUNTIME` arm, since no starter's runtime
   declares a `needs` any more; `order-api`'s also pins the `unit` halves) and
-  **di's** need on the starter's port (a composition importing `http({ router
-})` / `temporal({ activities })` / `amqp({ handlers })` without providing
-  that port carries an unmet need `start` refuses); the fourth,
+  **di's** need on the starter's port (a composition importing `http()` /
+  `temporal({ contract, workflows })` / `amqp({ contract })` without providing
+  the router / activities / handlers carries the starter's port as an unmet
+  need `start` refuses); the fourth,
   `order-application`'s, pins **di's** `UNSATISFIED DEPENDENCIES` gate on
   `Module.scoped`. They are different gates and easy to conflate. `start`'s
   `UNSATISFIED RUNTIME NEEDS` arm is pinned only by `packages/core`'s own
@@ -642,16 +662,19 @@ dependencies — peers, so an application holds one copy: `@btravstack/http` on
   discovers the hard way otherwise.
 - **`examples/order-temporal-worker` consumes `@btravstack/temporal`**, the same
   way `order-api` consumes `@btravstack/http`: it supplies the contract, the
-  activities port and the `mapErrCases` triage, and reads `{ taskQueue,
+  activities provider and the `mapErrCases` triage, and reads `{ taskQueue,
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. Its activities are a
-  **port** (`OrderActivities`), provided from `PlaceOrder`, `OrderRepository`,
+  **provider** on the starter's activities port
+  (`orderActivities = TemporalActivities(orderContract)([…], { sync })`),
+  built from `PlaceOrder`, `OrderRepository`,
   `StockService` and `ShippingService` — closures over the services, no
   context read at call time — and the composition root is
   `TemporalModule("OrderTemporalWorker")({ contract, activities:
 orderActivities, workflows, imports })`, the sugar importing the starter;
   the connection and `TEMPORAL_*` come from the starter. `order-amqp-worker` is
-  the same shape (`OrderHandlers` from `Logger`,
+  the same shape (`orderHandlers = AmqpHandlers(orderContract)([Logger], {
+sync })`,
   `AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers, … })`),
   with its outbox relay a resourceful provider of its own rather than
   something layered onto the runtime.
@@ -663,7 +686,8 @@ orderActivities, workflows, imports })`, the sugar importing the starter;
   context at call time, never a module-level singleton — and
   **`HttpModule("OrderApi")({ router: orderRouter, imports: [Application,
 Persistence], exports: [Logger] })`** is the whole composition root — the
-  sugar imports `http({ router: OrderRouter })`, provides the router and
+  sugar imports `http()`, provides the router on the starter's
+  `HttpRouterPort` and
   exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` come from the
   environment inside the graph, the router is mounted under `/rpc`. `RequestModule` rides `StartOptions.unit` so
   the per-request fork is the kernel's. There is no `runtime`, `needs`,
@@ -674,9 +698,9 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the
   package's. Two gates keep the composition honest at compile time: a root
-  that forgets `http(...)` fails on arity (`NO RUNTIME`), and one that imports
-  it without providing `OrderRouter` fails di's own gate at `start`, since the
-  starter's runtime provider depends on the router.
+  that forgets `http()` fails on arity (`NO RUNTIME`), and one that imports
+  it without providing `orderRouter` fails di's own gate at `start`, since the
+  starter's runtime provider depends on its router port.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned

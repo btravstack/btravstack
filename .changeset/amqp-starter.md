@@ -3,7 +3,7 @@
 ---
 
 **Breaking.** `@btravstack/amqp` becomes a starter, the same shape as
-`@btravstack/http`'s `http()`. `amqp({ contract, handlers, url?, ... })`
+`@btravstack/http`'s `http()`. `amqp({ contract, url?, ... })`
 returns a module providing the runtime on the new **`AmqpRuntime`** port
 (`RuntimePort<Runtime<never, AmqpInfo>>` — the runtime has no needs) and the
 broker on **`AmqpConfig`** (`{ url }`, bound from `AMQP_URL`, default
@@ -11,20 +11,25 @@ broker on **`AmqpConfig`** (`{ url }`, bound from `AMQP_URL`, default
 nothing from the environment; its declared `Env` need and `ConfigInvalid`
 stay).
 
-`handlers` is a **port** the application provides, whose service is the
-handlers record the contract wants with no injected context
-(`WorkerInferHandlers<typeof contract>`); it is checked against `contract` at
-the `amqp(...)` call. Its provider declares what the handlers need and closes
-over it — there is no `context.ctx` any more, and no `needs`.
+The handlers are provided on the **starter's own handlers port** — one id,
+`Port("AmqpHandlers")`, framework-owned like `AmqpConfig`, since a consumer
+serves one handlers record as it boots one runtime; typed per contract at the
+type level, so a provider built for one contract cannot be handed to a module
+declaring another — whose service is the handlers record the contract wants
+with no injected context (`WorkerInferHandlers<typeof contract>`), checked
+against `contract` at the `AmqpHandlers(contract)(…)` call. The starter
+**needs** that port, so a composition that imports `amqp({ contract })`
+without providing handlers is refused at `start`. Its provider declares what
+the handlers need and closes over it — there is no `context.ctx` any more,
+and no `needs`.
 
 ```ts
-class OrderHandlers extends Port("OrderHandlers")<WorkerInferHandlers<typeof orderContract>> {}
-const orderHandlers = Provider(OrderHandlers)([Logger], {
-  sync: (logger) => ({ orderChanged: declareHandler(orderContract, "orderChanged", ...) }),
+const orderHandlers = AmqpHandlers(orderContract)([Logger], {
+  sync: (logger) => ({ orderChanged: (message) => … }),
 });
 
 const Worker = Module("Worker")({
-  imports: [AppModule, amqp({ contract: orderContract, handlers: OrderHandlers })],
+  imports: [AppModule, amqp({ contract: orderContract })],
   provides: [orderHandlers],
   exports: [AmqpRuntime],
 });
@@ -42,9 +47,9 @@ plus the contract and the handlers **provider**. It imports the starter,
 provides the handlers, exports `AmqpRuntime`, and hands the augmented
 imports/provides/exports to di's own `Module(name)({...})`, whose return type
 is the sugar's — sugar over the same primitives, nothing new for the kernel or
-the gates. `handlers` is a plain `Provider` whose instance is constrained to
-the contract's handlers record.
-`amqp({ contract, handlers })` stays exported as the primitive it delegates to.
+the gates. `handlers` is a plain `Provider` on the starter's handlers port
+for `contract` — what `AmqpHandlers` returns.
+`amqp({ contract })` stays exported as the primitive it delegates to.
 
 ```ts
 const Worker = AmqpModule("Worker")({
@@ -54,14 +59,16 @@ const Worker = AmqpModule("Worker")({
 });
 ```
 
-**`AmqpHandlers(contract)(name)`** mints the handlers port and returns di's
-own `Provider(port)`, so the class line goes: the last call is exactly
-`Provider(port)(deps, arm)`, checked against the contract's record, and the
-provider carries the port typed (`orderHandlers.port`) for `amqp()` or a type
-test; the port is typed as di's `PortClassOf<Name, WorkerInferHandlers<C>>`.
+**`AmqpHandlers(contract)`** is di's own `Provider(port)` on the starter's
+handlers port typed for the contract, so the class line and the name go: the
+next call is exactly `Provider(port)(deps, arm)`, checked against the
+contract's record — a bare function per consumer, nothing to wrap it in —
+and the provider carries the port typed (`orderHandlers.port`, di's
+`PortClassOf<"AmqpHandlers", WorkerInferHandlers<C>>`) for a hand-declared
+provider or a type test.
 
 ```ts
-const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logger], {
-  sync: (logger) => ({ orderChanged: declareHandler(orderContract, "orderChanged", ...) }),
+const orderHandlers = AmqpHandlers(orderContract)([Logger], {
+  sync: (logger) => ({ orderChanged: (message) => … }),
 });
 ```

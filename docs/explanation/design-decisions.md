@@ -121,6 +121,27 @@ runtime's own `404` do with two dependencies fewer, and without an
 `overrideGlobalObjects` footgun to disarm. It rules out a "bring your own
 router" option: oRPC is the one way, and the listener port is internal.
 
+## The starter sugars name nothing
+
+`HttpRouter(contract)(deps, arm)`, `TemporalActivities(contract)(deps, arm)`
+and `AmqpHandlers(contract)(deps, arm)` take no port name: each returns di's
+`Provider(port)` on a port the starter owns and declares once —
+`Port("HttpRouter")`, `Port("TemporalActivities")`, `Port("AmqpHandlers")` —
+the way it owns `HttpConfig` or `HttpRuntime`. A process serves one router,
+one activities record, one handlers record as it boots one runtime, so there
+is nothing to tell apart and a name would only be a second thing to keep in
+step; two providers for the port in one graph are di's duplicate-provider
+defect at build, which is the right answer. For Temporal and AMQP the port is
+one id at the value level and typed per contract at the type level — the move
+the kernel's `RuntimePort` makes — so a provider built for one contract still
+cannot be handed to a `TemporalModule` / `AmqpModule` declaring another; the
+check moved from a name to the record's own shape. It rules out a `router` /
+`activities` / `handlers` option on `http()` / `temporal()` / `amqp()` — the
+primitives simply **need** the port — and a per-application port class for
+what the starter consumes. `Config.provider("Name")(schema)` keeps its name
+on purpose: several config slices per application is normal, and the name is
+what `ConfigInvalid` prints.
+
 ## `Config` is a hand-rolled Standard Schema
 
 `Config.object` speaks Standard Schema v1 so any `zod` / `valibot` / `arktype`

@@ -23,57 +23,59 @@ network access on a **cold cache**. Measured: about 7.4 s cold, under 4 s warm.
 
 ## The activities: a service, closing over what it declares
 
-`activities.ts` is the application's half. `TemporalActivities(orderContract)("OrderActivities")`
-mints the port — its service the implementations record
-`declareActivitiesHandler` takes for the contract — and returns di's
-`Provider(port)` builder, so the last call declares the four ports the five
+`activities.ts` is the application's half. `TemporalActivities(orderContract)`
+is di's `Provider(port)` builder on the starter's own activities port, typed
+for the contract — its service the implementations record
+`declareActivitiesHandler` takes; no class, no name, since a worker serves one
+activities record — so the next call declares the four ports the five
 activities close over. Nothing is resolved from a context.
 
 ```ts
 export const orderActivities = TemporalActivities(orderContract)(
-  "OrderActivities",
-)([PlaceOrder, OrderRepository, StockService, ShippingService], {
-  sync: (place, repository, stock, shipping) => ({
-    fulfillOrder: {
-      place: (args, { errors }) =>
-        place
-          .execute(args.orderId, args.quantity)
-          .map((order) => ({ id: order.id, quantity: order.quantity }))
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.InvalidQuantity({ id: error.id }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.OrderAlreadyPlaced({ id: error.id }),
+  [PlaceOrder, OrderRepository, StockService, ShippingService],
+  {
+    sync: (place, repository, stock, shipping) => ({
+      fulfillOrder: {
+        place: (args, { errors }) =>
+          place
+            .execute(args.orderId, args.quantity)
+            .map((order) => ({ id: order.id, quantity: order.quantity }))
+            .mapErrCases((matcher) =>
+              matcher
+                .with(P.tag("InvalidQuantity"), (error) =>
+                  errors.InvalidQuantity({ id: error.id }),
+                )
+                .with(P.tag("DuplicateOrder"), (error) =>
+                  errors.OrderAlreadyPlaced({ id: error.id }),
+                ),
+            ),
+        reserveStock: (args, { errors }) =>
+          stock
+            .reserve(args.orderId, args.quantity)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("OutOfStock"), (error) =>
+                errors.OutOfStock({ id: error.id }),
               ),
-          ),
-      reserveStock: (args, { errors }) =>
-        stock
-          .reserve(args.orderId, args.quantity)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OutOfStock"), (error) =>
-              errors.OutOfStock({ id: error.id }),
             ),
-          ),
-      arrangeShipping: (args, { errors }) =>
-        shipping
-          .arrange(args.orderId)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("ShippingUnavailable"), (error) =>
-              errors.ShippingUnavailable({ id: error.id }),
+        arrangeShipping: (args, { errors }) =>
+          shipping
+            .arrange(args.orderId)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("ShippingUnavailable"), (error) =>
+                errors.ShippingUnavailable({ id: error.id }),
+              ),
             ),
-          ),
-      releaseStock: (args) => stock.release(args.orderId),
-      cancelPlacement: (args) =>
-        repository
-          .remove(args.orderId)
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), () => undefined),
-          ),
-    },
-  }),
-});
+        releaseStock: (args) => stock.release(args.orderId),
+        cancelPlacement: (args) =>
+          repository
+            .remove(args.orderId)
+            .recoverErrCases((matcher) =>
+              matcher.with(P.tag("OrderNotFound"), () => undefined),
+            ),
+      },
+    }),
+  },
+);
 ```
 
 `place` is the hinge. Its `mapErrCases` is the same triage

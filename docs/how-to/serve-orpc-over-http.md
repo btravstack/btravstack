@@ -20,7 +20,7 @@ root. Everything below is lifted from `examples/order-api`.
 
 1. Declare the contract with `@orpc/contract` — inputs, outputs and the
    `.errors({...})` a client may branch on.
-2. Implement it with `HttpRouter(contract)(name)(deps, { sync })`: a record
+2. Implement it with `HttpRouter(contract)(deps, { sync })`: a record
    shaped like the contract, each leaf a `Result`-returning function.
 3. Compose with `HttpModule(name)({ router, imports, provides, exports })`.
 4. `await runMain(OrderApi)` in `main.ts`.
@@ -55,9 +55,9 @@ export const orderContract = {
 
 ## Step 2 — the router, as a provider
 
-`HttpRouter(orderContract)("OrderRouter")` mints the router's port and returns
-di's own `Provider(port)`, so the last call declares the use cases the
-procedures call and closes over them. **The `mapErrCases` in each procedure is
+`HttpRouter(orderContract)` is di's own `Provider(port)` on the starter's
+router port — there is no name to give, a process serves one router — so the
+call declares the use cases the procedures call and closes over them. **The `mapErrCases` in each procedure is
 the one place a domain error becomes an HTTP answer** — every case named, no
 wildcard, so a new domain error is a compile error here:
 
@@ -76,46 +76,43 @@ const view = (order: Order): OrderView => ({
   quantity: order.quantity,
 });
 
-export const orderRouter = HttpRouter(orderContract)("OrderRouter")(
-  [PlaceOrder, FindOrder],
-  {
-    sync: (place, find) => ({
-      orders: {
-        place: ({ errors }, input) =>
-          place
-            .execute(input.id, input.quantity)
-            .map(view)
-            .mapErrCases((matcher) =>
-              matcher
-                .with(P.tag("InvalidQuantity"), (error) =>
-                  errors.INVALID_QUANTITY({
-                    message: error.message,
-                    data: { id: error.id },
-                  }),
-                )
-                .with(P.tag("DuplicateOrder"), (error) =>
-                  errors.CONFLICT({
-                    message: error.message,
-                    data: { id: error.id },
-                  }),
-                ),
-            ),
-        find: ({ errors }, input) =>
-          find
-            .execute(input.id)
-            .map(view)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("OrderNotFound"), (error) =>
-                errors.NOT_FOUND({
+export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
+  sync: (place, find) => ({
+    orders: {
+      place: ({ errors }, input) =>
+        place
+          .execute(input.id, input.quantity)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
                   message: error.message,
                   data: { id: error.id },
                 }),
               ),
+          ),
+      find: ({ errors }, input) =>
+        find
+          .execute(input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
+                message: error.message,
+                data: { id: error.id },
+              }),
             ),
-      },
-    }),
-  },
-);
+          ),
+    },
+  }),
+});
 ```
 
 Each leaf is the `.result()` handler `@unthrown/orpc` gives an implementer:
@@ -145,16 +142,12 @@ export const OrderApi = HttpModule("OrderApi")({
 ```
 
 `HttpModule` is `Module(name)({...})` plus `router`: it imports the starter
-(`http({ router: orderRouter.port })`), provides the router and exports
-`HttpRuntime`, and returns exactly the module the hand-written form would:
+(`http()`), provides the router and exports `HttpRuntime`, and returns
+exactly the module the hand-written form would:
 
 ```ts
 Module("OrderApi")({
-  imports: [
-    ApplicationModule,
-    PersistenceModule,
-    http({ router: orderRouter.port }),
-  ],
+  imports: [ApplicationModule, PersistenceModule, http()],
   provides: [orderRouter],
   exports: [HttpRuntime, Logger],
 });
@@ -162,9 +155,9 @@ Module("OrderApi")({
 
 Two gates hold at compile time. A root that forgets the starter exports no
 runtime port and `start` fails on arity (`NO RUNTIME`). A root that imports
-`http({ router })` without providing the router carries an unmet need — the
-starter's runtime provider depends on the router port through di — and `start`
-refuses the module.
+`http()` without providing the router carries an unmet need — the starter's
+runtime provider depends on its router port through di — and `start` refuses
+the module.
 
 ## Step 4 — `main.ts`
 
@@ -194,8 +187,8 @@ and exit `78`. `RequestModule` is optional — see
 | `port`     | `PORT`  | pins the port instead of reading the variable           |
 | `hostname` | `HOST`  | pins the host instead of reading the variable           |
 
-`http({ router, prefix?, port?, hostname? })` takes the same four with
-`router` the port **class** (`orderRouter.port`). Pinning is per field —
+`http({ prefix?, port?, hostname? })` takes the last three; the router is not
+an option but the module's need, provided by the root. Pinning is per field —
 `port: 0` still reads `HOST`.
 
 ## What the package decides
