@@ -21,19 +21,19 @@ import { outboxRelay, relayConfig } from "./outbox-relay.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
+type ServeOptions = { readonly drainTimeoutMs: number };
+
 /**
  * `X` is pinned to the ports the composition root exports rather than left
  * generic: `start`'s gate is a phantom rest parameter proven at the call site,
  * and no proof is available inside a helper generic in the module's own
  * exports. `AmqpRuntime` is what `start` resolves; the rest is the writer's
- * surface, which the tap below reads.
+ * surface, which the tap below reads. Spelled inline, like
+ * `order-temporal-worker`'s: an alias for a port union reads like a domain
+ * concept and is neither — the list IS the meaning.
  */
-type AmqpPorts = AmqpRuntime | PlaceOrder | OrderRepository | Outbox;
-
-type ServeOptions = { readonly drainTimeoutMs: number };
-
 type Serve = <E>(
-  module: Module<AmqpPorts, E, Scope | Env>,
+  module: Module<AmqpRuntime | PlaceOrder | OrderRepository | Outbox, E, Scope | Env>,
   options?: ServeOptions,
 ) => Promise<App<E>>;
 

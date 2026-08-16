@@ -633,9 +633,11 @@ deferred shape.
   is that field alone, for an application composing its own schema.
 - **`kernelEvents(logger)`** — the kernel's nine events as an `EventSink` for
   `StartOptions.onEvent`. The mapping is deliberate: `startFailed` and
-  `uncaught` are `error` and carry their `cause`; `teardownError` is `warn`
-  (the application is already stopping and the exit code says `2`) and does
-  **not** carry its cause, only `{ event, port }`; everything else is `info`.
+  `uncaught` are `error`; `teardownError` is `warn` (the application is
+  already stopping and the exit code says `2`). All three carry their `cause`
+  — every level takes one, which is what the uniform `(message, attributes?,
+cause?)` bought: a warning that could not say _why_ a finaliser failed was
+  the first draft's bug. Everything else is `info`.
   Each event's own fields become attributes, and every line carries `event`.
   The logger is a **parameter**, not resolved from the graph: `building` is
   emitted while the graph is still being built, so the sink cannot come from

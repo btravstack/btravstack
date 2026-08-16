@@ -26,15 +26,15 @@ const renderCause = (cause: unknown, depth = 0): unknown => {
  * One JSON object per line on `stream`, the shape every log backend already
  * reads and the same one the kernel's `stderrSink` writes its events in.
  *
- * The field order is deliberate — `time`, `level`, `message`, then the
- * correlation, then the caller's own attributes — because a human reading a
- * raw line reads it left to right, and a machine does not care. The unit's
- * ids are spread at the top level rather than nested under `unit`: a log
- * backend indexes fields, and `traceId` is the field an operator searches.
+ * The caller's attributes are spread **first** and the line's own fields
+ * after them, and that order is the precedence: an `attributes: { level:
+ * "info" }` cannot rewrite an `error` line's severity, nor its `traceId`,
+ * because the sink writes those last. A stream where a caller can forge the
+ * severity is a stream nobody can trust.
  *
- * A caller's attribute never overwrites one of those: the correlation is what
- * makes the line attributable, and an `attributes: { level: "…" }` that could
- * rewrite the severity is how a log stream stops being trustworthy.
+ * The unit's ids are spread at the top level rather than nested under `unit`:
+ * a log backend indexes fields, and `traceId` is the field an operator
+ * searches.
  */
 export const jsonSink =
   (stream: { readonly write: (chunk: string) => unknown } = process.stdout): Sink =>

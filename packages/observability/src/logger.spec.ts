@@ -52,8 +52,8 @@ describe("the logger", () => {
     logger.error("e", undefined, cause);
     logger.fatal("f", undefined, cause);
 
-    // THEN each lands at its own severity, and only the two failure levels
-    // carry a cause — the shape of the surface, asserted once
+    // THEN each lands at its own severity, and a cause appears exactly where
+    // the call supplied one — every level can carry one; these two did
     expect(
       recorder.lines().map((line) => ({ level: line.level, hasCause: line.cause !== undefined })),
     ).toEqual([
