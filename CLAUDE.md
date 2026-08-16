@@ -503,9 +503,11 @@ use) => Promise<void>` (vitest's fixture protocol, hence no vitest import or
 - **`tapped(module, ports)`** → `{ module, services() }` (`ServicesOf<P>`).
   `start` hands the application context to the runtime alone, so a test that
   wants the very `Logger` the use cases write to has no `ctx.get`; `tapped`
-  composes one more provider (`Tap`, `Port("Tap")` declared once and never
-  exported — two taps in one graph are di's duplicate-provider defect, and
-  one per application is the case) around `module`, depending on `ports`,
+  composes one more provider (`Tap`, `Port("@btravstack/testing/Tap")`
+  declared once and never exported — two taps in one graph are di's
+  duplicate-provider defect, and one per application is the case; the id is
+  namespaced because the port is invisible to the application that would
+  collide with it) around `module`, depending on `ports`,
   and remembers what it was built with. The returned module exports exactly
   what `module` exports, so the kernel still finds the runtime. **The gate**
   refuses a port `module` does not export (`"NOT EXPORTED"`, at the call

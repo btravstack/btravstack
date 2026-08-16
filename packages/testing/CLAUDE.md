@@ -46,7 +46,7 @@ probes: { port: 0 } })` binds a probe server over the default. Teardown
   work with `Tap` never exported. The returned module is cast back to
   `Module<X, E, N>`: it exports exactly what `module` exports, so the kernel
   still finds the runtime and the gates see nothing new. **`Tap` is
-  `Port("Tap")` declared once**, module-private: two `tapped` modules in one
+  `Port("@btravstack/testing/Tap")` declared once**, module-private: two `tapped` modules in one
   graph are di's duplicate-provider defect at build, and one tap per
   application is the case. **The gate** is a phantom rest tuple —
   `[Exclude<InstanceType<P[number]>, X>] extends [never] ? [] : [error: "NOT

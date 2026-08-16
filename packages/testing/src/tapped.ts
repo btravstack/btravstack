@@ -66,4 +66,13 @@ export const tapped = <X, E, N, const P extends readonly AnyPort[]>(
 
 // One id, declared once: two `tapped` modules in one graph are di's
 // duplicate-provider defect at build, and one tap per application is the case.
-class Tap extends Port("Tap")<Record<never, never>> {}
+//
+// The id is namespaced because this port is INVISIBLE to the application that
+// hits it: di keys services by the literal id string and warns once on a
+// duplicate ("one will shadow the other"), which is a legible message for two
+// ports a reader can see and a baffling one for a hidden harness provider a
+// test never named. `Port("Tap")` would collide with an application's own
+// `Tap` — a plausible name — so the package's own name is part of the id. The
+// framework's visible ports ("HttpRouter", "Runtime", "Env") stay bare: a
+// collision there is with something documented.
+class Tap extends Port("@btravstack/testing/Tap")<Record<never, never>> {}

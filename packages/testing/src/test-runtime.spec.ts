@@ -25,25 +25,32 @@ const hostFor = (
 };
 
 describe("testRuntime", () => {
-  it("starts and reports itself started", async () => {
+  it("starts, and reports itself started", async () => {
+    // GIVEN a fresh in-memory runtime
     const runtime = testRuntime();
-    const serving = await runtime.start(hostFor());
 
-    expect(serving).toBeOk();
-    expect(runtime.started()).toBe(true);
+    // WHEN the kernel starts it
+    // THEN it hands back a `Serving` and says so — one assertion over both,
+    // since `started()` read after a failed start would prove nothing
+    await expect(runtime.start(hostFor()).map(() => runtime.started())).toBeOkWith(true);
   });
 
-  it("routes submitted work through the host", async () => {
+  it("routes submitted work through the host, and releases it when it settles", async () => {
+    // GIVEN a started runtime with one unit open
     const host = hostFor();
     const runtime = testRuntime();
     await runtime.start(host);
-
     const unit = runtime.submit();
-    expect(host.inFlight()).toBe(1);
+    const during = host.inFlight();
 
+    // WHEN the unit settles
     unit.settle(Ok("done"));
-    await expect(unit.result).toBeOkWith("done");
-    expect(host.inFlight()).toBe(0);
+
+    // THEN the work's own `Result` comes back, and the unit was counted for
+    // exactly as long as it was open
+    await expect(
+      unit.result.map((value) => ({ value, during, after: host.inFlight() })),
+    ).toBeOkWith({ value: "done", during: 1, after: 0 });
   });
 
   // The fixture's two misuse guards are loud on purpose — a test that forgot
