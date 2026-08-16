@@ -181,6 +181,37 @@ describe("Module algebra", () => {
     void needsIsNever;
   });
 
+  test("exporting a provider yields the same Exports channel as exporting its port", () => {
+    const viaProvider = Module("Config")({
+      provides: [EnvProvider, AppConfigProvider],
+      exports: [AppConfigProvider],
+    });
+    const typed: Module<AppConfig, ConfigError, never> = viaProvider;
+    void typed;
+
+    type Channels = ChannelsOf<typeof viaProvider>;
+    const exportsIsAppConfig: Equal<Channels[0], AppConfig> = true;
+    const exportsMatchThePortForm: Equal<Channels[0], ChannelsOf<typeof ConfigModule>[0]> = true;
+    void exportsIsAppConfig;
+    void exportsMatchThePortForm;
+  });
+
+  test("exporting a provider for a port the module does not have is rejected", () => {
+    Module("Bad")({
+      provides: [EnvProvider],
+      // @ts-expect-error AppConfigProvider's port is neither provided nor imported here
+      exports: [AppConfigProvider],
+    });
+  });
+
+  test("exporting something that is neither a port nor a provider is rejected", () => {
+    Module("Bad")({
+      provides: [EnvProvider],
+      // @ts-expect-error a port id is not an export entry
+      exports: ["MEnv"],
+    });
+  });
+
   test("an internal port is not in Exports", () => {
     const persistence = Module("Persistence")({
       imports: [ConfigModule],

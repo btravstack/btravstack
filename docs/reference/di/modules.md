@@ -33,11 +33,20 @@ const Persistence = Module("Persistence")({
 
 All three lists are optional and default to empty.
 
-| List       | Contents                                                                                                                                                                                                                                                                                                                                      |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `imports`  | Modules whose **exports** become visible inside this one. A diamond — two imports that both import a third — is fine: providers are de-duplicated by reference at build time, so the shared module's services construct once.                                                                                                                 |
-| `provides` | This module's own providers. A provider here may depend on anything **available** in this module: ports provided here, plus ports exported by the imports. Order within the list does not matter for correctness — dependency order is computed at build time — but it is what makes error selection deterministic when several fail at once. |
-| `exports`  | The ports outside code may see. Each entry must be an **available port** — provided here, or exported by an import — or an **imported module**, a whole-module re-export forwarding that module's own `exports` (never its internals). Anything else is a compile error at the declaration.                                                   |
+| List       | Contents                                                                                                                                                                                                                                                                                                                                                    |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `imports`  | Modules whose **exports** become visible inside this one. A diamond — two imports that both import a third — is fine: providers are de-duplicated by reference at build time, so the shared module's services construct once.                                                                                                                               |
+| `provides` | This module's own providers. A provider here may depend on anything **available** in this module: ports provided here, plus ports exported by the imports. Order within the list does not matter for correctness — dependency order is computed at build time — but it is what makes error selection deterministic when several fail at once.               |
+| `exports`  | The ports outside code may see. Each entry must be an **available port** — provided here, or exported by an import — a **provider for one**, which is normalised to `provider.port`, or an **imported module**, a whole-module re-export forwarding that module's own `exports` (never its internals). Anything else is a compile error at the declaration. |
+
+Exporting a provider means exactly what exporting its port class means — same
+`Exports` channel, same gates — and it is the only spelling available when the
+port was minted inside a helper (`Config.provider("RelayConfig")(schema)`,
+`HttpController(name, fragment)`), where there is no class to name:
+
+```ts
+exports: [Logger, ordersController], // a port class and a provider, together
+```
 
 Everything provided but not exported is
 [private to the module](/how-to/keep-a-port-private): present in the built
@@ -89,11 +98,11 @@ constrain its `imports`/`provides`/`exports` exactly the way `Module(name)`
 does, augment them, and hand the tuples to `Module(name)({...})` itself, so
 the sugar's return type is spelled once, by `di`.
 
-| Type                                                                           | Shape                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AnyModule`                                                                    | `{ name: string; imports: readonly AnyModule[]; provides: readonly AnyProvider[]; exports: readonly (AnyPort \| AnyModule)[] }` — every module, whatever its channels.                                                                                                         |
-| `AnyProvider`                                                                  | `{ port: AnyPort; deps: readonly AnyPort[] }` — every provider, whatever its channels. See [Providers](/reference/di/providers#anyprovider).                                                                                                                                   |
-| `Exportable<I extends readonly AnyModule[], P extends readonly AnyProvider[]>` | What one `exports` entry may be, given the module's `imports` `I` and `provides` `P`: an available port — one whose instance type is among `I`'s exports or `P`'s ports — or one of the modules in `I`. `Module(name)`'s own `exports` is typed `readonly Exportable<I, P>[]`. |
+| Type                                                                           | Shape                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AnyModule`                                                                    | `{ name: string; imports: readonly AnyModule[]; provides: readonly AnyProvider[]; exports: readonly (AnyPort \| AnyModule)[] }` — every module, whatever its channels.                                                                                                                                     |
+| `AnyProvider`                                                                  | `{ port: AnyPort; deps: readonly AnyPort[] }` — every provider, whatever its channels. See [Providers](/reference/di/providers#anyprovider).                                                                                                                                                               |
+| `Exportable<I extends readonly AnyModule[], P extends readonly AnyProvider[]>` | What one `exports` entry may be, given the module's `imports` `I` and `provides` `P`: an available port — one whose instance type is among `I`'s exports or `P`'s ports — a provider for such a port, or one of the modules in `I`. `Module(name)`'s own `exports` is typed `readonly Exportable<I, P>[]`. |
 
 An application never writes these; a package composing a `Module` on an
 application's behalf does.

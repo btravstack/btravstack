@@ -44,7 +44,12 @@ All runtime code lives in `packages/di/src`, one concept per file:
   close on every path), `Module.forkScope` (per-request scope seeded from a built
   parent `Context`). Unmet dependencies are compile errors via a conditional rest
   parameter — `[N] extends [never] ? [] : [error: "UNSATISFIED DEPENDENCIES",
-missing: N]`.
+missing: N]`. `exports` accepts an available **port class**, a **provider** for
+  one (normalised to `provider.port` when the module is built, so the stored
+  `exports` array stays `readonly (AnyPort | AnyModule)[]`, and yielding the
+  identical `Exports` channel either way), or an imported module. The provider
+  arm is what the port-minting helpers need — `Config.provider(name)(schema)`,
+  `HttpController(name, fragment)` — where there is no class to name.
 - **`build.ts`** — `flatten` (dedupe by provider reference), `plan` (levels
   providers for concurrent construction; detects cycles, duplicate providers,
   providers for `Scope`, missing providers — all

@@ -115,8 +115,15 @@ type Available<I extends readonly AnyModule[], P extends readonly AnyProvider[]>
   | PortOf<P[number]>;
 
 /**
- * An export entry is legal only if it is an available port or an imported
+ * An export entry is legal only if it is an available port, a provider for one
+ * (normalised to `provider.port` by `ModuleDeclaration` below), or an imported
  * module (whole-module re-export).
+ *
+ * The provider arm exists because the helpers that mint their own port —
+ * `Config.provider(name)(schema)`, a starter's `HttpRouter(contract)(…)` —
+ * hand back a provider and no class to name, so `exports: [ordersController]`
+ * is the only spelling that does not go back through `.port`. It is
+ * `AnyProvider &`, not a bare `{ port }`, so nothing but a provider matches.
  *
  * The intersection `AnyPort & (new () => Available<I, P>)` checks a
  * candidate port class's *constructor return type* — its instance type —
@@ -138,10 +145,19 @@ type Available<I extends readonly AnyModule[], P extends readonly AnyProvider[]>
  */
 export type Exportable<I extends readonly AnyModule[], P extends readonly AnyProvider[]> =
   | (AnyPort & (new () => Available<I, P>))
+  | (AnyProvider & { readonly port: AnyPort & (new () => Available<I, P>) })
   | I[number];
 
 type ResolvedExports<X extends readonly unknown[]> =
-  | (X[number] extends infer E ? (E extends AnyPort ? InstanceType<E> : never) : never)
+  | (X[number] extends infer E
+      ? E extends AnyPort
+        ? InstanceType<E>
+        : // A provider contributes its port's instance type, so exporting a
+          // provider and exporting its port class yield the identical channel.
+          E extends AnyProvider
+          ? InstanceType<E["port"]>
+          : never
+      : never)
   | ExportsOfModule<Extract<X[number], AnyModule>>;
 
 /**
@@ -171,7 +187,10 @@ function ModuleDeclaration<const Name extends string>(name: Name) {
       name,
       imports: options.imports ?? [],
       provides: options.provides ?? [],
-      exports: options.exports ?? [],
+      // Normalised here, not read lazily: `exports` is declared
+      // `readonly (AnyPort | AnyModule)[]` on both `Module` and `AnyModule`,
+      // and a starter's shaped module spreads it into its own array.
+      exports: (options.exports ?? []).map((entry) => ("port" in entry ? entry.port : entry)),
     }) as never;
 }
 
