@@ -14,4 +14,15 @@ describe("HttpController", () => {
       deps: controller.deps.map((dep) => dep.portId),
     }).toEqual({ portId: "HelloController", deps: ["Greeter"] });
   });
+
+  it("serves a router composed from several controllers", async ({ rpcSliced }) => {
+    // GIVEN an API whose contract is implemented by two separate controllers
+    const { client } = await rpcSliced();
+
+    // WHEN one procedure from each controller is called
+    const answers = await Promise.all([client.greetings.hello(), client.echoes.ping()]);
+
+    // THEN every controller's slice was mounted under its own contract key
+    expect(answers).toEqual(["hello world", "pong"]);
+  });
 });

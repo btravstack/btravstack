@@ -92,10 +92,24 @@ export const orpc = (options: OrpcOptions = {}) => {
  * built from it. There is no name to give — a process serves one router, so
  * the port is the starter's (`HttpRouterPort`), and the provider carries it
  * typed (`orderRouter.port`) for whoever else needs the class.
+ *
+ * The second call also takes a **keyed record of controllers** instead of
+ * `(deps, { sync })`: `HttpRouter(contract)({ orders: ordersController, users:
+ * usersController })`, one `HttpController` per top-level contract key. Each
+ * fragment is composed as-is rather than re-implemented, and every key of the
+ * contract must be covered — a missing or extra key is a compile error.
  */
-export const HttpRouter =
-  <C extends Record<string, RouterContract>>(contract: C) =>
-  <const D extends readonly AnyPort[]>(
+export const HttpRouter = <C extends Record<string, RouterContract>>(contract: C) => {
+  // The implementer is walked untyped: `Implementation<C>` above is the
+  // whole check — a key the contract does not declare is a compile error
+  // there, and `routerOf` skips one anyway rather than reading `.result` off
+  // `undefined` — and `implement(contract)`'s own type is a per-contract
+  // intersection this generic body cannot index into.
+  const os = implement(contract) as unknown as Record<string, unknown> & {
+    readonly router: (record: Record<string, unknown>) => Router<Record<never, never>>;
+  };
+
+  function build<const D extends readonly AnyPort[]>(
     deps: D,
     options: {
       readonly sync: (
@@ -108,19 +122,48 @@ export const HttpRouter =
     InstanceType<D[number]>
   > & {
     readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-  } => {
-    // The implementer is walked untyped: `Implementation<C>` above is the
-    // whole check — a key the contract does not declare is a compile error
-    // there, and `routerOf` skips one anyway rather than reading `.result` off
-    // `undefined` — and `implement(contract)`'s own type is a per-contract
-    // intersection this generic body cannot index into.
-    const os = implement(contract) as unknown as Record<string, unknown> & {
-      readonly router: (record: Record<string, unknown>) => Router<Record<never, never>>;
-    };
-    const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
-      os.router(routerOf(os, options.sync(...(services as never)) as Record<string, unknown>));
-    return Provider(HttpRouterPort)(deps, { sync } as never) as never;
   };
+  function build<M extends { readonly [K in keyof C]: ControllerFor<C[K]> }>(
+    controllers: M,
+  ): Provider<
+    PortInstance<"HttpRouter", Router<Record<never, never>>>,
+    never,
+    InstanceType<M[keyof M]["port"]>
+  > & { readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>> };
+  function build(depsOrControllers: unknown, options?: unknown): unknown {
+    // `Array.isArray` discriminates the two forms, the same way
+    // `Provider(port)(depsOrOptions, …)` discriminates its own.
+    if (Array.isArray(depsOrControllers)) {
+      const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
+        os.router(
+          routerOf(
+            os,
+            (options as { readonly sync: (...s: readonly unknown[]) => unknown }).sync(
+              ...services,
+            ) as Record<string, unknown>,
+          ),
+        );
+      return Provider(HttpRouterPort)(depsOrControllers as readonly AnyPort[], { sync } as never);
+    }
+
+    const entries = Object.entries(depsOrControllers as Record<string, { readonly port: AnyPort }>);
+    const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
+      os.router(
+        routerOf(os, Object.fromEntries(entries.map(([key], index) => [key, services[index]]))),
+      );
+    return Provider(HttpRouterPort)(
+      entries.map(([, controller]) => controller.port),
+      { sync } as never,
+    );
+  }
+
+  return build;
+};
+
+/** A controller for one fragment — what `HttpController` returns, as the keyed form consumes it. */
+type ControllerFor<Fragment extends RouterContract> = {
+  readonly port: PortClassOf<string, Implementation<Fragment>>;
+};
 
 /**
  * What `HttpRouter(contract)(…)(…, { sync })`'s `sync` returns: the contract's
