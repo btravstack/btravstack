@@ -24,16 +24,17 @@ All runtime code lives in `packages/di/src`, one concept per file:
 - **`port.ts`** — `Port("Id")` returns a phantom class; consumers write
   `class OrderRepository extends Port("OrderRepository")<Shape> {}`. Identity is
   nominal via module-private `unique symbol` brands (`ID`/`SERVICE`) —
-  deliberately unexported so port instances are unforgeable. `Port.many` creates
-  set ports (multiple providers contribute members); its runtime discriminant is
-  the static `many: true` field, its type-level one the `[MANY]` brand. `Scope`
-  is a phantom port (service shape `never`) that resourceful providers add to
-  `Needs`.
+  deliberately unexported so port instances are unforgeable. `Scope` is a
+  phantom port (service shape `never`) that resourceful providers add to
+  `Needs`. There are no set ports: `Port.many`/`Provider.member` were removed
+  once an audit found no consumer in any of the eight packages or ten
+  examples, and the exemption they needed had rippled into `plan`'s levelling
+  (a `Set<AnyProvider>` plus two count maps, now one membership test).
 - **`provider.ts`** — `Provider(Port)([deps], arm)` with a construction family of
   mutually exclusive option arms: `value` / `sync` / `make` (fallible, returns
   `Result`) / `class` / `acquire`+`release` (resourceful — puts `Scope` in
   `Needs`). Exclusivity is enforced by giving each arm the other keys as optional
-  `never`. `Provider.member` contributes one member to a set port.
+  `never`.
 - **`module.ts`** — the `Module<Exports, E, Needs>` algebra. Three phantom
   channels with a deliberate variance rule: capability channels (`_exports`) are
   contravariant ("you may forget what you have"), obligation channels (`_error`,
@@ -46,7 +47,7 @@ All runtime code lives in `packages/di/src`, one concept per file:
 missing: N]`.
 - **`build.ts`** — `flatten` (dedupe by provider reference), `plan` (levels
   providers for concurrent construction; detects cycles, duplicate providers,
-  ordinary/set-port conflicts, providers for `Scope`, missing providers — all
+  providers for `Scope`, missing providers — all
   _before_ any factory runs), `run`, `runScoped`. Wiring bugs are thrown as
   `WiringDefect` inside a `.map` callback on purpose: unthrown converts the throw
   into its `Defect` channel, which is where wiring bugs (vs. modeled failures)
@@ -61,7 +62,7 @@ missing: N]`.
   teardown always completes and never masks the original failure.
 - **`index.ts`** — the deliberate public surface. `Scope` is exported as a _type
   only_ (the class value would let consumers provide or alias it);
-  `PortClass`/`ManyPortClass` are exported solely so declaration emit works for
+  `PortClass` is exported solely so declaration emit works for
   consumers who export ports; `PortInstance` and **`PortClassOf<Id, Service>`**
   (`{ portId: Id; new (): PortInstance<Id, Service> }`, both types only) so a
   provider over a port declared inside a helper — one minted per call
@@ -114,10 +115,9 @@ workspace (`workspace:*`, own `unthrown` dep since it's a peer) and predates the
 kernel — it composes a `Module` and never calls `start`, which is what makes it
 the container's own test rather than the framework's. It survived the merge on
 the declaration-emit guard above; `plugin-registry` and `request-scope` did not,
-because `many.spec.ts` and `fork.spec.ts` already pin what they asserted (and
-`order-api` forks a real per-request scope besides). If a set-port or
-forked-scope example is ever wanted again, write it from those specs rather than
-restoring a workspace whose tests were duplicates.
+because `fork.spec.ts` already pins what the second asserted (and `order-api`
+forks a real per-request scope besides); the first went with `Port.many`
+itself.
 
 ## Binding design rules
 

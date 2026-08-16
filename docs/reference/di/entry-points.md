@@ -131,11 +131,11 @@ What entry points hand back or pass to callbacks:
 const service = ctx.get(SomePort); // typed exactly as the port declared
 ```
 
-| Member            | Meaning                                                                                                                                                                                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ctx.get(port)`   | Returns the constructed service. Only ports in the context's channel — the module's `Exports` (plus the parent's, in a fork) — compile; everything else is unnameable. On a [set port](/reference/di/ports#port-many-id-member), returns every accumulated contribution. |
-| `Context.empty()` | A `Context<never>` with nothing in it. Useful as a typed starting point in tests.                                                                                                                                                                                        |
-| `Context<in R>`   | The type. `R` is the union of port instance types it carries; it is contravariant, so a `Context<A \| B>` may be passed where a `Context<A>` is expected — never the reverse.                                                                                            |
+| Member            | Meaning                                                                                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.get(port)`   | Returns the constructed service. Only ports in the context's channel — the module's `Exports` (plus the parent's, in a fork) — compile; everything else is unnameable.        |
+| `Context.empty()` | A `Context<never>` with nothing in it. Useful as a typed starting point in tests.                                                                                             |
+| `Context<in R>`   | The type. `R` is the union of port instance types it carries; it is contravariant, so a `Context<A \| B>` may be passed where a `Context<A>` is expected — never the reverse. |
 
 A `Context` is immutable and read-only from the outside: `get` is its entire
 public surface. Services construct once per build; every `get` returns the

@@ -259,7 +259,7 @@ Two siblings came with it and were dropped in the same merge. `request-scope`
 (a pool under `Module.scoped`, a transaction forked per request) is covered by
 `packages/di/src/fork.spec.ts` and, in a real application, by
 [`order-api`](./order-api)'s own per-request scope; `plugin-registry` (a
-`Port.many` set port fed by two modules) is covered by
+a plugin registry) was covered by
 `packages/di/src/many.spec.ts`. Neither asserted anything the container's own
 suite did not already pin, and an example that proves nothing new is an
 illustration — which is what this directory is not.

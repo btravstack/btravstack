@@ -35,7 +35,6 @@ const GUIDE_SIDEBAR = [
       { text: "Write a runtime", link: "/how-to/write-a-runtime" },
       { text: "Read the ambient unit from an adapter", link: "/how-to/read-the-ambient-unit" },
       { text: "Keep a port private", link: "/how-to/keep-a-port-private" },
-      { text: "Build a plugin registry", link: "/how-to/build-a-plugin-registry" },
     ],
   },
   {
