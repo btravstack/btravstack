@@ -4,7 +4,7 @@ The test harness's public surface. The root `CLAUDE.md` is the authoritative
 spec; this file holds what only matters under `packages/testing/`. Keep it in
 sync with the code and `README.md` in the same commit — the package ships no
 `docs-examples.test-d.ts` (the kernel's compiles the `testRuntime` /
-`createFakeClock` / `withApp` samples; the README's `bootFixture` sample was
+`createFakeClock` samples; the README's `bootFixture` sample was
 compiled and run as a scratch spec in `examples/order-api` when written).
 
 It is `@nestjs/testing`'s shape: a package of its own that peers on the
@@ -27,14 +27,14 @@ Promise<void>` handing `use` a **`Boot`** — `start`'s own signature and
   `signals` and `unit` — a unit module is a call's business); then
   `probes: false`, `preDrainDelayMs: 0`, a silent `onEvent`. So `boot(m, {
 probes: { port: 0 } })` binds a probe server over the default. Teardown
-  mirrors `withApp` **and is Defect-only**: `stop()`, `await exited`, and a
+  is **Defect-only**: `stop()`, `await exited`, and a
   `Defect` is rethrown (`exit.cause`) so a shutdown that blew up fails the
   test even when the test never read `exited`; a modeled `Err` passes
   through, since a startup failure is an outcome a test may be asserting —
   which is why `serveBroken`-style fixtures in the starters assert their
   `Err` themselves. Apps are stopped in the order booted, sequentially. The
   boot body forwards through a discharged-signature cast — the same move
-  `withApp` and the kernel make on `start` — because the gate is proven at
+  the kernel makes on `start` — because the gate is proven at
   each `boot` call site and invisible in the fixture body.
 - **`tapped(module, ports)`** → `{ module, services() }`; **`ServicesOf<P>`**
   is the tuple `services()` answers. `start` hands the application context to
@@ -57,24 +57,6 @@ EXPORTED", missing]` — refusing at the call site a port `module` does not
   is a bug in the test, not a modeled outcome, and an `undefined` a careless
   assertion could swallow is worse than a throw. Read it after
   `runtimeInfo()` (or `untilStarted()`) resolves.
-- **`withApp(module, options, use)`** — start, hand to `use`, stop again
-  whatever `use` does; the callback shape from before `bootFixture` existed,
-  moved here unchanged. `signals` and `probes` are **forced off** whatever the
-  caller passes; a test needing the real probe server calls `start` directly.
-  It carries the same phantom gate as `start`, and is the one harness-shaped
-  exception to the kernel's Thesis #6 (both it and `use` speak a bare
-  `Promise`): `use` is the test body, a thrown assertion failure inside it
-  must reach the test runner, and an `AsyncResult` never rejects — converting
-  either side would turn a failing `expect` into a `Defect` a caller can
-  forget to unwrap, i.e. a green test that asserted nothing; `A` is the test
-  author's own type and carries no error channel, so the wrapper would add no
-  information either. It **rethrows a `Defect`** on `exited` and only a
-  `Defect`: the harness awaits `exited` to know the application stopped, and
-  dropping that `Result` let a shutdown that blew up pass as a green test when
-  `use` never read `exited`. A modeled `Err` is an outcome a test may be
-  asserting, so it passes through. A failure thrown by `use` outranks both —
-  it is held while the application is stopped and rethrown unchanged, so a
-  shutdown defect can never mask the assertion that actually failed.
 - **`testRuntime(name?)`** / **`TestRuntimePort`** / **`TestRuntime`** /
   **`TestRuntimeInfo`** / **`SubmittedUnit`** — an in-memory
   `Runtime<never, TestRuntimeInfo>` plus `started()`, `untilStarted()` (an
@@ -109,7 +91,7 @@ EXPORTED", missing]` — refusing at the call site a port `module` does not
   deadline must not resolve it twice) — the kernel's second-SIGTERM `skip`
   signal is what that path exists for.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config` (`Env`, in
-  `Boot`'s and `withApp`'s `Module<X, E, Scope | Env>`), `@btravstack/di`,
+  `Boot`'s `Module<X, E, Scope | Env>`), `@btravstack/di`,
   `unthrown`. Nothing else, and no `vitest`.
 
 ## Tests
@@ -136,11 +118,6 @@ exercised against) and `runtimeModule(runtime)`.
 - `fake-clock.spec.ts` (6): starts at 0 / at the supplied instant, a sleep
   pending until its deadline, non-positive sleep, already-aborted signal, an
   abort cutting a sleep short and forgetting it.
-- `with-app.spec.ts` (3): a shutdown Defect `use` never looked at, `use`'s own
-  failure winning over a shutdown Defect, a modeled `Err` passing through.
-  `defectingOnStop` mints the defect the only documented way — a throw
-  inside a combinator's throw-to-defect net — since `Defect` has no public
-  constructor.
 
 The kernel invariants these hold — _"No `Result` is produced and left
 unexamined"_ and the abort-from-`registry.abortAll()` one — are listed in
@@ -148,7 +125,7 @@ unexamined"_ and the abort-from-`registry.abortAll()` one — are listed in
 
 ## How the kernel's own specs reach this package
 
-`@btravstack/core`'s specs use `testRuntime`, `createFakeClock` and `withApp`,
+`@btravstack/core`'s specs use `bootFixture`, `testRuntime` and `createFakeClock`,
 and this package peers on `@btravstack/core`. Listing it as a devDependency of
 core would be a **package-graph cycle turbo refuses**, so it is not one:
 

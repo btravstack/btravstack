@@ -1,13 +1,12 @@
 # packages/core
 
-The kernel's internals. The root `CLAUDE.md` is still the authoritative spec
-for what this package **is** — the thesis, the public surface and the
-conventions live there; this file holds the two sections that only matter when
-you are editing `packages/core` itself. Both are load-bearing: keep them in
-sync with the code in the same commit.
+The kernel's public surface and its internals. The root `CLAUDE.md` carries
+the thesis and the conventions, and nothing else states this package's API —
+that copy lived there until it drifted. All three sections below are
+load-bearing: keep them in sync with the code in the same commit.
 
 The specs import `@btravstack/testing` (`testRuntime`, `createFakeClock`,
-`withApp`), which peers on this package and is therefore **not** a
+`bootFixture`), which peers on this package and is therefore **not** a
 devDependency here — `tsconfig.json`'s `paths` (the built d.ts, ordered by
 `turbo.json`'s `@btravstack/core#typecheck` edge), `vitest.config.ts`'s
 aliases and `knip.json` carry it instead, and `tsconfig.build.json` is what
@@ -15,6 +14,183 @@ aliases and `knip.json` carry it instead, and `tsconfig.build.json` is what
 its reason are spelled out under _Toolchain & conventions_ in the root
 `CLAUDE.md`. `test-fixtures.ts`'s `runtimeModule(runtime)` wraps a hand-built
 runtime the way `TestRuntime.module` wraps the plain one.
+
+## Public surface
+
+`packages/core/src/index.ts` is the one place the kernel's API is decided —
+one entry point.
+
+- **`start(module, options?)` → `RunningApp<E, RuntimeInfoOf<X>>`** — the
+  entry point. Takes a `Module<X, E, Scope | Env>` (not `Module<X, E,
+never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
+  module, the resourceful one whose `acquire`/`release` provider adds `Scope`
+  — the single need `Module.scoped` discharges itself — and one whose
+  configuration reads `Env`, which the kernel wraps in as it builds; a module
+  that provides `Env` itself is wrapped without it, and its own wins).
+  **The runtime is a
+  service of that module**, not an option: the module exports a port declared
+  over `RuntimePort`, the kernel builds the graph, resolves that port and
+  drives what it finds. The kernel is DI initialisation and lifecycle, nothing
+  else. Followed by the phantom `...gate` rest tuple, `StartGate<X,
+UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
+  `UNSATISFIED RUNTIME NEEDS` when the runtime's declared needs are not among
+  the module's exports (the module's alone — a unit-only port exists only
+  while a unit is open, and `RuntimeHost.ctx` is the application context),
+  `UNSATISFIED UNIT NEEDS` for the fork's own direction — all three at the
+  call site, on arity.
+- **`RuntimePort`** — `Port("Runtime")`, exported **generic** (no fixed
+  service): a runtime package declares its own concrete port over it —
+  `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
+  — so every runtime is one id at runtime while each carries its own
+  `Needs`/`Info` in the type. `RuntimeOf<X>` / `RuntimeNeedsOf<X>` /
+  `RuntimeInfoOf<X>` read those back out of a module's exports (only
+  `RuntimeInfoOf` is exported — the other two are the gate's internals);
+  `RuntimeInstance` is the shared instance type
+  (`InstanceType<PortClass<"Runtime">>`, internal too). Every
+  runtime package ships its port and a starter — `HttpRuntime`/`http()`,
+  `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
+  has `needs` any more: each takes the application's router / activities /
+  handlers as a **port its runtime provider depends on** through di — the
+  starter's own fixed port (`HttpRouterPort`, `TemporalActivitiesPort`,
+  `AmqpHandlersPort`, one id each; the temporal and amqp ones typed per
+  contract at the type level, the same generic-value move `RuntimePort`
+  itself makes), which the application provides and never names — so their
+  `Needs` is `never` and `RuntimeHost.ctx` goes unread by every shipped
+  runtime. The kernel keeps `Runtime.needs`, `RunUnit`'s typed `ctx` and the
+  `UNSATISFIED RUNTIME NEEDS` arm as the general contract (`testRuntime` and a
+  hand-rolled runtime still use it), but no starter does. A port's service
+  type is fixed at declaration, which is why a runtime with application-specific
+  needs could not ship its port — the reason the needs went, not a constraint
+  to work around.
+- **`StartOptions<UnitX, UnitNeeds>`** — `env` (the environment the graph is
+  configured from, provided to it as `@btravstack/config`'s `Env` port and
+  what the kernel reads its own `PROBE_PORT` from; default `process.env`, a
+  test hands in a record);
+  `unit` (a `Module<UnitX, never, UnitNeeds>` the kernel forks around **every
+  unit**: built as the unit opens, torn down as it closes — while the unit's
+  ambient record is still open — reading anything the application context
+  carries; this is what makes a per-request scope transparent, so no handler
+  ever calls `Module.forkScope` itself. Its error channel is pinned to `never`
+  — a construction failure at unit scope has no modeled channel and rides the
+  unit's defect path, which every runtime already answers — `@btravstack/http`
+  writes the `500` from its `recoverDefect`, precisely because that failure
+  happens before the handler is reached. A unit finaliser that fails is
+  emitted as a `teardownError` event only, never pushed into
+  `ExitReport.teardownErrors` (which is the application scope's, and would
+  grow unbounded). With the option, unit work runs only once the fork is
+  built — after an `await` when a unit provider is async — so a runtime that
+  subscribes to an event from inside its work must check it has not already
+  fired (see contract 3 above). The gate checks
+  both directions at the call site: runtime `needs` may draw on `UnitX`, and
+  `UnitNeeds` must be covered by the module's exports or `Scope`. One caveat:
+  `RuntimeHost.ctx` is the **application** context, so a unit-provided port
+  exists only inside unit work — resolving one at runtime startup is a
+  defect); `clock`
+  (default `systemClock`); `signals` (default `true`; **`false` disables the
+  SIGTERM/SIGINT handlers _and_ the uncaught ones together**); `probes`
+  (`{ port }` or `false`; unset, bound from `PROBE_PORT` in `env`, default
+  `9000` — the one piece of configuration the kernel binds itself, because
+  the probe server is up before the graph exists; a bad value is a
+  `RuntimeStartFailed` for `"probes"` whose `cause` is the `ConfigInvalid`,
+  which is what `runMain` reads the `78` off); `preDrainDelayMs` (`5_000`);
+  `drainTimeoutMs` (`20_000`); `onEvent` (default `stderrSink`).
+- **`RunningApp<E, Info>`** — `exited` (`AsyncResult<ExitReport, E | RuntimeStartFailed>`),
+  `stop()`, `requestDrain()`, `phase()`, `ready()`, `probePort()`,
+  `runtimeInfo()`.
+  `stop()` exits without draining; `requestDrain()` takes the signal path.
+  `ready()` is the synchronous read of the same predicate `/readyz` answers
+  from — needed because the uncaught path forces it false while the phase is
+  still `"serving"`, a window no HTTP round trip fits inside; it is also what an
+  embedder wires into a health endpoint of its own when `probes: false`.
+  `probePort()` is an `AsyncResult<number | undefined, never>` resolving the
+  port actually bound (the point of it is `{ port: 0 }`), or `undefined` when
+  probes are disabled or the bind failed. `runtimeInfo()` is the same deferred
+  one layer up, for the **runtime**: an `AsyncResult<Info | undefined, never>`
+  resolving whatever the runtime published on `Serving.info` once it is serving,
+  and `undefined` when it publishes nothing or never got there.
+- **`ExitReport`** — `reason` (`"signal" | "runtimeStopped" | "uncaught"`),
+  `drain` (`DrainReport | undefined` — `undefined` whenever the drain was
+  skipped), `teardownErrors`, `uptimeMs`. **`TeardownError`** is
+  `{ port, cause }`.
+- **`DrainReport`** — `inFlightAtStart` (units in flight when the drain began),
+  `completed` (units that **closed during** the drain — it may exceed
+  `inFlightAtStart` if in-flight work spawned more, which is honest reporting,
+  not a bug), `abandoned` (units still open at the deadline; **the field the
+  exit code keys on**).
+- **`Runtime<Needs, Info>` / `RuntimeHost<Needs>` / `RunUnit<Needs>` /
+  `Serving<Info>`** — the runtime contract (the _service_ behind a runtime
+  port). All parameterised by port **classes**
+  (`Needs extends AnyPort`) but handing out `Context<InstanceType<Needs>>`,
+  because di parameterises `Context<in R>` by port **instance** types.
+  `Serving.drain(signal)` returns `AsyncResult<void, never>` — **not** a
+  `DrainReport`: only the kernel can see the unit registry, so the kernel owns
+  the accounting. `drain` means "stop accepting"; the `AbortSignal` fires when
+  the kernel's deadline passes, so a runtime never does arithmetic on time.
+  `Serving.info?: Info` is what the runtime publishes about **itself** once it
+  is serving, read back through `RunningApp.runtimeInfo()`. `Info` is the
+  runtime's own shape and deliberately **not** a port number — an ephemeral
+  `port: 0` bind is the motivating case, but a queue consumer has none and
+  would publish `{ queue, prefetch }`. It defaults to `never`, so `info` is
+  unwritable and both types read exactly as they did for a runtime with nothing
+  to publish; that default is what makes publishing optional with no ceremony.
+- **`RuntimeStartFailed`** — the one error the kernel mints, a `TaggedError`
+  carrying `{ runtime, cause }`. A probe bind failure uses
+  `runtime: "probes"`.
+- **`UnitMeta` / `UnitWork` / `UnitRegistry`** — `UnitMeta` is
+  `{ kind, id, traceId?, tenantId?, deadline? }`; `traceId` defaults to `id`,
+  which is why **`id` must be unique per unit** unless the runtime supplies one
+  (see _Two contracts a runtime owes_ above).
+  `UnitWork` may return an `AsyncResult`, a `Promise<Result>` or a plain
+  `Result` — the `Promise` arm is Thesis #6's second exception, since it exists
+  to accept a caller's `async` handler. `UnitRegistry.awaitIdle()` returns
+  `AsyncResult<void, never>`.
+- **`UnitRecord`** — the ambient record: `{ unitId, traceId, tenantId, deadline,
+signal }`. `signal` is the same `AbortSignal` `UnitWork` receives as its
+  argument — aborted at the drain deadline, or at once on a path that skips the
+  drain (`abortAll`) — carried here so a runtime whose work callback is a
+  library's `next()` still reaches it. Guarded by `units.spec.ts` → _"carries
+  the work's own AbortSignal on the ambient record"_.
+- **`currentUnit()` → `UnitRecord | undefined`** — the ambient read. `undefined`
+  outside a unit.
+- **`Clock` / `systemClock`** — `{ now, sleep(ms, signal?) }`, where `sleep`
+  returns `AsyncResult<void, never>`. It takes an `AbortSignal` because a second
+  signal must cut the pre-drain delay short, and `systemClock` `unref`s its
+  timer so a shutdown sleep is never the reason the event loop stays alive.
+- **`Phase`** — `"building" | "starting" | "serving" | "draining" | "stopping" | "exited"`.
+- **`KernelEvent` / `EventSink` / `stderrSink`** — nine events: `building`,
+  `startFailed`, `serving`, `draining`, `drained`, `stopping`, `exited`,
+  `teardownError`, `uncaught`. `startFailed` carries the `cause` of any
+  startup failure — a modeled `Err` (a `ConfigInvalid` naming its variables,
+  a `RuntimeStartFailed`) or a defect — and is emitted before `stopping`, so a
+  process that never came up says why on stderr instead of exiting silently.
+  `stderrSink` writes one JSON line per event, normalising an
+  `Error` cause to `{ name, message, stack, cause }` — `JSON.stringify` skips
+  non-enumerable properties, so a bare one renders the two cause-carrying
+  events as `{"cause":{}}`. A cause it cannot serialise at all (a circular
+  object) falls back to `"[unserialisable]"` rather than throwing, since
+  `safeSink` would swallow the throw and the event would be reported nowhere.
+- **`runMain(module, options?, exit?)`** — the front door: `start` composed
+  with the wait for `exited`, carrying the same phantom needs gate
+  (`StartGate`, the shared alias all three gated surfaces use). Every
+  `main.ts` calls this one function; `start` is for callers that want the
+  `RunningApp` itself. It boots the module and sets the exit code:
+  `0` clean, `1` a modeled startup `Err`, `78` a `ConfigInvalid` (or a
+  `RuntimeStartFailed` carrying one — the kernel's own `PROBE_PORT`), `2`
+  drained with work abandoned **or exited with a non-empty
+  `teardownErrors`**, `70` an uncaught exception/rejection, `70` a defect.
+  Both `70`s are sysexits(3)'s `EX_SOFTWARE`; `78` is its `EX_CONFIG` — the
+  deployment is wrong, not the code, the one startup failure fixed without a
+  rebuild. **A crash outranks abandoned work** — written out explicitly
+  rather than left to depend on the fact that the uncaught path skips the drain
+  anyway. `2` means "we stopped, but not cleanly", and a failed finaliser earns
+  it as much as abandoned work does: the kernel goes to real trouble to keep
+  those errors observable (the `teardownErrors` aliasing), which reporting `0`
+  over them would waste.
+
+There is **no** `Defect` construction, no `overrideProvider`, no accumulation of
+runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
+adapter is composing a different module, which di already documents and the type
+checker already verifies.
 
 ## Load-bearing runtime invariants (tests must guard these)
 
@@ -129,9 +305,6 @@ Beyond the nine:
   the **error** channel only; a `Defect` can still be there, and a `Serving`
   written by a third party is where one comes from. `drain.spec.ts`'s four
   _"propagates a Defect from …"_ tests guard the drain;
-  `packages/testing/src/with-app.spec.ts` → _"surfaces a shutdown Defect that
-  `use` never looked at"_ and _"lets a failure thrown by `use` win over a
-  shutdown Defect"_ guard the harness, and
   `packages/testing/src/boot-fixture.spec.ts` → _"fails the test on a shutdown
   defect, and only on a defect"_ the fixture. The two
   survivors are `start.ts`'s `void server.close()` (our own `fromSafePromise`
@@ -190,7 +363,7 @@ Type-level invariants live in `start.test-d.ts` and are checked by
   exists to catch the accident, not to be unforgeable.
 
 `docs-examples.test-d.ts` compiles every code sample the two READMEs ship —
-the `@btravstack/testing` ones (`testRuntime`, `createFakeClock`, `withApp`)
+the `@btravstack/testing` ones (`testRuntime`, `createFakeClock`, `bootFixture`)
 imported by name, since that is a separate package — and asserts the contract
 types they print are **equal** to the shipped ones, so the READMEs cannot drift
 from `runtime.ts` or `drain.ts` without failing the gate.
@@ -276,8 +449,8 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   callback is needed only because the gate proves `InstanceType<Needs> extends X`
   at the **call site**, and that proof is not visible to the checker inside a
   body where `X` and `Needs` are still unresolved type parameters.
-  `@btravstack/testing`'s `withApp` and `bootFixture` have the same problem
-  and solve it the same way — by forwarding through a signature with the
+  `@btravstack/testing`'s `bootFixture` has the same problem
+  and solves it the same way — by forwarding through a signature with the
   phantom tuple already discharged.
 
 - **`finish` skips the drain for every reason but `"signal"` — and aborts the
@@ -416,7 +589,7 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   `RunUnit` (a divergence is reported, not absorbed); with no `unit` option
   the work receives `runtimeCtx` exactly as before, zero overhead. The
   `forkScope` call goes through a discharged-signature cast — the same move
-  `runMain` and `@btravstack/testing`'s `withApp` make on `start` — because
+  `runMain` and `@btravstack/testing`'s `bootFixture` make on `start` — because
   the fork's gates are
   proven by `start`'s rest tuple at the call site and invisible in a body
   where `X`, `Needs` and `UnitX` are unresolved. The work's return union is

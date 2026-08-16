@@ -1,14 +1,14 @@
 import { createServer } from "node:net";
 
 import { Module, Port, Provider } from "@btravstack/di";
-import { createFakeClock, testRuntime, TestRuntimePort, withApp } from "@btravstack/testing";
+import { createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testing";
 import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { createDeferred } from "./deferred.js";
 import { RuntimeStartFailed, type RuntimeHost } from "./runtime.js";
 import { start, type RunningApp } from "./start.js";
-import { runtimeModule } from "./test-fixtures.js";
+import { it, runtimeModule } from "./test-fixtures.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 
@@ -75,22 +75,21 @@ describe("load-bearing invariants", () => {
   //    false, waits preDrainDelayMs, then tells the runtime to stop accepting
   //    — in that order" pins the same ordering inside `drainApp`.
 
-  it("2. in-flight units complete when the drain has time for them", async () => {
+  it("2. in-flight units complete when the drain has time for them", async ({ boot }) => {
     const clock = createFakeClock();
     const runtime = testRuntime();
 
-    const report = await withApp(runtime.module, { clock, onEvent: () => {} }, async (app) => {
-      await runtime.untilStarted();
-      const unit = runtime.submit<string>();
+    const app = boot(runtime.module, { clock, preDrainDelayMs: 5_000 });
+    await runtime.untilStarted();
+    const unit = runtime.submit<string>();
 
-      app.requestDrain();
-      await clock.advance(5_000);
+    app.requestDrain();
+    await clock.advance(5_000);
 
-      unit.settle(Ok("done"));
-      await unit.result;
+    unit.settle(Ok("done"));
+    await unit.result;
 
-      return await app.exited;
-    });
+    const report = await app.exited;
 
     // `drain.spec.ts` proves the accounting inside `drainApp`; what this adds
     // is the kernel's wiring — a unit submitted through the runtime's own
@@ -104,50 +103,53 @@ describe("load-bearing invariants", () => {
     );
   });
 
-  it("3. units still open at the deadline are counted as abandoned", async () => {
+  it("3. units still open at the deadline are counted as abandoned", async ({ boot }) => {
     const clock = createFakeClock();
     const runtime = testRuntime();
 
-    const report = await withApp(runtime.module, { clock, onEvent: () => {} }, async (app) => {
-      await runtime.untilStarted();
-      runtime.submit<string>();
+    const app = boot(runtime.module, { clock, preDrainDelayMs: 5_000 });
+    await runtime.untilStarted();
+    runtime.submit<string>();
 
-      app.requestDrain();
-      await clock.advance(5_000);
-      await clock.advance(20_000);
+    app.requestDrain();
+    await clock.advance(5_000);
+    await clock.advance(20_000);
 
-      return await app.exited;
-    });
+    const report = await app.exited;
 
     expect(report).toBeOkWith(
       expect.objectContaining({ drain: { inFlightAtStart: 1, completed: 0, abandoned: 1 } }),
     );
   });
 
-  it("4. the unit AbortSignal fires at the drain deadline", async () => {
+  it("4. the unit AbortSignal fires at the drain deadline", async ({ boot }) => {
     const clock = createFakeClock();
     const runtime = testRuntime();
     let aborted = false;
 
-    await withApp(runtime.module, { clock, onEvent: () => {} }, async (app) => {
-      await runtime.untilStarted();
-      const unit = runtime.submit<string>();
-      unit.signal.addEventListener("abort", () => {
-        aborted = true;
-      });
-
-      app.requestDrain();
-      await clock.advance(5_000);
-      expect(aborted).toBe(false);
-
-      await clock.advance(20_000);
-      return await app.exited;
+    const app = boot(runtime.module, { clock, preDrainDelayMs: 5_000 });
+    await runtime.untilStarted();
+    const unit = runtime.submit<string>();
+    unit.signal.addEventListener("abort", () => {
+      aborted = true;
     });
+
+    app.requestDrain();
+    await clock.advance(5_000);
+    const afterPreDrain = aborted;
+
+    await clock.advance(20_000);
+    await app.exited;
 
     // The abort comes from `registry.abortAll()` at the deadline, not from the
     // runtime honouring `Serving.drain(signal)` — `testRuntime` deliberately
-    // ignores that signal, which is what makes this a test of the kernel.
-    expect(aborted).toBe(true);
+    // ignores that signal, which is what makes this a test of the kernel. Both
+    // instants are asserted in one projection: the deadline is what aborts, so
+    // "still open after the pre-drain delay" is half the invariant.
+    expect({ afterPreDrain, afterDeadline: aborted }).toEqual({
+      afterPreDrain: false,
+      afterDeadline: true,
+    });
   });
 
   it("5. the application scope closes on a startup failure", async () => {
@@ -229,18 +231,20 @@ describe("load-bearing invariants", () => {
     );
   });
 
-  it("8. start neither throws nor calls process.exit", async () => {
+  it("8. start neither throws nor calls process.exit", async ({ boot }) => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     const runtime = testRuntime();
 
-    await withApp(runtime.module, { onEvent: () => {} }, async (app) => {
-      await runtime.untilStarted();
-      // `untilStarted` resolves from inside `Runtime.start`, before the
-      // kernel's own continuation advances the tracker — so the live phase
-      // here is `"starting"` or `"serving"`, never a terminal one.
-      expect(app.phase()).not.toBe("exited");
-      expect(runtime.started()).toBe(true);
-    });
+    const app = boot(runtime.module);
+    await runtime.untilStarted();
+    // `untilStarted` resolves from inside `Runtime.start`, before the kernel's
+    // own continuation advances the tracker — so the live phase here is
+    // `"starting"` or `"serving"`, never a terminal one.
+    expect(app.phase()).not.toBe("exited");
+    expect(runtime.started()).toBe(true);
+
+    app.stop();
+    await app.exited;
 
     expect(exitSpy).not.toHaveBeenCalled();
     exitSpy.mockRestore();

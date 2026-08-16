@@ -14,11 +14,10 @@ description: Boot a module in a vitest fixture with bootFixture, reach a running
 Everything you need is in `@btravstack/testing`, a dev dependency
 (`pnpm add -D @btravstack/testing`) that peers on `@btravstack/core`,
 `@btravstack/config`, `@btravstack/di` and `unthrown` — the copies your
-application already holds. Five tools: `bootFixture` boots and stops inside a
+application already holds. Four tools: `bootFixture` boots and stops inside a
 vitest fixture, `tapped` reaches a service of a running graph (its lines come
-back through `observability({ sink })` instead), `withApp`
-starts and stops around a callback, `testRuntime` stands in for a transport,
-`createFakeClock` moves time when you say so.
+back through `observability({ sink })` instead), `testRuntime` stands in for a
+transport, `createFakeClock` moves time when you say so.
 
 ## Boot in a fixture with `bootFixture`
 
@@ -67,7 +66,7 @@ describe("order-api", () => {
 `runtimeInfo()` is whatever the runtime published on `Serving.info` — the
 HTTP starter publishes `{ port }` — and `probePort()` the probe port that
 bound. Both carry `E = never`, so `.get()` is the whole read. The teardown
-mirrors `withApp`: `stop()`, then `exited` is examined, and a **`Defect`**
+is `stop()`, then `exited` is examined, and a **`Defect`**
 there fails the test even if the test never looked at `exited`; a modeled
 `Err` passes through, since a startup failure is an outcome you may be
 asserting.
@@ -153,18 +152,6 @@ over a graph that already provides `Logger`. Give the fixture's own `env` a
 `jsonSink()` on stdout — does not write into the runner's output. See
 [Log and correlate](/how-to/log-and-correlate).
 
-## A one-off with `withApp`
-
-Outside a fixture module — a script, a single test that boots differently —
-`withApp(module, options, use)` starts the module, hands the `RunningApp` to
-`use`, and stops it again whatever `use` does. `signals` and `probes` are
-forced off whatever you pass. It rethrows a `Defect` on `exited` and holds a
-throw from `use` (a failed `expect`) until the application is stopped, then
-rethrows it unchanged, so a shutdown defect can never mask the assertion that
-failed. Both `use` and `withApp` speak a bare `Promise`, deliberately: an
-`AsyncResult` never rejects, so wrapping the test body would turn a failing
-assertion into a defect you can forget to unwrap.
-
 ## Kernel-level: `testRuntime` and `createFakeClock`
 
 To test the lifecycle itself — a drain, an abandonment, an exit report —
@@ -188,12 +175,15 @@ does: import the module, export the port. `createFakeClock()` passed as
 import { Module, Port, Provider } from "@btravstack/di";
 import {
   TestRuntimePort,
+  bootFixture,
   createFakeClock,
   testRuntime,
-  withApp,
+  type Boot,
 } from "@btravstack/testing";
 import { Ok } from "unthrown";
-import { describe, expect, it } from "vitest";
+import { describe, expect, test } from "vitest";
+
+const it = test.extend<{ boot: Boot }>({ boot: bootFixture() });
 
 class Greeter extends Port("Greeter")<{
   readonly greet: (name: string) => string;
@@ -207,7 +197,9 @@ const AppModule = Module("App")({
 });
 
 describe("draining", () => {
-  it("lets an in-flight unit finish inside the drain window", async () => {
+  it("lets an in-flight unit finish inside the drain window", async ({
+    boot,
+  }) => {
     // GIVEN the application composed with the in-memory runtime, on a fake clock
     const clock = createFakeClock();
     const runtime = testRuntime();
@@ -216,17 +208,16 @@ describe("draining", () => {
       exports: [TestRuntimePort],
     });
 
-    const report = await withApp(TestApp, { clock }, async (app) => {
-      await runtime.untilStarted();
-      const unit = runtime.submit<string>();
+    const app = boot(TestApp, { clock, preDrainDelayMs: 5_000 });
+    await runtime.untilStarted();
+    const unit = runtime.submit<string>();
 
-      // WHEN a drain is requested and the pre-drain delay elapses
-      app.requestDrain();
-      await clock.advance(5_000);
+    // WHEN a drain is requested and the pre-drain delay elapses
+    app.requestDrain();
+    await clock.advance(5_000);
 
-      unit.settle(Ok("done"));
-      return await app.exited;
-    });
+    unit.settle(Ok("done"));
+    const report = await app.exited;
 
     // THEN the unit is counted completed, not abandoned
     expect(report).toBeOkWith(
@@ -241,8 +232,7 @@ describe("draining", () => {
 To prove abandonment instead, never `settle` the unit and advance past the
 deadline too (`await clock.advance(20_000)`): the report reads `abandoned: 1`,
 because `testRuntime` **ignores the drain signal deliberately** and leaves the
-unit to the kernel. The same test reads the same under `boot(TestApp, {
-clock })` with the fixture's teardown doing the stopping.
+unit to the kernel.
 
 `toBeOkWith`, `toBeErrWith`, `toBeErrTagged` and `toBeDefectWith` come from
 [`@unthrown/vitest`](https://github.com/btravstack/unthrown/tree/main/packages/vitest);

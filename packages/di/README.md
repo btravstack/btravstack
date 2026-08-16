@@ -72,7 +72,7 @@ await Module.scoped(Application, (ctx) => ctx.get(GetOrder).execute("o-1"));
 
 The five provider arms — `value`, `sync`, `make` (may fail, with a modeled
 error), `class`, `acquire`/`release` (a resource, released when the scope
-closes) — the private-by-default modules, `Port.many` for a plugin registry,
+closes) — the private-by-default modules,
 `Module.forkScope` for a per-request scope, and the compile-time gates that
 name what is missing are on the [documentation site](https://btravstack.github.io/start/reference/di/ports).
 Under [`@btravstack/core`](https://btravstack.github.io/start/reference/core/start), `start(module)` is the

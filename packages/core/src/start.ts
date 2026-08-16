@@ -123,7 +123,7 @@ export type RunningApp<E, Info = never> = {
 };
 
 /**
- * The phantom rest tuple `start`, `runMain` and `withApp` all carry: empty —
+ * The phantom rest tuple `start`, `runMain` and `Boot` all carry: empty —
  * and invisible — when the module exports a runtime and its exports cover
  * that runtime's declared needs, a named error tuple otherwise, so a missing
  * runtime or an unmet need fails to typecheck at the call site. A trailing
@@ -186,21 +186,10 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   // The second signal aborts this, cutting short whichever `drainApp` sleep
   // (pre-drain delay or drain timeout) is currently pending.
   const skipDrain = new AbortController();
-  // Stamped at the FIRST request — the one `createDeferred` keeps — so the
-  // pre-drain delay is measured from when the process was TOLD to stop, not
-  // from when the kernel got around to noticing.
-  //
-  // They are not the same instant: a signal landing mid-build is buffered until
-  // the runtime is serving, since nothing observes `shutdown.promise` until
-  // then. The delay exists to cover Kubernetes' eventually-consistent endpoint
-  // removal after the signal, and a slow construction has already served some or
-  // all of that purpose. Paying it again on top can push the whole shutdown past
-  // `terminationGracePeriodSeconds` and turn a graceful exit into a SIGKILL.
-  // Seeded with `startedAt` rather than left optional so the read needs no
-  // guard: `finish` runs only once `shutdown.promise` has settled, and
-  // `requestShutdown` is the only thing that settles it, so the seed is always
-  // overwritten before `runDrain` reads it. A `number | undefined` here would
-  // buy a branch that can never be taken.
+  // Stamped at the FIRST request, not when the kernel notices: a signal landing
+  // mid-build is buffered until the runtime is serving, and paying the pre-drain
+  // delay in full afterwards charges twice for a window the build already spent
+  // — enough to push the shutdown past `terminationGracePeriodSeconds`.
   let shutdownRequestedAt = startedAt;
   let shutdownRequested = false;
   const sinceShutdownRequested = (): number => clock.now() - shutdownRequestedAt;
@@ -211,33 +200,18 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
     }
     shutdown.resolve(reason);
   };
-  // Forced false by the drain (before the runtime stops accepting new work)
-  // and by an uncaught exception; never reset back to `true` — which is why
-  // the setter takes no argument. Hoisted out of `runDrain` so the
-  // uncaught-exception path (which skips the drain entirely) can flip it too,
-  // through the same mechanism rather than a second one.
+  // Never reset back to `true`, which is why the setter takes no argument.
   let forcedUnready = false;
   const onUnready = (): void => {
     forcedUnready = true;
   };
   const live = (): boolean => tracker.current() !== "exited";
-  // The two terms do NOT contribute equally, and the next person to touch this
-  // needs to know which one does the work.
-  //
-  // On the DRAIN path the phase term alone already answers false: `runDrain`
-  // advances the tracker to `"draining"` synchronously *before* `drainApp`
-  // calls `onUnready`, and the tracker never returns to `"serving"`. So
-  // `!forcedUnready` changes nothing there.
-  //
-  // The latch is load-bearing on exactly one path — the uncaught-exception
-  // one, where the handler flips it while the phase is still `"serving"`,
-  // because the tracker only moves once the shutdown promise's continuation
-  // runs a tick or more later. Deleting `!forcedUnready` is consequently
-  // invisible to every drain test and is caught by exactly one assertion:
+  // Do NOT delete `!forcedUnready` because the drain tests still pass without
+  // it — on that path the phase term alone answers false. It is load-bearing
+  // on the uncaught path only, where the handler flips it while the phase is
+  // still `"serving"`, and exactly one assertion catches its removal:
   // `invariants.spec.ts`'s "an uncaught exception forces readiness false while
-  // the phase is still serving". That test reads `app.ready()` synchronously
-  // rather than over HTTP because no round trip fits inside that single tick —
-  // which is also why `ready()` is exposed on `RunningApp` at all.
+  // the phase is still serving".
   const ready = (): boolean => tracker.current() === "serving" && !forcedUnready;
   const disposeSignals =
     options.signals === false
@@ -269,16 +243,10 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
 
   emit({ type: "building" });
 
-  // Bound before `Module.scoped` runs, so `/livez` answers while the graph
-  // is still building (there is deliberately no separate startup probe —
-  // see `probes.ts`). A bind failure is a startup failure of its own: the
-  // `tapFailure` here runs the same construction-failure cleanup as
-  // `Module.scoped`'s below, since a failed `probesStarted` short-circuits
-  // the `flatMap` that would otherwise reach it.
-  // The one piece of configuration the kernel binds itself: the probe server
-  // is up before the graph exists, so its port cannot come out of the graph.
-  // A bad `PROBE_PORT` is a `RuntimeStartFailed` for `"probes"` whose cause is
-  // the `ConfigInvalid`, which is what `runMain` reads the `78` off.
+  // Bound before `Module.scoped` runs, so `/livez` answers while the graph is
+  // still building. A bind failure is a startup failure of its own, which is
+  // why the `tapFailure` below repeats `Module.scoped`'s cleanup: a failed
+  // `probesStarted` short-circuits the `flatMap` that would reach it.
   const probesOptions: Result<{ readonly port: number } | false, RuntimeStartFailed> =
     options.probes === undefined
       ? Config.port("PROBE_PORT", { default: 9000 })
@@ -309,24 +277,11 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
             .tap((server) => {
               probeBound.resolve(server.port);
               disposeProbes = () => {
-                // The one `Result` this kernel deliberately drops, and the drop
-                // rests on the OUTCOME being unactionable rather than on a claim
-                // that nothing here can fail. The process is already exiting:
-                // there is no recovery to attempt, and the exit report describes
-                // the application's shutdown, not its health endpoint's. So even
-                // a `Defect` would be correctly discarded here.
-                //
-                // Resting it instead on "the defect channel is unreachable" would
-                // rest it on node's internals. `server.close(cb)` reports
-                // `ERR_SERVER_NOT_RUNNING` through `cb` rather than throwing —
-                // measured on v24, for both the double-close and never-listened
-                // cases, which is why the second dispose site is harmless — but
-                // that is node's guarantee to change, not ours.
-                //
-                // It must also not be awaited on the exit path: the socket is
-                // `unref`'d and `close` waits out live keep-alive connections, so
-                // threading it would delay the exit report behind a probe agent,
-                // or strand it entirely when nothing else keeps the loop alive.
+                // Dropped, and NOT awaited: the socket is `unref`'d and `close`
+                // waits out live keep-alive connections, so threading it would
+                // delay the exit report behind a probe agent or strand it. The
+                // outcome is unactionable during exit, so even a `Defect` here
+                // is correctly discarded.
                 void server.close();
               };
             })
@@ -446,22 +401,11 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
         const runtimeCtx = ctx as unknown as Context<InstanceType<Needs>>;
 
         // The registry counts and aborts; it knows nothing about contexts. The
-        // kernel is what closes over `runtimeCtx` and hands a runtime the
-        // two-argument `RunUnit` its handlers expect.
-        // An annotation, not an assertion: a future divergence between this
-        // adapter and `RunUnit` is reported here rather than absorbed.
-        //
-        // With a `unit` module, every unit runs inside a scope forked over the
-        // application context — constructed as the unit opens, torn down as it
-        // closes, INSIDE `registry.run`, so teardown still sees the unit's
+        // An ANNOTATION, not an assertion: a future divergence between this
+        // adapter and `RunUnit` is reported here rather than absorbed. The
+        // fork sits INSIDE `registry.run` so unit teardown still sees the
         // ambient record and the unit is not counted closed until the scope
-        // is. The fork's own gates are proven by `start`'s rest tuple at the
-        // call site; they are invisible in this body, where `X`, `Needs` and
-        // `UnitX` are unresolved type parameters, so the forwarding call goes
-        // through a signature with the phantom tuple already discharged — the
-        // same move `withApp` and `runMain` make on `start` itself. The
-        // work's return union (`AsyncResult | Promise<Result> | Result`) is
-        // normalised by an `async` wrapper exactly as `registry.run` does it.
+        // is (`unit-module.spec.ts` guards both halves).
         const unit = options.unit;
         const run: RunUnit<Needs> = (meta, work) =>
           registry.run(meta, (signal) => {

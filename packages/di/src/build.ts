@@ -43,18 +43,6 @@ class WiringDefect extends Error {}
  * factory, so a cycle or a duplicate is reported with no side effects performed.
  * Declaration order is preserved within a level, which is what makes the error
  * chosen on failure deterministic (see `run`).
- *
- * A set port (`port.many === true`) is exempt from the duplicate check —
- * several providers targeting it is `Provider.member`'s whole point, not a
- * collision. That exemption ripples into leveling below: the brief's sketch
- * kept `placed`/`remaining` keyed by bare `portId`, assuming one provider per
- * port, which under several members sharing one portId would both drop
- * not-yet-placed siblings out of `remaining` the moment the *first* member
- * landed, and make a consumer of the set port "ready" after that first member
- * too — silently losing whatever was still pending in a later level. `placed`
- * is therefore a `Set<AnyProvider>` (provider identity, not portId), and
- * readiness for a many-port dependency compares its placed count against its
- * total member count, not mere presence.
  * Internal only, same as `flatten` above — `run` is the only caller.
  */
 const plan = (
@@ -62,43 +50,14 @@ const plan = (
   seedKeys: ReadonlySet<string>,
 ): readonly (readonly AnyProvider[])[] => {
   const byPort = new Map<string, AnyProvider>();
-  const totalByPort = new Map<string, number>();
-  const manyByPort = new Map<string, boolean>();
   for (const provider of providers) {
     const id = provider.port.portId;
     // A provider for `Scope` is a wiring bug, not merely an unmet-dependency
     // gap (see `Scope`'s own doc comment in `port.ts` for why this is a
-    // runtime `portId` check, not a type-level guard). `Scope` is never a set
-    // port, so this runs — unaffected — before the many-port exemption below.
+    // runtime `portId` check, not a type-level guard).
     if (id === Scope.portId) {
       // oxlint-disable-next-line unthrown/no-throw -- see the rationale on the duplicate-provider throw just below
       throw new WiringDefect(`[di] Scope cannot be provided; open one with Module.scoped instead`);
-    }
-    const isMany = provider.port.many === true;
-    const seenMany = manyByPort.get(id);
-    if (seenMany !== undefined && seenMany !== isMany) {
-      // Same class of wiring bug as the duplicate-provider throw below, and
-      // thrown for the same reason: a portId declared as an ordinary port by
-      // one provider and a set port by another is a declaration bug, not
-      // something `unsafeAddAll` (`context.ts`) should have to cope with —
-      // left unchecked, whichever provider lands second silently `continue`s
-      // past (if it is the set-port one) or overwrites (if it is the
-      // ordinary one) `byPort`'s entry, and the failure that eventually
-      // surfaces is `unsafeAddAll` spreading a non-array single service, a
-      // `TypeError` defect whose message says nothing about the real cause.
-      // oxlint-disable-next-line unthrown/no-throw
-      throw new WiringDefect(
-        `[di] port ${JSON.stringify(id)} is registered as both a set port and an ordinary port`,
-      );
-    }
-    manyByPort.set(id, isMany);
-    totalByPort.set(id, (totalByPort.get(id) ?? 0) + 1);
-    // Members accumulate; several providers for one set port are not a
-    // collision. Keyed on `many === true` — the static field `Port.many`
-    // attaches — so an ordinary port is never accidentally exempted.
-    if (isMany) {
-      byPort.set(id, provider);
-      continue;
     }
     const existing = byPort.get(id);
     if (existing !== undefined && existing !== provider) {
@@ -148,15 +107,15 @@ const plan = (
 
   const levels: AnyProvider[][] = [];
   const placed = new Set<AnyProvider>();
-  const placedCountByPort = new Map<string, number>();
   let remaining = providers;
 
-  // A dependency is satisfied once every provider registered for its port has
-  // been placed — one, for an ordinary port; every member, for a set port. A
-  // port nothing provides at all is treated as externally satisfied, same as
-  // before: an unmet requirement is `Module`'s `Needs` channel's problem.
-  const isSatisfied = (portId: string): boolean =>
-    !byPort.has(portId) || placedCountByPort.get(portId) === totalByPort.get(portId);
+  // A port nothing provides at all is treated as externally satisfied: an unmet
+  // requirement is `Module`'s `Needs` channel's problem, and `Module.forkScope`
+  // legitimately depends on ports the already-built parent context carries.
+  const isSatisfied = (portId: string): boolean => {
+    const provider = byPort.get(portId);
+    return provider === undefined || placed.has(provider);
+  };
 
   while (remaining.length > 0) {
     const ready = remaining.filter((p) => p.deps.every((d) => isSatisfied(d.portId)));
@@ -169,11 +128,7 @@ const plan = (
       throw new WiringDefect(`[di] dependency cycle among ports: ${stuck}`);
     }
     levels.push(ready);
-    for (const p of ready) {
-      placed.add(p);
-      const id = p.port.portId;
-      placedCountByPort.set(id, (placedCountByPort.get(id) ?? 0) + 1);
-    }
+    for (const p of ready) placed.add(p);
     remaining = remaining.filter((p) => !placed.has(p));
   }
   return levels;

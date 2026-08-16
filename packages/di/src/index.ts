@@ -12,15 +12,15 @@ export { Port } from "./port.js";
 // `./port.js` directly, as do the two tests that exist to prove the runtime
 // check still fires (`scoped.spec.ts`).
 //
-// `PortClass`/`ManyPortClass` are exported for declaration emit, not because a
-// consumer is expected to write either by hand. `class OrderRepository extends
+// `PortClass` is exported for declaration emit, not because a consumer is
+// expected to write one by hand. `class OrderRepository extends
 // Port("OrderRepository")<Shape> {}` — the pattern the README teaches — emits as
 // `declare const OrderRepository_base: <the type of the heritage expression>`,
 // and the emitter can only write that type using names the consumer can reach.
 // With these two unexported it had none: it expanded the heritage expression
 // down to `PortInstance`'s `[ID]`/`[SERVICE]` keys, which are module-private
 // `unique symbol`s, and every consumer that *exported* a port failed with
-// TS4020 ("has or is using private name 'ID'"). Naming the class types is the
+// TS4020 ("has or is using private name 'ID'"). Naming the class type is the
 // fix that costs least: the emitter stops at `PortClass<"OrderRepository">`
 // (measured: 2,683 bytes of consumer declarations across the reproduction,
 // against 3,545 when only the instance types are nameable and the emitter has
@@ -29,26 +29,16 @@ export { Port } from "./port.js";
 // The symbols themselves stay unexported deliberately. They are what makes port
 // identity nominal, and a consumer who can name `ID`/`SERVICE` can hand-write
 // `{ [ID]: "Logger", [SERVICE]: Shape }` and pass it off as a `Logger` —
-// measured, it type-checks. Exporting the class *types* grants no such thing:
-// the brand keys stay unnameable, so `PortInstance` values remain unforgeable
-// and `MemberOf`'s `[MANY]` discriminant stays unspoofable. `PortInstance` IS
+// measured, it type-checks. Exporting the class *type* grants no such thing:
+// the brand keys stay unnameable, so `PortInstance` values remain unforgeable.
+// `PortInstance` IS
 // exported as a type — naming `PortInstance<"Logger", Shape>` forges nothing
 // (a value still needs the unnameable keys) — because a provider whose port
 // was minted inside a helper (`Config.provider("RelayConfig")(schema)`) or is a
 // starter's own (`HttpRouter(contract)(deps, arm)`) has the declared type
 // `Provider<PortInstance<"RelayConfig", Shape>, …> & { port: … }`, and a
 // consumer that exports it needs declaration emit to be able to write that.
-// The `[MANY]` intersection is never named; `emit-guards.ts` in
-// `examples/hexagonal-order-api` is the fixture that keeps that true.
-export type {
-  AnyPort,
-  ManyPortClass,
-  PortClass,
-  PortClassOf,
-  PortInstance,
-  Scope,
-  ServiceOf,
-} from "./port.js";
+export type { AnyPort, PortClass, PortClassOf, PortInstance, Scope, ServiceOf } from "./port.js";
 export { Context } from "./context.js";
 export { Provider } from "./provider.js";
 export { Module } from "./module.js";

@@ -147,6 +147,6 @@ its client origin from exactly that.
   mirrors, and its precedence.
 - [RunningApp](/reference/core/running-app) — the handle, complete.
 - [Test an application](/how-to/test-an-application) — `bootFixture` and
-  `withApp`, which do the start-use-stop dance for a test.
+  which does the start-use-stop dance for a test.
 - [Tune the drain for Kubernetes](/how-to/tune-the-drain-for-kubernetes) —
   `stop()` against `requestDrain()`, and what the drain reports.

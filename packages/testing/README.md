@@ -69,16 +69,14 @@ answers the very instances the running graph holds once it is built — after
   are its types.
 - **`tapped(module, ports)`** → `{ module, services() }` — read services out
   of a booted application.
-- **`withApp(module, options, use)`** — start, hand to `use`, stop again
-  whatever `use` does; the callback shape of the same teardown rule.
 - **`testRuntime(name?)`** / **`TestRuntimePort`** — an in-memory `Runtime`
   with `submit()` to hold a unit open across a drain, and a `module` that
   provides it where a starter would.
 - **`createFakeClock(start?)`** — a `Clock` for `StartOptions.clock` whose
   time moves only on `advance(ms)`.
 
-One teardown rule, shared by `bootFixture` and `withApp`: a `Defect` on
-`exited` fails the test, a modeled `Err` does not.
+The teardown rule: a `Defect` on `exited` fails the test, a modeled `Err` does
+not.
 
 ## License
 

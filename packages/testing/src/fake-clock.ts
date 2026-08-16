@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 import type { Clock } from "@btravstack/core";
 import { fromSafePromise, type AsyncResult } from "unthrown";
 
@@ -17,12 +19,11 @@ export type FakeClock = Clock & {
   readonly advance: (ms: number) => AsyncResult<void, never>;
 };
 
-// A real macrotask boundary — the only real timing this clock uses. Every
-// microtask already queued, and every microtask those queue in turn, runs
-// before it resolves. `advance` brackets itself with one at each end so a test
-// can trigger a shutdown and advance in the very next statement without racing
-// the kernel's arming of its next sleep.
-const flush = (): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, 0));
+// A real macrotask boundary — the only real timing this clock uses. `advance`
+// brackets itself with one at each end so a test can trigger a shutdown and
+// advance in the very next statement without racing the kernel arming its next
+// sleep.
+const flush = (): Promise<void> => delay(0);
 
 /**
  * A {@link Clock} whose time only moves when a test says so.

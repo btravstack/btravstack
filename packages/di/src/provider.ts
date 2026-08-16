@@ -1,6 +1,6 @@
 import { Ok, type AsyncResult, type Result } from "unthrown";
 
-import type { AnyPort, MemberOf, Scope, ServiceOf } from "./port.js";
+import type { AnyPort, Scope, ServiceOf } from "./port.js";
 
 /** Internal: the resolved service tuple a `deps` array's factory must accept. */
 type ServicesOf<D extends readonly AnyPort[]> = {
@@ -234,18 +234,7 @@ const descriptor = (
   } as unknown as Provider<unknown, never, never>;
 };
 
-/**
- * Renamed from the brief's plain exported `Provider` function: the
- * "operations namespaced on the constructor" convention (`Provider.member`,
- * below) needs a value distinct from this one to `Object.assign` the
- * namespace onto, as was done for `Module` in Task 5.
- * `S` — the service shape a `Qualification` must construct — is a second,
- * defaulted type parameter rather than hard-coded to `ServiceOf<P>`, so
- * `Provider.member` can instantiate it as `MemberOf<P>` (one contribution's
- * shape, not the `readonly Member[]` the set port resolves to) while every
- * ordinary `Provider(port)` call site keeps the default.
- */
-function ProviderDeclaration<P extends AnyPort, S = ServiceOf<P>>(port: P) {
+export function Provider<P extends AnyPort, S = ServiceOf<P>>(port: P) {
   // `& { readonly port: P }`: the provider carries the very port class it was
   // declared for, typed — so a provider a helper hands back on a port the
   // caller never spelled (a starter's `HttpRouter(contract)(deps, arm)`,
@@ -277,26 +266,3 @@ function ProviderDeclaration<P extends AnyPort, S = ServiceOf<P>>(port: P) {
   }
   return build;
 }
-
-/**
- * `Provider.member`'s port parameter is bound by the structural `AnyPort`,
- * not the brief's `ManyPortClass<string>`: a concrete set-port class such as
- * `class HealthChecks extends Port.many("Id")<Member> {}` has a *concrete*
- * constructor once `Member` is fixed by the heritage clause, so (exactly as a
- * concrete `PortClass<Id>` never satisfies `PortClass<string>` — see
- * `port.ts`'s note on `AnyPort`) `typeof HealthChecks` is not assignable to
- * `ManyPortClass<string>`, and binding it that way would reject every real
- * call site.
- *
- * The brief's one-liner (`ProviderDeclaration(port as never) as ReturnType<
- * typeof ProviderDeclaration>`) also just forwards to the ordinary factory,
- * qualifying against `ServiceOf<P>` — the set port's whole `readonly
- * Member[]` — rather than one member's shape. Instantiating the second type
- * parameter with `MemberOf<P>` is what changes the shape an arm is qualified
- * against; the runtime body is identical, since `context.ts`'s `unsafeAddAll`
- * (via `build.ts`'s `run`), never this factory, is what turns one member into
- * an entry of the port's array.
- */
-export const Provider = Object.assign(ProviderDeclaration, {
-  member: <P extends AnyPort>(port: P) => ProviderDeclaration<P, MemberOf<P>>(port),
-});

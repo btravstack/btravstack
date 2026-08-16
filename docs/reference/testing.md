@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/testing"
-description: The @btravstack/testing surface — bootFixture and Boot, tapped, withApp, testRuntime and TestRuntimePort, createFakeClock — with every member's signature and semantics.
+description: The @btravstack/testing surface — bootFixture and Boot, tapped, testRuntime and TestRuntimePort, createFakeClock — with every member's signature and semantics.
 ---
 
 # `@btravstack/testing`
@@ -77,7 +77,7 @@ composition's choice, not a fixture's, so it goes on the call
 (`boot(OrderApi, { unit: RequestModule })`) — or on a fixture of your own
 that wraps `boot`, which is what `examples/order-api`'s `serve` is.
 
-**Teardown** mirrors `withApp`, per started application in order: `stop()`,
+**Teardown** runs per started application, in order: `stop()`,
 then `exited` is awaited and examined. A **`Defect`** is rethrown, so a
 shutdown that blew up fails the test even when the test never read `exited`;
 a modeled `Err` passes through, since a startup failure is an outcome a test
@@ -150,30 +150,6 @@ seam a spec reads a running graph's lines through, and what comes back is the
 string. A sink is a value the composition takes, so nothing has to be reached
 for inside the graph. See
 [Log and correlate](/how-to/log-and-correlate).
-
-## `withApp(module, options, use)`
-
-```ts
-const withApp: <X, E, A, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env>,
-  options: StartOptions<UnitX, UnitNeeds>,
-  use: (app: RunningApp<E, RuntimeInfoOf<X>>) => Promise<A>,
-  ...gate: StartGate<X, UnitNeeds>
-) => Promise<A>;
-```
-
-Start the application, hand it to `use`, and stop it again **whatever `use`
-does**. It carries the same phantom gate as `start`. `bootFixture` is the
-same guarantee shaped for `test.extend`; `withApp` is for a one-off outside a
-fixture module.
-
-| Behaviour                                 | Detail                                                                                                                                                                                                                                                            |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `signals` and `probes` are **forced off** | Whatever the caller passes. Process-wide signal handlers would fight across a test file, and a probe port would collide between tests. A test needing the real probe server calls `start` (or `boot` with `probes: { port: 0 }`).                                 |
-| Always stops                              | After `use` settles, `app.stop()` then `await app.exited` — both no-ops if `use` already drove the application to exit.                                                                                                                                           |
-| A throw from `use` outranks everything    | Held while the application is stopped, then rethrown unchanged — a failed `expect` reaches the runner as the throw it was, and a shutdown defect can never mask it.                                                                                               |
-| A `Defect` on `exited` is rethrown        | Only a `Defect`. A shutdown that blew up fails the test even when `use` never read `exited`. A modeled `Err` (a startup failure) is an outcome a test may be asserting, so it passes through.                                                                     |
-| Speaks a bare `Promise`                   | Both `withApp` and `use` — the one harness-shaped exception to the kernel's `AsyncResult` rule. `use` is the test body, and an `AsyncResult` never rejects, so wrapping either side would turn a failing assertion into a `Defect` a caller can forget to unwrap. |
 
 ## `testRuntime(name?)`
 
@@ -250,21 +226,25 @@ does:
 import { Module } from "@btravstack/di";
 import {
   TestRuntimePort,
+  bootFixture,
   createFakeClock,
   testRuntime,
-  withApp,
+  type Boot,
 } from "@btravstack/testing";
 import { Ok } from "unthrown";
-import { expect } from "vitest";
+import { expect, test } from "vitest";
 
-const clock = createFakeClock();
-const runtime = testRuntime();
-const TestApp = Module("TestApp")({
-  imports: [AppModule, runtime.module],
-  exports: [TestRuntimePort],
-});
+const it = test.extend<{ boot: Boot }>({ boot: bootFixture() });
 
-const report = await withApp(TestApp, { clock }, async (app) => {
+it("drains in-flight work", async ({ boot }) => {
+  const clock = createFakeClock();
+  const runtime = testRuntime();
+  const TestApp = Module("TestApp")({
+    imports: [AppModule, runtime.module],
+    exports: [TestRuntimePort],
+  });
+
+  const app = boot(TestApp, { clock, preDrainDelayMs: 5_000 });
   await runtime.untilStarted();
   const unit = runtime.submit<string>();
 
@@ -274,9 +254,9 @@ const report = await withApp(TestApp, { clock }, async (app) => {
   unit.settle(Ok("done"));
   expect(await unit.result).toBeOkWith("done");
 
-  return await app.exited;
+  // Ok({ reason: "signal", drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 }, … })
+  expect(await app.exited).toBeOk();
 });
-// report: Ok({ reason: "signal", drain: { inFlightAtStart: 1, completed: 1, abandoned: 0 }, … })
 ```
 
 ## Summary of exports
@@ -288,7 +268,6 @@ const report = await withApp(TestApp, { clock }, async (app) => {
 | `BootDefaults`    | type — `Omit<StartOptions, "signals" \| "unit">` |
 | `tapped`          | function                                         |
 | `ServicesOf`      | type                                             |
-| `withApp`         | function                                         |
 | `testRuntime`     | function                                         |
 | `TestRuntimePort` | port class, declared over `RuntimePort`          |
 | `TestRuntime`     | type                                             |

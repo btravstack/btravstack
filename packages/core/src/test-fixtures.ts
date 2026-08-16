@@ -1,7 +1,9 @@
 import { Config, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
 import {
+  bootFixture,
   testRuntime,
+  type Boot,
   type TestRuntime,
   type TestRuntimeInfo,
   TestRuntimePort,
@@ -89,7 +91,9 @@ export type UnitApp = {
  * on re-declaration) while the providers, and therefore the counters, are
  * fresh per test.
  */
-export const it = test.extend<{ unitApp: UnitApp; configured: ConfiguredApp }>({
+export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: ConfiguredApp }>({
+  boot: bootFixture(),
+
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   configured: async ({}, use) => {
     const started: RunningApp<ConfigInvalid, TestRuntimeInfo>[] = [];

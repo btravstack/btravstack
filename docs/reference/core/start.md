@@ -109,7 +109,7 @@ type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [
 | `UNSATISFIED RUNTIME NEEDS` | The runtime's declared `needs` are not all among the module's exports — the **module's alone**, never the unit module's, because `RuntimeHost.ctx` is the application context. |
 | `UNSATISFIED UNIT NEEDS`    | The `unit` module's needs are not covered by the module's exports, `Scope` or `Env` — `Module.forkScope`'s gate, stated where the parent is actually known.                    |
 
-`runMain`, and `@btravstack/testing`'s `withApp` and `Boot`, carry the same tuple. A rest tuple rather than a
+`runMain`, and `@btravstack/testing`'s `Boot`, carry the same tuple. A rest tuple rather than a
 conditional type on `module` is deliberate: a conditional on an
 inference-bearing parameter makes TypeScript defer that parameter and can
 collapse `X` or `E` to `unknown`.

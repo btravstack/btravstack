@@ -43,13 +43,12 @@ In tests, [`@unthrown/vitest`](https://github.com/btravstack/unthrown)'s
 
 Run in this order, at every entry point, on the flattened provider tree.
 
-| Check                         | Message                                                               |
-| ----------------------------- | --------------------------------------------------------------------- |
-| A provider for `Scope`        | `[di] Scope cannot be provided; open one with Module.scoped instead`  |
-| One port, two kinds           | `[di] port "X" is registered as both a set port and an ordinary port` |
-| Two providers for one port    | `[di] two providers registered for port "X"`                          |
-| A dependency nothing provides | `[di] no provider for port "X", required by "Y"`                      |
-| A dependency cycle            | `[di] dependency cycle among ports: X, Y, Z`                          |
+| Check                         | Message                                                              |
+| ----------------------------- | -------------------------------------------------------------------- |
+| A provider for `Scope`        | `[di] Scope cannot be provided; open one with Module.scoped instead` |
+| Two providers for one port    | `[di] two providers registered for port "X"`                         |
+| A dependency nothing provides | `[di] no provider for port "X", required by "Y"`                     |
+| A dependency cycle            | `[di] dependency cycle among ports: X, Y, Z`                         |
 
 ### A provider for `Scope`
 
@@ -57,21 +56,12 @@ Run in this order, at every entry point, on the flattened provider tree.
 makes this hard to write; the runtime check — keyed on the port **id**, so no
 type-level widening escapes it — is defence in depth.
 
-### One port, two kinds
-
-The same `portId` reached by `Provider(...)` in one place and
-`Provider.member(...)` in another. Left unchecked, whichever landed second
-would silently win, and the eventual failure would say nothing about the
-cause.
-
 ### Two providers for one port
 
-An **ordinary** port with two distinct providers anywhere in the tree — two
-modules each providing the same port, both imported. One of them would
-silently shadow the other, so it is a defect instead. The same provider
-reached twice through a diamond is fine — de-duplication is by reference. Set
-ports are exempt: accumulating members is
-[their whole point](/how-to/build-a-plugin-registry).
+A port with two distinct providers anywhere in the tree — two modules each
+providing the same port, both imported. One of them would silently shadow the
+other, so it is a defect instead. The same provider reached twice through a
+diamond is fine — de-duplication is by reference.
 
 `start` leans on this check: it wraps your module with one providing `Env`
 unless the module already provides `Env` itself — precisely so an application

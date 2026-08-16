@@ -22,7 +22,7 @@ that, and no handler ever calls `Module.forkScope` itself.
 
 1. Write a `Module` whose providers are the per-unit services. Anything
    application-scoped they need arrives through their deps.
-2. Pass it as `unit` to `start`, `runMain`, or `@btravstack/testing`'s `boot` / `withApp`.
+2. Pass it as `unit` to `start`, `runMain`, or `@btravstack/testing`'s `boot`.
 3. Export from the composition root whatever the unit module reads — the
    gate checks it at the call site.
 

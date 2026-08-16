@@ -44,7 +44,7 @@ export type BootDefaults = Omit<StartOptions, "signals" | "unit">;
  * `preDrainDelayMs: 0` (a test has no Kubernetes endpoint to wait for) and a
  * silent `onEvent` — each overridable by `defaults` and again per call.
  *
- * Teardown mirrors `withApp`: `stop()`, then `exited` is examined — a
+ * Teardown is `stop()`, then `exited` is examined — a
  * **`Defect`** fails the test even when the test never looked at `exited`
  * (a shutdown that blew up must not pass green), while a modeled `Err` passes
  * through, since a startup failure is an outcome a test may be asserting.
@@ -57,7 +57,7 @@ export const bootFixture =
 
     // The gate is proven at each `boot` call site and invisible in this body,
     // where `X` and `UnitNeeds` are unresolved — the same discharged-signature
-    // cast `withApp` and the kernel's own forwarding make.
+    // cast the kernel's own forwarding makes.
     const boot = ((module: Module<never, unknown, Scope | Env>, options = {}) => {
       const app = (
         start as unknown as (
