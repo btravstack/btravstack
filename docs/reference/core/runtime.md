@@ -60,7 +60,9 @@ type RunUnit<Needs extends AnyPort> = <T, E>(
 
 Submit one piece of work as a **unit**. The kernel counts it towards the
 drain, opens its ambient record, hands it an `AbortSignal` (fired at the drain
-deadline, or at once when the drain is skipped) and gives the work's own
+deadline, or at once when the drain is skipped — the same object is on the
+record as `signal`, for a runtime whose work callback is a library's `next()`)
+and gives the work's own
 `Result` **straight back** — mapping that outcome to a transport is the
 runtime's job. With a `unit` module, `ctx` is the forked context
 (`Context<X | UnitX>`), built before `work` runs and torn down after it
@@ -144,6 +146,7 @@ type UnitRecord = {
   readonly traceId: string;
   readonly tenantId: string | undefined;
   readonly deadline: number | undefined;
+  readonly signal: AbortSignal;
 };
 
 const currentUnit: () => UnitRecord | undefined;
@@ -154,7 +157,7 @@ const currentUnit: () => UnitRecord | undefined;
 | `UnitMeta`      | What a runtime says about one unit as it submits it. `kind` is the category (`"http"`, `"tick"`, `"job"`); `id` identifies **this** unit. `traceId` defaults to `id`.                                                                                       |
 | `UnitWork`      | The work callback. The `Promise<Result>` arm exists to accept a caller's `async` handler — the one place the package accepts a bare `Promise` on purpose. Whatever `Result` it settles is what `run` hands back; a throw becomes a `Defect`.                |
 | `UnitRegistry`  | The kernel's own accounting, exposed as a type. `closed()` is monotonic; `awaitIdle()` answers about the registry at the instant it is called and is what beat 3 of the drain races.                                                                        |
-| `UnitRecord`    | The ambient record, opened in an `AsyncLocalStorage` store for the unit's whole extent. `unitId` is minted per unit and always unique; `traceId` is the correlation id.                                                                                     |
+| `UnitRecord`    | The ambient record, opened in an `AsyncLocalStorage` store for the unit's whole extent. `unitId` is minted per unit and always unique; `traceId` is the correlation id; `signal` is the **same** `AbortSignal` `UnitWork` receives as its argument.         |
 | `currentUnit()` | The ambient read; `undefined` outside a unit. Its legitimate readers are infrastructure adapters (a logger, an OTel exporter, a database adapter) — see [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit). Not enforced by lint today. |
 
 ## `Clock` and `systemClock`

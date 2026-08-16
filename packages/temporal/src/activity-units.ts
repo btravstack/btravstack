@@ -8,6 +8,17 @@ import { activityInfo } from "@temporalio/activity";
  * declared, and the ambient `currentUnit()` record is there for an adapter that
  * wants the trace id.
  *
+ * **That includes the kernel's per-unit `AbortSignal`.** `host.run` hands one
+ * to its work callback, and this middleware's callback is `next()` — an
+ * activity has no parameter to receive it through, and giving it one would
+ * mean injecting a context the contract does not type. So it travels on the
+ * ambient record instead: `currentUnit()?.signal`, aborted at the kernel's
+ * `drainTimeoutMs`. Temporal's own `Context.current().cancellationSignal` is
+ * a **different clock** — it fires on a workflow-side cancellation and on
+ * worker shutdown after `shutdownGraceTime` — so an activity that must stop
+ * when the *kernel* stops waiting reads this one, and the two are honoured
+ * together rather than one standing in for the other.
+ *
  * There is deliberately no `Result`-unwrapping boundary: `declareActivitiesHandler`
  * owns the mapping from a settled `Result` to an activity failure, and the
  * kernel maps nothing to a transport.

@@ -127,7 +127,10 @@ is a module that exports no runtime port at all.
 - **A per-unit scope no handler manages** — pass a module as
   `StartOptions.unit` and the kernel forks it around every unit.
 - **An ambient record, not an ambient container** — `currentUnit()` reads
-  `{ unitId, traceId, tenantId, deadline }`; services never travel there.
+  `{ unitId, traceId, tenantId, deadline, signal }`; services never travel
+  there. `signal` is the very `AbortSignal` the unit's work callback is handed,
+  so a runtime whose work is a library's `next()` — a Temporal activity, an
+  AMQP delivery — can still honour the drain deadline.
 - **Nothing throws.** Every async surface is an
   [`unthrown`](https://github.com/btravstack/unthrown) `AsyncResult`;
   `runMain` sets `process.exitCode` — `0` clean, `1` a modeled startup error,

@@ -175,6 +175,31 @@ id. A delivery tag is not used as the id on purpose: tags are per-channel and
 restart at `1` after the silent reconnects `amqp-connection-manager` performs.
 An adapter reads the trace id from `currentUnit()`.
 
+## Honouring the drain deadline
+
+The middleware calls `next()` unchanged, so a handler has no parameter to
+receive the unit's `AbortSignal` through: `currentUnit()?.signal` is the only
+route to it, and it is aborted at the kernel's `drainTimeoutMs`.
+
+```ts
+orderChanged: (message) => {
+  const { id, payload } = message.payload;
+  if (currentUnit()?.signal.aborted === true) {
+    return ErrAsync(
+      new RetryableError(
+        `the drain deadline passed before order ${id} was notified`,
+      ),
+    );
+  }
+  // …
+};
+```
+
+A `RetryableError` leaves the delivery **un-acked**, so the broker hands it to
+the next worker — the transport's own answer to "this process stopped waiting".
+There is no cancellation to defer to here: AMQP has none, and a redelivery is
+recovery rather than cancellation.
+
 ## The drain: one deadline
 
 `Serving.drain(signal)` calls `worker.close({ drainTimeoutMs: null })` —

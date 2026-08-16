@@ -156,7 +156,13 @@ unreachable broker at exit `1` rather than `70`.
 
 One unit per **delivery**, `kind: "delivery"`, opened by the starter's own
 `WorkerMiddleware`, which calls `next()` unchanged — it injects nothing, and
-the handler's own `Result` is what the worker routes.
+the handler's own `Result` is what the worker routes. The ambient
+`currentUnit()` record is therefore the only route to the unit's
+`AbortSignal` from inside a handler: `currentUnit()?.signal`, aborted at the
+kernel's `drainTimeoutMs`. This transport has no cancellation of its own to
+defer to — an un-acked delivery is redelivered, which is recovery, not
+cancellation — so answering a `RetryableError` on an aborted signal is what
+hands the message to the next worker.
 
 | `UnitMeta` field | Value                                                                                                            |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------- |

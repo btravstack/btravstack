@@ -1,6 +1,6 @@
 ---
 title: Ambient data, injected capabilities
-description: Why the kernel's AsyncLocalStorage record holds four fields of data and never a service, who is meant to read it, and the lint rule that does not exist yet.
+description: Why the kernel's AsyncLocalStorage record holds five fields of data and never a service, who is meant to read it, and the lint rule that does not exist yet.
 ---
 
 # Ambient data, injected capabilities
@@ -12,7 +12,7 @@ description: Why the kernel's AsyncLocalStorage record holds four fields of data
 > [`UnitMeta` and `UnitRecord`](/reference/core/runtime).
 
 The kernel opens one `AsyncLocalStorage` store per unit of work. It holds a
-small, fixed record — `UnitRecord`, four fields — and nothing else:
+small, fixed record — `UnitRecord`, five fields — and nothing else:
 
 ```ts
 type UnitRecord = {
@@ -20,6 +20,7 @@ type UnitRecord = {
   readonly traceId: string;
   readonly tenantId: string | undefined;
   readonly deadline: number | undefined;
+  readonly signal: AbortSignal;
 };
 ```
 
@@ -53,7 +54,7 @@ So the line is: **ambient carries data, the di `Context` carries
 capabilities**. A repository through the store is the untestable coupling. A
 tenant id read by the Postgres adapter is not.
 
-## Why exactly these four
+## Why exactly these five
 
 Each field is a fact the kernel either mints or is handed at `run`, and each is
 one an adapter genuinely needs without being able to declare it.
@@ -71,9 +72,41 @@ one an adapter genuinely needs without being able to declare it.
   tagging a span — are exactly the readers the store is for.
 - `deadline` is a timestamp a runtime may pass so an adapter can budget a
   remote call against what is left.
+- `signal` is the **very** `AbortSignal` the kernel hands the unit's work
+  callback — one controller, two ways to reach it — fired at the drain
+  deadline, or at once on a path that skips the drain.
 
 There is no `Map`, no `set()`, no way for application code to add a field. A
 record that could grow would be a service locator with a smaller name.
+
+### Is a signal really data?
+
+It is the one field that looks like a capability, so it is worth saying why it
+is not. The test this page uses everywhere else is substitutability: a
+collaborator has an interface behind it, a test double to swap in, a
+`deps` array entry it should have been declared through. An `AbortSignal`
+has none of those. It is a fact about _this_ unit — "the process has stopped
+waiting for you" — exactly as `deadline` is the fact "this is when it will".
+Nothing about the code that reads it changes shape when it is absent; the
+`?.` in `currentUnit()?.signal` is the whole of the fallback.
+
+The reason it is on the record at all is that **the work callback is not
+always where the work is**. `@btravstack/http` opens the unit around its own
+listener, so it passes the signal as the handler's third parameter and never
+needs the record. `@btravstack/temporal` and `@btravstack/amqp` are
+middleware-shaped: the kernel's work callback is the library's `next()`, and
+an activity or a handler has no parameter to receive a signal through. The
+alternative was injecting a context — an extra first argument the Temporal or
+AMQP contract does not type — which is exactly the hidden-dependency shape
+this page argues against, so it was rejected. A deadline nobody can observe is
+not a deadline.
+
+A transport's own cancellation is a **different clock** and stays separate.
+Temporal's `Context.current().cancellationSignal` fires on a workflow-side
+cancellation, and on worker shutdown after `shutdownGraceTime`; AMQP has no
+cancellation story at all, since an un-acked delivery is redelivered, which is
+recovery rather than cancellation. The two are honoured together, not one
+standing in for the other.
 
 ## Who reads it
 
@@ -101,7 +134,9 @@ The shipped runtimes are written to that rule. `@btravstack/http` opens a
 unit per request, `@btravstack/temporal` one per activity attempt and
 `@btravstack/amqp` one per delivery, and each injects nothing — a handler is a closure
 over the services its provider declared, and the ambient record is what an
-adapter underneath reads.
+adapter underneath reads. For the two middleware-shaped ones the record is
+also the only route to the unit's `AbortSignal`, since they call `next()`
+unchanged; `@btravstack/http` passes the same signal as an argument instead.
 
 ## The lint rule that does not exist
 

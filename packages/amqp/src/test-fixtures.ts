@@ -106,6 +106,43 @@ const seamOf = () => {
 };
 
 /**
+ * A handler that waits on the kernel's own per-unit signal — reached through
+ * `currentUnit()`, since a middleware-shaped runtime hands its work no
+ * parameter — and reports what it saw. `arrived` is the moment the delivery
+ * reached it, so a drain spec knows the unit is genuinely in flight.
+ */
+const deadlineHandler = () => {
+  let entered!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let sawAbort: boolean | undefined;
+
+  const handlers: EchoProvider = echoHandlers({
+    value: {
+      echo: () => {
+        const signal = currentUnit()?.signal;
+        entered();
+        return fromSafePromise(
+          new Promise<void>((done) => {
+            signal?.addEventListener(
+              "abort",
+              () => {
+                sawAbort = true;
+                done();
+              },
+              { once: true },
+            );
+          }),
+        );
+      },
+    },
+  });
+
+  return { handlers, arrived, sawAbort: (): boolean | undefined => sawAbort };
+};
+
+/**
  * A handler that never finishes until `release()` is called, and whose
  * `arrived` promise reports the moment the delivery reached it. Both drain
  * specs turn on knowing a unit is genuinely in flight before the drain
@@ -141,6 +178,8 @@ export type AmqpFixtures = {
   readonly serveBroken: () => Promise<App>;
   readonly seam: ReturnType<typeof seamOf>;
   readonly gate: ReturnType<typeof gatedHandler>;
+  /** A handler that waits on the unit's own `AbortSignal`, read off the ambient record. */
+  readonly deadline: ReturnType<typeof deadlineHandler>;
 };
 
 // Annotated explicitly: TS2883 otherwise refuses to name the inferred type,
@@ -176,5 +215,9 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     const handler = gatedHandler();
     await use(handler);
     handler.release();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  deadline: async ({}, use) => {
+    await use(deadlineHandler());
   },
 });

@@ -2,11 +2,27 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
+/**
+ * What the kernel opens per unit and `currentUnit()` reads: a small, fixed
+ * record of **data about this unit**, and never a service. See the root
+ * `CLAUDE.md`'s thesis 2 for the line that draws.
+ *
+ * `signal` is the same `AbortSignal` the work callback receives — aborted at
+ * the drain deadline, or at once on a path that skips the drain. It is here
+ * because the callback is not always where the work is: a middleware-shaped
+ * runtime (`@btravstack/temporal`, `@btravstack/amqp`) opens the unit around
+ * a call it does not own the arguments of, so an activity or a handler has no
+ * parameter to receive it through. It is data, not a capability: there is
+ * nothing to substitute in a test, and a deadline nobody can observe is not a
+ * deadline. A transport's own cancellation — Temporal's
+ * `Context.current().cancellationSignal` — is a different clock, not this one.
+ */
 export type UnitRecord = {
   readonly unitId: string;
   readonly traceId: string;
   readonly tenantId: string | undefined;
   readonly deadline: number | undefined;
+  readonly signal: AbortSignal;
 };
 
 const storage = new AsyncLocalStorage<UnitRecord>();
@@ -90,6 +106,10 @@ export const createUnitRegistry = (): UnitRegistry => {
         traceId: meta.traceId ?? meta.id,
         tenantId: meta.tenantId,
         deadline: meta.deadline,
+        // The very signal `work` is handed below: one abort, two ways to
+        // reach it, so a runtime whose work is a callback it does not own the
+        // arguments of (a middleware) is not left without the deadline.
+        signal: controller.signal,
       };
 
       // `fromSafePromise` is correct rather than `fromPromise`: the promise

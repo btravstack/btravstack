@@ -153,8 +153,35 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 
 The same `ApplicationModule` + `PersistenceModule` pair as the API, plus
 `FulfillmentModule` — the two external services as in-memory stand-ins that
-always say yes, because what this deployment demonstrates is the
-orchestration; the specs swap in twins that say no. `TemporalModule` imports
+say yes to anything the drain still has time for, because what this deployment
+demonstrates is the orchestration; the specs swap in twins that say no.
+`ShippingService.arrange` is the exception, and the deployment's one kernel
+touchpoint:
+
+```ts
+arrange: (orderId) =>
+  currentUnit()?.signal.aborted === true
+    ? fromSafePromise(
+        Promise.reject(
+          new Error(
+            `the drain deadline passed before shipping for ${orderId} was arranged`,
+          ),
+        ),
+      )
+    : (logger.info(`arranged shipping for order ${orderId}`), OkAsync()),
+```
+
+An adapter is where reading the ambient record is legitimate, and here it is
+the only route to the unit's `AbortSignal` at all: `activityUnits` calls
+`next()` unchanged, so an activity has no parameter to receive one through.
+Failing as a **defect** is the point — the platform retries that attempt on
+another worker, where the contract's `ShippingUnavailable` is a permanent no
+and would be the wrong answer to "we ran out of time". Temporal's own
+`Context.current().cancellationSignal` is a different clock, firing on
+`shutdownGraceTime`; the two are honoured together. See
+[Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
+
+`TemporalModule` imports
 the starter (`TemporalRuntime`, `TemporalConfig` from `TEMPORAL_ADDRESS` /
 `TEMPORAL_NAMESPACE`, `TemporalConnection` as a resource of the graph),
 provides the activities and exports the runtime. `main.ts` is

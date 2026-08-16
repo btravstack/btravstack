@@ -134,6 +134,18 @@ not a defect"` guards it). `create` never throws synchronously (its own
   leaves for the adapters that read it, and it is how the package's own suite
   observes the trace id (`seam` in `test-fixtures.ts` records
   `currentUnit()` inside the handler).
+- **The kernel's per-unit `AbortSignal` rides that record too, and there is no
+  other route to it here.** `host.run` hands one to its work callback, and the
+  callback IS `next()` — a handler has no parameter to receive it through, and
+  injecting a context the contract does not type was the alternative and was
+  rejected. This transport also has no cancellation story of its own to fall
+  back on: an un-acked delivery is **redelivered**, which is recovery, not
+  cancellation. So a handler that must stop when the kernel stops waiting reads
+  `currentUnit()?.signal`, and what it answers is its own business —
+  `examples/order-amqp-worker`'s `orderChanged` returns a `RetryableError`,
+  leaving the delivery un-acked so the broker hands it to the next worker.
+  `amqp-runtime.spec.ts` → _"hands the handler the unit's own AbortSignal,
+  through the ambient record"_ pins it, off the `deadline` fixture's handler.
 - **A delivery tag is not a valid unit id.** Tags are per-**channel** and
   restart at `1` after a reconnect, which `amqp-connection-manager` performs
   silently underneath this worker — the one identifier that looks unique per
@@ -177,7 +189,15 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   **four** total attempts (first plus three retries), not the same count as
   Temporal's `maximumAttempts: 3`.
 - **The suite needs Docker** (`@amqp-contract/testing` boots one RabbitMQ per
-  run); its fixtures compose `AmqpModule("Consuming")({ contract:
+  run) and carries **8 specs** in `amqp-runtime.spec.ts`: one the published
+  info, one the unreachable broker, three the unit boundary (_"opens one
+  kernel unit per delivery"_, _"refuses a blank message id rather than tracing
+  every delivery to it"_, _"builds the handlers from the application's own
+  services"_) and three the drain (_"lets an in-flight delivery finish while
+  draining"_, _"hands the handler the unit's own AbortSignal, through the
+  ambient record"_ off the `deadline` fixture, _"releases the kernel at its own
+  deadline, not the library's own close timeout"_).
+  Its fixtures compose `AmqpModule("Consuming")({ contract:
 echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
   with a provider per test from `AmqpHandlers(echoContract)` — from
   `Greeting`, or a value — so the module reads no environment, and hand it to

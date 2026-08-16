@@ -215,7 +215,11 @@ started polling it publishes `TemporalInfo`, `{ taskQueue, namespace }`, on
 One unit per activity **attempt**, `kind: "activity"`, opened by the
 starter's own `ActivityMiddleware`, which calls `next()` unchanged — it
 injects nothing, and the ambient `currentUnit()` record is what an adapter
-reads the trace id from.
+reads the trace id from, and the **only** route to the unit's `AbortSignal`
+from inside an activity: `currentUnit()?.signal`, aborted at the kernel's
+`drainTimeoutMs`. Temporal's `Context.current().cancellationSignal` is a
+different clock — a workflow-side cancellation, and worker shutdown after
+`shutdownGraceTime` — so the two are honoured together.
 
 | `UnitMeta` field | Value                                                                                                       |
 | ---------------- | ----------------------------------------------------------------------------------------------------------- |

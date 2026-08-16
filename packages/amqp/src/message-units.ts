@@ -9,6 +9,13 @@ import type { RuntimeHost, UnitMeta } from "@btravstack/core";
  * what the unit leaves for the adapters that read it. `next()` unchanged is
  * the whole of the chain — the handler's own `Result` is what the worker
  * routes, and this package is transparent to it.
+ *
+ * **The kernel's per-unit `AbortSignal` rides that record too.** `host.run`
+ * hands one to its work callback, and this middleware's callback is `next()`
+ * — a handler has no parameter to receive it through, and this transport has
+ * no cancellation story of its own to fall back on (an un-acked delivery is
+ * redelivered, which is recovery, not cancellation). A handler that must stop
+ * when the kernel stops waiting reads `currentUnit()?.signal`.
  */
 export const messageUnits =
   (host: RuntimeHost<never>): WorkerMiddleware =>

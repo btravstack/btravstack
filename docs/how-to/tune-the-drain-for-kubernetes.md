@@ -139,6 +139,13 @@ An orchestrator reading `2` learns the pod stopped, but not cleanly.
 The second signal is the operator's escape hatch (and double Ctrl-C in
 development). Skipping the drain is a decision not to _wait_ for in-flight
 work, not to leave it running: every open unit is aborted before `stopping`.
+
+Aborted work only stops if something reads the abort. The unit's `AbortSignal`
+reaches the work callback as an argument **and** rides the ambient record as
+`currentUnit()?.signal` — the same object — which is what lets a
+middleware-shaped runtime honour the deadline: a Temporal activity or an AMQP
+handler has no parameter to receive one through. See
+[Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
 `stop()` is for an embedder that wants out now; `requestDrain()` is the
 programmatic SIGTERM.
 
