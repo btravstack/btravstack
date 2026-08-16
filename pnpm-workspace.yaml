@@ -95,6 +95,18 @@ catalogs:
   typedoc:
     typescript: 6.0.3
 
+# Force patched versions of vulnerable transitive dependencies. Every advisory
+# below reaches us only through dev/build tooling (never a published package's
+# runtime deps). Each selector is version-scoped so only the affected line moves.
+overrides:
+  # GHSA-fx2h-pf6j-xcff, GHSA-4w7w-66w2-5vf9, GHSA-v6wh-96g9-6wx3: vite
+  # `server.fs.deny` bypasses (dev-server only; the docs ship as static HTML).
+  # Reaches us via docs > vitepress > vite. vitepress 1.6.x pins vite ^5.4.14 and
+  # 5.x has no patched release, so lift any pre-6.4.3 vite to 6.4.3 (the first
+  # fixed version), as unthrown does — `vitepress build` is verified against it.
+  # This also drags esbuild up past GHSA-67mh-4wv8-2f99.
+  "vite@<6.4.3": "6.4.3"
+
 allowBuilds:
   # Prisma 7 is engine-less (WASM query compiler); nothing to build or download.
   "@prisma/engines": false
