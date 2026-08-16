@@ -186,8 +186,8 @@ of magnitude of dist size. It rules out the convenience of `pnpm add
 
 ## The test harness is a package
 
-`@btravstack/testing` is where `bootFixture`, `testRuntime`, `createFakeClock`,
-`bootFixture` and `tapped` live — a package of its own, the way
+`@btravstack/testing` is where `bootFixture`, `testRuntime`, `createFakeClock`
+and `tapped` live — a package of its own, the way
 `@nestjs/testing` is, and a dev dependency peering on `core`, `config`, `di`
 and `unthrown`. It replaced `@btravstack/core/testing`, a second entry point
 of the kernel. The entry point kept the fakes out of a production bundle,

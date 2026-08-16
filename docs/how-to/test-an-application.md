@@ -14,11 +14,10 @@ description: Boot a module in a vitest fixture with bootFixture, reach a running
 Everything you need is in `@btravstack/testing`, a dev dependency
 (`pnpm add -D @btravstack/testing`) that peers on `@btravstack/core`,
 `@btravstack/config`, `@btravstack/di` and `unthrown` — the copies your
-application already holds. Five tools: `bootFixture` boots and stops inside a
+application already holds. Four tools: `bootFixture` boots and stops inside a
 vitest fixture, `tapped` reaches a service of a running graph (its lines come
-back through `observability({ sink })` instead),
-starts and stops around a callback, `testRuntime` stands in for a transport,
-`createFakeClock` moves time when you say so.
+back through `observability({ sink })` instead), `testRuntime` stands in for a
+transport, `createFakeClock` moves time when you say so.
 
 ## Boot in a fixture with `bootFixture`
 

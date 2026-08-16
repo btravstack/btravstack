@@ -118,6 +118,6 @@ const app = start(OrderApi, { onEvent: collect, probes: false });
 ```
 
 A sink is synchronous and returns `void`; anything it must await it schedules
-itself. Under `@btravstack/testing`'s `bootFixture`, `onEvent` passes through
-unchanged — only `signals` and `probes` are forced off; under its
-`bootFixture` the default sink is silent, and a call's own `onEvent` wins.
+itself. Under `@btravstack/testing`'s `bootFixture` the default sink is silent and a
+call's own `onEvent` wins. Only `signals` is forced off; `probes` is merely
+defaulted off, so a call may still ask for `{ probes: { port: 0 } }`.

@@ -11,10 +11,10 @@ following the dependency direction: `di` → `config` → `core`, then the test
 harness, the observability starter and the three transport starters on top of
 `core`.
 
-- **[`@btravstack/di`](/api/di/)** — `Port` (and `Port.many`), `Provider`,
+- **[`@btravstack/di`](/api/di/)** — `Port`, `Provider`,
   `Module` (`Module.scoped`, `Module.forkScope`), `Context`, and the type
   names the surface carries: `AnyPort`, `ServiceOf`, `Scope`, `PortClass`,
-  `ManyPortClass`, `PortClassOf`, `PortInstance`, `AnyModule`, `AnyProvider`,
+  `PortClassOf`, `PortInstance`, `AnyModule`, `AnyProvider`,
   `Exportable`, `ScopedOptions`.
 - **[`@btravstack/config`](/api/config/)** — `Config` (`string`, `integer`,
   `port`, `pinned`, `object`, `provider`), the `Env` port, the errors
@@ -28,7 +28,7 @@ harness, the observability starter and the three transport starters on top of
   `UnitRecord`, `UnitRegistry`, `UnitWork`, `Clock`, `Phase`, `KernelEvent`,
   `EventSink`.
 - **[`@btravstack/testing`](/api/testing/)** — `bootFixture`, `tapped`,
-  `withApp`, `testRuntime`, `TestRuntimePort`, `createFakeClock`, and the
+  `testRuntime`, `TestRuntimePort`, `createFakeClock`, and the
   types `Boot`, `BootDefaults`, `ServicesOf`, `TestRuntime`,
   `TestRuntimeInfo`, `SubmittedUnit`, `FakeClock`.
 - **[`@btravstack/observability`](/api/observability/)** — **two entry
@@ -61,7 +61,7 @@ under it; for _why_ the surface is shaped this way, read
 ## The shape of the surface
 
 An application imports from few places, and each import list stays short
-because operations hang off the values by convention — `Port.many`,
+because operations hang off the values by convention —
 `Module.scoped`, `Config.provider`:
 
 ```ts
@@ -71,7 +71,7 @@ import { runMain, start } from "@btravstack/core";
 import { HttpModule, HttpRouter } from "@btravstack/http";
 ```
 
-`Scope` is a **type-only** export of `di`, and `PortClass`, `ManyPortClass`,
+`Scope` is a **type-only** export of `di`, and `PortClass`,
 `PortClassOf` and `PortInstance` exist for declaration emit — a consumer that
 exports a port or a minted provider needs the emitter to be able to name its
 type — not for hand-written code. `RuntimeInstance`, `RuntimeOf` and

@@ -1,3 +1,4 @@
+export { logLevel } from "./config.js";
 export type { LoggerSettings } from "./config.js";
 export { jsonSink } from "./json-sink.js";
 export { LEVELS, Logger, createLogger } from "./logger.js";

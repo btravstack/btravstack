@@ -136,15 +136,20 @@ describe("load-bearing invariants", () => {
 
     app.requestDrain();
     await clock.advance(5_000);
-    expect(aborted).toBe(false);
+    const afterPreDrain = aborted;
 
     await clock.advance(20_000);
     await app.exited;
 
     // The abort comes from `registry.abortAll()` at the deadline, not from the
     // runtime honouring `Serving.drain(signal)` — `testRuntime` deliberately
-    // ignores that signal, which is what makes this a test of the kernel.
-    expect(aborted).toBe(true);
+    // ignores that signal, which is what makes this a test of the kernel. Both
+    // instants are asserted in one projection: the deadline is what aborts, so
+    // "still open after the pre-drain delay" is half the invariant.
+    expect({ afterPreDrain, afterDeadline: aborted }).toEqual({
+      afterPreDrain: false,
+      afterDeadline: true,
+    });
   });
 
   it("5. the application scope closes on a startup failure", async () => {
