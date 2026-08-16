@@ -2,8 +2,15 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreExportsUsedInFile": true,
   "ignore": ["**/*.test-d.ts", "**/type-assert.ts", "vitest.shared.ts"],
-  "ignoreDependencies": ["@btravstack/lefthook", "@btravstack/oxlint"],
+  "ignoreDependencies": [
+    "@btravstack/lefthook",
+    "@btravstack/oxlint",
+    "@btravstack/typedoc",
+    "typedoc",
+    "typedoc-plugin-markdown"
+  ],
   "workspaces": {
+    "docs": { "entry": ["scripts/*.ts"], "project": ["scripts/**/*.ts"] },
     "examples/hexagonal-order-api": {
       "entry": ["src/emit-guards.ts"],
       "project": ["src/**/*.ts"]

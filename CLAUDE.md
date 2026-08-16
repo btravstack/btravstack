@@ -36,7 +36,8 @@ because a client must be able to take a contract without the server, plus the
 container's own `hexagonal-order-api`, which composes a `Module` and never calls
 `start`. They are
 consumers, not fixtures: they are part of the gate, and `examples/README.md`
-is their index.
+is their index. `docs/` is the documentation site (see **Documentation
+site** below); it is a workspace but not a published package.
 
 ## Commands
 
@@ -70,10 +71,11 @@ hook). User-facing changes need a changeset.
    `examples/order-amqp-worker`
    make this testable rather than asserted: the same `ApplicationModule` +
    `PersistenceModule` composition under three runtimes, with the same
-   `DuplicateOrder` arriving as a typed `CONFLICT` on the first, a
-   `nonRetryable` typed contract error on the second and a dead-letter on the
-   third — and
-   no mapping anywhere near the kernel. The second is also where
+   `DuplicateOrder` arriving as a typed `CONFLICT` on the first and a
+   `nonRetryable` typed contract error on the second — the third is a
+   broadcast, where a placement's `Err` never crosses the broker and only the
+   committed fact does, relayed from a transactional outbox — and no mapping
+   anywhere near the kernel. The second is also where
    `Serving.drain` first meets a transport with real drain semantics of its
    own — which is why that half now lives in `@btravstack/temporal`, the
    package the example consumes: `worker.shutdown()` stops polling immediately and `run()` resolves only
@@ -216,10 +218,10 @@ Stated in both READMEs; found in Task 12's review, and it is the reason the
 
 Both surfaced from building the first real runtime against this kernel, and
 both are silent when broken. They live in the `RunUnit` / `RuntimeHost` /
-`UnitMeta` TSDoc, in the root README's _"Two contracts a runtime owes"_ and in
-the package README's _"Writing a runtime"_ — four places that must stay in
-sync. A third, smaller one arrived with `StartOptions.unit` and lives in the
-same four places.
+`UnitMeta` TSDoc, in the documentation site's
+`docs/how-to/write-a-runtime.md` and `docs/reference/core/runtime.md` — four
+places that must stay in sync. A third, smaller one arrived with
+`StartOptions.unit` and lives in the same four places.
 
 **1. The response must be flushed INSIDE the unit.** A unit is closed the
 instant its `Result` settles; `registry.awaitIdle()` is what beat 3 of the
@@ -293,8 +295,10 @@ UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
   — so every runtime is one id at runtime while each carries its own
   `Needs`/`Info` in the type. `RuntimeOf<X>` / `RuntimeNeedsOf<X>` /
-  `RuntimeInfoOf<X>` read those back out of a module's exports; `RuntimeInstance`
-  is the shared instance type (`InstanceType<PortClass<"Runtime">>`). Every
+  `RuntimeInfoOf<X>` read those back out of a module's exports (only
+  `RuntimeInfoOf` is exported — the other two are the gate's internals);
+  `RuntimeInstance` is the shared instance type
+  (`InstanceType<PortClass<"Runtime">>`, internal too). Every
   runtime package ships its port and a starter — `HttpRuntime`/`http()`,
   `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
   has `needs` any more: each takes the application's router / activities /
@@ -755,7 +759,9 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   `pnpm typecheck` runs. The structural rules are in **Test conventions** below.
 - Documentation drifts silently, and a sibling repo has already shipped a
   falsehood this way. When the public surface changes, update **this** file,
-  both READMEs **and** `docs-examples.test-d.ts` in the same commit — and when
+  the documentation site's page for it (see **Documentation site** below),
+  the package README if its sample is touched, **and**
+  `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/core/src/` internals or the invariants guarding
   them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
   `packages/config/CLAUDE.md`, `packages/http/CLAUDE.md`,
@@ -763,6 +769,50 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   where that package's public surface lives — or `packages/di/CLAUDE.md` for
   the container. There are **seven** `CLAUDE.md` files; naming the wrong one
   is how the last drift happened.
+
+## Documentation site
+
+`docs/` is `@btravstack/docs`, the VitePress site published to
+`https://btravstack.github.io/start/` — the same tooling and shape as
+`unthrown`'s: `@btravstack/theme`, one shared sidebar over the four Diátaxis
+modes (`tutorial/`, `how-to/`, `reference/`, `explanation/`), `examples/`
+walkthroughs of the ten example workspaces, and a TypeDoc-generated
+`api/<pkg>/` per published package. `@btravstack/di`'s former standalone site
+was folded in here when the container was merged; nothing under
+`docs/reference/di/` should be edited in the old repository.
+
+- **TypeDoc runs from `docs/`, not from the packages** — it needs its own
+  TypeScript (`catalog:typedoc` pins 6.0.3; 7.x is the native port and ships
+  no `typescript.js`). One `typedoc.<name>.json` per package points at that
+  package's `src/index.ts` (core: `index.ts` and `testing.ts`) and writes
+  straight into `api/<name>/` (gitignored; `docs/api/index.md` is the one
+  committed file there); `scripts/build-api.ts` runs the six concurrently.
+  The package list is repeated in four places that must stay in sync: the
+  configs, `build-api.ts`, `@btravstack/docs#build`'s `dependsOn` in
+  `turbo.json` (explicit `<pkg>#build` edges — the site does not _depend_ on
+  the packages, but a cross-package import inside a documented source must
+  resolve), and the `/api/` sidebar in `.vitepress/config.ts`. Each config's
+  `intentionallyNotExported` lists the internal helper types TypeDoc would
+  otherwise warn about; a new unexported-but-referenced type goes there.
+- **Deployed by `.github/workflows/deploy-docs.yml`**, chained off a green CI
+  run on `main` (`workflow_run`, checking out the exact `head_sha` CI
+  measured) or by `workflow_dispatch`. Unversioned: `main` deploys alone to
+  the root. `unthrown`'s stable/beta split (`DOCS_BASE`, `DOCS_VERSIONS`) is
+  the shape to adopt once a stable tag exists.
+- **Every TypeScript sample on the site was compiled when written** — in a
+  scratch file inside the workspace whose dependencies it needs
+  (`packages/core/src/` for kernel/di/config samples, `examples/order-api/src/`
+  for HTTP, the two worker examples for Temporal and AMQP), then deleted. The
+  kernel-only samples are additionally held by
+  `packages/core/src/docs-examples.test-d.ts`; the starters' are not (see
+  Deferred). A sample edited on the site is re-compiled the same way.
+- Pages carry frontmatter `title` and `description`, open with the quadrant
+  blockquote (`> **How-to.** …`), and link root-relative (`/reference/core/start`).
+  The house style is `unthrown`'s; read a page there before writing one here.
+- `pnpm --filter @btravstack/docs build` builds the site (TypeDoc, then
+  VitePress); `pnpm --filter @btravstack/docs dev` serves it. Neither is in
+  the six-command gate — `knip` covers `docs/scripts`, and the deploy
+  workflow is what fails on a dead link.
 
 ## Test conventions
 
@@ -890,13 +940,15 @@ A sixth rule is about production code that tests keep honest:
 - The `@btravstack/oxlint` rule banning `currentUnit()` outside infrastructure
   adapters (Thesis #2) — it needs a way to identify an adapter.
 - **A `docs-examples.test-d.ts` for `@btravstack/http`, `@btravstack/temporal` and
-  `@btravstack/amqp`.** `packages/core`'s exists precisely so its two READMEs
-  cannot drift from `runtime.ts` / `drain-report.ts` without failing `pnpm
-typecheck`; the three runtime packages' README samples have no such gate
-  and are compiled by nothing. Deliberately not built — three packages' worth
-  of samples still did not justify the harness. Add it the next time one of
-  those samples is found to have drifted, the same way this gap itself was
-  found.
+  `@btravstack/amqp`.** `packages/core`'s exists precisely so its README and
+  the kernel-only pages of the documentation site cannot drift from
+  `runtime.ts` / `drain.ts` without failing `pnpm typecheck`; the three
+  runtime packages' README and site samples have no such gate — they were
+  compiled by hand in a scratch file inside the matching example workspace
+  when written, and by nothing since. Deliberately not built — three
+  packages' worth of samples still did not justify the harness. Add it the
+  next time one of those samples is found to have drifted, the same way this
+  gap itself was found.
 - ~~Bringing `packages/core`'s 13 spec files under the Test conventions.~~
   **Closed by decision, not by doing it.** An audit of the 93 tests found the
   substantive rules (4 and 5) already kept — one conditional assertion, since

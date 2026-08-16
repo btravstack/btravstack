@@ -1,0 +1,22 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/di",
+  "entryPoints": ["../packages/di/src/index.ts"],
+  "tsconfig": "../packages/di/tsconfig.json",
+  "out": "api/di",
+  "intentionallyNotExported": [
+    "AnyPortInstance",
+    "Available",
+    "ErrOf",
+    "ErrOfModule",
+    "ErrorOf",
+    "MemberOf",
+    "NeedOf",
+    "NeedsOfModule",
+    "Qualification",
+    "ResolvedExports",
+    "ScopeOf",
+    "ServicesOf",
+    "TeardownReporter"
+  ]
+}

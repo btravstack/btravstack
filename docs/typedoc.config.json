@@ -1,0 +1,8 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/config",
+  "entryPoints": ["../packages/config/src/index.ts"],
+  "tsconfig": "../packages/config/tsconfig.json",
+  "out": "api/config",
+  "intentionallyNotExported": ["WithDefault"]
+}

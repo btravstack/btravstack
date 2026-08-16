@@ -1,0 +1,15 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/temporal",
+  "entryPoints": ["../packages/temporal/src/index.ts"],
+  "tsconfig": "../packages/temporal/tsconfig.json",
+  "out": "api/temporal",
+  "intentionallyNotExported": [
+    "ActivitiesOf",
+    "ActivitiesPort",
+    "Imports",
+    "Provided",
+    "Provides",
+    "TemporalStarter"
+  ]
+}

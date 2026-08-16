@@ -1,0 +1,15 @@
+/* start accent — beet crimson. The kernel is the process's flag-drop and
+ * chequered flag: it starts the run and calls it, so the accent sits in the
+ * signal register on purpose, where unthrown's deliberately does not. There is
+ * no --pkg-start in @btravstack/theme yet; the theme derives every accent
+ * shade (deep/hover/soft/washes/hero glow/AA text) from this one token. */
+:root {
+  --accent: #a83a5f;
+}
+
+/* Hero name in the package accent — the BtravStack multi-accent rule: the
+ * canvas stays neutral, the product glows in its own color (AA via
+ * --text-accent, which darkens on light). */
+:root:root {
+  --vp-home-hero-name-color: var(--text-accent);
+}
