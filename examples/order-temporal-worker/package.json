@@ -22,6 +22,7 @@
     "@btravstack/example-order-domain": "workspace:*",
     "@btravstack/example-order-infrastructure": "workspace:*",
     "@btravstack/example-order-temporal-contract": "workspace:*",
+    "@btravstack/observability": "workspace:*",
     "@btravstack/temporal": "workspace:*",
     "@temporal-contract/client": "catalog:",
     "@temporal-contract/worker": "catalog:",

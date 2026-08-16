@@ -3,7 +3,8 @@ import { AmqpConfig } from "@btravstack/amqp";
 import { Config } from "@btravstack/config";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { Logger, Outbox } from "@btravstack/example-order-application";
+import { Outbox } from "@btravstack/example-order-application";
+import { Logger } from "@btravstack/observability";
 import { ErrAsync, P, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
@@ -108,14 +109,22 @@ const startOutboxRelay = (
                     published.push(event.id);
                   },
                   errCases: (matcher) =>
-                    matcher.with(P.tag("@amqp-contract/MessageValidationError"), () => {
-                      logger.info(
-                        `outbox event ${event.id} does not fit the contract; left pending`,
+                    matcher.with(P.tag("@amqp-contract/MessageValidationError"), (error) => {
+                      logger.error(
+                        "an outbox event does not fit the contract; left pending",
+                        { eventId: event.id },
+                        error,
                       );
                     }),
                   defect: (cause) => {
-                    logger.info(
-                      `publishing outbox event ${event.id} failed, will retry: ${String(cause)}`,
+                    // `warn`, not `error`: the broker refusing a publish is
+                    // retryable and the next sweep takes it — and a warning
+                    // carries its cause like any other line, which is what the
+                    // uniform `(message, attributes, cause)` is for.
+                    logger.warn(
+                      "publishing an outbox event failed, will retry",
+                      { eventId: event.id },
+                      cause,
                     );
                   },
                 });
@@ -126,14 +135,18 @@ const startOutboxRelay = (
                 // `E = never`: the untouched builder is already exhaustive.
                 errCases: (matcher) => matcher,
                 defect: (cause) => {
-                  logger.info(`marking outbox events published failed: ${String(cause)}`);
+                  logger.error(
+                    "marking outbox events published failed",
+                    { count: published.length },
+                    cause,
+                  );
                 },
               });
             }
           },
           errCases: (matcher) => matcher,
           defect: (cause) => {
-            logger.info(`reading the outbox failed, will retry: ${String(cause)}`);
+            logger.warn("reading the outbox failed, will retry", undefined, cause);
           },
         });
       };

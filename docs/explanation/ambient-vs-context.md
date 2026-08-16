@@ -113,16 +113,27 @@ standing in for the other.
 Legitimate readers are **infrastructure adapters only** — the logger, the
 OpenTelemetry exporter, the database adapter. They sit at the edge, they are
 already coupled to the process they run in, and annotating their output with
-the current unit is their job:
+the current unit is their job.
+
+The logger is no longer a hypothesis about that rule: it is
+[`@btravstack/observability`](/reference/observability), and
+`createLogger` is the reference reading of the record —
 
 ```ts
-const log = (message: string): void => {
+const write = (level, message, attributes, cause) => {
+  if (severity(level) < floor) return;
   const unit = currentUnit();
-  process.stderr.write(
-    `${JSON.stringify({ message, traceId: unit?.traceId })}\n`,
-  );
+  sink({ level, message, attributes, cause, time: Date.now(), unit });
 };
 ```
+
+— read **per call**, never captured at construction. That detail is the whole
+reason the rule is worth having: one logger is built per scope, every unit the
+kernel opens has its own record, and a captured one would stamp the first
+unit's trace id on every line thereafter. Application code depending on
+`Logger` writes `logger.info("placing an order", { orderId, quantity })` and
+never mentions correlation; the adapter underneath is the only thing that
+reads the store.
 
 Application code — a use case, a domain service — is not meant to call
 `currentUnit()`. If a use case needs the tenant, the tenant is an argument or a

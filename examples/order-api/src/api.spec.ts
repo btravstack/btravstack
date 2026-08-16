@@ -177,10 +177,10 @@ describe("order-api", () => {
   it("runs each call in its own unit, with its own trace id", async ({
     serve,
     clientFor,
-    tapped,
+    recording,
   }) => {
-    // GIVEN the real graph with the very `Logger` instance the use cases write to
-    const client = await clientFor(serve(tapped.api));
+    // GIVEN the real graph's composition, recording every line its logger writes
+    const client = await clientFor(serve(recording.api));
 
     // WHEN two calls are served — chained, so neither `Result` is dropped
     const served = await client.orders
@@ -188,16 +188,18 @@ describe("order-api", () => {
       .flatMap(() => client.orders.place({ id: "o-2", quantity: 1 }));
 
     // THEN two calls, two interactor lines plus two request-scope teardown
-    // lines, carrying two distinct trace ids and never the out-of-unit `[-]`
+    // lines, carrying two distinct trace ids and never one written outside a
+    // unit — read off the line's own `unit` field, which is what the logger
+    // stamps from `currentUnit()` per call
     const traced = served
-      .map(() => tapped.traces())
-      .map((traces) => ({
-        lines: traces.length,
-        distinct: new Set(traces).size,
-        outOfUnit: traces.filter((trace) => trace === "[-]"),
+      .map(() => recording.lines())
+      .map((lines) => ({
+        lines: lines.length,
+        distinct: new Set(lines.map((line) => line.unit?.traceId)).size,
+        outOfUnit: lines.filter((line) => line.unit === undefined).length,
       }));
 
-    expect(traced).toBeOkWith({ lines: 4, distinct: 2, outOfUnit: [] });
+    expect(traced).toBeOkWith({ lines: 4, distinct: 2, outOfUnit: 0 });
   });
 
   it("lets an in-flight call finish while draining", async ({ serve, clientFor, gate }) => {

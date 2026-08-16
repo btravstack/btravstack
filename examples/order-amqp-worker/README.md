@@ -14,7 +14,7 @@ binding its own queue to the `orders` exchange needs it and needs none of this.
 ```
 src/handlers.ts        the consuming half: orderHandlers, a provider on the starter's handlers port, built by AmqpHandlers from Logger
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
-src/module.ts          OrderAmqpWorker — the composition root, an AmqpModule, a constant
+src/module.ts          OrderAmqpWorker — the composition root, an AmqpModule importing observability(), a constant
 src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
 src/test-fixtures.ts   boot / serve / tapped, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
 ```
@@ -58,7 +58,10 @@ handlers: orderHandlers, imports, provides, exports })` — a `Module(...)` that
 also takes the handlers provider: under the hood it imports the starter
 (`amqp({ contract: orderContract })`, the runtime on
 `AmqpRuntime` and the broker on `AmqpConfig`), provides `orderHandlers`, and
-exports `AmqpRuntime` for `start` to resolve. There is no `needs`, no
+exports `AmqpRuntime` for `start` to resolve. It also imports
+`observability()`, the starter that provides the `Logger` both halves write to
+— `LOG_LEVEL` from the environment, JSON on stdout, and every consumer line
+carrying the delivery's own unit. There is no `needs`, no
 `context.ctx.get(...)`, and no port declared here over `RuntimePort` — the
 package ships it.
 
@@ -100,6 +103,7 @@ the sugar cannot leave the handlers out).
 | `AMQP_URL`       | `amqp://127.0.0.1:5672` | the broker (`AmqpConfig`), consumer and relay |
 | `PROBE_PORT`     | `9000`                  | `/livez` / `/readyz`                          |
 | `OUTBOX_POLL_MS` | `200`                   | the relay's idle sleep (`RelayConfig`)        |
+| `LOG_LEVEL`      | `info`                  | the `Logger`'s floor (`LoggerConfig`)         |
 
 `OUTBOX_POLL_MS=0` is rejected at boot — a relay that never sleeps is a busy
 loop — and so is anything above `60000`. A bad value, or an empty one, is a
@@ -124,9 +128,12 @@ pnpm --filter @btravstack/example-order-amqp-worker typecheck   # the needs gate
 The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
 boots the worker against the test's own vhost through the `boot` fixture, so
 it is stopped when the test ends, and `tapped` hands back the very
-`PlaceOrder`, `OrderRepository`, `Outbox` and `Logger` the running app was
+`PlaceOrder`, `OrderRepository` and `Outbox` the running app was
 built with — the writer the spec places orders through is the one the relay
-sweeps.
+sweeps. The consumer's own lines need no tap: the fixture composes the root's
+shape with `observability({ sink })`, so what the notifier said arrives as
+`Line` values and the assertions read `{ message, orderId, quantity }` rather
+than a formatted sentence.
 
 ## What this deployment deliberately is not
 

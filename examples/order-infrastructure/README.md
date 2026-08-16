@@ -127,10 +127,15 @@ root imports both halves and the graph is closed:
 
 ```ts
 const AppModule = Module("App")({
-  imports: [ApplicationModule, PersistenceModule],
-  exports: [PlaceOrder, FindOrder, Logger],
+  imports: [ApplicationModule, PersistenceModule, observability()],
+  exports: [PlaceOrder, FindOrder],
 });
 ```
+
+`observability()` closes `ApplicationModule`'s other need, the `Logger` the
+interactors write to — `PersistenceModule` fills the repository hole, the
+observability starter fills the logging one, and neither layer knows the other
+exists.
 
 The database provider takes di's `acquire`/`release` arm, so the module carries
 a `Scope` need that only `Module.scoped` discharges — forgetting the scope is a

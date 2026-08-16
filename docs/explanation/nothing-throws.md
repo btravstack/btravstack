@@ -168,8 +168,16 @@ all — a circular object — falls back to `"[unserialisable]"` rather than
 throwing, because a throwing sink is swallowed (a broken reporter must not take
 the process down mid-shutdown), and the crash would then be reported nowhere.
 
-An observability package binding a logger and OpenTelemetry to `KernelEvent`
-is planned; the kernel is where the events come from, not where they go.
+That the events go somewhere else is the point of the seam.
+[`@btravstack/observability`](/reference/observability) ships the logging half
+of it: `kernelEvents(logger)` is an `EventSink` that writes each event as a log
+line on the application's own logger — `startFailed` and `uncaught` at `error`
+carrying their cause, `teardownError` at `warn`, the rest at `info`, with each
+event's own fields as attributes — so `serving` lands next to the request that
+was in flight when it did instead of in a second stream with a second shape.
+The OpenTelemetry half is not written. The kernel is unchanged either way: it
+is where the events come from, not where they go, and it still takes no logger
+dependency.
 
 ## Where to go next
 

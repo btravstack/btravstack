@@ -13,8 +13,8 @@ src/router.ts         the implementation as a provider, and the one place a doma
 src/request-scope.ts  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts         an AsyncResult client for the same contract
 src/module.ts         OrderApi — the composition root, HttpModule("OrderApi")({ router: orderRouter, … })
-src/main.ts           the process: runMain(OrderApi, { unit: RequestModule })
-src/test-fixtures.ts  boot / serve / clientFor / gate / tapped, as Vitest fixtures — boot and tapped from @btravstack/testing
+src/main.ts           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
+src/test-fixtures.ts  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
 ```
 
 ## The two channels survive the wire
@@ -82,7 +82,7 @@ also knows about it:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   exports: [Logger],
 });
 ```
@@ -91,8 +91,12 @@ export const OrderApi = HttpModule("OrderApi")({
 (`http()` — the whole surface), provides the
 router and exports `HttpRuntime`, and returns exactly the di module
 `Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule,
-http()], provides: [orderRouter], exports: [HttpRuntime,
-Logger] })` would have. The runtime provider depends on the router port
+observability(), http()], provides: [orderRouter], exports: [HttpRuntime,
+Logger] })` would have. `observability()` is the starter that provides the
+`Logger` the use cases and the request scope write to — `LOG_LEVEL` bound from
+the environment, one JSON object per line on stdout, and every line stamped
+with the unit the runtime opened around it. It is exported because the
+per-request `RequestModule` reads it. The runtime provider depends on the router port
 through di, so even the transport wiring exists because the composition root
 said so — a composition that imports the starter without providing
 `orderRouter` carries an unmet need
@@ -155,11 +159,13 @@ Every helper they need is a Vitest fixture in `src/test-fixtures.ts`, so the spe
 opens on `describe` and each test names its dependencies in its own parameter
 list. Shutting an app down is the `boot` fixture's job —
 [`@btravstack/testing`](../../packages/testing)'s `bootFixture({ env: { PORT:
-"0", HOST: "127.0.0.1" } })`, which `serve` builds on — which is why no test
+"0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" } })`, which `serve` builds on — which is why no test
 here has a `try`/`finally`: fixture cleanup runs even when the body fails, and a
-shutdown that blows up (a `Defect` on `exited`) fails the test. `tapped`, from
-the same package, hands back the very `Logger` the use cases wrote to, so the
-trace assertions read the running app's own lines.
+shutdown that blows up (a `Defect` on `exited`) fails the test. The lines the
+running app writes come back through `observability({ sink })` — the same seam
+a deployment swaps for pino — so the trace assertions read `line.unit.traceId`
+as a field instead of parsing a prefix out of a string, and the stub roots pass
+a no-op sink so a spec run is not also a log dump.
 
 ```ts
 it("lets an in-flight call finish while draining", async ({ serve, clientFor, gate }) => {
@@ -177,11 +183,25 @@ it got back from `runtimeInfo()`.
 `src/main.ts` is the process itself, and it is one call:
 
 ```ts
-await runMain(OrderApi, { unit: RequestModule });
+await runMain(OrderApi, {
+  unit: RequestModule,
+  onEvent: kernelEvents(createLogger(jsonSink())),
+});
 ```
+
+`onEvent` puts the kernel's nine lifecycle events in the same stream as the
+application's own lines, instead of the kernel's default JSON on stderr — one
+shape, one set of fields, one thing to search. The logger there is built **by
+hand** rather than resolved from the graph, and it has to be: `building` is
+emitted while the graph is still being constructed and `startFailed` when it
+never finished, so a sink taken out of the context it is watching would have
+nothing to write the two events that matter most with. This is the one example
+that wires it, so the pattern is visible once; the other two `main.ts` files
+stay a single line.
 
 Configuration is read **inside the graph**: `http()` binds `PORT` (default
 `3000`) and `HOST` (default `0.0.0.0`) from the `Env` port the kernel provides,
+`observability()` binds `LOG_LEVEL` (default `info`),
 and the kernel binds its own `PROBE_PORT` (default `9000`). A malformed value —
 `PORT=abc`, `PORT=` — is a `ConfigInvalid` the kernel reports as a
 `startFailed` event and exit code `78`, sysexits(3)'s `EX_CONFIG`; nothing in

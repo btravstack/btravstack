@@ -1,48 +1,76 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp";
+import { AmqpModule, type AmqpInfo, type AmqpRuntime } from "@btravstack/amqp";
 import type { Env } from "@btravstack/config";
 import type { RunningApp } from "@btravstack/core";
 import type { Module, Scope } from "@btravstack/di";
-import { Logger, OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
+import {
+  ApplicationModule,
+  OrderRepository,
+  Outbox,
+  PlaceOrder,
+} from "@btravstack/example-order-application";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { observability, type Line } from "@btravstack/observability";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import type { TestAPI } from "vitest";
 
-import { OrderAmqpWorker } from "./module.js";
+import { orderHandlers } from "./handlers.js";
+import { outboxRelay, relayConfig } from "./outbox-relay.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
+
+type ServeOptions = { readonly drainTimeoutMs: number };
 
 /**
  * `X` is pinned to the ports the composition root exports rather than left
  * generic: `start`'s gate is a phantom rest parameter proven at the call site,
  * and no proof is available inside a helper generic in the module's own
  * exports. `AmqpRuntime` is what `start` resolves; the rest is the writer's
- * surface, which the tap below reads.
+ * surface, which the tap below reads. Spelled inline, like
+ * `order-temporal-worker`'s: an alias for a port union reads like a domain
+ * concept and is neither — the list IS the meaning.
  */
-type AmqpPorts = AmqpRuntime | PlaceOrder | OrderRepository | Outbox | Logger;
-
-type ServeOptions = { readonly drainTimeoutMs: number };
-
 type Serve = <E>(
-  module: Module<AmqpPorts, E, Scope | Env>,
+  module: Module<AmqpRuntime | PlaceOrder | OrderRepository | Outbox, E, Scope | Env>,
   options?: ServeOptions,
 ) => Promise<App<E>>;
 
 /**
- * `start` hands the application context to the runtime alone, so a spec cannot
- * reach the services the way `Module.scoped` can. `@btravstack/testing`'s
- * `tapped` captures the very instances the running app uses — the writer the
- * spec places orders through (the same database the relay sweeps, which for
- * `:memory:` SQLite is the whole point), the outbox it asserts against, and
- * the logger the consumer writes its notification lines to.
+ * The composition root's own shape, with a recording sink in place of stdout —
+ * a parallel root rather than `OrderAmqpWorker` itself because nothing can be
+ * layered over a graph that already provides `Logger`, and
+ * `observability({ sink })` is the seam. What the consumer said comes back as
+ * `Line` values, so no tap is needed for it at all.
+ *
+ * `start` hands the application context to the runtime alone, so a spec still
+ * cannot reach the *services* the way `Module.scoped` can:
+ * `@btravstack/testing`'s `tapped` captures the very instances the running app
+ * uses — the writer the spec places orders through (the same database the
+ * relay sweeps, which for `:memory:` SQLite is the whole point) and the outbox
+ * it asserts against.
  */
 const tappedAmqp = () => {
-  const tap = tapped(OrderAmqpWorker, [PlaceOrder, OrderRepository, Outbox, Logger]);
+  const lines: Line[] = [];
+  const recording = AmqpModule("RecordingAmqpWorker")({
+    contract: orderContract,
+    handlers: orderHandlers,
+    imports: [
+      ApplicationModule,
+      PersistenceModule,
+      observability({ sink: (line) => lines.push(line) }),
+    ],
+    provides: [relayConfig, outboxRelay],
+    exports: [PlaceOrder, OrderRepository, Outbox],
+  });
+  const tap = tapped(recording, [PlaceOrder, OrderRepository, Outbox]);
   return {
     module: tap.module,
+    lines: (): readonly Line[] => lines,
     services: () => {
-      const [placeOrder, repository, outbox, logger] = tap.services();
-      return { placeOrder, repository, outbox, logger };
+      const [placeOrder, repository, outbox] = tap.services();
+      return { placeOrder, repository, outbox };
     },
   };
 };
@@ -53,9 +81,10 @@ export type AmqpFixtures = {
   /** Boots an app against this test's own vhost, through `boot` — so its shutdown is the fixture's. */
   readonly serve: Serve;
   /**
-   * The composition root, plus a tap on the very service instances it runs.
-   * `serve` points it at this test's own vhost — its relay publishes to, and
-   * its consumer reads from, a broker no other test shares.
+   * The composition root's shape, plus a tap on the very service instances it
+   * runs and every line its logger wrote. `serve` points it at this test's own
+   * vhost — its relay publishes to, and its consumer reads from, a broker no
+   * other test shares.
    */
   readonly tapped: ReturnType<typeof tappedAmqp>;
 };

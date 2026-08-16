@@ -1,12 +1,11 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import type { ConfigInvalid } from "@btravstack/config";
+import type { ConfigInvalid, Env } from "@btravstack/config";
 import type { RunningApp } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
   ApplicationModule,
-  Logger,
   OrderRepository,
   PlaceOrder,
   ShippingService,
@@ -15,6 +14,7 @@ import {
 import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domain";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
+import { observability, type Line, type Sink } from "@btravstack/observability";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
@@ -71,40 +71,43 @@ type Deployment<E> = {
  * own exports.
  */
 type Serve = <E>(
-  module: Module<PlaceOrder | OrderRepository | StockService | ShippingService | Logger, E, Scope>,
+  module: Module<PlaceOrder | OrderRepository | StockService | ShippingService, E, Scope | Env>,
 ) => Promise<Deployment<E>>;
 
 /**
  * The application half of a root shaped like the real one, with this test's
  * fulfillment module swapped in: same `ApplicationModule`, same
- * `PersistenceModule`, so the orchestration under test is unchanged and only
- * the external services' answers differ. It exports what `orderActivities`
- * closes over, plus `Logger` for the tap below; the sugar joins in `serve`,
+ * `PersistenceModule`, same `observability()` — so the orchestration under
+ * test is unchanged and only the external services' answers differ, and the
+ * lines the saga writes land in `sink` instead of the runner's stdout. It
+ * exports what `orderActivities` closes over; the sugar joins in `serve`,
  * which is where the per-test queue and the memoised bundle are known.
  */
-const rootWith = (fulfillment: typeof FulfillmentModule) =>
+const rootWith = (fulfillment: typeof FulfillmentModule, sink: Sink) =>
   Module("StubTemporal")({
-    imports: [ApplicationModule, PersistenceModule, fulfillment],
-    exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger],
+    imports: [ApplicationModule, PersistenceModule, fulfillment, observability({ sink })],
+    exports: [PlaceOrder, OrderRepository, StockService, ShippingService],
   });
 
 /**
  * `start` hands the application context to the runtime alone, so a spec cannot
  * reach the services the way `Module.scoped` can. `@btravstack/testing`'s
- * `tapped` captures the very instances the running app uses — the repository
- * the compensation assertions read through, and the logger the stub services
- * write to.
+ * `tapped` captures the very repository instance the running app uses, which
+ * the compensation assertions read through; the log lines need no tap at all —
+ * `observability({ sink })` hands them over as values.
  */
 const deployment = (fulfillment: typeof FulfillmentModule) => {
-  const tap = tapped(rootWith(fulfillment), [OrderRepository, Logger]);
+  const lines: Line[] = [];
+  const tap = tapped(
+    rootWith(fulfillment, (line) => lines.push(line)),
+    [OrderRepository],
+  );
   return {
     module: tap.module,
-    services: (): {
-      readonly repository: ServiceOf<OrderRepository>;
-      readonly logger: ServiceOf<Logger>;
-    } => {
-      const [repository, logger] = tap.services();
-      return { repository, logger };
+    lines: (): readonly Line[] => lines,
+    services: (): { readonly repository: ServiceOf<OrderRepository> } => {
+      const [repository] = tap.services();
+      return { repository };
     },
   };
 };

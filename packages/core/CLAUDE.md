@@ -108,7 +108,13 @@ Beyond the nine:
   backwards and reports nothing"_ and _"treats re-entering the same phase as a
   no-op"_.
 - **A throwing event sink cannot take the process down mid-shutdown.**
-  `events.spec.ts` → _"swallows a throwing sink"_.
+  `events.spec.ts` → _"swallows a throwing sink"_. `safeSink` is what
+  guarantees it, and it stays load-bearing even though the sink most
+  applications now pass — `@btravstack/observability`'s `kernelEvents(logger)`
+  — cannot throw on its own account, since `createLogger` swallows a broken
+  destination for the same reason one layer down. The kernel takes no logger
+  dependency and must not grow one: `onEvent` is the seam, and that package
+  is a consumer of it like any other.
 - **A construction failure keeps the module's own error type.** `start.spec.ts`
   → _"reports a construction failure without wrapping the module's own error"_.
 - **`probePort()` can never hang.** The deferred is settled on every route out

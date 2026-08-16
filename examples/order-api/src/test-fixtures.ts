@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import type { Env } from "@btravstack/config";
 import type { RunningApp, StartOptions } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { ApplicationModule, Logger, OrderRepository } from "@btravstack/example-order-application";
+import { ApplicationModule, OrderRepository } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
+import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
-import { bootFixture, tapped, type Boot } from "@btravstack/testing";
+import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
+import { bootFixture, type Boot } from "@btravstack/testing";
 import { fromSafePromise, OkAsync } from "unthrown";
 import { test } from "vitest";
 
@@ -23,33 +25,55 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
     exports: [OrderRepository],
   });
 
+/** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */
+const recorderOf = () => {
+  const lines: Line[] = [];
+  return { sink: (line: Line) => lines.push(line), lines: (): readonly Line[] => lines };
+};
+
 /**
  * A composition root shaped like the real one but with the repository swapped:
  * same `ApplicationModule`, same `HttpModule` sugar — unpinned, so `serve`'s
  * `env` is what binds it to an ephemeral loopback port — same exports, so
- * the transport under test is unchanged.
+ * the transport under test is unchanged. The sink defaults to a no-op: these
+ * roots are booted to exercise the transport, and the real `jsonSink()` would
+ * put the application's lines in the test runner's own output.
  */
-const apiWith = (repository: ServiceOf<OrderRepository>) =>
+const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
     router: orderRouter,
-    imports: [ApplicationModule, persistenceOf(repository)],
+    imports: [ApplicationModule, persistenceOf(repository), observability({ sink })],
     exports: [Logger],
   });
 
 /**
- * `start` hands the application context to the runtime alone, so a spec cannot
- * reach `Logger` the way `Module.scoped` can. `@btravstack/testing`'s `tapped`
- * hands back the very `Logger` service instance the use cases and the request
- * scope write to, once the graph is built.
+ * The real root's composition with a recording sink in place of stdout.
+ *
+ * `observability({ sink })` IS the seam a spec reads the running graph's lines
+ * through, which is why the `tapped(OrderApi, [Logger])` this replaces is
+ * gone: the old placeholder port could only be read back because it kept its
+ * own array, and reaching into the graph for that instance was the price. A
+ * sink is a value the composition takes, so what comes back is the `Line`
+ * itself — `unit.traceId` as a field, not a prefix parsed out of a string.
+ * A parallel root rather than `OrderApi` itself for the same reason
+ * `apiWith` is one: nothing can be layered over a graph that already provides
+ * `Logger`.
  */
-const tappedApi = () => {
-  const tap = tapped(OrderApi, [Logger]);
+const recordingApi = () => {
+  const recorder = recorderOf();
   return {
-    api: tap.module,
-    traces: (): readonly string[] => {
-      const [logger] = tap.services();
-      return logger.lines().map((line) => line.slice(0, line.indexOf("]") + 1));
-    },
+    api: HttpModule("RecordingApi")({
+      router: orderRouter,
+      // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
+      // real root, and this root exists to be read.
+      imports: [
+        ApplicationModule,
+        PersistenceModule,
+        observability({ sink: recorder.sink, level: "trace" }),
+      ],
+      exports: [Logger],
+    }),
+    lines: recorder.lines,
   };
 };
 
@@ -133,7 +157,8 @@ export type ApiFixtures = {
   readonly api: typeof OrderApi;
   readonly unmodelled: ReturnType<typeof unmodelledApi>;
   readonly gate: ReturnType<typeof gatedApi>;
-  readonly tapped: ReturnType<typeof tappedApi>;
+  /** The real root's composition, plus everything its logger wrote. */
+  readonly recording: ReturnType<typeof recordingApi>;
 };
 
 /**
@@ -145,7 +170,10 @@ const originOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<string> =>
   `http://127.0.0.1:${await portOf(app)}`;
 
 export const it = test.extend<ApiFixtures>({
-  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
+  // `LOG_LEVEL: "fatal"` is what keeps the real `OrderApi` — whose sink is the
+  // production `jsonSink()` on stdout — from writing its lines into the
+  // runner's own output. The roots a spec reads back pin their level instead.
+  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" } }),
 
   serve: async ({ boot }, use) => {
     await use((module, options) => boot(module, { unit: RequestModule, ...options }));
@@ -186,7 +214,7 @@ export const it = test.extend<ApiFixtures>({
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
-  tapped: async ({}, use) => {
-    await use(tappedApi());
+  recording: async ({}, use) => {
+    await use(recordingApi());
   },
 });

@@ -109,7 +109,7 @@ Beat two is the whole point — see [Draining, in three beats](/explanation/drai
 
 ## Packages
 
-Seven packages, one dependency direction — `core` → `config` → `di`, every
+Eight packages, one dependency direction — `core` → `config` → `di`, every
 starter on top of `core`, and a test harness beside them. Details and install
 lines in [Packages and install](/reference/packages).
 
@@ -119,6 +119,10 @@ lines in [Packages and install](/reference/packages).
   `Config.object`, `Config.provider`, the `Env` port, `ConfigInvalid`.
 - **`@btravstack/core`** — the kernel: `start`, `runMain`, the lifecycle state
   machine, the unit registry and the `Runtime` contract.
+- **`@btravstack/observability`** — logging, as a starter: a strict `Logger`
+  port stamped with the ambient unit's trace id, a dependency-free JSON sink,
+  pino behind a subpath, and the kernel's own events as lines in the same
+  stream. Traces and metrics are not here yet.
 - **`@btravstack/http`** — the HTTP starter: an oRPC contract served over
   `node:http`, one unit per request, `HttpRouter` and `HttpModule`.
 - **`@btravstack/temporal`** — the Temporal worker starter: one unit per

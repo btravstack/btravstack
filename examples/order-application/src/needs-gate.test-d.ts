@@ -1,14 +1,15 @@
 /**
  * The compile-time half of the layering: `ApplicationModule` declares
- * `OrderRepository` as an unmet need, so di's phantom rest-tuple gate makes
- * scoping it a call-site arity error until an outer module provides one.
- * Type-checked by this package's `test:types` script, never executed.
+ * `OrderRepository` and `Logger` as unmet needs, so di's phantom rest-tuple
+ * gate makes scoping it a call-site arity error until an outer module provides
+ * them. Type-checked by this package's `test:types` script, never executed.
  */
 import { Module, Provider } from "@btravstack/di";
 import { DuplicateOrder, OrderNotFound, type Order } from "@btravstack/example-order-domain";
+import { Logger, createLogger } from "@btravstack/observability";
 import { ErrAsync } from "unthrown";
 
-import { ApplicationModule, FindOrder, Logger, OrderRepository, PlaceOrder } from "./index.js";
+import { ApplicationModule, FindOrder, OrderRepository, PlaceOrder } from "./index.js";
 
 // Negative: nothing provides `OrderRepository`, so the gate becomes a required
 // two-element tuple and the call is an arity error naming the unmet need.
@@ -25,10 +26,14 @@ const Wired = Module("Wired")({
         remove: (id: string) => ErrAsync(new OrderNotFound({ id })),
       },
     }),
+    // The logger without the starter: `observability()` is the default, not
+    // the only way — an application that wants its own provides `Logger`
+    // itself, and nothing else in the graph can tell.
+    Provider(Logger)({ value: createLogger(() => {}) }),
   ],
-  exports: [PlaceOrder, FindOrder, Logger],
+  exports: [PlaceOrder, FindOrder],
 });
 
-// Positive: with a repository in scope the need is discharged, and this is an
-// ordinary two-argument call.
+// Positive: with a repository and a logger in scope both needs are discharged,
+// and this is an ordinary two-argument call.
 const _wired = Module.scoped(Wired, (ctx) => ctx.get(FindOrder).execute("o-1"));

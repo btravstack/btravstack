@@ -33,7 +33,7 @@ request took:
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
-import { Logger } from "@btravstack/example-order-application";
+import { Logger } from "@btravstack/observability";
 
 export class RequestSpan extends Port("RequestSpan")<{
   readonly finish: () => void;
@@ -46,7 +46,9 @@ export const RequestModule = Module("Request")({
         const startedAt = Date.now();
         return {
           finish: () =>
-            logger.info(`request finished in ${Date.now() - startedAt}ms`),
+            logger.info("request finished", {
+              durationMs: Date.now() - startedAt,
+            }),
         };
       },
       onStop: (span) => span.finish(),
@@ -56,8 +58,9 @@ export const RequestModule = Module("Request")({
 });
 ```
 
-`Logger` is application-scoped: the fork **reads** it from the parent, it does
-not rebuild it. `onStop` puts `Scope` in the module's needs, and only a fork
+`Logger` is [`@btravstack/observability`](/reference/observability)'s port,
+provided at application scope by the `observability()` the composition root
+imports: the fork **reads** it from the parent, it does not rebuild it. `onStop` puts `Scope` in the module's needs, and only a fork
 (or `Module.scoped`) opens one — so the teardown cannot be forgotten. Its type
 is `Module<RequestSpan, never, Logger | Scope>`.
 
@@ -65,14 +68,24 @@ is `Module<RequestSpan, never, Logger | Scope>`.
 
 ```ts
 import { runMain } from "@btravstack/core";
+import {
+  createLogger,
+  jsonSink,
+  kernelEvents,
+} from "@btravstack/observability";
 
 import { OrderApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
-await runMain(OrderApi, { unit: RequestModule });
+await runMain(OrderApi, {
+  unit: RequestModule,
+  onEvent: kernelEvents(createLogger(jsonSink())),
+});
 ```
 
-That is the whole of `examples/order-api/src/main.ts`. From here the kernel
+That is the whole of `examples/order-api/src/main.ts` — `onEvent` being the
+separate matter of putting the kernel's own events in the same stream, covered
+in [Log and correlate](/how-to/log-and-correlate). From here the kernel
 forks `RequestModule` around **every unit**: built as the unit opens, torn down
 as it closes, inside `registry.run` — so the unit is not counted closed until
 the fork is, and a drain waits for the teardown too.
@@ -110,7 +123,7 @@ fails on arity with `UNSATISFIED UNIT NEEDS`:
 
 ```ts
 const UnloggedApi = Module("UnloggedApi")({
-  imports: [ApplicationModule, PersistenceModule, http()],
+  imports: [ApplicationModule, PersistenceModule, observability(), http()],
   provides: [orderRouter],
   exports: [HttpRuntime],
 });
@@ -119,9 +132,11 @@ const UnloggedApi = Module("UnloggedApi")({
 const unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
 ```
 
-That is why `OrderApi` exports `Logger` next to `HttpRuntime`:
+The port exists in that graph — `observability()` provides it — but exporting
+is what the gate reads, and `UnloggedApi` does not. That is why `OrderApi`
+exports `Logger` next to `HttpRuntime`:
 `HttpModule("OrderApi")({ router: orderRouter, imports: [ApplicationModule,
-PersistenceModule], exports: [Logger] })`.
+PersistenceModule, observability()], exports: [Logger] })`.
 
 ::: warning `RuntimeHost.ctx` is the application context
 A unit-provided port exists only while a unit is open, and reaches a runtime
@@ -168,5 +183,6 @@ being the application context — see [Modules](/reference/di/modules) and
 
 - [start and StartOptions](/reference/core/start) — the `unit` option and the three gate arms.
 - [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit) — what `currentUnit()` gives a teardown log line.
+- [Log and correlate](/how-to/log-and-correlate) — the `Logger` this fork reads, and the trace id it stamps.
 - [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http) — the composition root this scope rides on.
 - [Order API (HTTP)](/examples/order-api) — the example.

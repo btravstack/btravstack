@@ -15,8 +15,8 @@ calls `start`.
 | Package                                                | Layer     | Shows                                                                                                                                                   |
 | ------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                     |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` is deliberately an **unmet need**.                        |
-| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's one need.              |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` and `Logger` are deliberately **unmet needs**.            |
+| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's repository need.       |
 | [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                     |
 | [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router as a provider, served by the `http()` and `orpc()` starters, and `Result` → `ORPCError`.                           |
 | [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client. |
@@ -164,7 +164,7 @@ one runtime): `order-api`'s `orderRouter = HttpRouter(orderContract)([PlaceOrder
 FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`; `order-temporal-worker`'s `orderActivities =
 TemporalActivities(orderContract)([…four ports…], { sync })`;
 `order-amqp-worker`'s `orderHandlers = AmqpHandlers(orderContract)([Logger],
-{ sync })` — di's own `Provider(port)(deps, arm)` on that port, typed by the
+{ sync })`, on `@btravstack/observability`'s port — di's own `Provider(port)(deps, arm)` on that port, typed by the
 contract, and each composition root the matching `HttpModule` / `TemporalModule` /
 `AmqpModule` taking the provider. No starter
 declares a `needs` any more — all three runtimes are `Runtime<never, Info>`
@@ -221,10 +221,14 @@ The three deployment suites test through
 [`@btravstack/testing`](../packages/testing), the way an application would:
 each `src/test-fixtures.ts` has a `boot` fixture — `bootFixture(...)`, which
 its `serve` builds on — so every app a test starts is stopped when the test
-ends, on every exit path, and `tapped(module, [Logger, …])` hands back the
-very services the running app was built with (the logger the use cases wrote
-to, the repository the compensation assertions read through) instead of a
-provider written into each suite to reach them.
+ends, on every exit path, and `tapped(module, [OrderRepository, …])` hands back
+the very services the running app was built with (the repository the
+compensation assertions read through, the writer the relay sweeps) instead of a
+provider written into each suite to reach them. Log lines need no tap at all:
+every deployment composes `@btravstack/observability`'s `observability()`, and
+a spec swaps the default stdout sink for a recorder — so what a handler said
+comes back as a `Line`, and the assertions read `attributes.orderId` and
+`unit.traceId` as fields.
 
 Where a guarantee is compile-time only — an unmet port, a runtime's `needs` —
 the assertion is a `@ts-expect-error` in a `*.test-d.ts` file, checked by `tsc`

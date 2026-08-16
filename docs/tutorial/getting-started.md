@@ -245,6 +245,8 @@ numbers are `preDrainDelayMs` and `drainTimeoutMs` on
   runtime per process.
 - [Configure from the environment](/how-to/configure-from-the-environment) —
   bind your own configuration slice the way the starter binds `PORT`.
+- [Log and correlate](/how-to/log-and-correlate) — `observability()` next to
+  the starter, and the kernel events above as lines in the same stream.
 - [Test an application](/how-to/test-an-application) — `bootFixture` from
   `@btravstack/testing`, and booting `App` on port `0`.
 - [Why start?](/explanation/why-start) — the theses this lesson quietly

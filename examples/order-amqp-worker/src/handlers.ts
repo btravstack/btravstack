@@ -2,7 +2,7 @@ import { RetryableError } from "@amqp-contract/worker";
 import { AmqpHandlers } from "@btravstack/amqp";
 import { currentUnit } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { Logger } from "@btravstack/example-order-application";
+import { Logger } from "@btravstack/observability";
 import { ErrAsync, OkAsync } from "unthrown";
 
 /**
@@ -44,11 +44,10 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
           new RetryableError(`the drain deadline passed before order ${id} was notified`),
         );
       }
-      logger.info(
-        payload === null
-          ? `order ${id} is gone — notifying`
-          : `order ${id} placed — notifying (${payload.quantity} items)`,
-      );
+      logger.info(payload === null ? "order gone — notifying" : "order placed — notifying", {
+        orderId: id,
+        ...(payload === null ? {} : { quantity: payload.quantity }),
+      });
       return OkAsync();
     },
   }),

@@ -15,7 +15,8 @@ Everything you need is in `@btravstack/testing`, a dev dependency
 (`pnpm add -D @btravstack/testing`) that peers on `@btravstack/core`,
 `@btravstack/config`, `@btravstack/di` and `unthrown` — the copies your
 application already holds. Five tools: `bootFixture` boots and stops inside a
-vitest fixture, `tapped` reaches a service of a running graph, `withApp`
+vitest fixture, `tapped` reaches a service of a running graph (its lines come
+back through `observability({ sink })` instead), `withApp`
 starts and stops around a callback, `testRuntime` stands in for a transport,
 `createFakeClock` moves time when you say so.
 
@@ -74,36 +75,83 @@ asserting.
 ## Reach a running service with `tapped`
 
 `start` hands the application context to the runtime alone, so a spec has no
-`ctx.get` to reach the very `Logger` the use cases wrote to. `tapped(module,
+`ctx.get` to reach the very `OrderRepository` the running graph writes
+through. `tapped(module,
 [Port, …])` composes one more provider around the module and hands back what
 it was built with; boot `tap.module` in place of the module and read
 `tap.services()` afterwards:
 
 ```ts
-it("logs each request under its own trace id", async ({ boot }) => {
-  // GIVEN the real graph, tapped on the very Logger it holds
-  const tap = tapped(OrderApi, [Logger]);
-  const app = boot(tap.module, { unit: RequestModule });
-  const info = (await app.runtimeInfo()).get();
-  const client = createOrderApiClient(`http://127.0.0.1:${info?.port}`);
+it("broadcasts every committed write, end to end", async ({ serve }) => {
+  // GIVEN the real graph, tapped on the writer the spec places orders through
+  const tap = tapped(OrderAmqpWorker, [PlaceOrder, OrderRepository, Outbox]);
+  await serve(tap.module);
+  const [placeOrder] = tap.services();
 
-  // WHEN two calls are served
-  const served = await client.orders
-    .place({ id: "o-1", quantity: 1 })
-    .flatMap(() => client.orders.place({ id: "o-2", quantity: 1 }));
-
-  // THEN the lines carry two distinct trace ids
-  const [logger] = tap.services();
-  const traces = logger
-    .lines()
-    .map((line) => line.slice(0, line.indexOf("]") + 1));
-  expect(served.map(() => new Set(traces).size)).toBeOkWith(2);
+  // WHEN an order is placed — one ordinary write, no publish in sight
+  // THEN it is the very instance the relay sweeps, so the fact crosses the
+  // outbox, the broker and the queue
+  await expect(placeOrder.execute("o-1", 2)).toBeOkWith(
+    expect.objectContaining({ id: "o-1" }),
+  );
 });
 ```
 
 The gate refuses a port the module does not export (`NOT EXPORTED`, at the
 call site), and `services()` throws if read before the graph is built — a
 bug in the test, kept loud rather than answered with an `undefined`.
+
+## Read a running graph's log lines with a sink
+
+A tap is the wrong tool for this, and `examples/order-api` uses none:
+`@btravstack/observability`'s `observability({ sink })` is the seam. The sink
+is a value the composition takes, so what a spec gets back is the `Line`
+itself — `unit.traceId` as a field rather than a prefix parsed out of a
+string. Compose the root's own shape with a recording sink, and boot that:
+
+```ts
+const lines: Line[] = [];
+
+const recordingApi = HttpModule("RecordingApi")({
+  router: orderRouter,
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    // Pinned rather than bound: the fixture's `LOG_LEVEL` silences the real
+    // root, and this root exists to be read.
+    observability({ sink: (line) => lines.push(line), level: "trace" }),
+  ],
+  exports: [Logger],
+});
+
+it("runs each call in its own unit, with its own trace id", async ({
+  serve,
+  clientFor,
+}) => {
+  // GIVEN the real graph's composition, recording every line its logger writes
+  const client = await clientFor(serve(recordingApi));
+
+  // WHEN two calls are served — chained, so neither `Result` is dropped
+  const served = await client.orders
+    .place({ id: "o-1", quantity: 1 })
+    .flatMap(() => client.orders.place({ id: "o-2", quantity: 1 }));
+
+  // THEN four lines, two distinct trace ids, none written outside a unit
+  const traced = served.map(() => ({
+    lines: lines.length,
+    distinct: new Set(lines.map((line) => line.unit?.traceId)).size,
+    outOfUnit: lines.filter((line) => line.unit === undefined).length,
+  }));
+
+  expect(traced).toBeOkWith({ lines: 4, distinct: 2, outOfUnit: 0 });
+});
+```
+
+A parallel root rather than `OrderApi` itself, because nothing can be layered
+over a graph that already provides `Logger`. Give the fixture's own `env` a
+`LOG_LEVEL: "fatal"` so the real root — whose sink is the production
+`jsonSink()` on stdout — does not write into the runner's output. See
+[Log and correlate](/how-to/log-and-correlate).
 
 ## A one-off with `withApp`
 
@@ -210,30 +258,38 @@ the example's own fixtures on top of `boot`:
 
 ```ts
 export const it = test.extend<ApiFixtures>({
-  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
+  boot: bootFixture({
+    env: { PORT: "0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" },
+  }),
 
   serve: async ({ boot }, use) => {
     await use((module, options) =>
       boot(module, { unit: RequestModule, ...options }),
     );
   },
-  // …clientFor, probesFor, statusOf, api, unmodelled, gate, tapped
+  // …clientFor, probesFor, statusOf, api, unmodelled, gate, recording
 });
 ```
 
 `serve` is `boot` with `RequestModule` forked around every request, so its
 shutdown is still the fixture's; `clientFor` builds the oRPC client from
-`runtimeInfo()`; and `tapped` is the example's tap on the real root:
+`runtimeInfo()`; and `recording` is the real root's composition with a
+recording sink in place of stdout:
 
 ```ts
-const tappedApi = () => {
-  const tap = tapped(OrderApi, [Logger]);
+const recordingApi = () => {
+  const recorder = recorderOf();
   return {
-    api: tap.module,
-    traces: (): readonly string[] => {
-      const [logger] = tap.services();
-      return logger.lines().map((line) => line.slice(0, line.indexOf("]") + 1));
-    },
+    api: HttpModule("RecordingApi")({
+      router: orderRouter,
+      imports: [
+        ApplicationModule,
+        PersistenceModule,
+        observability({ sink: recorder.sink, level: "trace" }),
+      ],
+      exports: [Logger],
+    }),
+    lines: recorder.lines,
   };
 };
 ```
@@ -242,8 +298,9 @@ const tappedApi = () => {
 to prove `completed: 1` and `abandoned: 1` against the real HTTP runtime (see
 [Swap an adapter for tests](/how-to/swap-an-adapter)). The other two examples
 follow the same shape — `boot: bootFixture()`, a `serve` that adds the
-transport's own environment, `tapped` over the services the specs assert
-through — and pay a fixture cost, stated in their READMEs:
+transport's own environment, `tapped` over the **services** the specs assert
+through and `observability({ sink })` for the lines — and pay a fixture cost,
+stated in their READMEs:
 `order-temporal-worker` runs a real Worker against `@temporalio/testing`'s
 **time-skipping test server**, a local binary downloaded once into
 `.cache/temporal-test-server` (network on a cold cache only);

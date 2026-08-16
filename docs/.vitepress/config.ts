@@ -22,6 +22,7 @@ const GUIDE_SIDEBAR = [
     text: "How-to guides",
     items: [
       { text: "Configure from the environment", link: "/how-to/configure-from-the-environment" },
+      { text: "Log and correlate", link: "/how-to/log-and-correlate" },
       { text: "Serve an oRPC contract over HTTP", link: "/how-to/serve-orpc-over-http" },
       { text: "Run a Temporal worker", link: "/how-to/run-a-temporal-worker" },
       { text: "Consume AMQP messages", link: "/how-to/consume-amqp-messages" },
@@ -66,6 +67,7 @@ const GUIDE_SIDEBAR = [
           { text: "Probes", link: "/reference/core/probes" },
         ],
       },
+      { text: "@btravstack/observability", link: "/reference/observability" },
       { text: "@btravstack/testing", link: "/reference/testing" },
       { text: "@btravstack/http", link: "/reference/http" },
       { text: "@btravstack/temporal", link: "/reference/temporal" },
@@ -202,6 +204,7 @@ export default defineConfig({
             { text: "@btravstack/di", link: "/api/di/" },
             { text: "@btravstack/config", link: "/api/config/" },
             { text: "@btravstack/core", link: "/api/core/" },
+            { text: "@btravstack/observability", link: "/api/observability/" },
             { text: "@btravstack/testing", link: "/api/testing/" },
             { text: "@btravstack/http", link: "/api/http/" },
             { text: "@btravstack/temporal", link: "/api/temporal/" },

@@ -22,18 +22,19 @@ describe("the fulfillment saga", () => {
       }),
     ).toBeOkWith({ id: "o-1", quantity: 2 });
 
-    // AND the journey ran in the declared order, each step a log line — the
-    // `[workflowId]` prefix is the activity unit's trace, stripped here
-    // because the order of the steps is the assertion, not the tracing
-    const { repository, logger } = fulfilling.services();
-    expect(logger.lines().map((line) => line.slice(line.indexOf("]") + 2))).toEqual([
-      "placing order o-1 (quantity 2)",
-      "reserved 2 items for order o-1",
-      "arranged shipping for order o-1",
+    // AND the journey ran in the declared order, each step a log line whose
+    // order id is a field rather than a word — the trace id every line also
+    // carries is the runtime's business, not this assertion's
+    expect(
+      fulfilling.lines().map((line) => ({ message: line.message, ...line.attributes })),
+    ).toEqual([
+      { message: "placing an order", orderId: "o-1", quantity: 2 },
+      { message: "reserved stock", orderId: "o-1", quantity: 2 },
+      { message: "arranged shipping", orderId: "o-1" },
     ]);
 
     // AND the placement is durably there
-    await expect(repository.find("o-1")).toBeOkWith(
+    await expect(fulfilling.services().repository.find("o-1")).toBeOkWith(
       expect.objectContaining({ id: "o-1", quantity: 2 }),
     );
   });

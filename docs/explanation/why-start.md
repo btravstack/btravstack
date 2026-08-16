@@ -56,12 +56,15 @@ drain, the exit code — which is precisely the part an effect system leaves to
 you.
 
 **Not a framework.** There is no router, no ORM, no validation layer, no
-logger, no middleware chain in the kernel. Transports arrive as
-[starters](/explanation/starters) — `@btravstack/http`, `@btravstack/temporal`,
-`@btravstack/amqp` — each a module that provides a runtime on a port the
-kernel resolves. A starter is opinionated about its one transport and brings
-nothing else. The kernel's public surface is small enough to hold in your
-head, and it is meant to stay that way.
+logger, no middleware chain **in the kernel**. Everything of that kind arrives
+as a [starter](/explanation/starters) — `@btravstack/http`,
+`@btravstack/temporal` and `@btravstack/amqp`, each a module that provides a
+runtime on a port the kernel resolves, and
+[`@btravstack/observability`](/reference/observability), which provides a
+`Logger` and no runtime at all. A starter is opinionated about its one concern
+and brings nothing else; the kernel still takes no logger dependency and emits
+[events](/reference/core/events) instead. Its public surface is small enough
+to hold in your head, and it is meant to stay that way.
 
 ## What a hand-rolled `main.ts` gets wrong
 

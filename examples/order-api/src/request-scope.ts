@@ -1,5 +1,5 @@
 import { Module, Port, Provider } from "@btravstack/di";
-import { Logger } from "@btravstack/example-order-application";
+import { Logger } from "@btravstack/observability";
 
 /**
  * A service that exists for the length of one request and is torn down with it.
@@ -24,7 +24,9 @@ export const RequestModule = Module("Request")({
     Provider(RequestSpan)([Logger], {
       sync: (logger) => {
         const startedAt = Date.now();
-        return { finish: () => logger.info(`request finished in ${Date.now() - startedAt}ms`) };
+        return {
+          finish: () => logger.info("request finished", { durationMs: Date.now() - startedAt }),
+        };
       },
       onStop: (span) => span.finish(),
     }),
