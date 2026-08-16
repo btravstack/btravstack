@@ -26,30 +26,11 @@ const isConfig = (error: unknown): boolean =>
   error instanceof ConfigInvalid ||
   (error instanceof RuntimeStartFailed && error.cause instanceof ConfigInvalid);
 
-// The precedence is deliberate and must stay explicit.
-//
-// An `"uncaught"` reason means the process died from an uncaught exception or
-// an unhandled rejection. Installing a handler for either suppresses Node's own
-// default exit code of `1` (see `process-handlers.ts`), so if this returned `0` the
-// kernel would report *success* to an orchestrator for a process that crashed —
-// the exact opposite of what the uncaught path exists to signal. It is an
-// internal software error, which is what `EX_SOFTWARE` names, so it shares the
-// defect channel's code.
-//
-// A crash outranks abandoned work: both can be true of one report, and the
-// crash is the more important fact about how the process died. In practice the
-// uncaught path skips the drain entirely, so `drain` is `undefined` here — but
-// the ordering is written out rather than left to depend on that.
-//
-// `2` is then the one code an operator reads as "we stopped, but not cleanly".
-// Two facts make a shutdown unclean, and both belong here: the drain ran out of
-// time and some work never finished, OR a finaliser failed on the way out. The
-// second is not cosmetic — a pool that could not flush is exactly the shutdown
-// an orchestrator must not be told succeeded — and the kernel already goes to
-// real trouble to keep those errors observable (the load-bearing array aliasing
-// in `start.ts`), which reporting `0` over them would waste.
-//
-// A clean drain with clean teardown, or no drain at all, is a `0`.
+// The `uncaught` arm must come FIRST: a crash outranks abandoned work, both
+// can be true of one report, and ordering it second would report `2` for a
+// process that died. A failed finaliser earns the `2` as much as abandoned
+// work does — the kernel goes to real trouble to keep those observable
+// (`start.ts`'s array aliasing), which reporting `0` over them would waste.
 const codeFor = (report: ExitReport): number => {
   if (report.reason === "uncaught") return EX_SOFTWARE;
   const unclean = (report.drain?.abandoned ?? 0) > 0 || report.teardownErrors.length > 0;

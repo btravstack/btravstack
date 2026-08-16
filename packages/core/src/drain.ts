@@ -32,32 +32,16 @@ export type DrainArgs = {
   readonly onUnready: () => void;
 };
 
-// The three beats, in order — the order is the whole point:
-// 1. Readiness flips false, and `inFlightAtStart`/`closedAtStart` are sampled,
-//    synchronously, before anything else. Sampling here — not after the
-//    pre-drain delay — is what keeps `inFlightAtStart` honest against a unit
-//    that starts or closes *during* the delay, and keeps it numerically
-//    consistent with a `"draining"` event a caller emits from the same
-//    synchronous turn (see `start.ts`'s `runDrain`).
-// 2. `preDrainDelayMs` is waited out *before* the runtime is told to stop
-//    accepting. Kubernetes endpoint removal is eventually consistent, so a
-//    pod that stops accepting the instant it is asked to will still have
-//    live traffic routed to it for a window after step 1 — this delay is
-//    what closes that window, not a pointless sleep.
-// 3. In-flight work gets `drainTimeoutMs` to finish; whatever is still open
-//    at the deadline is aborted and reported abandoned. The timeout races
-//    against the runtime having stopped *and* the registry going idle —
-//    never awaited on its own — so a runtime that (correctly) treats
-//    `signal` as its own cue to return can't deadlock this past the
-//    deadline; `deadline` is aborted the instant the race settles, on
-//    either branch, so such a runtime is always released.
+// The three beats, in order — root CLAUDE.md's thesis 5 says why each exists.
+// Three orderings here are load-bearing and are what the comments below guard:
+// the counters are sampled BEFORE the pre-drain sleep, `awaitIdle()` is
+// sequenced AFTER the runtime's `drain` rather than alongside it, and the
+// deadline is aborted the instant the race settles on either branch.
 //
 // Every `Result` the three awaited calls hand back is threaded, never dropped.
-// All three are typed `AsyncResult<void, never>`, and `never` empties the
-// *error* channel only — a `Defect` can still be present at runtime. `Serving`
-// is implemented by third-party runtimes, so a `drain` that throws internally
-// arrives here as a Defect, and discarding it would report a clean shutdown
-// that never happened.
+// `AsyncResult<void, never>` empties the *error* channel only — a `Serving`
+// written by a third party can still defect, and discarding it would report a
+// clean shutdown that never happened.
 export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
   args.onUnready();
 
@@ -69,31 +53,21 @@ export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
   return args.clock.sleep(args.preDrainDelayMs, args.skip).flatMap(() => {
     const drainStopped = args.serving.drain(deadline.signal);
 
-    // An `AsyncResult` is a thenable, so racing the two branches yields
-    // whichever `Result` settles first — inspected below rather than dropped.
-    // The LOSING branch's `Result` is dropped, and that is the one drop here:
-    // when the timeout wins, the deadline has already decided the report and
-    // settled `exited`, so a `drain` that defects afterwards has no consumer
-    // left — and an `AsyncResult` never rejects, so nothing floats.
-    //
-    // `awaitIdle()` is SEQUENCED after `drainStopped`, not sampled alongside
-    // it: it answers about the registry at the instant it is *called*, so
-    // calling it here — in the same tick the runtime was told to stop
-    // accepting — would let a unit that opens while `drain` is still resolving
-    // go unwaited, then be aborted and reported abandoned with the whole
-    // budget unspent. A runtime whose `drain` resolves slowly (an HTTP server
-    // waiting out keep-alive connections) is exactly where that window is wide.
+    // `awaitIdle()` is SEQUENCED behind `drainStopped`, never sampled alongside
+    // it: it answers about the registry at the instant it is called, so a unit
+    // opening while `drain` is still resolving would go unwaited and be
+    // reported abandoned with the whole budget unspent. The losing branch's
+    // `Result` is the one drop here — once the timeout has decided the report,
+    // `exited` has settled and a late defect has no consumer.
     return fromSafePromise(
       Promise.race([
         drainStopped.flatMap(() => args.registry.awaitIdle()),
         args.clock.sleep(args.drainTimeoutMs, args.skip),
       ]),
     ).flatMap((raced) => {
-      // Aborted the instant the race settles, on either branch and whatever the
-      // winning `Result` carries — a runtime that treats `signal` as its cue to
-      // return is released on the defect path too. Sampling the counters stays
-      // in this same synchronous continuation, as it was when the whole tail
-      // followed a single `await`.
+      // On either branch, and whatever the winning `Result` carries: a runtime
+      // that treats `signal` as its cue to return is released on the defect
+      // path too.
       deadline.abort();
 
       return raced.map(() => {
