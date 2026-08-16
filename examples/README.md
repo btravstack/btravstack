@@ -15,8 +15,8 @@ calls `start`.
 | Package                                                | Layer     | Shows                                                                                                                                                            |
 | ------------------------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                              |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` and `Logger` are deliberately **unmet needs**.                     |
-| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's repository need.                |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose two repositories and `Logger` are deliberately **unmet needs**.                      |
+| [`order-infrastructure`](./order-infrastructure)       | adapters  | Prisma-backed repositories over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's repository needs.               |
 | [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                              |
 | [`order-api`](./order-api)                             | runtime   | The first deployment: a two-slice modulith — a controller per contract fragment, composed into one oRPC router — served by `http()`, and `Result` → `ORPCError`. |
 | [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client.          |
@@ -185,26 +185,29 @@ port. `order-api` also pins both halves of the `unit` gate.
 
 `order-api` is the one deployment whose surface is big enough to split, so it
 is: `src/slices/orders/` and `src/slices/customers/`, each owning a fragment
-of the contract, a controller over that fragment, and — where it needs one —
-its own adapter.
+of the contract and a controller over that fragment, and each backed by the
+same three-package vertical below it.
 
 ```
 order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
                             │                        │
 order-api              slices/orders/           slices/customers/
                          controller.ts            controller.ts     ← HttpController(name, fragment)([deps], { sync })
-                         module.ts                directory.ts      ← the slice's own adapter, private to it
-                                                  module.ts
+                         module.ts                module.ts         ← the slice's own di module
                             └───────────┬────────────┘
                                    module.ts                        ← HttpRouter(contract)({ orders, customers })
+                            ┌───────────┴────────────┐
+                       PlaceOrder / FindOrder    FindCustomer       ← use cases, entities, Prisma adapters — the same three packages
 ```
 
 A **controller** is `HttpController("OrdersController", contract.orders)([PlaceOrder,
 FindOrder], { sync })` — an ordinary di provider on a port `HttpController`
 mints and hands back on `.port`. A **slice** is an ordinary di `Module` that
-provides its controller (and its adapter) and exports **only**
-`controller.port`: `CustomersSlice` keeps `CustomerDirectory` private, so
-nothing outside the slice can reach it. The **root** composes them with the
+provides its controller and exports **only** that controller, so nothing
+outside the slice can reach anything else it holds. Neither slice owns a
+private adapter: both go through the use cases, the entities and the Prisma
+repositories, and each controller converts its own entity to its own wire
+shape. The **root** composes them with the
 keyed `HttpRouter(contract)({ orders: ordersController, customers:
 customersController })` form, which is exact against the contract — a missing
 key, an undeclared key and a controller under the wrong key are all compile

@@ -1,10 +1,15 @@
 import type { ServiceOf } from "@btravstack/di";
-import type { Outbox, OrderRepository } from "@btravstack/example-order-application";
+import type {
+  CustomerRepository,
+  Outbox,
+  OrderRepository,
+} from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
 import { test } from "vitest";
 
 import {
   openDatabase,
+  prismaCustomerRepository,
   prismaOrderRepository,
   prismaOutbox,
   type OrderDatabaseClient,
@@ -18,8 +23,15 @@ export type PersistenceFixtures = {
    */
   readonly db: OrderDatabaseClient;
   readonly repository: ServiceOf<OrderRepository>;
+  readonly customers: ServiceOf<CustomerRepository>;
   readonly outbox: ServiceOf<Outbox>;
   readonly anOrder: (id: string, quantity: number) => Order;
+  /**
+   * Puts a customer in the table. Straight through the client, past the port,
+   * because the port is read-only by design: this application registers
+   * nobody, so a row written by something else is exactly what it reads.
+   */
+  readonly aCustomer: (id: string, name: string) => Promise<void>;
 };
 
 export const it = test.extend<PersistenceFixtures>({
@@ -37,6 +49,10 @@ export const it = test.extend<PersistenceFixtures>({
     await use(prismaOrderRepository(db));
   },
 
+  customers: async ({ db }, use) => {
+    await use(prismaCustomerRepository(db));
+  },
+
   outbox: async ({ db }, use) => {
     await use(prismaOutbox(db));
   },
@@ -44,5 +60,11 @@ export const it = test.extend<PersistenceFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   anOrder: async ({}, use) => {
     await use((id, quantity) => placeOrder(id, quantity).getOrThrow());
+  },
+
+  aCustomer: async ({ db }, use) => {
+    await use(async (id, name) => {
+      await db.customer.create({ data: { customerId: id, name } });
+    });
   },
 });

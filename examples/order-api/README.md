@@ -10,9 +10,8 @@ its own package, because a client needs it and needs none of this.
 
 ```
 src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder], { sync }) — where the orders slice's own domain error becomes an ORPCError
-src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only its port
-src/slices/customers/directory.ts     CustomerDirectory — the customers slice's own adapter
-src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([CustomerDirectory], { sync }) — same shape, for the customers slice's own domain error
+src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
+src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([FindCustomer], { sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts                         an AsyncResult client for the same contract
@@ -21,8 +20,10 @@ src/main.ts                           the process: runMain(OrderApi, { unit: Req
 src/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
 ```
 
-Each slice owns its contract fragment, its controller and (`customers`) its
-own adapter; the root only composes them — see
+Each slice owns its contract fragment and its controller, and both are backed
+by the same three-package vertical — [use cases](../order-application),
+[entities](../order-domain), [Prisma adapters](../order-infrastructure). The
+root only composes them — see
 [Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
 
 ## The two channels survive the wire
@@ -165,7 +166,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-api test  # 16 api specs
+pnpm --filter @btravstack/example-order-api test  # 17 api specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON

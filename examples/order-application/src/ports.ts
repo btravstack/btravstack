@@ -1,5 +1,7 @@
 import { Port } from "@btravstack/di";
 import type {
+  Customer,
+  CustomerNotFound,
   DuplicateOrder,
   InvalidQuantity,
   Order,
@@ -26,6 +28,18 @@ export class OrderRepository extends Port("OrderRepository")<{
   readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
   readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
   readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
+}> {}
+
+/**
+ * The customers slice's own port, declared here for the same reason
+ * `OrderRepository` is: the use case owns the shape it needs, and it needs the
+ * **entity** — never `CustomerView`, which is the transport's shape and would
+ * point the dependency arrow outwards. Read-only, because nothing in this
+ * application registers a customer yet; a write path is a method to add, not a
+ * layer to redesign.
+ */
+export class CustomerRepository extends Port("CustomerRepository")<{
+  readonly find: (id: string) => AsyncResult<Customer, CustomerNotFound>;
 }> {}
 
 /**
@@ -84,4 +98,8 @@ export class PlaceOrder extends Port("PlaceOrder")<{
 
 export class FindOrder extends Port("FindOrder")<{
   readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+
+export class FindCustomer extends Port("FindCustomer")<{
+  readonly execute: (id: string) => AsyncResult<Customer, CustomerNotFound>;
 }> {}

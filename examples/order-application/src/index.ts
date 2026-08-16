@@ -1,5 +1,7 @@
 export { ApplicationModule } from "./module.js";
 export {
+  CustomerRepository,
+  FindCustomer,
   FindOrder,
   OrderRepository,
   Outbox,

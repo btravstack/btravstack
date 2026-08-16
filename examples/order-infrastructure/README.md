@@ -4,12 +4,14 @@ The adapter side. This layer speaks Prisma, SQLite and P-codes, and its job is
 to make sure none of that vocabulary reaches the layers above it.
 
 ```
-prisma/schema.prisma            the Order and OutboxMessage models
-prisma/migrations/              generated from the schema, committed, applied by db:migrate
-src/database.ts                 the client, the OrderDatabase port, the acquire/release provider
-src/prisma-order-repository.ts  the adapter — where Prisma's errors become the domain's
-src/module.ts                   PersistenceModule
-src/test-fixtures.ts            the in-memory database and repository, as Vitest fixtures
+prisma/schema.prisma               the Order, Customer and OutboxMessage models
+prisma/migrations/                 generated from the schema, committed, applied by db:migrate
+src/database.ts                    the client, the OrderDatabase port, the acquire/release provider
+src/prisma-order-repository.ts     the adapter — where Prisma's errors become the domain's
+src/prisma-customer-repository.ts  the customers vertical's adapter — read-only, because its port is
+src/prisma-outbox.ts               the outbox's read side, for whichever deployment relays it
+src/module.ts                      PersistenceModule
+src/test-fixtures.ts               the in-memory database and the repositories, as Vitest fixtures
 ```
 
 ## The schema is migrated, not hand-created
@@ -98,6 +100,13 @@ have been a valid `Order` — someone else's `INSERT`, a bad migration — becom
 defect rather than widening `E`. The spec writes such a row with raw SQL and
 asserts the defect.
 
+`prisma-customer-repository.ts` is the same file one procedure long, and it is
+the whole customers vertical's outermost layer: `tryFindUnique`, `Ok(null)` into
+`CustomerNotFound`, and a `hydrate` that rebuilds the branded `Customer`. It has
+no write path because its port has none — this application registers nobody, and
+inventing an adapter method the use cases never call would be infrastructure the
+domain did not ask for.
+
 ## A real database, no Docker
 
 The specs run against real SQLite held in memory
@@ -105,35 +114,42 @@ The specs run against real SQLite held in memory
 raised by a genuine UNIQUE index, not a stub returning a canned error. The
 generated client is gitignored and minted by the `test` / `typecheck` scripts:
 
-```json
-"test": "prisma generate && vitest run",
-"typecheck": "prisma generate && tsc --noEmit"
-```
+The generated client is gitignored and minted by turbo's own `generate` task —
+which `test`, `typecheck` and `test:types` all depend on, so one generator runs,
+ordered by the task graph. The scripts themselves do not call
+`prisma generate`: they did until a cold cache ran the task and the script's
+inline copy concurrently and the two collided on `mkdir`.
 
 Nothing to install, nothing to start.
 
-## `PersistenceModule` closes the application's need
+## `PersistenceModule` closes the application's needs
 
 ```ts
 export const PersistenceModule = Module("Persistence")({
-  provides: [orderDatabaseProvider, orderRepositoryProvider],
-  exports: [OrderRepository],
+  provides: [
+    orderDatabaseProvider,
+    orderRepositoryProvider,
+    customerRepositoryProvider,
+    outboxProvider,
+  ],
+  exports: [OrderRepository, CustomerRepository, Outbox],
 });
 ```
 
-It exports `OrderRepository` alone — the Prisma client stays behind the
-boundary, so no outer module can reach it and start speaking SQL. A composition
-root imports both halves and the graph is closed:
+It exports the ports the layers above declared and nothing else — the Prisma
+client stays behind the boundary, so no outer module can reach it and start
+speaking SQL, and both verticals share the one connection. A composition root
+imports both halves and the graph is closed:
 
 ```ts
 const AppModule = Module("App")({
   imports: [ApplicationModule, PersistenceModule, observability()],
-  exports: [PlaceOrder, FindOrder],
+  exports: [PlaceOrder, FindOrder, FindCustomer],
 });
 ```
 
-`observability()` closes `ApplicationModule`'s other need, the `Logger` the
-interactors write to — `PersistenceModule` fills the repository hole, the
+`observability()` closes `ApplicationModule`'s remaining need, the `Logger` the
+interactors write to — `PersistenceModule` fills both repository holes, the
 observability starter fills the logging one, and neither layer knows the other
 exists.
 
@@ -146,5 +162,5 @@ query come back as a defect.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-infrastructure test  # 6 specs
+pnpm --filter @btravstack/example-order-infrastructure test  # 18 specs
 ```

@@ -3,13 +3,23 @@ import assert from "node:assert/strict";
 import type { Env } from "@btravstack/config";
 import type { RunningApp, StartOptions } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { ApplicationModule, OrderRepository } from "@btravstack/example-order-application";
-import { placeOrder, type Order } from "@btravstack/example-order-domain";
+import {
+  ApplicationModule,
+  CustomerRepository,
+  OrderRepository,
+} from "@btravstack/example-order-application";
+import {
+  Customer,
+  CustomerNotFound,
+  OrderNotFound,
+  placeOrder,
+  type Order,
+} from "@btravstack/example-order-domain";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, type Boot } from "@btravstack/testing";
-import { fromSafePromise, OkAsync } from "unthrown";
+import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
@@ -20,10 +30,26 @@ import { OrdersSlice } from "./slices/orders/module.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
+/**
+ * Both repositories, so a stub root closes `ApplicationModule`'s needs the way
+ * `PersistenceModule` does. Only the orders half varies per spec; the
+ * customers one holds a single registered customer, which is all the slice's
+ * one procedure needs to answer.
+ */
 const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
   Module("StubPersistence")({
-    provides: [Provider(OrderRepository)({ value: repository })],
-    exports: [OrderRepository],
+    provides: [
+      Provider(OrderRepository)({ value: repository }),
+      Provider(CustomerRepository)({
+        value: {
+          find: (id: string) =>
+            id === "c-1"
+              ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
+              : ErrAsync(new CustomerNotFound({ id })),
+        },
+      }),
+    ],
+    exports: [OrderRepository, CustomerRepository],
   });
 
 /** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */
@@ -85,6 +111,19 @@ const recordingApi = () => {
     lines: recorder.lines,
   };
 };
+
+/**
+ * The stub root at rest: nothing hangs, nothing blows up, and the customer
+ * `c-1` is registered. What the customers slice's success path needs, which
+ * the real root cannot give it — its database is born empty inside the graph
+ * and no procedure registers anyone.
+ */
+const stubbedApi = () =>
+  apiWith({
+    save: (order) => OkAsync(order),
+    find: (id) => ErrAsync(new OrderNotFound({ id })),
+    remove: () => OkAsync(),
+  });
 
 /**
  * A composition root whose repository fails in a way nobody modelled: no
@@ -164,6 +203,8 @@ export type ApiFixtures = {
   readonly statusOf: (url: string) => Promise<number>;
   /** The real composition root. */
   readonly api: typeof OrderApi;
+  /** The same two slices over stub persistence, with one customer registered. */
+  readonly stubbed: ReturnType<typeof stubbedApi>;
   readonly unmodelled: ReturnType<typeof unmodelledApi>;
   readonly gate: ReturnType<typeof gatedApi>;
   /** The real root's composition, plus everything its logger wrote. */
@@ -210,6 +251,11 @@ export const it = test.extend<ApiFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   api: async ({}, use) => {
     await use(OrderApi);
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  stubbed: async ({}, use) => {
+    await use(stubbedApi());
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

@@ -1,6 +1,8 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
 import {
   placeOrder,
+  type Customer,
+  type CustomerNotFound,
   type DuplicateOrder,
   type InvalidQuantity,
   type Order,
@@ -9,7 +11,13 @@ import {
 import { Logger } from "@btravstack/observability";
 import type { AsyncResult } from "unthrown";
 
-import { FindOrder, OrderRepository, PlaceOrder } from "./ports.js";
+import {
+  CustomerRepository,
+  FindCustomer,
+  FindOrder,
+  OrderRepository,
+  PlaceOrder,
+} from "./ports.js";
 
 class PlaceOrderInteractor {
   readonly #repository: ServiceOf<OrderRepository>;
@@ -40,10 +48,26 @@ class FindOrderInteractor {
   }
 }
 
+class FindCustomerInteractor {
+  readonly #repository: ServiceOf<CustomerRepository>;
+
+  constructor(repository: ServiceOf<CustomerRepository>) {
+    this.#repository = repository;
+  }
+
+  execute(id: string): AsyncResult<Customer, CustomerNotFound> {
+    return this.#repository.find(id);
+  }
+}
+
 export const placeOrderProvider = Provider(PlaceOrder)([OrderRepository, Logger], {
   class: PlaceOrderInteractor,
 });
 
 export const findOrderProvider = Provider(FindOrder)([OrderRepository], {
   class: FindOrderInteractor,
+});
+
+export const findCustomerProvider = Provider(FindCustomer)([CustomerRepository], {
+  class: FindCustomerInteractor,
 });

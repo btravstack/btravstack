@@ -1,6 +1,6 @@
 ---
 title: Order API example
-description: The HTTP deployment — two slices, orders and customers, each its own contract fragment and HttpController, composed by the keyed HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
+description: The HTTP deployment — two slices, orders and customers, each its own contract fragment, HttpController and full vertical down to Prisma, composed by the keyed HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
 ---
 
 # Order API (HTTP)
@@ -54,14 +54,15 @@ export, and every consumer reaches a fragment through it —
 `contract.orders`, `contract.customers`.
 
 Each slice lives under `slices/<name>/` — a `controller.ts` implementing that
-slice's fragment, its own domain (`slices/customers/directory.ts`), and a
-`module.ts` exporting only its controller's port:
+slice's fragment, and a `module.ts` exporting only that controller. Both are
+one file deep, because both are backed by the same three-package vertical:
+use cases in [`order-application`](/examples/order-application), and the
+entities and Prisma adapters behind it.
 
 ```
 src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder], { sync })
-src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only its port
-src/slices/customers/directory.ts     CustomerDirectory — the slice's own adapter
-src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([CustomerDirectory], { sync })
+src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
+src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([FindCustomer], { sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 ```
 
@@ -127,8 +128,12 @@ was never modeled, and collapsing it to a 500 is the correct treatment rather
 than a fallback.
 
 `slices/customers/controller.ts` is the same shape over one procedure, built
-from `slices/customers/directory.ts`'s own `CustomerDirectory` port — a slice
-owns its adapter, which is what makes it liftable into a service of its own.
+from `FindCustomer` and mapping `CustomerNotFound` to the fragment's own
+`NOT_FOUND`. It has its own `view` too, because its use case answers with the
+branded `Customer` entity and `CustomerView` is the wire's shape — a slice is
+defined by owning its fragment, its controller and its triage, not by owning a
+private adapter. The throwaway in-memory directory this replaced declared its
+port over `CustomerView` itself, which pointed the dependency arrow outwards.
 
 ## The router: composed from controllers, keyed by the contract
 
@@ -296,9 +301,10 @@ in its own unit with its own trace id (two calls, four log lines, two distinct
 repository finishes during a drain
 and is counted `completed`, one still hung at a zero deadline is counted
 `abandoned`; `/livez` and `/readyz` answer while serving, and readiness goes
-false before liveness during the drain; and the `customers` slice answers
-from its own directory over the same client and the same running root,
-proving the keyed router actually mounted both controllers rather than one.
+false before liveness during the drain; and the `customers` slice answers over
+the same client and the same running root — a `CustomerView` on the way out of
+a stub-backed root, a typed `NOT_FOUND` out of the real one — proving the keyed
+router actually mounted both controllers rather than one.
 
 ## Three gates, pinned at compile time
 

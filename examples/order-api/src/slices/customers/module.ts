@@ -1,10 +1,9 @@
 import { Module } from "@btravstack/di";
 
 import { customersController } from "./controller.js";
-import { customerDirectory } from "./directory.js";
 
-/** The customers slice: its adapter is private, only its controller is exported. */
+/** The customers slice: its controller, and nothing else the rest of the app can see. */
 export const CustomersSlice = Module("CustomersSlice")({
-  provides: [customerDirectory, customersController],
+  provides: [customersController],
   exports: [customersController.port],
 });
