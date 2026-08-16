@@ -25,7 +25,7 @@ positional form already takes, just smaller — and the root contract is a
 record of them:
 
 ```ts
-export const ordersContract = {
+const ordersContract = {
   place: oc
     .input(type<{ readonly id: string; readonly quantity: number }>())
     .output(type<OrderView>())
@@ -39,18 +39,22 @@ export const ordersContract = {
     .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
 };
 
-export const customersContract = {
+const customersContract = {
   find: oc
     .input(type<{ readonly id: string }>())
     .output(type<CustomerView>())
     .errors({ NOT_FOUND: { data: type<{ readonly id: string }>() } }),
 };
 
-export const orderContract = {
+export const contract = {
   orders: ordersContract,
   customers: customersContract,
 };
 ```
+
+The fragments stay module-private; `contract` is the only export, and every
+consumer below reaches a fragment through it — `contract.orders`,
+`contract.customers`.
 
 ## Step 2 — a controller per slice
 
@@ -63,7 +67,7 @@ procedure is a compile error inside the controller itself, not at the root:
 ```ts
 export const ordersController = HttpController(
   "OrdersController",
-  ordersContract,
+  contract.orders,
 )([PlaceOrder, FindOrder], {
   sync: (place, find) => ({
     place: ({ errors }, input) =>
@@ -122,7 +126,7 @@ top-level keys, one `HttpController` per key — replaces the positional
 `(deps, { sync })` call at the root:
 
 ```ts
-export const orderRouter = HttpRouter(orderContract)({
+export const orderRouter = HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
 });
@@ -147,7 +151,7 @@ export const OrderApi = HttpModule("OrderApi")({
 
 This form is **exact**: a key the record above is missing, a key the
 contract does not declare, and a controller wired under the wrong key are all
-compile errors at the `HttpRouter(orderContract)({...})` call, not runtime
+compile errors at the `HttpRouter(contract)({...})` call, not runtime
 surprises the first time a client hits the missing slice.
 
 ## Step 4 — lifting a slice into its own process
@@ -158,7 +162,7 @@ controller's own port as its single dependency and hands back what that
 controller built:
 
 ```ts
-export const ordersRouter = HttpRouter(ordersContract)(
+export const ordersRouter = HttpRouter(contract.orders)(
   [ordersController.port],
   {
     sync: (implementation) => implementation,

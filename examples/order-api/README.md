@@ -9,14 +9,14 @@ socket, and the router itself is a di-provided service. The contract lives in
 its own package, because a client needs it and needs none of this.
 
 ```
-src/slices/orders/controller.ts       HttpController("OrdersController", ordersContract)([PlaceOrder, FindOrder], { sync }) — where the orders slice's own domain error becomes an ORPCError
+src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder], { sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only its port
 src/slices/customers/directory.ts     CustomerDirectory — the customers slice's own adapter
-src/slices/customers/controller.ts    HttpController("CustomersController", customersContract)([CustomerDirectory], { sync }) — same shape, for the customers slice's own domain error
+src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([CustomerDirectory], { sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts                         an AsyncResult client for the same contract
-src/module.ts                         OrderApi — the composition root: orderRouter = HttpRouter(orderContract)({ orders, customers }), then HttpModule("OrderApi")({ router: orderRouter, … })
+src/module.ts                         OrderApi — the composition root: orderRouter = HttpRouter(contract)({ orders, customers }), then HttpModule("OrderApi")({ router: orderRouter, … })
 src/main.ts                           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
 src/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
 ```
@@ -82,7 +82,7 @@ keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
 see its README for the guarantee it makes and the one way it answers HTTP.
 What this example writes is two slices, each an `HttpController(name, fragment)([deps], { sync })`
 over its own contract fragment, and a root router composed by the **keyed**
-`HttpRouter(orderContract)({ orders: ordersController, customers:
+`HttpRouter(contract)({ orders: ordersController, customers:
 customersController })` — contract-first, exact (a missing slice, a stray
 key or a controller under the wrong key are all compile errors at that call)
 — each procedure a plain `Result`-returning function typed by the fragment,

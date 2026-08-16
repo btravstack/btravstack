@@ -1,4 +1,4 @@
-import { ordersContract, type OrderView } from "@btravstack/example-order-api-contract";
+import { contract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
 import { HttpController } from "@btravstack/http";
@@ -10,7 +10,7 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * The transport boundary, and the only place in this slice where a domain
  * error becomes something else.
  *
- * `HttpController(name, ordersContract)` is contract-first: the implementation
+ * `HttpController(name, contract.orders)` is contract-first: the implementation
  * is a record shaped like the fragment whose leaves are plain `Result`-returning
  * functions, typed by the contract at the call — the input is the contract's
  * parsed input, the output its declared view, `errors` its declared error
@@ -29,7 +29,7 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * `Provider(port)` on a port it mints for this controller, so this is a
  * provider like any other in the graph.
  */
-export const ordersController = HttpController("OrdersController", ordersContract)(
+export const ordersController = HttpController("OrdersController", contract.orders)(
   [PlaceOrder, FindOrder],
   {
     sync: (place, find) => ({

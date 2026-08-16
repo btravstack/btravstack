@@ -22,7 +22,7 @@ The contract splits into two fragments, `orders` and `customers`, each a
 `RouterContract` in its own right:
 
 ```ts
-export const ordersContract = {
+const ordersContract = {
   place: oc
     .input(type<{ readonly id: string; readonly quantity: number }>())
     .output(type<OrderView>())
@@ -36,28 +36,32 @@ export const ordersContract = {
     .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
 };
 
-export const customersContract = {
+const customersContract = {
   find: oc
     .input(type<{ readonly id: string }>())
     .output(type<CustomerView>())
     .errors({ NOT_FOUND: { data: type<{ readonly id: string }>() } }),
 };
 
-export const orderContract = {
+export const contract = {
   orders: ordersContract,
   customers: customersContract,
 };
 ```
+
+The two fragments are module-private; `contract` is the package's only value
+export, and every consumer reaches a fragment through it —
+`contract.orders`, `contract.customers`.
 
 Each slice lives under `slices/<name>/` — a `controller.ts` implementing that
 slice's fragment, its own domain (`slices/customers/directory.ts`), and a
 `module.ts` exporting only its controller's port:
 
 ```
-src/slices/orders/controller.ts       HttpController("OrdersController", ordersContract)([PlaceOrder, FindOrder], { sync })
+src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder], { sync })
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only its port
 src/slices/customers/directory.ts     CustomerDirectory — the slice's own adapter
-src/slices/customers/controller.ts    HttpController("CustomersController", customersContract)([CustomerDirectory], { sync })
+src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([CustomerDirectory], { sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 ```
 
@@ -68,7 +72,7 @@ below does the same for its own slice:
 ```ts
 export const ordersController = HttpController(
   "OrdersController",
-  ordersContract,
+  contract.orders,
 )([PlaceOrder, FindOrder], {
   sync: (place, find) => ({
     place: ({ errors }, input) =>
@@ -128,12 +132,12 @@ owns its adapter, which is what makes it liftable into a service of its own.
 
 ## The router: composed from controllers, keyed by the contract
 
-`module.ts`'s `orderRouter` is `HttpRouter(orderContract)`'s **keyed** form —
+`module.ts`'s `orderRouter` is `HttpRouter(contract)`'s **keyed** form —
 a record of controllers, one per top-level contract key, instead of one
 `sync`:
 
 ```ts
-export const orderRouter = HttpRouter(orderContract)({
+export const orderRouter = HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
 });
@@ -145,9 +149,9 @@ errors at this call — see
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the recipe, and `packages/http/src/controller.test-d.ts` for the five gates
 that pin these errors and the lift below. Because a fragment is itself a valid
-contract, `ordersController` serves `ordersContract` alone unchanged: the
+contract, `ordersController` serves `contract.orders` alone unchanged: the
 lifted root is
-`HttpRouter(ordersContract)([ordersController.port], { sync: (implementation) => implementation })`
+`HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`
 over `OrdersSlice`, so extracting a slice out of this modulith is a new
 composition root and one fewer import, not a rewrite.
 

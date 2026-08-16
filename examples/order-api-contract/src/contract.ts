@@ -15,7 +15,7 @@ export type OrderRef = { readonly id: string };
 export type CustomerView = { readonly id: string; readonly name: string };
 
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
-export const ordersContract = {
+const ordersContract = {
   place: oc
     .input(type<{ readonly id: string; readonly quantity: number }>())
     .output(type<OrderView>())
@@ -29,8 +29,8 @@ export const ordersContract = {
     .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
 };
 
-/** The customers slice's own fragment. */
-export const customersContract = {
+/** The customers slice's own fragment. Reached as `contract.customers`; a fragment is a contract in its own right, so the slice can be served alone. */
+const customersContract = {
   find: oc
     .input(type<{ readonly id: string }>())
     .output(type<CustomerView>())
@@ -51,4 +51,4 @@ export const customersContract = {
  * controller. Adding a domain error without adding a code here stops that
  * file compiling.
  */
-export const orderContract = { orders: ordersContract, customers: customersContract };
+export const contract = { orders: ordersContract, customers: customersContract };

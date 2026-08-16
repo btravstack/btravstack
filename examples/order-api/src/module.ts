@@ -1,4 +1,4 @@
-import { orderContract } from "@btravstack/example-order-api-contract";
+import { contract } from "@btravstack/example-order-api-contract";
 import { ApplicationModule } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule, HttpRouter } from "@btravstack/http";
@@ -14,7 +14,7 @@ import { OrdersSlice } from "./slices/orders/module.js";
  * contract's own top-level keys, so a key the contract does not declare is a
  * compile error and a declared key with no controller is too.
  */
-export const orderRouter = HttpRouter(orderContract)({
+export const orderRouter = HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
 });

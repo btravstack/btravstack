@@ -1,10 +1,10 @@
-import { customersContract } from "@btravstack/example-order-api-contract";
+import { contract } from "@btravstack/example-order-api-contract";
 import { HttpController } from "@btravstack/http";
 import { P } from "unthrown";
 
 import { CustomerDirectory } from "./directory.js";
 
-export const customersController = HttpController("CustomersController", customersContract)(
+export const customersController = HttpController("CustomersController", contract.customers)(
   [CustomerDirectory],
   {
     sync: (directory) => ({

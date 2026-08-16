@@ -489,7 +489,7 @@ sync })`,
   (see `packages/http/CLAUDE.md`). **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
   controller changing at all: the lifted root is
-  `HttpRouter(ordersContract)([ordersController.port], { sync: (implementation) => implementation })`,
+  `HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`,
   declaring the very provider the modulith composed and handing back what it
   built — a new composition root and one fewer import,
   not a rewrite of the slice. That exact call is `controller.test-d.ts`'s fifth
@@ -504,7 +504,7 @@ sync })`,
   `slices/customers/`, each its own contract fragment, its own
   `HttpController` and its own di module exporting only that controller's
   port. The root composes them —
-  `orderRouter = HttpRouter(orderContract)({ orders: ordersController,
+  `orderRouter = HttpRouter(contract)({ orders: ordersController,
 customers: customersController })`, the keyed form — and
   **`HttpModule("OrderApi")({ router: orderRouter, imports: [Application,
 Persistence, OrdersSlice, CustomersSlice, observability()], exports:

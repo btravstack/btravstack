@@ -78,7 +78,7 @@ makes the directive unused and fails `test:types` — the same shape
 `order-domain` uses to keep the application layer out of the domain.
 
 And the payoff is demonstrated rather than asserted. `order-api-contract`'s own
-spec builds a real oRPC client from `RouterContractClient<typeof orderContract>`
+spec builds a real oRPC client from `RouterContractClient<typeof contract>`
 and drives it over a stub `fetch`, with nothing from `order-api` in scope;
 `order-temporal-contract`'s runs the workflow's input schema as a validator
 returning a `Result`, which is the check a caller makes before starting an
@@ -160,7 +160,7 @@ ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
 resolve is now a **port its provider depends on** through di — the starter's
 own fixed port, provided with the starter's own sugar and never named (a
 process serves one router / activities record / handlers record as it boots
-one runtime): `order-api`'s `orderRouter = HttpRouter(orderContract)({ orders:
+one runtime): `order-api`'s `orderRouter = HttpRouter(contract)({ orders:
 ordersController, customers: customersController })`, a **slice's controller
 per top-level contract key** (below); `order-temporal-worker`'s `orderActivities =
 TemporalActivities(orderContract)([…four ports…], { sync })`;
@@ -189,23 +189,23 @@ of the contract, a controller over that fragment, and — where it needs one —
 its own adapter.
 
 ```
-order-api-contract     ordersContract          customersContract    ← fragments; the root contract is { orders, customers }
+order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
                             │                        │
 order-api              slices/orders/           slices/customers/
                          controller.ts            controller.ts     ← HttpController(name, fragment)([deps], { sync })
                          module.ts                directory.ts      ← the slice's own adapter, private to it
                                                   module.ts
                             └───────────┬────────────┘
-                                   module.ts                        ← HttpRouter(orderContract)({ orders, customers })
+                                   module.ts                        ← HttpRouter(contract)({ orders, customers })
 ```
 
-A **controller** is `HttpController("OrdersController", ordersContract)([PlaceOrder,
+A **controller** is `HttpController("OrdersController", contract.orders)([PlaceOrder,
 FindOrder], { sync })` — an ordinary di provider on a port `HttpController`
 mints and hands back on `.port`. A **slice** is an ordinary di `Module` that
 provides its controller (and its adapter) and exports **only**
 `controller.port`: `CustomersSlice` keeps `CustomerDirectory` private, so
 nothing outside the slice can reach it. The **root** composes them with the
-keyed `HttpRouter(orderContract)({ orders: ordersController, customers:
+keyed `HttpRouter(contract)({ orders: ordersController, customers:
 customersController })` form, which is exact against the contract — a missing
 key, an undeclared key and a controller under the wrong key are all compile
 errors at that call.
@@ -214,7 +214,7 @@ Nothing here is a new concept: a controller is a provider, a slice is a
 module, a modulith is several slice modules in one root. And because a
 fragment is itself a valid contract, lifting `orders` into a process of its
 own leaves the slice untouched —
-`HttpRouter(ordersContract)([ordersController.port], { sync: (implementation) => implementation })`
+`HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`
 is the whole of the lifted root's router. `packages/http/src/controller.test-d.ts`
 pins that, and the four other gates, at compile time.
 

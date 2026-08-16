@@ -14,11 +14,13 @@ description: Implement an oRPC contract as a di-provided router, compose it with
 The starter answers HTTP one way: **oRPC, through `@orpc/server/node`'s
 `RPCHandler`**, one kernel unit per request, the response flushed before the
 unit closes. What you write is the contract, the router and the composition
-root. Everything below is lifted from `examples/order-api` — from its **orders
-slice**, served on its own, since that example composes two slices through
-[controllers](/how-to/split-a-router-into-controllers) rather than one `sync`.
-A fragment is itself a valid contract, so what follows is the whole shape of a
-single-slice API.
+root. What follows is a minimal, standalone illustration of that shape — one
+contract, one `sync`, no controller layer — sized for a single-slice API. For
+an API that has outgrown one `sync`, each slice with its own contract
+fragment and controller, see
+[Split a router into controllers](/how-to/split-a-router-into-controllers); for
+the real two-slice deployment this recipe scales into, see
+[Order API (HTTP)](/examples/order-api).
 
 ## Recipe
 
@@ -31,8 +33,8 @@ single-slice API.
 
 ## Step 1 — the contract
 
-The contract lives in its own package (`order-api-contract`), because a client
-needs it and needs none of the server:
+The contract lives in its own package, because a client needs it and needs
+none of the server:
 
 ```ts
 import { oc, type } from "@orpc/contract";
@@ -64,10 +66,7 @@ the one place a domain error becomes an HTTP answer** — every case named, no
 wildcard, so a new domain error is a compile error here:
 
 ```ts
-import {
-  ordersContract,
-  type OrderView,
-} from "@btravstack/example-order-api-contract";
+import { ordersContract, type OrderView } from "./contract.js";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
 import { HttpRouter } from "@btravstack/http";
@@ -261,7 +260,8 @@ under the request already carries it — see
 ## See also
 
 - [`@btravstack/http`](/reference/http) — options, `HttpConfig`, `HttpInfo`, the guarantee.
-- [Order API (HTTP)](/examples/order-api) — the example these samples come from, client half included.
+- [Order API (HTTP)](/examples/order-api) — the real deployment this recipe
+  scales into, two slices composed through controllers, client half included.
 - [Open a per-request scope](/how-to/open-a-per-request-scope) — the `RequestModule` in `main.ts`.
 - [Configure from the environment](/how-to/configure-from-the-environment) — how `PORT`/`HOST` are bound.
 - [Use with oRPC](https://btravstack.github.io/unthrown/how-to/use-with-orpc) — the `@unthrown/orpc` bridge itself.

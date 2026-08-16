@@ -100,7 +100,7 @@ positional form — the example composes it as a controller instead (see the
 keyed form), and a fragment is a contract, so the same `sync` reads either way:
 
 ```ts
-export const ordersRouter = HttpRouter(ordersContract)(
+export const ordersRouter = HttpRouter(contract.orders)(
   [PlaceOrder, FindOrder],
   {
     sync: (place, find) => ({
@@ -150,7 +150,7 @@ also takes a **record of controllers**, one per top-level key, instead of
 `(deps, { sync })`:
 
 ```ts
-export const orderRouter = HttpRouter(orderContract)({
+export const orderRouter = HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
 });
@@ -225,7 +225,7 @@ process of its own without its controller changing at all — the lifted root
 declares the controller's own port and hands back what it built:
 
 ```ts
-export const ordersRouter = HttpRouter(ordersContract)(
+export const ordersRouter = HttpRouter(contract.orders)(
   [ordersController.port],
   {
     sync: (implementation) => implementation,

@@ -4,17 +4,17 @@ import type { RouterContractClient } from "@orpc/contract";
 import { createResultClient, type ResultClient } from "@unthrown/orpc/client";
 import { test, type TestAPI } from "vitest";
 
-import type { orderContract, OrderView } from "./contract.js";
+import type { contract, OrderView } from "./contract.js";
 
 /**
  * The caller's view of the API, derived from the **contract** —
- * `RouterContractClient<typeof orderContract>`, never the server's router.
+ * `RouterContractClient<typeof contract>`, never the server's router.
  * `order-api` ships the same type as `OrderApiClient`; it is restated here
  * rather than imported because this package must not reach `order-api`
  * (see `layering.test-d.ts`), and it types the same two calls, the same
  * inputs and the same declared error codes.
  */
-type OrderApiClient = ResultClient<RouterContractClient<typeof orderContract>>;
+type OrderApiClient = ResultClient<RouterContractClient<typeof contract>>;
 
 type StubFetch = NonNullable<RPCLinkOptions<object>["fetch"]>;
 
@@ -74,7 +74,7 @@ export const it: TestAPI<ContractFixtures> = test.extend<ContractFixtures>({
   client: async ({}, use) => {
     await use(
       createResultClient(
-        createORPCClient<RouterContractClient<typeof orderContract>>(
+        createORPCClient<RouterContractClient<typeof contract>>(
           new RPCLink({ origin: "http://stub", url: "/rpc", fetch: stubServer() }),
         ),
       ),
