@@ -39,7 +39,7 @@ the package installs opens the unit and calls `next()` unchanged:
 ```ts
 import { AmqpHandlers } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { Logger } from "@btravstack/example-order-application";
+import { Logger } from "@btravstack/observability";
 import { OkAsync } from "unthrown";
 
 export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
@@ -48,8 +48,12 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
       const { id, payload } = message.payload;
       logger.info(
         payload === null
-          ? `order ${id} is gone — notifying`
-          : `order ${id} placed — notifying (${payload.quantity} items)`,
+          ? "order gone — notifying"
+          : "order placed — notifying",
+        {
+          orderId: id,
+          ...(payload === null ? {} : { quantity: payload.quantity }),
+        },
       );
       return OkAsync();
     },
@@ -114,12 +118,12 @@ import { AmqpModule } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
   ApplicationModule,
-  Logger,
   OrderRepository,
   Outbox,
   PlaceOrder,
 } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Logger, observability } from "@btravstack/observability";
 
 import { orderHandlers } from "./handlers.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
@@ -127,7 +131,7 @@ import { outboxRelay, relayConfig } from "./outbox-relay.js";
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
@@ -135,7 +139,10 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
 
 `AmqpModule` is `Module(name)({...})` plus `contract` and `handlers`: it
 imports `amqp({ contract })`, provides the handlers and exports
-`AmqpRuntime`. The record is checked against the contract at
+`AmqpRuntime`. [`observability()`](/reference/observability) is the other
+starter in that list — the `Logger` the handlers and the relay write to, bound
+from `LOG_LEVEL`, JSON per line on stdout, every line carrying the delivery's
+own unit. The record is checked against the contract at
 `AmqpHandlers(contract)(…)` — a record missing a consumer, or naming one the
 contract does not declare, fails to typecheck there rather than on the first
 delivery, silently to the DLQ — and `handlers` is typed against the module's

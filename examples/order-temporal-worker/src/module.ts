@@ -1,6 +1,7 @@
 import { ApplicationModule } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { observability } from "@btravstack/observability";
 import { TemporalModule } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
@@ -10,7 +11,10 @@ import { FulfillmentModule } from "./fulfillment.js";
 /**
  * The composition root of the orchestration deployment. `ApplicationModule`
  * and `PersistenceModule` are booted here unchanged — the same pair every
- * other deployment composes — plus `FulfillmentModule`, the two external
+ * other deployment composes — plus `observability()`, the `Logger` the use
+ * case and the fulfillment stand-ins write to (`LOG_LEVEL`, JSON on stdout,
+ * every line carrying the activity attempt's own trace id), and
+ * `FulfillmentModule`, the two external
  * services only this deployment orchestrates; `orderActivities`, the saga's
  * activities as a service on the starter's own activities port; and `TemporalModule`, the
  * sugar that imports the starter (`temporal()`, the runtime itself on
@@ -37,5 +41,5 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
-  imports: [ApplicationModule, PersistenceModule, FulfillmentModule],
+  imports: [ApplicationModule, PersistenceModule, FulfillmentModule, observability()],
 });

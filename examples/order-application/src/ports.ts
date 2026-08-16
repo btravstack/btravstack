@@ -75,11 +75,6 @@ export class ShippingService extends Port("ShippingService")<{
   readonly arrange: (orderId: string) => AsyncResult<void, ShippingUnavailable>;
 }> {}
 
-export class Logger extends Port("Logger")<{
-  readonly info: (message: string) => void;
-  readonly lines: () => readonly string[];
-}> {}
-
 export class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (
     id: string,

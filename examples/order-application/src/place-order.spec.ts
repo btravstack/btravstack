@@ -1,7 +1,7 @@
 import { Module } from "@btravstack/di";
 import { describe, expect } from "vitest";
 
-import { FindOrder, Logger, PlaceOrder } from "./index.js";
+import { FindOrder, PlaceOrder } from "./index.js";
 import { it } from "./test-fixtures.js";
 
 describe("PlaceOrder", () => {
@@ -40,18 +40,26 @@ describe("PlaceOrder", () => {
     expect(result).toBeErrTagged("InvalidQuantity", { id: "o-1", quantity: 0 });
   });
 
-  it("writes a log line naming the order", async ({ testModule }) => {
+  it("writes a log line carrying the order as fields", async ({ testModule, recorder }) => {
     // GIVEN a successful placement
-    // WHEN the logger is read back
+    // WHEN the sink the graph's logger writes to is read back
     const result = await Module.scoped(testModule, (ctx) =>
       ctx
         .get(PlaceOrder)
         .execute("o-1", 2)
-        .map(() => ctx.get(Logger).lines()),
+        .map(() => recorder.lines()),
     );
 
-    // THEN the line names the order, with no unit to take a trace id from
-    expect(result).toBeOkWith(["[-] placing order o-1 (quantity 2)"]);
+    // THEN the ids are queryable attributes rather than words in a sentence,
+    // and there is no unit here to take a trace id from
+    expect(result).toBeOkWith([
+      expect.objectContaining({
+        level: "info",
+        message: "placing an order",
+        attributes: { orderId: "o-1", quantity: 2 },
+        unit: undefined,
+      }),
+    ]);
   });
 });
 

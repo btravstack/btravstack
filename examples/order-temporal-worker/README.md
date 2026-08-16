@@ -109,6 +109,7 @@ kernel for `PROBE_PORT` — never by `main.ts`. A blank or malformed value is a
 | `TEMPORAL_ADDRESS`   | `127.0.0.1:7233` | the Temporal service |
 | `TEMPORAL_NAMESPACE` | `default`        | must not be blank    |
 | `PROBE_PORT`         | `9000`           | `/livez` / `/readyz` |
+| `LOG_LEVEL`          | `info`           | the `Logger`'s floor |
 
 The specs boot the same `TemporalModule` sugar with `env: { TEMPORAL_ADDRESS }`
 pointing at the time-skipping server, so every test opens and closes a
@@ -131,8 +132,12 @@ pnpm --filter @btravstack/example-order-temporal-worker typecheck   # the needs 
 The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
 boots the worker through the `boot` fixture, so it is stopped when the test
 ends, and `fulfilling` / `outOfStock` / `noShipping` are `tapped` compositions
-whose `services()` hand back the very `OrderRepository` and `Logger` the
-running deployment holds — how the compensation specs read the state back.
+whose `services()` hand back the very `OrderRepository` the running deployment
+holds — how the compensation specs read the state back. Each also composes
+`observability({ sink })`, so `lines()` is the saga's own log: the step
+assertions read `{ message, orderId, quantity }` as fields, and the activity
+trace id every line carries is the runtime's business rather than something to
+strip out of a string.
 
 ## What this deployment deliberately is not
 

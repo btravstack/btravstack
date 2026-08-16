@@ -59,14 +59,17 @@ The worked composition root, from `examples/order-api/src/module.ts`:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   exports: [Logger],
 });
 ```
 
 That is exactly the module
-`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule, http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })`
-would have declared.
+`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule, observability(), http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })`
+would have declared. [`observability()`](/reference/observability) is a second
+starter, not this package's business: it brings the `Logger` the application
+writes to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
+carrying the trace id of the unit this runtime opened.
 
 ## `HttpRouter(contract)(deps, { sync })`
 

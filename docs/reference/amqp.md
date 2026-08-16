@@ -66,11 +66,16 @@ The worked composition root, from `examples/order-amqp-worker/src/module.ts`:
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
 ```
+
+[`observability()`](/reference/observability) is a second starter, not this
+package's business: it brings the `Logger` the handlers and the relay write
+to, bound from `LOG_LEVEL`, JSON per line on stdout, every line carrying the
+delivery's own unit.
 
 ## `AmqpHandlers(contract)`
 
@@ -97,8 +102,12 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
       const { id, payload } = message.payload;
       logger.info(
         payload === null
-          ? `order ${id} is gone — notifying`
-          : `order ${id} placed — notifying (${payload.quantity} items)`,
+          ? "order gone — notifying"
+          : "order placed — notifying",
+        {
+          orderId: id,
+          ...(payload === null ? {} : { quantity: payload.quantity }),
+        },
       );
       return OkAsync();
     },

@@ -1,22 +1,24 @@
+import type { Line } from "@btravstack/observability";
 import { describe, expect } from "vitest";
 
 import { it } from "./test-fixtures.js";
 
 /**
- * The notification lines, with the message unit's `[trace]` prefix stripped —
- * what the consumer said is the assertion; that the middleware traced it is
- * the package's own concern.
+ * The notification lines as `{ message, ...attributes }` — what the consumer
+ * said, and about which order. The `unit` every line also carries is the
+ * package's own concern, not this suite's, so it is projected away rather
+ * than parsed out of a string.
  */
-const notifications = (lines: readonly string[]): readonly string[] =>
+const notifications = (lines: readonly Line[]) =>
   lines
-    .filter((line) => line.includes("notifying"))
-    .map((line) => line.slice(line.indexOf("]") + 2));
+    .filter((line) => line.message.includes("notifying"))
+    .map((line) => ({ message: line.message, ...line.attributes }));
 
 describe("the broadcast deployment", () => {
   it("broadcasts every committed write, end to end", async ({ serve, tapped }) => {
     // GIVEN the app serving: relay sweeping the outbox, consumer on the queue
     await serve(tapped.module);
-    const { placeOrder, logger } = tapped.services();
+    const { placeOrder } = tapped.services();
 
     // WHEN an order is placed — one ordinary write, no publish in sight
     await expect(placeOrder.execute("o-1", 2)).toBeOkWith(expect.objectContaining({ id: "o-1" }));
@@ -24,9 +26,8 @@ describe("the broadcast deployment", () => {
     // THEN the fact crosses the outbox, the broker and the queue, and the
     // consumer reacts — the write-side never spoke AMQP
     await expect
-      .poll(() => notifications(tapped.services().logger.lines()), { timeout: 5_000 })
-      .toContain("order o-1 placed — notifying (2 items)");
-    void logger;
+      .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
+      .toContainEqual({ message: "order placed — notifying", orderId: "o-1", quantity: 2 });
   });
 
   it("marks relayed events published, exactly once each", async ({ serve, tapped }) => {
@@ -37,8 +38,8 @@ describe("the broadcast deployment", () => {
 
     // WHEN the relay has swept it
     await expect
-      .poll(() => notifications(tapped.services().logger.lines()), { timeout: 5_000 })
-      .toContain("order o-2 placed — notifying (1 items)");
+      .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
+      .toContainEqual({ message: "order placed — notifying", orderId: "o-2", quantity: 1 });
 
     // THEN nothing is left pending — the next sweep has nothing to re-publish
     await expect(outbox.pending(10)).toBeOkWith([]);
@@ -56,10 +57,10 @@ describe("the broadcast deployment", () => {
     // THEN the notifications arrive in the same order: the relay publishes by
     // outbox id, the queue preserves it, the consumer is sequential
     await expect
-      .poll(() => notifications(tapped.services().logger.lines()), { timeout: 5_000 })
+      .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
       .toEqual([
-        "order o-3 placed — notifying (1 items)",
-        "order o-4 placed — notifying (1 items)",
+        { message: "order placed — notifying", orderId: "o-3", quantity: 1 },
+        { message: "order placed — notifying", orderId: "o-4", quantity: 1 },
       ]);
   });
 
@@ -79,8 +80,11 @@ describe("the broadcast deployment", () => {
     // it was, then that it is gone. Without the tombstone a reader keeping its
     // own copy would hold a cancelled order forever.
     await expect
-      .poll(() => notifications(tapped.services().logger.lines()), { timeout: 5_000 })
-      .toEqual(["order o-6 placed — notifying (2 items)", "order o-6 is gone — notifying"]);
+      .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
+      .toEqual([
+        { message: "order placed — notifying", orderId: "o-6", quantity: 2 },
+        { message: "order gone — notifying", orderId: "o-6" },
+      ]);
   });
 
   it("is a broadcast: a subscriber this repo never heard of receives it too", async ({

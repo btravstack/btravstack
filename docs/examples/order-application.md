@@ -89,9 +89,12 @@ export class OrderRepository extends Port("OrderRepository")<{
 Beside it: `Outbox` (the read side of the transactional outbox — `pending`
 and `markPublished`, both `E = never`, because a database that will not
 answer is a defect, not a domain outcome), `StockService` and
-`ShippingService` (the two fulfillment ports the saga orchestrates), `Logger`,
-and the two use-case ports `PlaceOrder` and `FindOrder`. The interactors are
-classes provided with di's `class` arm:
+`ShippingService` (the two fulfillment ports the saga orchestrates), and the
+two use-case ports `PlaceOrder` and `FindOrder`. The `Logger` the interactors
+write to is **not** declared here: it is
+[`@btravstack/observability`](/reference/observability)'s port, imported like
+any other dependency. The interactors are classes provided with di's `class`
+arm:
 
 ```ts
 export const placeOrderProvider = Provider(PlaceOrder)(
@@ -102,25 +105,31 @@ export const placeOrderProvider = Provider(PlaceOrder)(
 );
 ```
 
-The module provides everything **except** `OrderRepository`:
+The module provides neither `OrderRepository` nor `Logger`:
 
 ```ts
 export const ApplicationModule = Module("Application")({
-  provides: [loggerProvider, placeOrderProvider, findOrderProvider],
-  exports: [PlaceOrder, FindOrder, Logger],
+  provides: [placeOrderProvider, findOrderProvider],
+  exports: [PlaceOrder, FindOrder],
 });
 ```
 
-Both interactors depend on it and nothing here satisfies it, so di propagates
-it as an unmet need. That is what makes this layer testable with no database
-at all — its specs provide a stub repository from a `TestModule` — and it is
-what makes the layering a compile error rather than a convention (see the type
-tests below).
+`PlaceOrderInteractor` depends on both and nothing here satisfies either, so di
+propagates both as unmet needs — the repository because the layer below fills
+it, the logger because the framework does, and there is nothing to re-export in
+either direction. That is what makes this layer testable with no database at
+all — its specs provide a stub repository from a `TestModule` that imports
+`observability({ sink, level: "trace" })` — and it is what makes the layering a
+compile error rather than a convention (see the type tests below).
 
-The one kernel touchpoint is `logger.ts`, which reads `currentUnit()` fresh on
-every call so each line carries the trace id of the unit that wrote it —
+There is no kernel touchpoint left here. The log calls are structured —
+`this.#logger.info("placing an order", { orderId: id, quantity })`, a constant
+message with the ids as fields — and correlation is not this layer's job:
+`@btravstack/observability`'s implementation reads `currentUnit()` fresh on
+every call, so each line carries the trace id of the unit that wrote it —
 data from the ambient store, never a capability (see
-[Ambient data, injected capabilities](/explanation/ambient-vs-context)).
+[Ambient data, injected capabilities](/explanation/ambient-vs-context) and
+[Log and correlate](/how-to/log-and-correlate)).
 
 ## The infrastructure: P-codes stop here
 
@@ -249,8 +258,10 @@ const _unwired = Module.scoped(ApplicationModule, (ctx) =>
 );
 ```
 
-The positive half composes `ApplicationModule` with a stub repository and
-calls `Module.scoped` as an ordinary two-argument call. The three deployment
+The positive half composes `ApplicationModule` with a stub repository and a
+`Provider(Logger)({ value: createLogger(() => {}) })` — the starter is the
+default, not the only way — and calls `Module.scoped` as an ordinary
+two-argument call. The three deployment
 pages carry the other kind — `start`'s gate.
 
 ## Where to go next

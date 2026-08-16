@@ -1,6 +1,7 @@
 import { currentUnit } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
-import { Logger, ShippingService, StockService } from "@btravstack/example-order-application";
+import { ShippingService, StockService } from "@btravstack/example-order-application";
+import { Logger } from "@btravstack/observability";
 import { OkAsync, fromSafePromise } from "unthrown";
 
 /**
@@ -32,11 +33,11 @@ export const FulfillmentModule = Module("Fulfillment")({
     Provider(StockService)([Logger], {
       sync: (logger) => ({
         reserve: (orderId, quantity) => {
-          logger.info(`reserved ${quantity} items for order ${orderId}`);
+          logger.info("reserved stock", { orderId, quantity });
           return OkAsync();
         },
         release: (orderId) => {
-          logger.info(`released the reservation for order ${orderId}`);
+          logger.info("released the reservation", { orderId });
           return OkAsync();
         },
       }),
@@ -52,7 +53,7 @@ export const FulfillmentModule = Module("Fulfillment")({
                   ),
                 ),
               )
-            : (logger.info(`arranged shipping for order ${orderId}`), OkAsync()),
+            : (logger.info("arranged shipping", { orderId }), OkAsync()),
       }),
     }),
   ],

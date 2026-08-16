@@ -147,11 +147,19 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   workflows: {
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
-  imports: [ApplicationModule, PersistenceModule, FulfillmentModule],
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    FulfillmentModule,
+    observability(),
+  ],
 });
 ```
 
 The same `ApplicationModule` + `PersistenceModule` pair as the API, plus
+[`observability()`](/reference/observability) — the `Logger` the use case and
+the stand-ins write to, bound from `LOG_LEVEL`, JSON per line on stdout, every
+line carrying the activity attempt's own trace id — and
 `FulfillmentModule` — the two external services as in-memory stand-ins that
 say yes to anything the drain still has time for, because what this deployment
 demonstrates is the orchestration; the specs swap in twins that say no.
@@ -168,7 +176,7 @@ arrange: (orderId) =>
           ),
         ),
       )
-    : (logger.info(`arranged shipping for order ${orderId}`), OkAsync()),
+    : (logger.info("arranged shipping", { orderId }), OkAsync()),
 ```
 
 An adapter is where reading the ambient record is legitimate, and here it is
@@ -221,8 +229,11 @@ const app = boot(worker, { env: { TEMPORAL_ADDRESS: testEnv.address } });
 ```
 
 The stub deployments (`fulfilling`, `outOfStock`, `noShipping`) are each a
-`tapped(rootWith(fulfillment), [OrderRepository, Logger])`, so a spec reads
-the database through the very repository the saga used.
+`tapped(rootWith(fulfillment, sink), [OrderRepository])`, so a spec reads the
+database through the very repository the saga used. The log lines need no tap
+at all: `rootWith` composes `observability({ sink })`, so `lines()` hands back
+the saga's own `Line` values — `{ message, orderId, quantity }` as fields, and
+the trace id already on each one.
 
 Four specs: the saga fulfills in order; a stock refusal walks the placement
 back; a shipping refusal releases the reservation and then cancels, in that

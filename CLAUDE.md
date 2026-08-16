@@ -19,16 +19,20 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds seven published packages,
+pnpm workspace + turbo monorepo. `packages/` holds eight published packages,
 `di` (the container), `config` (configuration from the environment, as
 providers), `core` (the kernel), `testing` (the test harness — `bootFixture`,
-`tapped`, the in-memory runtime, the fake clock; peers on `core`), `http`
+`tapped`, the in-memory runtime, the fake clock; peers on `core`),
+`observability` (the logging starter — a `Logger` port correlated with the
+ambient unit, a JSON sink, the kernel's events as lines), `http`
 (the HTTP starter — oRPC), `temporal` (the Temporal starter) and `amqp` (the
 AMQP starter). `di` was its own repository until it was merged here
 **with its history**; it is the one package that depends on nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
-back, with `testing` and the three starters on `core`. Its own spec is
-`packages/di/CLAUDE.md`; the harness's is `packages/testing/CLAUDE.md`.
+back, with `testing`, `observability` and the three transport starters on
+`core`. Its own spec is `packages/di/CLAUDE.md`; the harness's is
+`packages/testing/CLAUDE.md`; the logging starter's is
+`packages/observability/CLAUDE.md`.
 `examples/` holds ten private ones — a clean-architecture application
 (`order-domain` → `order-application` → `order-infrastructure`) booted under
 three runtimes (`order-api`, `order-temporal-worker`, `order-amqp-worker`),
@@ -112,8 +116,14 @@ hook). User-facing changes need a changeset.
    not this one. A repository pulled from an ambient store is the untestable
    coupling; a
    tenant id read by the Postgres adapter is not. Legitimate readers are
-   infrastructure adapters only (logger, OTel exporter, database adapter);
-   application code reading the store is meant to be a lint error, in the spirit
+   infrastructure adapters only (logger, OTel exporter, database adapter), and
+   the logger is no longer hypothetical: `@btravstack/observability`'s
+   `createLogger` reads `currentUnit()` **per call** and stamps `unitId` /
+   `traceId` / `tenantId` on every line, so an application writes
+   `logger.info("placing an order", { orderId, quantity })` and mentions
+   correlation nowhere. Per call, not at construction, is the load-bearing
+   half — one logger is built per scope and every unit has its own record.
+   Application code reading the store is meant to be a lint error, in the spirit
    of `unthrown/no-catch-all-pattern` stating unthrown's own default. **That
    rule does not exist yet** — it needs a way to identify an adapter, a
    convention this stack has not established — so today it is a documented
@@ -520,7 +530,8 @@ use) => Promise<void>` (vitest's fixture protocol, hence no vitest import or
   `boot: bootFixture(...)` its `serve` fixtures build on.
 - **`tapped(module, ports)`** → `{ module, services() }` (`ServicesOf<P>`).
   `start` hands the application context to the runtime alone, so a test that
-  wants the very `Logger` the use cases write to has no `ctx.get`; `tapped`
+  wants the very `OrderRepository` the use cases wrote through has no
+  `ctx.get`; `tapped`
   composes one more provider (`Tap`, `Port("@btravstack/testing/Tap")`
   declared once and never exported — two taps in one graph are di's
   duplicate-provider defect, and one per application is the case; the id is
@@ -532,7 +543,10 @@ use) => Promise<void>` (vitest's fixture protocol, hence no vitest import or
   site); **`services()` throws** before the graph is built — reading a tap
   nobody booted is a bug in the test, not an `undefined` an assertion could
   swallow. What `order-api`, `order-temporal-worker` and `order-amqp-worker`
-  hand-rolled as `LoggerTap` / `ServicesTap` providers.
+  hand-rolled as `LoggerTap` / `ServicesTap` providers. **Log lines no longer
+  need it**: `observability({ sink })` is a value the composition takes, so
+  the two worker examples tap only their services and `order-api` taps
+  nothing at all — a spec reads `Line` values back through its own sink.
 - **`withApp(module, options, use)`** — start, hand to `use`, stop again
   whatever `use` does. `signals` and `probes` are **forced off** whatever the
   caller passes; a test needing the real probe server calls `start` directly.
@@ -562,6 +576,79 @@ never, never>` providing the runtime on **`TestRuntimePort`** (its port,
   `advance(ms)` (an `AsyncResult<void, never>`), which brackets itself with a
   real macrotask at each end so a test can trigger a shutdown and advance in the
   very next statement without racing the kernel arming its next sleep.
+
+### `@btravstack/observability`
+
+Logging, as a starter. The package is named for the whole of observability
+because logs, traces and metrics share a correlation id, a resource, a config
+slice and a flush-on-shutdown lifecycle; **traces and metrics are not here
+yet** and must never be described as shipped. Its own spec is
+`packages/observability/CLAUDE.md`, which holds the argument in full and the
+deferred shape.
+
+- **`Logger`** — `Port("Logger")<LoggerService>`, the **framework's** port
+  rather than each application's, because the framework logs too
+  (`kernelEvents`) and one port has to serve both. `LoggerService` is
+  `log(level, message, attributes?, cause?)`, one method per level
+  (`trace`/`debug`/`info`/`warn` take `(message, attributes?)`;
+  `error`/`fatal` take `(message, cause?, attributes?)` — the failure second,
+  because that is the argument a caller of those two always has), `with` and
+  `isEnabled`. Six differences from NestJS's `Logger`, each a defect this
+  shape does not have: a port rather than a class you `new`; `with` returning
+  a value rather than `setContext` mutating the shared instance; `Attributes`
+  a flat record of scalars rather than `any` varargs; a dedicated `cause`;
+  it cannot throw; and correlation is the implementation's job. Every method
+  is synchronous `void` — this package's Thesis #6 exemption, since a log call
+  is fire-and-forget and a lost line is not a modeled error.
+- **`Level` / `LEVELS` / `Attributes`** — six levels, ordered, exported as an
+  array so `LOG_LEVEL` validates against one list; `Attributes` is
+  `Readonly<Record<string, string | number | boolean | undefined>>`.
+- **`createLogger(sink, level?)`** — the implementation. `currentUnit()` is
+  read **per call** (capturing it would stamp the first unit's trace id on
+  every line thereafter), a line below `level` never reaches the sink, and
+  every write is wrapped in a `try` that swallows, because a logger that
+  throws turns an observability fault into an outage.
+- **`Line` / `Sink`** — `{ level, message, attributes, cause, time, unit }`,
+  where `unit` is `undefined` outside a unit and
+  `{ unitId, traceId, tenantId? }` inside one. A `Sink` is
+  `(line: Line) => void` and is allowed to throw; `createLogger` is what makes
+  that safe.
+- **`jsonSink(stream?)`** — the default: one JSON object per line on
+  `process.stdout`. The unit's ids are spread at the **top level**, not nested
+  under `unit`, because `traceId` is the field an operator searches; a
+  caller's attribute can never overwrite one of those or `level`/`message`/
+  `time` (spread order); an `Error` `cause` is normalised to
+  `{ name, message, stack, cause }` and walked up to four levels, the same
+  rule and the same reason as the kernel's `stderrSink`; a payload
+  `JSON.stringify` refuses falls back to `"[unserialisable]"`.
+- **`observability({ sink?, level? })`** — the starter, a
+  `Module<Logger | LoggerConfig, ConfigInvalid, Env>`. `level` **pins**
+  through `Config.pinned` (explicit > env > default, per field). An
+  application that wants its own implementation provides `Logger` itself and
+  does not import this.
+- **`LoggerConfig` / `logLevel({ default? })`** — `{ level }`, bound through
+  `Config.provider` from `LOG_LEVEL` (default `info`). A value outside the six
+  is a `ConfigInvalid` naming the variable and the set — `startFailed`, exit
+  `78`, before a line is written — rather than a silent fallback. `logLevel`
+  is that field alone, for an application composing its own schema.
+- **`kernelEvents(logger)`** — the kernel's nine events as an `EventSink` for
+  `StartOptions.onEvent`. The mapping is deliberate: `startFailed` and
+  `uncaught` are `error` and carry their `cause`; `teardownError` is `warn`
+  (the application is already stopping and the exit code says `2`) and does
+  **not** carry its cause, only `{ event, port }`; everything else is `info`.
+  Each event's own fields become attributes, and every line carries `event`.
+  The logger is a **parameter**, not resolved from the graph: `building` is
+  emitted while the graph is still being built, so the sink cannot come from
+  the context it is watching — which is why `examples/order-api/src/main.ts`
+  passes `kernelEvents(createLogger(jsonSink()))` by hand, a second logger,
+  deliberately, and the only one the framework asks anybody to construct. It
+  reads no `LOG_LEVEL` for the same reason.
+- **`pinoSink(logger)`** — the `@btravstack/observability/pino` subpath, with
+  `pino` an **optional** peer. The level filter stays **ours** — `createLogger`
+  has already decided the line is worth writing — so pino is configured at
+  `trace`, one filter in the process, and it is the one `LOG_LEVEL` validated.
+  The cause goes over as `err`, which pino's own serialiser renders with the
+  stack.
 
 ### `@btravstack/http`, `@btravstack/temporal` and `@btravstack/amqp`
 
@@ -732,13 +819,19 @@ namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   `StockService` and `ShippingService` — closures over the services, no
   context read at call time — and the composition root is
   `TemporalModule("OrderTemporalWorker")({ contract, activities:
-orderActivities, workflows, imports })`, the sugar importing the starter;
-  the connection and `TEMPORAL_*` come from the starter. `order-amqp-worker` is
+orderActivities, workflows, imports: [Application, Persistence, Fulfillment,
+observability()] })`, the sugar importing the starter;
+  the connection and `TEMPORAL_*` come from the starter, and `LOG_LEVEL` and
+  the `Logger` the saga's stand-in services write to come from
+  `observability()`. `order-amqp-worker` is
   the same shape (`orderHandlers = AmqpHandlers(orderContract)([Logger], {
 sync })`,
-  `AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers, … })`),
+  `AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers, imports:
+[Application, Persistence, observability()], … })`),
   with its outbox relay a resourceful provider of its own rather than
-  something layered onto the runtime. Both are also where **honouring the
+  something layered onto the runtime — the relay is also the one place in the
+  examples that logs a **failure**, `logger.error(message, cause, { eventId })`
+  down each of its three arms. Both are also where **honouring the
   kernel's deadline through the ambient record** is worked: neither middleware
   injects anything into the call — `next()` unchanged — so
   `currentUnit()?.signal` is the only route to it, and what each answers when
@@ -755,14 +848,24 @@ sync })`,
   `FindOrder`, so oRPC's context stays empty and nothing is located from a
   context at call time, never a module-level singleton — and
   **`HttpModule("OrderApi")({ router: orderRouter, imports: [Application,
-Persistence], exports: [Logger] })`** is the whole composition root — the
+Persistence, observability()], exports: [Logger] })`** is the whole
+  composition root — the
   sugar imports `http()`, provides the router on the starter's
   `HttpRouterPort` and
   exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` come from the
-  environment inside the graph, the router is mounted under `/rpc`. `RequestModule` rides `StartOptions.unit` so
+  environment inside the graph, the router is mounted under `/rpc`.
+  `observability()` is what provides the `Logger` the interactors and the
+  request scope write to, and `Logger` is in `exports` because `RequestModule`
+  reads it out of the application scope. `RequestModule` rides
+  `StartOptions.unit` so
   the per-request fork is the kernel's. There is no `runtime`, `needs`,
-  `handler`, `port` or env-reading to spell anywhere: `main.ts` is `await
-runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
+  `handler`, `port` or env-reading to spell anywhere. It is also the **one**
+  `main.ts` that is not a single line: it passes
+  `onEvent: kernelEvents(createLogger(jsonSink()))` so the kernel's nine events
+  land in the application's own stream, with the logger built by hand because
+  `building` is emitted while the graph still is. The other two stay one line
+  — the kernel's stderr sink is a fine default and this is the upgrade, not
+  the requirement. Each procedure is a plain
   `Result`-returning function typed by the contract (`@unthrown/orpc`'s
   `.result()` handler, attached by `HttpRouter(orderContract)`). It reads
   `port` back off
@@ -795,11 +898,17 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   so a consumer still installs one copy of it themselves. `di` itself peers on
   `unthrown` and depends on nothing; `config` peers on `di` and `unthrown`;
   `core` peers on all three; `testing` peers on all four (and not on
-  `vitest` — `bootFixture` is a plain function in vitest's fixture shape). A
+  `vitest` — `bootFixture` is a plain function in vitest's fixture shape);
+  `observability` peers on all four too and has **no runtime dependency of its
+  own** — the default sink is `JSON.stringify` and a `write`. A
   **starter** is the exception by definition:
   `@btravstack/http` peers on `@orpc/server`, `@orpc/contract` and
   `@unthrown/orpc` — peers, not dependencies, so an application holds one
-  copy of each.
+  copy of each. `@btravstack/observability` carries the family's one
+  **optional** peer, `pino`, needed only by the
+  `@btravstack/observability/pino` subpath: a consumer that never imports it
+  never installs it, and the package's own `tsdown` build emits `src/pino.ts`
+  as a second entry point for exactly that.
 - **`packages/core`'s specs use `@btravstack/testing`, which peers on core —
   and it is NOT a devDependency of core**, because that would be a
   package-graph cycle turbo refuses. Instead: `packages/core/tsconfig.json`
@@ -813,14 +922,14 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   `@btravstack/core#typecheck` an explicit edge on
   `@btravstack/testing#build`; `knip.json` ignores the dependency for
   `packages/core`. Four places; a change to one is a change to all.
-- `declarationMap: false` on all seven published packages — the published
+- `declarationMap: false` on all eight published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All seven published packages claim `engines: { node: ">=20" }` while the root
+- All eight published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -845,7 +954,10 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   defects `run-main.spec.ts`, `drain.spec.ts` and `with-app.spec.ts` mint —
   `Defect` has no public constructor, so a throw inside a combinator is the
   only way — plus `with-app.spec.ts`'s stand-in for a failing `expect`): five
-  in `packages/core/src`, eight in `packages/testing/src`. `no-get-or-throw` is switched off for the `**/*.spec.ts` **and
+  in `packages/core/src`, eight in `packages/testing/src`, two in
+  `packages/observability/src` (`test-fixtures.ts`'s `Recorder.only()`, a loud
+  fixture guard, and `logger.spec.ts`'s throwing sink, which is the subject
+  under test). `no-get-or-throw` is switched off for the `**/*.spec.ts` **and
   `**/test-fixtures.ts`** globs through an `overrides` entry — the exemption the
   rule's own diagnostic prescribes, since `getOrThrow()` is the right tool in a
   test, and a fixture module is test code that merely does not end in
@@ -863,9 +975,9 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   a plausible "simplification" (the `teardownErrors` aliasing, the `ready()`
   latch, the monotonic `completed`), which is what the surviving comments are.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
-- Coverage thresholds are 100% lines/functions on `packages/core` and on
-  `packages/testing`, with each package's `test-fixtures.ts` (test code, per
-  the Test conventions) excluded.
+- Coverage thresholds are 100% lines/functions on `packages/core`,
+  `packages/testing` and `packages/observability`, with each package's
+  `test-fixtures.ts` (test code, per the Test conventions) excluded.
 - Test mechanics: `@unthrown/vitest`'s matchers are registered via `setupFiles`
   (`toBeOk`, `toBeOkWith`, `toBeErrTagged`, …). Timing is asserted through
   `createFakeClock`, never a real `setTimeout` — a kernel whose own tests are
@@ -883,7 +995,7 @@ runMain(OrderApi, { unit: RequestModule })`. Each procedure is a plain
   `packages/http/CLAUDE.md`, `packages/temporal/CLAUDE.md` or
   `packages/amqp/CLAUDE.md`, whichever is where that package's public
   surface lives — or `packages/di/CLAUDE.md` for the container. There are
-  **eight** `CLAUDE.md` files; naming the wrong one is how the last drift
+  **nine** `CLAUDE.md` files; naming the wrong one is how the last drift
   happened.
 
 ## Documentation site
@@ -899,11 +1011,12 @@ was folded in here when the container was merged; nothing under
 
 - **TypeDoc runs from `docs/`, not from the packages** — it needs its own
   TypeScript (`catalog:typedoc` pins 6.0.3; 7.x is the native port and ships
-  no `typescript.js`). One `typedoc.<name>.json` per package — seven — points
+  no `typescript.js`). One `typedoc.<name>.json` per package — eight — points
   at that package's `src/index.ts` (core's one entry point; the doubles are
-  `typedoc.testing.json`'s) and writes straight into `api/<name>/`
-  (gitignored; `docs/api/index.md` is the one committed file there);
-  `scripts/build-api.ts` runs the seven concurrently.
+  `typedoc.testing.json`'s, and `typedoc.observability.json` names two entry
+  points, `src/index.ts` and `src/pino.ts`) and writes straight into
+  `api/<name>/` (gitignored; `docs/api/index.md` is the one committed file
+  there); `scripts/build-api.ts` runs the eight concurrently.
   The package list is repeated in four places that must stay in sync: the
   configs, `build-api.ts`, `@btravstack/docs#build`'s `dependsOn` in
   `turbo.json` (explicit `<pkg>#build` edges — the site does not _depend_ on
@@ -919,7 +1032,10 @@ was folded in here when the container was merged; nothing under
 - **Every TypeScript sample on the site was compiled when written** — in a
   scratch file inside the workspace whose dependencies it needs
   (`packages/core/src/` for kernel/di/config samples, `examples/order-api/src/`
-  for HTTP, the two worker examples for Temporal and AMQP), then deleted. The
+  for HTTP and for `@btravstack/observability`, the two worker examples for
+  Temporal and AMQP), then deleted. The one sample that cannot be compiled
+  that way is `pinoSink`'s — no example workspace installs `pino` — and it is
+  held by `packages/observability/src/pino.spec.ts` instead. The
   kernel-only samples are additionally held by
   `packages/core/src/docs-examples.test-d.ts`; the starters' are not (see
   Deferred). A sample edited on the site is re-compiled the same way.
@@ -1059,13 +1175,22 @@ A sixth rule is about production code that tests keep honest:
   costs ~3.5 s per test job, not correctness.
 - The `@btravstack/oxlint` rule banning `currentUnit()` outside infrastructure
   adapters (Thesis #2) — it needs a way to identify an adapter.
-- **A `docs-examples.test-d.ts` for `@btravstack/http`, `@btravstack/temporal` and
-  `@btravstack/amqp`.** `packages/core`'s exists precisely so its README and
+- **Traces and metrics in `@btravstack/observability`.** The package is named
+  for the whole because logs, traces and metrics share a correlation id, a
+  resource, a config slice and a flush-on-shutdown lifecycle; only the logging
+  half ships. The shape the rest will take — `Tracer`/`Meter` ports, the OTel
+  `NodeSDK` as a resourceful provider whose `release` flushes, a span per unit
+  through `StartOptions.unit`, W3C `traceparent` feeding `UnitMeta.traceId` in
+  the three transport starters — and the auto-instrumentation constraint that
+  will not go away are in `packages/observability/CLAUDE.md`. Never describe
+  them as shipped.
+- **A `docs-examples.test-d.ts` for `@btravstack/http`, `@btravstack/temporal`,
+  `@btravstack/amqp` and `@btravstack/observability`.** `packages/core`'s exists precisely so its README and
   the kernel-only pages of the documentation site cannot drift from
   `runtime.ts` / `drain.ts` without failing `pnpm typecheck`; the three
-  runtime packages' README and site samples have no such gate — they were
+  four other packages' README and site samples have no such gate — they were
   compiled by hand in a scratch file inside the matching example workspace
-  when written, and by nothing since. Deliberately not built — three
+  when written, and by nothing since. Deliberately not built — four
   packages' worth of samples still did not justify the harness. Add it the
   next time one of those samples is found to have drifted, the same way this
   gap itself was found.

@@ -36,6 +36,7 @@
         "@btravstack/config#build",
         "@btravstack/core#build",
         "@btravstack/testing#build",
+        "@btravstack/observability#build",
         "@btravstack/http#build",
         "@btravstack/temporal#build",
         "@btravstack/amqp#build"

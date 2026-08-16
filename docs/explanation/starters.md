@@ -23,8 +23,19 @@ the idea: `spring-boot-starter-web` does not offer you a choice of servlet
 containers on day one, it brings Tomcat and a sane configuration, and you
 change what your deployment needs.
 
-Three ship — `@btravstack/http`, `@btravstack/temporal`, `@btravstack/amqp` —
-and they are deliberately the same shape.
+Three transport starters ship — `@btravstack/http`, `@btravstack/temporal`,
+`@btravstack/amqp` — and they are deliberately the same shape.
+
+A fourth, [`@btravstack/observability`](/reference/observability), is a starter
+in every sense but the runtime: `observability()` is a module that brings the
+default behaviour for the standard case (a `Logger` correlated with the
+ambient unit, one JSON object per line on stdout), is opinionated about the
+one way it is done (a strict port, six levels, a `cause` channel, no printf),
+binds its own slice of the environment (`LOG_LEVEL` onto `LoggerConfig`), and
+takes one argument — `sink` — where a deployment differs. It provides no
+`RuntimePort`, so a process still boots exactly one runtime; a graph can hold
+`observability()` and a transport starter side by side because only one of
+them answers the port the kernel resolves.
 
 ## One way, and why
 
@@ -54,7 +65,8 @@ starter.
 What differs between deployments is the environment, and a starter binds its
 own slice of it. `http()` binds `PORT` and `HOST` onto `HttpConfig`,
 `temporal()` binds `TEMPORAL_ADDRESS` and `TEMPORAL_NAMESPACE` onto
-`TemporalConfig`, `amqp()` binds `AMQP_URL` onto `AmqpConfig` — each through
+`TemporalConfig`, `amqp()` binds `AMQP_URL` onto `AmqpConfig`,
+`observability()` binds `LOG_LEVEL` onto `LoggerConfig` — each through
 `Config.provider` reading the `Env` port the kernel provides, validated once as
 the graph is built, and each a modeled `ConfigInvalid` naming its variables
 when wrong. An application binds whatever else it needs onto ports of its own
@@ -79,10 +91,14 @@ spelled once. From [`examples/order-api`](/examples/order-api):
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   exports: [Logger],
 });
 ```
+
+`observability()` is an ordinary import beside the application's own modules,
+which is the point: a starter with no sugar of its own is still a starter, and
+`Logger` is exported here only because the per-request module reads it.
 
 The kernel and both gates see nothing new — `OrderApi` is a `Module`, and
 `await runMain(OrderApi, { unit: RequestModule })` is the whole `main.ts`. The

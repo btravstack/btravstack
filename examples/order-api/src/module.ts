@@ -1,6 +1,7 @@
-import { ApplicationModule, Logger } from "@btravstack/example-order-application";
+import { ApplicationModule } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http";
+import { Logger, observability } from "@btravstack/observability";
 
 import { orderRouter } from "./router.js";
 
@@ -8,8 +9,11 @@ import { orderRouter } from "./router.js";
  * The composition root, and the only file in the example that knows the three
  * halves exist. `ApplicationModule` leaves `OrderRepository` unmet;
  * `PersistenceModule` provides it; `orderRouter` provides the oRPC router as a
- * service that declares the two use cases its procedures call; and
- * `http()` is the whole transport — the runtime on `HttpRuntime`, bound from
+ * service that declares the two use cases its procedures call;
+ * `observability()` provides the `Logger` the interactors and the request
+ * scope write to, bound from `LOG_LEVEL` and writing one JSON object per line
+ * on stdout; and `http()` is the whole transport — the runtime on
+ * `HttpRuntime`, bound from
  * `PORT` and `HOST` in the environment, and the router mounted under `/rpc`,
  * needing the router the root provides. Importing them is what closes di's
  * arity gate (a composition without the router provider does not compile —
@@ -27,6 +31,6 @@ import { orderRouter } from "./router.js";
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   exports: [Logger],
 });

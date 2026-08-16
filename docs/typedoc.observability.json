@@ -1,0 +1,10 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/observability",
+  "entryPoints": [
+    "../packages/observability/src/index.ts",
+    "../packages/observability/src/pino.ts"
+  ],
+  "tsconfig": "../packages/observability/tsconfig.json",
+  "out": "api/observability"
+}

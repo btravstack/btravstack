@@ -67,6 +67,7 @@ catalog:
   lefthook: 2.1.10
   oxfmt: 0.62.0
   oxlint: 1.77.0
+  pino: 10.3.1
   prisma: 7.9.1
   tsdown: 0.22.14
   tsx: 4.23.5

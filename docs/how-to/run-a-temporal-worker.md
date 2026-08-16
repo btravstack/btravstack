@@ -107,6 +107,7 @@ may re-run has to answer the same both times.
 import { ApplicationModule } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { observability } from "@btravstack/observability";
 import { TemporalModule } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
@@ -119,13 +120,21 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   workflows: {
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
-  imports: [ApplicationModule, PersistenceModule, FulfillmentModule],
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    FulfillmentModule,
+    observability(),
+  ],
 });
 ```
 
 `TemporalModule` is `Module(name)({...})` plus the starter's fields: it
 imports `temporal({ contract, workflows, … })`, provides the activities and
-exports `TemporalRuntime`. The starter's runtime provider depends on its
+exports `TemporalRuntime`. [`observability()`](/reference/observability) is the
+other starter in the list — the `Logger` the use case and the fulfillment
+services write to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
+carrying the activity attempt's own trace id. The starter's runtime provider depends on its
 activities port through di, so a root whose imports do not cover what the
 provider declared (`FulfillmentModule` here) is refused at `start` — di's
 gate; a root with no starter fails on arity (`NO RUNTIME`). `activities` is
@@ -173,7 +182,12 @@ export const Pinned = TemporalModule("OrderTemporalWorkerLocal")({
   address: "127.0.0.1:7233",
   gracePeriod: "5 seconds",
   forceAfter: "15 seconds",
-  imports: [ApplicationModule, PersistenceModule, FulfillmentModule],
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    FulfillmentModule,
+    observability(),
+  ],
 });
 ```
 
@@ -249,7 +263,7 @@ arrange: (orderId) =>
           ),
         ),
       )
-    : (logger.info(`arranged shipping for order ${orderId}`), OkAsync()),
+    : (logger.info("arranged shipping", { orderId }), OkAsync()),
 ```
 
 Failing as a **defect** is deliberate: the platform retries that attempt on

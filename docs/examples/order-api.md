@@ -1,6 +1,6 @@
 ---
 title: Order API example
-description: The HTTP deployment — HttpRouter over the order contract with one exhaustive triage from domain Err to ORPCError, HttpModule as the whole composition root, RequestModule forked per request, a one-line main.ts, and the three compile-time gates pinned by needs-gate.test-d.ts.
+description: The HTTP deployment — HttpRouter over the order contract with one exhaustive triage from domain Err to ORPCError, HttpModule as the whole composition root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
 ---
 
 # Order API (HTTP)
@@ -87,7 +87,7 @@ than a fallback.
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   exports: [Logger],
 });
 ```
@@ -95,21 +95,33 @@ export const OrderApi = HttpModule("OrderApi")({
 `HttpModule` imports the starter (`http()` — `HttpRuntime`, `HttpConfig` bound
 from `PORT` / `HOST`, the router mounted under `/rpc`, needing the router the
 root provides), provides `orderRouter` and exports `HttpRuntime`, and returns
-exactly the module `Module("OrderApi")({...})` would have. `Logger` is exported
-for the request scope below. It is a **constant**: configuration is read inside
-the graph from the `Env` port the kernel provides, so nothing is passed in from
-`main.ts`, and a spec boots this very module with `env: { PORT: "0", HOST:
-"127.0.0.1" }`.
+exactly the module `Module("OrderApi")({...})` would have.
+[`observability()`](/reference/observability) brings the `Logger` the
+interactors and the request scope write to — bound from `LOG_LEVEL`, one JSON
+object per line on stdout, every line carrying the unit's trace id — and
+`Logger` is exported for the request scope below. It is a **constant**:
+configuration is read inside the graph from the `Env` port the kernel provides,
+so nothing is passed in from `main.ts`, and a spec boots this very module with
+`env: { PORT: "0", HOST: "127.0.0.1" }`.
 
 `main.ts` is one statement:
 
 ```ts
-await runMain(OrderApi, { unit: RequestModule });
+await runMain(OrderApi, {
+  unit: RequestModule,
+  onEvent: kernelEvents(createLogger(jsonSink())),
+});
 ```
 
-The process reads `PORT` (default `3000`), `HOST` (default `0.0.0.0`) and
-`PROBE_PORT` (default `9000`) — inside the graph — and a malformed one is a
-`startFailed` event and exit `78`.
+The process reads `PORT` (default `3000`), `HOST` (default `0.0.0.0`),
+`LOG_LEVEL` (default `info`) and `PROBE_PORT` (default `9000`) — inside the
+graph — and a malformed one is a `startFailed` event and exit `78`.
+`kernelEvents` puts the kernel's nine lifecycle events in the same stream and
+the same shape as the application's own lines, instead of the default JSON on
+stderr; the logger there is built by hand because `building` is emitted while
+the graph still is, so a sink taken out of the context it is watching would
+have nothing to write the two events that matter most with. See
+[Log and correlate](/how-to/log-and-correlate).
 
 ## A request scope over the application scope
 
@@ -130,7 +142,9 @@ export const RequestModule = Module("Request")({
         const startedAt = Date.now();
         return {
           finish: () =>
-            logger.info(`request finished in ${Date.now() - startedAt}ms`),
+            logger.info("request finished", {
+              durationMs: Date.now() - startedAt,
+            }),
         };
       },
       onStop: (span) => span.finish(),
@@ -153,7 +167,9 @@ wraps it in `serve`, where every spec starts, real composition root included:
 
 ```ts
 export const it = test.extend<ApiFixtures>({
-  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1" } }),
+  boot: bootFixture({
+    env: { PORT: "0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" },
+  }),
 
   serve: async ({ boot }, use) => {
     await use((module, options) =>
@@ -166,11 +182,15 @@ export const it = test.extend<ApiFixtures>({
 
 `boot` brings a test's defaults (`signals: false`, `probes: false`,
 `preDrainDelayMs: 0`, a silent sink) and stops every app it started when the
-test ends; `serve` adds the per-request `RequestModule`. The port comes back
+test ends; `serve` adds the per-request `RequestModule`, and `LOG_LEVEL:
+"fatal"` keeps the real root — whose sink is the production `jsonSink()` on
+stdout — out of the runner's own output. The port comes back
 from `Serving.info` through `app.runtimeInfo()` — the kernel's own channel
 for it — and the client is built from the contract alone. Where a spec needs
-the very `Logger` the use cases wrote to, `tapped(OrderApi, [Logger])`
-hands back the instance the running graph holds. The suite then pins what matters: a `DuplicateOrder` arrives as an
+the lines the running graph wrote, the seam is
+`observability({ sink })`: the `recording` fixture composes the root's shape
+with a sink that keeps every `Line`, so an assertion reads `line.unit.traceId`
+as a field rather than parsing a prefix out of a string. The suite then pins what matters: a `DuplicateOrder` arrives as an
 `Err` holding an inferable `CONFLICT`, a value the client matches by code, not
 a thrown 500:
 
@@ -188,7 +208,8 @@ expect(conflict).toBeErrWith(
 An unmodeled repository failure collapses to `INTERNAL_SERVER_ERROR` without
 leaking its message, and the process keeps serving afterwards; each call runs
 in its own unit with its own trace id (two calls, four log lines, two distinct
-ids, never `[-]`); a call held open in the repository finishes during a drain
+`line.unit.traceId`s, none written outside a unit); a call held open in the
+repository finishes during a drain
 and is counted `completed`, one still hung at a zero deadline is counted
 `abandoned`; `/livez` and `/readyz` answer while serving, and readiness goes
 false before liveness during the drain.
@@ -209,7 +230,7 @@ on arity.
 
 ```ts
 const RouterlessApi = Module("RouterlessApi")({
-  imports: [ApplicationModule, PersistenceModule, http()],
+  imports: [ApplicationModule, PersistenceModule, observability(), http()],
   exports: [HttpRuntime, Logger],
 });
 
@@ -231,7 +252,8 @@ const _unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
 
 The `unit` half, in both directions: `start(OrderApi, { unit: RequestModule })`
 is an ordinary call because `OrderApi` exports the `Logger` the fork reads,
-and `UnloggedApi` — runtime and router present, `Logger` not exported — is
+and `UnloggedApi` — runtime and router present, `observability()` imported so
+the port exists in the graph, `Logger` simply not exported — is
 rejected by the unit arm alone.
 
 ## Where to go next

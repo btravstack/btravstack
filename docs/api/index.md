@@ -8,7 +8,8 @@ description: The generated reference for every published package — each export
 Generated from the source with [TypeDoc](https://typedoc.org/) at build time —
 every exported symbol, with its signature and TSDoc. One page per package,
 following the dependency direction: `di` → `config` → `core`, then the test
-harness and the three starters on top of `core`.
+harness, the observability starter and the three transport starters on top of
+`core`.
 
 - **[`@btravstack/di`](/api/di/)** — `Port` (and `Port.many`), `Provider`,
   `Module` (`Module.scoped`, `Module.forkScope`), `Context`, and the type
@@ -30,6 +31,13 @@ harness and the three starters on top of `core`.
   `withApp`, `testRuntime`, `TestRuntimePort`, `createFakeClock`, and the
   types `Boot`, `BootDefaults`, `ServicesOf`, `TestRuntime`,
   `TestRuntimeInfo`, `SubmittedUnit`, `FakeClock`.
+- **[`@btravstack/observability`](/api/observability/)** — **two entry
+  points**. The main one: the `Logger` and `LoggerConfig` ports,
+  `createLogger`, `jsonSink`, `observability`, `logLevel`, `kernelEvents`,
+  `LEVELS`, and the types `LoggerService`, `LoggerSettings`, `Level`,
+  `Attributes`, `Line`, `Sink`, `ObservabilityOptions`. The
+  `@btravstack/observability/pino` subpath carries `pinoSink` alone, so `pino`
+  stays an optional peer.
 - **[`@btravstack/http`](/api/http/)** — `HttpModule`, `HttpRouter`, `http`,
   the ports `HttpRuntime` and `HttpConfig`, and the types `HttpModuleOptions`,
   `HttpOptions`, `HttpInfo`.

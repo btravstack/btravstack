@@ -125,18 +125,16 @@ oRPC's context stays empty: what a procedure needs, the provider declared.
 ## Step 3 — the composition root
 
 ```ts
-import {
-  ApplicationModule,
-  Logger,
-} from "@btravstack/example-order-application";
+import { ApplicationModule } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http";
+import { Logger, observability } from "@btravstack/observability";
 
 import { orderRouter } from "./router.js";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   exports: [Logger],
 });
 ```
@@ -147,11 +145,17 @@ exactly the module the hand-written form would:
 
 ```ts
 Module("OrderApi")({
-  imports: [ApplicationModule, PersistenceModule, http()],
+  imports: [ApplicationModule, PersistenceModule, observability(), http()],
   provides: [orderRouter],
   exports: [HttpRuntime, Logger],
 });
 ```
+
+[`observability()`](/reference/observability) is the other starter here: it
+brings the `Logger` the use cases and the request scope write to, bound from
+`LOG_LEVEL`, one JSON object per line on stdout, every line carrying the
+trace id of the unit `http()` opened around the request. It is exported
+because the per-request `RequestModule` reads it.
 
 Two gates hold at compile time. A root that forgets the starter exports no
 runtime port and `start` fails on arity (`NO RUNTIME`). A root that imports
@@ -163,18 +167,30 @@ the module.
 
 ```ts
 import { runMain } from "@btravstack/core";
+import {
+  createLogger,
+  jsonSink,
+  kernelEvents,
+} from "@btravstack/observability";
 
 import { OrderApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
-await runMain(OrderApi, { unit: RequestModule });
+await runMain(OrderApi, {
+  unit: RequestModule,
+  onEvent: kernelEvents(createLogger(jsonSink())),
+});
 ```
 
 That is the whole process. `PORT` (default `3000`), `HOST` (default
-`0.0.0.0`) and the kernel's `PROBE_PORT` are read inside the graph from the
+`0.0.0.0`), `LOG_LEVEL` (default `info`) and the kernel's `PROBE_PORT` are
+read inside the graph from the
 `Env` port; a malformed one is a `ConfigInvalid`, reported as `startFailed`
 and exit `78`. `RequestModule` is optional — see
-[Open a per-request scope](/how-to/open-a-per-request-scope).
+[Open a per-request scope](/how-to/open-a-per-request-scope) — and so is
+`onEvent`, which puts the kernel's own lifecycle events in the application's
+stream rather than the default JSON on stderr; see
+[Log and correlate](/how-to/log-and-correlate).
 
 ## Options
 
@@ -235,6 +251,9 @@ Every request is a unit with a minted `id: randomUUID()`. A non-blank inbound
 `x-request-id` header becomes the unit's `traceId`, so a line logged by an
 adapter that reads `currentUnit()` joins a trace that started outside the
 process; a blank header is ignored rather than winning over the minted id.
+`observability()`'s logger reads that record per call, so every line written
+under the request already carries it — see
+[Log and correlate](/how-to/log-and-correlate).
 
 ## See also
 

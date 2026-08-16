@@ -42,7 +42,9 @@ publisher does not know it exists.
 handlers port, typed for the contract — its service the record the contract
 wants, `WorkerInferHandlers<OrderContract>`, no injected context; no class, no
 name, since a consumer serves one handlers record — so the handler is built
-from what it declares like any use case:
+from what it declares like any use case, `Logger` here being
+[`@btravstack/observability`](/reference/observability)'s port rather than one
+this example writes:
 
 ```ts
 export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
@@ -58,8 +60,12 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
       }
       logger.info(
         payload === null
-          ? `order ${id} is gone — notifying`
-          : `order ${id} placed — notifying (${payload.quantity} items)`,
+          ? "order gone — notifying"
+          : "order placed — notifying",
+        {
+          orderId: id,
+          ...(payload === null ? {} : { quantity: payload.quantity }),
+        },
       );
       return OkAsync();
     },
@@ -151,13 +157,16 @@ the runtime's `stop`). `drain` stays the consumer's alone — draining means
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
 ```
 
-The same application pair, the starter over `orderHandlers`, and both halves
+The same application pair, the starter over `orderHandlers`,
+[`observability()`](/reference/observability) for the `Logger` both halves
+write to — `LOG_LEVEL`, JSON per line on stdout, every consumer line
+correlated with the delivery's own unit — and both halves
 of the outbox pattern in one graph. The exports are the writer's surface —
 what a writer in the same process places and cancels through, and what the
 specs tap. `main.ts` is `await runMain(OrderAmqpWorker);`.
@@ -204,10 +213,14 @@ await use(async (module, options) => {
 ```
 
 Every app is stopped by `boot`'s teardown when the test ends. The `tapped`
-fixture is `tapped(OrderAmqpWorker, [PlaceOrder, OrderRepository, Outbox,
-Logger])`: the writer the spec places orders through, the outbox it asserts
-against and the logger the consumer writes to — the very instances the
-running app uses, not fresh ones.
+fixture composes the root's own shape with `observability({ sink })` and taps
+the services on top of it —
+`tapped(recording, [PlaceOrder, OrderRepository, Outbox])`: the writer the
+spec places orders through and the outbox it asserts against are the very
+instances the running app uses, not fresh ones, while the consumer's own lines
+need no tap at all — the sink hands them over as `Line` values, so the
+assertions read `{ message, orderId, quantity }` rather than a formatted
+sentence.
 
 Five specs, each a fact crossing the outbox, the broker and the queue: a
 committed write comes back as the consumer's notification, with the write
@@ -241,6 +254,7 @@ const HandlerlessAmqp = Module("HandlerlessAmqp")({
   imports: [
     ApplicationModule,
     PersistenceModule,
+    observability(),
     amqp({ contract: orderContract }),
   ],
   exports: [AmqpRuntime, PlaceOrder, Logger],

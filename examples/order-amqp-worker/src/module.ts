@@ -2,12 +2,12 @@ import { AmqpModule } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
   ApplicationModule,
-  Logger,
   OrderRepository,
   Outbox,
   PlaceOrder,
 } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Logger, observability } from "@btravstack/observability";
 
 import { orderHandlers } from "./handlers.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
@@ -19,7 +19,9 @@ import { outboxRelay, relayConfig } from "./outbox-relay.js";
  * which imports the starter over `orderHandlers`, provides it, and exports
  * `AmqpRuntime` for `start` to resolve; the outbox relay sits next to it as a
  * resourceful provider: both halves of the outbox pattern in one graph, each
- * built by di from the services it declares.
+ * built by di from the services it declares. `observability()` provides the
+ * `Logger` the consumer and the relay write to — `LOG_LEVEL`, JSON on stdout,
+ * every line correlated with the delivery's own unit.
  *
  * The exports are this deployment's own selection: `PlaceOrder` /
  * `OrderRepository` / `Outbox` / `Logger` are the writer's surface — what a
@@ -37,7 +39,7 @@ import { outboxRelay, relayConfig } from "./outbox-relay.js";
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });

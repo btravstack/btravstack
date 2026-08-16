@@ -104,29 +104,52 @@ type ServicesOf<P extends readonly AnyPort[]> = {
 ```
 
 Read services out of a booted application. `start` hands the application
-context to the runtime alone, so a test that wants the very `Logger` the use
-cases write to — not a fresh one — has nothing to `ctx.get` it with. `tapped`
-composes one more provider around `module`, depending on `ports`, and
-remembers what it was built with.
+context to the runtime alone, so a test that wants the very `OrderRepository`
+the running graph writes through — not a fresh one — has nothing to `ctx.get`
+it with. `tapped` composes one more provider around `module`, depending on
+`ports`, and remembers what it was built with.
 
-| Member       | Semantics                                                                                                                                                                                                                                                                               |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `module`     | A `Module<X, E, N>` exporting **exactly what `module` exports** — the kernel still finds the runtime, the gate still sees the same `X`. Boot this one instead of `module`.                                                                                                              |
-| `services()` | The service instances behind `ports`, in order, as a tuple typed by `ServicesOf<P>` (`const [logger] = tap.services()`). **Throws** before the graph has been built: reading a tap nobody booted is a bug in the test, not a modeled outcome, so it is loud rather than an `undefined`. |
-| `...gate`    | Phantom, at the call site: `NOT EXPORTED` names any port `module` does not export. An application-scope service is the only thing there is to tap; a unit-scoped port exists only while a unit is open.                                                                                 |
+| Member       | Semantics                                                                                                                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `module`     | A `Module<X, E, N>` exporting **exactly what `module` exports** — the kernel still finds the runtime, the gate still sees the same `X`. Boot this one instead of `module`.                                                                                                                  |
+| `services()` | The service instances behind `ports`, in order, as a tuple typed by `ServicesOf<P>` (`const [repository] = tap.services()`). **Throws** before the graph has been built: reading a tap nobody booted is a bug in the test, not a modeled outcome, so it is loud rather than an `undefined`. |
+| `...gate`    | Phantom, at the call site: `NOT EXPORTED` names any port `module` does not export. An application-scope service is the only thing there is to tap; a unit-scoped port exists only while a unit is open.                                                                                     |
 
 The tap provider is not exported and nothing resolves it; di builds every
 provider in a graph, exported or not, which is what makes the capture work.
 Its port is declared once, so two `tapped` modules in one graph are di's
 duplicate-provider defect at build — one tap per application is the shape.
 
+A tap is for the **services** a spec drives or asserts against.
+`examples/order-amqp-worker` taps the writer it places orders through and the
+outbox it reads back, on a root composed to record what its logger wrote:
+
 ```ts
-const tap = tapped(OrderApi, [Logger]);
-const app = boot(tap.module, { unit: RequestModule });
-await client.orders.place({ id: "o-1", quantity: 2 });
-const [logger] = tap.services();
-expect(logger.lines()).toHaveLength(2);
+const lines: Line[] = [];
+const recording = AmqpModule("RecordingAmqpWorker")({
+  contract: orderContract,
+  handlers: orderHandlers,
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    observability({ sink: (line) => lines.push(line) }),
+  ],
+  provides: [relayConfig, outboxRelay],
+  exports: [PlaceOrder, OrderRepository, Outbox],
+});
+
+const tap = tapped(recording, [PlaceOrder, OrderRepository, Outbox]);
+const app = await serve(tap.module);
+const [placeOrder, repository, outbox] = tap.services();
 ```
+
+Log lines are **not** what a tap is for, and `examples/order-api` no longer
+uses one at all: [`observability({ sink })`](/reference/observability) is the
+seam a spec reads a running graph's lines through, and what comes back is the
+`Line` itself — `unit.traceId` as a field rather than a prefix parsed out of a
+string. A sink is a value the composition takes, so nothing has to be reached
+for inside the graph. See
+[Log and correlate](/how-to/log-and-correlate).
 
 ## `withApp(module, options, use)`
 

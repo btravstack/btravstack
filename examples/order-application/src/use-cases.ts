@@ -6,9 +6,10 @@ import {
   type Order,
   type OrderNotFound,
 } from "@btravstack/example-order-domain";
+import { Logger } from "@btravstack/observability";
 import type { AsyncResult } from "unthrown";
 
-import { FindOrder, Logger, OrderRepository, PlaceOrder } from "./ports.js";
+import { FindOrder, OrderRepository, PlaceOrder } from "./ports.js";
 
 class PlaceOrderInteractor {
   readonly #repository: ServiceOf<OrderRepository>;
@@ -20,7 +21,7 @@ class PlaceOrderInteractor {
   }
 
   execute(id: string, quantity: number): AsyncResult<Order, InvalidQuantity | DuplicateOrder> {
-    this.#logger.info(`placing order ${id} (quantity ${quantity})`);
+    this.#logger.info("placing an order", { orderId: id, quantity });
     return placeOrder(id, quantity)
       .toAsync()
       .flatMap((order) => this.#repository.save(order));

@@ -99,15 +99,32 @@ runs a callback, and closes it on every path, running finalisers in reverse.
 `Scope` is also the phantom need an `acquire`/`release` provider adds. See
 [Scopes and resource safety](/explanation/scopes-and-resources).
 
-**starter** — A package that brings a runtime and its defaults for the standard case, in
-the Spring Boot sense: `@btravstack/http`, `@btravstack/temporal`,
-`@btravstack/amqp`, each with a module sugar and a port-and-provider sugar. See
-[Starters](/explanation/starters).
+**sink** — Two of them, and they are not the same thing. An **`EventSink`** takes a
+`KernelEvent` (`stderrSink` is the default); a **`Sink`** takes a `Line`
+(`jsonSink` is the default, `pinoSink` the alternative). `kernelEvents(logger)`
+is the adapter that makes the first out of the second. Neither may take the
+process down: a throwing one is swallowed. See [Kernel
+events](/reference/core/events) and
+[@btravstack/observability](/reference/observability).
+
+**starter** — A package that brings one concern's defaults for the standard case, in the
+Spring Boot sense: `@btravstack/http`, `@btravstack/temporal` and
+`@btravstack/amqp` each bring a runtime, a module sugar and a
+port-and-provider sugar; `@btravstack/observability` brings a `Logger` and no
+runtime. See [Starters](/explanation/starters).
+
+**structured logging** — A line whose message is a constant and whose facts are fields — `info("placing
+an order", { orderId, quantity })`, not a rendered sentence — so the receiving
+system groups by message and filters by field. `Attributes` is flat and
+scalar for that reason, and the ambient unit's ids are added by the
+implementation rather than by the caller. See [Log and
+correlate](/how-to/log-and-correlate).
 
 **trace id** — `UnitRecord.traceId` — the correlation id, defaulting to `UnitMeta.id`,
-which a runtime may supply from outside the process (a `traceparent` header,
-a message property). Why `UnitMeta.id` must be unique per unit. See
-[The Runtime contract](/reference/core/runtime).
+which a runtime may supply from outside the process (an `x-request-id` header,
+a message id, a workflow id). Why `UnitMeta.id` must be unique per unit. It is
+the field `@btravstack/observability`'s logger stamps on every line without
+the caller naming it. See [The Runtime contract](/reference/core/runtime).
 
 **unit / unit of work** — One piece of work a runtime submits through `host.run(meta, work)`: an HTTP
 request, an activity attempt, a delivery. The kernel counts it towards the

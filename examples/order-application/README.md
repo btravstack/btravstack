@@ -5,9 +5,8 @@ rules into operations — "place an order", "find an order" — and declares, as
 `@btravstack/di` ports, what it needs the outside world to supply.
 
 ```
-src/ports.ts          OrderRepository, Logger, PlaceOrder, FindOrder
+src/ports.ts          OrderRepository, Outbox, StockService, ShippingService, PlaceOrder, FindOrder
 src/use-cases.ts      the interactors, and their providers
-src/logger.ts         the Logger adapter — the one kernel touchpoint
 src/module.ts         ApplicationModule
 src/test-fixtures.ts  the stub repository and TestModule, as Vitest fixtures
 ```
@@ -30,13 +29,15 @@ these terms, and no database code can widen what the use cases have to handle.
 
 ```ts
 export const ApplicationModule = Module("Application")({
-  provides: [loggerProvider, placeOrderProvider, findOrderProvider],
-  exports: [PlaceOrder, FindOrder, Logger],
+  provides: [placeOrderProvider, findOrderProvider],
+  exports: [PlaceOrder, FindOrder],
 });
 ```
 
 Both interactors depend on `OrderRepository` and nothing here provides it, so di
-propagates it as an unmet _need_. `Module.scoped(ApplicationModule, …)` is
+propagates it as an unmet _need_. `Logger` is the second one, for the same
+reason and from the other direction: it is `@btravstack/observability`'s port,
+not this layer's, so there is nothing here to provide and nothing to re-export. `Module.scoped(ApplicationModule, …)` is
 therefore a compile error — di's gate turns the module's remaining needs into a
 required argument naming them (`src/needs-gate.test-d.ts` pins both directions).
 The hole is not documentation; it is the type. An infrastructure module fills
@@ -49,33 +50,37 @@ provides a stub repository from a module declared alongside the spec, and inject
 it as a Vitest fixture:
 
 ```ts
-const TestModule = Module("Test")({
-  imports: [ApplicationModule],
-  provides: [stubRepository],
-  exports: [PlaceOrder, FindOrder, Logger],
-});
+const testModuleWith = (sink: Sink) =>
+  Module("Test")({
+    imports: [ApplicationModule, observability({ sink, level: "trace" })],
+    provides: [stubRepository, Provider(Env)({ value: {} })],
+    exports: [PlaceOrder, FindOrder],
+  });
 ```
 
 Five specs cover placement, persistence, the duplicate path, the domain rule and
-the log line — with no Prisma, no HTTP and no kernel booted.
+the log line — with no Prisma, no HTTP and no kernel booted. `observability()`
+binds its level from the `Env` port `start` normally provides, so a kernel-free
+spec provides an empty one itself; the `sink` is the seam a spec reads lines
+back through.
 
-## The single kernel touchpoint
-
-`src/logger.ts` imports exactly one thing from `@btravstack/core`:
+## Logging is attributes, not sentences
 
 ```ts
-import { currentUnit } from "@btravstack/core";
+this.#logger.info("placing an order", { orderId: id, quantity });
 ```
 
-One `Logger` is constructed per scope, but the kernel opens a _unit_ per request
-or per job, each with its own trace id. Reading `currentUnit()` fresh inside
-`info` — rather than capturing it at construction — is what makes each line
-attributable to the unit that wrote it. Outside a unit (this package's specs,
-for instance) there is none, and the line reads `[-]`.
+The message is a constant and the ids are fields, which is what makes a line
+groupable in the system that receives it — and what lets the spec assert
+`attributes: { orderId: "o-1", quantity: 2 }` rather than match a substring.
+Correlation is not this layer's job either: `@btravstack/observability`'s logger
+reads `currentUnit()` on every call, so each line carries the trace id of
+whatever unit the runtime opened around it. In these specs there is no unit, so
+`line.unit` is `undefined` — which the spec asserts.
 
-Nothing else here knows the kernel exists: the use cases, the ports and the
-module are all plain di, and the layer runs unchanged under a test runner, an
-HTTP server or a worker.
+Nothing here knows the kernel exists: the use cases, the ports and the module
+are all plain di, and the layer runs unchanged under a test runner, an HTTP
+server or a worker.
 
 ## Running it
 

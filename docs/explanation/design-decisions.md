@@ -142,6 +142,30 @@ what the starter consumes. `Config.provider("Name")(schema)` keeps its name
 on purpose: several config slices per application is normal, and the name is
 what `ConfigInvalid` prints.
 
+## The logger is a port, and the package is named for observability
+
+`Logger` is a di port over a deliberately narrow service — `with` returns a
+new logger, `Attributes` is a flat record of scalars, a failure has its own
+`cause` channel, there are six levels and no more, and a log call cannot
+throw. It is the **framework's** port rather than each application's, because
+the framework logs too (`kernelEvents`) and one port has to serve both. The
+package is `@btravstack/observability`, not `@btravstack/logger`, because
+logs, traces and metrics share a correlation id, a resource, a configuration
+slice and a flush-on-shutdown lifecycle; two packages would duplicate all
+four, and the second would end up depending on the first. **Traces and metrics
+are not shipped** — the name is the seam, not a claim.
+
+It rules out a `@btravstack/logger` package that a tracing package would then
+have to import; a class you `new`, with the static instance and the
+`useLogger` escape hatch that reach past DI; `any` varargs and printf, and
+with them a logger that stringifies whatever it is handed — which is how a log
+call becomes the thing that throws; a mutable `setContext`, whose one instance
+two request scopes interleave; and a vitest-style global that a test cannot
+replace by composing a different module. Correlation is ruled **in** on the
+same grounds: `createLogger` reads `currentUnit()` per call, so no signature
+anywhere carries a trace id. See
+[`@btravstack/observability`](/reference/observability).
+
 ## `Config` is a hand-rolled Standard Schema
 
 `Config.object` speaks Standard Schema v1 so any `zod` / `valibot` / `arktype`

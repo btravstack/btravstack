@@ -15,8 +15,9 @@ import { AmqpRuntime, amqp } from "@btravstack/amqp";
 import { start } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { ApplicationModule, Logger, PlaceOrder } from "@btravstack/example-order-application";
+import { ApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Logger, observability } from "@btravstack/observability";
 
 import { orderHandlers } from "./handlers.js";
 import { OrderAmqpWorker } from "./module.js";
@@ -30,7 +31,7 @@ const _wired = start(OrderAmqpWorker, options);
 // The same graph without `amqp()`: nothing declared over `RuntimePort` is
 // exported, so there is no runtime for `start` to resolve.
 const RuntimelessAmqp = Module("RuntimelessAmqp")({
-  imports: [ApplicationModule, PersistenceModule],
+  imports: [ApplicationModule, PersistenceModule, observability()],
   exports: [PlaceOrder, Logger],
 });
 
@@ -44,7 +45,12 @@ const _noRuntime = start(RuntimelessAmqp, options);
 // with the `amqp()` primitive rather than `AmqpModule`, since the sugar cannot
 // leave the handlers out — that is what it is for.
 const HandlerlessAmqp = Module("HandlerlessAmqp")({
-  imports: [ApplicationModule, PersistenceModule, amqp({ contract: orderContract })],
+  imports: [
+    ApplicationModule,
+    PersistenceModule,
+    observability(),
+    amqp({ contract: orderContract }),
+  ],
   exports: [AmqpRuntime, PlaceOrder, Logger],
 });
 

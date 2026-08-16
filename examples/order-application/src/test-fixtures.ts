@@ -1,16 +1,19 @@
+import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { DuplicateOrder, OrderNotFound, type Order } from "@btravstack/example-order-domain";
+import { observability, type Line, type Sink } from "@btravstack/observability";
 import { ErrAsync, OkAsync } from "unthrown";
 import { test } from "vitest";
 
-import { ApplicationModule, FindOrder, Logger, OrderRepository, PlaceOrder } from "./index.js";
+import { ApplicationModule, FindOrder, OrderRepository, PlaceOrder } from "./index.js";
 
 /**
  * The whole point of the layer split: the use cases run against a stub
  * repository provided by a module that exists only in this file. No database,
  * no HTTP, no kernel — the application layer is exercised with the
  * infrastructure hole still open, and `TestModule` compiles only because
- * providing `OrderRepository` is what closes `ApplicationModule`'s one need.
+ * providing `OrderRepository` (and importing a logger) is what closes
+ * `ApplicationModule`'s two needs.
  */
 const stubRepository = Provider(OrderRepository)({
   sync: () => {
@@ -30,20 +33,40 @@ const stubRepository = Provider(OrderRepository)({
   },
 });
 
-const TestModule = Module("Test")({
-  imports: [ApplicationModule],
-  provides: [stubRepository],
-  exports: [PlaceOrder, FindOrder, Logger],
-});
+/**
+ * `observability()` binds its level from the `Env` port, which `start`
+ * provides to every graph it boots — and there is no `start` here, so this
+ * module provides an empty one itself. That is the only ceremony the real
+ * logger costs a kernel-free spec, and it buys the very implementation the
+ * deployments run.
+ */
+const testModuleWith = (sink: Sink) =>
+  Module("Test")({
+    imports: [ApplicationModule, observability({ sink, level: "trace" })],
+    provides: [stubRepository, Provider(Env)({ value: {} })],
+    exports: [PlaceOrder, FindOrder],
+  });
+
+/** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */
+const recorderOf = () => {
+  const lines: Line[] = [];
+  return { sink: (line: Line) => lines.push(line), lines: (): readonly Line[] => lines };
+};
 
 export type ApplicationFixtures = {
-  /** `ApplicationModule` with its one unmet need closed by an in-memory stub. */
-  readonly testModule: typeof TestModule;
+  /** Everything the graph's logger wrote during this test. */
+  readonly recorder: ReturnType<typeof recorderOf>;
+  /** `ApplicationModule` with both its needs closed: an in-memory stub, and the observability starter. */
+  readonly testModule: ReturnType<typeof testModuleWith>;
 };
 
 export const it = test.extend<ApplicationFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  testModule: async ({}, use) => {
-    await use(TestModule);
+  recorder: async ({}, use) => {
+    await use(recorderOf());
+  },
+
+  testModule: async ({ recorder }, use) => {
+    await use(testModuleWith(recorder.sink));
   },
 });

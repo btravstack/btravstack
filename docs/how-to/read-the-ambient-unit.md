@@ -59,53 +59,65 @@ a way to identify an adapter, which this stack has not established — so today
 this is a convention, held by review, not an enforcement.
 :::
 
-## Recipe: a logger that stamps the trace id
+## The logger is already written
 
-Read the record at **call time**, never at construction: one logger is built
+The canonical reader ships:
+[`@btravstack/observability`](/reference/observability). Import
+`observability()` next to your application and every line an application
+writes carries the unit it was written in, with nothing in the application
+mentioning correlation:
+
+```ts
+logger.info("placing an order", { orderId: id, quantity });
+```
+
+```json
+{
+  "orderId": "o-1",
+  "quantity": 2,
+  "time": "2026-08-16T09:41:02.113Z",
+  "level": "info",
+  "message": "placing an order",
+  "unitId": "0f2a…",
+  "traceId": "b41e…"
+}
+```
+
+`examples/order-api/src/api.spec.ts` asserts that two calls produce four lines
+carrying two distinct trace ids, and none written outside a unit — which is
+how the convention is kept honest against the real HTTP runtime. Reach for the
+recipe below only for an adapter of your own: an exporter, a database adapter,
+a second destination.
+
+## Recipe: an adapter of your own
+
+Read the record at **call time**, never at construction: one adapter is built
 per scope, but each unit has its own record.
 
 ```ts
 import { currentUnit } from "@btravstack/core";
 import { Port, Provider } from "@btravstack/di";
 
-class Logger extends Port("Logger")<{
-  readonly info: (message: string) => void;
+class Audit extends Port("Audit")<{
+  readonly record: (action: string) => void;
 }> {}
 
-const loggerProvider = Provider(Logger)({
+const auditProvider = Provider(Audit)({
   sync: () => ({
-    info: (message: string) => {
+    record: (action: string) => {
       const unit = currentUnit();
       process.stderr.write(
-        `${JSON.stringify({ message, traceId: unit?.traceId, tenantId: unit?.tenantId })}\n`,
+        `${JSON.stringify({ action, traceId: unit?.traceId, tenantId: unit?.tenantId })}\n`,
       );
     },
   }),
 });
 ```
 
-That is exactly what `examples/order-application/src/logger.ts` does — the
-single kernel touchpoint in that layer, and the logger every use case writes
-to:
-
-```ts
-export const loggerProvider = Provider(Logger)({
-  sync: () => {
-    const lines: string[] = [];
-    return {
-      info: (message: string) => {
-        lines.push(`[${currentUnit()?.traceId ?? "-"}] ${message}`);
-      },
-      lines: () => lines,
-    };
-  },
-});
-```
-
-Outside a unit — the package's own specs, a startup log — there is no record
-and the line reads `[-]`. `examples/order-api/src/api.spec.ts` asserts two
-calls produce two distinct trace ids and never `[-]`, which is how the
-convention is kept honest against the real HTTP runtime.
+That is what `createLogger` does, minus the level filter and the `try` that
+makes a broken destination survivable. Outside a unit — a package's own specs,
+a startup line — `currentUnit()` is `undefined`, and the fields are simply
+absent.
 
 A unit-scoped finaliser runs **while the unit is still open**, so a
 `StartOptions.unit` module's `onStop` logging "request finished" carries the
@@ -148,7 +160,15 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
           ),
         );
       }
-      logger.info(`order ${id} placed — notifying`);
+      logger.info(
+        payload === null
+          ? "order gone — notifying"
+          : "order placed — notifying",
+        {
+          orderId: id,
+          ...(payload === null ? {} : { quantity: payload.quantity }),
+        },
+      );
       return OkAsync();
     },
   }),
@@ -172,7 +192,7 @@ Provider(ShippingService)([Logger], {
               ),
             ),
           )
-        : (logger.info(`arranged shipping for order ${orderId}`), OkAsync()),
+        : (logger.info("arranged shipping", { orderId }), OkAsync()),
   }),
 });
 ```
@@ -207,3 +227,5 @@ an id they already hold. A runtime of your own follows the same rule — see
   `StartOptions.unit` module whose teardown logs under the unit's trace id.
 - [Write a runtime](/how-to/write-a-runtime) — the `UnitMeta` a runtime
   submits, and why `id` must be unique.
+- [Log and correlate](/how-to/log-and-correlate) — the shipped reader of this
+  record, end to end.
