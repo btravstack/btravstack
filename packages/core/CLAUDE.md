@@ -42,7 +42,13 @@ that proves them, rather than duplicated).
    deadline"_. The abort comes from `registry.abortAll()`, not from the runtime
    honouring `Serving.drain(signal)` — `@btravstack/testing`'s `testRuntime`
    deliberately ignores that signal, which is what makes it a test of the
-   kernel.
+   kernel. **The same signal is on the ambient record**, so a runtime whose
+   work callback is a library's `next()` still reaches it:
+   `units.spec.ts` → _"carries the work's own AbortSignal on the ambient
+   record"_ asserts identity (`record.signal === the parameter`) and the abort
+   together, and `@btravstack/temporal`'s and `@btravstack/amqp`'s own
+   _"hands the activity/handler the unit's own AbortSignal, through the ambient
+   record"_ prove it end to end through a real transport.
 5. **The application scope closes on every path.**
    `invariants.spec.ts` → _"5. the application scope closes on a startup
    failure"_; `start.spec.ts` → _"closes the application scope on a clean
@@ -91,6 +97,13 @@ Beyond the nine:
   `units.spec.ts` → _"decrements even when the work throws"_.
 - **The ambient record does not leak between concurrent units.**
   `units.spec.ts` → _"does not leak between concurrent units"_.
+- **The record's `signal` IS the work's own, not a copy.** One
+  `AbortController` per unit: `registry.run` hands `controller.signal` to
+  `work` and puts that same object on the `UnitRecord`, so `abortAll` — and
+  therefore `drainApp`'s deadline — is observable from both routes at once. A
+  second controller mirrored onto the record would drift on exactly the path
+  that matters. `units.spec.ts` → _"carries the work's own AbortSignal on the
+  ambient record"_.
 - **The phase tracker is monotonic.** `phase.spec.ts` → _"refuses to move
   backwards and reports nothing"_ and _"treats re-entering the same phase as a
   no-op"_.
@@ -367,7 +380,13 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   sample and closes before the deadline.
 
 - **`abortAll` iterates the live `Set`,** so a unit started synchronously from an
-  abort listener is visited by the same pass.
+  abort listener is visited by the same pass. The `Set` holds the
+  `AbortController`s, and each one's `signal` is on both the work callback's
+  parameter list **and** the unit's ambient record, so one `abort()` is seen by
+  a runtime that takes the parameter (`@btravstack/http`) and by one that
+  cannot (`@btravstack/temporal`, `@btravstack/amqp`, whose work callback is
+  the library's `next()`). Do not mirror the record's `signal` onto a second
+  controller: the identity is what the guard asserts.
 
 - **`units.ts` uses `fromSafePromise`, not `fromPromise`.** The promise cannot
   reject — the work's own throw is caught by `flatMap`'s throw-to-defect net once

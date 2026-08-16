@@ -49,6 +49,13 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
   sync: (logger) => ({
     orderChanged: (message) => {
       const { id, payload } = message.payload;
+      if (currentUnit()?.signal.aborted === true) {
+        return ErrAsync(
+          new RetryableError(
+            `the drain deadline passed before order ${id} was notified`,
+          ),
+        );
+      }
       logger.info(
         payload === null
           ? `order ${id} is gone — notifying`
@@ -67,6 +74,14 @@ ordered against this one. The handler has no domain errors to triage — a
 placement's `Err` never crosses the broker, only the committed fact does —
 which is why this deployment is absent from the `Err` table on the
 [overview](/examples/).
+
+The `currentUnit()?.signal` guard is the deployment's one kernel touchpoint,
+and it is how a handler honours the drain deadline at all: `messageUnits`
+calls `next()` unchanged, so there is no parameter to receive a signal
+through and the ambient record is the only route to it. Answering a
+`RetryableError` leaves the delivery **un-acked**, so the broker hands it to
+the next worker rather than this one finishing work nobody is waiting for.
+See [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
 
 ## The relay: a resourceful provider with its own config
 

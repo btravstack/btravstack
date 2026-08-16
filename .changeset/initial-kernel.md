@@ -31,7 +31,7 @@ application scope on every path.
 - `runMain`, which turns an outcome into a process exit code (`0` / `1` / `2` /
   `70`) by setting `process.exitCode`.
 - `currentUnit()` over an `AsyncLocalStorage` record carrying
-  `{ unitId, traceId, tenantId, deadline }` — data, never capabilities.
+  `{ unitId, traceId, tenantId, deadline, signal }` — data, never capabilities.
 - A `@btravstack/testing` package with `testRuntime`,
   `createFakeClock` and `withApp`.
 - **Every async API returns an `AsyncResult`, never a bare `Promise`** — the

@@ -93,12 +93,24 @@ hook). User-facing changes need a changeset.
 
 2. **Ambient carries DATA. The DI `Context` carries CAPABILITIES.** The kernel
    opens one `AsyncLocalStorage` store per unit holding a small, fixed record —
-   `{ unitId, traceId, tenantId, deadline }` (`UnitRecord` in `units.ts`) —
+   `{ unitId, traceId, tenantId, deadline, signal }` (`UnitRecord` in
+   `units.ts`) —
    and nothing else. Services never go in it. The line holds because what `di`
    exists to prevent is hidden _dependencies_: code that secretly needs a
    collaborator it never declared and cannot be tested without it. A trace id is
    not a collaborator — no substitutability question, no test double, nothing to
-   swap. A repository pulled from an ambient store is the untestable coupling; a
+   swap. Nor is an `AbortSignal`: `signal` is the **very** controller the work
+   callback is handed — one abort, two ways to reach it — and it is on the
+   record because the callback is not always where the work is. A
+   middleware-shaped runtime (`@btravstack/temporal`, `@btravstack/amqp`) opens
+   the unit around a call it does not own the arguments of, so an activity or a
+   handler has no parameter to receive it through, and injecting a context the
+   contract does not type was the alternative and was rejected;
+   `@btravstack/http` passes the same signal as its handler's third parameter,
+   which is that signal by another route. A transport's own cancellation —
+   Temporal's `Context.current().cancellationSignal` — is a **different clock**,
+   not this one. A repository pulled from an ambient store is the untestable
+   coupling; a
    tenant id read by the Postgres adapter is not. Legitimate readers are
    infrastructure adapters only (logger, OTel exporter, database adapter);
    application code reading the store is meant to be a lint error, in the spirit
@@ -403,6 +415,12 @@ UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
   `Result` — the `Promise` arm is Thesis #6's second exception, since it exists
   to accept a caller's `async` handler. `UnitRegistry.awaitIdle()` returns
   `AsyncResult<void, never>`.
+- **`UnitRecord`** — the ambient record: `{ unitId, traceId, tenantId, deadline,
+signal }`. `signal` is the same `AbortSignal` `UnitWork` receives as its
+  argument — aborted at the drain deadline, or at once on a path that skips the
+  drain (`abortAll`) — carried here so a runtime whose work callback is a
+  library's `next()` still reaches it. Guarded by `units.spec.ts` → _"carries
+  the work's own AbortSignal on the ambient record"_.
 - **`currentUnit()` → `UnitRecord | undefined`** — the ambient read. `undefined`
   outside a unit.
 - **`Clock` / `systemClock`** — `{ now, sleep(ms, signal?) }`, where `sleep`
@@ -720,7 +738,16 @@ orderActivities, workflows, imports })`, the sugar importing the starter;
 sync })`,
   `AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers, … })`),
   with its outbox relay a resourceful provider of its own rather than
-  something layered onto the runtime.
+  something layered onto the runtime. Both are also where **honouring the
+  kernel's deadline through the ambient record** is worked: neither middleware
+  injects anything into the call — `next()` unchanged — so
+  `currentUnit()?.signal` is the only route to it, and what each answers when
+  it is aborted is the transport's own business. `order-amqp-worker`'s
+  `orderChanged` returns a `RetryableError`, leaving the delivery un-acked so
+  the broker hands it to the next worker; `order-temporal-worker`'s
+  `ShippingService.arrange` fails as a **defect**, which the platform retries
+  on another worker — the contract's `ShippingUnavailable` is a permanent no
+  and would be the wrong error for "we ran out of time".
 - **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
   over its own node adapter, `@unthrown/orpc` at the boundary.** The router is a di-provided

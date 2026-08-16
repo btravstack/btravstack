@@ -114,6 +114,20 @@ TemporalConfig, TemporalActivitiesPort as ActivitiesPortOf<C>], { sync })` —
   is `temporal-contract`'s own `ActivityMiddleware`, imported: with the
   library a peer there is no structural copy, no cast and no
   `oxlint-disable` left in that file.
+- **The kernel's per-unit `AbortSignal` reaches an activity through that
+  record, and only through it.** `host.run` hands one to its work callback,
+  and here the callback IS `next()` — an activity has no parameter to receive
+  it through, and giving it one would mean injecting a context the contract
+  does not type, which was the alternative and was rejected. So an activity
+  that must stop when the **kernel** stops waiting reads
+  `currentUnit()?.signal`, aborted at `drainTimeoutMs`. Temporal's own
+  `Context.current().cancellationSignal` is a **different clock** — a
+  workflow-side cancellation, and worker shutdown after `shutdownGraceTime` —
+  so the two are honoured together rather than one standing in for the other.
+  `examples/order-temporal-worker`'s `ShippingService.arrange` is the worked
+  answer: it fails as a **defect** on an aborted signal, which the platform
+  retries on another worker, where the contract's `ShippingUnavailable` is a
+  permanent no.
 - **`@temporal-contract/worker` and `@temporal-contract/contract` are peers**
   (and devDependencies, for the suite). A starter has real dependencies — it
   calls `declareActivitiesHandler` and types `contract` as a
@@ -131,7 +145,7 @@ TemporalConfig, TemporalActivitiesPort as ActivitiesPortOf<C>], { sync })` —
 - **Not included, deliberately**: `Result` → activity failure, which
   `declareActivitiesHandler` already owns. Doing it twice is what the removal of
   the raw-worker path was about.
-- **`temporal-runtime.spec.ts` carries 12 specs.** Four are the starter's
+- **`temporal-runtime.spec.ts` carries 13 specs.** Four are the starter's
   configuration (_"binds TEMPORAL_ADDRESS and TEMPORAL_NAMESPACE from the
   environment when nothing is pinned"_, _"pins what it is given and reads the
   rest from the environment"_, _"reads nothing from the environment when both
@@ -145,7 +159,12 @@ TemporalConfig, TemporalActivitiesPort as ActivitiesPortOf<C>], { sync })` —
   `currentUnit()?.traceId` from inside the attempt — the meta itself is no
   longer observable from outside the starter, and once a `traceId` is supplied
   the kernel never reads `meta.id` again; _"builds the activities from the
-  graph, closing over the services their provider declared"_), two the drain.
+  graph, closing over the services their provider declared"_), three the drain
+  (_"lets an in-flight activity finish while draining"_; _"hands the activity
+  the unit's own AbortSignal, through the ambient record"_, the `deadline`
+  fixture's activity waiting on `currentUnit()?.signal` and reporting
+  `sawAbort` alongside the report's `abandoned: 1`; _"releases the kernel at
+  its own deadline, not Temporal's"_).
   All boot through the `env` fixture (one `TestWorkflowEnvironment` per test)
   and `test-fixtures.ts`'s `compose`: `TemporalModule("Worker")({ contract: {
 ...echoContract, taskQueue }, activities: <the provider under test>,

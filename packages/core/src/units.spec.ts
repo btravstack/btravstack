@@ -1,4 +1,4 @@
-import { ErrAsync, Ok, OkAsync } from "unthrown";
+import { ErrAsync, Ok, OkAsync, type Result } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { createUnitRegistry, currentUnit, runWithUnit } from "./units.js";
@@ -8,6 +8,7 @@ const record = {
   traceId: "t-1",
   tenantId: "acme",
   deadline: undefined,
+  signal: new AbortController().signal,
 } as const;
 
 describe("ambient unit record", () => {
@@ -97,6 +98,31 @@ describe("createUnitRegistry", () => {
     const seen = await registry.run({ ...meta, tenantId: "acme" }, () => OkAsync(currentUnit()));
 
     expect(seen).toBeOkWith(expect.objectContaining({ tenantId: "acme" }));
+  });
+
+  it("carries the work's own AbortSignal on the ambient record", async () => {
+    // GIVEN a registry with one unit open, whose work reads the record
+    const registry = createUnitRegistry();
+    let record: ReturnType<typeof currentUnit>;
+    let fromParameter: AbortSignal | undefined;
+    const running = registry.run(meta, (signal) => {
+      record = currentUnit();
+      fromParameter = signal;
+      return new Promise<Result<void, never>>((settle) => {
+        signal.addEventListener("abort", () => settle(Ok()), { once: true });
+      });
+    });
+
+    // WHEN the drain deadline aborts every open unit
+    registry.abortAll();
+    await running;
+
+    // THEN the record carried the very signal the work was handed, aborted —
+    // which is what a middleware-shaped runtime has instead of a parameter
+    expect({
+      same: record?.signal === fromParameter,
+      aborted: record?.signal.aborted,
+    }).toEqual({ same: true, aborted: true });
   });
 
   it("nests correctly through the registry", async () => {

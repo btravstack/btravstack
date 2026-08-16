@@ -232,6 +232,34 @@ and `traceId` is the workflow id, the correlation id minted outside this
 process and stable across every retry. An adapter reads either from
 `currentUnit()`; the middleware injects nothing into the activity itself.
 
+## Honouring the drain deadline
+
+Because the middleware injects nothing, `currentUnit()?.signal` is the **only**
+route to the unit's `AbortSignal` from inside an activity — there is no
+parameter to receive one through, and adding a context the contract does not
+type was the alternative. It is aborted at the kernel's `drainTimeoutMs`:
+
+```ts
+arrange: (orderId) =>
+  currentUnit()?.signal.aborted === true
+    ? fromSafePromise(
+        Promise.reject(
+          new Error(
+            `the drain deadline passed before shipping for ${orderId} was arranged`,
+          ),
+        ),
+      )
+    : (logger.info(`arranged shipping for order ${orderId}`), OkAsync()),
+```
+
+Failing as a **defect** is deliberate: the platform retries that attempt on
+another worker, which is what "we ran out of time here" means. A modeled
+contract error — `ShippingUnavailable` — is a permanent no and would be wrong.
+
+Temporal's own `Context.current().cancellationSignal` is a **different clock**:
+it fires on a workflow-side cancellation, and on worker shutdown after
+`shutdownGraceTime`. Honour both; neither stands in for the other.
+
 ## See also
 
 - [`@btravstack/temporal`](/reference/temporal) — options, ports, `TemporalInfo`, `WorkflowSource`.

@@ -12,9 +12,12 @@ description: Short definitions of the terms used throughout the start documentat
 `AbortSignal` and counted in `DrainReport.abandoned` — the field the exit code
 keys on (`2`). See [ExitReport and DrainReport](/reference/core/exit-report).
 
-**ambient record** — The small, fixed `UnitRecord` — `{ unitId, traceId, tenantId, deadline }` —
+**ambient record** — The small, fixed `UnitRecord` — `{ unitId, traceId, tenantId, deadline, signal }` —
 the kernel opens in an `AsyncLocalStorage` store for a unit's whole extent, and
-`currentUnit()` reads. It carries **data**, never services. See
+`currentUnit()` reads. It carries **data**, never services; `signal` is the
+very `AbortSignal` the unit's work callback is handed, so a middleware-shaped
+runtime — a Temporal activity, an AMQP delivery — can still honour the drain
+deadline. See
 [Ambient data, injected capabilities](/explanation/ambient-vs-context).
 
 **composition root** — The one module a process boots: it imports the application and a starter,
@@ -108,5 +111,6 @@ a message property). Why `UnitMeta.id` must be unique per unit. See
 
 **unit / unit of work** — One piece of work a runtime submits through `host.run(meta, work)`: an HTTP
 request, an activity attempt, a delivery. The kernel counts it towards the
-drain, hands it an `AbortSignal` and an ambient record, and hands its `Result`
+drain, hands it an `AbortSignal` and an ambient record carrying that same
+signal, and hands its `Result`
 straight back. See [The Runtime contract](/reference/core/runtime).

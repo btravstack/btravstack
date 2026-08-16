@@ -202,6 +202,37 @@ describe("temporal", () => {
     );
   });
 
+  it("hands the activity the unit's own AbortSignal, through the ambient record", async ({
+    serve,
+    deadline,
+  }) => {
+    // GIVEN an activity waiting on `currentUnit()?.signal` — the only route to
+    // it here, since the middleware's work callback is `next()` and an
+    // activity has no parameter to receive one through. Temporal's own
+    // `Context.current().cancellationSignal` is a different clock: it fires on
+    // `shutdownGraceTime`, which this test never reaches.
+    const { app, client, taskQueue } = await serve({
+      activities: deadline.activities,
+      drainTimeoutMs: 100,
+    });
+    await client.workflow.start("runEcho", {
+      taskQueue,
+      workflowId: "wf-deadline-1",
+      args: ["x"],
+    });
+    await deadline.arrived;
+
+    // WHEN the drain runs out of time for it
+    app.requestDrain();
+    const report = await app.exited;
+
+    // THEN the activity saw the kernel's abort, and the unit is reported
+    // abandoned — one deadline, observable from inside the work
+    expect(
+      report.map((exit) => ({ abandoned: exit.drain?.abandoned, sawAbort: deadline.sawAbort() })),
+    ).toBeOkWith({ abandoned: 1, sawAbort: true });
+  });
+
   it("releases the kernel at its own deadline, not Temporal's", async ({ serve, gate }) => {
     // GIVEN an activity that never finishes, and a drain with no time to give it
     const { app, client, taskQueue } = await serve({

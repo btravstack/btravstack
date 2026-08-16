@@ -81,7 +81,13 @@ connections, a Temporal worker finishing an activity — that window is wide. So
 `awaitIdle` is **sequenced behind** the runtime's `drain`, never alongside it.
 
 At the deadline, whatever is still open is aborted through each unit's
-`AbortSignal` and counted:
+`AbortSignal` — the one the kernel handed the work callback, and the one on
+the unit's ambient record as `currentUnit()?.signal`, which are the same
+object. Two routes matter because the callback is not always where the work
+is: a middleware-shaped runtime hands the kernel a callback that is the
+library's own `next()`, so a Temporal activity or an AMQP handler has no
+parameter to receive a signal through and reads it off the record instead.
+Whatever is aborted is then counted:
 
 ```ts
 type DrainReport = {

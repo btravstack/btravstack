@@ -120,6 +120,29 @@ describe("amqp", () => {
     );
   });
 
+  it("hands the handler the unit's own AbortSignal, through the ambient record", async ({
+    serve,
+    deadline,
+    publishMessage,
+  }) => {
+    // GIVEN a delivery whose handler is waiting on `currentUnit()?.signal` —
+    // the only route to it here, since the middleware's work callback is
+    // `next()` and a handler has no parameter to receive one through
+    const app = await serve(deadline.handlers, { drainTimeoutMs: 100 });
+    publishMessage({ exchange: "amqp-test", routingKey: "echo.requested" }, { value: "x" });
+    await deadline.arrived;
+
+    // WHEN the drain runs out of time for it
+    app.requestDrain();
+    const report = await app.exited;
+
+    // THEN the handler saw the abort, and the kernel reported the unit
+    // abandoned — one deadline, observable from inside the work
+    expect(
+      report.map((exit) => ({ abandoned: exit.drain?.abandoned, sawAbort: deadline.sawAbort() })),
+    ).toBeOkWith({ abandoned: 1, sawAbort: true });
+  });
+
   it("releases the kernel at its own deadline, not the library's own close timeout", async ({
     serve,
     gate,

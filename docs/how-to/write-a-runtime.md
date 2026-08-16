@@ -184,6 +184,17 @@ const serveOne = (
   });
 ```
 
+::: tip If your work callback is someone else's `next()`
+A middleware-shaped runtime opens the unit around a call it does not own the
+arguments of, so the `signal` parameter above has nowhere to go — the work
+callback _is_ the library's `next()`. The same signal is on the ambient record
+as `currentUnit()?.signal`, which is how `@btravstack/temporal` and
+`@btravstack/amqp` let an activity or a handler honour the deadline without an
+injected context the transport's contract does not type. Pass it as a
+parameter when you can, as `@btravstack/http` does; read it off the record
+when you cannot.
+:::
+
 **2. `UnitMeta.id` is unique per unit, or you supply a `traceId`.** `traceId`
 defaults to `id`, so passing a _category_ — a route template like
 `"POST /orders"` — gives every request the same trace id and silently defeats

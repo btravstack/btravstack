@@ -100,6 +100,66 @@ const contractSeamOf = () => {
 };
 
 /**
+ * An activity that waits on the kernel's own per-unit signal — reached through
+ * `currentUnit()`, since this runtime's work callback is Temporal's `next()`
+ * and an activity has no parameter to receive one through — and reports what
+ * it saw. `arrived` is the moment the attempt reached it, so a drain spec
+ * knows the unit is genuinely in flight.
+ */
+const deadlineOf = () => {
+  let entered!: () => void;
+  const arrived = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let sawAbort: boolean | undefined;
+
+  return {
+    activities: EchoActivities({
+      value: {
+        runEcho: {
+          echo: (value) => {
+            const signal = currentUnit()?.signal;
+            entered();
+            return fromSafePromise(
+              new Promise<string>((done) => {
+                // No record at all is the very regression this fixture exists
+                // to catch: settle at once so the spec fails on `sawAbort`
+                // rather than hanging until the suite's timeout, which would
+                // report a slow test instead of a missing signal.
+                if (signal === undefined) {
+                  sawAbort = false;
+                  done(value);
+                  return;
+                }
+                // An already-aborted signal never fires `abort` again — the
+                // same arm `whenAborted` carries in `temporal-runtime.ts`,
+                // and the reason a drain deadline of `0` would otherwise
+                // strand this activity.
+                if (signal.aborted) {
+                  sawAbort = true;
+                  done(value);
+                  return;
+                }
+                signal.addEventListener(
+                  "abort",
+                  () => {
+                    sawAbort = true;
+                    done(value);
+                  },
+                  { once: true },
+                );
+              }),
+            );
+          },
+        },
+      },
+    }),
+    arrived,
+    sawAbort: (): boolean | undefined => sawAbort,
+  };
+};
+
+/**
  * The same wiring, but the activity resolves only once `release()` is called
  * and reports its arrival through `arrived`. The drain specs turn on knowing a
  * unit is genuinely in flight before the drain starts — polling a wall clock
@@ -187,6 +247,8 @@ export type TemporalFixtures = {
   readonly boot: Boot;
   readonly contractSeam: ReturnType<typeof contractSeamOf>;
   readonly gate: ReturnType<typeof gateOf>;
+  /** An activity that waits on the unit's own `AbortSignal`, read off the ambient record. */
+  readonly deadline: ReturnType<typeof deadlineOf>;
   readonly configured: ReturnType<typeof configuredOf>;
 };
 
@@ -265,6 +327,10 @@ export const it = test.extend<TemporalFixtures>({
     // Released on every exit path, so an activity a test deliberately stranded
     // cannot outlive the test that stranded it.
     gate.release();
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  deadline: async ({}, use) => {
+    await use(deadlineOf());
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   configured: async ({}, use) => {
