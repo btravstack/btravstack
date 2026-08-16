@@ -122,7 +122,25 @@ const deadlineOf = () => {
             entered();
             return fromSafePromise(
               new Promise<string>((done) => {
-                signal?.addEventListener(
+                // No record at all is the very regression this fixture exists
+                // to catch: settle at once so the spec fails on `sawAbort`
+                // rather than hanging until the suite's timeout, which would
+                // report a slow test instead of a missing signal.
+                if (signal === undefined) {
+                  sawAbort = false;
+                  done(value);
+                  return;
+                }
+                // An already-aborted signal never fires `abort` again — the
+                // same arm `whenAborted` carries in `temporal-runtime.ts`,
+                // and the reason a drain deadline of `0` would otherwise
+                // strand this activity.
+                if (signal.aborted) {
+                  sawAbort = true;
+                  done(value);
+                  return;
+                }
+                signal.addEventListener(
                   "abort",
                   () => {
                     sawAbort = true;

@@ -125,7 +125,24 @@ const deadlineHandler = () => {
         entered();
         return fromSafePromise(
           new Promise<void>((done) => {
-            signal?.addEventListener(
+            // No record at all is the very regression this fixture exists to
+            // catch: settle at once so the spec fails on `sawAbort` rather
+            // than hanging until the suite's timeout, which would report a
+            // slow test instead of a missing signal.
+            if (signal === undefined) {
+              sawAbort = false;
+              done();
+              return;
+            }
+            // An already-aborted signal never fires `abort` again — the same
+            // arm `whenAborted` carries in `amqp-runtime.ts`, and the reason
+            // a drain deadline of `0` would otherwise strand this delivery.
+            if (signal.aborted) {
+              sawAbort = true;
+              done();
+              return;
+            }
+            signal.addEventListener(
               "abort",
               () => {
                 sawAbort = true;
