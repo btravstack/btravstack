@@ -35,6 +35,7 @@ import { oc, type RouterContractClient } from "@orpc/contract";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
+import { HttpController } from "./controller.js";
 import { HttpHandler } from "./handler.js";
 import { HttpModule } from "./http-module.js";
 import { HttpConfig, HttpRuntime, httpModule, type HttpInfo } from "./http-runtime.js";
@@ -60,7 +61,9 @@ const appOf = (handler: Handler, port = 0) =>
 class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
 
 /** Three bare procedures, one nested — the contract is what types the implementation below and the client. */
-const greetingContract = oc.router({ hello: oc, boom: oc, nested: { ping: oc } });
+const helloFragment = { hello: oc };
+const nestedFragment = { ping: oc };
+const greetingContract = oc.router({ ...helloFragment, boom: oc, nested: nestedFragment });
 
 const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
   hello: () => OkAsync(greeter.greet("world")),
@@ -74,6 +77,11 @@ const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
 /** The router as a service, built from the greeter it declares — contract-first, on the starter's own router port. */
 const greetingRouter = HttpRouter(greetingContract)([Greeter], {
   sync: greetingImplementation,
+});
+
+/** Two controllers over the same contract's two halves — what the keyed router composes. */
+export const helloController = HttpController("HelloController", helloFragment)([Greeter], {
+  sync: (greeter) => ({ hello: () => OkAsync(greeter.greet("world")) }),
 });
 
 /**
@@ -243,6 +251,8 @@ export type HttpFixtures = {
     }>;
     readonly stoppedAccepting: (origin: string) => Promise<void>;
   };
+  /** The controllers the keyed router form composes. */
+  readonly controllers: { readonly controller: typeof helloController };
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -413,5 +423,10 @@ export const it = test.extend<HttpFixtures>({
     });
 
     for (const socket of opened) socket.destroy();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  controllers: async ({}, use) => {
+    await use({ controller: helloController });
   },
 });

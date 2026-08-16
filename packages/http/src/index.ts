@@ -1,3 +1,4 @@
+export { HttpController } from "./controller.js";
 export { HttpModule } from "./http-module.js";
 export type { HttpModuleOptions } from "./http-module.js";
 export { HttpConfig, HttpRuntime, http } from "./http-runtime.js";
