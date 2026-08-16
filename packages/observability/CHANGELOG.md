@@ -51,6 +51,6 @@
 - Updated dependencies [72b8fbd]
 - Updated dependencies [e950473]
 - Updated dependencies [068399d]
-  - @btravstack/config@1.0.0
-  - @btravstack/core@1.0.0
-  - @btravstack/di@1.0.0
+  - @btravstack/config@0.2.0
+  - @btravstack/core@0.2.0
+  - @btravstack/di@0.2.0

@@ -262,5 +262,5 @@ services() }`; the gate refuses a port `module` does not export, and
 - Updated dependencies [f133934]
 - Updated dependencies [9ca73c5]
 - Updated dependencies [b56501f]
-  - @btravstack/config@1.0.0
-  - @btravstack/di@1.0.0
+  - @btravstack/config@0.2.0
+  - @btravstack/di@0.2.0

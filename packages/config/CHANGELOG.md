@@ -43,4 +43,4 @@
 
 - Updated dependencies [9ca73c5]
 - Updated dependencies [b56501f]
-  - @btravstack/di@1.0.0
+  - @btravstack/di@0.2.0

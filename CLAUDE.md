@@ -87,15 +87,22 @@ Measured on changesets 2.31.1:
 | a `patch` changeset | `0.2.1` — the whole group, as intended |
 | a `minor` changeset | `1.0.0` — the whole group              |
 
-Neither documented escape hatch suppresses it
-(`onlyUpdatePeerDependentsWhenOutOfRange`, `updateInternalDependents`: both
-tried, neither changes the result), and the internal peers cannot become
-ordinary dependencies — the dual-copy hazard is what they exist to prevent.
+Neither escape hatch suppresses it. Both live under
+`___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH`, **not** in the ordinary
+config, and neither is the `updateInternalDependencies` this repo's
+`.changeset/config.json` already sets — the names are close enough to mislead,
+so: `onlyUpdatePeerDependentsWhenOutOfRange: true` and
+`updateInternalDependents: "out-of-range"`, both read by
+`@changesets/assemble-release-plan`, both tried here, neither changing the
+result. The internal peers cannot become ordinary dependencies either — the
+dual-copy hazard is what they exist to prevent.
+
 So the options at the first feature release are to accept `1.0.0`, or to
-override the computed version by hand as the `0.2.0` release did (run
-`changeset version`, then rewrite the eight `package.json` versions and the
-eight `CHANGELOG.md` headings). Decide it deliberately; do not let a routine
-`pnpm run version` decide it.
+override the computed version by hand as the `0.2.0` release did: run
+`changeset version`, then rewrite the eight `package.json` versions, the eight
+`CHANGELOG.md` headings **and the `Updated dependencies` blocks inside those
+changelogs**, which carry the computed version too and are easy to miss.
+Decide it deliberately; do not let a routine `pnpm run version` decide it.
 
 ## Thesis (do not drift from these)
 
