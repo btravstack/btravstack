@@ -1,0 +1,266 @@
+# @btravstack/core
+
+## 0.2.0
+
+### Minor Changes
+
+- f133934: **Configuration, the twelve-factor way, in its own package.** `@btravstack/config`
+  exports `Env` — the environment as a port, which `@btravstack/core` provides to
+  every graph `start` boots (`process.env`, or `StartOptions.env` for a test) —
+  and `Config`:
+  `Config.string/integer/port(variable, { default?, min?, max? })` fields,
+  `Config.object({...})` composing them into a Standard Schema over the
+  environment (any other Standard Schema, a `zod` object over the raw variables
+  for instance, is accepted too), and `Config.provider(Port)(schema)` binding a
+  port from `Env` — a modeled `ConfigInvalid` naming every offending variable
+  when the environment is wrong, which `runMain` maps to sysexits(3)'s
+  `EX_CONFIG` (78) rather than the generic startup `1`. The kernel binds its own
+  `PROBE_PORT` the same way (default `9000`; `probes` still overrides), and a
+  startup failure of any kind is now reported as a `startFailed` kernel event
+  before `stopping`, so a bad environment is named on stderr instead of exiting
+  silently. An empty or blank variable is an error, never an absent one; `PORT=0`
+  stays expressible.
+
+  `@btravstack/http` becomes a starter: `http()` provides
+  `HttpRuntime` and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST`
+  (default `0.0.0.0`) unless pinned (`http({ port: 0 })` for a test —
+  explicit beats environment beats default, per field, through
+  `Config.pinned(value, field)`; a pinned field reads nothing from the
+  environment, and the module's declared `Env` need and `ConfigInvalid` stay
+  whatever is pinned). `RuntimeNeedsGate` is renamed `StartGate`, since it now
+  also states `NO RUNTIME`.
+
+  `Config.provider("Name")(schema)` — the name form — mints the port (its
+  service is the schema's output) and returns the provider carrying it typed
+  (`provider.port`), the shape for a slice that is one application's own; the
+  class form `Config.provider(Port)(schema)` stays for a slice that is public
+  API another package names. Config is the one sugar that takes a name — several
+  config slices per application is normal, and the name is what `ConfigInvalid`
+  prints; the starters' `HttpRouter` / `TemporalActivities` / `AmqpHandlers`
+  provide the starter's own fixed port and take none.
+
+- ba815e4: Seven shutdown-path fixes found by a full review of the kernel. Five change
+  observable behaviour.
+
+  - **The drain waits for a unit that opens while the runtime is still stopping
+    accepting.** `UnitRegistry.awaitIdle()` answers about the registry at the
+    instant it is _called_, and beat 3 was calling it in the same tick as
+    `Serving.drain(signal)`. A unit opened while `drain` was still resolving was
+    therefore never awaited — it was aborted at the deadline and reported
+    `abandoned` with the whole `drainTimeoutMs` unspent. It is now sequenced
+    behind `drain`. The window is wide for any runtime whose `drain` is a real
+    wait, such as an HTTP server closing out keep-alive connections.
+
+  - **`stop()` and the uncaught path now abort in-flight units.** Both skip the
+    drain, and neither signalled the work it was leaving behind. That contradicted
+    the reason `"uncaught"` skips the drain at all — that in-flight work may be
+    completing against corrupted state — and let a unit holding a ref'd socket
+    keep the event loop alive after the exit report.
+
+  - **`runMain` exits `2` when `ExitReport.teardownErrors` is non-empty.**
+    Previously a shutdown whose finalisers all failed still exited `0`, reporting
+    success to an orchestrator for a shutdown that may have lost data. `2` already
+    meant "we stopped, but not cleanly"; a failed finaliser now earns it as much
+    as abandoned work does.
+
+  - **The pre-drain delay is charged from when the shutdown was requested.** A
+    signal arriving mid-build is buffered until the runtime is serving, so the
+    full `preDrainDelayMs` was paid _again_ afterwards. Both together can exceed
+    `terminationGracePeriodSeconds` and turn a graceful exit into a SIGKILL.
+
+  - **An out-of-range or non-integer probe port is a modeled
+    `Err(RuntimeStartFailed)`.** `server.listen` validates the port synchronously
+    and _throws_ `ERR_SOCKET_BAD_PORT` rather than emitting `'error'`, so it
+    escaped as a `Defect` — bypassing the declared error channel and exiting `70`
+    where a startup failure exits `1`.
+
+  - **`stderrSink` renders an `Error` cause instead of `{}`.** `JSON.stringify`
+    skips non-enumerable properties, so `Error.message` and `stack` never
+    serialised — leaving `{"type":"uncaught","cause":{}}` as the default crash
+    report. A cause it cannot serialise at all now falls back to
+    `"[unserialisable]"` rather than throwing, which `safeSink` would swallow,
+    losing the event entirely.
+
+  - **The probe server keeps an `'error'` listener for its whole life.** The
+    bind-failure listener is now replaced rather than merely removed: a
+    post-listen `'error'` (an accept failure such as `EMFILE`) had no listener,
+    and an unhandled `'error'` throws — which the kernel's own `uncaughtException`
+    handler turned into a whole-application teardown over a fault in its health
+    endpoint.
+
+- 38d7cd5: Remove the `VERSION` export.
+
+  It was a hand-maintained copy of `package.json`'s `version`, read by nothing but
+  a test asserting the literal it was written as — so it could only ever go stale
+  or fail its own tautology. Neither `@btravstack/http` nor
+  `@btravstack/temporal` ever shipped one. A consumer that needs the version
+  should read it from the package manifest.
+
+- 4fa693c: The application kernel: `start` boots a `@btravstack/di` module into a running
+  process with one runtime, drains in-flight work on SIGTERM, and closes the
+  application scope on every path.
+
+  - `start(module, options)` returns a `RunningApp` — `exited`
+    (`AsyncResult<ExitReport, E | RuntimeStartFailed>`, the module's own error
+    type passed through unwrapped), `stop`, `requestDrain`, `phase`, `ready`,
+    `probePort` and `runtimeInfo`. It never throws and never calls
+    `process.exit`. The runtime's
+    declared `needs` are checked against the module's exports at compile time.
+  - The `Runtime` / `RuntimeHost` / `RunUnit` / `Serving` contract, with unit
+    tracking owned by the kernel: `Serving.drain(signal)` returns
+    `AsyncResult<void, never>` and the kernel does the accounting into a
+    `DrainReport`.
+  - A channel for what a runtime **is**: `Serving.info` publishes arbitrary
+    structured info about a serving runtime, and `RunningApp.runtimeInfo()` reads
+    it back as an `AsyncResult<Info | undefined, never>` that settles when the
+    runtime starts serving — so a runtime binding an ephemeral `port: 0` tells the
+    caller which port it got instead of inventing an `onListening` hook. The shape
+    is the runtime's own (a queue runtime has no port), and `Info` defaults to
+    `never`, so publishing is optional with no extra ceremony.
+  - A three-beat drain — readiness false, `preDrainDelayMs` before the runtime
+    stops accepting, then `drainTimeoutMs` for in-flight work — plus liveness and
+    readiness probes served from the lifecycle state machine rather than a
+    transport.
+  - `runMain`, which turns an outcome into a process exit code (`0` / `1` / `2` /
+    `70`) by setting `process.exitCode`.
+  - `currentUnit()` over an `AsyncLocalStorage` record carrying
+    `{ unitId, traceId, tenantId, deadline, signal }` — data, never capabilities.
+  - A `@btravstack/testing` package with `testRuntime`,
+    `createFakeClock` and `withApp`.
+  - **Every async API returns an `AsyncResult`, never a bare `Promise`** — the
+    infallible ones included, where `AsyncResult<T, never>` spells "async, and
+    cannot fail". `probePort()`, `Clock.sleep`, `FakeClock.advance`,
+    `UnitRegistry.awaitIdle`, `TestRuntime.untilStarted` and `ProbeServer.close`
+    all carry `E = never`. Three surfaces are deliberately outside it: `runMain`
+    (the boundary out of the Result world, into a process exit code), `UnitWork`'s
+    `Promise<Result<T, E>>` arm (it accepts a caller's `async` handler) and
+    `withApp`/`use` (a thrown assertion inside a test body must reach the test
+    runner, which an `AsyncResult` — which never rejects — would swallow).
+
+- e616e23: **Breaking:** `runMain` now takes the module and options directly —
+  `runMain(AppModule, { runtime })` — booting `start` itself and carrying the
+  same compile-time needs gate. The old app-taking form is gone: a whole
+  `main.ts` is one call, and `start` remains the API for callers that want the
+  `RunningApp` itself (tests, embedders, a dev runner booting two applications —
+  none of which may claim `process.exitCode`).
+
+  The nesting it replaces — `runMain(start(module, options))` — made `start`
+  look complete on its own, and using it alone in an entry point is the
+  documented footgun: the kernel's uncaught handlers suppress Node's default
+  exit 1, so a crash exited `0`. The front door is now the one-call shape the
+  docs lead with.
+
+  Also exports `RuntimeNeedsGate`, the phantom rest-tuple gate `start`,
+  `runMain` and `withApp` all carry, previously inlined at each site.
+
+- 5a271c0: **Breaking.** The runtime is a service the module provides, not an option.
+  `StartOptions.runtime` is gone: `start(module, options?)`, `runMain(module,
+options?, exit?)` and `withApp(module, options, use)` build the module,
+  resolve its runtime through the kernel's new **`RuntimePort`** — `Port("Runtime")`,
+  exported generic so a runtime package (or an application) declares its own
+  concrete port over it, `class HttpRuntime extends
+RuntimePort<Runtime<never, HttpInfo>> {}` — and drive what they find. The kernel is DI
+  initialisation and lifecycle, nothing else; every runtime port shares one id,
+  which is how a graph holds exactly one.
+
+  The phantom gate grows a third arm: `NO RUNTIME` when the module exports no
+  runtime port, alongside `UNSATISFIED RUNTIME NEEDS` and `UNSATISFIED UNIT
+NEEDS`. `Needs` and `Info` are read off the module (`RuntimeInfoOf<X>` is exported), so
+  `RunningApp<E, RuntimeInfoOf<X>>` types `runtimeInfo()` from the composition
+  alone.
+
+  `@btravstack/testing`: `testRuntime()` carries `.module`, a module
+  providing itself on the exported `TestRuntimePort` — import it next to the
+  module under test and export the port.
+
+- 72b8fbd: **`@btravstack/testing`** — the test harness is a package of its own, the
+  way `@nestjs/testing` is, and `@btravstack/core/testing` is gone (breaking,
+  unreleased). It ships what the kernel's entry point did — `testRuntime()` /
+  `TestRuntimePort`, `createFakeClock()`, `withApp()` — plus two things the
+  example suites had been hand-rolling in every `test-fixtures.ts`:
+
+  - **`bootFixture(defaults?)`** — a `test.extend` fixture handing the test a
+    `boot(module, options?)` with a test's defaults baked in (`signals: false`
+    always, `probes: false` unless a call asks for a port, `preDrainDelayMs: 0`,
+    a silent `onEvent`), every application it started stopped when the test
+    ends. Teardown mirrors `withApp`: a `Defect` on `exited` fails the test, a
+    modeled `Err` passes through.
+  - **`tapped(module, [Port, …])`** — read services out of a booted application
+    (`start` hands the context to the runtime alone). Returns `{ module,
+services() }`; the gate refuses a port `module` does not export, and
+    `services()` is loud before the graph is built.
+
+  The kernel's own specs, the three starters' and the three deployment
+  examples' fixtures now use it; core keeps no test double of its own.
+
+- e950473: `StartOptions.unit` — a module the kernel forks around **every unit**. Its
+  providers are constructed as a unit opens, reading anything the application
+  context carries, and torn down as it closes — while the unit's ambient record
+  is still open, so a teardown log line carries the request's own trace id. Unit
+  work receives the forked `Context`, which makes a per-request scope
+  transparent: a handler routes, and no application code calls
+  `Module.forkScope`.
+
+  `start`'s compile-time gate also covers the fork's own direction: the unit
+  module's needs must be met by the application module's exports (or `Scope`,
+  or `Env`). A runtime's `needs` are checked against the application module's
+  exports alone — a unit-only port is rejected at the call site, since
+  `RuntimeHost.ctx` never carries it (see below). The unit
+  module's error channel is pinned to `never` — a construction failure at unit
+  scope has no modeled channel to land in, so it rides the unit's defect path,
+  which every runtime already answers.
+
+  A unit finaliser that fails is emitted as a `teardownError` event and kept off
+  `ExitReport.teardownErrors`, which is the application scope's.
+
+  Two things a runtime author should know. `RuntimeHost.ctx` remains the
+  application context: a unit-provided port exists only while a unit is open,
+  which is why the gate refuses a runtime that names one. And with a unit module the unit's
+  work runs only once the fork is built — after an `await` when a provider is
+  async — so a runtime subscribing to an event from inside its work must check
+  whether it already fired. Without the option, unit work receives the
+  application context exactly as before, synchronously. This closes the "Per-unit
+  ports" deferral: `RunUnit` was typed for this fork from the start.
+
+  `@btravstack/testing`'s `SubmittedUnit.signal` is now available
+  synchronously after `submit()` whether or not a unit module is in play.
+
+- 068399d: **`UnitRecord` gains `signal: AbortSignal`** — the ambient record is five
+  fields now, not four. It is the **very** controller the unit's work callback is
+  handed, not a copy: one abort, two ways to reach it, fired at the drain
+  deadline or at once on a path that skips the drain.
+
+  The gap it closes: a middleware-shaped runtime opens its unit around a call it
+  does not own the arguments of. `@btravstack/temporal`'s `activityUnits` and
+  `@btravstack/amqp`'s `messageUnits` both hand the kernel a work callback that
+  _is_ the library's `next()`, so an activity or a handler had no parameter to
+  receive the signal through and the kernel's `drainTimeoutMs` was unobservable
+  from inside the work. Injecting a context the transport's contract does not
+  type was the alternative, and it is exactly the hidden-dependency shape `di`
+  exists to prevent, so the signal travels on the record instead — data about
+  this unit, like `deadline`, with nothing to substitute in a test.
+  `@btravstack/http` is unchanged: it still passes the same signal as its
+  handler's third parameter.
+
+  What each transport does with it is the transport's own business, and both
+  examples are worked:
+
+  - **`examples/order-amqp-worker`** answers a `RetryableError` when
+    `currentUnit()?.signal.aborted`, leaving the delivery un-acked so the broker
+    hands it to the next worker. This transport has no cancellation of its own —
+    a redelivery is recovery, not cancellation.
+  - **`examples/order-temporal-worker`**'s `ShippingService.arrange` fails as a
+    **defect**, which the platform retries on another worker. The contract's
+    `ShippingUnavailable` is a permanent no and would be the wrong error for "we
+    ran out of time". Temporal's `Context.current().cancellationSignal` is a
+    different clock — workflow-side cancellation, and worker shutdown after
+    `shutdownGraceTime` — so the two are honoured together rather than one
+    standing in for the other.
+
+### Patch Changes
+
+- Updated dependencies [f133934]
+- Updated dependencies [9ca73c5]
+- Updated dependencies [b56501f]
+  - @btravstack/config@0.2.0
+  - @btravstack/di@0.2.0

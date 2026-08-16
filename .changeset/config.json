@@ -5,5 +5,17 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": [],
+  "fixed": [
+    [
+      "@btravstack/di",
+      "@btravstack/config",
+      "@btravstack/core",
+      "@btravstack/testing",
+      "@btravstack/observability",
+      "@btravstack/http",
+      "@btravstack/temporal",
+      "@btravstack/amqp"
+    ]
+  ]
 }

@@ -1,5 +1,51 @@
 # @btravstack/di
 
+## 0.2.0
+
+### Minor Changes
+
+- b56501f: Remove `Port.many` and `Provider.member` from `@btravstack/di`, and `withApp`
+  from `@btravstack/testing`.
+
+  Set ports had no consumer: not one of the eight packages or ten example
+  workspaces declared one. The exemption they needed had rippled into the
+  container's levelling pass, which kept two count maps and a provider-identity
+  `Set` so a set port's later members were not dropped once the first landed;
+  readiness is now one membership test. Gone with them: the `MANY` brand,
+  `ManyPortClass`, `MemberOf`, and the "registered as both a set port and an
+  ordinary port" wiring defect.
+
+  `withApp` was the callback harness that predated `bootFixture`, which does the
+  same job — start, stop on every exit path, rethrow a shutdown `Defect` — inside
+  the `test.extend` protocol the Test conventions mandate. Every example and
+  every starter already used `bootFixture`; only the kernel's own four invariant
+  specs still called `withApp`, and they now take the `boot` fixture.
+
+### Patch Changes
+
+- 9ca73c5: `AnyModule`, `AnyProvider` and `Exportable` — the constraints
+  `Module(name)({ imports, provides, exports })` puts on its three tuples — are
+  exported as types, so a package offering a shaped module (a starter's
+  `HttpModule(name)({ router, imports, provides, exports })` sugar, which appends
+  its own import and export to what the application wrote) can constrain its
+  tuples the same way and hand them to `Module(name)({...})` itself, whose
+  return type is then the sugar's, spelled once. `PortClassOf<Id, Service>`
+  (`{ portId: Id; new (): PortInstance<Id, Service> }`) is exported as the one
+  nameable type of a port class declared inside a helper — what
+  `Config.provider(name)(schema)`, `HttpRouter`, `TemporalActivities` and
+  `AmqpHandlers` return as `provider.port`, and what a starter spells its own
+  fixed port through.
+
+  `Provider(port)(deps, arm)` now returns `Provider<P, E, N> & { readonly port:
+typeof port }` — the provider carries the port class it was declared for,
+  typed, so a helper that returns a provider on a port it owns (a starter's
+  `HttpRouter(contract)(deps, arm)`, `Config.provider(name)(schema)`) hands back
+  one value and `provider.port` is what a dependent lists in its deps. Purely
+  additive. `PortInstance` is exported as a type for the same reason: a provider
+  over a port declared inside a helper needs a nameable declared type when a
+  consumer exports it (naming the instance type forges nothing — the brand keys
+  stay private).
+
 ## 0.1.0
 
 Initial release.

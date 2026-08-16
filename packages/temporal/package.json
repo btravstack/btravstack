@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/temporal",
-  "version": "0.0.0",
+  "version": "0.2.0",
   "description": "The Temporal worker runtime for @btravstack/core: one unit per activity attempt, and a drain that honours the kernel's deadline",
   "keywords": [
     "graceful-shutdown",
@@ -75,7 +75,7 @@
   "peerDependencies": {
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
-    "@btravstack/di": "^0.1.0",
+    "@btravstack/di": "workspace:^",
     "@temporal-contract/contract": "^8.0.0-beta",
     "@temporal-contract/worker": "^8.0.0-beta",
     "@temporalio/activity": "^1.22.0",
