@@ -203,18 +203,23 @@ order-api              slices/orders/           slices/customers/
 A **controller** is `HttpController("OrdersController", contract.orders)([PlaceOrder,
 FindOrder], { sync })` — an ordinary di provider on a port `HttpController`
 mints and hands back on `.port`. A **slice** is an ordinary di `Module` that
-provides its controller and exports **only** that controller, so nothing
-outside the slice can reach anything else it holds. Neither slice owns a
-private adapter: both go through the use cases, the entities and the Prisma
-repositories, and each controller converts its own entity to its own wire
-shape. The **root** composes them with the
+**imports the vertical it needs**, provides its controller and exports
+**only** that controller, so nothing outside the slice can reach anything else
+it holds. Neither slice owns a private adapter: both go through the use cases,
+the entities and the Prisma repositories, and each controller converts its own
+entity to its own wire shape. Both import the same `PersistenceModule` — a
+diamond, not duplication, since di flattens the tree into a `Set` keyed by
+provider reference and builds one database. The **root** is then a list of
+slices plus what no slice owns (`observability()`), composed with the
 keyed `HttpRouter(contract)({ orders: ordersController, customers:
 customersController })` form, which is exact against the contract — a missing
 key, an undeclared key and a controller under the wrong key are all compile
 errors at that call.
 
 Nothing here is a new concept: a controller is a provider, a slice is a
-module, a modulith is several slice modules in one root. And because a
+module, a modulith is several slice modules in one root — and `exports:
+[ordersController]` is di's provider form, since `HttpController` mints the
+port and there is no class to name. And because a
 fragment is itself a valid contract, lifting `orders` into a process of its
 own leaves the slice untouched —
 `HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`

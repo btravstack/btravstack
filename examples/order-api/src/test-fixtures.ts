@@ -15,7 +15,6 @@ import {
   placeOrder,
   type Order,
 } from "@btravstack/example-order-domain";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, type Boot } from "@btravstack/testing";
@@ -25,7 +24,9 @@ import { test } from "vitest";
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
+import { customersController } from "./slices/customers/controller.js";
 import { CustomersSlice } from "./slices/customers/module.js";
+import { ordersController } from "./slices/orders/controller.js";
 import { OrdersSlice } from "./slices/orders/module.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
@@ -59,23 +60,25 @@ const recorderOf = () => {
 };
 
 /**
- * A composition root shaped like the real one but with the repository swapped:
- * same `ApplicationModule`, same `HttpModule` sugar — unpinned, so `serve`'s
- * `env` is what binds it to an ephemeral loopback port — same exports, so
- * the transport under test is unchanged. The sink defaults to a no-op: these
- * roots are booted to exercise the transport, and the real `jsonSink()` would
- * put the application's lines in the test runner's own output.
+ * A composition root shaped like the real one but with persistence swapped:
+ * same `ApplicationModule`, same controllers, same `HttpModule` sugar —
+ * unpinned, so `serve`'s `env` is what binds it to an ephemeral loopback port
+ * — same exports, so the transport under test is unchanged. The sink defaults
+ * to a no-op: these roots are booted to exercise the transport, and the real
+ * `jsonSink()` would put the application's lines in the test runner's own
+ * output.
+ *
+ * Flat rather than a list of slices, and that is the point of the change that
+ * made it so: a slice now imports the vertical it needs, so `OrdersSlice`
+ * brings the Prisma repository with it and there is nothing to layer a stub
+ * over — two providers for one port is di's duplicate defect. Swapping an
+ * adapter is composing a different module, which is exactly what this is.
  */
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
     router: orderRouter,
-    imports: [
-      ApplicationModule,
-      persistenceOf(repository),
-      OrdersSlice,
-      CustomersSlice,
-      observability({ sink }),
-    ],
+    imports: [ApplicationModule, persistenceOf(repository), observability({ sink })],
+    provides: [ordersController, customersController],
     exports: [Logger],
   });
 
@@ -100,8 +103,6 @@ const recordingApi = () => {
       // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
       // real root, and this root exists to be read.
       imports: [
-        ApplicationModule,
-        PersistenceModule,
         OrdersSlice,
         CustomersSlice,
         observability({ sink: recorder.sink, level: "trace" }),

@@ -502,14 +502,20 @@ sync })`,
   over its own node adapter, `@unthrown/orpc` at the boundary.** It is a
   two-slice modulith on the shape above: `slices/orders/` and
   `slices/customers/`, each its own contract fragment, its own
-  `HttpController` and its own di module exporting only that controller's
-  port. The root composes them —
+  `HttpController` and its own di module — which **imports the vertical it
+  needs** (`ApplicationModule`, `PersistenceModule`) and exports only its
+  controller, in di's provider form (`exports: [ordersController]`, since
+  `HttpController` mints the port and there is no class to name; the two
+  slices are that form's first call sites). Both slices import the same
+  `PersistenceModule`: a diamond, not duplication, since `build.ts`'s
+  `flatten` collapses the tree into a `Set` keyed by provider **reference**
+  — measured on this composition, a naive walk visits 22 provider slots and
+  di keeps 15, one `OrderDatabase` among them. The root composes them —
   `orderRouter = HttpRouter(contract)({ orders: ordersController,
 customers: customersController })`, the keyed form — and
-  **`HttpModule("OrderApi")({ router: orderRouter, imports: [Application,
-Persistence, OrdersSlice, CustomersSlice, observability()], exports:
-[Logger] })`** is the whole
-  composition root — the
+  **`HttpModule("OrderApi")({ router: orderRouter, imports: [OrdersSlice,
+CustomersSlice, observability()], exports: [Logger] })`** is the whole
+  composition root, a list of slices plus what no slice owns — the
   sugar imports `http()`, provides the router on the starter's
   `HttpRouterPort` and
   exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` come from the

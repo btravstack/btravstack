@@ -1,6 +1,4 @@
 import { contract } from "@btravstack/example-order-api-contract";
-import { ApplicationModule } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule, HttpRouter } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
@@ -20,12 +18,18 @@ export const orderRouter = HttpRouter(contract)({
 });
 
 /**
- * The composition root, and the only file in the example that knows the five
- * pieces exist. Importing them is what closes di's arity gate (a composition
- * without the router provider does not compile — the starter's provider
- * depends on it), and the exports here are exactly what `start` resolves
- * (`HttpRuntime`) and what the per-request `RequestModule` reads (`Logger`),
- * which closes the kernel's.
+ * The composition root, and a list of **slices**: each one imports the vertical
+ * it needs, so this file names what the process serves rather than everything
+ * every slice happens to depend on. Both slices import `PersistenceModule`; di
+ * flattens the module tree into a `Set` keyed by provider reference, so the
+ * diamond builds one database.
+ *
+ * What is left here is what no slice owns: `observability()`, whose `Logger`
+ * every layer writes to and which is exported because the per-request
+ * `RequestModule` reads it out of the application scope. Importing the router
+ * and the starter is what closes di's arity gate (a composition without the
+ * router provider does not compile — the starter's provider depends on it),
+ * and `HttpRuntime`, which the sugar exports, is what closes the kernel's.
  *
  * A constant, not a function: configuration is read inside the graph, from the
  * `Env` port the kernel provides, so nothing has to be passed in from
@@ -37,6 +41,6 @@ export const orderRouter = HttpRouter(contract)({
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, OrdersSlice, CustomersSlice, observability()],
+  imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });

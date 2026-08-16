@@ -93,24 +93,37 @@ root that is a `Module(...)` which also knows about it:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [
-    ApplicationModule,
-    PersistenceModule,
-    OrdersSlice,
-    CustomersSlice,
-    observability(),
-  ],
+  imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
 
+The root is a list of **slices**. Each one imports the vertical it needs —
+`ApplicationModule`, whose repositories are unmet needs, and
+`PersistenceModule`, which provides them — and exports only its controller:
+
+```ts
+export const OrdersSlice = Module("OrdersSlice")({
+  imports: [ApplicationModule, PersistenceModule],
+  provides: [ordersController],
+  exports: [ordersController],
+});
+```
+
+So the root names what the process serves, not everything every slice happens
+to depend on. Both slices import the same `PersistenceModule`, which is a
+diamond rather than duplication: di flattens the module tree into a `Set`
+keyed by provider **reference**, so the graph builds one database (measured on
+this composition — a naive walk visits 22 provider slots, di keeps 15).
+`exports` takes the provider itself, not `ordersController.port`:
+`HttpController` minted that port, so there is no class to spell back off it.
+
 `HttpModule` is sugar over the same primitives: it imports the starter
 (`http()` — the whole surface), provides the
 router and exports `HttpRuntime`, and returns exactly the di module
-`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule,
-OrdersSlice, CustomersSlice, observability(), http()], provides: [orderRouter],
-exports: [HttpRuntime, Logger] })` would have. `observability()` is the starter
-that provides the
+`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(),
+http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })` would
+have. `observability()` is the starter that provides the
 `Logger` the use cases and the request scope write to — `LOG_LEVEL` bound from
 the environment, one JSON object per line on stdout, and every line stamped
 with the unit the runtime opened around it. It is exported because the

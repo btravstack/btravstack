@@ -162,29 +162,39 @@ composition root and one fewer import, not a rewrite.
 
 ## The composition root, and the process
 
-`module.ts` is the only file that knows the five halves exist:
+`module.ts` is a list of **slices**, plus what no slice owns:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [
-    ApplicationModule,
-    PersistenceModule,
-    OrdersSlice,
-    CustomersSlice,
-    observability(),
-  ],
+  imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
+
+Each slice imports its own vertical — `ApplicationModule`, whose repositories
+are unmet needs, and `PersistenceModule`, which provides them — so the root
+names what the process serves rather than everything every slice happens to
+depend on:
+
+```ts
+export const OrdersSlice = Module("OrdersSlice")({
+  imports: [ApplicationModule, PersistenceModule],
+  provides: [ordersController],
+  exports: [ordersController],
+});
+```
+
+Both slices import the same `PersistenceModule`. That is a diamond, not
+duplication: di flattens the module tree into a `Set` keyed by provider
+**reference**, so the graph builds one database. `exports` takes the provider
+rather than `ordersController.port` — `HttpController` minted that port, so
+there is no class to spell back off it.
 
 `HttpModule` imports the starter (`http()` — `HttpRuntime`, `HttpConfig` bound
 from `PORT` / `HOST`, the router mounted under `/rpc`, needing the router the
 root provides), provides `orderRouter` and exports `HttpRuntime`, and returns
 exactly the module `Module("OrderApi")({...})` would have.
-`ApplicationModule` leaves `OrderRepository` unmet and `PersistenceModule`
-provides it; `OrdersSlice` and `CustomersSlice` each provide their own
-controller, which `orderRouter` composes above.
 [`observability()`](/reference/observability) brings the `Logger` the
 interactors and the request scope write to — bound from `LOG_LEVEL`, one JSON
 object per line on stdout, every line carrying the unit's trace id — and
@@ -316,7 +326,7 @@ directions of `start`'s own gate and di's, side by side:
 const _missingRuntime = start(RuntimelessApi, options);
 ```
 
-`RuntimelessApi` is the same graph without `http(...)`: `start`'s phantom
+`RuntimelessApi` is the same list of slices without `http(...)`: `start`'s phantom
 rest tuple becomes a required argument naming the absence, and the call fails
 on arity.
 

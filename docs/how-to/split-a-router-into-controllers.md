@@ -107,17 +107,27 @@ export const ordersController = HttpController(
 
 The controller does no oRPC work of its own — it stores a plain record, and
 `HttpRouter` wraps each leaf in `.result(...)` when it composes the router.
-`ordersController.port` is the port class the keyed form reads to order this
-controller's construction before the router's — there is nothing to name by
-hand. A slice ships its controller as a module that exports only that port,
-the same privacy di already gives any provider:
+`HttpController` mints the port and carries it back on `.port`, which the
+keyed form reads to order this controller's construction before the router's —
+there is nothing to name by hand. A slice ships its controller as a module
+that **imports the vertical it needs** and exports only that controller, the
+same privacy di already gives any provider:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
+  imports: [ApplicationModule, PersistenceModule],
   provides: [ordersController],
-  exports: [ordersController.port],
+  exports: [ordersController],
 });
 ```
+
+`exports` takes the provider itself, not `ordersController.port`: the port was
+minted inside `HttpController`, so there is no class to spell back off it.
+Importing the vertical here rather than leaving `PlaceOrder` and `FindOrder`
+as needs for the root is what makes the slice a unit — the reason to open this
+directory is the whole reason it exists. Several slices importing the same
+`PersistenceModule` is a diamond, not duplication: di flattens the module tree
+into a `Set` keyed by provider **reference**, so one database is built.
 
 ## Step 3 — the keyed root
 
@@ -132,22 +142,20 @@ export const orderRouter = HttpRouter(contract)({
 });
 ```
 
-The composition root then imports each slice's module next to the transport
-starter, exactly as it would import any other module:
+The composition root is then a list of **slices**, plus whatever no slice
+owns:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [
-    ApplicationModule,
-    PersistenceModule,
-    OrdersSlice,
-    CustomersSlice,
-    observability(),
-  ],
+  imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
+
+`observability()` is here because every slice's layers write to its `Logger`
+and none of them owns it; `Logger` is exported because the per-request module
+reads it. Nothing else about what a slice needs is spelled at the root.
 
 This form is **exact**: a key the record above is missing, a key the
 contract does not declare, and a controller wired under the wrong key are all
@@ -171,7 +179,7 @@ export const ordersRouter = HttpRouter(contract.orders)(
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  imports: [ApplicationModule, PersistenceModule, OrdersSlice],
+  imports: [OrdersSlice, observability()],
 });
 ```
 
