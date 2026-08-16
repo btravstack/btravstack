@@ -12,7 +12,7 @@ served by `@btravstack/http`; the contract lives in
 binding its own queue to the `orders` exchange needs it and needs none of this.
 
 ```
-src/handlers.ts        the consuming half: orderHandlers, port and provider minted by AmqpHandlers, from Logger
+src/handlers.ts        the consuming half: orderHandlers, a provider on the starter's handlers port, built by AmqpHandlers from Logger
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
 src/module.ts          OrderAmqpWorker — the composition root, an AmqpModule, a constant
 src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
@@ -44,17 +44,19 @@ _foreign_ queue to the same exchange and receiving the same event.
 
 `@btravstack/amqp`'s starter needs one thing from the application: its
 **handlers, as a service**. `src/handlers.ts` is one call —
-`AmqpHandlers(orderContract)("OrderHandlers")([Logger], { sync: … })` — which
-mints the port (its service the record `orderContract` wants,
-`WorkerInferHandlers<OrderContract>`, no injected context) and provides it
+`AmqpHandlers(orderContract)([Logger], { sync: … })` — di's own
+`Provider(port)` on the starter's handlers port, typed for `orderContract`
+(its service the record `orderContract` wants,
+`WorkerInferHandlers<OrderContract>`, no injected context), providing it
 from `Logger`: the one handler is `orderChanged: (message) => …`, a plain
 function typed by the contract, closing over the logger it was built with, the
-way every service in the graph is built. No port class is declared here;
-`orderHandlers.port` is the port where one is needed (the needs gate). The
+way every service in the graph is built. No port class is declared here and
+no name is given: a consumer serves one handlers record, so the port is the
+starter's. The
 composition root is `AmqpModule("OrderAmqpWorker")({ contract: orderContract,
 handlers: orderHandlers, imports, provides, exports })` — a `Module(...)` that
 also takes the handlers provider: under the hood it imports the starter
-(`amqp({ contract, handlers: orderHandlers.port })`, the runtime on
+(`amqp({ contract: orderContract })`, the runtime on
 `AmqpRuntime` and the broker on `AmqpConfig`), provides `orderHandlers`, and
 exports `AmqpRuntime` for `start` to resolve. There is no `needs`, no
 `context.ctx.get(...)`, and no port declared here over `RuntimePort` — the

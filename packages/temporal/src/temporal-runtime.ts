@@ -6,7 +6,15 @@ import {
   type RuntimeHost,
   type Serving,
 } from "@btravstack/core";
-import { Module, Port, Provider, type AnyPort, type Scope, type ServiceOf } from "@btravstack/di";
+import {
+  Module,
+  Port,
+  Provider,
+  type PortClassOf,
+  type PortInstance,
+  type Scope,
+  type ServiceOf,
+} from "@btravstack/di";
 import type { ContractDefinition } from "@temporal-contract/contract";
 import {
   declareActivitiesHandler,
@@ -79,24 +87,41 @@ export type ActivitiesOf<C extends ContractDefinition> =
   DeclareActivitiesHandlerOptions<C>["activities"];
 
 /**
- * `unknown` when the port's service is the implementations record for `C`,
- * `never` otherwise — intersected with `A` at the call site, so a port whose
- * service is not that record fails to typecheck there rather than at the first
- * activity attempt.
+ * The activities' port — one id, the starter's own. A worker serves one
+ * activities record as it polls one task queue, so the port is
+ * framework-owned like `TemporalConfig`, and an application never names it:
+ * `TemporalActivities(contract)(deps, arm)` returns the provider that targets
+ * it. Left generic at the value level (one `Port(...)` call, one id, no
+ * duplicate-id warning however many contracts instantiate it) and fixed per
+ * contract at the type level through `ActivitiesPortOf<C>` — the same move
+ * the kernel's `RuntimePort` makes — so a provider built for one contract
+ * cannot be handed to a module declaring another. Exported from this file
+ * for the package's own tests, not from `index.ts`.
  */
-type ActivitiesPort<A extends AnyPort, C extends ContractDefinition> =
-  ServiceOf<A> extends ActivitiesOf<C> ? unknown : never;
+export const TemporalActivitiesPort = Port("TemporalActivities");
 
-export type TemporalOptions<C extends ContractDefinition, A extends AnyPort> = {
-  /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
-  readonly contract: C;
+/** The activities port class, typed for `C`: what `TemporalActivities(contract)(…).port` is. */
+export type ActivitiesPortOf<C extends ContractDefinition> = PortClassOf<
+  "TemporalActivities",
+  ActivitiesOf<C>
+>;
+
+/** The activities port's instance for `C` — the module's one need. */
+export type ActivitiesInstanceOf<C extends ContractDefinition> = PortInstance<
+  "TemporalActivities",
+  ActivitiesOf<C>
+>;
+
+export type TemporalOptions<C extends ContractDefinition> = {
   /**
-   * The port the application provides its activity implementations on — the
-   * record `declareActivitiesHandler` takes for `contract`, built by a provider
-   * from the application's own services. The starter calls
-   * `declareActivitiesHandler` itself, with its unit middleware in place.
+   * The `temporal-contract` contract; the task queue this worker polls is read
+   * off it, and the activities port is typed by it — the record
+   * `declareActivitiesHandler` takes for `contract`, which the composition
+   * root provides through `TemporalActivities(contract)(deps, arm)`. The
+   * starter calls `declareActivitiesHandler` itself, with its unit middleware
+   * in place.
    */
-  readonly activities: A & ActivitiesPort<A, C>;
+  readonly contract: C;
   readonly workflows: WorkflowSource;
   /** Pins `TemporalConfig.address` instead of reading `TEMPORAL_ADDRESS`. */
   readonly address?: string;
@@ -120,19 +145,21 @@ type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
  * (`TemporalConnection`, a resource opened with the scope and closed with it;
  * a service that will not answer is a modeled `TemporalUnreachable`). Import
  * it next to the application, export `TemporalRuntime`, and provide the
- * `activities` port — that is the whole of the transport wiring. The
- * activities port is a **need** of this module, so a composition root that
- * forgets to provide it fails at `Module(...)`, di's own gate.
+ * activities (`TemporalActivities(contract)(deps, arm)`) — that is the whole
+ * of the transport wiring. The activities port is a **need** of this module,
+ * so a composition root that forgets to provide it fails at `Module(...)`,
+ * di's own gate.
  *
  * With both configuration fields pinned the module reads nothing from the
  * environment (the declared `Env` need and `ConfigInvalid` stay — the kernel
  * discharges the one, a pinned config never produces the other); pin only one
  * and the other still comes from the environment.
  */
-export const temporal = <C extends ContractDefinition, A extends AnyPort>(
-  options: TemporalOptions<C, A>,
-): Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | InstanceType<A>> => {
-  const { address, namespace, activities } = options;
+export const temporal = <C extends ContractDefinition>(
+  options: TemporalOptions<C>,
+): Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C>> => {
+  const { address, namespace } = options;
+  const activities = TemporalActivitiesPort as ActivitiesPortOf<C>;
   const config =
     address !== undefined && namespace !== undefined
       ? Provider(TemporalConfig)({ value: { address, namespace } })
@@ -174,7 +201,7 @@ export const temporal = <C extends ContractDefinition, A extends AnyPort>(
         sync: (connection, bound, impls): Runtime<never, TemporalInfo> => ({
           name: "temporal",
           needs: [],
-          start: (host) => createWorker(host, connection, bound, impls as ActivitiesOf<C>, options),
+          start: (host) => createWorker(host, connection, bound, impls, options),
         }),
       }),
     ],
@@ -193,7 +220,7 @@ const createWorker = <C extends ContractDefinition>(
   connection: NativeConnection,
   config: ServiceOf<TemporalConfig>,
   activities: ActivitiesOf<C>,
-  options: TemporalOptions<C, AnyPort>,
+  options: TemporalOptions<C>,
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
   const { taskQueue } = options.contract;
   const { namespace } = config;

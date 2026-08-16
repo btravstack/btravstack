@@ -20,7 +20,7 @@ kernel's deadline are the package's. Everything below is lifted from
 
 ## Recipe
 
-1. Implement the handlers with `AmqpHandlers(contract)(name)(deps, arm)` —
+1. Implement the handlers with `AmqpHandlers(contract)(deps, arm)` —
    one plain function per consumer, typed by the contract.
 2. Decide, per handler, what a domain `Err` and a `Defect` become
    (see the three-way split below).
@@ -29,10 +29,11 @@ kernel's deadline are the package's. Everything below is lifted from
 
 ## Step 1 — the handlers, as a provider
 
-`AmqpHandlers(orderContract)("OrderHandlers")` mints the port (its service the
-record the contract wants, `WorkerInferHandlers<typeof orderContract>`) and
-returns di's `Provider(port)`, so the last call declares what the handlers
-need and closes over it. **Nothing is injected per message** — the middleware
+`AmqpHandlers(orderContract)` is di's `Provider(port)` on the starter's own
+handlers port, typed for the contract (its service the record the contract
+wants, `WorkerInferHandlers<typeof orderContract>`) — no class, no name: a
+consumer serves one handlers record — so the next call declares what the
+handlers need and closes over it. **Nothing is injected per message** — the middleware
 the package installs opens the unit and calls `next()` unchanged:
 
 ```ts
@@ -41,22 +42,19 @@ import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Logger } from "@btravstack/example-order-application";
 import { OkAsync } from "unthrown";
 
-export const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")(
-  [Logger],
-  {
-    sync: (logger) => ({
-      orderChanged: (message) => {
-        const { id, payload } = message.payload;
-        logger.info(
-          payload === null
-            ? `order ${id} is gone — notifying`
-            : `order ${id} placed — notifying (${payload.quantity} items)`,
-        );
-        return OkAsync();
-      },
-    }),
-  },
-);
+export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
+  sync: (logger) => ({
+    orderChanged: (message) => {
+      const { id, payload } = message.payload;
+      logger.info(
+        payload === null
+          ? `order ${id} is gone — notifying`
+          : `order ${id} placed — notifying (${payload.quantity} items)`,
+      );
+      return OkAsync();
+    },
+  }),
+});
 ```
 
 ## Step 2 — the three-way split
@@ -74,34 +72,33 @@ it is a **three-way** split, not two:
 The last row is the one to internalise. An unrecovered infrastructure failure
 is parked on its first attempt exactly like a permanent domain error. **A
 handler that wants "infrastructure comes back" recovers its own defects into a
-`RetryableError` explicitly:**
+`RetryableError` explicitly** (an alternative to `orderHandlers` above, not
+a second provider next to it — the port is one, so one graph holds one
+handlers provider):
 
 ```ts
 import { AmqpHandlers } from "@btravstack/amqp";
 import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
 import { ErrAsync, P } from "unthrown";
 
-export const placingHandlers = AmqpHandlers(orderContract)("PlacingHandlers")(
-  [PlaceOrder],
-  {
-    sync: (place) => ({
-      orderChanged: (message) =>
-        place
-          .execute(message.payload.id, message.payload.payload?.quantity ?? 0)
-          .map(() => undefined)
-          .mapErrCases((matcher) =>
-            matcher.with(
-              P.tag("InvalidQuantity"),
-              P.tag("DuplicateOrder"),
-              (error) => new NonRetryableError(error._tag, error),
-            ),
-          )
-          .recoverDefect((cause) =>
-            ErrAsync(new RetryableError("placing the order failed", cause)),
+export const placingHandlers = AmqpHandlers(orderContract)([PlaceOrder], {
+  sync: (place) => ({
+    orderChanged: (message) =>
+      place
+        .execute(message.payload.id, message.payload.payload?.quantity ?? 0)
+        .map(() => undefined)
+        .mapErrCases((matcher) =>
+          matcher.with(
+            P.tag("InvalidQuantity"),
+            P.tag("DuplicateOrder"),
+            (error) => new NonRetryableError(error._tag, error),
           ),
-    }),
-  },
-);
+        )
+        .recoverDefect((cause) =>
+          ErrAsync(new RetryableError("placing the order failed", cause)),
+        ),
+  }),
+});
 ```
 
 The queue's policy is contract configuration the broker enforces — the
@@ -137,11 +134,12 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
 ```
 
 `AmqpModule` is `Module(name)({...})` plus `contract` and `handlers`: it
-imports `amqp({ contract, handlers: orderHandlers.port })`, provides the
-handlers and exports `AmqpRuntime`. `handlers` is checked against `contract`
-at the call — a provider missing a consumer, or naming one the contract does
-not declare, fails to typecheck there rather than on the first delivery,
-silently to the DLQ.
+imports `amqp({ contract })`, provides the handlers and exports
+`AmqpRuntime`. The record is checked against the contract at
+`AmqpHandlers(contract)(…)` — a record missing a consumer, or naming one the
+contract does not declare, fails to typecheck there rather than on the first
+delivery, silently to the DLQ — and `handlers` is typed against the module's
+own `contract`, so a provider built for another contract is refused here.
 
 ## Step 4 — `main.ts`
 

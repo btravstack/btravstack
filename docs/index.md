@@ -58,7 +58,7 @@ const orderContract = {
 
 // The router is a provider: it declares the use case its procedure calls.
 // Every domain error is named here — the one place a Result becomes HTTP.
-const orderRouter = HttpRouter(orderContract)("OrderRouter")([PlaceOrder], {
+const orderRouter = HttpRouter(orderContract)([PlaceOrder], {
   sync: (place) => ({
     orders: {
       place: ({ errors }, input) =>

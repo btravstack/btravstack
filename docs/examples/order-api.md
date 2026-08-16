@@ -19,52 +19,50 @@ ephemeral port; nothing else is needed.
 ## The router: contract-first, `Result` at every leaf
 
 `router.ts` is the transport boundary and the only place in the example where
-a domain error becomes something else. `HttpRouter(orderContract)("OrderRouter")`
-mints the router's port and hands back di's `Provider(port)`, so the router
-is a provider like any other — it declares the two use cases its procedures
-call, and di injects them. oRPC's own context stays empty.
+a domain error becomes something else. `HttpRouter(orderContract)` is di's
+`Provider(port)` on the starter's own router port — no class, no name: a
+process serves one router — so the router is a provider like any other: it
+declares the two use cases its procedures call, and di injects them. oRPC's
+own context stays empty.
 
 ```ts
-export const orderRouter = HttpRouter(orderContract)("OrderRouter")(
-  [PlaceOrder, FindOrder],
-  {
-    sync: (place, find) => ({
-      orders: {
-        place: ({ errors }, input) =>
-          place
-            .execute(input.id, input.quantity)
-            .map(view)
-            .mapErrCases((matcher) =>
-              matcher
-                .with(P.tag("InvalidQuantity"), (error) =>
-                  errors.INVALID_QUANTITY({
-                    message: error.message,
-                    data: { id: error.id },
-                  }),
-                )
-                .with(P.tag("DuplicateOrder"), (error) =>
-                  errors.CONFLICT({
-                    message: error.message,
-                    data: { id: error.id },
-                  }),
-                ),
-            ),
-        find: ({ errors }, input) =>
-          find
-            .execute(input.id)
-            .map(view)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("OrderNotFound"), (error) =>
-                errors.NOT_FOUND({
+export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
+  sync: (place, find) => ({
+    orders: {
+      place: ({ errors }, input) =>
+        place
+          .execute(input.id, input.quantity)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
                   message: error.message,
                   data: { id: error.id },
                 }),
               ),
+          ),
+      find: ({ errors }, input) =>
+        find
+          .execute(input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
+                message: error.message,
+                data: { id: error.id },
+              }),
             ),
-      },
-    }),
-  },
-);
+          ),
+    },
+  }),
+});
 ```
 
 Each leaf is the `.result()` handler `@unthrown/orpc` gives that procedure's
@@ -94,14 +92,14 @@ export const OrderApi = HttpModule("OrderApi")({
 });
 ```
 
-`HttpModule` imports the starter (`http({ router: orderRouter.port })` —
-`HttpRuntime`, `HttpConfig` bound from `PORT` / `HOST`, the router mounted
-under `/rpc`), provides `orderRouter` and exports `HttpRuntime`, and returns
-exactly the module `Module("OrderApi")({...})` would have. `Logger` is
-exported for the request scope below. It is a **constant**: configuration is
-read inside the graph from the `Env` port the kernel provides, so nothing is
-passed in from `main.ts`, and a spec boots this very module with
-`env: { PORT: "0", HOST: "127.0.0.1" }`.
+`HttpModule` imports the starter (`http()` — `HttpRuntime`, `HttpConfig` bound
+from `PORT` / `HOST`, the router mounted under `/rpc`, needing the router the
+root provides), provides `orderRouter` and exports `HttpRuntime`, and returns
+exactly the module `Module("OrderApi")({...})` would have. `Logger` is exported
+for the request scope below. It is a **constant**: configuration is read inside
+the graph from the `Env` port the kernel provides, so nothing is passed in from
+`main.ts`, and a spec boots this very module with `env: { PORT: "0", HOST:
+"127.0.0.1" }`.
 
 `main.ts` is one statement:
 
@@ -205,24 +203,20 @@ on arity.
 
 ```ts
 const RouterlessApi = Module("RouterlessApi")({
-  imports: [
-    ApplicationModule,
-    PersistenceModule,
-    http({ router: orderRouter.port }),
-  ],
+  imports: [ApplicationModule, PersistenceModule, http()],
   exports: [HttpRuntime, Logger],
 });
 
-// @ts-expect-error — the composition needs OrderRouter and nothing provides it.
+// @ts-expect-error — the composition needs the router port and nothing provides it.
 const _missingRouter = start(RouterlessApi, options);
 ```
 
-This one is **di's** gate, not the kernel's: `http({ router })`'s runtime
-provider depends on the router port through di, so a composition that imports
-the starter without providing the router carries an unmet need, and `start` —
-which accepts only `Scope | Env` outstanding — refuses the module. There is no
-`UNSATISFIED RUNTIME NEEDS` arm here, because the shipped runtime declares no
-needs.
+This one is **di's** gate, not the kernel's: `http()`'s runtime provider
+depends on the starter's own router port through di, so a composition that
+imports the starter without providing the router carries an unmet need, and
+`start` — which accepts only `Scope | Env` outstanding — refuses the module.
+There is no `UNSATISFIED RUNTIME NEEDS` arm here, because the shipped runtime
+declares no needs.
 
 ```ts
 // @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.

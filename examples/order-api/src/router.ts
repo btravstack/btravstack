@@ -25,12 +25,13 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * error here, at the one place that has to decide what the client sees.
  *
  * The use cases arrive as arguments, not through oRPC's context: di injects
- * them into the provider — `HttpRouter` mints the port (`orderRouter.port`)
- * and hands back di's own `Provider(port)`, so this is a provider like any
- * other in the graph — and oRPC's context is left for what only the HTTP
- * layer knows (nothing, today). One container, not two.
+ * them into the provider — `HttpRouter(contract)` is di's own `Provider(port)`
+ * on the starter's router port, so this is a provider like any other in the
+ * graph, and there is no name to give it: a process serves one router — and
+ * oRPC's context is left for what only the HTTP layer knows (nothing, today).
+ * One container, not two.
  */
-export const orderRouter = HttpRouter(orderContract)("OrderRouter")([PlaceOrder, FindOrder], {
+export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
   sync: (place, find) => ({
     orders: {
       place: ({ errors }, input) =>

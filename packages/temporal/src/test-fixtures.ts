@@ -53,8 +53,8 @@ const echoContract = defineContract({
   },
 });
 
-/** The activities port the way a consumer mints one: `TemporalActivities(contract)(name)`, then di's own `Provider(port)` builder for each provider of it. */
-const EchoActivities = TemporalActivities(echoContract)("EchoActivities");
+/** The activities provider builder the way a consumer gets it: `TemporalActivities(contract)`, di's own `Provider(port)` on the starter's activities port, typed for the contract. */
+const EchoActivities = TemporalActivities(echoContract);
 
 const echoing = EchoActivities({
   value: { runEcho: { echo: (value) => OkAsync(value) } },

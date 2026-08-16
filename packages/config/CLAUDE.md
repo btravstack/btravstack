@@ -42,9 +42,9 @@ Ok(value)`). What a starter's options do to its own fields — explicit beats
   schema's output) and returns `Provider<PortInstance<Name, Output>,
 ConfigInvalid, Env> & { readonly port: PortClassOf<Name, Output> }` — di's
   `PortClassOf` is the nameable spelling of that class (`{ portId: Name; new
-(): PortInstance<Name, Output> }`; the same type every starter's minted port
-  uses), because the class expression's own type expands the brand keys in
-  declaration emit. The **class** form returns `Provider<InstanceType<P>,
+(): PortInstance<Name, Output> }`; the same type the starters spell their
+  fixed router / activities / handlers ports through), because the class
+  expression's own type expands the brand keys in declaration emit. The **class** form returns `Provider<InstanceType<P>,
 ConfigInvalid, Env> & { readonly port: P }` (di's own `Provider(port)`
   return). The implementation signature returns `unknown`: no one type is
   assignable both ways to both overloads (`Provider` is contravariant in its

@@ -102,15 +102,11 @@ import { OkAsync } from "unthrown";
 import { contract } from "./contract.js";
 import { Greeter } from "./greeter.js";
 
-export const greetingRouter = HttpRouter(contract)("GreetingRouter")(
-  [Greeter],
-  {
-    sync: (greeter) => ({
-      hello: (_helpers, input) =>
-        OkAsync({ message: greeter.greet(input.name) }),
-    }),
-  },
-);
+export const greetingRouter = HttpRouter(contract)([Greeter], {
+  sync: (greeter) => ({
+    hello: (_helpers, input) => OkAsync({ message: greeter.greet(input.name) }),
+  }),
+});
 ```
 
 Each leaf is a plain function returning a `Result`. `OkAsync` is the success

@@ -22,35 +22,37 @@ description: The HTTP starter — HttpModule, HttpRouter, http(), HttpRuntime, H
 | ------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `HttpModule`        | value | `HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
 | `HttpModuleOptions` | type  | The options object `HttpModule(name)` takes                                                                                                                                                           |
-| `HttpRouter`        | value | `HttpRouter(contract)(name)(deps, { sync })` — mints the router port and returns its provider, contract-first                                                                                         |
-| `http`              | value | `http({ router, prefix?, port?, hostname? })` — the starter module itself, over a router **port class**; what `HttpModule` imports                                                                    |
+| `HttpRouter`        | value | `HttpRouter(contract)(deps, { sync })` — the router as a provider on the starter's own router port, contract-first                                                                                    |
+| `http`              | value | `http({ prefix?, port?, hostname? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                 |
 | `HttpOptions`       | type  | `http()`'s options                                                                                                                                                                                    |
 | `HttpRuntime`       | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                            |
 | `HttpConfig`        | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                       |
 | `HttpInfo`          | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                               |
 
+`HttpRouterPort` (the starter's router port, `Port("HttpRouter")`),
 `Implementation<C>` (the record type `HttpRouter`'s `sync` returns) and
 `HttpHandler` (the node listener port) exist in `src/orpc.ts` and
-`src/handler.ts` but are **not** exported from the package entry point; the
-first is inferred at the call, the second is an internal seam.
+`src/handler.ts` but are **not** exported from the package entry point: the
+first is reached as `provider.port` when a caller needs it, the second is
+inferred at the call, the third is an internal seam.
 
 ## `HttpModule(name)({...})`
 
 Everything `Module(name)({...})` takes — `imports`, `provides`, `exports` —
-plus the starter's own fields. It appends `http({ router: router.port, … })`
+plus the starter's own fields. It appends `http({ prefix, port, hostname })`
 to `imports`, prepends `router` to `provides`, prepends `HttpRuntime` to
 `exports`, and hands the augmented tuples to di's own `Module(name)`, whose
 return type is the sugar's. The kernel and both gates see a plain module.
 
-| Option     | Required | Default          | What it is                                                                                                                                                                   |
-| ---------- | -------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`   | yes      | —                | the application's router **provider** — a `Provider<RouterInstance, E, N>` whose port's service is a context-free oRPC router; a provider of anything else fails at the call |
-| `prefix`   | no       | `/rpc`           | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                  |
-| `port`     | no       | read from `PORT` | pins the port instead of reading it                                                                                                                                          |
-| `hostname` | no       | read from `HOST` | pins the host instead of reading it                                                                                                                                          |
-| `imports`  | no       | `[]`             | the application's modules                                                                                                                                                    |
-| `provides` | no       | `[]`             | the application's own providers                                                                                                                                              |
-| `exports`  | no       | `[]`             | the application's own exports; `HttpRuntime` is added                                                                                                                        |
+| Option     | Required | Default          | What it is                                                                                                                                                                 |
+| ---------- | -------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router`   | yes      | —                | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
+| `prefix`   | no       | `/rpc`           | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                |
+| `port`     | no       | read from `PORT` | pins the port instead of reading it                                                                                                                                        |
+| `hostname` | no       | read from `HOST` | pins the host instead of reading it                                                                                                                                        |
+| `imports`  | no       | `[]`             | the application's modules                                                                                                                                                  |
+| `provides` | no       | `[]`             | the application's own providers                                                                                                                                            |
+| `exports`  | no       | `[]`             | the application's own exports; `HttpRuntime` is added                                                                                                                      |
 
 The worked composition root, from `examples/order-api/src/module.ts`:
 
@@ -63,14 +65,14 @@ export const OrderApi = HttpModule("OrderApi")({
 ```
 
 That is exactly the module
-`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule, http({ router: orderRouter.port })], provides: [orderRouter], exports: [HttpRuntime, Logger] })`
+`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule, http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })`
 would have declared.
 
-## `HttpRouter(contract)(name)(deps, { sync })`
+## `HttpRouter(contract)(deps, { sync })`
 
 Contract-first: `contract` is an oRPC router record (`Record<string,
-RouterContract>` — a record, not a bare procedure), `name` becomes the port's
-id, and the last call is di's `Provider(port)(deps, { sync })` with one
+RouterContract>` — a record, not a bare procedure), and the second call is
+di's `Provider(port)(deps, { sync })` on the starter's own router port with one
 difference — `sync` returns an **implementation record shaped like the
 contract** and the router is built from it. Only the `sync` arm exists: a
 router is built, not acquired.
@@ -82,51 +84,52 @@ implementer: `(helpers, input) => AsyncResult<Output, ORPCError>`, where
 a wrong output type is a compile error at the call. `implement(contract)`,
 `os.…`, `.result(...)` and `os.router(...)` are what the call does for you.
 
-Returns `Provider<PortInstance<Name, Router<…>>, never, InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Router<…>> }` —
-`provider.port` is the port class, for `http({ router: provider.port })` and
-whoever else names it. From `examples/order-api/src/router.ts`:
+There is no name to give: a process serves one router as it boots one
+runtime, so the port is the starter's — `Port("HttpRouter")`, declared once,
+framework-owned like `HttpConfig` — and two router providers in one graph are
+di's duplicate-provider defect at build. Returns
+`Provider<PortInstance<"HttpRouter", Router<…>>, never, InstanceType<D[number]>> & { readonly port: PortClassOf<"HttpRouter", Router<…>> }` —
+`provider.port` is the port class, for a hand-declared provider or a type
+test. From `examples/order-api/src/router.ts`:
 
 ```ts
-export const orderRouter = HttpRouter(orderContract)("OrderRouter")(
-  [PlaceOrder, FindOrder],
-  {
-    sync: (place, find) => ({
-      orders: {
-        place: ({ errors }, input) =>
-          place
-            .execute(input.id, input.quantity)
-            .map(view)
-            .mapErrCases((matcher) =>
-              matcher
-                .with(P.tag("InvalidQuantity"), (error) =>
-                  errors.INVALID_QUANTITY({
-                    message: error.message,
-                    data: { id: error.id },
-                  }),
-                )
-                .with(P.tag("DuplicateOrder"), (error) =>
-                  errors.CONFLICT({
-                    message: error.message,
-                    data: { id: error.id },
-                  }),
-                ),
-            ),
-        find: ({ errors }, input) =>
-          find
-            .execute(input.id)
-            .map(view)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("OrderNotFound"), (error) =>
-                errors.NOT_FOUND({
+export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
+  sync: (place, find) => ({
+    orders: {
+      place: ({ errors }, input) =>
+        place
+          .execute(input.id, input.quantity)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
                   message: error.message,
                   data: { id: error.id },
                 }),
               ),
+          ),
+      find: ({ errors }, input) =>
+        find
+          .execute(input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
+                message: error.message,
+                data: { id: error.id },
+              }),
             ),
-      },
-    }),
-  },
-);
+          ),
+    },
+  }),
+});
 ```
 
 An implementation key the contract does not declare is unreachable through
@@ -135,26 +138,27 @@ the types; if one is smuggled past them it is dropped, not defected on.
 ## `http(options)`
 
 ```ts
-const http: <R extends AnyPort>(
-  options: HttpOptions<R>,
-) => Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<R>>;
+const http: (
+  options?: HttpOptions,
+) => Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>;
 ```
 
 The primitive `HttpModule` delegates to, for a composition root written by
-hand. `HttpOptions<R>`:
+hand. `HttpOptions`:
 
-| Option     | Required | Default          | What it is                                                                                                                                                              |
-| ---------- | -------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`   | yes      | —                | the router **port class**, constrained `R & RouterPort<R>`: a port whose service is not a router `RPCHandler` can serve with no initial context fails to typecheck here |
-| `prefix`   | no       | `/rpc`           | where the RPC endpoint is mounted                                                                                                                                       |
-| `port`     | no       | read from `PORT` | pins the port                                                                                                                                                           |
-| `hostname` | no       | read from `HOST` | pins the host                                                                                                                                                           |
+| Option     | Required | Default          | What it is                        |
+| ---------- | -------- | ---------------- | --------------------------------- |
+| `prefix`   | no       | `/rpc`           | where the RPC endpoint is mounted |
+| `port`     | no       | read from `PORT` | pins the port                     |
+| `hostname` | no       | read from `HOST` | pins the host                     |
 
 The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
-**needs** `Env` (the kernel discharges it) and the router port's instance —
+**needs** `Env` (the kernel discharges it) and the starter's router port
+(`HttpRouterPort`, the port `HttpRouter(contract)(deps, arm)` provides on) —
 the runtime provider depends on the router through di, which is why a
-composition that imports `http({ router })` without providing the router
-carries an unmet need `start` refuses (di's gate, not the kernel's). The
+composition that imports `http()` without providing the router carries an
+unmet need `start` refuses (di's gate, not the kernel's). The router is not an
+option: there is no other port it could be on. The
 declared type is the same whether or not a field is pinned: `Env` and
 `ConfigInvalid` stay in the signature, and a pinned config never produces the
 latter.
@@ -164,7 +168,7 @@ latter.
 `HttpConfig` is `{ port, hostname }`, bound through
 [`Config.provider`](/reference/config) from the `Env` port the kernel provides.
 `port` / `hostname` in the options **pin** a field: explicit > environment >
-default, per field, so `http({ router, port: 0 })` still reads `HOST`.
+default, per field, so `http({ port: 0 })` still reads `HOST`.
 
 | Variable | Default   | Parsed by       | Notes                                                                                                |
 | -------- | --------- | --------------- | ---------------------------------------------------------------------------------------------------- |

@@ -11,24 +11,26 @@ the same commit, and with `README.md` — the package ships no
 - **`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })`**
   (`amqp-module.ts`) — THE way an application declares an AMQP deployment:
   `Module(name)({...})` plus the contract and the handlers **provider**. It
-  appends `amqp({ contract, handlers: provider.port, … })` to `imports`,
+  appends `amqp({ contract, … })` to `imports`,
   prepends the provider to `provides` and `AmqpRuntime` to `exports`, and
-  hands the augmented tuples — `Imports<I, HandlersInstance>` / `Provides<P,
-HandlersInstance, HandlersError, HandlersNeeds>`, readonly and exact — to
+  hands the augmented tuples — `Imports<I, TContract>` / `Provides<P,
+TContract, HandlersError, HandlersNeeds>`, readonly and exact — to
   di's own `Module(name)({...})`, whose return type IS the sugar's: nothing
   spelled twice (di exports `AnyModule`, `AnyProvider`, `Exportable` for the
   tuple constraints; a named generic alias for the return was tried and
   removed — declaration emit keeps it unreduced and cannot name imported
   modules' internal ports, TS2883, measured on `HttpModule`). `handlers` is a
-  plain `Provider<HandlersInstance, HandlersError, HandlersNeeds>` whose
-  instance is constrained on the type parameter (`HandlersInstance extends
-PortInstance<string, WorkerInferHandlers<TContract>>`), so a provider whose
-  service is not the contract's handlers fails at the call
-  (`amqp-runtime.test-d.ts` pins the sugar's three directions next to the
-  primitive's); the port class is read off `provider.port` for the delegation
-  (`as never` — the check already happened one level up). The starter it adds
+  plain `Provider<HandlersInstanceOf<TContract>, HandlersError,
+HandlersNeeds>` — a provider on the starter's handlers port typed for THIS
+  contract, which is what `AmqpHandlers(contract)(deps, arm)` returns — so a
+  provider whose service is not the contract's handlers fails at the call,
+  structurally on the record: one built for another contract is refused
+  (`amqp-runtime.test-d.ts` pins it). There is no port to read off it: the
+  starter needs its own port, and the sugar's job is to provide it. The
+  starter it adds
   is typed `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env |
-HandlersInstance>` whether or not `url` is pinned — one declared type, no
+HandlersInstanceOf<TContract>>` whether or not `url` is pinned — one declared
+  type, no
   overload pair — so a pinned composition still carries `ConfigInvalid` in its
   error channel (the package's own `App` fixture type is
   `RunningApp<ConfigInvalid, AmqpInfo>` for that reason). Covered by the
@@ -36,59 +38,76 @@ HandlersInstance>` whether or not `url` is pinned — one declared type, no
   `serveBroken` app through it. `AmqpModuleOptions` is
   the exported options type. `AnyAmqpContract` is exported from
   `amqp-runtime.ts` for the sugar's bound, not from `index.ts`.
-- **`AmqpHandlers(contract)(name)` → `ReturnType<typeof Provider<PortClassOf<Name, WorkerInferHandlers<C>>>>`**
+- **`AmqpHandlersPort` / `HandlersPortOf<C>` / `HandlersInstanceOf<C>`**
+  (`amqp-runtime.ts`, exported from the file for the package's own tests,
+  **not** from `index.ts`) — the handlers' port, one id, the starter's own:
+  `Port("AmqpHandlers")`, declared once. A consumer serves one handlers record
+  as it boots one runtime (thesis #1), so there is nothing to name and the
+  port is framework-owned like `AmqpConfig`; two providers for it in one graph
+  are di's duplicate-provider defect at build, which is correct. It is
+  **generic at the value level and typed per contract at the type level** —
+  `HandlersPortOf<C>` is `PortClassOf<"AmqpHandlers", WorkerInferHandlers<C>>`,
+  `HandlersInstanceOf<C>` its `PortInstance` — the same move the kernel's
+  `RuntimePort` makes, so one `Port(...)` call (no duplicate-id warning
+  however many contracts instantiate it) still refuses a provider built for
+  one contract handed to a module declaring another.
+- **`AmqpHandlers(contract)` → `ReturnType<typeof Provider<HandlersPortOf<C>>>`**
   (`amqp-runtime.ts`) — the way to the handlers provider `AmqpModule` takes,
-  next to it: the first two calls mint the port (`class extends
-Port(name)<WorkerInferHandlers<C>> {} as PortClassOf<Name, WorkerInferHandlers<C>>`) and
-  return di's own `Provider(port)`, so the last call is exactly
+  next to it: the one call fixes `C` and returns di's own `Provider(port)` on
+  `AmqpHandlersPort as HandlersPortOf<C>`, so the next call is exactly
   `Provider(port)(deps, arm)` — any arm, same typing, checked against the
   contract's record before any module sees it — and the provider carries the
-  port typed (`provider.port`, di's `& { readonly port: P }`). The class is
-  cast to di's `PortClassOf<Name, WorkerInferHandlers<C>>` (`{ portId: Name;
-new (): PortInstance<Name, WorkerInferHandlers<C>> }`, the one nameable
-  spelling of a minted port class) because the class expression's own type
-  expands the brand keys in declaration emit and cannot be named (TS4023,
-  measured on `HttpRouter`).
+  port typed (`provider.port`, di's `& { readonly port: P }`, for a
+  hand-declared provider or a type test). No name, no class line.
   The contract argument is a value the type alone reads (`_contract`). Same
-  shape as `@btravstack/http`'s `HttpRouter(name)` and
-  `@btravstack/config`'s `Config.provider(name)(schema)`. A hand-declared port
-  plus `Provider(port)(…)` still works everywhere the minted one does. The
-  package's fixtures mint `EchoHandlers` through it, and
-  `amqp-runtime.test-d.ts` pins that a minted provider satisfies both
-  `AmqpModule` and `amqp({ handlers: provider.port })`, and that an arm
-  missing a consumer is refused at the `AmqpHandlers` call.
-- **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | H>`**
+  shape as `@btravstack/http`'s `HttpRouter(contract)` and
+  `@btravstack/temporal`'s `TemporalActivities(contract)` — unlike
+  `@btravstack/config`'s `Config.provider(name)(schema)`, which keeps its
+  name because several config slices per application is normal. A
+  hand-written `Provider(port)(…)` over the same port still works everywhere
+  this one does. The package's fixtures build every handlers provider off
+  `AmqpHandlers(echoContract)`, and `amqp-runtime.test-d.ts` pins that such a
+  provider satisfies both `AmqpModule` and a hand-written `Module` importing
+  `amqp({ contract })`; that a record missing a consumer, or with a typo'd
+  key, is refused at the `AmqpHandlers(contract)(…)` call; that a provider
+  built for another contract is refused by `AmqpModule`; and that a
+  hand-declared port of another id leaves the starter's need unmet, so
+  `start` refuses the module.
+- **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>`**
   — the starter, the same shape as `@btravstack/http`'s `http()`. It provides
   the runtime on **`AmqpRuntime`** (`extends RuntimePort<Runtime<never,
 AmqpInfo>>` — the runtime has **no** needs) and the broker on
   **`AmqpConfig`** (`{ url }`, bound from `AMQP_URL`, default
-  `amqp://127.0.0.1:5672`), and it **needs** the handlers port `H` the
-  application provides. The composition root imports it, provides `handlers`,
-  exports `AmqpRuntime`; di's own gate checks the need where the root is
-  declared, and `start` refuses a module whose needs channel still carries it
+  `amqp://127.0.0.1:5672`), and it **needs** its handlers port, typed for
+  `contract`, which the application provides. The composition root imports
+  it, provides the handlers, exports `AmqpRuntime`; di's own gate checks the
+  need where the root is declared, and `start` refuses a module whose needs
+  channel still carries it
   (`examples/order-amqp-worker/src/needs-gate.test-d.ts` pins that
   diagnostic, since `start`'s own gate has no `UNSATISFIED RUNTIME NEEDS` arm
   to fire any more).
-  `AmqpOptions<TContract, H>` — `contract: TContract` (`TContract` bounded by
+  `AmqpOptions<TContract>` — `contract: TContract` (`TContract` bounded by
   `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, never imported
-  by name), `handlers: H & HandlersPort<H, TContract>`, `url?` (pinning it reads
+  by name; there is no `handlers` option), `url?` (pinning it reads
   nothing from the environment; the declared type stays `Module<AmqpRuntime |
-AmqpConfig, ConfigInvalid, Env | H>` either way, one signature — see the
+AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>` either way,
+  one signature — see the
   sugar entry above), `connectionOptions`, `defaultConsumerOptions`,
   `connectTimeoutMs` (a top-level `CreateWorkerOptions` field, **not** nested
   under `connectionOptions`, where setting it is silently inert — an
   unreachable broker takes the library's 30s default to report without it).
   `AmqpInfo` is `{ queues }`, published on `Serving.info` once consuming.
-- **`handlers` is a PORT whose service is `WorkerInferHandlers<TContract>`** —
+- **The handlers port's service is `WorkerInferHandlers<TContract>`** —
   the record `TypedAmqpWorker.create` takes, with **no injected context**.
-  `HandlersPort<H, TContract>` is `unknown` when `ServiceOf<H>` is that record
-  and `never` otherwise, intersected with `H` at the call site — the same
-  trick the oRPC starter's `RouterPort` uses for its router port — so a port
-  whose service misses a consumer or names one the contract does not declare
-  fails to typecheck at `amqp(...)`, not on the first delivery
-  (`amqp-runtime.test-d.ts` pins both directions). Inside, `handlers as
-WorkerInferHandlers<TContract>` is **the one cast in the package**: the
-  constraint proved it at the call site and `H` alone cannot say so again.
+  Inside, `Provider(AmqpRuntime)([AmqpConfig, AmqpHandlersPort as
+HandlersPortOf<TContract>], { sync })` — the port rides di, typed for the
+  contract, so `sync` reads the record through it and hands it to `create`
+  with no cast on the record itself: the former `handlers as
+WorkerInferHandlers<TContract>` is gone, and `AmqpHandlersPort as
+HandlersPortOf<…>` (here and in `AmqpHandlers`) is the only cast the record
+  meets. A record that misses a consumer or names one the contract does not
+  declare fails to typecheck at `AmqpHandlers(contract)(…)`, not on the first
+  delivery (`amqp-runtime.test-d.ts` pins both directions).
   There is no `needs`, no builder, no `messageUnits(host)` for a consumer to
   place, and no `MessageUnitContext`: a handler is built by di from the
   services its provider declares, and reads nothing out of a context.
@@ -124,7 +143,7 @@ not a defect"` guards it). `create` never throws synchronously (its own
   survives.
 - **`@amqp-contract/worker` is a peer; `@amqp-contract/contract` is not.**
   The package's value imports (`TypedAmqpWorker`) and its public types
-  (`WorkerInferHandlers`, through `HandlersPort`) live in `worker`, and
+  (`WorkerInferHandlers`, through `HandlersInstanceOf`) live in `worker`, and
   bundling it cost two orders of magnitude of dist size: 344 KB, measured at
   the commit where it was still bundled, against **~6 KB** peered (`pnpm
 --filter @btravstack/amqp build`'s own report — re-measure rather than
@@ -160,7 +179,7 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
 - **The suite needs Docker** (`@amqp-contract/testing` boots one RabbitMQ per
   run); its fixtures compose `AmqpModule("Consuming")({ contract:
 echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
-  with a provider per test from `AmqpHandlers(echoContract)("EchoHandlers")`
-  — from `Greeting`, or a value — so the module reads no environment.
+  with a provider per test from `AmqpHandlers(echoContract)` — from
+  `Greeting`, or a value — so the module reads no environment.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
   `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`.

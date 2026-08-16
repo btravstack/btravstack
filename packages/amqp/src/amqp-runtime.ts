@@ -11,8 +11,8 @@ import {
   Module,
   Port,
   Provider,
-  type AnyPort,
   type PortClassOf,
+  type PortInstance,
   type ServiceOf,
 } from "@btravstack/di";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
@@ -39,20 +39,40 @@ export class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}
 export type AnyAmqpContract = Parameters<typeof TypedAmqpWorker.create>[0]["contract"];
 
 /**
- * `unknown` when the port's service is the handlers record `TContract` wants
- * with no injected context — `WorkerInferHandlers<TContract>` — and `never`
- * otherwise; intersected with `H` at the call site, so a port whose service
- * is not the contract's handlers fails to typecheck there rather than at the
- * first delivery. A handler is built by di from the services it declares, so
- * there is no context for the middleware to hand it.
+ * The handlers' port — one id, the starter's own. A consumer serves one
+ * handlers record as it boots one runtime, so the port is framework-owned
+ * like `AmqpConfig`, and an application never names it:
+ * `AmqpHandlers(contract)(deps, arm)` returns the provider that targets it.
+ * Left generic at the value level (one `Port(...)` call, one id, no
+ * duplicate-id warning however many contracts instantiate it) and fixed per
+ * contract at the type level through `HandlersPortOf<C>` — the same move the
+ * kernel's `RuntimePort` makes — so a provider built for one contract cannot
+ * be handed to a module declaring another. Exported from this file for the
+ * package's own tests, not from `index.ts`.
  */
-type HandlersPort<H extends AnyPort, TContract extends AnyAmqpContract> =
-  ServiceOf<H> extends WorkerInferHandlers<TContract> ? unknown : never;
+export const AmqpHandlersPort = Port("AmqpHandlers");
 
-export type AmqpOptions<TContract extends AnyAmqpContract, H extends AnyPort> = {
+/** The handlers port class, typed for `C`: what `AmqpHandlers(contract)(…).port` is. */
+export type HandlersPortOf<C extends AnyAmqpContract> = PortClassOf<
+  "AmqpHandlers",
+  WorkerInferHandlers<C>
+>;
+
+/** The handlers port's instance for `C` — the module's one need. */
+export type HandlersInstanceOf<C extends AnyAmqpContract> = PortInstance<
+  "AmqpHandlers",
+  WorkerInferHandlers<C>
+>;
+
+export type AmqpOptions<TContract extends AnyAmqpContract> = {
+  /**
+   * The contract; the handlers port is typed by it — one handler per
+   * `consumers` / `rpcs` key, `WorkerInferHandlers<TContract>` with no
+   * injected context (a handler is built by di from the services it declares,
+   * so there is no context for the middleware to hand it) — and the
+   * composition root provides it through `AmqpHandlers(contract)(deps, arm)`.
+   */
   readonly contract: TContract;
-  /** The port the application provides its handlers on — one per `consumers` / `rpcs` key of `contract`. */
-  readonly handlers: H & HandlersPort<H, TContract>;
   /** Pins the broker instead of reading `AMQP_URL` — a test's container. */
   readonly url?: string;
   readonly connectionOptions?: Record<string, unknown>;
@@ -69,18 +89,19 @@ export type AmqpOptions<TContract extends AnyAmqpContract, H extends AnyPort> = 
 /**
  * The AMQP starter: a module providing the runtime (`AmqpRuntime`) and its
  * configuration (`AmqpConfig`, bound from `AMQP_URL` unless pinned here),
- * built over the handlers port the application provides. Import it next to
- * the application, provide `handlers`, export `AmqpRuntime` — that is the
- * whole of the transport wiring. The handlers port is the module's one need,
- * which di's own gate checks where the composition root is declared.
+ * built over the handlers the application provides on the starter's own
+ * handlers port (`AmqpHandlers(contract)(deps, arm)`). Import it next to the
+ * application, provide the handlers, export `AmqpRuntime` — that is the whole
+ * of the transport wiring. The handlers port is the module's one need, which
+ * di's own gate checks where the composition root is declared.
  *
  * With `url` pinned the module reads nothing from the environment (the
  * declared `Env` need and `ConfigInvalid` stay — the kernel discharges the
  * one, a pinned config never produces the other).
  */
-export const amqp = <TContract extends AnyAmqpContract, H extends AnyPort>(
-  options: AmqpOptions<TContract, H>,
-): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | InstanceType<H>> => {
+export const amqp = <TContract extends AnyAmqpContract>(
+  options: AmqpOptions<TContract>,
+): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>> => {
   const config =
     options.url === undefined
       ? Config.provider(AmqpConfig)(
@@ -92,15 +113,11 @@ export const amqp = <TContract extends AnyAmqpContract, H extends AnyPort>(
   return Module("Amqp")({
     provides: [
       config,
-      Provider(AmqpRuntime)([AmqpConfig, options.handlers], {
+      Provider(AmqpRuntime)([AmqpConfig, AmqpHandlersPort as HandlersPortOf<TContract>], {
         sync: (c, handlers): Runtime<never, AmqpInfo> => ({
           name: "amqp",
           needs: [],
-          // The one cast in the package: `HandlersPort` proved the service is
-          // the contract's handlers at the call site, and `H` alone cannot
-          // say so again here.
-          start: (host) =>
-            createWorker(host, c, options, handlers as WorkerInferHandlers<TContract>),
+          start: (host) => createWorker(host, c, options, handlers),
         }),
       }),
     ],
@@ -109,29 +126,23 @@ export const amqp = <TContract extends AnyAmqpContract, H extends AnyPort>(
 };
 
 /**
- * The handlers' port and provider in one call: `AmqpHandlers(orderContract)("OrderHandlers")([Logger],
- * { sync: (logger) => ({ orderChanged: (message) => … }) })` — each handler a plain
- * function of the message its consumer declares, typed by the contract, with
- * nothing to wrap it in (`WorkerInferHandlers<C>` accepts the bare function).
- * The first two calls mint a port named `name` whose service is the handlers
- * record `contract` wants — `WorkerInferHandlers<C>`, the one shape `amqp()`
- * accepts — and return di's own `Provider(port)`, so the last call is exactly
- * what it is everywhere else: any arm, same typing, and the provider it hands
- * back carries the port typed (`orderHandlers.port`) for
- * `AmqpModule({ handlers: orderHandlers })` and for whoever else names it.
- * The class line is what disappears.
+ * The handlers as a provider, from the contract:
+ * `AmqpHandlers(orderContract)([Logger], { sync: (logger) => ({ orderChanged:
+ * (message) => … }) })` — each handler a plain function of the message its
+ * consumer declares, typed by the contract, with nothing to wrap it in
+ * (`WorkerInferHandlers<C>` accepts the bare function). The first call fixes
+ * the contract and returns di's own `Provider(port)` on the starter's handlers
+ * port typed for it — `WorkerInferHandlers<C>`, the one shape `amqp()`
+ * accepts — so the second call is exactly what it is everywhere else: any
+ * arm, same typing. There is no name to give: a consumer serves one handlers
+ * record, so the port is the starter's, and the provider carries it typed
+ * (`orderHandlers.port`) for whoever needs the class. The class line is what
+ * disappears.
  */
-export const AmqpHandlers =
-  <C extends AnyAmqpContract>(_contract: C) =>
-  <const Name extends string>(
-    name: Name,
-  ): ReturnType<typeof Provider<PortClassOf<Name, WorkerInferHandlers<C>>>> =>
-    Provider(
-      class extends Port(name)<WorkerInferHandlers<C>> {} as PortClassOf<
-        Name,
-        WorkerInferHandlers<C>
-      >,
-    );
+export const AmqpHandlers = <C extends AnyAmqpContract>(
+  _contract: C,
+): ReturnType<typeof Provider<HandlersPortOf<C>>> =>
+  Provider(AmqpHandlersPort as HandlersPortOf<C>);
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>
   new RuntimeStartFailed({ runtime: "amqp", cause });
@@ -148,10 +159,10 @@ const queuesOf = (contract: AnyAmqpContract): readonly string[] =>
     ),
   ].sort();
 
-const createWorker = <TContract extends AnyAmqpContract, H extends AnyPort>(
+const createWorker = <TContract extends AnyAmqpContract>(
   host: RuntimeHost<never>,
   config: ServiceOf<AmqpConfig>,
-  options: AmqpOptions<TContract, H>,
+  options: AmqpOptions<TContract>,
   handlers: WorkerInferHandlers<TContract>,
 ): AsyncResult<Serving<AmqpInfo>, RuntimeStartFailed> =>
   TypedAmqpWorker.create({

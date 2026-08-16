@@ -86,29 +86,40 @@ export const OrderApi = HttpModule("OrderApi")({
 
 The kernel and both gates see nothing new — `OrderApi` is a `Module`, and
 `await runMain(OrderApi, { unit: RequestModule })` is the whole `main.ts`. The
-plain starter (`http({ router })`, `temporal({...})`, `amqp({...})`) stays
+plain starter (`http()`, `temporal({...})`, `amqp({...})`) stays
 exported as the primitive the sugar delegates to; the sugar is syntax over
 the same module, not a second way.
 
 ## The port-and-provider sugar
 
 What the application supplies to a starter — a router, an activities record,
-a handlers record, a config slice — is a **service on a port**, and each
-starter ships one call that mints the port and returns di's own provider
-builder:
+a handlers record — is a **service on a port**, and each starter ships one
+call that returns di's own provider builder on that port:
 
-- `HttpRouter(contract)(name)(deps, { sync })`
-- `TemporalActivities(contract)(name)(deps, arm)`
-- `AmqpHandlers(contract)(name)(deps, arm)`
-- `Config.provider(name)(schema)`
+- `HttpRouter(contract)(deps, { sync })`
+- `TemporalActivities(contract)(deps, arm)`
+- `AmqpHandlers(contract)(deps, arm)`
 
-The first call fixes the contract (or schema), the second mints
-`class extends Port(name)<Service> {}` and hands back `Provider(port)`, so the
-last call is `Provider(port)(deps, arm)` exactly as everywhere else in the
-graph, and the provider carries its port typed as `provider.port` for
-whoever needs to name it. The class line and its service type are what
-disappear from application code; the port stays a real di port, private or
-exported like any other.
+The first call fixes the contract and hands back `Provider(port)`, so the
+second is `Provider(port)(deps, arm)` exactly as everywhere else in the
+graph. **The port is the starter's, and nothing names it.** A process serves
+one router, one activities record, one handlers record as it boots one
+runtime, so there is nothing to tell apart: the port is fixed and
+framework-owned — `Port("HttpRouter")`, `Port("TemporalActivities")`,
+`Port("AmqpHandlers")`, each declared once, like `HttpConfig` or
+`HttpRuntime` — and two providers for it in one graph are di's
+duplicate-provider defect at build. The class line, its service type and the
+name are what disappear from application code; the port stays a real di
+port, carried typed on the provider as `provider.port` for a hand-declared
+provider or a type test. For Temporal and AMQP the port is one id at the
+value level and typed per contract at the type level (the move the kernel's
+`RuntimePort` makes), so a provider built for one contract still cannot be
+handed to a `TemporalModule` / `AmqpModule` declaring another — the check
+is structural, on the record, rather than on a name.
+
+`Config.provider(name)(schema)` is the same curried shape and **keeps its
+name**: several config slices per application is normal, and the name is
+what `ConfigInvalid` prints.
 
 **The contract types the record, and nothing wraps a leaf.** An oRPC procedure
 is a plain `Result`-returning function typed by the contract at the call — the
@@ -126,7 +137,7 @@ against the module's exports. **No shipped starter uses it any more.** Each
 takes the application's router / activities / handlers as a port its runtime
 provider _depends on_ through di — `Provider(HttpRuntime)([HttpConfig, HttpHandler], …)` where `HttpHandler`
 is built from the router port, `Provider(AmqpRuntime)([AmqpConfig,
-options.handlers], …)` — so their `Needs` is `never` and `RuntimeHost.ctx`
+AmqpHandlersPort], …)` — so their `Needs` is `never` and `RuntimeHost.ctx`
 goes unread.
 
 The reason is not tidiness. A port's service type is fixed at declaration, so
@@ -136,7 +147,7 @@ be one class in `@btravstack/http`, and its type cannot mention a port only
 the application knows. Making the router a dependency of the runtime's
 provider moves that knowledge to where it exists — the composition root that
 provides the router — and di's own gate checks it there: a root that imports
-`http({ router })` without providing the router carries an unmet need `start`
+`http()` without providing the router carries an unmet need `start`
 refuses. The kernel keeps `Runtime.needs`, `RunUnit`'s typed `ctx` and the
 `UNSATISFIED RUNTIME NEEDS` arm as the general contract for a hand-rolled
 runtime; the starters simply do not need them.

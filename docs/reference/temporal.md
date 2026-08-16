@@ -22,8 +22,8 @@ description: The Temporal worker starter — TemporalModule, TemporalActivities,
 | ----------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TemporalModule`        | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the activities provider |
 | `TemporalModuleOptions` | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                  |
-| `TemporalActivities`    | value | `TemporalActivities(contract)(name)` — mints the activities port and returns di's `Provider(port)` builder, so the next call is `(deps, arm)`                                                                    |
-| `temporal`              | value | `temporal({ contract, activities, workflows, … })` — the starter module itself, over an activities **port class**; what `TemporalModule` imports                                                                 |
+| `TemporalActivities`    | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `(deps, arm)`                                                     |
+| `temporal`              | value | `temporal({ contract, workflows, … })` — the starter module itself, needing the activities port for `contract`; what `TemporalModule` imports                                                                    |
 | `TemporalOptions`       | type  | `temporal()`'s options                                                                                                                                                                                           |
 | `TemporalRuntime`       | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                |
 | `TemporalConfig`        | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string }> {}` — where the service is, bound from the environment                                                              |
@@ -32,33 +32,35 @@ description: The Temporal worker starter — TemporalModule, TemporalActivities,
 | `TemporalInfo`          | type  | `{ readonly taskQueue: string; readonly namespace: string }` — published on `Serving.info` once polling                                                                                                          |
 | `WorkflowSource`        | type  | `{ workflowsPath: string } \| { workflowBundle: WorkflowBundleWithSourceMap }` — where the sandbox's code comes from                                                                                             |
 
-`ActivitiesOf<C>` — `DeclareActivitiesHandlerOptions<C>["activities"]`, the
-implementations record `declareActivitiesHandler` takes for a contract — is
-the service type of the port `TemporalActivities` mints. It lives in
-`src/temporal-runtime.ts` and is **not** exported from the entry point; a
-hand-declared port spells it through `@temporal-contract/worker/activity`'s
-own type instead.
+`TemporalActivitiesPort` — `Port("TemporalActivities")`, the starter's own
+activities port, declared once — with `ActivitiesPortOf<C>` /
+`ActivitiesInstanceOf<C>` (that port's class and instance typed for `C`) and
+`ActivitiesOf<C>` (`DeclareActivitiesHandlerOptions<C>["activities"]`, the
+implementations record `declareActivitiesHandler` takes, its service) live in
+`src/temporal-runtime.ts` and are **not** exported from the entry point: the
+port is reached as `provider.port` when a caller needs it, and the types are
+inferred at the call.
 
 ## `TemporalModule(name)({...})`
 
 Everything `Module(name)({...})` takes, plus the contract, the activities
 provider and the workflow source. It appends
-`temporal({ contract, activities: activities.port, workflows, … })` to
+`temporal({ contract, workflows, … })` to
 `imports`, prepends `activities` to `provides`, prepends `TemporalRuntime` to
 `exports`, and hands the augmented tuples to di's own `Module(name)`.
 
-| Option        | Required | Default                        | What it is                                                                                                                                                              |
-| ------------- | -------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract`    | yes      | —                              | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                             |
-| `activities`  | yes      | —                              | the activities **provider** — a `Provider<ActivitiesInstance, E, N>` whose port's service is the implementations record for `contract`; anything else fails at the call |
-| `workflows`   | yes      | —                              | a `WorkflowSource`                                                                                                                                                      |
-| `address`     | no       | read from `TEMPORAL_ADDRESS`   | pins `TemporalConfig.address`                                                                                                                                           |
-| `namespace`   | no       | read from `TEMPORAL_NAMESPACE` | pins `TemporalConfig.namespace`                                                                                                                                         |
-| `gracePeriod` | no       | `"10 seconds"`                 | Temporal's `shutdownGraceTime`, a `Duration`                                                                                                                            |
-| `forceAfter`  | no       | `"15 seconds"`                 | Temporal's `shutdownForceTime`, a `Duration`; keep it at or below the kernel's `drainTimeoutMs`                                                                         |
-| `imports`     | no       | `[]`                           | the application's modules                                                                                                                                               |
-| `provides`    | no       | `[]`                           | the application's own providers                                                                                                                                         |
-| `exports`     | no       | `[]`                           | the application's own exports; `TemporalRuntime` is added                                                                                                               |
+| Option        | Required | Default                        | What it is                                                                                                                                                                                                  |
+| ------------- | -------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract`    | yes      | —                              | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                 |
+| `activities`  | yes      | —                              | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)(deps, arm)` returns for **this** `contract`; one built for another contract fails at the call |
+| `workflows`   | yes      | —                              | a `WorkflowSource`                                                                                                                                                                                          |
+| `address`     | no       | read from `TEMPORAL_ADDRESS`   | pins `TemporalConfig.address`                                                                                                                                                                               |
+| `namespace`   | no       | read from `TEMPORAL_NAMESPACE` | pins `TemporalConfig.namespace`                                                                                                                                                                             |
+| `gracePeriod` | no       | `"10 seconds"`                 | Temporal's `shutdownGraceTime`, a `Duration`                                                                                                                                                                |
+| `forceAfter`  | no       | `"15 seconds"`                 | Temporal's `shutdownForceTime`, a `Duration`; keep it at or below the kernel's `drainTimeoutMs`                                                                                                             |
+| `imports`     | no       | `[]`                           | the application's modules                                                                                                                                                                                   |
+| `provides`    | no       | `[]`                           | the application's own providers                                                                                                                                                                             |
+| `exports`     | no       | `[]`                           | the application's own exports; `TemporalRuntime` is added                                                                                                                                                   |
 
 The worked composition root, from
 `examples/order-temporal-worker/src/module.ts`:
@@ -74,91 +76,97 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 });
 ```
 
-## `TemporalActivities(contract)(name)`
+## `TemporalActivities(contract)`
 
 The first call fixes `C` (the contract value is otherwise unused; it exists so
-`C` is inferred rather than written). The second mints
-`class extends Port(name)<ActivitiesOf<C>> {}` and returns
-`ReturnType<typeof Provider<PortClassOf<Name, ActivitiesOf<C>>>>` — di's own
-`Provider(port)` builder — so the third call is di's `(deps, arm)` unchanged:
-any arm, the usual typing, and the provider it returns carries the port typed
-as `provider.port`. Each activity is a plain function typed by the contract
-(`(args, { errors }) => AsyncResult<…>`), closing over the services the
-provider declared; nothing is read from a context.
+`C` is inferred rather than written) and returns `ReturnType<typeof
+Provider<ActivitiesPortOf<C>>>` — di's own `Provider(port)` builder on the
+starter's activities port, typed for `C` — so the second call is di's `(deps,
+arm)` unchanged: any arm, the usual typing, and the provider it returns carries
+the port typed as `provider.port`. There is no name to give: a worker serves
+one activities record as it polls one task queue, so the port is the starter's
+— one `Port("TemporalActivities")`, generic at the value level and fixed per
+contract at the type level (`ActivitiesPortOf<C>`, the move the kernel's
+`RuntimePort` makes) — and two activities providers in one graph are di's
+duplicate-provider defect at build. Each activity is a plain function typed by
+the contract (`(args, { errors }) => AsyncResult<…>`), closing over the
+services the provider declared; nothing is read from a context.
 
 From `examples/order-temporal-worker/src/activities.ts`:
 
 ```ts
 export const orderActivities = TemporalActivities(orderContract)(
-  "OrderActivities",
-)([PlaceOrder, OrderRepository, StockService, ShippingService], {
-  sync: (place, repository, stock, shipping) => ({
-    fulfillOrder: {
-      place: (args, { errors }) =>
-        place
-          .execute(args.orderId, args.quantity)
-          .map((order) => ({ id: order.id, quantity: order.quantity }))
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.InvalidQuantity({ id: error.id }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.OrderAlreadyPlaced({ id: error.id }),
+  [PlaceOrder, OrderRepository, StockService, ShippingService],
+  {
+    sync: (place, repository, stock, shipping) => ({
+      fulfillOrder: {
+        place: (args, { errors }) =>
+          place
+            .execute(args.orderId, args.quantity)
+            .map((order) => ({ id: order.id, quantity: order.quantity }))
+            .mapErrCases((matcher) =>
+              matcher
+                .with(P.tag("InvalidQuantity"), (error) =>
+                  errors.InvalidQuantity({ id: error.id }),
+                )
+                .with(P.tag("DuplicateOrder"), (error) =>
+                  errors.OrderAlreadyPlaced({ id: error.id }),
+                ),
+            ),
+        reserveStock: (args, { errors }) =>
+          stock
+            .reserve(args.orderId, args.quantity)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("OutOfStock"), (error) =>
+                errors.OutOfStock({ id: error.id }),
               ),
-          ),
-      reserveStock: (args, { errors }) =>
-        stock
-          .reserve(args.orderId, args.quantity)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OutOfStock"), (error) =>
-              errors.OutOfStock({ id: error.id }),
             ),
-          ),
-      arrangeShipping: (args, { errors }) =>
-        shipping
-          .arrange(args.orderId)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("ShippingUnavailable"), (error) =>
-              errors.ShippingUnavailable({ id: error.id }),
+        arrangeShipping: (args, { errors }) =>
+          shipping
+            .arrange(args.orderId)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("ShippingUnavailable"), (error) =>
+                errors.ShippingUnavailable({ id: error.id }),
+              ),
             ),
-          ),
-      releaseStock: (args) => stock.release(args.orderId),
-      cancelPlacement: (args) =>
-        repository
-          .remove(args.orderId)
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), () => undefined),
-          ),
-    },
-  }),
-});
+        releaseStock: (args) => stock.release(args.orderId),
+        cancelPlacement: (args) =>
+          repository
+            .remove(args.orderId)
+            .recoverErrCases((matcher) =>
+              matcher.with(P.tag("OrderNotFound"), () => undefined),
+            ),
+      },
+    }),
+  },
+);
 ```
 
-A hand-declared port plus `Provider(port)(…)` still works everywhere the
-minted one does.
+A hand-written `Provider(orderActivities.port)(…)` targets the same port; a
+port declared under any other id leaves the starter's need unmet, and `start`
+refuses the module.
 
 ## `temporal(options)`
 
 ```ts
-const temporal: <C extends ContractDefinition, A extends AnyPort>(
-  options: TemporalOptions<C, A>,
+const temporal: <C extends ContractDefinition>(
+  options: TemporalOptions<C>,
 ) => Module<
   TemporalRuntime | TemporalConfig | TemporalConnection,
   ConfigInvalid | TemporalUnreachable,
-  Env | Scope | InstanceType<A>
+  Env | Scope | ActivitiesInstanceOf<C>
 >;
 ```
 
-The primitive `TemporalModule` delegates to. `TemporalOptions<C, A>` has the
-same fields as the sugar minus `imports` / `provides` / `exports`, with
-`activities` the **port class** constrained `A & ActivitiesPort<A, C>` — a
-port whose service is not the implementations record for `contract` fails to
-typecheck here. The module provides and exports all three ports, and
-**needs** `Env` (the kernel discharges it), `Scope` (the connection is a
-resource; `start` discharges it too) and the activities port's instance — the
-runtime provider depends on it through di, so a root that does not provide it
-is refused at `start`.
+The primitive `TemporalModule` delegates to. `TemporalOptions<C>` has the
+same fields as the sugar minus `activities` / `imports` / `provides` /
+`exports`: the activities are not an option but the module's need. It
+provides and exports all three ports, and **needs** `Env` (the kernel
+discharges it), `Scope` (the connection is a resource; `start` discharges it
+too) and the activities port typed for `contract` (`ActivitiesInstanceOf<C>`)
+— the runtime provider depends on it through di, so a root that does not
+provide it, or provides one built for another contract, is refused at
+`start`.
 
 The declared type is the same pinned or not: `Env`, `ConfigInvalid` and
 `TemporalUnreachable` stay in the signature whatever is pinned.

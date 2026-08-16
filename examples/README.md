@@ -157,13 +157,15 @@ queue job id or a task token already is.
 A runtime is a service the composition root exports, on a port each starter
 ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
 `AmqpRuntime`), and every application-specific thing a runtime used to
-resolve is now a **port its provider depends on** through di, minted with the
-starter's own sugar: `order-api`'s `orderRouter = HttpRouter(orderContract)("OrderRouter")([PlaceOrder,
+resolve is now a **port its provider depends on** through di — the starter's
+own fixed port, provided with the starter's own sugar and never named (a
+process serves one router / activities record / handlers record as it boots
+one runtime): `order-api`'s `orderRouter = HttpRouter(orderContract)([PlaceOrder,
 FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`; `order-temporal-worker`'s `orderActivities =
-TemporalActivities(orderContract)("OrderActivities")([…four ports…], { sync })`;
-`order-amqp-worker`'s `orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")([Logger],
-{ sync })` — port and provider in one call, `provider.port` where the port is
-named, and each composition root the matching `HttpModule` / `TemporalModule` /
+TemporalActivities(orderContract)([…four ports…], { sync })`;
+`order-amqp-worker`'s `orderHandlers = AmqpHandlers(orderContract)([Logger],
+{ sync })` — di's own `Provider(port)(deps, arm)` on that port, typed by the
+contract, and each composition root the matching `HttpModule` / `TemporalModule` /
 `AmqpModule` taking the provider. No starter
 declares a `needs` any more — all three runtimes are `Runtime<never, Info>`
 — so `start`'s `UNSATISFIED RUNTIME NEEDS` arm is exercised only by the

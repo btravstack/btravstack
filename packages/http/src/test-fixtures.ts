@@ -70,8 +70,8 @@ const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
   nested: { ping: () => OkAsync("pong") },
 });
 
-/** The router as a service, built from the greeter it declares — contract-first, port and provider minted by `HttpRouter`. */
-const greetingRouter = HttpRouter(greetingContract)("GreetingRouter")([Greeter], {
+/** The router as a service, built from the greeter it declares — contract-first, on the starter's own router port. */
+const greetingRouter = HttpRouter(greetingContract)([Greeter], {
   sync: greetingImplementation,
 });
 
@@ -80,7 +80,7 @@ const greetingRouter = HttpRouter(greetingContract)("GreetingRouter")([Greeter],
  * reachable past the types (the assertion is the bypass), which is what
  * `routerOf`'s own guard exists for: the stray key is dropped, not defected on.
  */
-const strayRouter = HttpRouter(greetingContract)("StrayRouter")([Greeter], {
+const strayRouter = HttpRouter(greetingContract)([Greeter], {
   sync: (greeter) =>
     ({ ...greetingImplementation(greeter), stray: () => OkAsync("stray") }) as ReturnType<
       typeof greetingImplementation
@@ -88,17 +88,14 @@ const strayRouter = HttpRouter(greetingContract)("StrayRouter")([Greeter], {
 });
 
 /** The starter as an application uses it: `HttpModule` sugar over a router provider. */
-const rpcAppOf = (prefix?: `/${string}`, stray = false) => {
-  const options = {
+const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
+  HttpModule("RpcApp")({
+    router: stray ? strayRouter : greetingRouter,
     port: 0,
     hostname: "127.0.0.1",
     ...(prefix === undefined ? {} : { prefix }),
     provides: [Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } })],
-  } as const;
-  return stray
-    ? HttpModule("RpcApp")({ router: strayRouter, ...options })
-    : HttpModule("RpcApp")({ router: greetingRouter, ...options });
-};
+  });
 
 /** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
 class BoundConfig extends Port("BoundConfig")<{ readonly value: ServiceOf<HttpConfig> }> {}
@@ -188,7 +185,7 @@ export type HttpFixtures = {
     readonly config: () => ServiceOf<HttpConfig> | undefined;
   };
   /**
-   * The starter proper — `http({ router })` over a router provider — on an
+   * The starter proper — `HttpModule` over a router provider — on an
    * ephemeral port, with a typed oRPC client pointed at it. Shut down by the
    * fixture.
    */

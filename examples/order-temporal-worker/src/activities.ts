@@ -10,10 +10,10 @@ import { P } from "unthrown";
 
 /**
  * The saga's five activities, as a service: the record `declareActivitiesHandler`
- * takes for `orderContract`, on the port `@btravstack/temporal`'s starter
- * resolves it from — `TemporalActivities(orderContract)("OrderActivities")`
- * mints the port and hands back di's provider builder, so the port is
- * `orderActivities.port` and no class names it. Nothing here is a runtime —
+ * takes for `orderContract`, on the starter's own activities port —
+ * `TemporalActivities(orderContract)` is di's provider builder on that port,
+ * typed for the contract, so no class and no name appear here (a worker
+ * serves one activities record). Nothing here is a runtime —
  * the Worker's lifecycle, the unit per activity attempt and the release at
  * the kernel's deadline are the package's. This is the application's half:
  * the triage from a domain `Err` to a declared contract error, closing over
@@ -47,7 +47,7 @@ import { P } from "unthrown";
  * placement that never landed is the no-op a *repeated* compensation performs,
  * and an activity Temporal may re-run has to answer the same both times.
  */
-export const orderActivities = TemporalActivities(orderContract)("OrderActivities")(
+export const orderActivities = TemporalActivities(orderContract)(
   [PlaceOrder, OrderRepository, StockService, ShippingService],
   {
     sync: (place, repository, stock, shipping) => ({

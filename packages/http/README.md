@@ -29,33 +29,31 @@ import { P } from "unthrown";
 // Contract-first: the record is shaped like the contract, each leaf a plain
 // Result-returning function typed by it. The use cases arrive as arguments —
 // di injects them; oRPC's context stays empty.
-const orderRouter = HttpRouter(orderContract)("OrderRouter")(
-  [PlaceOrder, FindOrder],
-  {
-    sync: (place, find) => ({
-      orders: {
-        place: ({ errors }, input) =>
-          place
-            .execute(input.id, input.quantity)
-            .map(view)
-            // The one place a domain error becomes a transport one — exhaustive.
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
+const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
+  sync: (place, find) => ({
+    orders: {
+      place: ({ errors }, input) =>
+        place
+          .execute(input.id, input.quantity)
+          .map(view)
+          // The one place a domain error becomes a transport one — exhaustive.
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
+                message: error.message,
+                data: { id: error.id },
+              }),
             ),
-        find: ({ errors }, input) =>
-          find.execute(input.id).map(view).mapErrCases(/* … */),
-      },
-    }),
-  },
-);
+          ),
+      find: ({ errors }, input) =>
+        find.execute(input.id).map(view).mapErrCases(/* … */),
+    },
+  }),
+});
 
 // A di module that also knows about its router: imports the starter, provides
-// the router, exports the runtime port — nothing else to spell.
+// the router on the starter's own port (a process serves one router, so
+// there is nothing to name), exports the runtime port — nothing else to spell.
 const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   imports: [Application, Persistence],

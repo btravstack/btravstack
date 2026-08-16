@@ -14,8 +14,8 @@ starts these workflows needs it and needs none of this.
 ```
 src/workflows.ts        fulfillOrder — the saga, in Temporal's deterministic sandbox
 src/activities.ts       orderActivities — the five activities and their triage into contract
-                        errors, as a service: port and provider minted by TemporalActivities,
-                        closing over the use case and the services it declares
+                        errors, as a service: a provider on the starter's activities port,
+                        built by TemporalActivities, closing over the use case and the services it declares
 src/fulfillment.ts      FulfillmentModule — the two external services, as stand-ins
 src/module.ts           OrderTemporalWorker — the composition root, TemporalModule sugar
 src/main.ts             the process: runMain(OrderTemporalWorker)
@@ -38,11 +38,11 @@ failure included. A service that will not answer is the starter's modeled
 `TemporalUnreachable` (exit `1`), not a defect: an operator can act on it.
 
 The application's half is `orderActivities`:
-`TemporalActivities(orderContract)("OrderActivities")([PlaceOrder,
-OrderRepository, StockService, ShippingService], { sync })` — the port (its
-service the activities record `declareActivitiesHandler` takes for
-`orderContract`) and its provider in one call, the port reachable as
-`orderActivities.port` and declared by no class. There is
+`TemporalActivities(orderContract)([PlaceOrder,
+OrderRepository, StockService, ShippingService], { sync })` — di's own
+`Provider(port)` on the starter's activities port, typed for `orderContract`
+(its service the activities record `declareActivitiesHandler` takes), declared
+by no class and given no name: a worker serves one activities record. There is
 no `needs` list and no context to read from: an activity is a closure over the
 services its provider declared, and di verifies the root supplies them. The
 starter depends on that port through di, and the sugar provides it; a root

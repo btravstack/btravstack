@@ -11,11 +11,11 @@ import {
   type Serving,
   type UnitMeta,
 } from "@btravstack/core";
-import { Module, Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { HttpHandler } from "./handler.js";
-import { orpc, type RouterPort } from "./orpc.js";
+import { orpc, type HttpRouterPort } from "./orpc.js";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */
 export type HttpInfo = { readonly port: number };
@@ -33,14 +33,13 @@ export class HttpConfig extends Port("HttpConfig")<{
 }> {}
 
 /**
- * `http()`'s options: the router port (required — the application's oRPC
- * router as a service, a provider that declares the use cases its procedures
- * call), where to mount it, and what a caller pins instead of reading from the
- * environment — a test's `{ port: 0 }`.
+ * `http()`'s options: where the router is mounted, and what a caller pins
+ * instead of reading from the environment — a test's `{ port: 0 }`. The router
+ * itself is not an option: it is the provider the composition root supplies
+ * on the starter's own router port (`HttpRouter(contract)(deps, arm)`), which
+ * this module needs.
  */
-export type HttpOptions<R extends AnyPort> = {
-  /** Intersected with `RouterPort<R>` so a port whose service is not a context-free oRPC router fails here, at the call. */
-  readonly router: R & RouterPort<R>;
+export type HttpOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
   readonly prefix?: `/${string}`;
   readonly port?: number;
@@ -98,24 +97,25 @@ export const httpModule = <N>(
  * The HTTP starter, and the one way HTTP is answered here: oRPC. A
  * module providing the runtime (`HttpRuntime`), its configuration
  * (`HttpConfig`, bound from `PORT`/`HOST` unless pinned) and the HTTP surface
- * built from the application's **router port** — the router is a provider
- * that declares the use cases its procedures call, `http({ router })` mounts
- * it under `prefix` and puts the listener on the socket. Import it next to
- * the application, export `HttpRuntime`, and that is the whole of the
- * transport wiring: no handler, no `needs`, no context handed to a procedure.
+ * built from the application's **router** — a provider on the starter's own
+ * router port, built by `HttpRouter(contract)(deps, arm)` from the use cases
+ * its procedures call, which this module NEEDS: a composition root that
+ * imports the starter without providing a router owes the port, and di's
+ * gate says so. `http()` mounts it under `prefix` and puts the listener on
+ * the socket. Import it next to the application, provide the router, export
+ * `HttpRuntime`, and that is the whole of the transport wiring: no handler,
+ * no `needs`, no context handed to a procedure.
  *
  * Pin `port`/`hostname` and the module reads nothing from the environment
  * (the declared `Env` need and `ConfigInvalid` stay — the kernel discharges
  * the one, a pinned config never produces the other); pin only some and the
- * rest still comes from the environment. A port whose service is not an oRPC
- * router `RPCHandler` can serve with no initial context fails to typecheck at
- * the call.
+ * rest still comes from the environment.
  */
-export const http = <R extends AnyPort>(
-  options: HttpOptions<R>,
-): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | InstanceType<R>> => {
-  const { router, prefix, ...socket } = options;
-  return httpModule(socket, orpc(router, prefix === undefined ? {} : { prefix }));
+export const http = (
+  options: HttpOptions = {},
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort> => {
+  const { prefix, ...socket } = options;
+  return httpModule(socket, orpc(prefix === undefined ? {} : { prefix }));
 };
 
 const listen = (

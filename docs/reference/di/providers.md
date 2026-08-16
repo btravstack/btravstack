@@ -92,11 +92,13 @@ compile error.
 
 What `Provider(port)(…)` returns is `Provider<P, E, N> & { readonly port: P }`
 — the port class, typed, rides on the provider. It exists for the helpers that
-mint a port **and** its provider in one go — `Config.provider("Name")(schema)`,
-`HttpRouter(contract)(name)(deps, arm)`, `TemporalActivities(…)`,
-`AmqpHandlers(…)` — so the application holds one value and reads the port off
-it: `provider.port` is what another provider lists in its `deps`, what a
-module lists in `exports`, and what a starter reads the port from.
+hand back a provider on a port the application never declared —
+`Config.provider("Name")(schema)`, which mints one; a starter's
+`HttpRouter(contract)(deps, arm)` / `TemporalActivities(…)` /
+`AmqpHandlers(…)`, which target the starter's own fixed port — so the
+application holds one value and reads the port off it: `provider.port` is
+what another provider lists in its `deps`, what a module lists in `exports`,
+and what a hand-declared provider or a type test names.
 
 ```ts
 const cacheProvider = Provider(Cache)([AppConfig], {
@@ -114,8 +116,8 @@ const Warmer = Provider(Port("Warmer")<{ readonly go: () => void }>)(
 Purely additive: the intersection is still a `Provider<P, E, N>` everywhere
 one is expected. Its declared type is a
 [`PortClassOf<Id, Service>`](/reference/di/ports#portinstance-id-service-and-portclassof-id-service)
-when the port was minted inside a helper, which is what lets a consumer export
-such a provider from a package with `declaration: true`.
+when the port came from a helper, which is what lets a consumer export such a
+provider from a package with `declaration: true`.
 
 ## `Provider.member(port)(deps, options)`
 

@@ -38,28 +38,26 @@ publisher does not know it exists.
 
 ## The handlers: a service from `Logger`
 
-`AmqpHandlers(orderContract)("OrderHandlers")` mints the port — its service
-the record the contract wants, `WorkerInferHandlers<OrderContract>`, no
-injected context — and hands back di's `Provider(port)`, so the handler is
-built from what it declares like any use case:
+`AmqpHandlers(orderContract)` is di's `Provider(port)` on the starter's own
+handlers port, typed for the contract — its service the record the contract
+wants, `WorkerInferHandlers<OrderContract>`, no injected context; no class, no
+name, since a consumer serves one handlers record — so the handler is built
+from what it declares like any use case:
 
 ```ts
-export const orderHandlers = AmqpHandlers(orderContract)("OrderHandlers")(
-  [Logger],
-  {
-    sync: (logger) => ({
-      orderChanged: (message) => {
-        const { id, payload } = message.payload;
-        logger.info(
-          payload === null
-            ? `order ${id} is gone — notifying`
-            : `order ${id} placed — notifying (${payload.quantity} items)`,
-        );
-        return OkAsync();
-      },
-    }),
-  },
-);
+export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
+  sync: (logger) => ({
+    orderChanged: (message) => {
+      const { id, payload } = message.payload;
+      logger.info(
+        payload === null
+          ? `order ${id} is gone — notifying`
+          : `order ${id} placed — notifying (${payload.quantity} items)`,
+      );
+      return OkAsync();
+    },
+  }),
+});
 ```
 
 The `payload === null` branch is the whole point of the envelope: one handler,
@@ -212,12 +210,12 @@ const HandlerlessAmqp = Module("HandlerlessAmqp")({
   imports: [
     ApplicationModule,
     PersistenceModule,
-    amqp({ contract: orderContract, handlers: orderHandlers.port }),
+    amqp({ contract: orderContract }),
   ],
   exports: [AmqpRuntime, PlaceOrder, Logger],
 });
 
-// @ts-expect-error — the module's needs channel carries orderHandlers.port, which nothing provides.
+// @ts-expect-error — the module's needs channel carries the handlers port, which nothing provides.
 const _missingHandlers = start(HandlerlessAmqp, options);
 ```
 
