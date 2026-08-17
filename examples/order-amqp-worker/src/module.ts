@@ -1,4 +1,4 @@
-import { AmqpModule } from "@btravstack/amqp";
+import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
   OrderApplicationModule,
@@ -9,21 +9,51 @@ import {
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { Logger, observability } from "@btravstack/observability";
 
-import { orderHandlers } from "./handlers.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
+import { orderAudit } from "./slices/audit/handler.js";
+import { AuditSlice } from "./slices/audit/module.js";
+import { orderNotifications } from "./slices/notifications/handler.js";
+import { NotificationsSlice } from "./slices/notifications/module.js";
 
 /**
- * The composition root of the broadcast deployment. `OrderApplicationModule`
- * and `OrderPersistenceModule` are booted here unchanged — the orders vertical
- * exactly as `order-api`'s own slice imports it, and nothing of the customers
- * one, which this deployment has no business knowing about — through
- * `@btravstack/amqp`'s `AmqpModule` sugar,
- * which imports the starter over `orderHandlers`, provides it, and exports
+ * The handlers record, composed from each slice's own piece — keyed by the
+ * contract's own consumer names, so a consumer with no slice is a compile
+ * error and two slices claiming one consumer are di's duplicate-provider
+ * defect at build.
+ *
+ * The explicit annotation is load-bearing, not decoration: `AmqpHandlers`'s
+ * composing call signature returns a type built from `HandlersInstanceOf`,
+ * which the package exports only from its internal `amqp-runtime.ts`, not
+ * from `index.ts` — an exported `const` inferring it hits TS4023 ("has or is
+ * using name 'ID' … but cannot be named") the moment declaration emit tries
+ * to print it. Spelling the annotation through `AmqpHandlers` and
+ * `orderContract` — both already nameable, both already imported — gives the
+ * printer a type expression it can reuse verbatim instead of expanding the
+ * structural one. `ReturnType` twice because `AmqpHandlers(orderContract)`
+ * is itself the callable (build-arm and compose-arm merged); once for that
+ * call, once for calling it with the pieces array.
+ */
+export const orderHandlers: ReturnType<ReturnType<typeof AmqpHandlers<typeof orderContract>>> =
+  AmqpHandlers(orderContract)([orderNotifications, orderAudit]);
+
+/**
+ * The composition root of the broadcast deployment — now a list of slices
+ * plus what no slice owns: the orders vertical the outbox relay writes from
+ * (`OrderApplicationModule` / `OrderPersistenceModule`, unchanged from before
+ * the split — the vertical is the relay's, not either subscriber's),
+ * `observability()`, and the relay itself. `@btravstack/amqp`'s `AmqpModule`
+ * sugar imports the starter over `orderHandlers`, provides it, and exports
  * `AmqpRuntime` for `start` to resolve; the outbox relay sits next to it as a
  * resourceful provider: both halves of the outbox pattern in one graph, each
  * built by di from the services it declares. `observability()` provides the
- * `Logger` the consumer and the relay write to — `LOG_LEVEL`, JSON on stdout,
- * every line correlated with the delivery's own unit.
+ * `Logger` every subscriber and the relay write to — `LOG_LEVEL`, JSON on
+ * stdout, every line correlated with the delivery's own unit.
+ *
+ * `NotificationsSlice` and `AuditSlice` are both imported here because
+ * `orderHandlers`'s pieces are di-discovered only through `imports` /
+ * `provides`, never through a provider's own `deps` — dropping either import
+ * leaves its piece's port unmet and `start` fails with a `WiringDefect`
+ * naming it, not a compile error.
  *
  * The exports are this deployment's own selection: `PlaceOrder` /
  * `OrderRepository` / `Outbox` / `Logger` are the writer's surface — what a
@@ -41,7 +71,13 @@ import { outboxRelay, relayConfig } from "./outbox-relay.js";
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    NotificationsSlice,
+    AuditSlice,
+    observability(),
+  ],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });

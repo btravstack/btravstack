@@ -16,8 +16,10 @@ import { observability, type Line } from "@btravstack/observability";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import type { TestAPI } from "vitest";
 
-import { orderHandlers } from "./handlers.js";
+import { orderHandlers } from "./module.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
+import { AuditSlice } from "./slices/audit/module.js";
+import { NotificationsSlice } from "./slices/notifications/module.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
@@ -50,6 +52,11 @@ type Serve = <E>(
  * uses — the writer the spec places orders through (the same database the
  * relay sweeps, which for `:memory:` SQLite is the whole point) and the outbox
  * it asserts against.
+ *
+ * Both slices are imported here too, mirroring `OrderAmqpWorker`'s own root:
+ * `orderHandlers`'s pieces are discovered only through `imports` / `provides`,
+ * so a recording root that dropped either slice would leave that piece's port
+ * unmet — a runtime `WiringDefect`, not a compile error.
  */
 const tappedAmqp = () => {
   const lines: Line[] = [];
@@ -59,6 +66,8 @@ const tappedAmqp = () => {
     imports: [
       OrderApplicationModule,
       OrderPersistenceModule,
+      NotificationsSlice,
+      AuditSlice,
       observability({ sink: (line) => lines.push(line) }),
     ],
     provides: [relayConfig, outboxRelay],

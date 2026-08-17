@@ -1,6 +1,6 @@
 ---
 title: Order AMQP worker example
-description: The broadcast deployment — AmqpHandlers and AmqpModule over the order contract, a transactional outbox relayed onto RabbitMQ by a resourceful provider with its own RelayConfig and a modeled BrokerUnreachable, a tombstone behind every cancellation, and a real broker container per run.
+description: The broadcast deployment — two subscriber slices composed by AmqpHandlers over the order contract, a transactional outbox relayed onto RabbitMQ by a resourceful provider with its own RelayConfig and a modeled BrokerUnreachable, a tombstone behind every cancellation, and a real broker container per run.
 ---
 
 # Order AMQP worker
@@ -32,59 +32,91 @@ the fact of it is lost.
 **The relay** is `outbox-relay.ts`: sweep the outbox in commit order, publish
 each row to the `orders` exchange, mark what the broker confirmed.
 
-**The consumer** is one plain function on the contract's `order-notifications`
-queue — deliberately the least interesting part, because a broadcast's
-publisher does not know it exists.
+**The two subscribers** are one plain function each, on the contract's
+`order-notifications` and `order-audit` queues — deliberately the least
+interesting part, because a broadcast's publisher does not know either
+exists.
 
-## The handlers: a service from `Logger`
+## Two slices, one modulith
 
-`AmqpHandlers(orderContract)` is di's `Provider(port)` on the starter's own
-handlers port, typed for the contract — its service the record the contract
-wants, `WorkerInferHandlers<OrderContract>`, no injected context; no class, no
-name, since a consumer serves one handlers record — so the handler is built
-from what it declares like any use case, `Logger` here being
-[`@btravstack/observability`](/reference/observability)'s port rather than one
-this example writes:
+`order-amqp-contract` declares two consumers of the one `orderChanged`
+publisher — `orderNotifications` and `orderAudit` — keyed for the
+**subscriber**, not the event: two readers of one fact, not two facts. Each
+lives in its own slice, `src/slices/notifications/` and `src/slices/audit/`,
+the same shape [`order-api`](/examples/order-api) uses for its HTTP
+controllers, but **thinner**: neither slice imports a vertical. A subscriber
+reacts to a fact somebody else already committed, so it owns no domain and no
+persistence — that is the honest shape for this transport, not a weaker
+version of the HTTP one. What each slice still declares for itself is the
+ports its own handler calls.
+
+`AmqpHandler(contract, key)` mints one piece per consumer — no port class, no
+name, since the contract key IS the port's name:
 
 ```ts
-export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
-  sync: (logger) => ({
-    orderChanged: (message) => {
-      const { id, payload } = message.payload;
-      if (currentUnit()?.signal.aborted === true) {
-        return ErrAsync(
-          new RetryableError(
-            `the drain deadline passed before order ${id} was notified`,
-          ),
-        );
-      }
-      logger.info(
-        payload === null
-          ? "order gone — notifying"
-          : "order placed — notifying",
-        {
-          orderId: id,
-          ...(payload === null ? {} : { quantity: payload.quantity }),
-        },
+export const orderNotifications = AmqpHandler(
+  orderContract,
+  "orderNotifications",
+)([Logger], {
+  sync: (logger) => (message) => {
+    const { id, payload } = message.payload;
+    if (currentUnit()?.signal.aborted === true) {
+      return ErrAsync(
+        new RetryableError(
+          `the drain deadline passed before order ${id} was notified`,
+        ),
       );
-      return OkAsync();
-    },
-  }),
+    }
+    logger.info(
+      payload === null ? "order gone — notifying" : "order placed — notifying",
+      {
+        orderId: id,
+        ...(payload === null ? {} : { quantity: payload.quantity }),
+      },
+    );
+    return OkAsync();
+  },
 });
 ```
+
+The audit slice is the same shape over `"orderAudit"`, minus the deadline
+guard — it keeps writing through the drain window rather than leaving a
+delivery un-acked, which is the point of having two: a notification for a
+delivery nobody is waiting on is not worth sending, but an audit line for one
+already in hand still is. What a slice answers when the kernel stops waiting
+is the slice's own business.
+
+The root composes both pieces into the one record the starter needs:
+
+```ts
+export const orderHandlers = AmqpHandlers(orderContract)([
+  orderNotifications,
+  orderAudit,
+]);
+```
+
+keyed by the contract's own consumer names, so a consumer with no piece is a
+compile error and two pieces claiming one key are di's duplicate-provider
+defect at build. `orderHandlers`'s pieces are the composed provider's own
+`deps`, and di's `flatten` discovers providers only through a module's
+`imports` / `provides`, never through a provider's `deps` — so the root
+**imports both slice modules**, `NotificationsSlice` and `AuditSlice`, even
+though nothing in the root names `orderNotifications` or `orderAudit`
+directly. Dropping either import leaves that piece's port unmet: a runtime
+`WiringDefect`, not a compile error.
 
 The `payload === null` branch is the whole point of the envelope: one handler,
 one ordered stream, and a reader keeping its own copy upserts on a payload and
 drops on a tombstone. There is no second message type to declare or keep
-ordered against this one. The handler has no domain errors to triage — a
+ordered against this one. Neither handler has domain errors to triage — a
 placement's `Err` never crosses the broker, only the committed fact does —
 which is why this deployment is absent from the `Err` table on the
 [overview](/examples/).
 
-The `currentUnit()?.signal` guard is the deployment's one kernel touchpoint,
-and it is how a handler honours the drain deadline at all: `messageUnits`
-calls `next()` unchanged, so there is no parameter to receive a signal
-through and the ambient record is the only route to it. Answering a
+The notifier's `currentUnit()?.signal` guard is the deployment's one kernel
+touchpoint, and it is how a handler honours the drain deadline at all:
+`messageUnits` calls `next()` unchanged, so there is no parameter to receive a
+signal through and the ambient record is the only route to it. Answering a
 `RetryableError` leaves the delivery **un-acked**, so the broker hands it to
 the next worker rather than this one finishing work nobody is waiting for.
 See [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
@@ -157,27 +189,40 @@ the runtime's `stop`). `drain` stays the consumer's alone — draining means
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    NotificationsSlice,
+    AuditSlice,
+    observability(),
+  ],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
 ```
 
-The same application pair, the starter over `orderHandlers`,
-[`observability()`](/reference/observability) for the `Logger` both halves
-write to — `LOG_LEVEL`, JSON per line on stdout, every consumer line
-correlated with the delivery's own unit — and both halves
-of the outbox pattern in one graph. The exports are the writer's surface —
-what a writer in the same process places and cancels through, and what the
-specs tap. `main.ts` is `await runMain(OrderAmqpWorker);`.
+The root is now a list of slices plus what no slice owns: the vertical the
+outbox relay writes from (`OrderApplicationModule` / `OrderPersistenceModule`
+— the relay's own, not either subscriber's), the starter over `orderHandlers`,
+[`observability()`](/reference/observability) for the `Logger` every
+subscriber and the relay write to — `LOG_LEVEL`, JSON per line on stdout,
+every consumer line correlated with the delivery's own unit — and both
+halves of the outbox pattern in one graph. The exports are the writer's
+surface — what a writer in the same process places and cancels through, and
+what the specs tap. `main.ts` is `await runMain(OrderAmqpWorker);`.
 
 ## Retry and dead-letter live in the contract
 
-`order-amqp-contract` gives the subscriber queue its policy, and the broker
-enforces it:
+`order-amqp-contract` gives each subscriber queue its own policy, and the
+broker enforces it:
 
 ```ts
 const notifications = defineQueue("order-notifications", {
+  deadLetter: { exchange: parked, externalConsumers: true },
+  retry: { mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 },
+});
+
+const audit = defineQueue("order-audit", {
   deadLetter: { exchange: parked, externalConsumers: true },
   retry: { mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 },
 });
@@ -191,7 +236,10 @@ nacked once, straight to the dead-letter exchange, never touching that budget
 — so a handler that wants "infrastructure comes back" recovers its own
 defects into a `RetryableError`. `externalConsumers: true` on the dead letter
 is required, not decorative: the contract's routability check rejects a DLX
-nothing binds to, and parking is this queue's point.
+nothing binds to, and parking is the point for both queues. Each queue's
+policy is its own — they carry the same values today, but nothing ties them
+together; a slower or more critical subscriber could tune its own
+independently.
 
 ## The specs: against a real broker
 
@@ -213,22 +261,23 @@ await use(async (module, options) => {
 ```
 
 Every app is stopped by `boot`'s teardown when the test ends. The `tapped`
-fixture composes the root's own shape with `observability({ sink })` and taps
-the services on top of it —
-`tapped(recording, [PlaceOrder, OrderRepository, Outbox])`: the writer the
-spec places orders through and the outbox it asserts against are the very
-instances the running app uses, not fresh ones, while the consumer's own lines
-need no tap at all — the sink hands them over as `Line` values, so the
-assertions read `{ message, orderId, quantity }` rather than a formatted
-sentence.
+fixture composes the root's own shape — both slices imported, same as
+`OrderAmqpWorker` — with `observability({ sink })` and taps the services on
+top of it — `tapped(recording, [PlaceOrder, OrderRepository, Outbox])`: the
+writer the spec places orders through and the outbox it asserts against are
+the very instances the running app uses, not fresh ones, while neither
+subscriber's own lines need a tap at all — the sink hands them over as `Line`
+values, so the assertions read `{ message, orderId, quantity }` rather than a
+formatted sentence.
 
-Five specs, each a fact crossing the outbox, the broker and the queue: a
-committed write comes back as the consumer's notification, with the write
-side never having spoken AMQP; relayed events are marked published exactly
-once; two writes arrive in commit order; a cancellation arrives as a
-tombstone **after** its placement; and a foreign queue — bound to the same
-`orders` exchange by the test, declared by nothing in the contract — receives
-the same event:
+Six specs, each a fact crossing the outbox, the broker and one or both
+queues: a committed write comes back as the notifier's notification, with the
+write side never having spoken AMQP; relayed events are marked published
+exactly once; two writes arrive in commit order; a cancellation arrives as a
+tombstone **after** its placement; one write reaches both subscribers — a
+broadcast, not a work queue; and a foreign queue — bound to the same `orders`
+exchange by the test, declared by nothing in the contract — receives the same
+event too:
 
 ```ts
 const [message] = await waitForMessages({ count: 1, timeoutMs: 5_000 });

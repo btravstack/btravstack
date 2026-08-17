@@ -12,12 +12,52 @@ served by `@btravstack/http`; the contract lives in
 binding its own queue to the `orders` exchange needs it and needs none of this.
 
 ```
-src/handlers.ts        the consuming half: orderHandlers, a provider on the starter's handlers port, built by AmqpHandlers from Logger
+src/slices/notifications/handler.ts   the notifier: orderNotifications, one piece on the "orderNotifications" consumer, built by AmqpHandler from Logger
+src/slices/notifications/module.ts    NotificationsSlice — provides the piece, exports only it
+src/slices/audit/handler.ts           the auditor: orderAudit, one piece on the "orderAudit" consumer, built by AmqpHandler from Logger
+src/slices/audit/module.ts            AuditSlice — same shape as NotificationsSlice
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
-src/module.ts          OrderAmqpWorker — the composition root, an AmqpModule importing observability(), a constant
+src/module.ts          orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]); OrderAmqpWorker — the composition root, an AmqpModule importing both slices and observability(), a constant
 src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
 src/test-fixtures.ts   boot / serve / tapped, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
 ```
+
+## Two subscribers, not one
+
+This deployment is a modulith of **two** slices, `NotificationsSlice` and
+`AuditSlice`, each draining its own queue off the one `orders` exchange
+(`order-notifications`, `order-audit` — its own retry budget, its own
+dead-letter parking). `defineContract` accepts two consumers of one
+publisher because that is what a broadcast IS: neither subscriber knows the
+other exists, and one slow reader cannot stall the other. `orderHandlers =
+AmqpHandlers(orderContract)([orderNotifications, orderAudit])` composes the
+two pieces into the one handlers record the starter needs — keyed by the
+contract's own consumer names, so a consumer with no piece is a compile
+error and two pieces claiming one consumer are di's duplicate-provider
+defect at build.
+
+**Neither slice owns a vertical.** Unlike `order-api`'s `OrdersSlice` /
+`CustomersSlice`, which each import their own application-plus-persistence
+pair, `NotificationsSlice` and `AuditSlice` import nothing: no domain, no
+repository. That is the honest shape for this transport, not a weaker
+version of the HTTP one — a subscriber reacts to a fact somebody else already
+committed, so it has no business the way a controller handling a command
+does. What each slice still declares for itself is the **ports its own
+handler calls** — `Logger`, here, for both, but nothing stops one subscriber
+from needing a service the other has no reason to know about. The vertical
+in this deployment — `OrderApplicationModule` / `OrderPersistenceModule` —
+belongs to the **relay**, the publishing half, not to either subscriber; it
+sits in the root's own `imports` for that reason, next to the two slices
+rather than inside one of them.
+
+A wiring rule worth stating because it fails at runtime, not at compile
+time: `orderHandlers`'s pieces are the composed provider's `deps`, and di's
+`flatten` discovers providers only from a module's `imports` and `provides`
+— never from a provider's own `deps`. So the root **must** import both
+`NotificationsSlice` and `AuditSlice`, even though nothing in the root ever
+names `orderNotifications` or `orderAudit` directly; dropping either import
+leaves that piece's port unmet, and `start` fails with a `WiringDefect`
+naming it — not a compile error.
 
 ## The pattern, in three places
 
@@ -34,34 +74,40 @@ between publish and mark re-publishes on the next sweep, a broker outage
 leaves rows pending and the sweep after the outage drains them. What is never
 possible is the inverse — a committed order whose event evaporated.
 
-**The consumer** is one plain function on the contract's
-`order-notifications` queue, reacting to the fact like any other service
-would. It is intentionally the least interesting part: a broadcast's
-publisher does not know it exists, and the spec proves that by binding a
-_foreign_ queue to the same exchange and receiving the same event.
+**The two subscribers** are one plain function each, on the contract's
+`order-notifications` and `order-audit` queues, each reacting to the same
+fact its own way. Neither is the interesting part: a broadcast's publisher
+does not know either exists, and the spec proves that by binding a _third_,
+_foreign_ queue to the same exchange and receiving the same event too.
 
 ## Everything is a provider
 
 `@btravstack/amqp`'s starter needs one thing from the application: its
-**handlers, as a service**. `src/handlers.ts` is one call —
-`AmqpHandlers(orderContract)([Logger], { sync: … })` — di's own
-`Provider(port)` on the starter's handlers port, typed for `orderContract`
-(its service the record `orderContract` wants,
-`WorkerInferHandlers<OrderContract>`, no injected context), providing it
-from `Logger`: the one handler is `orderChanged: (message) => …`, a plain
-function typed by the contract, closing over the logger it was built with, the
-way every service in the graph is built. No port class is declared here and
-no name is given: a consumer serves one handlers record, so the port is the
-starter's. The
+**handlers, as a service**. This deployment builds that record from two
+pieces rather than one function. `src/slices/notifications/handler.ts` is one
+call — `AmqpHandler(orderContract, "orderNotifications")([Logger], { sync:
+… })` — di's own `Provider(port)` on a port minted from the contract key,
+typed for that one consumer's message; `src/slices/audit/handler.ts` is the
+same shape for `"orderAudit"`. Neither declares a port class or a name: the
+contract key IS the port's name, and each piece closes over only what its own
+handler calls — both take `Logger` here, but nothing ties one subscriber's
+dependencies to the other's. `src/module.ts` composes them —
+`orderHandlers = AmqpHandlers(orderContract)([orderNotifications,
+orderAudit])` — into the one handlers record `AmqpModule` takes: keyed by the
+contract's consumer names, so a consumer with no piece is a compile error and
+two pieces claiming one key are di's duplicate-provider defect at build. The
 composition root is `AmqpModule("OrderAmqpWorker")({ contract: orderContract,
 handlers: orderHandlers, imports, provides, exports })` — a `Module(...)` that
 also takes the handlers provider: under the hood it imports the starter
 (`amqp({ contract: orderContract })`, the runtime on
 `AmqpRuntime` and the broker on `AmqpConfig`), provides `orderHandlers`, and
-exports `AmqpRuntime` for `start` to resolve. It also imports
-`observability()`, the starter that provides the `Logger` both halves write to
-— `LOG_LEVEL` from the environment, JSON on stdout, and every consumer line
-carrying the delivery's own unit. There is no `needs`, no
+exports `AmqpRuntime` for `start` to resolve. Its `imports` also names
+`NotificationsSlice` and `AuditSlice` themselves — not just their handlers —
+because that is the only way di's `flatten` discovers the two pieces at all
+(see "Two subscribers, not one" above). It also imports
+`observability()`, the starter that provides the `Logger` every subscriber
+writes to — `LOG_LEVEL` from the environment, JSON on stdout, and every
+consumer line carrying its own delivery's unit. There is no `needs`, no
 `context.ctx.get(...)`, and no port declared here over `RuntimePort` — the
 package ships it.
 
@@ -115,10 +161,11 @@ kernel's own, read the same way.
 
 The suite runs against a **real RabbitMQ** in a testcontainer (Docker
 required): a write placed through the application's own `PlaceOrder` crosses
-the outbox, the broker and the queue, and comes back as the consumer's
+the outbox, the broker and the queue, and comes back as the notifier's own
 notification — commit order preserved, outbox drained, a cancellation
-arriving as a tombstone behind its placement, and the same event delivered to
-a subscriber this contract never heard of.
+arriving as a tombstone behind its placement, one event landing on both
+subscribers' queues, and the same event delivered to a subscriber this
+contract never heard of, on a third, foreign queue.
 
 ```bash
 pnpm --filter @btravstack/example-order-amqp-worker test        # broadcast e2e
@@ -130,8 +177,8 @@ boots the worker against the test's own vhost through the `boot` fixture, so
 it is stopped when the test ends, and `tapped` hands back the very
 `PlaceOrder`, `OrderRepository` and `Outbox` the running app was
 built with — the writer the spec places orders through is the one the relay
-sweeps. The consumer's own lines need no tap: the fixture composes the root's
-shape with `observability({ sink })`, so what the notifier said arrives as
+sweeps. Neither subscriber's own lines need a tap: the fixture composes the
+root's shape with `observability({ sink })`, so what each one said arrives as
 `Line` values and the assertions read `{ message, orderId, quantity }` rather
 than a formatted sentence.
 
