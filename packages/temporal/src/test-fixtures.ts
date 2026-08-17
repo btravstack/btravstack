@@ -5,7 +5,12 @@ import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
-import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
+import {
+  defineActivity,
+  defineContract,
+  defineWorkflow,
+  type ContractDefinition,
+} from "@temporal-contract/contract";
 import type { Client } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
@@ -19,6 +24,7 @@ import {
   type TemporalUnreachable,
   type WorkflowSource,
 } from "./temporal-runtime.js";
+import { TemporalWorkflowActivities } from "./workflow-activities.js";
 
 /**
  * The time-skipping server binary, cached where we decide rather than in the
@@ -210,10 +216,89 @@ const configuredOf = () => {
 
 class BoundConfig extends Port("BoundConfig")<ServiceOf<TemporalConfig>> {}
 
+/**
+ * Two workflows, one task queue — a worker whose activities are composed from
+ * one slice per workflow, which is what a sliced worker is.
+ */
+const slicedContract = defineContract({
+  taskQueue: "sliced",
+  workflows: {
+    runEcho: defineWorkflow({
+      input: z.string(),
+      output: z.string(),
+      idempotency: "allow-duplicate",
+      activities: {
+        echo: defineActivity({
+          input: z.string(),
+          output: z.string(),
+          activityOptions: { startToCloseTimeout: "30 seconds", retry: { maximumAttempts: 1 } },
+        }),
+      },
+    }),
+    runShout: defineWorkflow({
+      input: z.string(),
+      output: z.string(),
+      idempotency: "allow-duplicate",
+      activities: {
+        shout: defineActivity({
+          input: z.string(),
+          output: z.string(),
+          activityOptions: { startToCloseTimeout: "30 seconds", retry: { maximumAttempts: 1 } },
+        }),
+      },
+    }),
+  },
+});
+
+/**
+ * Two slices, composed. `runEcho`'s piece declares `Greeting` and `runShout`'s
+ * declares nothing, so a spec can tell each piece was built from the ports its
+ * OWN provider declared.
+ *
+ * `pieces` is exposed alongside `activities`: the composed provider's own
+ * `deps` are the pieces' PORTS, not what they close over, so something still
+ * has to REGISTER `echo` and `shout` themselves — `flatten` (`build.ts`) only
+ * collects providers a module's own `provides` names, never a provider's
+ * `deps` transitively. `serveSliced` is what adds them.
+ */
+const slicesOf = () => {
+  let greeting = "";
+  const echo = TemporalWorkflowActivities(slicedContract, "runEcho")([Greeting], {
+    sync: (service) => ({
+      echo: (value) => {
+        greeting = service.text;
+        return OkAsync(value);
+      },
+    }),
+  });
+  const shout = TemporalWorkflowActivities(
+    slicedContract,
+    "runShout",
+  )({
+    value: { shout: (value) => OkAsync(value.toUpperCase()) },
+  });
+  return {
+    activities: TemporalActivities(slicedContract)([echo, shout]),
+    pieces: [echo, shout] as const,
+    greeting: (): string => greeting,
+  };
+};
+
 type App = RunningApp<ConfigInvalid | TemporalUnreachable, TemporalInfo>;
 
 let queueSeq = 0;
 const nextTaskQueue = (): string => `t-${(queueSeq += 1)}-${process.pid}`;
+
+/**
+ * `contract` with a per-test `taskQueue`, typed as `C` rather than the
+ * widened object literal an inline spread produces — a runtime `taskQueue`
+ * can never be the contract's own literal type, so the cast is unavoidable
+ * here. Keeping the static type at `C` is what lets `TemporalModule` infer
+ * one `C` from `contract` and `activities` together instead of two
+ * conflicting candidates.
+ */
+const withTaskQueue = <C extends ContractDefinition>(contract: C, taskQueue: string): C =>
+  ({ ...contract, taskQueue }) as C;
 
 const echoWorkflows: WorkflowSource = {
   workflowsPath: fileURLToPath(new URL("./test-workflows.ts", import.meta.url)),
@@ -250,6 +335,12 @@ export type TemporalFixtures = {
   /** An activity that waits on the unit's own `AbortSignal`, read off the ambient record. */
   readonly deadline: ReturnType<typeof deadlineOf>;
   readonly configured: ReturnType<typeof configuredOf>;
+  readonly slices: ReturnType<typeof slicesOf>;
+  readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<{
+    readonly app: App;
+    readonly client: Client;
+    readonly taskQueue: string;
+  }>;
 };
 
 /**
@@ -335,5 +426,28 @@ export const it = test.extend<TemporalFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   configured: async ({}, use) => {
     await use(configuredOf());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  slices: async ({}, use) => {
+    await use(slicesOf());
+  },
+  serveSliced: async ({ env, boot }, use) => {
+    await use(async (slices) => {
+      const taskQueue = nextTaskQueue();
+      const app: App = boot(
+        TemporalModule("Sliced")({
+          contract: withTaskQueue(slicedContract, taskQueue),
+          activities: slices.activities,
+          workflows: echoWorkflows,
+          // The composed provider's own deps are the pieces' PORTS — see
+          // `slicesOf`'s comment — so the pieces themselves are what discharge
+          // them, same as any other unmet need.
+          provides: [...slices.pieces, Provider(Greeting)({ value: { text: "hello" } })],
+        }),
+        { env: { TEMPORAL_ADDRESS: env.address } },
+      );
+      await app.runtimeInfo();
+      return { app, client: env.client, taskQueue };
+    });
   },
 });

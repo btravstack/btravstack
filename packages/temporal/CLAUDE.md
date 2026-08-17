@@ -57,6 +57,55 @@ ActivitiesPortOf<C>`, so the next call is di's `(deps, arm)` unchanged and
   providers off the one builder, and
   `examples/order-temporal-worker/src/activities.ts` is the worked example
   (no port class, no name, anywhere).
+
+  A third call composes **pieces** instead of a record:
+  `TemporalActivities(contract)([piece, piece, ...])`, one piece per
+  `TemporalWorkflowActivities(contract, key)(deps, arm)`. Its type is an
+  intersection with `Compose<C>`, declared **last**: `ReturnType<typeof
+Provider<ActivitiesPortOf<C>>> & Compose<C>` — di's builder first, the
+  composer last. Reversed, TypeScript reports the FIRST arm's failure on a
+  non-covering array, and the diagnostic degrades to `not assignable to
+'Qualification<readonly [], Activities>'`, naming nothing; last, it reports
+  the composing arm's own conditional, which names the missing key
+  (`readonly ["UNCOVERED ACTIVITIES", K]`) — measured, not stylistic. The
+  composed provider's own `deps` are the array of **piece ports**
+  (`InstanceType<T[number]["port"]>` in its return type), not what a piece
+  closes over: di constructs each piece first, as its own provider, and the
+  composing call's `construct` just reassembles their results into a record
+  keyed by what each piece's port id carries past
+  `WORKFLOW_ACTIVITIES_PREFIX`. That means the pieces themselves still need
+  discharging — typically listed in `provides` alongside `activities`, or
+  exported by a slice module imported in — the same as any other unmet need;
+  `TemporalModule` does not do this for you, it only prepends `activities`
+  itself. Two pieces claiming one key are two providers for one port — di's
+  duplicate-provider defect at build, which is the point: a workflow's
+  activities belong to exactly one slice.
+
+- **`TemporalWorkflowActivities(contract, key)` → `ReturnType<typeof
+Provider<WorkflowActivitiesPortOf<C, K>>>`** (`workflow-activities.ts`,
+  exported from `index.ts`) — one workflow's activities, or a
+  **contract-global** activity, as a provider of its own. `key` is any
+  top-level key of the activities record `ActivitiesOf<C>` declares — which
+  includes a contract-global activity as well as a workflow, so the name is
+  imprecise in that one case, deliberately: narrowing the type to workflow
+  keys only would cost extra type code and lock a contract with global
+  activities out of the split. There is no name to give: the key IS the
+  port's name, minted as `` `${WORKFLOW_ACTIVITIES_PREFIX}${key}` ``
+  (`WORKFLOW_ACTIVITIES_PREFIX = "TemporalWorkflowActivities:"`, exported
+  from `workflow-activities.ts` only) — so the port id carries the key, which
+  is what makes two slices claiming one workflow di's duplicate-provider
+  defect rather than a silent merge, and what lets the composing form recover
+  each piece's key by stripping the prefix back off `piece.port.portId`
+  rather than needing it spelled again. `contract` types `key`
+  (`ActivitiesKeyOf<C>`, `workflow-activities.ts`-only) and the piece
+  (`ActivitiesOf<C>[K]`, routed through an `extends infer` indirection since
+  `ActivitiesOf<C>` is a `NoInfer`-wrapped conditional/mapped intersection
+  that TypeScript refuses to index by a generic key directly — the standard
+  workaround); a key the contract does not declare is refused at the call —
+  there is nothing to type it by. The return is di's own `Provider(port)`, so
+  every arm is available exactly as it is on `TemporalActivities(contract)`,
+  and the provider carries its port (`WorkflowActivitiesPortOf<C, K>`) as
+  `provider.port`.
 - **`temporal(options)` → `Module<TemporalRuntime | TemporalConfig |
 TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
 ActivitiesInstanceOf<C>>`** — the starter, the same shape as `@btravstack/http`'s
@@ -145,7 +194,7 @@ TemporalConfig, TemporalActivitiesPort as ActivitiesPortOf<C>], { sync })` —
 - **Not included, deliberately**: `Result` → activity failure, which
   `declareActivitiesHandler` already owns. Doing it twice is what the removal of
   the raw-worker path was about.
-- **`temporal-runtime.spec.ts` carries 13 specs.** Four are the starter's
+- **`temporal-runtime.spec.ts` carries 13 specs, and `workflow-activities.spec.ts` 2 more — 15 in the package.** Four are the starter's
   configuration (_"binds TEMPORAL_ADDRESS and TEMPORAL_NAMESPACE from the
   environment when nothing is pinned"_, _"pins what it is given and reads the
   rest from the environment"_, _"reads nothing from the environment when both
@@ -176,6 +225,28 @@ workflows, provides: [Greeting] })`, `env: { TEMPORAL_ADDRESS: env.address }`
   teardown is **Defect-only** — a shutdown defect fails the test, a modeled
   `Err` passes — so `serveBroken`'s `Err` exit is the test's own to assert
   on `app.exited`, not the fixture's.
+  `workflow-activities.spec.ts`'s two specs run over `test-fixtures.ts`'s
+  `slicedContract` — two workflows, one task queue — and `slicesOf`, which
+  composes two pieces from `TemporalWorkflowActivities(slicedContract, key)`:
+  `runEcho`'s declares `Greeting` and `runShout`'s declares nothing, so the
+  spec can tell each piece was built from the ports its OWN provider
+  declared (_"serves a record composed from one piece per workflow"_,
+  executing the SECOND slice's workflow to prove both were mounted;
+  _"builds each piece from the ports its own provider declared"_, off
+  `slices.greeting()`). The `serveSliced` fixture composes
+  `TemporalModule("Sliced")({ contract: <per-test taskQueue>, activities:
+slices.activities, workflows: echoWorkflows, provides: [...slices.pieces,
+Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
+  `provides` alongside `activities` because the composed provider's own
+  `deps` are the pieces' ports, which nothing else in the graph would
+  otherwise discharge (the same shape `handler.spec.ts`'s `serveSliced` uses
+  in `packages/amqp`). `withTaskQueue(contract, taskQueue)` is what stamps
+  the per-test queue onto `slicedContract`: a runtime string can never be the
+  contract's own literal `taskQueue` type, so the helper casts internally
+  and returns `C` rather than the widened object literal an inline spread
+  would — which is what lets `TemporalModule` infer one `C` from `contract`
+  and `activities` together instead of two conflicting candidates once
+  `activities` is the composing arm's own, more specific, type.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
   `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`,
   `@temporal-contract/worker`, `@temporal-contract/contract`.
