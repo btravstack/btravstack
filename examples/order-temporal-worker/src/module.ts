@@ -35,12 +35,14 @@ export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, 
  * billing as `PaymentService` is to fulfillment.
  *
  * `orderActivities`'s own `deps` are the two pieces' PORTS, not what they
- * close over, so `flatten` discovers `fulfillOrder` and `chargeOrder` only
- * because `FulfillmentSlice` and `BillingSlice` both `provides` and `exports`
- * them — imported here for that reason, even though nothing in this file
- * names either piece directly. Drop one import and the composed activities
- * still type-checks; what fails is `start`, with a `WiringDefect` naming the
- * unmet port, not a compile error.
+ * close over. Naming a piece in that composing array is not what registers
+ * it: `flatten` walks `imports` and `provides` only, never a provider's own
+ * `deps`. So `fulfillOrder` and `chargeOrder` are discharged by
+ * `FulfillmentSlice` and `BillingSlice`, which `provides` and `exports` them
+ * — which is why both slices are imported here even though the composing call
+ * above already names their pieces. Drop one import and the composed
+ * activities still type-check; what fails is `start`, with a `WiringDefect`
+ * naming the unmet port, not a compile error.
  *
  * A constant: configuration is read inside the graph, and where the workflow
  * code lives is a static fact of this deployment. `workflowsPathFromURL`
