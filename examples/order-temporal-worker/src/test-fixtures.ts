@@ -14,7 +14,7 @@ import {
 import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domain";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
-import { observability, type Line, type Sink } from "@btravstack/observability";
+import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
@@ -28,8 +28,11 @@ import {
 import type { TestWorkflowEnvironment } from "@temporalio/testing";
 import { ErrAsync, OkAsync } from "unthrown";
 
-import { orderActivities } from "./activities.js";
+import { BillingModule } from "./billing.js";
 import { FulfillmentModule } from "./fulfillment.js";
+import { orderActivities } from "./module.js";
+import { chargeOrder } from "./slices/billing/activities.js";
+import { fulfillOrder } from "./slices/fulfillment/activities.js";
 
 /**
  * The time-skipping server binary, cached where **we** decide rather than in the
@@ -65,13 +68,20 @@ type Deployment<E> = {
 };
 
 /**
- * `X` is pinned to the four ports the activities provider depends on rather
- * than left generic: `start`'s gate is a phantom rest parameter proven at the
- * call site, and no proof is available inside a helper generic in the module's
- * own exports.
+ * `X` is pinned to the four ports the activities provider depends on, plus
+ * `Logger` — rather than left generic: `start`'s gate is a phantom rest
+ * parameter proven at the call site, and no proof is available inside a
+ * helper generic in the module's own exports. `Logger` has to be in the union
+ * because `serve` composes `BillingModule` beside `module` (see below), and
+ * `BillingModule`'s own need for it is invisible past this type unless it is
+ * named here too.
  */
 type Serve = <E>(
-  module: Module<PlaceOrder | OrderRepository | StockService | ShippingService, E, Scope | Env>,
+  module: Module<
+    PlaceOrder | OrderRepository | StockService | ShippingService | Logger,
+    E,
+    Scope | Env
+  >,
 ) => Promise<Deployment<E>>;
 
 /**
@@ -82,11 +92,16 @@ type Serve = <E>(
  * lines the saga writes land in `sink` instead of the runner's stdout. It
  * exports what `orderActivities` closes over; the sugar joins in `serve`,
  * which is where the per-test queue and the memoised bundle are known.
+ *
+ * `Logger` is exported too: `serve` composes `BillingModule` as a sibling of
+ * this module rather than nesting it inside, so `BillingModule`'s own need
+ * for `Logger` has to be met from here — the one `observability({ sink })` in
+ * this graph, so billing's stand-in writes to the same sink the saga's does.
  */
 const rootWith = (fulfillment: typeof FulfillmentModule, sink: Sink) =>
   Module("StubTemporal")({
     imports: [OrderApplicationModule, OrderPersistenceModule, fulfillment, observability({ sink })],
-    exports: [PlaceOrder, OrderRepository, StockService, ShippingService],
+    exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger],
   });
 
 /**
@@ -200,11 +215,20 @@ export const it = createTimeSkippingTest({
       // environment's address per test and closed with the scope; the shared
       // `testEnv.nativeConnection` is never handed over, so no test can close
       // it under the next.
+      //
+      // `BillingModule` sits beside `module` rather than inside it: billing is
+      // never swapped by a spec, so it is a sibling import the same way
+      // `OrderTemporalWorker`'s own root lists `BillingSlice` beside
+      // `FulfillmentSlice`. `fulfillOrder` and `chargeOrder` are in `provides`
+      // for the reason `module.ts`'s own TSDoc gives — the composed
+      // `orderActivities`'s `deps` are the two pieces' PORTS, and nothing
+      // discharges them unless something in this tree does.
       const worker = TemporalModule("StubTemporalWorker")({
         contract,
         activities: orderActivities,
         workflows: { workflowBundle },
-        imports: [module],
+        imports: [module, BillingModule],
+        provides: [fulfillOrder, chargeOrder],
       });
 
       const app = boot(worker, { env: { TEMPORAL_ADDRESS: testEnv.address } });

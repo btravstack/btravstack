@@ -25,4 +25,17 @@ describe("orderContract", () => {
       expect.objectContaining({ path: ["quantity"] }),
     ]);
   });
+
+  it("validates the second workflow's input too — a different vertical, on the same queue", ({
+    validateCharge,
+  }) => {
+    // GIVEN the billing workflow's own schema, and nothing else
+
+    // WHEN a caller checks the payload it is about to start `chargeOrder` with
+    // THEN it is accepted, proving the contract holds more than one workflow
+    expect(validateCharge({ orderId: "o-1", amount: 42 })).toBeOkWith({
+      orderId: "o-1",
+      amount: 42,
+    });
+  });
 });

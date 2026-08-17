@@ -152,3 +152,20 @@ describe("the fulfillment saga", () => {
     expect(outcome).toBe("conflict:o-4");
   });
 });
+
+describe("the billing saga", () => {
+  it("polls one task queue for both workflows", async ({ serve, fulfilling }) => {
+    // GIVEN a worker whose activities were composed from a fulfillment slice
+    // and a billing slice, on the one queue this deployment owns
+    const { client } = await serve(fulfilling.module);
+
+    // WHEN the workflow the SECOND slice owns is executed
+    const charged = client.executeWorkflow("chargeOrder", {
+      workflowId: "wf-charge-1",
+      args: { orderId: "order-1", amount: 42 },
+    });
+
+    // THEN its own slice answered, so every piece was mounted under its key
+    await expect(charged).toBeOkWith({ authorizationId: "auth-order-1" });
+  });
+});

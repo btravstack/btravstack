@@ -19,26 +19,42 @@ description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime,
 
 `packages/amqp/src/index.ts` exports exactly this:
 
-| Export              | Kind  | What it is                                                                                                                                                                                                         |
-| ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AmqpModule`        | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the handlers provider |
-| `AmqpModuleOptions` | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                        |
-| `AmqpHandlers`      | value | `AmqpHandlers(contract)` — di's `Provider(port)` builder on the starter's own handlers port, typed for `contract`, so the next call is `(deps, arm)`                                                               |
-| `amqp`              | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                           |
-| `AmqpOptions`       | type  | `amqp()`'s options                                                                                                                                                                                                 |
-| `AmqpRuntime`       | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                          |
-| `AmqpConfig`        | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string }> {}` — the broker, bound from `AMQP_URL`; a publisher sharing the consumer's broker reads it too                                                      |
-| `AmqpInfo`          | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                              |
+| Export                  | Kind  | What it is                                                                                                                                                                                                         |
+| ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AmqpModule`            | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the handlers provider |
+| `AmqpModuleOptions`     | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                        |
+| `AmqpHandlers`          | value | `AmqpHandlers(contract)` — di's `Provider(port)` builder on the starter's own handlers port, typed for `contract`, so the next call is `(deps, arm)`, or `([pieces])` to compose one provider per consumer/rpc     |
+| `HandlersPortOf<C>`     | type  | The handlers port's class typed for `C` — what a composed `orderHandlers`'s `.port` is                                                                                                                             |
+| `HandlersInstanceOf<C>` | type  | That port's instance typed for `C` (service `WorkerInferHandlers<C>`)                                                                                                                                              |
+| `AmqpHandler`           | value | `AmqpHandler(contract, key)` — one consumer or rpc as a provider of its own, typed by `key` alone; the next call is `(deps, arm)`, and the piece is what `AmqpHandlers(contract)([...])` composes                  |
+| `HandlerPortOf<C, K>`   | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                    |
+| `amqp`                  | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                           |
+| `AmqpOptions`           | type  | `amqp()`'s options                                                                                                                                                                                                 |
+| `AmqpRuntime`           | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                          |
+| `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string }> {}` — the broker, bound from `AMQP_URL`; a publisher sharing the consumer's broker reads it too                                                      |
+| `AmqpInfo`              | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                              |
 
-`AnyAmqpContract` — `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`,
-the bound on `contract` — lives in `src/amqp-runtime.ts` and is **not**
-exported from the entry point; it is extracted from the worker's own signature
-so `@amqp-contract/contract` stays out of the peer range. Next to it, and
-likewise unexported: `AmqpHandlersPort` — `Port("AmqpHandlers")`, the
-starter's own handlers port, declared once — and `HandlersPortOf<C>` /
-`HandlersInstanceOf<C>`, that port's class and instance typed for `C`
-(service `WorkerInferHandlers<C>`). The port is reached as `provider.port`
-when a caller needs it.
+`HandlersPortOf<C>` / `HandlersInstanceOf<C>` / `HandlerPortOf<C, K>` are
+exported as **types only**, and only because declaration emit forces it: an
+application that composes `orderHandlers = AmqpHandlers(contract)([piece,
+piece])` and exports it by name (or a slice that exports one piece by name)
+needs to be able to print that type, and a type built from an unexported
+alias fails TS4023 ("has or is using name 'ID' … but cannot be named") the
+moment it tries. `AnyAmqpContract` —
+`Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, the bound on
+`contract` — lives in `src/amqp-runtime.ts` and is **not** exported from the
+entry point; it is extracted from the worker's own signature so
+`@amqp-contract/contract` stays out of the peer range. The **values** behind
+the two handlers ports stay unexported on the same terms as
+`AnyAmqpContract`: `AmqpHandlersPort` — `Port("AmqpHandlers")`, the starter's
+own handlers port, declared once — and `HANDLER_PREFIX` (`handler.ts`), the
+string prefix a piece's port id carries. Nothing outside this package
+legitimately constructs a provider against either bare port — a consumer
+always goes through `AmqpHandlers(contract)` or `AmqpHandler(contract, key)`,
+both of which cast it to the typed alias — so there is nothing a value export
+would help with. `HandlerKeyOf<C>` (`handler.ts`) is unexported for the same
+reason: nothing outside that file needs to name a bare key. The port is
+reached as `provider.port` when a caller needs it.
 
 ## `AmqpModule(name)({...})`
 
@@ -66,11 +82,24 @@ The worked composition root, from `examples/order-amqp-worker/src/module.ts`:
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    NotificationsSlice,
+    AuditSlice,
+    observability(),
+  ],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
 ```
+
+`NotificationsSlice` and `AuditSlice` are each a slice module exporting one
+**piece** of `orderHandlers` — see the composing form below and
+[Split a worker into slices](/how-to/split-a-worker-into-slices) — imported
+here because `orderHandlers`'s own `deps` are the pieces' ports, and di
+discovers a provider only through a module's `imports` / `provides`, never
+through another provider's `deps`.
 
 [`observability()`](/reference/observability) is a second starter, not this
 package's business: it brings the `Logger` the handlers and the relay write
@@ -92,13 +121,15 @@ the type level (`HandlersPortOf<C>`, the move the kernel's `RuntimePort`
 makes) — and two handlers providers in one graph are di's duplicate-provider
 defect at build. Each handler is a bare
 function of the message its consumer declares; `WorkerInferHandlers<C>`
-accepts it with nothing wrapped around it, and no context is injected. From
-`examples/order-amqp-worker/src/handlers.ts`:
+accepts it with nothing wrapped around it, and no context is injected. A
+record covers **every** consumer and rpc the contract declares —
+`orderContract` has two, `orderNotifications` and `orderAudit`, both reading
+the one `orderChanged` event on their own queue:
 
 ```ts
 export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
   sync: (logger) => ({
-    orderChanged: (message) => {
+    orderNotifications: (message) => {
       const { id, payload } = message.payload;
       logger.info(
         payload === null
@@ -111,8 +142,82 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
       );
       return OkAsync();
     },
+    orderAudit: (message) => {
+      const { id, occurredAt, payload } = message.payload;
+      logger.info("recording an order change", {
+        orderId: id,
+        occurredAt,
+        change: payload === null ? "removed" : "placed",
+      });
+      return OkAsync();
+    },
   }),
 });
+```
+
+`examples/order-amqp-worker` no longer calls `AmqpHandlers` this way — its two
+consumers are each a slice's own piece instead (below) — but the monolithic
+form is unchanged, and still what
+[Consume AMQP messages](/how-to/consume-amqp-messages) teaches for a worker
+that has not outgrown one function.
+
+A third call composes several **pieces** instead of one record:
+`AmqpHandlers(contract)([piece, piece, ...])`, where each piece is what
+`AmqpHandler(contract, key)(deps, arm)` returns. Di constructs every piece
+first — they are the composed provider's own `deps`, in array order — and this
+call reassembles the handlers record from them, keyed by what each piece's
+port id carries. Every key the contract declares must be covered: an array
+missing one is refused at the call, against an `"UNCOVERED HANDLERS"` marker
+(`readonly ["UNCOVERED HANDLERS", ...]`) — the missing key itself is named
+too once the array's length matches that marker tuple's own length of 2; a
+single-element array's diagnostic names the marker alone; a piece built for
+another contract
+is refused too, structurally, since its port's service is that contract's
+handler for the key. `Uncovered` checks coverage, not injectivity, so two
+pieces claiming the same key still type-check together; di's duplicate-provider
+defect at build catches it only once **both** end up discharged as providers
+in the same graph — wire in just one and the other is silently unregistered,
+with no diagnostic. The composed provider's own `deps` are
+the **pieces' ports**, not what a piece closes over, so the pieces themselves
+still need discharging like any other need — typically `provides: [...]` on
+the module, or a slice module that exports its own piece.
+
+## `AmqpHandler(contract, key)`
+
+One consumer or rpc, as a provider of its own: the port id carries the
+contract key (`` `AmqpHandler:${key}` ``, `HANDLER_PREFIX` stripped by the
+composing form to recover it), so two slices claiming one consumer is di's
+duplicate-provider defect rather than a silent merge. `contract` types `key`
+and the handler; a key the contract does not declare is refused at the call —
+there is nothing to type it by — and a handler whose message has drifted is a
+compile error here rather than at the root. There is no name to give and
+nothing minted by hand: the return is di's own `Provider(port)`, so every arm
+— `value` / `sync` / `make` / `class` / `acquire` — is available exactly as it
+is on `AmqpHandlers(contract)`, and the provider carries its port as
+`provider.port` (`HandlerPortOf<C, K>`).
+
+```ts
+const orderNotifications = AmqpHandler(orderContract, "orderNotifications")(
+  [Logger],
+  {
+    sync: (logger) => (message) => {
+      logger.info("order changed", { orderId: message.payload.id });
+      return OkAsync(undefined);
+    },
+  },
+);
+
+const orderAudit = AmqpHandler(orderContract, "orderAudit")([Logger], {
+  sync: (logger) => (message) => {
+    logger.info("order audited", { orderId: message.payload.id });
+    return OkAsync(undefined);
+  },
+});
+
+const orderHandlers = AmqpHandlers(orderContract)([
+  orderNotifications,
+  orderAudit,
+]);
 ```
 
 ## `amqp(options)`
@@ -239,4 +344,11 @@ type its own tests. Node `>=20`.
 The package's own suite needs a Docker daemon: `@amqp-contract/testing`
 boots one RabbitMQ container per vitest run, because the retry and
 dead-letter routing it relies on is the broker's behaviour, not something an
-in-memory fake could stand in for.
+in-memory fake could stand in for. `amqp-runtime.spec.ts` carries 8 specs;
+`handler.spec.ts` adds 2 more — a broadcast with two consumers of one
+publisher, composed from two pieces, pinning that both run and that each was
+built from the ports its own provider declared rather than a record closing
+over both — for 10 total. `handler.test-d.ts` pins the composing form's
+compile-time gates: a piece typed by its own key, an array covering every
+declared key, a missing key refused and named, and a piece built for another
+contract refused structurally.

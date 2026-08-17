@@ -3,7 +3,7 @@ import { test, type TestAPI } from "vitest";
 
 import { orderContract, type OrderContract } from "./contract.js";
 
-type ChangedPayload = typeof orderContract.consumers.orderChanged.message.payload;
+type ChangedPayload = typeof orderContract.consumers.orderNotifications.message.payload;
 
 export type ContractFixtures = {
   /** The contract itself, as any worker or publisher would take it. */
@@ -24,6 +24,6 @@ export const it: TestAPI<ContractFixtures> = test.extend<ContractFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   validate: async ({}, use) => {
     // `fromSchema` is CURRIED — it takes the schema and hands back the validator.
-    await use(fromSchema(orderContract.consumers.orderChanged.message.payload));
+    await use(fromSchema(orderContract.consumers.orderNotifications.message.payload));
   },
 });

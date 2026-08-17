@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/temporal"
-description: The Temporal worker starter — TemporalModule, TemporalActivities, temporal(), its three ports, TemporalUnreachable, WorkflowSource, the unit per activity attempt, and the drain raced against the kernel's deadline.
+description: The Temporal worker starter — TemporalModule, TemporalActivities, TemporalWorkflowActivities, temporal(), its three ports, TemporalUnreachable, WorkflowSource, the unit per activity attempt, and the drain raced against the kernel's deadline.
 ---
 
 # @btravstack/temporal
@@ -18,28 +18,44 @@ description: The Temporal worker starter — TemporalModule, TemporalActivities,
 
 `packages/temporal/src/index.ts` exports exactly this:
 
-| Export                  | Kind  | What it is                                                                                                                                                                                                       |
-| ----------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TemporalModule`        | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the activities provider |
-| `TemporalModuleOptions` | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                  |
-| `TemporalActivities`    | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `(deps, arm)`                                                     |
-| `temporal`              | value | `temporal({ contract, workflows, … })` — the starter module itself, needing the activities port for `contract`; what `TemporalModule` imports                                                                    |
-| `TemporalOptions`       | type  | `temporal()`'s options                                                                                                                                                                                           |
-| `TemporalRuntime`       | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                |
-| `TemporalConfig`        | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string }> {}` — where the service is, bound from the environment                                                              |
-| `TemporalConnection`    | value | `class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}` — the connection, a resource of the graph                                                                                     |
-| `TemporalUnreachable`   | value | `TaggedError("TemporalUnreachable")<{ address: string; cause: unknown }>` — the service did not answer                                                                                                           |
-| `TemporalInfo`          | type  | `{ readonly taskQueue: string; readonly namespace: string }` — published on `Serving.info` once polling                                                                                                          |
-| `WorkflowSource`        | type  | `{ workflowsPath: string } \| { workflowBundle: WorkflowBundleWithSourceMap }` — where the sandbox's code comes from                                                                                             |
+| Export                           | Kind  | What it is                                                                                                                                                                                                                                                   |
+| -------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the activities provider                                             |
+| `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                              |
+| `TemporalActivities`             | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `(deps, arm)`, or `([pieces])` to compose one provider per workflow                                           |
+| `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                   |
+| `ActivitiesInstanceOf<C>`        | type  | That port's instance typed for `C`                                                                                                                                                                                                                           |
+| `TemporalWorkflowActivities`     | value | `TemporalWorkflowActivities(contract, key)` — one workflow's activities (or a contract-global activity) as a provider of its own, typed by `key` alone; the next call is `(deps, arm)`, and the piece is what `TemporalActivities(contract)([...])` composes |
+| `WorkflowActivitiesPortOf<C, K>` | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                                              |
+| `temporal`                       | value | `temporal({ contract, workflows, … })` — the starter module itself, needing the activities port for `contract`; what `TemporalModule` imports                                                                                                                |
+| `TemporalOptions`                | type  | `temporal()`'s options                                                                                                                                                                                                                                       |
+| `TemporalRuntime`                | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                                                            |
+| `TemporalConfig`                 | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string }> {}` — where the service is, bound from the environment                                                                                                          |
+| `TemporalConnection`             | value | `class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}` — the connection, a resource of the graph                                                                                                                                 |
+| `TemporalUnreachable`            | value | `TaggedError("TemporalUnreachable")<{ address: string; cause: unknown }>` — the service did not answer                                                                                                                                                       |
+| `TemporalInfo`                   | type  | `{ readonly taskQueue: string; readonly namespace: string }` — published on `Serving.info` once polling                                                                                                                                                      |
+| `WorkflowSource`                 | type  | `{ workflowsPath: string } \| { workflowBundle: WorkflowBundleWithSourceMap }` — where the sandbox's code comes from                                                                                                                                         |
 
-`TemporalActivitiesPort` — `Port("TemporalActivities")`, the starter's own
-activities port, declared once — with `ActivitiesPortOf<C>` /
-`ActivitiesInstanceOf<C>` (that port's class and instance typed for `C`) and
-`ActivitiesOf<C>` (`DeclareActivitiesHandlerOptions<C>["activities"]`, the
-implementations record `declareActivitiesHandler` takes, its service) live in
-`src/temporal-runtime.ts` and are **not** exported from the entry point: the
-port is reached as `provider.port` when a caller needs it, and the types are
-inferred at the call.
+`ActivitiesPortOf<C>` / `ActivitiesInstanceOf<C>` / `WorkflowActivitiesPortOf<C,
+K>` are exported as **types only**, and only because declaration emit forces
+it: an application that composes `orderActivities =
+TemporalActivities(contract)([piece, piece])` and exports it by name (or a
+slice that exports one piece by name) needs to be able to print that type,
+and a type built from an unexported alias fails TS4023 ("has or is using
+name 'ID' … but cannot be named") the moment it tries. `TemporalActivitiesPort`
+— `Port("TemporalActivities")`, the starter's own activities port, declared
+once — and `ActivitiesOf<C>` (`DeclareActivitiesHandlerOptions<C>["activities"]`,
+the implementations record `declareActivitiesHandler` takes, its service)
+live in `src/temporal-runtime.ts` and stay **not** exported from the entry
+point: nothing outside this package legitimately constructs a provider
+against the bare port — a consumer always goes through
+`TemporalActivities(contract)` or `TemporalWorkflowActivities(contract,
+key)`, both of which cast it to the typed alias — so there is nothing a
+value export would help with, and the port is reached as `provider.port`
+when a caller needs it, with the types inferred at the call. `ActivitiesKeyOf<C>`
+and `WORKFLOW_ACTIVITIES_PREFIX` (`src/workflow-activities.ts`) are
+unexported on the same terms — a bare key nothing outside that file needs to
+name, and the string prefix a piece's port id carries.
 
 ## `TemporalModule(name)({...})`
 
@@ -92,13 +108,21 @@ duplicate-provider defect at build. Each activity is a plain function typed by
 the contract (`(args, { errors }) => AsyncResult<…>`), closing over the
 services the provider declared; nothing is read from a context.
 
-From `examples/order-temporal-worker/src/activities.ts`:
+Expanded, the monolithic form looks like this — not a call site inside
+`examples/order-temporal-worker` any more, since `orderContract` now declares
+**two** workflows and its own worker composes this record from two pieces
+instead (see the composing form below and
+[Split a worker into slices](/how-to/split-a-worker-into-slices)), but the
+form itself is unchanged and still what [Run a Temporal
+worker](/how-to/run-a-temporal-worker) teaches for a worker with one saga. A
+single record covers **every** workflow the contract declares, so this one
+carries `chargeOrder` too, not `fulfillOrder` alone:
 
 ```ts
 export const orderActivities = TemporalActivities(orderContract)(
-  [PlaceOrder, OrderRepository, StockService, ShippingService],
+  [PlaceOrder, OrderRepository, StockService, ShippingService, PaymentService],
   {
-    sync: (place, repository, stock, shipping) => ({
+    sync: (place, repository, stock, shipping, payments) => ({
       fulfillOrder: {
         place: (args, { errors }) =>
           place
@@ -137,14 +161,121 @@ export const orderActivities = TemporalActivities(orderContract)(
               matcher.with(P.tag("OrderNotFound"), () => undefined),
             ),
       },
+      chargeOrder: {
+        authorizePayment: (args, { errors }) =>
+          payments
+            .authorize(args.orderId, args.amount)
+            .map((authorizationId) => ({ authorizationId }))
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("PaymentDeclined"), (error) =>
+                errors.PaymentDeclined({ id: error.id }),
+              ),
+            ),
+        capturePayment: (args) => payments.capture(args.authorizationId),
+        refundPayment: (args) => payments.refund(args.authorizationId),
+      },
     }),
   },
 );
 ```
 
+One record, one `sync`, both sagas' services in its `deps` — which is exactly
+the shape that stops scaling once a worker owns enough workflows, and why the
+composing form below exists.
+
 A hand-written `Provider(orderActivities.port)(…)` targets the same port; a
 port declared under any other id leaves the starter's need unmet, and `start`
 refuses the module.
+
+A third call composes several **pieces** instead of one record:
+`TemporalActivities(contract)([piece, piece, ...])`, where each piece is what
+`TemporalWorkflowActivities(contract, key)(deps, arm)` returns. Di constructs
+every piece first — they are the composed provider's own `deps`, in array
+order — and this call reassembles the activities record from them, keyed by
+what each piece's port id carries. Every top-level key the contract's
+activities record declares must be covered: an array missing one is refused
+at the call, against an `"UNCOVERED ACTIVITIES"` marker
+(`readonly ["UNCOVERED ACTIVITIES", ...]`) — the missing key itself is named
+too once the array's length matches that marker tuple's own length of 2; a
+single-element array's diagnostic names the marker alone; a piece built for
+another contract is refused too, structurally, since its port's service is
+that contract's activities for the key. `Uncovered` checks coverage, not
+injectivity, so two pieces claiming the same key still type-check together;
+di's duplicate-provider defect at build catches it only once **both** end up
+discharged as providers in the same graph — wire in just one and the other is
+silently unregistered, with no diagnostic. The composed
+provider's own `deps` are the **pieces' ports**, not what a piece closes
+over, so the pieces themselves still need discharging like any other need —
+typically `provides: [...]` on the module, or a slice module that exports its
+own piece.
+
+## `TemporalWorkflowActivities(contract, key)`
+
+One workflow's activities, or a contract-global activity, as a provider of
+its own: the port id carries the top-level key
+(`` `TemporalWorkflowActivities:${key}` ``, `WORKFLOW_ACTIVITIES_PREFIX`
+stripped by the composing form to recover it), so two slices claiming one
+workflow is di's duplicate-provider defect rather than a silent merge.
+`contract` types `key` (any top-level key of `ActivitiesOf<C>` — a workflow
+that declares activities, or a contract-global activity, so the name is
+imprecise in the latter case, deliberately: narrowing the type to workflow
+keys only would cost extra type code and lock a contract with global
+activities out of the split) and the piece; a key the contract does not
+declare is refused at the call — there is nothing to type it by — and an
+activity whose input has drifted is a compile error here rather than at
+startup. There is no name to give and nothing minted by hand: the return is
+di's own `Provider(port)`, so every arm is available exactly as it is on
+`TemporalActivities(contract)`, and the provider carries its port as
+`provider.port` (`WorkflowActivitiesPortOf<C, K>`).
+
+```ts
+const orderFulfillment = TemporalWorkflowActivities(
+  orderContract,
+  "fulfillOrder",
+)([PlaceOrder, OrderRepository, StockService, ShippingService], {
+  sync: (place, repository, stock, shipping) => ({
+    place: (args, { errors }) =>
+      place
+        .execute(args.orderId, args.quantity)
+        .map((order) => ({ id: order.id, quantity: order.quantity }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.InvalidQuantity({ id: error.id }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.OrderAlreadyPlaced({ id: error.id }),
+            ),
+        ),
+    // … the rest of the record, one arm per activity `fulfillOrder` declares
+  }),
+});
+
+const orderBilling = TemporalWorkflowActivities(orderContract, "chargeOrder")(
+  [PaymentService],
+  {
+    sync: (payments) => ({
+      authorizePayment: (args, { errors }) =>
+        payments
+          .authorize(args.orderId, args.amount)
+          .map((authorizationId) => ({ authorizationId }))
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("PaymentDeclined"), (error) =>
+              errors.PaymentDeclined({ id: error.id }),
+            ),
+          ),
+      // … the rest of the record, one arm per activity `chargeOrder` declares
+    }),
+  },
+);
+
+// orderContract declares both workflows, so the composing call must cover
+// both — one piece short and it is refused at the call.
+const orderActivities = TemporalActivities(orderContract)([
+  orderFulfillment,
+  orderBilling,
+]);
+```
 
 ## `temporal(options)`
 
@@ -273,3 +404,24 @@ peers. Node `>=20`.
   the released wait above.
 - **A workflow client.** The starter runs a Worker; starting executions is
   `@temporal-contract/client`'s job.
+
+## Testing
+
+The package's own suite needs no Docker daemon: `temporal-runtime.spec.ts`
+and `workflow-activities.spec.ts` boot a real `@temporalio/worker` Worker
+against `@temporal-contract/testing`'s **time-skipping test server** — a
+local binary, cached once per SDK version, rather than a container (see
+[Order Temporal worker](/examples/order-temporal-worker) for the same choice
+and its measured cost). `temporal-runtime.spec.ts` carries 13 specs — one
+the published info, four the starter's configuration, one the connection, two
+the qualified startup chain, two the unit boundary, three the drain;
+`workflow-activities.spec.ts`
+adds 2 more — a two-workflow, one-task-queue contract composed from two
+pieces, pinning that both are mounted and that each was built from the ports
+its own provider declared — for 15 total. `workflow-activities.test-d.ts`
+pins the composing form's compile-time gates: a piece typed by its own key,
+an array covering every declared key composing into what `TemporalModule`
+takes, a key the contract does not declare refused at the piece's own call,
+and an array missing a key refused at the composing call. Checked by
+`tsc -p tsconfig.test-d.json`, which the package's own `test:types` script
+runs and `typecheck` runs alongside the ordinary `tsc --noEmit`.

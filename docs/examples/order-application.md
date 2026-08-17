@@ -69,8 +69,8 @@ export const placeOrder = (
 and `DuplicateOrder` are declared here too but raised by whoever owns the
 storage: the domain names them so every outer layer speaks about them in the
 same terms, which is what stops a Prisma error code or an HTTP status from
-leaking inwards. `fulfillment.ts` adds `OutOfStock` and `ShippingUnavailable`
-for the saga on the same grounds.
+leaking inwards. `fulfillment.ts` adds `OutOfStock`, `ShippingUnavailable` and
+`PaymentDeclined` for the two sagas on the same grounds.
 
 ## The application: ports declared by the caller
 
@@ -89,9 +89,12 @@ export class OrderRepository extends Port("OrderRepository")<{
 Beside it: `Outbox` (the read side of the transactional outbox — `pending`
 and `markPublished`, both `E = never`, because a database that will not
 answer is a defect, not a domain outcome), `StockService` and
-`ShippingService` (the two fulfillment ports the saga orchestrates), and the
-two use-case ports `PlaceOrder` and `FindOrder`. The `Logger` the interactors
-write to is **not** declared here: it is
+`ShippingService` (the two fulfillment ports the orders saga orchestrates),
+`PaymentService` (the billing saga's own port — `authorize` answers with the
+domain's permanent `PaymentDeclined`, `capture` and `refund` promise `never`,
+since a compensation must not invent new ways to fail), and the two use-case
+ports `PlaceOrder` and `FindOrder`. The `Logger` the interactors write to is
+**not** declared here: it is
 [`@btravstack/observability`](/reference/observability)'s port, imported like
 any other dependency. The interactors are classes provided with di's `class`
 arm:

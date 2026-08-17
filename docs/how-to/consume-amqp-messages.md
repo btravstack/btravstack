@@ -36,6 +36,10 @@ consumer serves one handlers record — so the next call declares what the
 handlers need and closes over it. **Nothing is injected per message** — the middleware
 the package installs opens the unit and calls `next()` unchanged:
 
+A record covers **every** consumer and rpc the contract declares —
+`orderContract` has two, `orderNotifications` and `orderAudit`, both reading
+the one `orderChanged` event on their own queue:
+
 ```ts
 import { AmqpHandlers } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
@@ -44,7 +48,7 @@ import { OkAsync } from "unthrown";
 
 export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
   sync: (logger) => ({
-    orderChanged: (message) => {
+    orderNotifications: (message) => {
       const { id, payload } = message.payload;
       logger.info(
         payload === null
@@ -57,9 +61,24 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
       );
       return OkAsync();
     },
+    orderAudit: (message) => {
+      const { id, occurredAt, payload } = message.payload;
+      logger.info("recording an order change", {
+        orderId: id,
+        occurredAt,
+        change: payload === null ? "removed" : "placed",
+      });
+      return OkAsync();
+    },
   }),
 });
 ```
+
+`examples/order-amqp-worker` composes these two consumers from a slice each
+now, rather than in one function — see
+[Split a worker into slices](/how-to/split-a-worker-into-slices) — but the
+monolithic form above is unchanged, and right for a worker that has not
+outgrown it.
 
 ## Step 2 — the three-way split
 
@@ -83,11 +102,11 @@ handlers provider):
 ```ts
 import { AmqpHandlers } from "@btravstack/amqp";
 import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
-import { ErrAsync, P } from "unthrown";
+import { ErrAsync, OkAsync, P } from "unthrown";
 
 export const placingHandlers = AmqpHandlers(orderContract)([PlaceOrder], {
   sync: (place) => ({
-    orderChanged: (message) =>
+    orderNotifications: (message) =>
       place
         .execute(message.payload.id, message.payload.payload?.quantity ?? 0)
         .map(() => undefined)
@@ -101,6 +120,9 @@ export const placingHandlers = AmqpHandlers(orderContract)([PlaceOrder], {
         .recoverDefect((cause) =>
           ErrAsync(new RetryableError("placing the order failed", cause)),
         ),
+    // Not the point of this example — a bare ack keeps `placingHandlers`
+    // focused on the triage `PlaceOrder` needs.
+    orderAudit: () => OkAsync(),
   }),
 });
 ```
@@ -189,7 +211,7 @@ receive the unit's `AbortSignal` through: `currentUnit()?.signal` is the only
 route to it, and it is aborted at the kernel's `drainTimeoutMs`.
 
 ```ts
-orderChanged: (message) => {
+orderNotifications: (message) => {
   const { id, payload } = message.payload;
   if (currentUnit()?.signal.aborted === true) {
     return ErrAsync(
@@ -259,6 +281,8 @@ cannot reach is the modeled `BrokerUnreachable`, a startup `Err` and exit `1`.
 ## See also
 
 - [`@btravstack/amqp`](/reference/amqp) — options, ports, `AmqpInfo`.
+- [Split a worker into slices](/how-to/split-a-worker-into-slices) — several
+  consumers, one handler per consumer, composed at the root.
 - [Order AMQP worker](/examples/order-amqp-worker) — the outbox pattern end to end, against a real RabbitMQ.
 - [Manage a resource's lifetime](/how-to/manage-a-resource) — `acquire`/`release`, as the relay uses it.
 - [Configure from the environment](/how-to/configure-from-the-environment) — `AMQP_URL` and `OUTBOX_POLL_MS`.

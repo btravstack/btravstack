@@ -70,17 +70,36 @@ const notifications = defineQueue("order-notifications", {
 });
 
 /**
+ * The second subscriber's queue. Two queues bound to the same `orders`
+ * exchange is what a broadcast IS: neither subscriber knows the other exists,
+ * each keeps its own retry budget, and one slow reader cannot stall the other.
+ * It is also why this contract has two consumers of ONE publisher rather than
+ * two events.
+ */
+const audit = defineQueue("order-audit", {
+  deadLetter: { exchange: parked, externalConsumers: true },
+  retry: { mode: "ttl-backoff", maxRetries: 3, initialDelayMs: 10 },
+});
+
+/**
  * The contract, declared before any implementation exists — the same
  * discipline `order-api-contract` and `order-temporal-contract` follow.
  *
  * A publisher entry is **structurally required**: `defineEventConsumer`
  * derives the binding from the publisher it consumes, so this package carries
  * the producing side (the outbox relay) and the consuming side (the
- * notifier) as one checkable artifact.
+ * subscribers) as one checkable artifact.
+ *
+ * The consumer keys name the subscriber, not the event: `orderNotifications`
+ * and `orderAudit` both read `orderChanged`, and the worker's two slices are
+ * each named for the key it implements.
  */
 export const orderContract = defineContract({
   publishers: { orderChanged: orderChangedEvent },
-  consumers: { orderChanged: defineEventConsumer(orderChangedEvent, notifications) },
+  consumers: {
+    orderNotifications: defineEventConsumer(orderChangedEvent, notifications),
+    orderAudit: defineEventConsumer(orderChangedEvent, audit),
+  },
 });
 
 export type OrderContract = typeof orderContract;

@@ -65,6 +65,16 @@ exports the runtime port; the handlers are checked against the contract at the
 call, not on the first delivery. `runtimeInfo()` reads `{ queues }` back once
 consuming.
 
+A worker with several consumers can be several slices instead of one record:
+`AmqpHandler(contract, key)([deps], arm)` mints a provider for ONE consumer or
+rpc, typed by the key alone, and `AmqpHandlers(contract)([...])` composes an
+array of them into the same handlers provider `AmqpModule` takes — the array
+must cover every key the contract declares, and each piece's own port must
+still be discharged (`provides`), since the composed provider's deps are the
+pieces' ports, not what they close over. Two slices claiming one key are di's
+duplicate-provider defect at build, which is the point: a consumer belongs to
+exactly one slice.
+
 ## What it decides, and what it does not
 
 `Result` → ack / retry / dead-letter is a **three-way** split and none of it is

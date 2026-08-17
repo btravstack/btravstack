@@ -8,7 +8,10 @@ import {
 import { ErrAsync, P } from "unthrown";
 
 /**
- * The workflow, in its own module — and it has to be.
+ * Both workflows, in their own module — and it has to be. One task queue, two
+ * verticals: `fulfillOrder` is the orders vertical's saga, `chargeOrder` is
+ * billing's, and this file is the one place both are the workflow-sandbox's
+ * business rather than either slice's own.
  *
  * Workflow code runs inside a deterministic V8 sandbox that webpack bundles
  * separately from the worker's own module graph, so it may not sit in a spec
@@ -101,4 +104,42 @@ export const fulfillOrder = declareWorkflow({
         ),
     );
   },
+});
+
+/**
+ * The billing workflow: authorize, then capture. A capture that fails after a
+ * successful authorization is walked back with `refundPayment`, in reverse
+ * order of the step it undoes — the same saga shape `fulfillOrder` runs, at
+ * the smallest size that still has a compensation.
+ */
+export const chargeOrder = declareWorkflow({
+  workflowName: "chargeOrder",
+  contract: orderContract,
+  implementation: (context, args) =>
+    propagateActivityFailure(
+      context.activities
+        .authorizePayment({ orderId: args.orderId, amount: args.amount })
+        .mapErrCases((matcher) =>
+          matcher
+            .with({ errorName: "PaymentDeclined" }, (error) =>
+              context.errors.PaymentDeclined({ id: error.data.id }),
+            )
+            .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) => error),
+        )
+        .flatMap((authorized) =>
+          context.activities
+            .capturePayment({ authorizationId: authorized.authorizationId })
+            .flatMapErrCases((matcher) =>
+              matcher.with(
+                P.tag(ACTIVITY_ERROR_TAG),
+                P.tag(ACTIVITY_CANCELLED_ERROR_TAG),
+                (error) =>
+                  context.activities
+                    .refundPayment({ authorizationId: authorized.authorizationId })
+                    .flatMap(() => ErrAsync(error)),
+              ),
+            )
+            .map(() => authorized),
+        ),
+    ),
 });

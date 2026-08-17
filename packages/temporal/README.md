@@ -68,6 +68,17 @@ itself, inside its own error qualifier, so a contract it cannot satisfy is a
 startup `Err`, not a defect. `runtimeInfo()` reads `{ taskQueue, namespace }`
 back once the worker is polling.
 
+A worker polling for several workflows can be several slices instead of one
+record: `TemporalWorkflowActivities(contract, key)([deps], arm)` mints a
+provider for ONE workflow's activities (or a contract-global activity),
+typed by the key alone, and `TemporalActivities(contract)([...])` composes an
+array of them into the same activities provider `TemporalModule` takes — the
+array must cover every key the contract declares, and each piece's own port
+must still be discharged (`provides`), since the composed provider's deps are
+the pieces' ports, not what they close over. Two slices claiming one key are
+di's duplicate-provider defect at build, which is the point: a workflow's
+activities belong to exactly one slice.
+
 ## The drain
 
 `worker.shutdown()` stops polling at once, but `run()` resolves only when the

@@ -25,6 +25,7 @@ const GUIDE_SIDEBAR = [
       { text: "Log and correlate", link: "/how-to/log-and-correlate" },
       { text: "Serve an oRPC contract over HTTP", link: "/how-to/serve-orpc-over-http" },
       { text: "Split a router into controllers", link: "/how-to/split-a-router-into-controllers" },
+      { text: "Split a worker into slices", link: "/how-to/split-a-worker-into-slices" },
       { text: "Run a Temporal worker", link: "/how-to/run-a-temporal-worker" },
       { text: "Consume AMQP messages", link: "/how-to/consume-amqp-messages" },
       { text: "Open a per-request scope", link: "/how-to/open-a-per-request-scope" },

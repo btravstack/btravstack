@@ -5,7 +5,7 @@ rules into operations — "place an order", "find an order" — and declares, as
 `@btravstack/di` ports, what it needs the outside world to supply.
 
 ```
-src/ports.ts          OrderRepository, CustomerRepository, Outbox, StockService, ShippingService, PlaceOrder, FindOrder, FindCustomer
+src/ports.ts          OrderRepository, CustomerRepository, Outbox, StockService, ShippingService, PaymentService, PlaceOrder, FindOrder, FindCustomer
 src/use-cases.ts      the interactors, and their providers
 src/module.ts         OrderApplicationModule, CustomerApplicationModule
 src/test-fixtures.ts  the stub repositories and TestModule, as Vitest fixtures
@@ -30,6 +30,16 @@ read-only: nothing in this application registers a customer, so the port says
 only what the use case needs. Its `find` answers with the domain's `Customer`,
 never the transport's `CustomerView` — an adapter that spoke the wire's shape
 would point the dependency arrow outwards.
+
+`PaymentService` is the billing vertical's own port, the same shape as
+`StockService` and `ShippingService`: `authorize` answers with the domain's
+own permanent failure, `PaymentDeclined` — declared in `order-domain`, not
+here, for the same reason `OutOfStock` and `ShippingUnavailable` are: it is a
+domain answer a caller is entitled to branch on, whatever adapter happens to
+produce it — and `capture` / `refund` promise `never`, because a compensation
+must not invent new ways to fail. `order-temporal-worker`'s `BillingModule` is
+the adapter; nothing here
+provides it.
 
 ## One module per vertical, and neither provides its repository
 

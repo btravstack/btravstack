@@ -7,6 +7,7 @@ import type {
   Order,
   OrderNotFound,
   OutOfStock,
+  PaymentDeclined,
   ShippingUnavailable,
 } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
@@ -87,6 +88,22 @@ export class StockService extends Port("StockService")<{
 
 export class ShippingService extends Port("ShippingService")<{
   readonly arrange: (orderId: string) => AsyncResult<void, ShippingUnavailable>;
+}> {}
+
+/**
+ * The payment provider, as a port the application owns and an adapter
+ * implements. `PaymentDeclined` is a permanent no — the card was refused, and
+ * asking again changes nothing — which is why the contract marks it
+ * `nonRetryable`; anything else that goes wrong is infrastructure and stays
+ * unmodelled, so the platform retries it. `PaymentDeclined` itself lives in
+ * `order-domain`, not here — the same reason `OutOfStock` and
+ * `ShippingUnavailable` do: it is a domain answer a caller is entitled to
+ * branch on, whatever adapter happens to produce it.
+ */
+export class PaymentService extends Port("PaymentService")<{
+  readonly authorize: (orderId: string, amount: number) => AsyncResult<string, PaymentDeclined>;
+  readonly capture: (authorizationId: string) => AsyncResult<void, never>;
+  readonly refund: (authorizationId: string) => AsyncResult<void, never>;
 }> {}
 
 export class PlaceOrder extends Port("PlaceOrder")<{

@@ -1,5 +1,5 @@
 import type { Line } from "@btravstack/observability";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 import { it } from "./test-fixtures.js";
 
@@ -110,5 +110,27 @@ describe("the broadcast deployment", () => {
       occurredAt: expect.any(String),
       payload: { quantity: 4 },
     });
+  });
+
+  it("delivers one committed fact to every subscriber", async ({ serve, tapped }) => {
+    // GIVEN a worker whose two slices each drain their own queue off the one
+    // orders exchange
+    await serve(tapped.module);
+    const { placeOrder } = tapped.services();
+
+    // WHEN one order is placed, so the relay publishes exactly one event
+    await expect(placeOrder.execute("o-7", 2)).toBeOk();
+
+    // THEN both subscribers logged it — a broadcast, not a work queue. Only a
+    // subscriber's own line carries a kernel `unit`, which is what tells the
+    // two apart from `placeOrder.execute`'s own "placing an order" line —
+    // written outside any consumer's delivery.
+    const subscriberLines = () => tapped.lines().filter((line) => line.unit !== undefined);
+    await vi.waitUntil(() => subscriberLines().length === 2, { timeout: 5_000 });
+    expect(
+      subscriberLines()
+        .map((line) => line.message)
+        .sort(),
+    ).toEqual(["order placed — notifying", "recording an order change"]);
   });
 });

@@ -19,8 +19,7 @@ import { OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-ap
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { Logger, observability } from "@btravstack/observability";
 
-import { orderHandlers } from "./handlers.js";
-import { OrderAmqpWorker } from "./module.js";
+import { OrderAmqpWorker, orderHandlers } from "./module.js";
 
 const options = { signals: false, probes: false } as const;
 

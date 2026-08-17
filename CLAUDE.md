@@ -384,7 +384,13 @@ type checker already verifies.
   `start.test-d.ts`, since every shipped runtime declares `needs: []`.
   `examples/` is not the only place the gate is pinned by a **type test**:
   `packages/amqp/src/amqp-runtime.test-d.ts` pins the handlers-port half of
-  `amqp`'s own gate, and `packages/http/src/controller.test-d.ts` pins the
+  `amqp`'s own gate, and its sibling `packages/amqp/src/handler.test-d.ts` pins
+  the composing form's — a piece typed by the one key it names, and the root's
+  array refused when it misses a declared key. `packages/temporal/src/workflow-activities.test-d.ts`
+  pins the same shape for `temporal`'s composing form and is that package's
+  **first** type test — `packages/temporal` had no `*.test-d.ts` file, and no
+  `tsconfig.test-d.json` or `test:types` script, before it. `packages/http/src/controller.test-d.ts`
+  pins the
   five compile-time gates the keyed `HttpRouter(contract)(controllers)` form
   owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 26 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts` and `controller.spec.ts`, drive the
@@ -449,40 +455,56 @@ type checker already verifies.
   way `order-api` consumes `@btravstack/http`: it supplies the contract, the
   activities provider and the `mapErrCases` triage, and reads `{ taskQueue,
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
-  attempt and the deadline race are the package's. Its activities are a
-  **provider** on the starter's activities port
-  (`orderActivities = TemporalActivities(orderContract)([…], { sync })`),
-  built from `PlaceOrder`, `OrderRepository`,
-  `StockService` and `ShippingService` — closures over the services, no
-  context read at call time — and the composition root is
+  attempt and the deadline race are the package's. It is a **two-slice
+  modulith**: `FulfillmentSlice`'s `fulfillOrder = TemporalWorkflowActivities(orderContract,
+"fulfillOrder")([PlaceOrder, OrderRepository, StockService, ShippingService],
+{ sync })` and `BillingSlice`'s `chargeOrder = TemporalWorkflowActivities(orderContract,
+"chargeOrder")([PaymentService], { sync })` are each a **piece** — a provider
+  on the port its own contract key mints, closing over only the services its
+  own saga calls, no context read at call time — and the root composes them,
+  `orderActivities = TemporalActivities(orderContract)([fulfillOrder,
+chargeOrder])`, into the composition root
   `TemporalModule("OrderTemporalWorker")({ contract, activities:
-orderActivities, workflows, imports: [OrderApplicationModule,
-OrderPersistenceModule, FulfillmentModule, observability()] })`, the sugar importing the starter;
-  the connection and `TEMPORAL_*` come from the starter, and `LOG_LEVEL` and
-  the `Logger` the saga's stand-in services write to come from
-  `observability()`. `order-amqp-worker` is
-  the same shape (`orderHandlers = AmqpHandlers(orderContract)([Logger], {
-sync })`,
-  `AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers, imports:
-[OrderApplicationModule, OrderPersistenceModule, observability()], … })`),
+orderActivities, workflows, imports: [FulfillmentSlice, BillingSlice,
+observability()] })`, the sugar importing the starter. `FulfillmentSlice`
+  imports the orders vertical (`OrderApplicationModule` +
+  `OrderPersistenceModule`) plus `FulfillmentModule`; `BillingSlice` imports
+  `BillingModule` alone — the two verticals meet only in that `imports` list,
+  never inside either slice's own graph. The connection and `TEMPORAL_*` come
+  from the starter, and `LOG_LEVEL` and the `Logger` the sagas' stand-in
+  services write to come from `observability()`. `order-amqp-worker` is the
+  same shape — `NotificationsSlice`'s `orderNotifications = AmqpHandler(orderContract,
+"orderNotifications")([Logger], { sync })` and `AuditSlice`'s `orderAudit =
+AmqpHandler(orderContract, "orderAudit")([Logger], { sync })`, composed as
+  `orderHandlers = AmqpHandlers(orderContract)([orderNotifications,
+orderAudit])` — but **neither** slice imports a vertical: a subscriber reacts
+  to a fact somebody else already committed, so the orders vertical stays at
+  the root, next to the outbox relay that writes it
+  (`AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers,
+imports: [OrderApplicationModule, OrderPersistenceModule, NotificationsSlice,
+AuditSlice, observability()], … })`),
   with its outbox relay a resourceful provider of its own rather than
   something layered onto the runtime — the relay is also the one place in the
   examples that logs a **failure**, `logger.error(message, cause, { eventId })`
   down each of its three arms. Both are also where **honouring the
   kernel's deadline through the ambient record** is worked: neither middleware
   injects anything into the call — `next()` unchanged — so
-  `currentUnit()?.signal` is the only route to it, and what each answers when
-  it is aborted is the transport's own business. `order-amqp-worker`'s
-  `orderChanged` returns a `RetryableError`, leaving the delivery un-acked so
-  the broker hands it to the next worker; `order-temporal-worker`'s
-  `ShippingService.arrange` fails as a **defect**, which the platform retries
-  on another worker — the contract's `ShippingUnavailable` is a permanent no
-  and would be the wrong error for "we ran out of time".
-- **A controller is a provider; a slice is a module; a modulith is several
-  slice modules in one root.** No new concept: a slice owns its contract
-  fragment, its controller and (if it needs one) its own adapter, and ships
-  as an ordinary di `Module` that exports only its controller's port —
-  everything else about the slice stays private. `@btravstack/http`'s
+  `currentUnit()?.signal` is the only route to it, and what each piece answers
+  when it is aborted is that **slice's own** business now: `order-amqp-worker`'s
+  `orderNotifications` returns a `RetryableError`, leaving the delivery
+  un-acked so the broker hands it to the next worker, while `orderAudit` keeps
+  writing through the drain window rather than leaving a delivery un-acked;
+  `order-temporal-worker`'s `ShippingService.arrange` fails as a **defect**,
+  which the platform retries on another worker — the contract's
+  `ShippingUnavailable` is a permanent no and would be the wrong error for "we
+  ran out of time".
+- **A piece is a provider; a slice is a module; a modulith is several slice
+  modules in one root — one shape, all three transports.** No new concept: a
+  slice owns its own piece of the surface — an HTTP fragment and controller, a
+  Temporal workflow and its activities, an AMQP consumer and its handler — and
+  (if it needs one) its own adapter, and ships as an ordinary di `Module` that
+  exports only that piece's port — everything else about the slice stays
+  private. `@btravstack/http`'s
   `HttpController(name, fragment)([deps], { sync })` mints the controller's
   port; the root composes every slice's controller into one router with the
   keyed `HttpRouter(contract)(controllers)` form, exact against the contract
@@ -497,6 +519,29 @@ sync })`,
   would pin only the weaker "a fragment is a valid contract" half. This is what
   makes composing several slices into one router a starting point rather than a
   trap, and it is the one property marked do-not-break in the design.
+
+  A worker's record is not nested by fragment the way HTTP's contract is —
+  there is nothing shaped like `HttpRouter`'s record to key a composition by —
+  so its starter composes an **array** of pieces instead. `@btravstack/amqp`'s
+  `AmqpHandler(contract, key)` and `@btravstack/temporal`'s
+  `TemporalWorkflowActivities(contract, key)` each mint one piece straight
+  from the contract key — a consumer or a workflow, with the key carried on
+  the piece's own port id rather than on a record position — and
+  `AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])`
+  compose them: every key the contract declares must be covered (an uncovered
+  one is refused at the call, against an `"UNCOVERED HANDLERS"` /
+  `"UNCOVERED ACTIVITIES"` marker that names the missing key too once the
+  array's length matches the marker tuple's own length of 2), and two slices
+  both discharged for one key are di's duplicate-provider defect at build —
+  the same exactness the keyed HTTP
+  form gets from the shape of the record it composes, reached here through the
+  port id instead, because there is no record to be exact against. See
+  `packages/amqp/CLAUDE.md` and `packages/temporal/CLAUDE.md` for the full
+  surface, and `docs/how-to/split-a-worker-into-slices.md` for the task — the
+  sibling of `controller.test-d.ts`'s do-not-break property above does not
+  exist on this side: a worker's array has no lifted-fragment form to
+  preserve, since a piece already IS one contract key on its own.
+
 - **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
   over its own node adapter, `@unthrown/orpc` at the boundary.** It is a
@@ -862,8 +907,8 @@ A sixth rule is about production code that tests keep honest:
 - **A `docs-examples.test-d.ts` for `@btravstack/http`, `@btravstack/temporal`,
   `@btravstack/amqp` and `@btravstack/observability`.** `packages/core`'s exists precisely so its README and
   the kernel-only pages of the documentation site cannot drift from
-  `runtime.ts` / `drain.ts` without failing `pnpm typecheck`; the three
-  four other packages' README and site samples have no such gate — they were
+  `runtime.ts` / `drain.ts` without failing `pnpm typecheck`; the four
+  other packages' README and site samples have no such gate — they were
   compiled by hand in a scratch file inside the matching example workspace
   when written, and by nothing since. Deliberately not built — four
   packages' worth of samples still did not justify the harness. Add it the

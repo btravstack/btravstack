@@ -36,9 +36,13 @@ activities record — so the next call is `(deps, arm)` as anywhere else. **An a
 read from a context at call time — and each `mapErrCases` names every domain
 error the contract declares:
 
+A single record covers **every** workflow the contract declares — `orderContract`
+has two, `fulfillOrder` and `chargeOrder`:
+
 ```ts
 import {
   OrderRepository,
+  PaymentService,
   PlaceOrder,
   ShippingService,
   StockService,
@@ -48,9 +52,9 @@ import { TemporalActivities } from "@btravstack/temporal";
 import { P } from "unthrown";
 
 export const orderActivities = TemporalActivities(orderContract)(
-  [PlaceOrder, OrderRepository, StockService, ShippingService],
+  [PlaceOrder, OrderRepository, StockService, ShippingService, PaymentService],
   {
-    sync: (place, repository, stock, shipping) => ({
+    sync: (place, repository, stock, shipping, payments) => ({
       fulfillOrder: {
         place: (args, { errors }) =>
           place
@@ -89,6 +93,19 @@ export const orderActivities = TemporalActivities(orderContract)(
               matcher.with(P.tag("OrderNotFound"), () => undefined),
             ),
       },
+      chargeOrder: {
+        authorizePayment: (args, { errors }) =>
+          payments
+            .authorize(args.orderId, args.amount)
+            .map((authorizationId) => ({ authorizationId }))
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("PaymentDeclined"), (error) =>
+                errors.PaymentDeclined({ id: error.id }),
+              ),
+            ),
+        capturePayment: (args) => payments.capture(args.authorizationId),
+        refundPayment: (args) => payments.refund(args.authorizationId),
+      },
     }),
   },
 );
@@ -112,6 +129,7 @@ import { TemporalModule } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
 import { orderActivities } from "./activities.js";
+import { BillingModule } from "./billing.js";
 import { FulfillmentModule } from "./fulfillment.js";
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
@@ -124,6 +142,7 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     OrderApplicationModule,
     OrderPersistenceModule,
     FulfillmentModule,
+    BillingModule,
     observability(),
   ],
 });
@@ -132,14 +151,15 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 `TemporalModule` is `Module(name)({...})` plus the starter's fields: it
 imports `temporal({ contract, workflows, … })`, provides the activities and
 exports `TemporalRuntime`. [`observability()`](/reference/observability) is the
-other starter in the list — the `Logger` the use case and the fulfillment
-services write to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
-carrying the activity attempt's own trace id. The starter's runtime provider depends on its
-activities port through di, so a root whose imports do not cover what the
-provider declared (`FulfillmentModule` here) is refused at `start` — di's
-gate; a root with no starter fails on arity (`NO RUNTIME`). `activities` is
-typed against the module's own `contract`: a provider built for another
-contract is refused at the call.
+other starter in the list — the `Logger` the use case, the fulfillment
+services and the billing stand-in write to, bound from `LOG_LEVEL`, JSON per
+line on stdout, every line carrying the activity attempt's own trace id. The
+starter's runtime provider depends on its activities port through di, so a
+root whose imports do not cover what the provider declared (`FulfillmentModule`
+and `BillingModule` here — `chargeOrder`'s `PaymentService` comes from the
+latter) is refused at `start` — di's gate; a root with no starter fails on
+arity (`NO RUNTIME`). `activities` is typed against the module's own
+`contract`: a provider built for another contract is refused at the call.
 
 `workflows` is a `WorkflowSource`: `{ workflowsPath }` for a process that lets
 Temporal bundle the module, `{ workflowBundle }` for a spec that built one and
@@ -186,6 +206,7 @@ export const Pinned = TemporalModule("OrderTemporalWorkerLocal")({
     OrderApplicationModule,
     OrderPersistenceModule,
     FulfillmentModule,
+    BillingModule,
     observability(),
   ],
 });
@@ -277,6 +298,8 @@ it fires on a workflow-side cancellation, and on worker shutdown after
 ## See also
 
 - [`@btravstack/temporal`](/reference/temporal) — options, ports, `TemporalInfo`, `WorkflowSource`.
+- [Split a worker into slices](/how-to/split-a-worker-into-slices) — several
+  workflows, one activities record per workflow, composed at the root.
 - [Order Temporal worker](/examples/order-temporal-worker) — the saga these samples come from.
 - [Tune the drain for Kubernetes](/how-to/tune-the-drain-for-kubernetes) — `drainTimeoutMs` against `terminationGracePeriodSeconds`.
 - [Configure from the environment](/how-to/configure-from-the-environment) — how `TEMPORAL_*` are bound and pinned.

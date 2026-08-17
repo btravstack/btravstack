@@ -107,6 +107,13 @@ overrides:
   # fixed version), as unthrown does — `vitepress build` is verified against it.
   # This also drags esbuild up past GHSA-67mh-4wv8-2f99.
   "vite@<6.4.3": "6.4.3"
+  # GHSA-ggr8-5vv4-36mx: deepmerge-ts stack exhaustion when merging recursive
+  # object graphs. Reaches us via examples/order-infrastructure > prisma >
+  # @prisma/config > deepmerge-ts — the CLI at `generate` time, never a
+  # published package's runtime deps. prisma@7.9.1 is already latest and
+  # @prisma/config still pins ^7, so there is nothing upstream to take; lift
+  # any pre-8 line to 8.0.1. Drop this the moment @prisma/config ships ^8.
+  "deepmerge-ts@<8.0.0": "8.0.1"
 
 allowBuilds:
   # Prisma 7 is engine-less (WASM query compiler); nothing to build or download.

@@ -144,34 +144,34 @@ a signal through. Injecting a context the contract does not type was the
 alternative, and it is the hidden-dependency shape this stack exists to avoid.
 
 What you answer when the signal has fired is the transport's business, not the
-kernel's. On AMQP, an un-acked delivery goes back to the broker, so a
-`RetryableError` hands the message to the next worker —
-`examples/order-amqp-worker/src/handlers.ts`:
+kernel's, and it is a **slice's own** business now: `order-amqp-worker`'s two
+subscribers answer differently. On AMQP, an un-acked delivery goes back to the
+broker, so a `RetryableError` hands the message to the next worker —
+`examples/order-amqp-worker/src/slices/notifications/handler.ts`:
 
 ```ts
-export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
-  sync: (logger) => ({
-    orderChanged: (message) => {
-      const { id, payload } = message.payload;
-      if (currentUnit()?.signal.aborted === true) {
-        return ErrAsync(
-          new RetryableError(
-            `the drain deadline passed before order ${id} was notified`,
-          ),
-        );
-      }
-      logger.info(
-        payload === null
-          ? "order gone — notifying"
-          : "order placed — notifying",
-        {
-          orderId: id,
-          ...(payload === null ? {} : { quantity: payload.quantity }),
-        },
+export const orderNotifications = AmqpHandler(
+  orderContract,
+  "orderNotifications",
+)([Logger], {
+  sync: (logger) => (message) => {
+    const { id, payload } = message.payload;
+    if (currentUnit()?.signal.aborted === true) {
+      return ErrAsync(
+        new RetryableError(
+          `the drain deadline passed before order ${id} was notified`,
+        ),
       );
-      return OkAsync();
-    },
-  }),
+    }
+    logger.info(
+      payload === null ? "order gone — notifying" : "order placed — notifying",
+      {
+        orderId: id,
+        ...(payload === null ? {} : { quantity: payload.quantity }),
+      },
+    );
+    return OkAsync();
+  },
 });
 ```
 
