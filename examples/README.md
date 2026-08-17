@@ -12,17 +12,17 @@ The **tenth**, [`hexagonal-order-api`](#the-containers-one), came with
 `@btravstack/di` and is the container's own: it composes a `Module` and never
 calls `start`.
 
-| Package                                                | Layer     | Shows                                                                                                                                                            |
-| ------------------------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                              |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and one module per vertical whose repository — and, for orders, `Logger` — is deliberately an **unmet need**.         |
-| [`order-infrastructure`](./order-infrastructure)       | adapters  | Prisma-backed repositories over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's repository needs.               |
-| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                              |
-| [`order-api`](./order-api)                             | runtime   | The first deployment: a two-slice modulith — a controller per contract fragment, composed into one oRPC router — served by `http()`, and `Result` → `ORPCError`. |
-| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client.          |
-| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: a fulfillment saga on `@btravstack/temporal` — place, reserve, ship, and compensation in reverse on a permanent no.            |
-| [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, one subscriber queue with a retry/dead-letter policy — read by the relay and by any subscriber.          |
-| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: a transactional outbox relayed onto RabbitMQ by `@btravstack/amqp`'s worker — every committed write becomes an event.              |
+| Package                                                | Layer     | Shows                                                                                                                                                                                                 |
+| ------------------------------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                                                                   |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and one module per vertical whose repository — and, for orders, `Logger` — is deliberately an **unmet need**.                                              |
+| [`order-infrastructure`](./order-infrastructure)       | adapters  | Prisma-backed repositories over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's repository needs.                                                    |
+| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                                                                   |
+| [`order-api`](./order-api)                             | runtime   | The first deployment: a two-slice modulith — a controller per contract fragment, composed into one oRPC router — served by `http()`, and `Result` → `ORPCError`.                                      |
+| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — two workflows, eight activities, five declared `nonRetryable` errors — read by the worker, the sandbox and the client.                                             |
+| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: two saga slices on `@btravstack/temporal` — `fulfillOrder` places, reserves and ships with compensation in reverse; `chargeOrder` authorizes and refunds a payment. |
+| [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, two subscriber queues each with its own retry/dead-letter policy — read by the relay and by any subscriber.                                   |
+| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: two subscriber slices over a transactional outbox relayed onto RabbitMQ by `@btravstack/amqp`'s worker — every committed write becomes an event.                        |
 
 ## The layering, and which way the arrows point
 
@@ -91,17 +91,23 @@ publisher makes before sending a message.
 
 ## One application, three deployments — each doing what its transport is for
 
-Every composition root imports the same pair — `OrderApplicationModule`,
-`OrderPersistenceModule` — and exports its own selection of ports: nothing in
-`order-application` or `order-infrastructure` differs between deployments, and
-nothing could. The two workers import that pair and nothing else: the customers
-vertical is a pair of modules of its own, so a deployment that never answers a
-customer question does not carry its use case or its repository. What differs is what each transport is **for**:
+Every deployment composes the same pair — `OrderApplicationModule`,
+`OrderPersistenceModule` — and nothing in either differs between them, though
+not always at the same level: `order-api`'s root and `order-amqp-worker`'s
+root import the pair directly (the relay owns the outbox vertical, and
+neither of `order-amqp-worker`'s subscriber slices owns any vertical at all),
+while `order-temporal-worker`'s `FulfillmentSlice` imports it instead — the
+orders vertical is `fulfillOrder`'s alone there, and `chargeOrder`'s
+`BillingSlice` carries a different one, `BillingModule`, instead. The
+customers vertical is a separate pair of modules everywhere, so a deployment
+that never answers a customer question does not carry its use case or its
+repository. What differs is what each transport is **for**:
 
 - **`order-api`** answers a caller: a request arrives, a typed answer leaves.
-- **`order-temporal-worker`** owns a journey: the fulfillment saga runs steps
-  in order and compensates in reverse when one answers a permanent no —
-  orchestration, which needs a durable owner.
+- **`order-temporal-worker`** owns two journeys: the fulfillment saga runs
+  steps in order and compensates in reverse when one answers a permanent no;
+  the billing saga authorizes and captures a payment, refunding it on
+  failure — orchestration, which needs a durable owner.
 - **`order-amqp-worker`** tells everyone what happened: every committed write
   leaves an event through a transactional outbox — and a cancellation leaves
   a tombstone — broadcast, which needs no addressee at all.
@@ -167,11 +173,18 @@ process serves one router / activities record / handlers record as it boots
 one runtime): `order-api`'s `orderRouter = HttpRouter(contract)({ orders:
 ordersController, customers: customersController })`, a **slice's controller
 per top-level contract key** (below); `order-temporal-worker`'s `orderActivities =
-TemporalActivities(orderContract)([…four ports…], { sync })`;
-`order-amqp-worker`'s `orderHandlers = AmqpHandlers(orderContract)([Logger],
-{ sync })`, on `@btravstack/observability`'s port — di's own `Provider(port)(deps, arm)` on that port, typed by the
+TemporalActivities(orderContract)([fulfillOrder, chargeOrder])`, one
+`TemporalWorkflowActivities` piece per saga slice; `order-amqp-worker`'s
+`orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit])`,
+one `AmqpHandler` piece per subscriber slice — di's own
+`Provider(port)(deps, arm)` on that port either way, typed by the
 contract, and each composition root the matching `HttpModule` / `TemporalModule` /
-`AmqpModule` taking the provider. No starter
+`AmqpModule` taking the provider. A worker's record has no nesting to key a
+`HttpRouter`-shaped composition by, so each piece's port id carries the
+contract key instead, and the starter composes an **array** rather than a
+record — the same exactness (every key covered, two slices claiming one key
+is di's duplicate-provider defect at build) reached a different way. No
+starter
 declares a `needs` any more — all three runtimes are `Runtime<never, Info>`
 — so `start`'s `UNSATISFIED RUNTIME NEEDS` arm is exercised only by the
 kernel's own type test now; what the examples pin is the other two gates.

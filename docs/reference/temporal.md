@@ -108,13 +108,21 @@ duplicate-provider defect at build. Each activity is a plain function typed by
 the contract (`(args, { errors }) => AsyncResult<…>`), closing over the
 services the provider declared; nothing is read from a context.
 
-From `examples/order-temporal-worker/src/activities.ts`:
+Expanded, the monolithic form looks like this — not a call site inside
+`examples/order-temporal-worker` any more, since `orderContract` now declares
+**two** workflows and its own worker composes this record from two pieces
+instead (see the composing form below and
+[Split a worker into slices](/how-to/split-a-worker-into-slices)), but the
+form itself is unchanged and still what [Run a Temporal
+worker](/how-to/run-a-temporal-worker) teaches for a worker with one saga. A
+single record covers **every** workflow the contract declares, so this one
+carries `chargeOrder` too, not `fulfillOrder` alone:
 
 ```ts
 export const orderActivities = TemporalActivities(orderContract)(
-  [PlaceOrder, OrderRepository, StockService, ShippingService],
+  [PlaceOrder, OrderRepository, StockService, ShippingService, PaymentService],
   {
-    sync: (place, repository, stock, shipping) => ({
+    sync: (place, repository, stock, shipping, payments) => ({
       fulfillOrder: {
         place: (args, { errors }) =>
           place
@@ -153,10 +161,27 @@ export const orderActivities = TemporalActivities(orderContract)(
               matcher.with(P.tag("OrderNotFound"), () => undefined),
             ),
       },
+      chargeOrder: {
+        authorizePayment: (args, { errors }) =>
+          payments
+            .authorize(args.orderId, args.amount)
+            .map((authorizationId) => ({ authorizationId }))
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("PaymentDeclined"), (error) =>
+                errors.PaymentDeclined({ id: error.id }),
+              ),
+            ),
+        capturePayment: (args) => payments.capture(args.authorizationId),
+        refundPayment: (args) => payments.refund(args.authorizationId),
+      },
     }),
   },
 );
 ```
+
+One record, one `sync`, both sagas' services in its `deps` — which is exactly
+the shape that stops scaling once a worker owns enough workflows, and why the
+composing form below exists.
 
 A hand-written `Provider(orderActivities.port)(…)` targets the same port; a
 port declared under any other id leaves the starter's need unmet, and `start`

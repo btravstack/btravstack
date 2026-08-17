@@ -82,11 +82,24 @@ The worked composition root, from `examples/order-amqp-worker/src/module.ts`:
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    NotificationsSlice,
+    AuditSlice,
+    observability(),
+  ],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
 ```
+
+`NotificationsSlice` and `AuditSlice` are each a slice module exporting one
+**piece** of `orderHandlers` — see the composing form below and
+[Split a worker into slices](/how-to/split-a-worker-into-slices) — imported
+here because `orderHandlers`'s own `deps` are the pieces' ports, and di
+discovers a provider only through a module's `imports` / `provides`, never
+through another provider's `deps`.
 
 [`observability()`](/reference/observability) is a second starter, not this
 package's business: it brings the `Logger` the handlers and the relay write
@@ -108,13 +121,15 @@ the type level (`HandlersPortOf<C>`, the move the kernel's `RuntimePort`
 makes) — and two handlers providers in one graph are di's duplicate-provider
 defect at build. Each handler is a bare
 function of the message its consumer declares; `WorkerInferHandlers<C>`
-accepts it with nothing wrapped around it, and no context is injected. From
-`examples/order-amqp-worker/src/handlers.ts`:
+accepts it with nothing wrapped around it, and no context is injected. A
+record covers **every** consumer and rpc the contract declares —
+`orderContract` has two, `orderNotifications` and `orderAudit`, both reading
+the one `orderChanged` event on their own queue:
 
 ```ts
 export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
   sync: (logger) => ({
-    orderChanged: (message) => {
+    orderNotifications: (message) => {
       const { id, payload } = message.payload;
       logger.info(
         payload === null
@@ -127,9 +142,24 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
       );
       return OkAsync();
     },
+    orderAudit: (message) => {
+      const { id, occurredAt, payload } = message.payload;
+      logger.info("recording an order change", {
+        orderId: id,
+        occurredAt,
+        change: payload === null ? "removed" : "placed",
+      });
+      return OkAsync();
+    },
   }),
 });
 ```
+
+`examples/order-amqp-worker` no longer calls `AmqpHandlers` this way — its two
+consumers are each a slice's own piece instead (below) — but the monolithic
+form is unchanged, and still what
+[Consume AMQP messages](/how-to/consume-amqp-messages) teaches for a worker
+that has not outgrown one function.
 
 A third call composes several **pieces** instead of one record:
 `AmqpHandlers(contract)([piece, piece, ...])`, where each piece is what
@@ -162,7 +192,7 @@ is on `AmqpHandlers(contract)`, and the provider carries its port as
 `provider.port` (`HandlerPortOf<C, K>`).
 
 ```ts
-const orderNotifications = AmqpHandler(orderContract, "orderChanged")(
+const orderNotifications = AmqpHandler(orderContract, "orderNotifications")(
   [Logger],
   {
     sync: (logger) => (message) => {
@@ -172,7 +202,17 @@ const orderNotifications = AmqpHandler(orderContract, "orderChanged")(
   },
 );
 
-const orderHandlers = AmqpHandlers(orderContract)([orderNotifications]);
+const orderAudit = AmqpHandler(orderContract, "orderAudit")([Logger], {
+  sync: (logger) => (message) => {
+    logger.info("order audited", { orderId: message.payload.id });
+    return OkAsync(undefined);
+  },
+});
+
+const orderHandlers = AmqpHandlers(orderContract)([
+  orderNotifications,
+  orderAudit,
+]);
 ```
 
 ## `amqp(options)`

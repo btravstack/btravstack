@@ -277,6 +277,8 @@ it fires on a workflow-side cancellation, and on worker shutdown after
 ## See also
 
 - [`@btravstack/temporal`](/reference/temporal) — options, ports, `TemporalInfo`, `WorkflowSource`.
+- [Split a worker into slices](/how-to/split-a-worker-into-slices) — several
+  workflows, one activities record per workflow, composed at the root.
 - [Order Temporal worker](/examples/order-temporal-worker) — the saga these samples come from.
 - [Tune the drain for Kubernetes](/how-to/tune-the-drain-for-kubernetes) — `drainTimeoutMs` against `terminationGracePeriodSeconds`.
 - [Configure from the environment](/how-to/configure-from-the-environment) — how `TEMPORAL_*` are bound and pinned.
