@@ -1,21 +1,23 @@
 import { AmqpModule } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
-  ApplicationModule,
+  OrderApplicationModule,
   OrderRepository,
   Outbox,
   PlaceOrder,
 } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { Logger, observability } from "@btravstack/observability";
 
 import { orderHandlers } from "./handlers.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
 
 /**
- * The composition root of the broadcast deployment. `ApplicationModule` and
- * `PersistenceModule` are booted here unchanged — the same pair every other
- * deployment composes — through `@btravstack/amqp`'s `AmqpModule` sugar,
+ * The composition root of the broadcast deployment. `OrderApplicationModule`
+ * and `OrderPersistenceModule` are booted here unchanged — the orders vertical
+ * exactly as `order-api`'s own slice imports it, and nothing of the customers
+ * one, which this deployment has no business knowing about — through
+ * `@btravstack/amqp`'s `AmqpModule` sugar,
  * which imports the starter over `orderHandlers`, provides it, and exports
  * `AmqpRuntime` for `start` to resolve; the outbox relay sits next to it as a
  * resourceful provider: both halves of the outbox pattern in one graph, each
@@ -39,7 +41,7 @@ import { outboxRelay, relayConfig } from "./outbox-relay.js";
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });

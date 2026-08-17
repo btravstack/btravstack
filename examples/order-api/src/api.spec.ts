@@ -314,6 +314,45 @@ describe("order-api", () => {
     expect(probed).toEqual({ livez: 200, readyz: 200, ready: true });
   });
 
+  it("serves the customers slice alongside the orders slice", async ({
+    serve,
+    clientFor,
+    stubbed,
+  }) => {
+    // GIVEN an API composed from two slices, each with its own controller, and
+    // a customer registered behind the second one
+    const client = await clientFor(serve(stubbed));
+
+    // WHEN a procedure from the second slice is called
+    // THEN it answers with the contract's shape — the branded `Customer` the
+    // use case returned, converted by that controller's own `view`
+    await expect(client.customers.find({ id: "c-1" })).toBeOkWith({ id: "c-1", name: "Ada" });
+  });
+
+  it("maps the customers slice's own domain error to its declared NOT_FOUND", async ({
+    serve,
+    clientFor,
+    api,
+  }) => {
+    // GIVEN the real composition root, whose customers vertical reaches Prisma
+    const client = await clientFor(serve(api));
+
+    // WHEN a customer nobody registered is looked up
+    const missing = await client.customers.find({ id: "c-404" });
+
+    // THEN the domain's `CustomerNotFound` crossed the second slice's own
+    // triage the way `OrderNotFound` crosses the first's — a typed, inferable
+    // value, not a thrown 500
+    expect(missing).toBeErrWith(
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "NOT_FOUND",
+        data: { id: "c-404" },
+        inferable: true,
+      }),
+    );
+  });
+
   it("goes unready on drain while staying live", async ({
     serve,
     clientFor,

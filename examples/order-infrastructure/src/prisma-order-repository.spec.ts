@@ -2,7 +2,7 @@ import { Module, type ServiceOf } from "@btravstack/di";
 import { OrderRepository } from "@btravstack/example-order-application";
 import { describe, expect } from "vitest";
 
-import { PersistenceModule } from "./index.js";
+import { OrderPersistenceModule } from "./index.js";
 import { it } from "./test-fixtures.js";
 
 describe("the Prisma OrderRepository", () => {
@@ -94,11 +94,11 @@ describe("the read path's error channel", () => {
   });
 });
 
-describe("PersistenceModule", () => {
+describe("OrderPersistenceModule", () => {
   it("satisfies the application's OrderRepository need inside a scope", async ({ anOrder }) => {
     // GIVEN the module the composition root imports
     // WHEN a scope is opened over it and both operations run
-    const result = await Module.scoped(PersistenceModule, (ctx) => {
+    const result = await Module.scoped(OrderPersistenceModule, (ctx) => {
       const repository = ctx.get(OrderRepository);
       return repository.save(anOrder("o-1", 5)).flatMap(() => repository.find("o-1"));
     });
@@ -118,7 +118,7 @@ describe("PersistenceModule", () => {
     // WHEN the scope closes and the same repository is asked to query again.
     // One chain, so the scope's own `Result` is consumed rather than dropped
     // and a failure inside it reaches the assertion instead of skipping it.
-    const afterClose = await Module.scoped(PersistenceModule, (ctx) => {
+    const afterClose = await Module.scoped(OrderPersistenceModule, (ctx) => {
       escaped = ctx.get(OrderRepository);
       return escaped.save(anOrder("o-1", 1));
     }).flatMap(() => escaped.find("o-1"));

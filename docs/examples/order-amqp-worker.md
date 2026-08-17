@@ -157,7 +157,7 @@ the runtime's `stop`). `drain` stays the consumer's alone — draining means
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
@@ -252,8 +252,8 @@ is for:
 ```ts
 const HandlerlessAmqp = Module("HandlerlessAmqp")({
   imports: [
-    ApplicationModule,
-    PersistenceModule,
+    OrderApplicationModule,
+    OrderPersistenceModule,
     observability(),
     amqp({ contract: orderContract }),
   ],

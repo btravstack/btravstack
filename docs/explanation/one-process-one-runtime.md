@@ -69,7 +69,7 @@ This is a claim that can be tested rather than asserted, and
 `order-domain`, `order-application`, `order-infrastructure` — is booted by
 three composition roots:
 
-- [`order-api`](/examples/order-api) — `HttpModule("OrderApi")({ router, imports: [ApplicationModule, PersistenceModule], … })`;
+- [`order-api`](/examples/order-api) — `HttpModule("OrderApi")({ router, imports: [OrderApplicationModule, OrderPersistenceModule], … })`;
 - [`order-temporal-worker`](/examples/order-temporal-worker) — `TemporalModule("OrderTemporalWorker")({ contract, activities, workflows, imports: […] })`;
 - [`order-amqp-worker`](/examples/order-amqp-worker) — `AmqpModule("OrderAmqpWorker")({ contract, handlers, imports: […] })`.
 

@@ -67,6 +67,56 @@ PortInstance<…> }`) rather than the class's own type because a class
   `greetingRouter` (a bare-procedure `oc.router`, one nested) and the stray-key
   guard by `strayRouter` (the same implementation with an undeclared key,
   cast past the types).
+- **`HttpRouter(contract)(controllers)` — the keyed form** (`orpc.ts`, a
+  second overload of `build`) — for `contract: Record<string, RouterContract>`,
+  a record keyed by the contract's own top-level keys, one
+  `HttpController` per key, instead of `(deps, { sync })`. `M` is constrained
+  `{ readonly [K in keyof C]: ControllerFor<C[K]> }`, and the `controllers`
+  **parameter** is typed `M & { readonly [K in Exclude<keyof M, keyof C>]:
+never }` — the exactness intersection is on the parameter, not on `M`: a key
+  `M` has that `C` does not declare types
+  as `never` there, so the call fails to compile rather than silently
+  dropping the key, without the intersection leaking into `M` and collapsing
+  the needs channel di orders the controllers by (the failure mode
+  `controller.test-d.ts`'s `_ComposedNeedsAreDeclared` check exists to catch).
+  `Array.isArray(depsOrControllers)` discriminates this arm
+  from the positional one, the same way `Provider(port)(depsOrOptions, …)`
+  discriminates its own two forms. `deps` for the underlying
+  `Provider(HttpRouterPort)(...)` are the record's values' `.port`, in
+  declaration order, so di builds every controller before the router; `sync`
+  rebuilds the flat implementation record from what each controller's `sync`
+  returned and hands it to the same `routerOf` walk the positional form uses.
+  Five compile-time gates are pinned by `controller.test-d.ts`: every contract
+  key covered, an undeclared key rejected, a controller under the wrong key
+  rejected, a procedure a controller's fragment does not declare rejected
+  inside the controller, and — the fifth, marked "do not break" — a slice
+  lifting out of the composed router **with its controller unchanged**:
+  `HttpRouter(contract.orders)([orders.port], { sync: (implementation) => implementation })`
+  compiles, so the lifted root declares the very controller the modulith
+  composed and hands back what it built. The gate names the controller
+  deliberately — a fresh `sync` literal over the fragment would pin only that
+  a fragment is a valid contract, the weaker half, which says nothing about
+  the controller surviving the lift.
+  Covered at runtime by the `rpcSliced` fixture, composing
+  `helloController` and `echoesController` over `slicedContract`'s two
+  fragments.
+- **`HttpController(name, fragment)([deps], { sync })`** (`controller.ts`) —
+  one slice of a contract, as a provider on a port minted for it. The first
+  call fixes `fragment`'s type — read for its type only, so a procedure the
+  fragment does not declare or a handler whose input or output has drifted is
+  a compile error inside the controller rather than at the root — and mints
+  `class extends Port(name)<Implementation<C>> {}`; the second is di's
+  `Provider(port)(deps, { sync })`, unchanged. Returns
+  `Provider<PortInstance<Name, Implementation<C>>, never,
+InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>> }` —
+  the same `PortInstance`/`PortClassOf` spelling `HttpRouter` uses and for the
+  same reason (TS4023 on a class expression's own type). The controller does
+  no oRPC work: it is a plain record; `HttpRouter`'s `routerOf` walk is what
+  wraps a leaf in `.result(...)`, at composition. A slice's module exports
+  `controller.port` rather than naming a port of its own — the shape
+  `Config.provider("RelayConfig")(schema)` already uses in this repo. Covered
+  by `controller.spec.ts`'s `controllers` fixture (the port and declared deps
+  a controller carries) and by every gate in `controller.test-d.ts` above.
 - **`http({ prefix?, port?, hostname? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **the one way HTTP is answered here: oRPC, over its own
@@ -164,7 +214,7 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **24 specs, 100% lines/functions.** Every app boots through the `boot`
+- **26 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
@@ -179,10 +229,19 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   pinned"_, _"pins what it is given and reads the rest from the environment"_,
   _"fails startup with ConfigInvalid for HttpConfig when PORT is not a port"_,
   through the `configured` fixture, whose `BoundConfig` provider captures what
-  the graph bound). `orpc.spec.ts` carries the 7 the starter proper answers
+  the graph bound). `orpc.spec.ts` carries 7 the starter proper answers
   for, through the `rpc` fixture — `HttpModule("RpcApp")({ router:
 greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   a router provider that declares a `Greeter`, with a typed `RPCLink` client:
   dependencies injected, a nested procedure, a stray implementation key
   dropped, `prefix` honoured, the runtime's 404 outside and under the prefix,
-  and oRPC's `INTERNAL_SERVER_ERROR` collapse.
+  and oRPC's `INTERNAL_SERVER_ERROR` collapse. `controller.spec.ts` carries the
+  remaining 2, through the `controllers` and `rpcSliced` fixtures: a
+  `HttpController` carries the port it was minted under and the deps it
+  declared, and `HttpRouter(contract)({...})` serves a router composed from
+  two controllers — `helloController` and `echoesController`, each over its
+  own fragment of `slicedContract` — with a procedure from each answering
+  through one client, proving every controller's slice was mounted under its
+  own contract key. A process still serves one router (thesis #1); the keyed
+  form changes how many providers build it, not that fact. `controller.test-d.ts`
+  is the package's own compile-time gate — see Public surface.

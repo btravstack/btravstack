@@ -28,7 +28,7 @@ src/test-fixtures.ts    boot / serve / fulfilling / outOfStock / noShipping, aga
 the port `@btravstack/temporal`'s `temporal()` starter provides and the
 composition root exports. The root is written with the package's sugar —
 `TemporalModule("OrderTemporalWorker")({ contract: orderContract, activities:
-orderActivities, workflows, imports: [ApplicationModule, PersistenceModule,
+orderActivities, workflows, imports: [OrderApplicationModule, OrderPersistenceModule,
 FulfillmentModule] })` — which is `Module(...)` with the starter imported, the
 activities provided and `TemporalRuntime` exported, and inside the starter the
 transport is wired like any other service: `TemporalConfig` is bound from the environment, and

@@ -130,8 +130,8 @@ const recording = AmqpModule("RecordingAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
   imports: [
-    ApplicationModule,
-    PersistenceModule,
+    OrderApplicationModule,
+    OrderPersistenceModule,
     observability({ sink: (line) => lines.push(line) }),
   ],
   provides: [relayConfig, outboxRelay],

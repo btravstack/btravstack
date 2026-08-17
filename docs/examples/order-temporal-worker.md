@@ -148,15 +148,15 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
   imports: [
-    ApplicationModule,
-    PersistenceModule,
+    OrderApplicationModule,
+    OrderPersistenceModule,
     FulfillmentModule,
     observability(),
   ],
 });
 ```
 
-The same `ApplicationModule` + `PersistenceModule` pair as the API, plus
+The same `OrderApplicationModule` + `OrderPersistenceModule` pair as the API, plus
 [`observability()`](/reference/observability) — the `Logger` the use case and
 the stand-ins write to, bound from `LOG_LEVEL`, JSON per line on stdout, every
 line carrying the activity attempt's own trace id — and

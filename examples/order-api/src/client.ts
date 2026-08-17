@@ -1,11 +1,11 @@
-import type { orderContract } from "@btravstack/example-order-api-contract";
+import type { contract } from "@btravstack/example-order-api-contract";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterContractClient } from "@orpc/contract";
 import { createResultClient, type ResultClient } from "@unthrown/orpc/client";
 
 /** What the wire speaks, typed from the contract alone — the router is the server's business. */
-type Wire = RouterContractClient<typeof orderContract>;
+type Wire = RouterContractClient<typeof contract>;
 
 /**
  * The caller's view of the API: every procedure returns an `AsyncResult` whose

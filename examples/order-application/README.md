@@ -5,10 +5,10 @@ rules into operations — "place an order", "find an order" — and declares, as
 `@btravstack/di` ports, what it needs the outside world to supply.
 
 ```
-src/ports.ts          OrderRepository, Outbox, StockService, ShippingService, PlaceOrder, FindOrder
+src/ports.ts          OrderRepository, CustomerRepository, Outbox, StockService, ShippingService, PlaceOrder, FindOrder, FindCustomer
 src/use-cases.ts      the interactors, and their providers
-src/module.ts         ApplicationModule
-src/test-fixtures.ts  the stub repository and TestModule, as Vitest fixtures
+src/module.ts         OrderApplicationModule, CustomerApplicationModule
+src/test-fixtures.ts  the stub repositories and TestModule, as Vitest fixtures
 ```
 
 ## The port is declared by the caller, not the adapter
@@ -25,41 +25,69 @@ error channel is spelled in the _domain's_ vocabulary — `DuplicateOrder`, not 
 Postgres `23505` or a Prisma `P2002` — so an adapter's job is to translate into
 these terms, and no database code can widen what the use cases have to handle.
 
-## `ApplicationModule` does not provide `OrderRepository`
+`CustomerRepository` is the same declaration for the customers vertical, and
+read-only: nothing in this application registers a customer, so the port says
+only what the use case needs. Its `find` answers with the domain's `Customer`,
+never the transport's `CustomerView` — an adapter that spoke the wire's shape
+would point the dependency arrow outwards.
+
+## One module per vertical, and neither provides its repository
 
 ```ts
-export const ApplicationModule = Module("Application")({
+export const OrderApplicationModule = Module("OrderApplication")({
   provides: [placeOrderProvider, findOrderProvider],
   exports: [PlaceOrder, FindOrder],
 });
+
+export const CustomerApplicationModule = Module("CustomerApplication")({
+  provides: [findCustomerProvider],
+  exports: [FindCustomer],
+});
 ```
 
-Both interactors depend on `OrderRepository` and nothing here provides it, so di
-propagates it as an unmet _need_. `Logger` is the second one, for the same
-reason and from the other direction: it is `@btravstack/observability`'s port,
-not this layer's, so there is nothing here to provide and nothing to re-export. `Module.scoped(ApplicationModule, …)` is
-therefore a compile error — di's gate turns the module's remaining needs into a
-required argument naming them (`src/needs-gate.test-d.ts` pins both directions).
+The interactors depend on `OrderRepository` and `CustomerRepository`, and
+nothing here provides either, so di propagates each as an unmet _need_ of the
+module that has it. `Logger` is a need of the orders half only — `PlaceOrder`
+writes a line and nothing in the customers vertical does — and it is one for
+the same reason from the other direction: it is `@btravstack/observability`'s
+port, not this layer's, so there is nothing here to provide and nothing to
+re-export. `Module.scoped(OrderApplicationModule, …)` is therefore a compile
+error — di's gate turns the module's remaining needs into a required argument
+naming them (`src/needs-gate.test-d.ts` pins each vertical's gate separately).
 The hole is not documentation; it is the type. An infrastructure module fills
 it, and only then does the graph build.
+
+Splitting the layer is what makes each gate exact rather than collective: a
+consumer of the orders vertical is asked for the orders repository, and a
+deployment that never answers a customer question — both workers — imports
+neither the use case nor its repository.
 
 ## Testable with no infrastructure at all
 
 That hole is also why this layer's specs need no database. `src/test-fixtures.ts`
-provides a stub repository from a module declared alongside the spec, and injects
-it as a Vitest fixture:
+provides stub repositories from a module declared alongside the spec, and
+injects it as a Vitest fixture:
 
 ```ts
 const testModuleWith = (sink: Sink) =>
   Module("Test")({
-    imports: [ApplicationModule, observability({ sink, level: "trace" })],
-    provides: [stubRepository, Provider(Env)({ value: {} })],
-    exports: [PlaceOrder, FindOrder],
+    imports: [
+      OrderApplicationModule,
+      CustomerApplicationModule,
+      observability({ sink, level: "trace" }),
+    ],
+    provides: [
+      stubRepository,
+      stubCustomerRepository,
+      Provider(Env)({ value: {} }),
+    ],
+    exports: [PlaceOrder, FindOrder, FindCustomer],
   });
 ```
 
-Five specs cover placement, persistence, the duplicate path, the domain rule and
-the log line — with no Prisma, no HTTP and no kernel booted. `observability()`
+Seven specs cover placement, persistence, the duplicate path, the domain rule,
+the log line and both arms of the customer lookup — with no Prisma, no HTTP and
+no kernel booted. `observability()`
 binds its level from the `Env` port `start` normally provides, so a kernel-free
 spec provides an empty one itself; the `sink` is the seam a spec reads lines
 back through.
@@ -85,6 +113,6 @@ server or a worker.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-application test        # 5 specs
+pnpm --filter @btravstack/example-order-application test        # 7 specs
 pnpm --filter @btravstack/example-order-application test:types  # the needs gate
 ```

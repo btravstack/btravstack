@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/http"
-description: The HTTP starter — HttpModule, HttpRouter, http(), HttpRuntime, HttpConfig and HttpInfo, what each request is answered with, and how the drain retires a keep-alive connection.
+description: The HTTP starter — HttpModule, HttpRouter, HttpController, http(), HttpRuntime, HttpConfig and HttpInfo, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
 # @btravstack/http
@@ -18,16 +18,17 @@ description: The HTTP starter — HttpModule, HttpRouter, http(), HttpRuntime, H
 
 `packages/http/src/index.ts` exports exactly this:
 
-| Export              | Kind  | What it is                                                                                                                                                                                            |
-| ------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HttpModule`        | value | `HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
-| `HttpModuleOptions` | type  | The options object `HttpModule(name)` takes                                                                                                                                                           |
-| `HttpRouter`        | value | `HttpRouter(contract)(deps, { sync })` — the router as a provider on the starter's own router port, contract-first                                                                                    |
-| `http`              | value | `http({ prefix?, port?, hostname? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                 |
-| `HttpOptions`       | type  | `http()`'s options                                                                                                                                                                                    |
-| `HttpRuntime`       | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                            |
-| `HttpConfig`        | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                       |
-| `HttpInfo`          | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                               |
+| Export              | Kind  | What it is                                                                                                                                                                                                               |
+| ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HttpModule`        | value | `HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                    |
+| `HttpModuleOptions` | type  | The options object `HttpModule(name)` takes                                                                                                                                                                              |
+| `HttpRouter`        | value | `HttpRouter(contract)(deps, { sync })`, or `HttpRouter(contract)(controllers)` — the router as a provider on the starter's own router port, contract-first, either from one `sync` or from a keyed record of controllers |
+| `HttpController`    | value | `HttpController(name, fragment)([deps], { sync })` — one slice of a contract, as a provider on a port minted for it                                                                                                      |
+| `http`              | value | `http({ prefix?, port?, hostname? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                    |
+| `HttpOptions`       | type  | `http()`'s options                                                                                                                                                                                                       |
+| `HttpRuntime`       | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                               |
+| `HttpConfig`        | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                                          |
+| `HttpInfo`          | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                  |
 
 `HttpRouterPort` (the starter's router port, `Port("HttpRouter")`),
 `Implementation<C>` (the record type `HttpRouter`'s `sync` returns) and
@@ -59,13 +60,13 @@ The worked composition root, from `examples/order-api/src/module.ts`:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 ```
 
 That is exactly the module
-`Module("OrderApi")({ imports: [ApplicationModule, PersistenceModule, observability(), http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })`
+`Module("OrderApi")({ imports: [OrderApplicationModule, OrderPersistenceModule, observability(), http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })`
 would have declared. [`observability()`](/reference/observability) is a second
 starter, not this package's business: it brings the `Logger` the application
 writes to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
@@ -93,12 +94,16 @@ framework-owned like `HttpConfig` — and two router providers in one graph are
 di's duplicate-provider defect at build. Returns
 `Provider<PortInstance<"HttpRouter", Router<…>>, never, InstanceType<D[number]>> & { readonly port: PortClassOf<"HttpRouter", Router<…>> }` —
 `provider.port` is the port class, for a hand-declared provider or a type
-test. From `examples/order-api/src/router.ts`:
+test. The implementation below is the one in
+`examples/order-api/src/slices/orders/controller.ts`, served through the
+positional form — the example composes it as a controller instead (see the
+keyed form), and a fragment is a contract, so the same `sync` reads either way:
 
 ```ts
-export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
-  sync: (place, find) => ({
-    orders: {
+export const ordersRouter = HttpRouter(contract.orders)(
+  [PlaceOrder, FindOrder],
+  {
+    sync: (place, find) => ({
       place: ({ errors }, input) =>
         place
           .execute(input.id, input.quantity)
@@ -130,13 +135,106 @@ export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
               }),
             ),
           ),
-    },
-  }),
-});
+    }),
+  },
+);
 ```
 
 An implementation key the contract does not declare is unreachable through
 the types; if one is smuggled past them it is dropped, not defected on.
+
+### The keyed form: `HttpRouter(contract)(controllers)`
+
+For a `contract` shaped `Record<string, RouterContract>`, `HttpRouter`
+also takes a **record of controllers**, one per top-level key, instead of
+`(deps, { sync })`:
+
+```ts
+export const orderRouter = HttpRouter(contract)({
+  orders: ordersController,
+  customers: customersController,
+});
+```
+
+Each value is what [`HttpController`](#httpcontrollername-fragment)
+returns. The call is **exact**: `M` is constrained to
+`{ readonly [K in keyof C]: ControllerFor<C[K]> }`, and the `controllers`
+**parameter** itself is typed `M & { readonly [K in Exclude<keyof M, keyof
+C>]: never }` — the exactness intersection sits on the parameter, not on `M`,
+so a key `C` does not declare is typed `never` there without collapsing `M`
+(and with it the needs channel di orders the controllers by) to `never` too.
+Five gates are pinned by
+`packages/http/src/controller.test-d.ts`: every contract key must be covered;
+a key the contract does not declare is rejected; a controller wired under the
+wrong key is rejected (its fragment does not match that key's); a
+procedure a controller's own fragment does not declare is rejected inside the
+controller, before the root ever sees it; and a slice lifts into a process of
+its own with its controller untouched —
+`HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`
+compiles — the property a slice's independent deployability
+rests on. The positional `(deps, { sync })`
+form is unchanged and stays correct for a small API — the two are
+discriminated at the call the same way `Provider(port)(depsOrOptions, …)`
+discriminates its own two forms. See
+[Split a router into controllers](/how-to/split-a-router-into-controllers) for
+the worked recipe.
+
+## `HttpController(name, fragment)`
+
+```ts
+const HttpController: <const Name extends string, C extends RouterContract>(
+  name: Name,
+  fragment: C,
+) => <const D extends readonly AnyPort[]>(
+  deps: D,
+  options: {
+    readonly sync: (
+      ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
+    ) => Implementation<C>;
+  },
+) => Provider<
+  PortInstance<Name, Implementation<C>>,
+  never,
+  InstanceType<D[number]>
+> & {
+  readonly port: PortClassOf<Name, Implementation<C>>;
+};
+```
+
+One slice of a contract, as a provider over a port minted for it — the same
+two-call shape as `HttpRouter(contract)(deps, { sync })`, aimed at a
+`fragment` rather than the whole contract. `fragment` is read for its
+**type** only: it shapes `sync`'s return, so a procedure the fragment does
+not declare, or a handler whose input or output has drifted, is a compile
+error inside the controller. The port is minted under `name` and carried
+back on `provider.port` — the shape `Config.provider("RelayConfig")(schema)`
+already uses — so a slice's module exports `controller.port` rather than
+naming a port of its own:
+
+```ts
+export const OrdersSlice = Module("OrdersSlice")({
+  provides: [ordersController],
+  exports: [ordersController.port],
+});
+```
+
+The controller does no oRPC work: it is a plain record, and `HttpRouter`'s
+own walk wraps each leaf in `.result(...)` when the keyed form composes the
+router. **A fragment is itself a valid contract**, so a slice lifts out into a
+process of its own without its controller changing at all — the lifted root
+declares the controller's own port and hands back what it built:
+
+```ts
+export const ordersRouter = HttpRouter(contract.orders)(
+  [ordersController.port],
+  {
+    sync: (implementation) => implementation,
+  },
+);
+```
+
+That property is marked do-not-break: it is what makes composing several
+slices into one router a starting point rather than a trap.
 
 ## `http(options)`
 

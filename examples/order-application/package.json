@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/example-order-application",
   "private": true,
-  "description": "The use-case layer of the clean-architecture example: ports, interactors, and an ApplicationModule whose OrderRepository is an unmet need",
+  "description": "The use-case layer of the clean-architecture example: ports, interactors, and one module per vertical whose repository is an unmet need",
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "type": "module",

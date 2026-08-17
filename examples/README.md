@@ -12,17 +12,17 @@ The **tenth**, [`hexagonal-order-api`](#the-containers-one), came with
 `@btravstack/di` and is the container's own: it composes a `Module` and never
 calls `start`.
 
-| Package                                                | Layer     | Shows                                                                                                                                                   |
-| ------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                     |
-| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and an `ApplicationModule` whose `OrderRepository` and `Logger` are deliberately **unmet needs**.            |
-| [`order-infrastructure`](./order-infrastructure)       | adapters  | A Prisma-backed repository over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's repository need.       |
-| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                     |
-| [`order-api`](./order-api)                             | runtime   | The first deployment: an oRPC router as a provider, served by the `http()` and `orpc()` starters, and `Result` → `ORPCError`.                           |
-| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client. |
-| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: a fulfillment saga on `@btravstack/temporal` — place, reserve, ship, and compensation in reverse on a permanent no.   |
-| [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, one subscriber queue with a retry/dead-letter policy — read by the relay and by any subscriber. |
-| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: a transactional outbox relayed onto RabbitMQ by `@btravstack/amqp`'s worker — every committed write becomes an event.     |
+| Package                                                | Layer     | Shows                                                                                                                                                            |
+| ------------------------------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`order-domain`](./order-domain)                       | domain    | Entities and rules with no dependencies at all: branded fields, an `Entity.invariant` re-checked on every path, failures as values.                              |
+| [`order-application`](./order-application)             | use cases | Ports declared by the caller, interactors, and one module per vertical whose repository — and, for orders, `Logger` — is deliberately an **unmet need**.         |
+| [`order-infrastructure`](./order-infrastructure)       | adapters  | Prisma-backed repositories over in-memory SQLite, translating P-codes into the domain's vocabulary and closing the application's repository needs.               |
+| [`order-api-contract`](./order-api-contract)           | contract  | The oRPC contract on its own — wire shapes and declared error codes — taken by the server that implements it **and** by any client.                              |
+| [`order-api`](./order-api)                             | runtime   | The first deployment: a two-slice modulith — a controller per contract fragment, composed into one oRPC router — served by `http()`, and `Result` → `ORPCError`. |
+| [`order-temporal-contract`](./order-temporal-contract) | contract  | The Temporal contract on its own — one workflow, five activities, four declared `nonRetryable` errors — read by the worker, the sandbox and the client.          |
+| [`order-temporal-worker`](./order-temporal-worker)     | runtime   | The **orchestration** deployment: a fulfillment saga on `@btravstack/temporal` — place, reserve, ship, and compensation in reverse on a permanent no.            |
+| [`order-amqp-contract`](./order-amqp-contract)         | contract  | The AMQP contract on its own — one exchange, one event, one subscriber queue with a retry/dead-letter policy — read by the relay and by any subscriber.          |
+| [`order-amqp-worker`](./order-amqp-worker)             | runtime   | The **broadcast** deployment: a transactional outbox relayed onto RabbitMQ by `@btravstack/amqp`'s worker — every committed write becomes an event.              |
 
 ## The layering, and which way the arrows point
 
@@ -43,9 +43,11 @@ Every arrow points **inwards**, and the one that looks like it goes the wrong
 way is the whole idea: `order-infrastructure` imports `order-application`,
 because the port it implements — `OrderRepository`, spelled in the domain's
 vocabulary — is declared by the caller that needs it, not by the database that
-happens to satisfy it. `ApplicationModule` therefore leaves that need **unmet**,
-which is not documentation but a type: `Module.scoped(ApplicationModule, …)`
-does not compile until an outer module provides one.
+happens to satisfy it. `OrderApplicationModule` therefore leaves that need
+**unmet**, which is not documentation but a type:
+`Module.scoped(OrderApplicationModule, …)` does not compile until an outer
+module provides one. There is one such module per vertical, so the gate names
+the repository that vertical actually uses.
 
 ## The contract tier, which depends on nothing and is depended upon
 
@@ -78,7 +80,7 @@ makes the directive unused and fails `test:types` — the same shape
 `order-domain` uses to keep the application layer out of the domain.
 
 And the payoff is demonstrated rather than asserted. `order-api-contract`'s own
-spec builds a real oRPC client from `RouterContractClient<typeof orderContract>`
+spec builds a real oRPC client from `RouterContractClient<typeof contract>`
 and drives it over a stub `fetch`, with nothing from `order-api` in scope;
 `order-temporal-contract`'s runs the workflow's input schema as a validator
 returning a `Result`, which is the check a caller makes before starting an
@@ -89,10 +91,12 @@ publisher makes before sending a message.
 
 ## One application, three deployments — each doing what its transport is for
 
-Every composition root imports the same pair — `ApplicationModule`,
-`PersistenceModule` — and exports its own selection of ports: nothing in
+Every composition root imports the same pair — `OrderApplicationModule`,
+`OrderPersistenceModule` — and exports its own selection of ports: nothing in
 `order-application` or `order-infrastructure` differs between deployments, and
-nothing could. What differs is what each transport is **for**:
+nothing could. The two workers import that pair and nothing else: the customers
+vertical is a pair of modules of its own, so a deployment that never answers a
+customer question does not carry its use case or its repository. What differs is what each transport is **for**:
 
 - **`order-api`** answers a caller: a request arrives, a typed answer leaves.
 - **`order-temporal-worker`** owns a journey: the fulfillment saga runs steps
@@ -160,8 +164,9 @@ ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
 resolve is now a **port its provider depends on** through di — the starter's
 own fixed port, provided with the starter's own sugar and never named (a
 process serves one router / activities record / handlers record as it boots
-one runtime): `order-api`'s `orderRouter = HttpRouter(orderContract)([PlaceOrder,
-FindOrder], { sync: (place, find) => ({ orders: { place: …, find: … } }) })`; `order-temporal-worker`'s `orderActivities =
+one runtime): `order-api`'s `orderRouter = HttpRouter(contract)({ orders:
+ordersController, customers: customersController })`, a **slice's controller
+per top-level contract key** (below); `order-temporal-worker`'s `orderActivities =
 TemporalActivities(orderContract)([…four ports…], { sync })`;
 `order-amqp-worker`'s `orderHandlers = AmqpHandlers(orderContract)([Logger],
 { sync })`, on `@btravstack/observability`'s port — di's own `Provider(port)(deps, arm)` on that port, typed by the
@@ -179,6 +184,55 @@ one; a composition that forgets its starter fails on **arity** with
 router / activities / handlers port fails at `start` — di's own
 `UNSATISFIED DEPENDENCIES` gate, since the runtime provider depends on that
 port. `order-api` also pins both halves of the `unit` gate.
+
+## `order-api` is a two-slice modulith
+
+`order-api` is the one deployment whose surface is big enough to split, so it
+is: `src/slices/orders/` and `src/slices/customers/`, each owning a fragment
+of the contract and a controller over that fragment, and each backed by the
+same three-package vertical below it.
+
+```
+order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
+                            │                        │
+order-api              slices/orders/           slices/customers/
+                         controller.ts            controller.ts     ← HttpController(name, fragment)([deps], { sync })
+                         module.ts                module.ts         ← the slice's own di module
+                            └───────────┬────────────┘
+                                   module.ts                        ← HttpRouter(contract)({ orders, customers })
+                            ┌───────────┴────────────┐
+                       PlaceOrder / FindOrder    FindCustomer       ← use cases, entities, Prisma adapters — the same three packages
+```
+
+A **controller** is `HttpController("OrdersController", contract.orders)([PlaceOrder,
+FindOrder], { sync })` — an ordinary di provider on a port `HttpController`
+mints and hands back on `.port`. A **slice** is an ordinary di `Module` that
+**imports the vertical it needs**, provides its controller and exports
+**only** that controller, so nothing outside the slice can reach anything else
+it holds. Neither slice owns a private adapter: both go through the use cases,
+the entities and the Prisma repositories, and each controller converts its own
+entity to its own wire shape. Each imports its **own** vertical —
+`OrderApplicationModule` + `OrderPersistenceModule`, `CustomerApplicationModule`
+
+- `CustomerPersistenceModule` — so neither slice carries the other's use case or
+  adapter. They converge only on the internal database module both persistence
+  halves import: a diamond, not duplication, since di flattens the tree into a
+  `Set` keyed by provider reference and builds one database. The **root** is then a list of
+  slices plus what no slice owns (`observability()`), composed with the
+  keyed `HttpRouter(contract)({ orders: ordersController, customers:
+customersController })` form, which is exact against the contract — a missing
+  key, an undeclared key and a controller under the wrong key are all compile
+  errors at that call.
+
+Nothing here is a new concept: a controller is a provider, a slice is a
+module, a modulith is several slice modules in one root — and `exports:
+[ordersController]` is di's provider form, since `HttpController` mints the
+port and there is no class to name. And because a
+fragment is itself a valid contract, lifting `orders` into a process of its
+own leaves the slice untouched —
+`HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`
+is the whole of the lifted root's router. `packages/http/src/controller.test-d.ts`
+pins that, and the four other gates, at compile time.
 
 ## Why these are tests, not just illustrations
 

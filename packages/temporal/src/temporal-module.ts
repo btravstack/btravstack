@@ -87,7 +87,7 @@ export type TemporalModuleOptions<
  *   contract: orderContract,
  *   activities: orderActivities,
  *   workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
- *   imports: [ApplicationModule, PersistenceModule, FulfillmentModule],
+ *   imports: [OrderApplicationModule, OrderPersistenceModule, FulfillmentModule],
  * });
  * await runMain(OrderTemporalWorker);
  * ```

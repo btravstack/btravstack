@@ -105,12 +105,18 @@ export const placeOrderProvider = Provider(PlaceOrder)(
 );
 ```
 
-The module provides neither `OrderRepository` nor `Logger`:
+The module — one per vertical, not one for the layer — provides neither
+`OrderRepository` nor `Logger`:
 
 ```ts
-export const ApplicationModule = Module("Application")({
+export const OrderApplicationModule = Module("OrderApplication")({
   provides: [placeOrderProvider, findOrderProvider],
   exports: [PlaceOrder, FindOrder],
+});
+
+export const CustomerApplicationModule = Module("CustomerApplication")({
+  provides: [findCustomerProvider],
+  exports: [FindCustomer],
 });
 ```
 
@@ -121,6 +127,13 @@ either direction. That is what makes this layer testable with no database at
 all — its specs provide a stub repository from a `TestModule` that imports
 `observability({ sink, level: "trace" })` — and it is what makes the layering a
 compile error rather than a convention (see the type tests below).
+
+One module per vertical is what makes that gate exact. `CustomerApplication`
+owes `CustomerRepository` and **not** the logger, because only `PlaceOrder`
+writes a line; a single module for the layer had to owe every port any of its
+use cases owed, and every consumer had to close all of them. It is also what
+lets `order-temporal-worker` and `order-amqp-worker` import the orders
+vertical without carrying the customers one.
 
 There is no kernel touchpoint left here. The log calls are structured —
 `this.#logger.info("placing an order", { orderId: id, quantity })`, a constant
@@ -144,9 +157,12 @@ export const orderDatabaseProvider = Provider(OrderDatabase)({
 });
 ```
 
-`OrderDatabase` is provided but **not exported** by `PersistenceModule`, so
-no outer module can reach the client and start speaking SQL. What crosses the
-boundary is `OrderRepository` and `Outbox`. The repository's `save` is the
+`OrderDatabase` lives in an internal `DatabaseModule` that the two persistence
+modules import and neither re-exports — di's `exports` are declared, never
+inherited — so no outer module can reach the client and start speaking SQL.
+What crosses the boundary of `OrderPersistenceModule` is `OrderRepository` and
+`Outbox`, and of `CustomerPersistenceModule`, `CustomerRepository`. One
+provider reference behind both, so the two verticals share one connection. The repository's `save` is the
 transactional outbox's write side — the row and the fact of the row commit
 together or not at all — and its `mapErrCases` is where Prisma's vocabulary
 becomes the domain's:
@@ -253,14 +269,19 @@ activities or handlers that implement it.
 // Negative: nothing provides `OrderRepository`, so the gate becomes a required
 // two-element tuple and the call is an arity error naming the unmet need.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
-const _unwired = Module.scoped(ApplicationModule, (ctx) =>
+const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
   ctx.get(PlaceOrder).execute("o-1", 1),
 );
 ```
 
-The positive half composes `ApplicationModule` with a stub repository and a
-`Provider(Logger)({ value: createLogger(() => {}) })` — the starter is the
-default, not the only way — and calls `Module.scoped` as an ordinary
+Each vertical's gate is pinned separately, which is the split showing up in
+the type tests: a graph that provides `OrderRepository` still cannot scope
+`CustomerApplicationModule`, and one that provides the customer repository
+alone cannot scope the orders half — nor can the orders repository alone,
+which leaves `Logger` open. The positive halves compose each module with its
+own stub — plus, for orders, a
+`Provider(Logger)({ value: createLogger(() => {}) })`, since the starter is
+the default and not the only way — and call `Module.scoped` as an ordinary
 two-argument call. The three deployment
 pages carry the other kind — `start`'s gate.
 

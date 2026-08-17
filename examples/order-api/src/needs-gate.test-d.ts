@@ -10,14 +10,13 @@ import { start } from "@btravstack/core";
  * this package's `test:types` script, never executed.
  */
 import { Module } from "@btravstack/di";
-import { ApplicationModule } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpRuntime, http } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
-import { OrderApi } from "./module.js";
+import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
-import { orderRouter } from "./router.js";
+import { CustomersSlice } from "./slices/customers/module.js";
+import { OrdersSlice } from "./slices/orders/module.js";
 
 const options = { signals: false, probes: false } as const;
 
@@ -28,7 +27,7 @@ const _wired = start(OrderApi, options);
 // The same graph without `http(...)`: nothing declared over `RuntimePort` is
 // exported, so there is no runtime for `start` to resolve.
 const RuntimelessApi = Module("RuntimelessApi")({
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrdersSlice, CustomersSlice, observability()],
   provides: [orderRouter],
   exports: [Logger],
 });
@@ -44,7 +43,7 @@ const _missingRuntime = start(RuntimelessApi, options);
 // as an unmet need — di's gate, not the kernel's, and it rejects the module
 // at `start` rather than at arity.
 const RouterlessApi = Module("RouterlessApi")({
-  imports: [ApplicationModule, PersistenceModule, observability(), http()],
+  imports: [OrdersSlice, CustomersSlice, observability(), http()],
   exports: [HttpRuntime, Logger],
 });
 
@@ -61,7 +60,7 @@ const _withUnit = start(OrderApi, { ...options, unit: RequestModule });
 // has its runtime and router but does not export `Logger`, so only the unit
 // half of the gate can be what rejects the call.
 const UnloggedApi = Module("UnloggedApi")({
-  imports: [ApplicationModule, PersistenceModule, observability(), http()],
+  imports: [OrdersSlice, CustomersSlice, observability(), http()],
   provides: [orderRouter],
   exports: [HttpRuntime],
 });

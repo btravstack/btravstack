@@ -117,12 +117,12 @@ retries), not the same number Temporal's `maximumAttempts: 3` names.
 import { AmqpModule } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
-  ApplicationModule,
+  OrderApplicationModule,
   OrderRepository,
   Outbox,
   PlaceOrder,
 } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { Logger, observability } from "@btravstack/observability";
 
 import { orderHandlers } from "./handlers.js";
@@ -131,7 +131,7 @@ import { outboxRelay, relayConfig } from "./outbox-relay.js";
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });

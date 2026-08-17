@@ -35,6 +35,7 @@ import { oc, type RouterContractClient } from "@orpc/contract";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
+import { HttpController } from "./controller.js";
 import { HttpHandler } from "./handler.js";
 import { HttpModule } from "./http-module.js";
 import { HttpConfig, HttpRuntime, httpModule, type HttpInfo } from "./http-runtime.js";
@@ -60,7 +61,9 @@ const appOf = (handler: Handler, port = 0) =>
 class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
 
 /** Three bare procedures, one nested — the contract is what types the implementation below and the client. */
-const greetingContract = oc.router({ hello: oc, boom: oc, nested: { ping: oc } });
+const helloFragment = { hello: oc };
+const nestedFragment = { ping: oc };
+const greetingContract = oc.router({ ...helloFragment, boom: oc, nested: nestedFragment });
 
 const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
   hello: () => OkAsync(greeter.greet("world")),
@@ -75,6 +78,44 @@ const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
 const greetingRouter = HttpRouter(greetingContract)([Greeter], {
   sync: greetingImplementation,
 });
+
+/** Two controllers over the same contract's two halves — what the keyed router composes. */
+export const helloController = HttpController("HelloController", helloFragment)([Greeter], {
+  sync: (greeter) => ({ hello: () => OkAsync(greeter.greet("world")) }),
+});
+
+/**
+ * The keyed form's own contract, over the same two fragments. Not a constraint
+ * — a bare procedure is a `RouterContract` too, so a controller sits at such a
+ * key as happily as at a nested one — but `greetingContract` is the positional
+ * form's fixture, carrying its `boom` defect and the stray key smuggled past
+ * the types, and the two arms are worth exercising side by side.
+ */
+const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
+
+/** The other half of `slicedContract`, alongside the reused `helloController`. */
+const echoesController = HttpController("EchoesController", nestedFragment)([], {
+  sync: () => ({ ping: () => OkAsync("pong") }),
+});
+
+/** The same kind of API as `greetingRouter`, composed from controllers instead of one `sync`. */
+const slicedRouter = HttpRouter(slicedContract)({
+  greetings: helloController,
+  echoes: echoesController,
+});
+
+/** `HttpModule` over the composed router, mirroring `rpcAppOf`. */
+const rpcSlicedAppOf = () =>
+  HttpModule("RpcSlicedApp")({
+    router: slicedRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [
+      helloController,
+      echoesController,
+      Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } }),
+    ],
+  });
 
 /**
  * The same implementation carrying a key the contract never declared — only
@@ -243,6 +284,17 @@ export type HttpFixtures = {
     }>;
     readonly stoppedAccepting: (origin: string) => Promise<void>;
   };
+  /** The controllers the keyed router form composes. */
+  readonly controllers: { readonly controller: typeof helloController };
+  /**
+   * The starter over a router composed from several controllers, keyed by
+   * the contract — the same shape as `rpc`, but built from `slicedRouter`.
+   * Shut down by the fixture.
+   */
+  readonly rpcSliced: () => Promise<{
+    readonly origin: string;
+    readonly client: RouterContractClient<typeof slicedContract>;
+  }>;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -413,5 +465,23 @@ export const it = test.extend<HttpFixtures>({
     });
 
     for (const socket of opened) socket.destroy();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  controllers: async ({}, use) => {
+    await use({ controller: helloController });
+  },
+
+  rpcSliced: async ({ boot }, use) => {
+    await use(async () => {
+      const app = boot(rpcSlicedAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      const client: RouterContractClient<typeof slicedContract> = createORPCClient(
+        new RPCLink({ origin, url: "/rpc" }),
+      );
+      return { origin, client };
+    });
   },
 });

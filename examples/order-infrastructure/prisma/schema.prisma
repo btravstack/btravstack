@@ -19,6 +19,14 @@ model Order {
   quantity Int
 }
 
+// The customers vertical, on the same shape: `customerId` is the business id
+// the domain speaks, kept distinct from the surrogate primary key.
+model Customer {
+  id         Int    @id @default(autoincrement())
+  customerId String @unique
+  name       String
+}
+
 // The transactional outbox: one row per fact worth broadcasting, written in
 // the same transaction as the write it describes.
 //

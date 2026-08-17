@@ -3,26 +3,55 @@ import assert from "node:assert/strict";
 import type { Env } from "@btravstack/config";
 import type { RunningApp, StartOptions } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import { ApplicationModule, OrderRepository } from "@btravstack/example-order-application";
-import { placeOrder, type Order } from "@btravstack/example-order-domain";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import {
+  CustomerApplicationModule,
+  CustomerRepository,
+  OrderApplicationModule,
+  OrderRepository,
+} from "@btravstack/example-order-application";
+import {
+  Customer,
+  CustomerNotFound,
+  OrderNotFound,
+  placeOrder,
+  type Order,
+} from "@btravstack/example-order-domain";
 import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, type Boot } from "@btravstack/testing";
-import { fromSafePromise, OkAsync } from "unthrown";
+import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
-import { OrderApi } from "./module.js";
+import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
-import { orderRouter } from "./router.js";
+import { customersController } from "./slices/customers/controller.js";
+import { CustomersSlice } from "./slices/customers/module.js";
+import { ordersController } from "./slices/orders/controller.js";
+import { OrdersSlice } from "./slices/orders/module.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
+/**
+ * Both repositories in one stub module, so a root closes both verticals' needs
+ * the way the two persistence modules do. Only the orders half varies per
+ * spec; the customers one holds a single registered customer, which is all
+ * that slice's one procedure needs to answer.
+ */
 const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
   Module("StubPersistence")({
-    provides: [Provider(OrderRepository)({ value: repository })],
-    exports: [OrderRepository],
+    provides: [
+      Provider(OrderRepository)({ value: repository }),
+      Provider(CustomerRepository)({
+        value: {
+          find: (id: string) =>
+            id === "c-1"
+              ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
+              : ErrAsync(new CustomerNotFound({ id })),
+        },
+      }),
+    ],
+    exports: [OrderRepository, CustomerRepository],
   });
 
 /** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */
@@ -32,17 +61,30 @@ const recorderOf = () => {
 };
 
 /**
- * A composition root shaped like the real one but with the repository swapped:
- * same `ApplicationModule`, same `HttpModule` sugar — unpinned, so `serve`'s
- * `env` is what binds it to an ephemeral loopback port — same exports, so
- * the transport under test is unchanged. The sink defaults to a no-op: these
- * roots are booted to exercise the transport, and the real `jsonSink()` would
- * put the application's lines in the test runner's own output.
+ * A composition root shaped like the real one but with persistence swapped:
+ * same application modules, same controllers, same `HttpModule` sugar —
+ * unpinned, so `serve`'s `env` is what binds it to an ephemeral loopback port
+ * — same exports, so the transport under test is unchanged. The sink defaults
+ * to a no-op: these roots are booted to exercise the transport, and the real
+ * `jsonSink()` would put the application's lines in the test runner's own
+ * output.
+ *
+ * Flat rather than a list of slices, and that is the point of the change that
+ * made it so: a slice now imports the vertical it needs, so `OrdersSlice`
+ * brings the Prisma repository with it and there is nothing to layer a stub
+ * over — two providers for one port is di's duplicate defect. Swapping an
+ * adapter is composing a different module, which is exactly what this is.
  */
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
     router: orderRouter,
-    imports: [ApplicationModule, persistenceOf(repository), observability({ sink })],
+    imports: [
+      OrderApplicationModule,
+      CustomerApplicationModule,
+      persistenceOf(repository),
+      observability({ sink }),
+    ],
+    provides: [ordersController, customersController],
     exports: [Logger],
   });
 
@@ -67,8 +109,8 @@ const recordingApi = () => {
       // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
       // real root, and this root exists to be read.
       imports: [
-        ApplicationModule,
-        PersistenceModule,
+        OrdersSlice,
+        CustomersSlice,
         observability({ sink: recorder.sink, level: "trace" }),
       ],
       exports: [Logger],
@@ -76,6 +118,19 @@ const recordingApi = () => {
     lines: recorder.lines,
   };
 };
+
+/**
+ * The stub root at rest: nothing hangs, nothing blows up, and the customer
+ * `c-1` is registered. What the customers slice's success path needs, which
+ * the real root cannot give it — its database is born empty inside the graph
+ * and no procedure registers anyone.
+ */
+const stubbedApi = () =>
+  apiWith({
+    save: (order) => OkAsync(order),
+    find: (id) => ErrAsync(new OrderNotFound({ id })),
+    remove: () => OkAsync(),
+  });
 
 /**
  * A composition root whose repository fails in a way nobody modelled: no
@@ -155,6 +210,8 @@ export type ApiFixtures = {
   readonly statusOf: (url: string) => Promise<number>;
   /** The real composition root. */
   readonly api: typeof OrderApi;
+  /** The same two slices over stub persistence, with one customer registered. */
+  readonly stubbed: ReturnType<typeof stubbedApi>;
   readonly unmodelled: ReturnType<typeof unmodelledApi>;
   readonly gate: ReturnType<typeof gatedApi>;
   /** The real root's composition, plus everything its logger wrote. */
@@ -201,6 +258,11 @@ export const it = test.extend<ApiFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   api: async ({}, use) => {
     await use(OrderApi);
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  stubbed: async ({}, use) => {
+    await use(stubbedApi());
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

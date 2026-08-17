@@ -31,8 +31,8 @@ from its state; a failed finaliser is logged and forgotten; a crash exits `0`.
 `start` gets them right once, as defaults.
 
 - 🧩 **Business code only.** A composition root is a
-  `HttpModule("OrderApi")({ router, imports, exports })` and a `main.ts` is
-  `await runMain(OrderApi)`. Configuration is bound from the environment
+  `HttpModule("OrdersApi")({ router, imports, exports })` and a `main.ts` is
+  `await runMain(OrdersApi)`. Configuration is bound from the environment
   inside the graph; there is no `process.env`, no `app.listen`, no signal
   handler to write.
 - 🛂 **Wiring proven at compile time.** A module missing a provider, a
@@ -75,22 +75,22 @@ on npm to install yet. The commands above are what they will be once it has.
 
 An HTTP API is a contract, a router that implements it from the use cases it
 declares, and a composition root. This is
-[`examples/order-api`](./examples/order-api), condensed:
+[`examples/order-api`](./examples/order-api)'s **orders slice**, served on its
+own and condensed to one procedure — the example itself composes that slice
+and a `customers` one into a single router through controllers:
 
 ```ts
 // contract.ts — declared before any implementation exists; a client needs only this.
 import { oc, type } from "@orpc/contract";
 
-export const orderContract = {
-  orders: {
-    place: oc
-      .input(type<{ readonly id: string; readonly quantity: number }>())
-      .output(type<{ readonly id: string; readonly quantity: number }>())
-      .errors({
-        INVALID_QUANTITY: { data: type<{ readonly id: string }>() },
-        CONFLICT: { data: type<{ readonly id: string }>() },
-      }),
-  },
+export const ordersContract = {
+  place: oc
+    .input(type<{ readonly id: string; readonly quantity: number }>())
+    .output(type<{ readonly id: string; readonly quantity: number }>())
+    .errors({
+      INVALID_QUANTITY: { data: type<{ readonly id: string }>() },
+      CONFLICT: { data: type<{ readonly id: string }>() },
+    }),
 };
 ```
 
@@ -99,31 +99,29 @@ export const orderContract = {
 import { HttpRouter } from "@btravstack/http";
 import { P } from "unthrown";
 
-export const orderRouter = HttpRouter(orderContract)([PlaceOrder], {
+export const ordersRouter = HttpRouter(ordersContract)([PlaceOrder], {
   sync: (place) => ({
-    orders: {
-      place: ({ errors }, input) =>
-        place
-          .execute(input.id, input.quantity)
-          .map((order) => ({ id: order.id, quantity: order.quantity }))
-          // The one place a domain error becomes a transport one — exhaustive,
-          // so a new domain error is a compile error here.
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          ),
-    },
+    place: ({ errors }, input) =>
+      place
+        .execute(input.id, input.quantity)
+        .map((order) => ({ id: order.id, quantity: order.quantity }))
+        // The one place a domain error becomes a transport one — exhaustive,
+        // so a new domain error is a compile error here.
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            ),
+        ),
   }),
 });
 ```
@@ -133,20 +131,20 @@ export const orderRouter = HttpRouter(orderContract)([PlaceOrder], {
 import { runMain } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http";
 
-const OrderApi = HttpModule("OrderApi")({
-  router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule],
+const OrdersApi = HttpModule("OrdersApi")({
+  router: ordersRouter,
+  imports: [OrderApplicationModule, OrderPersistenceModule],
 });
 
-await runMain(OrderApi);
+await runMain(OrdersApi);
 ```
 
 `HttpModule` is sugar over the same primitives: it imports the starter
 (`PORT` and `HOST` bound from the environment, the router mounted under
 `/rpc`), provides the router and exports the runtime port, and returns exactly
-the di module a hand-written `Module("OrderApi")({...})` would have. `runMain`
+the di module a hand-written `Module("OrdersApi")({...})` would have. `runMain`
 builds the graph, serves it, drains it on SIGTERM in three beats, and sets the
-exit code. Boot the **same** `ApplicationModule` under `TemporalModule` or
+exit code. Boot the **same** `OrderApplicationModule` under `TemporalModule` or
 `AmqpModule` and you have the worker and the consumer — one application, three
 deployments.
 

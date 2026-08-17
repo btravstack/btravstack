@@ -1,5 +1,5 @@
-import { ApplicationModule } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderApplicationModule } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { TemporalModule } from "@btravstack/temporal";
@@ -9,9 +9,11 @@ import { orderActivities } from "./activities.js";
 import { FulfillmentModule } from "./fulfillment.js";
 
 /**
- * The composition root of the orchestration deployment. `ApplicationModule`
- * and `PersistenceModule` are booted here unchanged — the same pair every
- * other deployment composes — plus `observability()`, the `Logger` the use
+ * The composition root of the orchestration deployment. `OrderApplicationModule`
+ * and `OrderPersistenceModule` are booted here unchanged — the orders vertical
+ * exactly as `order-api`'s own slice imports it, and nothing of the customers
+ * one, which this deployment has no business knowing about — plus
+ * `observability()`, the `Logger` the use
  * case and the fulfillment stand-ins write to (`LOG_LEVEL`, JSON on stdout,
  * every line carrying the activity attempt's own trace id), and
  * `FulfillmentModule`, the two external
@@ -41,5 +43,5 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
-  imports: [ApplicationModule, PersistenceModule, FulfillmentModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, FulfillmentModule, observability()],
 });

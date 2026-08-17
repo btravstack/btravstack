@@ -34,7 +34,7 @@ because the directive stops being used.
 ## The proof is a client, not a claim
 
 `src/client.spec.ts` builds a real oRPC client whose types come from
-`RouterContractClient<typeof orderContract>` — the contract, not
+`RouterContractClient<typeof contract>` — the contract, not
 `RouterClient<typeof orderRouter>` — and drives it over a stub `fetch` that
 answers the RPC protocol with a `Map` behind it. Nothing from `order-api` is
 imported, and both channels survive: the declared `NOT_FOUND` arrives as an

@@ -3,7 +3,7 @@ import { describe, expect } from "vitest";
 
 import { it } from "./test-fixtures.js";
 
-describe("orderContract", () => {
+describe("contract", () => {
   it("types and carries a call made by a client built from the contract alone", async ({
     client,
   }) => {

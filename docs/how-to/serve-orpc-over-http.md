@@ -14,7 +14,13 @@ description: Implement an oRPC contract as a di-provided router, compose it with
 The starter answers HTTP one way: **oRPC, through `@orpc/server/node`'s
 `RPCHandler`**, one kernel unit per request, the response flushed before the
 unit closes. What you write is the contract, the router and the composition
-root. Everything below is lifted from `examples/order-api`.
+root. What follows is a minimal, standalone illustration of that shape — one
+contract, one `sync`, no controller layer — sized for a single-slice API. For
+an API that has outgrown one `sync`, each slice with its own contract
+fragment and controller, see
+[Split a router into controllers](/how-to/split-a-router-into-controllers); for
+the real two-slice deployment this recipe scales into, see
+[Order API (HTTP)](/examples/order-api).
 
 ## Recipe
 
@@ -23,12 +29,12 @@ root. Everything below is lifted from `examples/order-api`.
 2. Implement it with `HttpRouter(contract)(deps, { sync })`: a record
    shaped like the contract, each leaf a `Result`-returning function.
 3. Compose with `HttpModule(name)({ router, imports, provides, exports })`.
-4. `await runMain(OrderApi)` in `main.ts`.
+4. `await runMain(OrdersApi)` in `main.ts`.
 
 ## Step 1 — the contract
 
-The contract lives in its own package (`order-api-contract`), because a client
-needs it and needs none of the server:
+The contract lives in its own package, because a client needs it and needs
+none of the server:
 
 ```ts
 import { oc, type } from "@orpc/contract";
@@ -36,36 +42,31 @@ import { oc, type } from "@orpc/contract";
 export type OrderView = { readonly id: string; readonly quantity: number };
 export type OrderRef = { readonly id: string };
 
-export const orderContract = {
-  orders: {
-    place: oc
-      .input(type<{ readonly id: string; readonly quantity: number }>())
-      .output(type<OrderView>())
-      .errors({
-        INVALID_QUANTITY: { data: type<OrderRef>() },
-        CONFLICT: { data: type<OrderRef>() },
-      }),
-    find: oc
-      .input(type<OrderRef>())
-      .output(type<OrderView>())
-      .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
-  },
+export const ordersContract = {
+  place: oc
+    .input(type<{ readonly id: string; readonly quantity: number }>())
+    .output(type<OrderView>())
+    .errors({
+      INVALID_QUANTITY: { data: type<OrderRef>() },
+      CONFLICT: { data: type<OrderRef>() },
+    }),
+  find: oc
+    .input(type<OrderRef>())
+    .output(type<OrderView>())
+    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
 };
 ```
 
 ## Step 2 — the router, as a provider
 
-`HttpRouter(orderContract)` is di's own `Provider(port)` on the starter's
+`HttpRouter(ordersContract)` is di's own `Provider(port)` on the starter's
 router port — there is no name to give, a process serves one router — so the
 call declares the use cases the procedures call and closes over them. **The `mapErrCases` in each procedure is
 the one place a domain error becomes an HTTP answer** — every case named, no
 wildcard, so a new domain error is a compile error here:
 
 ```ts
-import {
-  orderContract,
-  type OrderView,
-} from "@btravstack/example-order-api-contract";
+import { ordersContract, type OrderView } from "./contract.js";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
 import { HttpRouter } from "@btravstack/http";
@@ -76,9 +77,10 @@ const view = (order: Order): OrderView => ({
   quantity: order.quantity,
 });
 
-export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
-  sync: (place, find) => ({
-    orders: {
+export const ordersRouter = HttpRouter(ordersContract)(
+  [PlaceOrder, FindOrder],
+  {
+    sync: (place, find) => ({
       place: ({ errors }, input) =>
         place
           .execute(input.id, input.quantity)
@@ -110,9 +112,9 @@ export const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
               }),
             ),
           ),
-    },
-  }),
-});
+    }),
+  },
+);
 ```
 
 Each leaf is the `.result()` handler `@unthrown/orpc` gives an implementer:
@@ -125,16 +127,16 @@ oRPC's context stays empty: what a procedure needs, the provider declared.
 ## Step 3 — the composition root
 
 ```ts
-import { ApplicationModule } from "@btravstack/example-order-application";
-import { PersistenceModule } from "@btravstack/example-order-infrastructure";
+import { OrderApplicationModule } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
-import { orderRouter } from "./router.js";
+import { ordersRouter } from "./router.js";
 
-export const OrderApi = HttpModule("OrderApi")({
-  router: orderRouter,
-  imports: [ApplicationModule, PersistenceModule, observability()],
+export const OrdersApi = HttpModule("OrdersApi")({
+  router: ordersRouter,
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 ```
@@ -144,9 +146,14 @@ export const OrderApi = HttpModule("OrderApi")({
 exactly the module the hand-written form would:
 
 ```ts
-Module("OrderApi")({
-  imports: [ApplicationModule, PersistenceModule, observability(), http()],
-  provides: [orderRouter],
+Module("OrdersApi")({
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    observability(),
+    http(),
+  ],
+  provides: [ordersRouter],
   exports: [HttpRuntime, Logger],
 });
 ```
@@ -173,10 +180,10 @@ import {
   kernelEvents,
 } from "@btravstack/observability";
 
-import { OrderApi } from "./module.js";
+import { OrdersApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 
-await runMain(OrderApi, {
+await runMain(OrdersApi, {
   unit: RequestModule,
   onEvent: kernelEvents(createLogger(jsonSink())),
 });
@@ -233,7 +240,7 @@ the unit's defect path, before any procedure runs.
 `Serving.info`, read through `runtimeInfo()`:
 
 ```ts
-const app = start(OrderApi, {
+const app = start(OrdersApi, {
   env: { PORT: "0", HOST: "127.0.0.1" },
   signals: false,
   probes: false,
@@ -258,7 +265,8 @@ under the request already carries it — see
 ## See also
 
 - [`@btravstack/http`](/reference/http) — options, `HttpConfig`, `HttpInfo`, the guarantee.
-- [Order API (HTTP)](/examples/order-api) — the example these samples come from, client half included.
+- [Order API (HTTP)](/examples/order-api) — the real deployment this recipe
+  scales into, two slices composed through controllers, client half included.
 - [Open a per-request scope](/how-to/open-a-per-request-scope) — the `RequestModule` in `main.ts`.
 - [Configure from the environment](/how-to/configure-from-the-environment) — how `PORT`/`HOST` are bound.
 - [Use with oRPC](https://btravstack.github.io/unthrown/how-to/use-with-orpc) — the `@unthrown/orpc` bridge itself.
