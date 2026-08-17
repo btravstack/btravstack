@@ -116,6 +116,50 @@ const fulfillOrder = defineWorkflow({
   activities: { place, reserveStock, arrangeShipping, releaseStock, cancelPlacement },
 });
 
+const amountInput = z.object({ orderId: z.string(), amount: z.number() });
+
+const authorizePayment = defineActivity({
+  input: amountInput,
+  output: z.object({ authorizationId: z.string() }),
+  errors: { PaymentDeclined: { data: orderRef, nonRetryable: true } },
+  activityOptions: {
+    startToCloseTimeout: "1 minute",
+    retry: { maximumAttempts: 3, initialInterval: "10 milliseconds" },
+  },
+});
+
+const capturePayment = defineActivity({
+  input: z.object({ authorizationId: z.string() }),
+  output: z.void(),
+  activityOptions: {
+    startToCloseTimeout: "1 minute",
+    retry: { maximumAttempts: 5, initialInterval: "10 milliseconds" },
+  },
+});
+
+const refundPayment = defineActivity({
+  input: z.object({ authorizationId: z.string() }),
+  output: z.void(),
+  activityOptions: {
+    startToCloseTimeout: "1 minute",
+    retry: { maximumAttempts: 5, initialInterval: "10 milliseconds" },
+  },
+});
+
+/**
+ * The second workflow, and a second vertical: taking the money is not part of
+ * fulfilling the order, and the worker polls one task queue for both. Its
+ * compensation is `refundPayment` — declared with no `errors` map, like every
+ * other compensation here, because un-deciding must not be able to answer no.
+ */
+const chargeOrder = defineWorkflow({
+  input: amountInput,
+  output: z.object({ authorizationId: z.string() }),
+  idempotency: "allow-duplicate",
+  errors: { PaymentDeclined: { data: orderRef, nonRetryable: true } },
+  activities: { authorizePayment, capturePayment, refundPayment },
+});
+
 /**
  * The contract, declared before any implementation exists — the same discipline
  * `order-api/src/contract.ts` follows.
@@ -126,7 +170,7 @@ const fulfillOrder = defineWorkflow({
  */
 export const orderContract = defineContract({
   taskQueue: "orders",
-  workflows: { fulfillOrder },
+  workflows: { fulfillOrder, chargeOrder },
 });
 
 export type OrderContract = typeof orderContract;

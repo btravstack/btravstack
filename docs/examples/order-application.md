@@ -89,9 +89,12 @@ export class OrderRepository extends Port("OrderRepository")<{
 Beside it: `Outbox` (the read side of the transactional outbox — `pending`
 and `markPublished`, both `E = never`, because a database that will not
 answer is a defect, not a domain outcome), `StockService` and
-`ShippingService` (the two fulfillment ports the saga orchestrates), and the
-two use-case ports `PlaceOrder` and `FindOrder`. The `Logger` the interactors
-write to is **not** declared here: it is
+`ShippingService` (the two fulfillment ports the orders saga orchestrates),
+`PaymentService` (the billing saga's own port — `authorize` answers with the
+domain's permanent `PaymentDeclined`, `capture` and `refund` promise `never`,
+since a compensation must not invent new ways to fail), and the two use-case
+ports `PlaceOrder` and `FindOrder`. The `Logger` the interactors write to is
+**not** declared here: it is
 [`@btravstack/observability`](/reference/observability)'s port, imported like
 any other dependency. The interactors are classes provided with di's `class`
 arm:

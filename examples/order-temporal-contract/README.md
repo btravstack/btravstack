@@ -1,15 +1,23 @@
 # `@btravstack/core` example: the order Temporal contract
 
-The Temporal contract — one saga workflow, its five activities (three forward
-steps, two compensations), and the four errors a caller may branch on — in a
-package of its own, depending on `@temporal-contract/contract` and `zod`.
+The Temporal contract — one **task queue**, two saga workflows, and the errors
+a caller may branch on — in a package of its own, depending on
+`@temporal-contract/contract` and `zod`.
 
-The shape of the saga is legible in the contract alone: the forward steps
-declare their permanent domain answers `nonRetryable`, and the two
-compensations declare **no errors at all** — compensation is the saga
-un-deciding, and a step that could answer "no" would leave it stuck half-done,
-so whatever infrastructure trouble a compensation hits stays undeclared and
-Temporal retries it until it works.
+`fulfillOrder` is the orders saga: five activities (three forward steps, two
+compensations), four declared errors. `chargeOrder` is a second saga on the
+**same** queue — a second vertical, since taking the money is not part of
+placing, reserving or shipping the order: three activities (two forward steps,
+one compensation), one declared error, `PaymentDeclined`.
+
+The shape of both sagas is legible in the contract alone: the forward steps
+declare their permanent domain answers `nonRetryable`, and every compensation
+— `releaseStock`, `cancelPlacement`, and `chargeOrder`'s own `refundPayment` —
+declares **no errors at all**. Compensation is the saga un-deciding, and a
+step that could answer "no" would leave it stuck half-done, so whatever
+infrastructure trouble a compensation hits stays undeclared and Temporal
+retries it until it works. `refundPayment` follows the same rule for the same
+reason `releaseStock` does — there is nothing saga-specific about it.
 
 ```
 src/contract.ts        the contract: schemas, declared errors, activity options, task queue
@@ -40,10 +48,13 @@ fails because the directive stops being used.
 ## The schemas are the demonstration
 
 Where the oRPC contract's proof is a client built from it, this one's is that
-the contract is **executable**: `src/contract.spec.ts` runs the workflow's own
-input schema through `@unthrown/standard-schema`'s `fromSchema` and gets a
+the contract is **executable**: `src/contract.spec.ts` runs each workflow's
+own input schema through `@unthrown/standard-schema`'s `fromSchema` and gets a
 `Result`, with no worker, no connection and no activity implementation in
-scope — which is exactly the check a caller makes before starting an execution.
+scope — which is exactly the check a caller makes before starting an
+execution. `chargeOrder`'s own case is a single valid payload, proving the
+contract holds more than one workflow rather than re-running the invalid-input
+case `fromSchema` itself already covers.
 
 There is no client-side test beyond that, and that is a property of Temporal
 rather than an omission: a `TypedClient` needs a running service to talk to, so

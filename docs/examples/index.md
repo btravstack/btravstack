@@ -57,16 +57,23 @@ the directive unused and fails `pnpm typecheck`.
 
 ## One application, three deployments
 
-Every composition root imports the same pair — `OrderApplicationModule`,
-`OrderPersistenceModule` — and nothing in either differs between deployments.
-The two workers import that pair alone: the customers vertical is a separate
-pair of modules, and a deployment that never answers a customer question does
-not carry its use case, its repository or its table access. What differs
-between the three is what each transport is **for**:
+Every deployment composes the same pair — `OrderApplicationModule`,
+`OrderPersistenceModule` — and nothing in either differs between them, though
+not always at the same level: `order-api`'s root and `order-amqp-worker`'s
+root import the pair directly (the relay owns the outbox vertical, and
+neither of `order-amqp-worker`'s subscriber slices owns any vertical at all),
+while `order-temporal-worker`'s `FulfillmentSlice` imports it — the orders
+vertical is `fulfillOrder`'s alone there, and `chargeOrder`'s `BillingSlice`
+carries a different one, `BillingModule`, instead. The customers vertical is a
+separate pair of modules everywhere, and a deployment that never answers a
+customer question does not carry its use case, its repository or its table
+access. What differs between the three is what each transport is **for**:
 
 - **`order-api`** answers a caller: a request arrives, a typed answer leaves.
-- **`order-temporal-worker`** owns a journey: place, reserve, ship, and
-  compensation in reverse when a later step answers a permanent no.
+- **`order-temporal-worker`** owns journeys: `fulfillOrder` places, reserves,
+  ships, and compensates in reverse when a later step answers a permanent no;
+  `chargeOrder` authorizes and captures a payment, refunding on failure — two
+  sagas, two verticals, one task queue.
 - **`order-amqp-worker`** tells everyone what happened: every committed write
   leaves an event through a transactional outbox; nobody is addressed.
 
@@ -120,12 +127,13 @@ composition root; `RequestModule` forked per request through
 
 ### [Order Temporal worker](/examples/order-temporal-worker)
 
-`TemporalActivities` and `TemporalModule`; a fulfillment saga in the
-deterministic sandbox with compensation in reverse; the triage that makes a
-domain `Err` a `nonRetryable` contract error the client branches on by name;
-the time-skipping test server cached at `.cache/temporal-test-server`; and a
-drain that honours the kernel's deadline against a worker that keeps its own
-clock.
+`TemporalWorkflowActivities` and `TemporalActivities` composing a
+`FulfillmentSlice` and a `BillingSlice` — two sagas, two verticals, one task
+queue — each in the deterministic sandbox with compensation in reverse; the
+triage that makes a domain `Err` a `nonRetryable` contract error the client
+branches on by name; the time-skipping test server cached at
+`.cache/temporal-test-server`; and a drain that honours the kernel's deadline
+against a worker that keeps its own clock.
 
 ### [Order AMQP worker](/examples/order-amqp-worker)
 

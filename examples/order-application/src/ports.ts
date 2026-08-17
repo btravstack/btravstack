@@ -9,7 +9,7 @@ import type {
   OutOfStock,
   ShippingUnavailable,
 } from "@btravstack/example-order-domain";
-import type { AsyncResult } from "unthrown";
+import { TaggedError, type AsyncResult } from "unthrown";
 
 /**
  * The port the infrastructure layer fills. It is declared here, not in the
@@ -87,6 +87,28 @@ export class StockService extends Port("StockService")<{
 
 export class ShippingService extends Port("ShippingService")<{
   readonly arrange: (orderId: string) => AsyncResult<void, ShippingUnavailable>;
+}> {}
+
+/**
+ * The card was refused. A permanent answer for this authorization attempt —
+ * unlike an unmodelled infrastructure failure, asking the provider again
+ * changes nothing.
+ */
+export class PaymentDeclined extends TaggedError("PaymentDeclined")<{
+  readonly id: string;
+}> {}
+
+/**
+ * The payment provider, as a port the application owns and an adapter
+ * implements. `PaymentDeclined` is a permanent no — the card was refused, and
+ * asking again changes nothing — which is why the contract marks it
+ * `nonRetryable`; anything else that goes wrong is infrastructure and stays
+ * unmodelled, so the platform retries it.
+ */
+export class PaymentService extends Port("PaymentService")<{
+  readonly authorize: (orderId: string, amount: number) => AsyncResult<string, PaymentDeclined>;
+  readonly capture: (authorizationId: string) => AsyncResult<void, never>;
+  readonly refund: (authorizationId: string) => AsyncResult<void, never>;
 }> {}
 
 export class PlaceOrder extends Port("PlaceOrder")<{

@@ -1,13 +1,13 @@
 ---
 title: Order Temporal worker example
-description: The orchestration deployment — TemporalActivities and TemporalModule over the order contract, a fulfillment saga compensating in reverse, mapErrCases making a domain Err a nonRetryable contract error, the cached time-skipping test server, and a drain that honours the kernel's deadline.
+description: The orchestration deployment — two saga slices, FulfillmentSlice and BillingSlice, composed by TemporalActivities over one task queue, a chargeOrder saga compensating with a refund, mapErrCases making a domain Err a nonRetryable contract error, the cached time-skipping test server, and a drain that honours the kernel's deadline.
 ---
 
 # Order Temporal worker
 
 [`examples/order-temporal-worker`](https://github.com/btravstack/start/tree/main/examples/order-temporal-worker)
 — the orchestration deployment: [the order application](/examples/order-application)
-owning a journey, served by [`@btravstack/temporal`](/reference/temporal).
+owning two journeys, served by [`@btravstack/temporal`](/reference/temporal).
 
 ```sh
 pnpm turbo run test --filter=@btravstack/example-order-temporal-worker
@@ -21,73 +21,98 @@ for a year, so the one thing this example needs that the others do not is
 network access on a **cold cache**. Measured: about 7.4 s cold, under 4 s warm.
 :::
 
-## The activities: a service, closing over what it declares
+## Two sagas, two verticals, one queue
 
-`activities.ts` is the application's half. `TemporalActivities(orderContract)`
-is di's `Provider(port)` builder on the starter's own activities port, typed
-for the contract — its service the implementations record
-`declareActivitiesHandler` takes; no class, no name, since a worker serves one
-activities record — so the next call declares the four ports the five
-activities close over. Nothing is resolved from a context.
+`order-temporal-contract` declares two workflows on the one `orders` task
+queue: `fulfillOrder`, the orders saga this example started with, and
+`chargeOrder`, a second saga — a second **vertical**, since taking the money
+is not part of placing, reserving or shipping the order. This worker is a
+modulith of two slices, `src/slices/fulfillment/` and `src/slices/billing/`,
+one per workflow — the same shape [`order-api`](/examples/order-api)'s HTTP
+controllers use, but with a property `order-amqp-worker`'s two subscriber
+slices deliberately do **not** have: each slice here owns a genuinely
+different vertical. `FulfillmentSlice` imports the orders vertical
+(`OrderApplicationModule` + `OrderPersistenceModule`) plus `FulfillmentModule`;
+`BillingSlice` imports `BillingModule` alone. `PlaceOrder` is as invisible
+inside `BillingSlice` as `PaymentService` is inside `FulfillmentSlice` — the
+two verticals meet only at the root, in the list of slices, never inside
+either slice's own graph.
+
+`TemporalWorkflowActivities(contract, key)` mints one piece per workflow — no
+port class, no name, since the contract key IS the port's name — and the piece
+is typed by the ONE workflow it implements: an activity the workflow does not
+declare is a compile error in that slice's own file, not a defect
+`declareActivitiesHandler` reports at startup.
 
 ```ts
-export const orderActivities = TemporalActivities(orderContract)(
-  [PlaceOrder, OrderRepository, StockService, ShippingService],
-  {
-    sync: (place, repository, stock, shipping) => ({
-      fulfillOrder: {
-        place: (args, { errors }) =>
-          place
-            .execute(args.orderId, args.quantity)
-            .map((order) => ({ id: order.id, quantity: order.quantity }))
-            .mapErrCases((matcher) =>
-              matcher
-                .with(P.tag("InvalidQuantity"), (error) =>
-                  errors.InvalidQuantity({ id: error.id }),
-                )
-                .with(P.tag("DuplicateOrder"), (error) =>
-                  errors.OrderAlreadyPlaced({ id: error.id }),
-                ),
-            ),
-        reserveStock: (args, { errors }) =>
-          stock
-            .reserve(args.orderId, args.quantity)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("OutOfStock"), (error) =>
-                errors.OutOfStock({ id: error.id }),
-              ),
-            ),
-        arrangeShipping: (args, { errors }) =>
-          shipping
-            .arrange(args.orderId)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("ShippingUnavailable"), (error) =>
-                errors.ShippingUnavailable({ id: error.id }),
-              ),
-            ),
-        releaseStock: (args) => stock.release(args.orderId),
-        cancelPlacement: (args) =>
-          repository
-            .remove(args.orderId)
-            .recoverErrCases((matcher) =>
-              matcher.with(P.tag("OrderNotFound"), () => undefined),
-            ),
-      },
-    }),
-  },
-);
+export const chargeOrder = TemporalWorkflowActivities(
+  orderContract,
+  "chargeOrder",
+)([PaymentService], {
+  sync: (payments) => ({
+    authorizePayment: (args, { errors }) =>
+      payments
+        .authorize(args.orderId, args.amount)
+        .map((authorizationId) => ({ authorizationId }))
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("PaymentDeclined"), (error) =>
+            errors.PaymentDeclined({ id: error.id }),
+          ),
+        ),
+    capturePayment: (args) => payments.capture(args.authorizationId),
+    refundPayment: (args) => payments.refund(args.authorizationId),
+  }),
+});
 ```
 
-`place` is the hinge. Its `mapErrCases` is the same triage
-[`order-api`](/examples/order-api) performs into `ORPCError` codes, and the
-same `Err` lands somewhere else again: `DuplicateOrder` becomes
-`OrderAlreadyPlaced`, a typed contract error the client branches on by name.
-What is new is the **second** thing this mapping decides. The contract
-declares both errors `nonRetryable`, so naming a failure here also tells
-Temporal to stop retrying it; an unmodeled failure stays unnamed and the
-retry policy takes over — the platform doing for free what a hand-rolled
-worker spells as an attempt budget. Every case is named, so a new domain
-error is a compile error at the one place that decides what the workflow sees.
+`fulfillOrder`'s own piece is the same activities record this example always
+had, moved into `src/slices/fulfillment/activities.ts` unchanged and typed by
+its own key. The root composes both pieces into the one record the starter
+needs, keyed by the contract's own workflow names:
+
+```ts
+export const orderActivities = TemporalActivities(orderContract)([
+  fulfillOrder,
+  chargeOrder,
+]);
+
+export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
+  contract: orderContract,
+  activities: orderActivities,
+  workflows: {
+    workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
+  },
+  imports: [FulfillmentSlice, BillingSlice, observability()],
+});
+```
+
+A wiring rule worth stating because it fails at runtime, not at compile time:
+`orderActivities`'s own `deps` are the two pieces' **ports**, and di's
+`flatten` discovers providers only from a module's `imports` and `provides` —
+never from a provider's own `deps`. The root **must** import both
+`FulfillmentSlice` and `BillingSlice`, even though nothing in it names
+`fulfillOrder` or `chargeOrder` directly; dropping either import leaves that
+piece's port unmet, and `start` fails with a `WiringDefect` naming it — not a
+compile error.
+
+## The fulfillment saga
+
+Three forward steps, each an activity calling into the application layer, and
+two compensations the workflow runs **in reverse order of the steps they
+undo**:
+
+```
+place ──▶ reserveStock ──▶ arrangeShipping ──▶ done
+  ▲             ▲ OutOfStock?                 ▲ ShippingUnavailable?
+  │             └── cancelPlacement            └── releaseStock, then cancelPlacement
+```
+
+The triage rule per step: a **declared** error is a permanent domain answer —
+compensate, then re-mint it against `context.errors` so the client branches on
+it by name. Temporal's own machinery tags (an activity that exhausted its
+retries unmodeled, or was cancelled) are handed back as-is and re-raised by
+`propagateActivityFailure`, and compensation deliberately does **not** run for
+them, since a step that died mid-flight left unknown state.
 
 The compensations declare no errors: compensation is the saga un-deciding, and
 a step that could answer "no" would leave it stuck half-done.
@@ -95,76 +120,82 @@ a step that could answer "no" would leave it stuck half-done.
 that never landed is the no-op a **repeated** compensation performs, and an
 activity Temporal may re-run has to answer the same both times.
 
-## The workflow: the saga, in the sandbox
+## The billing saga
 
-`workflows.ts` has to be its own module: workflow code runs in a
-deterministic V8 sandbox that is bundled separately, and it must be free of
-side effects at module scope. Nothing in it reaches di or the database —
-those live behind the activities, where the kernel's units open.
+The smallest saga in the example that still has a compensation:
 
-The rule per step: a **declared** error is a permanent domain answer —
-compensate, then re-mint it against `context.errors` so the client sees it
-typed; Temporal's own machinery tags (an activity that exhausted its retries
-unmodeled, or was cancelled) are handed back as-is and re-raised by
-`propagateActivityFailure`, and compensation deliberately does **not** run for
-them, since a step that died mid-flight left unknown state. The first
-walk-back:
-
-```ts
-context.activities
-  .reserveStock({ orderId: args.orderId, quantity: args.quantity })
-  .flatMapErrCases((matcher) =>
-    matcher
-      // The first walk-back: stock said a permanent no, so the
-      // placement is un-decided before the caller hears it.
-      .with({ errorName: "OutOfStock" }, (error) =>
-        context.activities
-          .cancelPlacement(order)
-          .flatMap(() =>
-            ErrAsync(context.errors.OutOfStock({ id: error.data.id })),
-          ),
-      )
-      .with(
-        P.tag(ACTIVITY_ERROR_TAG),
-        P.tag(ACTIVITY_CANCELLED_ERROR_TAG),
-        (error) => ErrAsync(error),
-      ),
-  );
+```
+authorizePayment ──▶ capturePayment ──▶ done
+                          │ activity failure?
+                          └── refundPayment
 ```
 
-The shipping refusal walks back deeper, in reverse order of the steps it
-undoes — `releaseStock`, then `cancelPlacement`. One subtlety worth stealing:
-an `AsyncResult` is **eager**, so building a step starts its activity, and
-every later step is constructed inside the `flatMap` of the one before it.
-Hoist them into `const`s and the "sequence" runs as a race.
-
-## The composition root, and the process
-
 ```ts
-export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
+export const chargeOrder = declareWorkflow({
+  workflowName: "chargeOrder",
   contract: orderContract,
-  activities: orderActivities,
-  workflows: {
-    workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
-  },
-  imports: [
-    OrderApplicationModule,
-    OrderPersistenceModule,
-    FulfillmentModule,
-    observability(),
-  ],
+  implementation: (context, args) =>
+    propagateActivityFailure(
+      context.activities
+        .authorizePayment({ orderId: args.orderId, amount: args.amount })
+        .mapErrCases((matcher) =>
+          matcher
+            .with({ errorName: "PaymentDeclined" }, (error) =>
+              context.errors.PaymentDeclined({ id: error.data.id }),
+            )
+            .with(
+              P.tag(ACTIVITY_ERROR_TAG),
+              P.tag(ACTIVITY_CANCELLED_ERROR_TAG),
+              (error) => error,
+            ),
+        )
+        .flatMap((authorized) =>
+          context.activities
+            .capturePayment({ authorizationId: authorized.authorizationId })
+            .flatMapErrCases((matcher) =>
+              matcher.with(
+                P.tag(ACTIVITY_ERROR_TAG),
+                P.tag(ACTIVITY_CANCELLED_ERROR_TAG),
+                (error) =>
+                  context.activities
+                    .refundPayment({
+                      authorizationId: authorized.authorizationId,
+                    })
+                    .flatMap(() => ErrAsync(error)),
+              ),
+            )
+            .map(() => authorized),
+        ),
+    ),
 });
 ```
 
-The same `OrderApplicationModule` + `OrderPersistenceModule` pair as the API, plus
-[`observability()`](/reference/observability) — the `Logger` the use case and
-the stand-ins write to, bound from `LOG_LEVEL`, JSON per line on stdout, every
-line carrying the activity attempt's own trace id — and
-`FulfillmentModule` — the two external services as in-memory stand-ins that
-say yes to anything the drain still has time for, because what this deployment
-demonstrates is the orchestration; the specs swap in twins that say no.
-`ShippingService.arrange` is the exception, and the deployment's one kernel
-touchpoint:
+`authorizePayment`'s `PaymentDeclined` is declared `nonRetryable` in the
+contract — a refused card is a permanent answer, and asking Temporal to try
+four more times is the bug that discipline prevents. `refundPayment` declares
+no errors at all, for the same reason `releaseStock` does: un-deciding must
+not be able to answer no. The compensation only runs on an activity failure —
+a machinery tag, not a declared one — because `capturePayment` has no declared
+error of its own to compensate for; anything it fails with is infrastructure,
+which is exactly when the money needs to go back.
+
+## One subtlety worth stealing
+
+An `AsyncResult` is **eager** — building a step starts its activity — so every
+later step in `workflows.ts` is constructed inside the `flatMap` of the one
+before it. Hoist them into `const`s and the "sequence" runs as a race.
+
+## The external services
+
+`FulfillmentModule` provides `StockService` and `ShippingService`;
+`BillingModule` provides `PaymentService` — in a real system other teams'
+APIs, here in-memory stand-ins that always say yes and leave a log line,
+because what this deployment demonstrates is the orchestration. The
+fulfillment specs swap in providers that say no; that is where both of
+`fulfillOrder`'s compensation paths run, against the real application and the
+real persistence: after a refusal, the spec reads the database through the
+same repository the saga used and finds the placement gone. `ShippingService.arrange`
+is the deployment's one kernel touchpoint:
 
 ```ts
 arrange: (orderId) =>
@@ -189,68 +220,48 @@ and would be the wrong answer to "we ran out of time". Temporal's own
 `shutdownGraceTime`; the two are honoured together. See
 [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
 
-`TemporalModule` imports
-the starter (`TemporalRuntime`, `TemporalConfig` from `TEMPORAL_ADDRESS` /
-`TEMPORAL_NAMESPACE`, `TemporalConnection` as a resource of the graph),
-provides the activities and exports the runtime. `main.ts` is
-`await runMain(OrderTemporalWorker);` — a service that will not answer is the
-starter's `TemporalUnreachable`, exit `1`; a bad variable is `startFailed` and
-exit `78`.
-
 ## The specs: the time-skipping server as a fixture
 
 `test-fixtures.ts` builds the `it` every spec imports from
 `@temporal-contract/testing`'s `createTimeSkippingTest`, pointing the
-downloader at the repo-local cache:
+downloader at the repo-local cache. `serve` boots, through `@btravstack/testing`'s
+`boot`, the same `TemporalModule` sugar `main.ts` does, with a per-test task
+queue and a workflow bundle memoised per spec file — and composes
+`BillingModule` beside whichever fulfillment module the test hands it, since
+billing is never swapped:
 
 ```ts
-const downloadDir = fileURLToPath(
-  new URL("../../../.cache/temporal-test-server/", import.meta.url),
-);
-
-export const it = createTimeSkippingTest({
-  server: { executable: { type: "cached-download", downloadDir, ttl: "365d" } },
+const worker = TemporalModule("StubTemporalWorker")({
+  contract,
+  activities: orderActivities,
+  workflows: { workflowBundle },
+  imports: [module, BillingModule],
+  provides: [fulfillOrder, chargeOrder],
 });
 ```
 
-(the real file goes on to `.extend` that `it` with `boot`, `serve`,
-`fulfilling`, `outOfStock` and `noShipping`.) Both values are deliberate: the
-SDK's defaults are the OS temp directory, which CI wipes between jobs, and a
-one-day ttl, so a developer running the suite twice in a week would download
-it twice. `boot` is `@btravstack/testing`'s `bootFixture()`, which stops every
-app it started when the test ends; the `serve` fixture then boots, through
-it, the same `TemporalModule` sugar `main.ts` does, with a per-test task queue
-(`withTaskQueue(orderContract, nextTaskQueueId("orders"))`), a workflow bundle
-memoised per spec file, and `env: { TEMPORAL_ADDRESS: testEnv.address }` — so
-every test opens and closes a connection of its own:
-
-```ts
-const app = boot(worker, { env: { TEMPORAL_ADDRESS: testEnv.address } });
-```
+`provides: [fulfillOrder, chargeOrder]` is there for the same wiring reason
+the root's own `imports` list both slices: the composed `orderActivities`'s
+own needs are the two pieces' ports, and nothing else in this graph discharges
+them.
 
 The stub deployments (`fulfilling`, `outOfStock`, `noShipping`) are each a
 `tapped(rootWith(fulfillment, sink), [OrderRepository])`, so a spec reads the
-database through the very repository the saga used. The log lines need no tap
-at all: `rootWith` composes `observability({ sink })`, so `lines()` hands back
-the saga's own `Line` values — `{ message, orderId, quantity }` as fields, and
-the trace id already on each one.
-
-Four specs: the saga fulfills in order; a stock refusal walks the placement
-back; a shipping refusal releases the reservation and then cancels, in that
-order, and the spec reads the database through the same repository the saga
-used and finds the placement gone; and the duplicate the API answers
-`CONFLICT` for arrives at the client as `OrderAlreadyPlaced`, rehydrated by
-name with its payload intact:
+database through the very repository the saga used. Five specs: the
+fulfillment saga fulfills in order; a stock refusal walks the placement back;
+a shipping refusal releases the reservation and then cancels, in that order;
+the duplicate the API answers `CONFLICT` for arrives at the client as
+`OrderAlreadyPlaced`, rehydrated by name with its payload intact; and the
+billing saga answers on the same task queue as the fulfillment one —
+proving every piece was mounted under its own key:
 
 ```ts
-errCases: (matcher) =>
-  matcher
-    .with({ errorName: "OrderAlreadyPlaced" }, (error) => `conflict:${error.data.id}`)
-    .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
-    .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
-    .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
-    .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
-    .with(...tagPatterns(WORKFLOW_RESULT_ERROR_TAGS), (error) => `result:${error._tag}`),
+const { client } = await serve(fulfilling.module);
+const charged = client.executeWorkflow("chargeOrder", {
+  workflowId: "wf-charge-1",
+  args: { orderId: "order-1", amount: 42 },
+});
+await expect(charged).toBeOkWith({ authorizationId: "auth-order-1" });
 ```
 
 ## The drain, honouring the kernel's deadline
@@ -270,14 +281,18 @@ shutdown to escalate to. See
 ## The gate
 
 `needs-gate.test-d.ts` pins `NO RUNTIME` (the graph without the starter fails
-on arity) and di's gate: the sugar without `FulfillmentModule` still owes
-`StockService | ShippingService`, which `start` — accepting only `Scope | Env`
-outstanding — refuses.
+on arity) and di's gate spelled with the `temporal()` primitive, since the
+sugar cannot leave the activities out at all:
 
 ```ts
-// @ts-expect-error — UNMET NEED: `StockService | ShippingService` is not assignable to `Env | Scope`.
-const _missingFulfillment = start(FulfillmentlessTemporal, options);
+// @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port, which nothing provides.
+const _missingActivities = start(ActivitylessTemporal, options);
 ```
+
+Dropping one slice's import while still providing the composed activities is
+a different failure — the runtime `WiringDefect` the wiring rule above
+describes — and is not something a compile-time gate can catch, so it is
+pinned by the specs instead.
 
 ## Where to go next
 

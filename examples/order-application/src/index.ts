@@ -5,6 +5,8 @@ export {
   FindOrder,
   OrderRepository,
   Outbox,
+  PaymentDeclined,
+  PaymentService,
   PlaceOrder,
   ShippingService,
   StockService,
