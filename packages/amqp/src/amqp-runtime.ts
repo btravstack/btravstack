@@ -17,6 +17,7 @@ import {
 } from "@btravstack/di";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
+import { HANDLER_PREFIX, type HandlerKeyOf, type HandlerPortOf } from "./handler.js";
 import { messageUnits } from "./message-units.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
@@ -125,24 +126,79 @@ export const amqp = <TContract extends AnyAmqpContract>(
   });
 };
 
+/** One piece of the handlers record — what `AmqpHandler(contract, key)(…)` returns, as the composing form consumes it. */
+type PieceOf<C extends AnyAmqpContract> = {
+  readonly [K in HandlerKeyOf<C>]: { readonly port: HandlerPortOf<C, K> };
+}[HandlerKeyOf<C>];
+
+/** The key a piece carries, read back off its port id. */
+type KeyOfPiece<P> = P extends {
+  readonly port: { readonly portId: `${typeof HANDLER_PREFIX}${infer K}` };
+}
+  ? K
+  : never;
+
+/** The consumers and rpcs no piece in `T` covers. */
+type Uncovered<C extends AnyAmqpContract, T extends readonly PieceOf<C>[]> = Exclude<
+  HandlerKeyOf<C>,
+  KeyOfPiece<T[number]>
+>;
+
 /**
- * The handlers as a provider, from the contract:
- * `AmqpHandlers(orderContract)([Logger], { sync: (logger) => ({ orderChanged:
- * (message) => … }) })` — each handler a plain function of the message its
- * consumer declares, typed by the contract, with nothing to wrap it in
- * (`WorkerInferHandlers<C>` accepts the bare function). The first call fixes
- * the contract and returns di's own `Provider(port)` on the starter's handlers
- * port typed for it — `WorkerInferHandlers<C>`, the one shape `amqp()`
- * accepts — so the second call is exactly what it is everywhere else: any
- * arm, same typing. There is no name to give: a consumer serves one handlers
- * record, so the port is the starter's, and the provider carries it typed
- * (`orderHandlers.port`) for whoever needs the class. The class line is what
- * disappears.
+ * The composing arm. Declared LAST in the intersection below on purpose:
+ * TypeScript reports the last overload's failure, so a non-covering array
+ * names the key it is missing. Reversed, the diagnostic degrades to di's
+ * `Qualification` and names nothing — measured.
+ */
+type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]>(
+  pieces: [Uncovered<C, T>] extends [never] ? T : readonly ["UNCOVERED HANDLERS", Uncovered<C, T>],
+) => Provider<HandlersInstanceOf<C>, never, InstanceType<T[number]["port"]>> & {
+  readonly port: HandlersPortOf<C>;
+};
+
+/**
+ * The handlers as a provider, from the contract. Three call forms, one port.
+ *
+ * ```ts
+ * AmqpHandlers(orderContract)([Logger], { sync: (logger) => ({ orderChanged: (m) => … }) })
+ * AmqpHandlers(orderContract)([orderNotifications, orderAudit])
+ * ```
+ *
+ * The first two are di's own `Provider(port)` on the starter's handlers port
+ * typed for the contract — any arm, same typing, checked against the record
+ * before any module sees it. The third takes the **pieces**
+ * `AmqpHandler(contract, key)` builds, one per consumer or rpc: di constructs
+ * every piece first (they are the provider's deps, in array order) and this
+ * reassembles the record from them. Every key the contract declares must be
+ * covered, and two slices claiming one key are two providers for one port —
+ * di's duplicate-provider defect at build, which is the point.
+ *
+ * There is no name to give: a consumer serves one handlers record, so the port
+ * is the starter's, and the provider carries it typed (`orderHandlers.port`).
  */
 export const AmqpHandlers = <C extends AnyAmqpContract>(
-  _contract: C,
-): ReturnType<typeof Provider<HandlersPortOf<C>>> =>
-  Provider(AmqpHandlersPort as HandlersPortOf<C>);
+  contract: C,
+): ReturnType<typeof Provider<HandlersPortOf<C>>> & Compose<C> => {
+  void contract;
+  const build = Provider(AmqpHandlersPort as HandlersPortOf<C>);
+  const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown => {
+    const keys = pieces.map((piece) => piece.port.portId.slice(HANDLER_PREFIX.length));
+    return build(
+      pieces.map((piece) => piece.port) as never,
+      {
+        sync: (...services: readonly unknown[]) =>
+          Object.fromEntries(keys.map((key, index) => [key, services[index]])),
+      } as never,
+    );
+  };
+  // One array argument is never a valid `Provider(port)` call — its arms are
+  // `(deps, options)` and `(options)` — so the arity plus `Array.isArray` is a
+  // sound discriminator, the same shape `Provider` itself uses.
+  return ((first: unknown, second?: unknown) =>
+    second === undefined && Array.isArray(first)
+      ? compose(first as readonly { readonly port: { readonly portId: string } }[])
+      : (build as (a: never, b?: never) => unknown)(first as never, second as never)) as never;
+};
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>
   new RuntimeStartFailed({ runtime: "amqp", cause });
