@@ -16,13 +16,14 @@ import { OkAsync } from "unthrown";
  * business.
  */
 export const orderAudit = AmqpHandler(orderContract, "orderAudit")([Logger], {
-  sync: (logger) => (message) => {
-    const { id, occurredAt, payload } = message.payload;
-    logger.info("recording an order change", {
-      orderId: id,
-      occurredAt,
-      change: payload === null ? "removed" : "placed",
-    });
-    return OkAsync();
-  },
+  sync:
+    (logger) =>
+    ({ payload: { id, occurredAt, payload } }) => {
+      logger.info("recording an order change", {
+        orderId: id,
+        occurredAt,
+        change: payload === null ? "removed" : "placed",
+      });
+      return OkAsync();
+    },
 });
