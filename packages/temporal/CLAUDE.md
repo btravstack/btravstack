@@ -220,7 +220,8 @@ TemporalConfig, TemporalActivitiesPort as ActivitiesPortOf<C>], { sync })` —
 - **Not included, deliberately**: `Result` → activity failure, which
   `declareActivitiesHandler` already owns. Doing it twice is what the removal of
   the raw-worker path was about.
-- **`temporal-runtime.spec.ts` carries 13 specs, and `workflow-activities.spec.ts` 2 more — 15 in the package.** Four are the starter's
+- **`temporal-runtime.spec.ts` carries 13 specs, and `workflow-activities.spec.ts` 2 more — 15 in the package.** One is the published
+  info (_"publishes the task queue and namespace it polls"_), four the starter's
   configuration (_"binds TEMPORAL_ADDRESS and TEMPORAL_NAMESPACE from the
   environment when nothing is pinned"_, _"pins what it is given and reads the
   rest from the environment"_, _"reads nothing from the environment when both

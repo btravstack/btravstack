@@ -412,9 +412,10 @@ and `workflow-activities.spec.ts` boot a real `@temporalio/worker` Worker
 against `@temporal-contract/testing`'s **time-skipping test server** — a
 local binary, cached once per SDK version, rather than a container (see
 [Order Temporal worker](/examples/order-temporal-worker) for the same choice
-and its measured cost). `temporal-runtime.spec.ts` carries 13 specs — four
-the starter's configuration, one the connection, two the qualified startup
-chain, two the unit boundary, three the drain; `workflow-activities.spec.ts`
+and its measured cost). `temporal-runtime.spec.ts` carries 13 specs — one
+the published info, four the starter's configuration, one the connection, two
+the qualified startup chain, two the unit boundary, three the drain;
+`workflow-activities.spec.ts`
 adds 2 more — a two-workflow, one-task-queue contract composed from two
 pieces, pinning that both are mounted and that each was built from the ports
 its own provider declared — for 15 total. `workflow-activities.test-d.ts`
