@@ -33,10 +33,12 @@ would point the dependency arrow outwards.
 
 `PaymentService` is the billing vertical's own port, the same shape as
 `StockService` and `ShippingService`: `authorize` answers with the domain's
-own permanent failure, `PaymentDeclined` — declared here, next to the port,
-since nothing in `order-domain` needs to know a payment exists — and `capture`
-/ `refund` promise `never`, because a compensation must not invent new ways to
-fail. `order-temporal-worker`'s `BillingModule` is the adapter; nothing here
+own permanent failure, `PaymentDeclined` — declared in `order-domain`, not
+here, for the same reason `OutOfStock` and `ShippingUnavailable` are: it is a
+domain answer a caller is entitled to branch on, whatever adapter happens to
+produce it — and `capture` / `refund` promise `never`, because a compensation
+must not invent new ways to fail. `order-temporal-worker`'s `BillingModule` is
+the adapter; nothing here
 provides it.
 
 ## One module per vertical, and neither provides its repository

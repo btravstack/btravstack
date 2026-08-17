@@ -17,3 +17,12 @@ export class OutOfStock extends TaggedError("OutOfStock")<{
 export class ShippingUnavailable extends TaggedError("ShippingUnavailable")<{
   readonly id: string;
 }> {}
+
+/**
+ * The card was refused. A permanent answer for this authorization attempt —
+ * unlike an unmodelled infrastructure failure, asking the provider again
+ * changes nothing.
+ */
+export class PaymentDeclined extends TaggedError("PaymentDeclined")<{
+  readonly id: string;
+}> {}

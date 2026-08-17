@@ -69,8 +69,8 @@ export const placeOrder = (
 and `DuplicateOrder` are declared here too but raised by whoever owns the
 storage: the domain names them so every outer layer speaks about them in the
 same terms, which is what stops a Prisma error code or an HTTP status from
-leaking inwards. `fulfillment.ts` adds `OutOfStock` and `ShippingUnavailable`
-for the saga on the same grounds.
+leaking inwards. `fulfillment.ts` adds `OutOfStock`, `ShippingUnavailable` and
+`PaymentDeclined` for the two sagas on the same grounds.
 
 ## The application: ports declared by the caller
 
