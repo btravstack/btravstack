@@ -194,12 +194,16 @@ every piece first — they are the composed provider's own `deps`, in array
 order — and this call reassembles the activities record from them, keyed by
 what each piece's port id carries. Every top-level key the contract's
 activities record declares must be covered: an array missing one is refused
-at the call, naming the missing key in the diagnostic
-(`readonly ["UNCOVERED ACTIVITIES", ...]`); a piece built for another
-contract is refused too, structurally, since its port's service is that
-contract's activities for the key. Two pieces claiming the same key are two
-providers for one port — di's duplicate-provider defect at build, which is
-the point: a workflow's activities belong to exactly one slice. The composed
+at the call, against an `"UNCOVERED ACTIVITIES"` marker
+(`readonly ["UNCOVERED ACTIVITIES", ...]`) — the missing key itself is named
+too once the array's length matches that marker tuple's own length of 2; a
+single-element array's diagnostic names the marker alone; a piece built for
+another contract is refused too, structurally, since its port's service is
+that contract's activities for the key. `Uncovered` checks coverage, not
+injectivity, so two pieces claiming the same key still type-check together;
+di's duplicate-provider defect at build catches it only once **both** end up
+discharged as providers in the same graph — wire in just one and the other is
+silently unregistered, with no diagnostic. The composed
 provider's own `deps` are the **pieces' ports**, not what a piece closes
 over, so the pieces themselves still need discharging like any other need —
 typically `provides: [...]` on the module, or a slice module that exports its
@@ -235,15 +239,42 @@ const orderFulfillment = TemporalWorkflowActivities(
         .execute(args.orderId, args.quantity)
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
-          matcher.with(P.tag("DuplicateOrder"), (error) =>
-            errors.OrderAlreadyPlaced({ id: error.id }),
-          ),
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.InvalidQuantity({ id: error.id }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.OrderAlreadyPlaced({ id: error.id }),
+            ),
         ),
     // … the rest of the record, one arm per activity `fulfillOrder` declares
   }),
 });
 
-const orderActivities = TemporalActivities(orderContract)([orderFulfillment]);
+const orderBilling = TemporalWorkflowActivities(orderContract, "chargeOrder")(
+  [PaymentService],
+  {
+    sync: (payments) => ({
+      authorizePayment: (args, { errors }) =>
+        payments
+          .authorize(args.orderId, args.amount)
+          .map((authorizationId) => ({ authorizationId }))
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("PaymentDeclined"), (error) =>
+              errors.PaymentDeclined({ id: error.id }),
+            ),
+          ),
+      // … the rest of the record, one arm per activity `chargeOrder` declares
+    }),
+  },
+);
+
+// orderContract declares both workflows, so the composing call must cover
+// both — one piece short and it is refused at the call.
+const orderActivities = TemporalActivities(orderContract)([
+  orderFulfillment,
+  orderBilling,
+]);
 ```
 
 ## `temporal(options)`
@@ -373,3 +404,23 @@ peers. Node `>=20`.
   the released wait above.
 - **A workflow client.** The starter runs a Worker; starting executions is
   `@temporal-contract/client`'s job.
+
+## Testing
+
+The package's own suite needs no Docker daemon: `temporal-runtime.spec.ts`
+and `workflow-activities.spec.ts` boot a real `@temporalio/worker` Worker
+against `@temporal-contract/testing`'s **time-skipping test server** — a
+local binary, cached once per SDK version, rather than a container (see
+[Order Temporal worker](/examples/order-temporal-worker) for the same choice
+and its measured cost). `temporal-runtime.spec.ts` carries 13 specs — four
+the starter's configuration, one the connection, two the qualified startup
+chain, two the unit boundary, three the drain; `workflow-activities.spec.ts`
+adds 2 more — a two-workflow, one-task-queue contract composed from two
+pieces, pinning that both are mounted and that each was built from the ports
+its own provider declared — for 15 total. `workflow-activities.test-d.ts`
+pins the composing form's compile-time gates: a piece typed by its own key,
+an array covering every declared key composing into what `TemporalModule`
+takes, a key the contract does not declare refused at the piece's own call,
+and an array missing a key refused at the composing call. Checked by
+`tsc -p tsconfig.test-d.json`, which the package's own `test:types` script
+runs and `typecheck` runs alongside the ordinary `tsc --noEmit`.

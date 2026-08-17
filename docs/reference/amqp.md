@@ -167,12 +167,17 @@ A third call composes several **pieces** instead of one record:
 first — they are the composed provider's own `deps`, in array order — and this
 call reassembles the handlers record from them, keyed by what each piece's
 port id carries. Every key the contract declares must be covered: an array
-missing one is refused at the call, naming the missing key in the diagnostic
-(`readonly ["UNCOVERED HANDLERS", ...]`); a piece built for another contract
+missing one is refused at the call, against an `"UNCOVERED HANDLERS"` marker
+(`readonly ["UNCOVERED HANDLERS", ...]`) — the missing key itself is named
+too once the array's length matches that marker tuple's own length of 2; a
+single-element array's diagnostic names the marker alone; a piece built for
+another contract
 is refused too, structurally, since its port's service is that contract's
-handler for the key. Two pieces claiming the same key are two providers for
-one port — di's duplicate-provider defect at build, which is the point: a
-consumer belongs to exactly one slice. The composed provider's own `deps` are
+handler for the key. `Uncovered` checks coverage, not injectivity, so two
+pieces claiming the same key still type-check together; di's duplicate-provider
+defect at build catches it only once **both** end up discharged as providers
+in the same graph — wire in just one and the other is silently unregistered,
+with no diagnostic. The composed provider's own `deps` are
 the **pieces' ports**, not what a piece closes over, so the pieces themselves
 still need discharging like any other need — typically `provides: [...]` on
 the module, or a slice module that exports its own piece.

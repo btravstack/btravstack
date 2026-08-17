@@ -146,9 +146,11 @@ type Uncovered<C extends AnyAmqpContract, T extends readonly PieceOf<C>[]> = Exc
 
 /**
  * The composing arm. Declared LAST in the intersection below on purpose:
- * TypeScript reports the last overload's failure, so a non-covering array
- * names the key it is missing. Reversed, the diagnostic degrades to di's
- * `Qualification` and names nothing — measured.
+ * TypeScript reports the last overload's failure, so a non-covering array is
+ * refused against the `"UNCOVERED HANDLERS"` marker rather than degrading to
+ * di's `Qualification`, which names nothing. The missing key itself is named
+ * in the diagnostic only when the array's length matches the marker tuple's
+ * own length (2) — measured.
  */
 type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]>(
   pieces: [Uncovered<C, T>] extends [never] ? T : readonly ["UNCOVERED HANDLERS", Uncovered<C, T>],
@@ -160,7 +162,7 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  * The handlers as a provider, from the contract. Three call forms, one port.
  *
  * ```ts
- * AmqpHandlers(orderContract)([Logger], { sync: (logger) => ({ orderChanged: (m) => … }) })
+ * AmqpHandlers(orderContract)([Logger], { sync: (logger) => ({ orderNotifications: (m) => … }) })
  * AmqpHandlers(orderContract)([orderNotifications, orderAudit])
  * ```
  *
@@ -193,7 +195,10 @@ export const AmqpHandlers = <C extends AnyAmqpContract>(
   };
   // One array argument is never a valid `Provider(port)` call — its arms are
   // `(deps, options)` and `(options)` — so the arity plus `Array.isArray` is a
-  // sound discriminator, the same shape `Provider` itself uses.
+  // sound discriminator. Not the same dispatch di's own `Provider(port)`
+  // build uses, though: that one narrows on `Array.isArray` alone (`provider.ts`),
+  // which is enough for ITS two arms since a lone array is never valid there;
+  // the arity check here is what this THIRD, composing arm needs on top of it.
   return ((first: unknown, second?: unknown) =>
     second === undefined && Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])

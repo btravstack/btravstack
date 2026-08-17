@@ -188,9 +188,10 @@ is refused right there — not at the root, and not at startup.
 
 The third is caught at the composing call. `AmqpHandlers(contract)([...])`
 and `TemporalActivities(contract)([...])` are exact against every top-level
-key the contract declares: an array missing one is refused, and the
-diagnostic names what is missing rather than failing silently or merging
-`undefined` into the record:
+key the contract declares: an array missing one is refused, against an
+`"UNCOVERED HANDLERS"` / `"UNCOVERED ACTIVITIES"` marker — readable straight
+off the type error rather than a runtime stack trace, and never a silent
+failure or an `undefined` merged into the record:
 
 ```ts
 // @ts-expect-error -- the "orderAudit" consumer is uncovered
@@ -200,28 +201,40 @@ AmqpHandlers(orderContract)([orderNotifications]);
 TemporalActivities(orderContract)([chargeOrder]);
 ```
 
-The first names the missing key as `readonly ["UNCOVERED HANDLERS",
-"orderAudit"]`, the second as `readonly ["UNCOVERED ACTIVITIES",
-"fulfillOrder"]` — both refused at the call, and both readable straight off
-the type error rather than a runtime stack trace.
+Both arrays above are one element long, so both diagnostics report only the
+marker (`"UNCOVERED HANDLERS"`, `"UNCOVERED ACTIVITIES"`) — the missing key
+itself is not in either message. The key IS named — as
+`readonly ["UNCOVERED HANDLERS", "orderAudit"]` or
+`readonly ["UNCOVERED ACTIVITIES", "fulfillOrder"]` — but only once the array
+under test is as long as the marker tuple itself (2), a two-piece array
+missing one key being the common case. Below that length TypeScript can no
+longer line the array up against the tuple positionally and falls back to
+reporting the marker alone.
 
 This is why the composing arm is declared **last** in the intersection both
 packages build it from — di's builder first, the composer last — so
-TypeScript reports the composer's own failure and the diagnostic names the
-missing key rather than degrading to di's generic `Qualification`, which
-names nothing.
+TypeScript reports the composer's own failure against the marker rather than
+degrading to di's generic `Qualification`, which names nothing at all.
 
-## Two slices, one key: di's own defect, for free
+## Two slices, one key: di's own defect, once both are wired in
 
-A key the contract declares is claimed by exactly one piece — nothing in
-`AmqpHandler` or `TemporalWorkflowActivities` enforces that directly, and
-nothing has to. A piece's port id carries the contract key
-(`` `AmqpHandler:orderNotifications` ``, `` `TemporalWorkflowActivities:chargeOrder` ``),
-so two slices both minting a piece for one key are two providers on the
-**same port**: di's own duplicate-provider defect at build, the moment both
-slice modules are imported into one graph. There is no second mechanism to
-maintain here — the port identity a slice's own port already carries is what
-makes "a workflow's activities belong to exactly one slice" true.
+Nothing in `AmqpHandler` or `TemporalWorkflowActivities` stops two slices from
+minting a piece for the same key, and the composing call does not catch it
+either: `AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])`
+are exact against **coverage** — every key has a piece — not against
+**injectivity** — no two pieces share one — so an array holding both slices'
+pieces for the same key type-checks. A piece's port id carries the contract
+key (`` `AmqpHandler:orderNotifications` ``,
+`` `TemporalWorkflowActivities:chargeOrder` ``), so two slices both minting a
+piece for one key genuinely are two providers on the **same port** — but di's
+own duplicate-provider defect only fires once **both** slice modules are
+actually imported into one graph and both providers are discharged. Wire in
+only one of the two conflicting pieces — pick the wrong slice, or simply never
+import the other — and its rival's implementation is unwired with no
+diagnostic: nothing, di included, marks that a second implementation for the
+key ever existed. The port identity a slice's own port carries is what makes a
+caught collision di's defect for free; it is not what guarantees the collision
+gets caught.
 
 ## What a slice owns
 

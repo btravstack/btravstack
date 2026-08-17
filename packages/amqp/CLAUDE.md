@@ -91,8 +91,11 @@ Provider<HandlersPortOf<C>>> & Compose<C>` — di's builder first, the composer
   last. Reversed, TypeScript reports the FIRST arm's failure on a
   non-covering array, and the diagnostic degrades to `not assignable to
 'Qualification<readonly [], Handlers>'`, naming nothing; last, it reports the
-  composing arm's own conditional, which names the missing key
-  (`readonly ["UNCOVERED HANDLERS", K]`) — measured, not stylistic. The
+  composing arm's own conditional against `readonly ["UNCOVERED HANDLERS",
+K]`, which always names the marker — the missing key `K` itself appears only
+  when the array's length matches that marker tuple's own length of 2; a
+  single-element array's diagnostic names the marker alone — measured, not
+  stylistic. The
   composed provider's own `deps` are the array of **piece ports**
   (`InstanceType<T[number]["port"]>` in its return type), not what a piece
   closes over: di constructs each piece first, as its own provider, and the
@@ -101,9 +104,14 @@ Provider<HandlersPortOf<C>>> & Compose<C>` — di's builder first, the composer
   means the pieces themselves still need discharging — typically listed in
   `provides` alongside `handlers`, or exported by a slice module imported in
   — the same as any other unmet need; `AmqpModule` does not do this for you,
-  it only prepends `handlers` itself. Two pieces claiming one key are two
-  providers for one port — di's duplicate-provider defect at build, which is
-  the point: a consumer belongs to exactly one slice.
+  it only prepends `handlers` itself. `Uncovered` checks that every key has a
+  piece, not that no two share one, so two pieces claiming one key type-check
+  together fine. Whether di catches the conflict depends on whether **both**
+  end up discharged as providers in the same graph: only then are they two
+  providers for one port — di's duplicate-provider defect at build. Wire in
+  only one of the two and the other's implementation is simply never
+  registered — no diagnostic marks the conflict, and "a consumer belongs to
+  exactly one slice" holds only for the slice actually composed in.
 
 - **`AmqpHandler(contract, key)` → `ReturnType<typeof Provider<HandlerPortOf<C, K>>>`**
   (`handler.ts`, exported from `index.ts`) — one consumer or rpc as a
@@ -200,8 +208,9 @@ not a defect"` guards it). `create` never throws synchronously (its own
   back on: an un-acked delivery is **redelivered**, which is recovery, not
   cancellation. So a handler that must stop when the kernel stops waiting reads
   `currentUnit()?.signal`, and what it answers is its own business —
-  `examples/order-amqp-worker`'s `orderChanged` returns a `RetryableError`,
-  leaving the delivery un-acked so the broker hands it to the next worker.
+  `examples/order-amqp-worker`'s `orderNotifications` returns a
+  `RetryableError`, leaving the delivery un-acked so the broker hands it to
+  the next worker.
   `amqp-runtime.spec.ts` → _"hands the handler the unit's own AbortSignal,
   through the ambient record"_ pins it, off the `deadline` fixture's handler.
 - **A delivery tag is not a valid unit id.** Tags are per-**channel** and
@@ -263,7 +272,9 @@ right])`, pinning that both slices run (_"serves a record composed from one
   from the ports its own provider declared"_). `handler.test-d.ts` pins the
   composing form's compile-time gates on a contract of its own — a piece typed
   by its own key, an array covering every declared key, an uncovered array
-  refused and naming the missing key, and a piece built for another contract
+  refused as `@ts-expect-error` (its own single-element case reports only the
+  `"UNCOVERED HANDLERS"` marker, not the missing key — see the composing-arm
+  entry above for when the key itself is named), and a piece built for another contract
   refused structurally (that contract's own key needs its own message, not a
   reused one, or the two ports are the same type and there is nothing to
   refuse — di's port typing is structural on id and service, not nominal

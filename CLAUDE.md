@@ -529,8 +529,11 @@ AuditSlice, observability()], … })`),
   the piece's own port id rather than on a record position — and
   `AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])`
   compose them: every key the contract declares must be covered (an uncovered
-  one is refused at the call, naming it), and two slices claiming one key is
-  di's duplicate-provider defect at build — the same exactness the keyed HTTP
+  one is refused at the call, against an `"UNCOVERED HANDLERS"` /
+  `"UNCOVERED ACTIVITIES"` marker that names the missing key too once the
+  array's length matches the marker tuple's own length of 2), and two slices
+  both discharged for one key are di's duplicate-provider defect at build —
+  the same exactness the keyed HTTP
   form gets from the shape of the record it composes, reached here through the
   port id instead, because there is no record to be exact against. See
   `packages/amqp/CLAUDE.md` and `packages/temporal/CLAUDE.md` for the full

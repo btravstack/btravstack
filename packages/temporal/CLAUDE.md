@@ -65,8 +65,9 @@ ActivitiesPortOf<C>`, so the next call is di's `(deps, arm)` unchanged and
   `Provider(port)` over the same port remains possible. `test-fixtures.ts`'s
   `EchoActivities = TemporalActivities(echoContract)` builds all four fixture
   providers off the one builder, and
-  `examples/order-temporal-worker/src/activities.ts` is the worked example
-  (no port class, no name, anywhere).
+  `examples/order-temporal-worker/src/slices/fulfillment/activities.ts` and
+  `examples/order-temporal-worker/src/slices/billing/activities.ts` are the
+  worked examples (no port class, no name, anywhere).
 
   A third call composes **pieces** instead of a record:
   `TemporalActivities(contract)([piece, piece, ...])`, one piece per
@@ -76,8 +77,11 @@ Provider<ActivitiesPortOf<C>>> & Compose<C>` — di's builder first, the
   composer last. Reversed, TypeScript reports the FIRST arm's failure on a
   non-covering array, and the diagnostic degrades to `not assignable to
 'Qualification<readonly [], Activities>'`, naming nothing; last, it reports
-  the composing arm's own conditional, which names the missing key
-  (`readonly ["UNCOVERED ACTIVITIES", K]`) — measured, not stylistic. The
+  the composing arm's own conditional against `readonly ["UNCOVERED
+ACTIVITIES", K]`, which always names the marker — the missing key `K` itself
+  appears only when the array's length matches that marker tuple's own length
+  of 2; a single-element array's diagnostic names the marker alone —
+  measured, not stylistic. The
   composed provider's own `deps` are the array of **piece ports**
   (`InstanceType<T[number]["port"]>` in its return type), not what a piece
   closes over: di constructs each piece first, as its own provider, and the
@@ -87,9 +91,15 @@ Provider<ActivitiesPortOf<C>>> & Compose<C>` — di's builder first, the
   discharging — typically listed in `provides` alongside `activities`, or
   exported by a slice module imported in — the same as any other unmet need;
   `TemporalModule` does not do this for you, it only prepends `activities`
-  itself. Two pieces claiming one key are two providers for one port — di's
-  duplicate-provider defect at build, which is the point: a workflow's
-  activities belong to exactly one slice.
+  itself. `Uncovered` checks that every key has a piece, not that no two
+  share one, so two pieces claiming one key type-check together fine.
+  Whether di catches the conflict depends on whether **both** end up
+  discharged as providers in the same graph: only then are they two
+  providers for one port — di's duplicate-provider defect at build. Wire in
+  only one of the two and the other's implementation is simply never
+  registered — no diagnostic marks the conflict, and "a workflow's
+  activities belong to exactly one slice" holds only for the slice actually
+  composed in.
 
 - **`TemporalWorkflowActivities(contract, key)` → `ReturnType<typeof
 Provider<WorkflowActivitiesPortOf<C, K>>>`** (`workflow-activities.ts`,
@@ -263,6 +273,17 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
   would — which is what lets `TemporalModule` infer one `C` from `contract`
   and `activities` together instead of two conflicting candidates once
   `activities` is the composing arm's own, more specific, type.
+- **`workflow-activities.test-d.ts` pins the composing form's compile-time
+  gates**, on a `pinContract` of its own: a piece typed by its own key
+  (`_echoPort`, against `WorkflowActivitiesPortOf`), an array covering every
+  declared key composing into what `TemporalModule` takes, a key the contract
+  does not declare refused at `TemporalWorkflowActivities`'s own call, and an
+  array that misses a key refused at `TemporalActivities`'s composing call —
+  and the two existing arms (`value`, and a hand-written record) still
+  resolving unchanged. Checked by `tsc -p tsconfig.test-d.json` (`include:
+["src/**/*.test-d.ts"]`, extending `tsconfig.json`), which the package's own
+  `test:types` script runs and `typecheck` runs alongside the ordinary
+  `tsc --noEmit` — the same two-script shape as `@btravstack/amqp`.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
   `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`,
   `@temporal-contract/worker`, `@temporal-contract/contract`.
