@@ -8,3 +8,4 @@ export {
   temporal,
 } from "./temporal-runtime.js";
 export type { TemporalInfo, TemporalOptions, WorkflowSource } from "./temporal-runtime.js";
+export { TemporalWorkflowActivities } from "./workflow-activities.js";
