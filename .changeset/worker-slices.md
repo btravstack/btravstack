@@ -1,6 +1,6 @@
 ---
-"@btravstack/amqp": patch
-"@btravstack/temporal": patch
+"@btravstack/amqp": minor
+"@btravstack/temporal": minor
 ---
 
 Compose a worker's handlers and activities from one provider per contract key.
