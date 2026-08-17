@@ -23,7 +23,8 @@ description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime,
 | ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `AmqpModule`        | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the handlers provider |
 | `AmqpModuleOptions` | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                        |
-| `AmqpHandlers`      | value | `AmqpHandlers(contract)` — di's `Provider(port)` builder on the starter's own handlers port, typed for `contract`, so the next call is `(deps, arm)`                                                               |
+| `AmqpHandlers`      | value | `AmqpHandlers(contract)` — di's `Provider(port)` builder on the starter's own handlers port, typed for `contract`, so the next call is `(deps, arm)`, or `([pieces])` to compose one provider per consumer/rpc     |
+| `AmqpHandler`       | value | `AmqpHandler(contract, key)` — one consumer or rpc as a provider of its own, typed by `key` alone; the next call is `(deps, arm)`, and the piece is what `AmqpHandlers(contract)([...])` composes                  |
 | `amqp`              | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                           |
 | `AmqpOptions`       | type  | `amqp()`'s options                                                                                                                                                                                                 |
 | `AmqpRuntime`       | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                          |
@@ -38,7 +39,9 @@ likewise unexported: `AmqpHandlersPort` — `Port("AmqpHandlers")`, the
 starter's own handlers port, declared once — and `HandlersPortOf<C>` /
 `HandlersInstanceOf<C>`, that port's class and instance typed for `C`
 (service `WorkerInferHandlers<C>`). The port is reached as `provider.port`
-when a caller needs it.
+when a caller needs it. `HandlerKeyOf<C>`, `HandlerPortOf<C, K>` and
+`HANDLER_PREFIX` (`handler.ts`) are unexported on the same terms — a piece's
+port class typed for one key, and the string prefix its id carries.
 
 ## `AmqpModule(name)({...})`
 
@@ -113,6 +116,50 @@ export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
     },
   }),
 });
+```
+
+A third call composes several **pieces** instead of one record:
+`AmqpHandlers(contract)([piece, piece, ...])`, where each piece is what
+`AmqpHandler(contract, key)(deps, arm)` returns. Di constructs every piece
+first — they are the composed provider's own `deps`, in array order — and this
+call reassembles the handlers record from them, keyed by what each piece's
+port id carries. Every key the contract declares must be covered: an array
+missing one is refused at the call, naming the missing key in the diagnostic
+(`readonly ["UNCOVERED HANDLERS", ...]`); a piece built for another contract
+is refused too, structurally, since its port's service is that contract's
+handler for the key. Two pieces claiming the same key are two providers for
+one port — di's duplicate-provider defect at build, which is the point: a
+consumer belongs to exactly one slice. The composed provider's own `deps` are
+the **pieces' ports**, not what a piece closes over, so the pieces themselves
+still need discharging like any other need — typically `provides: [...]` on
+the module, or a slice module that exports its own piece.
+
+## `AmqpHandler(contract, key)`
+
+One consumer or rpc, as a provider of its own: the port id carries the
+contract key (`` `AmqpHandler:${key}` ``, `HANDLER_PREFIX` stripped by the
+composing form to recover it), so two slices claiming one consumer is di's
+duplicate-provider defect rather than a silent merge. `contract` types `key`
+and the handler; a key the contract does not declare is refused at the call —
+there is nothing to type it by — and a handler whose message has drifted is a
+compile error here rather than at the root. There is no name to give and
+nothing minted by hand: the return is di's own `Provider(port)`, so every arm
+— `value` / `sync` / `make` / `class` / `acquire` — is available exactly as it
+is on `AmqpHandlers(contract)`, and the provider carries its port as
+`provider.port` (`HandlerPortOf<C, K>`).
+
+```ts
+const orderNotifications = AmqpHandler(orderContract, "orderChanged")(
+  [Logger],
+  {
+    sync: (logger) => (message) => {
+      logger.info("order changed", { orderId: message.payload.id });
+      return OkAsync(undefined);
+    },
+  },
+);
+
+const orderHandlers = AmqpHandlers(orderContract)([orderNotifications]);
 ```
 
 ## `amqp(options)`
@@ -239,4 +286,11 @@ type its own tests. Node `>=20`.
 The package's own suite needs a Docker daemon: `@amqp-contract/testing`
 boots one RabbitMQ container per vitest run, because the retry and
 dead-letter routing it relies on is the broker's behaviour, not something an
-in-memory fake could stand in for.
+in-memory fake could stand in for. `amqp-runtime.spec.ts` carries 8 specs;
+`handler.spec.ts` adds 2 more — a broadcast with two consumers of one
+publisher, composed from two pieces, pinning that both run and that each was
+built from the ports its own provider declared rather than a record closing
+over both — for 10 total. `handler.test-d.ts` pins the composing form's
+compile-time gates: a piece typed by its own key, an array covering every
+declared key, a missing key refused and named, and a piece built for another
+contract refused structurally.

@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import { AmqpModule } from "./amqp-module.js";
 import { AmqpHandlers, type AmqpInfo, type HandlersPortOf } from "./amqp-runtime.js";
+import { AmqpHandler } from "./handler.js";
 
 const echoExchange = defineExchange("amqp-test");
 const echoDlx = defineExchange("amqp-test-dlx", { type: "direct" });
@@ -187,6 +188,65 @@ const gatedHandler = () => {
   return { handlers, arrived, release: () => release() };
 };
 
+const leftQueue = defineQueue("amqp-sliced-left", {
+  deadLetter: { exchange: echoDlx, externalConsumers: true },
+  retry: { mode: "immediate-requeue", maxRetries: 1 },
+});
+const rightQueue = defineQueue("amqp-sliced-right", {
+  deadLetter: { exchange: echoDlx, externalConsumers: true },
+  retry: { mode: "immediate-requeue", maxRetries: 1 },
+});
+
+/** Two consumers of ONE publisher, on two queues — a broadcast with two subscribers, which is what a sliced worker is. Not exported: only this module's own fixtures build on it, and knip flags an export nothing imports. */
+const slicedContract = defineContract({
+  publishers: { echo: echoPublished },
+  consumers: {
+    left: defineEventConsumer(echoPublished, leftQueue),
+    right: defineEventConsumer(echoPublished, rightQueue),
+  },
+});
+
+/**
+ * Two slices, composed. `left` declares `Greeting` and `right` declares
+ * nothing, so the spec can tell that each piece was built from the ports its
+ * OWN provider declared rather than from a record closing over both.
+ *
+ * `pieces` is exposed alongside `handlers`: the composed provider's own
+ * `deps` are the pieces' PORTS (`AmqpHandler:left` / `AmqpHandler:right`),
+ * not what they close over, so something in the module still has to REGISTER
+ * `left` and `right` themselves — `flatten` (`build.ts`) only collects
+ * providers a module's own `provides` names, never a provider's `deps`
+ * transitively. `serveSliced` is what adds them.
+ */
+const slicesOf = () => {
+  const ran: string[] = [];
+  let greeting = "";
+
+  const left = AmqpHandler(slicedContract, "left")([Greeting], {
+    sync: (g) => () => {
+      greeting = g.text;
+      ran.push("left");
+      return OkAsync(undefined);
+    },
+  });
+  const right = AmqpHandler(
+    slicedContract,
+    "right",
+  )({
+    value: () => {
+      ran.push("right");
+      return OkAsync(undefined);
+    },
+  });
+
+  return {
+    handlers: AmqpHandlers(slicedContract)([left, right]),
+    pieces: [left, right] as const,
+    ran: (): readonly string[] => ran,
+    greeting: (): string => greeting,
+  };
+};
+
 export type AmqpFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
@@ -197,6 +257,8 @@ export type AmqpFixtures = {
   readonly gate: ReturnType<typeof gatedHandler>;
   /** A handler that waits on the unit's own `AbortSignal`, read off the ambient record. */
   readonly deadline: ReturnType<typeof deadlineHandler>;
+  readonly slices: ReturnType<typeof slicesOf>;
+  readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<App>;
 };
 
 // Annotated explicitly: TS2883 otherwise refuses to name the inferred type,
@@ -236,5 +298,27 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
   // oxlint-disable-next-line no-empty-pattern -- see above
   deadline: async ({}, use) => {
     await use(deadlineHandler());
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  slices: async ({}, use) => {
+    await use(slicesOf());
+  },
+  serveSliced: async ({ amqpConnectionUrl, boot }, use) => {
+    await use(async (slices) => {
+      const app = boot(
+        AmqpModule("Sliced")({
+          contract: slicedContract,
+          handlers: slices.handlers,
+          url: amqpConnectionUrl,
+          // The composed provider's own deps are the pieces' PORTS — see
+          // `slicesOf`'s comment — so the pieces themselves are what discharge
+          // them, same as any other unmet need.
+          provides: slices.pieces,
+          imports: [AppModule],
+        }),
+      );
+      await app.runtimeInfo();
+      return app;
+    });
   },
 });

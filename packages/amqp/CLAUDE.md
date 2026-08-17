@@ -73,6 +73,49 @@ HandlersInstanceOf<TContract>>` whether or not `url` is pinned — one declared
   built for another contract is refused by `AmqpModule`; and that a
   hand-declared port of another id leaves the starter's need unmet, so
   `start` refuses the module.
+
+  A third call composes **pieces** instead of a record:
+  `AmqpHandlers(contract)([piece, piece, ...])`, one piece per
+  `AmqpHandler(contract, key)(deps, arm)`. Its type is an intersection with
+  `Compose<C>`, declared **last**: `ReturnType<typeof
+Provider<HandlersPortOf<C>>> & Compose<C>` — di's builder first, the composer
+  last. Reversed, TypeScript reports the FIRST arm's failure on a
+  non-covering array, and the diagnostic degrades to `not assignable to
+'Qualification<readonly [], Handlers>'`, naming nothing; last, it reports the
+  composing arm's own conditional, which names the missing key
+  (`readonly ["UNCOVERED HANDLERS", K]`) — measured, not stylistic. The
+  composed provider's own `deps` are the array of **piece ports**
+  (`InstanceType<T[number]["port"]>` in its return type), not what a piece
+  closes over: di constructs each piece first, as its own provider, and the
+  composing call's `construct` just reassembles their results into a record
+  keyed by what each piece's port id carries past `HANDLER_PREFIX`. That
+  means the pieces themselves still need discharging — typically listed in
+  `provides` alongside `handlers`, or exported by a slice module imported in
+  — the same as any other unmet need; `AmqpModule` does not do this for you,
+  it only prepends `handlers` itself. Two pieces claiming one key are two
+  providers for one port — di's duplicate-provider defect at build, which is
+  the point: a consumer belongs to exactly one slice.
+
+- **`AmqpHandler(contract, key)` → `ReturnType<typeof Provider<HandlerPortOf<C, K>>>`**
+  (`handler.ts`, exported from `index.ts`) — one consumer or rpc as a
+  provider of its own. There is no name to give: the contract key IS the
+  port's name, minted as `` `${HANDLER_PREFIX}${key}` `` (`HANDLER_PREFIX =
+"AmqpHandler:"`, exported from `handler.ts` only) — so the port id carries
+  the key, which is what makes two slices claiming one consumer di's
+  duplicate-provider defect rather than a silent merge, and what lets the
+  composing form recover each piece's key by stripping the prefix back off
+  `piece.port.portId` rather than needing it spelled again. `contract` types
+  `key` (`HandlerKeyOf<C>`, `handler.ts`-only) and the handler
+  (`WorkerInferHandlers<C>[K]`); a key the contract does not declare is
+  refused at the call — there is nothing to type it by — and a handler whose
+  message has drifted is a compile error here, not at the root. The return is
+  di's own `Provider(port)`, so every arm is available exactly as it is on
+  `AmqpHandlers(contract)`, and the provider carries its port
+  (`HandlerPortOf<C, K>`) as `provider.port`. `handler.ts` imports
+  `AnyAmqpContract` from `amqp-runtime.ts` with `import type` — erased by
+  `verbatimModuleSyntax` — while `amqp-runtime.ts` imports `HANDLER_PREFIX`
+  from `handler.ts` as a value, so the two files reference each other in the
+  type graph with **no runtime cycle**.
 - **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>`**
   — the starter, the same shape as `@btravstack/http`'s `http()`. It provides
   the runtime on **`AmqpRuntime`** (`extends RuntimePort<Runtime<never,
@@ -189,15 +232,28 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   **four** total attempts (first plus three retries), not the same count as
   Temporal's `maximumAttempts: 3`.
 - **The suite needs Docker** (`@amqp-contract/testing` boots one RabbitMQ per
-  run) and carries **8 specs** in `amqp-runtime.spec.ts`: one the published
-  info, one the unreachable broker, three the unit boundary (_"opens one
-  kernel unit per delivery"_, _"refuses a blank message id rather than tracing
-  every delivery to it"_, _"builds the handlers from the application's own
-  services"_) and three the drain (_"lets an in-flight delivery finish while
-  draining"_, _"hands the handler the unit's own AbortSignal, through the
-  ambient record"_ off the `deadline` fixture, _"releases the kernel at its own
-  deadline, not the library's own close timeout"_).
-  Its fixtures compose `AmqpModule("Consuming")({ contract:
+  run) and carries **10 specs**: **8** in `amqp-runtime.spec.ts` — one the
+  published info, one the unreachable broker, three the unit boundary (_"opens
+  one kernel unit per delivery"_, _"refuses a blank message id rather than
+  tracing every delivery to it"_, _"builds the handlers from the application's
+  own services"_) and three the drain (_"lets an in-flight delivery finish
+  while draining"_, _"hands the handler the unit's own AbortSignal, through
+  the ambient record"_ off the `deadline` fixture, _"releases the kernel at
+  its own deadline, not the library's own close timeout"_) — plus **2** in
+  `handler.spec.ts`: a broadcast contract with two consumers of ONE publisher
+  on two queues, composed from two pieces via `AmqpHandlers(slicedContract)([left,
+right])`, pinning that both slices run (_"serves a record composed from one
+  piece per consumer"_) and that each piece closed over only the services its
+  OWN provider declared, `left` alone reading `Greeting` (_"builds each piece
+  from the ports its own provider declared"_). `handler.test-d.ts` pins the
+  composing form's compile-time gates on a contract of its own — a piece typed
+  by its own key, an array covering every declared key, an uncovered array
+  refused and naming the missing key, and a piece built for another contract
+  refused structurally (that contract's own key needs its own message, not a
+  reused one, or the two ports are the same type and there is nothing to
+  refuse — di's port typing is structural on id and service, not nominal
+  across separate `Port()` calls).
+  `amqp-runtime.spec.ts`'s fixtures compose `AmqpModule("Consuming")({ contract:
 echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
   with a provider per test from `AmqpHandlers(echoContract)` — from
   `Greeting`, or a value — so the module reads no environment, and hand it to
@@ -205,5 +261,11 @@ echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
   and `serveBroken` depend on: every app is stopped when the test ends, and
   the teardown is Defect-only, so `serveBroken`'s `Err` exit (the unreachable
   broker, `connectTimeoutMs` set short) is the test's own to assert.
+  `handler.spec.ts`'s `serveSliced` fixture is the same shape, over
+  `AmqpModule("Sliced")({ contract: slicedContract, handlers, provides:
+[left, right], url, imports: [AppModule] })` — the two pieces are passed to
+  `provides` alongside `handlers` because the composed provider's own `deps`
+  are the pieces' ports, which nothing else in the graph would otherwise
+  discharge.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
   `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`.
