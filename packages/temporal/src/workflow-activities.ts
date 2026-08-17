@@ -11,7 +11,7 @@ import type { ActivitiesOf } from "./temporal-runtime.js";
  * indexable — the standard workaround for indexing a generic conditional type.
  */
 type ActivitiesRecordOf<C extends ContractDefinition> =
-  ActivitiesOf<C> extends infer Record ? Record : never;
+  ActivitiesOf<C> extends infer Resolved ? Resolved : never;
 
 /** The top-level keys of `C`'s activities record: a workflow that declares activities, or a contract-global activity. */
 export type ActivitiesKeyOf<C extends ContractDefinition> = keyof ActivitiesRecordOf<C> & string;
