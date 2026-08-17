@@ -30,8 +30,7 @@ ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C>>`,
   is written with it. `temporal()` stays exported as the primitive it
   delegates to.
 - **`TemporalActivitiesPort` / `ActivitiesPortOf<C>` / `ActivitiesInstanceOf<C>`**
-  (`temporal-runtime.ts`, exported from the file for the package's own tests,
-  **not** from `index.ts`) — the activities' port, one id, the starter's own:
+  (`temporal-runtime.ts`) — the activities' port, one id, the starter's own:
   `Port("TemporalActivities")`, declared once. A worker serves one activities
   record as it polls one task queue (thesis #1), so there is nothing to name
   and the port is framework-owned like `TemporalConfig`; two providers for it
@@ -42,6 +41,17 @@ ActivitiesOf<C>>`, `ActivitiesInstanceOf<C>` its `PortInstance` — the same
   move the kernel's `RuntimePort` makes, so one `Port(...)` call (no
   duplicate-id warning however many contracts instantiate it) still refuses a
   provider built for one contract handed to a module declaring another.
+  `ActivitiesPortOf<C>` and `ActivitiesInstanceOf<C>` are **types**, exported
+  from `index.ts` — an application that composes `orderActivities =
+TemporalActivities(contract)([piece, piece])` and exports it by name needs
+  declaration emit to be able to print that type, and a type built from an
+  unexported alias fails TS4023 ("has or is using name 'ID' … but cannot be
+  named") the moment a consumer does. `TemporalActivitiesPort` — the
+  **value** — stays unexported: nothing outside this package legitimately
+  constructs a provider against the bare port (a consumer always goes
+  through `TemporalActivities(contract)` or `TemporalWorkflowActivities(contract,
+key)`, both of which cast it to the typed alias), so there is nothing a
+  type-only export would help with.
 - **`TemporalActivities(contract)` → `ReturnType<typeof
 Provider<ActivitiesPortOf<C>>>`** — the activities' provider builder,
   `temporal-module.ts`, the same shape as `@btravstack/http`'s
@@ -97,15 +107,21 @@ Provider<WorkflowActivitiesPortOf<C, K>>>`** (`workflow-activities.ts`,
   defect rather than a silent merge, and what lets the composing form recover
   each piece's key by stripping the prefix back off `piece.port.portId`
   rather than needing it spelled again. `contract` types `key`
-  (`ActivitiesKeyOf<C>`, `workflow-activities.ts`-only) and the piece
+  (`ActivitiesKeyOf<C>`, `workflow-activities.ts`-only, unexported — nothing
+  outside this file needs to name a bare key) and the piece
   (`ActivitiesOf<C>[K]`, routed through an `extends infer` indirection since
   `ActivitiesOf<C>` is a `NoInfer`-wrapped conditional/mapped intersection
   that TypeScript refuses to index by a generic key directly — the standard
   workaround); a key the contract does not declare is refused at the call —
   there is nothing to type it by. The return is di's own `Provider(port)`, so
   every arm is available exactly as it is on `TemporalActivities(contract)`,
-  and the provider carries its port (`WorkflowActivitiesPortOf<C, K>`) as
-  `provider.port`.
+  and the provider carries its port (`WorkflowActivitiesPortOf<C, K>`, a
+  **type**, exported from `index.ts` for the same declaration-emit reason
+  `ActivitiesPortOf<C>` is — a slice module that exports its own piece by
+  name needs it printable) as `provider.port`. `WORKFLOW_ACTIVITIES_PREFIX` —
+  the **value** — stays unexported from `index.ts`: an application never
+  constructs a port id by hand, so nothing outside this package legitimately
+  needs the string.
 - **`temporal(options)` → `Module<TemporalRuntime | TemporalConfig |
 TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
 ActivitiesInstanceOf<C>>`** — the starter, the same shape as `@btravstack/http`'s

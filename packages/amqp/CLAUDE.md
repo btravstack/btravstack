@@ -39,8 +39,7 @@ HandlersInstanceOf<TContract>>` whether or not `url` is pinned — one declared
   the exported options type. `AnyAmqpContract` is exported from
   `amqp-runtime.ts` for the sugar's bound, not from `index.ts`.
 - **`AmqpHandlersPort` / `HandlersPortOf<C>` / `HandlersInstanceOf<C>`**
-  (`amqp-runtime.ts`, exported from the file for the package's own tests,
-  **not** from `index.ts`) — the handlers' port, one id, the starter's own:
+  (`amqp-runtime.ts`) — the handlers' port, one id, the starter's own:
   `Port("AmqpHandlers")`, declared once. A consumer serves one handlers record
   as it boots one runtime (thesis #1), so there is nothing to name and the
   port is framework-owned like `AmqpConfig`; two providers for it in one graph
@@ -50,7 +49,17 @@ HandlersInstanceOf<TContract>>` whether or not `url` is pinned — one declared
   `HandlersInstanceOf<C>` its `PortInstance` — the same move the kernel's
   `RuntimePort` makes, so one `Port(...)` call (no duplicate-id warning
   however many contracts instantiate it) still refuses a provider built for
-  one contract handed to a module declaring another.
+  one contract handed to a module declaring another. `HandlersPortOf<C>` and
+  `HandlersInstanceOf<C>` are **types**, exported from `index.ts` — an
+  application that composes `orderHandlers = AmqpHandlers(contract)([piece,
+piece])` and exports it by name needs declaration emit to be able to print
+  that type, and a type built from an unexported alias fails TS4023
+  ("has or is using name 'ID' … but cannot be named") the moment a consumer
+  does. `AmqpHandlersPort` — the **value** — stays unexported: nothing outside
+  this package legitimately constructs a provider against the bare port (a
+  consumer always goes through `AmqpHandlers(contract)` or `AmqpHandler(contract,
+key)`, both of which cast it to the typed alias), so there is nothing a
+  type-only export would help with.
 - **`AmqpHandlers(contract)` → `ReturnType<typeof Provider<HandlersPortOf<C>>>`**
   (`amqp-runtime.ts`) — the way to the handlers provider `AmqpModule` takes,
   next to it: the one call fixes `C` and returns di's own `Provider(port)` on
@@ -105,13 +114,19 @@ Provider<HandlersPortOf<C>>> & Compose<C>` — di's builder first, the composer
   duplicate-provider defect rather than a silent merge, and what lets the
   composing form recover each piece's key by stripping the prefix back off
   `piece.port.portId` rather than needing it spelled again. `contract` types
-  `key` (`HandlerKeyOf<C>`, `handler.ts`-only) and the handler
+  `key` (`HandlerKeyOf<C>`, `handler.ts`-only, unexported — nothing outside
+  this file needs to name a bare key) and the handler
   (`WorkerInferHandlers<C>[K]`); a key the contract does not declare is
   refused at the call — there is nothing to type it by — and a handler whose
   message has drifted is a compile error here, not at the root. The return is
   di's own `Provider(port)`, so every arm is available exactly as it is on
   `AmqpHandlers(contract)`, and the provider carries its port
-  (`HandlerPortOf<C, K>`) as `provider.port`. `handler.ts` imports
+  (`HandlerPortOf<C, K>`, a **type**, exported from `index.ts` for the same
+  declaration-emit reason `HandlersPortOf<C>` is — a slice module that
+  exports its own piece by name needs it printable) as `provider.port`.
+  `HANDLER_PREFIX` — the **value** — stays unexported from `index.ts`: an
+  application never constructs a port id by hand, so nothing outside this
+  package legitimately needs the string. `handler.ts` imports
   `AnyAmqpContract` from `amqp-runtime.ts` with `import type` — erased by
   `verbatimModuleSyntax` — while `amqp-runtime.ts` imports `HANDLER_PREFIX`
   from `handler.ts` as a value, so the two files reference each other in the

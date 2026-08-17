@@ -18,32 +18,44 @@ description: The Temporal worker starter — TemporalModule, TemporalActivities,
 
 `packages/temporal/src/index.ts` exports exactly this:
 
-| Export                       | Kind  | What it is                                                                                                                                                                                                                                                   |
-| ---------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `TemporalModule`             | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the activities provider                                             |
-| `TemporalModuleOptions`      | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                              |
-| `TemporalActivities`         | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `(deps, arm)`, or `([pieces])` to compose one provider per workflow                                           |
-| `TemporalWorkflowActivities` | value | `TemporalWorkflowActivities(contract, key)` — one workflow's activities (or a contract-global activity) as a provider of its own, typed by `key` alone; the next call is `(deps, arm)`, and the piece is what `TemporalActivities(contract)([...])` composes |
-| `temporal`                   | value | `temporal({ contract, workflows, … })` — the starter module itself, needing the activities port for `contract`; what `TemporalModule` imports                                                                                                                |
-| `TemporalOptions`            | type  | `temporal()`'s options                                                                                                                                                                                                                                       |
-| `TemporalRuntime`            | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                                                            |
-| `TemporalConfig`             | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string }> {}` — where the service is, bound from the environment                                                                                                          |
-| `TemporalConnection`         | value | `class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}` — the connection, a resource of the graph                                                                                                                                 |
-| `TemporalUnreachable`        | value | `TaggedError("TemporalUnreachable")<{ address: string; cause: unknown }>` — the service did not answer                                                                                                                                                       |
-| `TemporalInfo`               | type  | `{ readonly taskQueue: string; readonly namespace: string }` — published on `Serving.info` once polling                                                                                                                                                      |
-| `WorkflowSource`             | type  | `{ workflowsPath: string } \| { workflowBundle: WorkflowBundleWithSourceMap }` — where the sandbox's code comes from                                                                                                                                         |
+| Export                           | Kind  | What it is                                                                                                                                                                                                                                                   |
+| -------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the activities provider                                             |
+| `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                              |
+| `TemporalActivities`             | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `(deps, arm)`, or `([pieces])` to compose one provider per workflow                                           |
+| `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                   |
+| `ActivitiesInstanceOf<C>`        | type  | That port's instance typed for `C`                                                                                                                                                                                                                           |
+| `TemporalWorkflowActivities`     | value | `TemporalWorkflowActivities(contract, key)` — one workflow's activities (or a contract-global activity) as a provider of its own, typed by `key` alone; the next call is `(deps, arm)`, and the piece is what `TemporalActivities(contract)([...])` composes |
+| `WorkflowActivitiesPortOf<C, K>` | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                                              |
+| `temporal`                       | value | `temporal({ contract, workflows, … })` — the starter module itself, needing the activities port for `contract`; what `TemporalModule` imports                                                                                                                |
+| `TemporalOptions`                | type  | `temporal()`'s options                                                                                                                                                                                                                                       |
+| `TemporalRuntime`                | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                                                            |
+| `TemporalConfig`                 | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string }> {}` — where the service is, bound from the environment                                                                                                          |
+| `TemporalConnection`             | value | `class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}` — the connection, a resource of the graph                                                                                                                                 |
+| `TemporalUnreachable`            | value | `TaggedError("TemporalUnreachable")<{ address: string; cause: unknown }>` — the service did not answer                                                                                                                                                       |
+| `TemporalInfo`                   | type  | `{ readonly taskQueue: string; readonly namespace: string }` — published on `Serving.info` once polling                                                                                                                                                      |
+| `WorkflowSource`                 | type  | `{ workflowsPath: string } \| { workflowBundle: WorkflowBundleWithSourceMap }` — where the sandbox's code comes from                                                                                                                                         |
 
-`TemporalActivitiesPort` — `Port("TemporalActivities")`, the starter's own
-activities port, declared once — with `ActivitiesPortOf<C>` /
-`ActivitiesInstanceOf<C>` (that port's class and instance typed for `C`) and
-`ActivitiesOf<C>` (`DeclareActivitiesHandlerOptions<C>["activities"]`, the
-implementations record `declareActivitiesHandler` takes, its service) live in
-`src/temporal-runtime.ts` and are **not** exported from the entry point: the
-port is reached as `provider.port` when a caller needs it, and the types are
-inferred at the call. `ActivitiesKeyOf<C>`, `WorkflowActivitiesPortOf<C, K>`
-and `WORKFLOW_ACTIVITIES_PREFIX` (`src/workflow-activities.ts`) are unexported
-on the same terms — a piece's port class typed for one key, and the string
-prefix its id carries.
+`ActivitiesPortOf<C>` / `ActivitiesInstanceOf<C>` / `WorkflowActivitiesPortOf<C,
+K>` are exported as **types only**, and only because declaration emit forces
+it: an application that composes `orderActivities =
+TemporalActivities(contract)([piece, piece])` and exports it by name (or a
+slice that exports one piece by name) needs to be able to print that type,
+and a type built from an unexported alias fails TS4023 ("has or is using
+name 'ID' … but cannot be named") the moment it tries. `TemporalActivitiesPort`
+— `Port("TemporalActivities")`, the starter's own activities port, declared
+once — and `ActivitiesOf<C>` (`DeclareActivitiesHandlerOptions<C>["activities"]`,
+the implementations record `declareActivitiesHandler` takes, its service)
+live in `src/temporal-runtime.ts` and stay **not** exported from the entry
+point: nothing outside this package legitimately constructs a provider
+against the bare port — a consumer always goes through
+`TemporalActivities(contract)` or `TemporalWorkflowActivities(contract,
+key)`, both of which cast it to the typed alias — so there is nothing a
+value export would help with, and the port is reached as `provider.port`
+when a caller needs it, with the types inferred at the call. `ActivitiesKeyOf<C>`
+and `WORKFLOW_ACTIVITIES_PREFIX` (`src/workflow-activities.ts`) are
+unexported on the same terms — a bare key nothing outside that file needs to
+name, and the string prefix a piece's port id carries.
 
 ## `TemporalModule(name)({...})`
 

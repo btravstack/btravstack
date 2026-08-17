@@ -20,21 +20,8 @@ import { NotificationsSlice } from "./slices/notifications/module.js";
  * contract's own consumer names, so a consumer with no slice is a compile
  * error and two slices claiming one consumer are di's duplicate-provider
  * defect at build.
- *
- * The explicit annotation is load-bearing, not decoration: `AmqpHandlers`'s
- * composing call signature returns a type built from `HandlersInstanceOf`,
- * which the package exports only from its internal `amqp-runtime.ts`, not
- * from `index.ts` — an exported `const` inferring it hits TS4023 ("has or is
- * using name 'ID' … but cannot be named") the moment declaration emit tries
- * to print it. Spelling the annotation through `AmqpHandlers` and
- * `orderContract` — both already nameable, both already imported — gives the
- * printer a type expression it can reuse verbatim instead of expanding the
- * structural one. `ReturnType` twice because `AmqpHandlers(orderContract)`
- * is itself the callable (build-arm and compose-arm merged); once for that
- * call, once for calling it with the pieces array.
  */
-export const orderHandlers: ReturnType<ReturnType<typeof AmqpHandlers<typeof orderContract>>> =
-  AmqpHandlers(orderContract)([orderNotifications, orderAudit]);
+export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]);
 
 /**
  * The composition root of the broadcast deployment — now a list of slices
