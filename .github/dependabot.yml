@@ -1,0 +1,109 @@
+version: 2
+
+updates:
+  # Everything installable in this repo is a `catalog:` entry in
+  # `pnpm-workspace.yaml` — the literal ranges left in a package.json are all
+  # `peerDependencies`, which are compatibility promises to consumers rather
+  # than versions to bump. Dependabot has read pnpm catalogs since Feb 2025.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # Families that are version-locked in practice: a partial bump is either
+      # a peer failure or a dual-copy hazard, so they move as one PR.
+      temporalio:
+        patterns:
+          - "@temporalio/*"
+      prisma:
+        patterns:
+          - prisma
+          - "@prisma/*"
+      unthrown:
+        patterns:
+          - unthrown
+          - "@unthrown/*"
+      typedoc:
+        patterns:
+          - typedoc
+          - typedoc-plugin-markdown
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
+      lint:
+        patterns:
+          - oxlint
+          - oxfmt
+      commitlint:
+        patterns:
+          - "@commitlint/*"
+      # First-party shared config. `pnpm-workspace.yaml`'s
+      # `minimumReleaseAgeExclude` already singles this scope out for immediate
+      # adoption; one PR keeps that intent.
+      btravstack:
+        patterns:
+          - "@btravstack/*"
+      # The dev toolchain, batched so a week of patch releases is one review
+      # rather than six.
+      tooling:
+        patterns:
+          - knip
+          - lefthook
+          - turbo
+          - tsdown
+          - tsx
+          - "@changesets/cli"
+      # The three pinned-beta families are ignored below, but they keep a group
+      # each: the day a line goes stable and its ignore is lifted, the family
+      # already moves together instead of arriving as four separate PRs.
+      orpc:
+        patterns:
+          - "@orpc/*"
+      amqp-contract:
+        patterns:
+          - "@amqp-contract/*"
+      temporal-contract:
+        patterns:
+          - "@temporal-contract/*"
+    ignore:
+      # Three families are pinned to an exact beta because their `latest`
+      # dist-tag is an older major that fails `strictPeerDependencies`. The
+      # root CLAUDE.md says of each: "raise it deliberately, not on a bot
+      # bump." Lift the entry when the line goes stable.
+      - dependency-name: "@orpc/*"
+      - dependency-name: "@amqp-contract/*"
+      - dependency-name: "@temporal-contract/*"
+      # An alias for the TypeScript a *consumer* is realistically on, compiled
+      # as the second declaration-emit pass in `examples/hexagonal-order-api`.
+      # Bumping it toward the version this repo builds with defeats its purpose.
+      - dependency-name: typescript-consumer
+      # `typescript` is two pins with different majors on purpose: 7.0.2 in the
+      # default catalog (what the repo builds with) and 6.0.3 in the `typedoc`
+      # catalog (7.x is the native port and ships no `typescript.js`, so
+      # TypeDoc cannot load it). A major on either is a decision, and one
+      # `dependency-name` cannot tell the two catalogs apart — so block majors
+      # and let both take minors and patches.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+
+  # `/` covers `.github/workflows` and a root-level `action.yml` only — the
+  # composite action this repo actually pins its versions in lives at
+  # `.github/actions/setup/action.yml`, which needs its own directory entry.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - "*"

@@ -76,33 +76,36 @@ standalone repository, before the merge). The unified line therefore starts at
 **0.2.0**: above di's published version, and 0.x because the API still moves —
 this repo removed `Port.many` and `withApp` in a single afternoon.
 
-**A minor bump lands on 1.0.0, and that is changesets, not a decision.** Every
+**A minor no longer forces 1.0.0 — `@changesets/cli@3.0.0` fixed it.** Every
 package here peer-depends on `@btravstack/di` and most on `@btravstack/config`
-and `@btravstack/core`, and changesets majors any package whose _peer_
-dependency is bumped by a minor or major. From 0.x a major is `1.0.0`.
-Measured on changesets 2.31.1:
+and `@btravstack/core`, and changesets 2.x majored any package whose _peer_
+dependency was bumped by a minor or major; from 0.x a major is `1.0.0`, so one
+`minor` changeset took the whole group there. Re-measured on **3.0.0**, twice,
+against the four pending changesets:
 
-| From 0.2.0          | Result                                 |
-| ------------------- | -------------------------------------- |
-| a `patch` changeset | `0.2.1` — the whole group, as intended |
-| a `minor` changeset | `1.0.0` — the whole group              |
+| From 0.2.0          | on 2.31.1                 | on 3.0.0    |
+| ------------------- | ------------------------- | ----------- |
+| a `patch` changeset | `0.2.1` — the whole group | `0.2.1`     |
+| a `minor` changeset | `1.0.0` — the whole group | **`0.3.0`** |
 
-Neither escape hatch suppresses it. Both live under
+Only the `minor` row moved, and it moved to what the repo wanted all along.
+The escape hatches the 2.x note prescribed are moot: both lived under
 `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH`, **not** in the ordinary
-config, and neither is the `updateInternalDependencies` this repo's
-`.changeset/config.json` already sets — the names are close enough to mislead,
-so: `onlyUpdatePeerDependentsWhenOutOfRange: true` and
+config, and neither was the `updateInternalDependencies` this repo's
+`.changeset/config.json` already sets — the names are close enough to mislead
+(`onlyUpdatePeerDependentsWhenOutOfRange: true`,
 `updateInternalDependents: "out-of-range"`, both read by
-`@changesets/assemble-release-plan`, both tried here, neither changing the
-result. The internal peers cannot become ordinary dependencies either — the
+`@changesets/assemble-release-plan`, both tried, neither changing the 2.x
+result). The internal peers still cannot become ordinary dependencies — the
 dual-copy hazard is what they exist to prevent.
 
-So the options at the first feature release are to accept `1.0.0`, or to
-override the computed version by hand as the `0.2.0` release did: run
-`changeset version`, then rewrite the eight `package.json` versions, the eight
-`CHANGELOG.md` headings **and the `Updated dependencies` blocks inside those
-changelogs**, which carry the computed version too and are easy to miss.
-Decide it deliberately; do not let a routine `pnpm run version` decide it.
+So the hand-override the `0.2.0` release performed — rewriting the eight
+`package.json` versions, the eight `CHANGELOG.md` headings **and the
+`Updated dependencies` blocks inside those changelogs** — is no longer needed
+for a feature release. Reaching `1.0.0` is a decision again rather than an
+accident. **Do not downgrade `@changesets/cli` below 3.0.0** without
+restoring this warning: on 2.x the next `pnpm run version` silently ships a
+major.
 
 ## Thesis (do not drift from these)
 
@@ -660,7 +663,13 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `P._` (`no-catch-all-pattern`, the generic-`E` case where the catch-all is
   the only arm that can terminate the match).
 - The repo dogfoods **every** `@unthrown/oxlint` rule — the five `recommended`
-  ones plus all three opt-ins (`no-throw`, `prefer-ensure`, `no-get-or-throw`).
+  ones plus both opt-ins (`no-throw`, `no-get-or-throw`). There were three
+  until `@unthrown/oxlint@5.4.0` removed `prefer-ensure` and `no-throw`; 5.5.0
+  restored `no-throw` and kept `prefer-ensure` removed, on the grounds that it
+  flagged correct code violating no thesis and carried a known false positive.
+  oxlint refuses to parse a config naming an unknown rule, so a config still
+  listing a removed rule fails the **whole** lint run, every non-unthrown rule
+  included — which is how the 5.5.0 bump surfaced here.
   So a `throw` is a lint error everywhere, spec files included: every one
   that survives carries an `oxlint-disable-next-line unthrown/no-throw`
   naming why. In the kernel and the harness they fall into three kinds — a

@@ -25,8 +25,8 @@ catalog:
   "@btravstack/theme": 2.0.0
   "@btravstack/tsconfig": 0.2.0
   "@btravstack/typedoc": 0.1.0
-  "@changesets/cli": 2.31.1
-  "@commitlint/cli": 21.2.1
+  "@changesets/cli": 3.0.0
+  "@commitlint/cli": 21.2.2
   # `@amqp-contract/core`'s telemetry module (pulled in by
   # `@amqp-contract/worker`) has a static, unconditional `import
   # "@opentelemetry/api"` despite declaring the peer `optional` in its own
@@ -38,9 +38,9 @@ catalog:
   # oRPC v2 is still in beta and its `latest` dist-tag is the 1.x line, while
   # `@unthrown/orpc` peers on `^2.0.0-beta` — an unpinned range resolves 1.x
   # and fails `strictPeerDependencies`. The exact beta is the contract.
-  "@orpc/client": 2.0.0-beta.23
-  "@orpc/contract": 2.0.0-beta.23
-  "@orpc/server": 2.0.0-beta.23
+  "@orpc/client": 2.0.0-beta.28
+  "@orpc/contract": 2.0.0-beta.28
+  "@orpc/server": 2.0.0-beta.28
   "@prisma/adapter-better-sqlite3": 7.9.1
   "@prisma/client": 7.9.1
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
@@ -57,21 +57,21 @@ catalog:
   "@temporalio/testing": 1.22.0
   "@temporalio/worker": 1.22.0
   "@temporalio/workflow": 1.22.0
-  "@types/node": 26.1.2
-  "@unthrown/oxlint": 5.2.0
+  "@types/node": 26.2.0
+  "@unthrown/oxlint": 5.5.0
   "@unthrown/orpc": 0.1.2
   "@unthrown/prisma": 0.3.2
   "@unthrown/standard-schema": 5.5.0
   "@unthrown/vitest": 5.5.0
-  knip: 6.32.0
+  knip: 6.32.2
   lefthook: 2.1.10
-  oxfmt: 0.62.0
-  oxlint: 1.77.0
+  oxfmt: 0.63.0
+  oxlint: 1.78.0
   pino: 10.3.1
   prisma: 7.9.1
   tsdown: 0.22.14
-  tsx: 4.23.5
-  turbo: 2.10.8
+  tsx: 4.23.12
+  turbo: 2.10.10
   typedoc: 0.28.20
   typedoc-plugin-markdown: 4.12.0
   typescript: 7.0.2
