@@ -78,9 +78,38 @@ EXPORTED", missing]` — refusing at the call site a port `module` does not
   deliberately **ignores** the `Serving.drain(signal)` deadline — `drain`
   flips `accepting` and returns at once — which is what makes the kernel's
   abort tests tests of the kernel, not of the fake. `serving()` and
-  `submit()` are its two misuse guards: each throws (`no-throw` disabled with
-  a reason) when the runtime was never started or is no longer accepting — a
-  bug in the test, loud on purpose.
+  `submit()` and **`inUnit()`** are its three misuse guards: each throws
+  (`no-throw` disabled with a reason) when the runtime was never started or is
+  no longer accepting — a bug in the test, loud on purpose.
+  **`inUnit(meta, work)`** → `Promise<T>` runs `work` INSIDE one unit and
+  answers what it answered: the writer half of `currentUnit()`, which the
+  kernel deliberately does not export — only a runtime opens a unit, and in a
+  test this runtime is the one that does. `meta` is a `Partial<UnitMeta>`
+  filling in what the caller cares about (`tenantId`, a `traceId`); `kind`
+  and `id` default to a test's, with `id` unique per call. It is the
+  complement of `submit()`, not a variant: `submit` hands back a unit the test
+  settles from **outside**, for asserting on the drain, while `inUnit` is for
+  asserting on what code running **inside** a unit read. The outcome travels
+  back out of the unit rather than being captured by a closure, and a throw
+  from `work` is **rethrown** — folding a failing `expect` into the unit's
+  `Result` would make it a `Defect` a caller can forget to unwrap, which is a
+  green test that asserted nothing.
+- **`unitFixture()`** / **`InUnit`** — a `test.extend` fixture over
+  `testRuntime` + `bootFixture`, for testing the code that **reads** the
+  ambient record: a database adapter stamping `tenantId` on a query, a logger
+  correlating on `traceId`, anything reaching for `currentUnit()`. It hands
+  the test an `InUnit` — `<T>(meta: Partial<UnitMeta>, work: () => T |
+Promise<T>) => Promise<T>` — and boots one in-memory app per test, stopped
+  with it. The unit is the **kernel's own**, opened through `RuntimeHost.run`
+  exactly as a transport would open one, not an `AsyncLocalStorage` the
+  harness runs beside it: a fabricated record could drift from the one
+  `units.ts` mints, and the whole value of testing an ambient reader is that
+  it saw the real thing. `work` must not outlive the call — a unit is closed
+  the instant its work settles, which is the kernel's own contract, so a
+  promise started inside one and awaited outside is reading a record that has
+  already gone.
+  `examples/order-infrastructure`'s `asTenant` fixture is the shape a consumer
+  builds on it: `(work) => inUnit({ tenantId: tenant }, work)`.
 - **`createFakeClock(start?)`** / **`FakeClock`** — a `Clock` whose time moves
   only on `advance(ms)` (an `AsyncResult<void, never>`), which **brackets
   itself with a real macrotask at each end** (`setTimeout(resolve, 0)`) — the
@@ -96,11 +125,11 @@ EXPORTED", missing]` — refusing at the call site a port `module` does not
 
 ## Tests
 
-Five spec files, 100% lines/functions (`test-fixtures.ts` excluded, per the
+Six spec files, 100% lines/functions (`test-fixtures.ts` excluded, per the
 Test conventions). `test-fixtures.ts` exports the extended `it` — the
-package's own `bootFixture`, dogfooded — plus `greetingApp()` (an in-memory
-runtime next to a `Greeting`, both exported: what `tapped` and `boot` are
-exercised against) and `runtimeModule(runtime)`.
+package's own `bootFixture` **and `unitFixture`**, dogfooded — plus
+`greetingApp()` (an in-memory runtime next to a `Greeting`, both exported:
+what `tapped` and `boot` are exercised against) and `runtimeModule(runtime)`.
 
 - `boot-fixture.spec.ts` (5): the defaults read back off a booted app
   (`serving`, no probe port), a call's `probes: { port: 0 }` beating the
@@ -109,12 +138,16 @@ exercised against) and `runtimeModule(runtime)`.
   `onEvent` beating the fixture's.
 - `tapped.spec.ts` (2): the very service instance the graph holds, and the
   loud read before boot.
-- `test-runtime.spec.ts` (7): started, work routed through the host, the two
-  misuse guards, the abort forwarded when the host opens units already aborted
+- `test-runtime.spec.ts` (8): started, work routed through the host, the three
+  misuse guards (`inUnit`'s among them), the abort forwarded when the host opens units already aborted
   and when it fires while the unit is open, `accepting()` before/after the
   drain. Its `hostFor` stub **replaces the kernel's registry** — a
   `RuntimeHost` counting open units and handing each an `AbortSignal` in a
   dozen lines — so the runtime is tested without booting a kernel around it.
+- `unit-fixture.spec.ts` (6): the record is the kernel's own, the caller's
+  `tenantId` / `traceId` travel on it, each call is its own unit, the work's
+  value comes straight back, a throw is rethrown so a failing assertion reaches
+  the runner, and nothing is left ambient once the work has settled.
 - `fake-clock.spec.ts` (6): starts at 0 / at the supplied instant, a sleep
   pending until its deadline, non-positive sleep, already-aborted signal, an
   abort cutting a sleep short and forgetting it.

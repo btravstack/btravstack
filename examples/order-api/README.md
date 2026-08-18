@@ -238,10 +238,46 @@ stay a single line.
 Configuration is read **inside the graph**: `http()` binds `PORT` (default
 `3000`) and `HOST` (default `0.0.0.0`) from the `Env` port the kernel provides,
 `observability()` binds `LOG_LEVEL` (default `info`),
+`OrderPersistenceModule` binds `DATABASE_URL` (required — a migration aimed at
+an unnamed database is a mistake worth failing on),
 and the kernel binds its own `PROBE_PORT` (default `9000`). A malformed value —
 `PORT=abc`, `PORT=` — is a `ConfigInvalid` the kernel reports as a
 `startFailed` event and exit code `78`, sysexits(3)'s `EX_CONFIG`; nothing in
 this package validates, prints or exits.
+
+## Who is asking: `tenantOf`
+
+The API is multi-tenant, and the whole of it is one hook:
+
+```ts
+export const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  tenantOf: (request) => {
+    const header = request.headers["x-tenant-id"];
+    return typeof header === "string" ? header : undefined;
+  },
+  imports: [OrdersSlice, CustomersSlice, observability()],
+  exports: [Logger],
+});
+```
+
+`@btravstack/http` puts what it returns on the kernel's ambient unit record,
+and the persistence adapters read `currentUnit()?.tenantId` per call. **No
+procedure takes a tenant, no use case mentions one, and no entity has a field
+for one** — none of them has a decision to make about it. A tenant is not an
+argument to placing an order; it is who is asking.
+
+A header rather than a subdomain or a path segment because this API is mounted
+under one origin; the starter hands the whole request over precisely so an
+application can choose differently. A request with no tenant gets none, and the
+first repository call it makes is a defect the transport reports as a 500 —
+deliberately not a 400, because refusing an untenanted request is a status-code
+decision, and those live in a procedure's own triage rather than in a transport
+hook (the package maps nothing).
+
+The specs' client sends it: `createOrderApiClient(origin, { headers:
+{ "x-tenant-id": tenant } })`, with a UUID per test, which is what lets every
+spec place `o-1` against the one shared database without colliding.
 
 It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there

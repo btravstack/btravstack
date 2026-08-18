@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/testing"
-description: The @btravstack/testing surface — bootFixture and Boot, tapped, testRuntime and TestRuntimePort, createFakeClock — with every member's signature and semantics.
+description: The @btravstack/testing surface — bootFixture and Boot, tapped, testRuntime and TestRuntimePort, unitFixture and InUnit, createFakeClock — with every member's signature and semantics.
 ---
 
 # `@btravstack/testing`
@@ -163,6 +163,10 @@ type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   readonly accepting: () => boolean;
   readonly serving: () => Serving<TestRuntimeInfo>;
   readonly submit: <T = string, E = never>() => SubmittedUnit<T, E>;
+  readonly inUnit: <T>(
+    meta: Partial<UnitMeta>,
+    work: () => T | Promise<T>,
+  ) => Promise<T>;
 };
 
 type TestRuntimeInfo = { readonly name: string };
@@ -184,15 +188,82 @@ type SubmittedUnit<T, E> = {
 | `accepting()`            | `true` between `start` and the first of `drain` / `stop`. Lets a test observe **when** the kernel told the runtime to stop accepting, which the drain's ordering turns on.                                                                                                                                                                          |
 | `serving()`              | The `Serving` handed to the kernel. **Throws** if the runtime was never started — a loud fixture misuse, not a modeled outcome.                                                                                                                                                                                                                     |
 | `submit()`               | Opens a unit through the kernel's `run` with `{ kind: "test", id: "<n>" }` (`n` counts up from `1`, so ids stay unique). Returns a `SubmittedUnit`. **Throws** when not accepting.                                                                                                                                                                  |
+| `inUnit(meta, work)`     | Runs `work` **inside** one unit and answers what it answered. `meta` fills in what the caller cares about (`tenantId`, a `traceId`); `kind` and `id` default to a test's. A throw from `work` is rethrown. **Throws** when not accepting.                                                                                                           |
 
 `SubmittedUnit` is how a test holds a unit open across a drain: `settle` is
 the unit's own outcome, `result` is what the kernel hands back for it, and
 `signal` is the unit's `AbortSignal` — forwarded, so it is valid immediately
 after `submit()` even when a `unit` module defers the work by an `await`.
 
+`submit()` and `inUnit()` answer different questions. `submit` hands back a
+unit the test settles from **outside**, for asserting on the drain; `inUnit`
+runs the test's own callback **inside** one, for asserting on what code
+running in a unit read. Use the fixture below rather than calling `inUnit`
+directly.
+
 `testRuntime` deliberately **ignores** the `Serving.drain(signal)` deadline:
 its `drain` flips `accepting` and returns at once. That is what makes the
 abort tests tests of the kernel, not of the fake.
+
+## `unitFixture()`
+
+```ts
+const unitFixture: () => (
+  ctx: object,
+  use: (inUnit: InUnit) => Promise<void>,
+) => Promise<void>;
+
+type InUnit = <T>(
+  meta: Partial<UnitMeta>,
+  work: () => T | Promise<T>,
+) => Promise<T>;
+```
+
+A `test.extend` fixture for testing the code that **reads** the ambient
+record — a database adapter stamping `tenantId` on a query, a logger
+correlating on `traceId`, anything reaching for `currentUnit()`. It boots one
+in-memory app per test (over `testRuntime` and `bootFixture`) and hands the
+test an `InUnit`; the app is stopped when the test ends.
+
+```ts
+import { unitFixture, type InUnit } from "@btravstack/testing";
+import { test } from "vitest";
+
+export const it = test.extend<{ inUnit: InUnit; tenant: string }>({
+  inUnit: unitFixture(),
+  // oxlint-disable-next-line no-empty-pattern -- depends on no other fixture
+  tenant: async ({}, use) => {
+    await use(`t-${randomUUID()}`);
+  },
+});
+
+it("scopes the read to the unit's tenant", async ({
+  inUnit,
+  tenant,
+  repository,
+}) => {
+  // GIVEN an order saved under this test's tenant
+  // WHEN it is read back inside a unit carrying that tenant
+  const found = await inUnit({ tenantId: tenant }, () =>
+    repository.save(anOrder("o-1", 3)).flatMap(() => repository.find("o-1")),
+  );
+
+  // THEN the adapter saw the tenant the runtime supplied
+  expect(found).toBeOkWith({ id: "o-1", quantity: 3 });
+});
+```
+
+The unit is the **kernel's own**, opened through `RuntimeHost.run` exactly as
+a transport opens one — not an `AsyncLocalStorage` the harness runs beside it.
+A fabricated record could drift from the one the kernel mints, and the whole
+value of testing an ambient reader is that it saw the real thing.
+
+Two rules. `work` must not **outlive the call**: a unit is closed the instant
+its work settles, so a promise started inside one and awaited outside is
+reading a record that has already gone. And a throw from `work` is
+**rethrown** rather than folded into the unit's `Result` — a failing `expect`
+turned into a `Defect` a caller can forget to unwrap is a green test that
+asserted nothing.
 
 ## `createFakeClock(start?)`
 
@@ -273,6 +344,8 @@ it("drains in-flight work", async ({ boot }) => {
 | `TestRuntime`     | type                                             |
 | `TestRuntimeInfo` | type                                             |
 | `SubmittedUnit`   | type                                             |
+| `unitFixture`     | function — a `test.extend` fixture body          |
+| `InUnit`          | type — what the fixture hands the test           |
 | `createFakeClock` | function                                         |
 | `FakeClock`       | type                                             |
 

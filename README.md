@@ -188,11 +188,14 @@ pnpm test             # vitest + v8 coverage (100% lines/functions on packages)
 pnpm build            # tsdown dual CJS/ESM + d.ts
 ```
 
-Two suites boot a real dependency: `packages/amqp` and
-`examples/order-amqp-worker` start a RabbitMQ container with testcontainers, so
-**they need a running Docker daemon**; `examples/order-temporal-worker`
-downloads Temporal's time-skipping test server once (network on a cold cache
-only). Everything else is self-contained.
+**The gate needs a running Docker daemon.** Six workspaces boot a real
+dependency — a broker, a workflow platform, a database — and they share
+**three containers** between them: one PostgreSQL, one RabbitMQ, one Temporal,
+started once per machine and reused by every workspace's run
+(`internal/test-infra`). Isolation is the boundary each system already has: a
+**vhost** per test, a **namespace** per spec file, a **tenant** per test.
+Measured: 27/27 tasks, about 32 s warm. Remove the containers with
+`docker rm -f $(docker ps -aq --filter label=com.btravstack.test-infra)`.
 
 Commits follow Conventional Commits; user-facing changes carry a changeset.
 [`CLAUDE.md`](./CLAUDE.md) is the authoritative spec — the theses, the public

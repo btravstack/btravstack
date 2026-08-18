@@ -131,8 +131,8 @@ composition root; `RequestModule` forked per request through
 `FulfillmentSlice` and a `BillingSlice` — two sagas, two verticals, one task
 queue — each in the deterministic sandbox with compensation in reverse; the
 triage that makes a domain `Err` a `nonRetryable` contract error the client
-branches on by name; the time-skipping test server cached at
-`.cache/temporal-test-server`; and a drain that honours the kernel's deadline
+branches on by name; a namespace per spec file on the Temporal server the
+whole repository shares; and a drain that honours the kernel's deadline
 against a worker that keeps its own clock.
 
 ### [Order AMQP worker](/examples/order-amqp-worker)

@@ -8,7 +8,7 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })`**
+- **`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, tenantOf?, imports?, provides?, exports? })`**
   (`amqp-module.ts`) — THE way an application declares an AMQP deployment:
   `Module(name)({...})` plus the contract and the handlers **provider**. It
   appends `amqp({ contract, … })` to `imports`,
@@ -161,8 +161,32 @@ AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>` either way,
   sugar entry above), `connectionOptions`, `defaultConsumerOptions`,
   `connectTimeoutMs` (a top-level `CreateWorkerOptions` field, **not** nested
   under `connectionOptions`, where setting it is silently inert — an
-  unreachable broker takes the library's 30s default to report without it).
+  unreachable broker takes the library's 30s default to report without it),
+  and `tenantOf`.
   `AmqpInfo` is `{ queues }`, published on `Serving.info` once consuming.
+
+- **`tenantOf` — one optional hook, the same shape in all three starters.** It
+  lifts a tenant off the transport's own input onto `UnitMeta.tenantId`, where
+  the kernel puts it on the ambient unit record and an infrastructure adapter
+  reads it per call (root `CLAUDE.md`, thesis 2 — a tenant id is data about
+  the unit, not a collaborator). Omitted, no unit carries a tenant, which is
+  what a single-tenant deployment wants and what every version of this package
+  before it did. It is **not** a mapping: `tenantId` reaches the record and
+  stops there, and refusing work that carries no tenant is a decision about a
+  status code, an ack/nack or an activity failure — which this package
+  declines (thesis 3). The whole of the transport's input is handed over,
+  because only the application knows where its own tenant lives. A blank or
+  whitespace answer is refused the same way a blank `traceId` is: `""` is not
+  nullish, so `??` alone would put an empty tenant on the record that every
+  adapter then scopes by.
+  Here it is **`TenantOf = (args: WorkerMiddlewareArgs<Record<never, never>>)
+=> string | undefined`** — the whole delivery, so it can be read off the
+  validated `message.payload`, off `message.headers`, or off
+  `rawMessage.properties.headers` (which is where the library's own middleware
+  example looks). `examples/order-amqp-worker` reads the contract's own
+  envelope field, because a broadcast crosses processes: the relay writes the
+  tenant onto the event from the outbox row, and the subscriber's runtime puts
+  it back on ITS ambient record.
 - **The handlers port's service is `WorkerInferHandlers<TContract>`** —
   the record `TypedAmqpWorker.create` takes, with **no injected context**.
   Inside, `Provider(AmqpRuntime)([AmqpConfig, AmqpHandlersPort as

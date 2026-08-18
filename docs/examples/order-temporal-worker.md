@@ -1,6 +1,6 @@
 ---
 title: Order Temporal worker example
-description: The orchestration deployment — two saga slices, FulfillmentSlice and BillingSlice, composed by TemporalActivities over one task queue, a chargeOrder saga compensating with a refund, mapErrCases making a domain Err a nonRetryable contract error, the cached time-skipping test server, and a drain that honours the kernel's deadline.
+description: The orchestration deployment — two saga slices, FulfillmentSlice and BillingSlice, composed by TemporalActivities over one task queue, a chargeOrder saga compensating with a refund, mapErrCases making a domain Err a nonRetryable contract error, a namespace per spec file on the shared Temporal server, and a drain that honours the kernel's deadline.
 ---
 
 # Order Temporal worker
@@ -13,12 +13,19 @@ owning two journeys, served by [`@btravstack/temporal`](/reference/temporal).
 pnpm turbo run test --filter=@btravstack/example-order-temporal-worker
 ```
 
-::: warning Network, once
-The suite runs a real `@temporalio/worker` Worker against Temporal's
-**time-skipping test server** — a 64 MB local binary, not a container. It is
-fetched once into `<repo>/.cache/temporal-test-server` (gitignored) and kept
-for a year, so the one thing this example needs that the others do not is
-network access on a **cold cache**. Measured: about 7.4 s cold, under 4 s warm.
+::: warning Needs Docker
+The suite runs a real `@temporalio/worker` Worker against a real Temporal
+server — **one `temporalio/auto-setup` container shared by the whole
+repository** (`internal/test-infra`), with a **namespace of this spec file's
+own** on it, and the example's own PostgreSQL database on the same server it
+uses. Nothing is started per workspace and nothing is cleaned up between
+tests: the namespace isolates the file, a per-test task queue isolates the
+tests inside it, and a per-test **tenant** isolates their rows.
+
+It replaced Temporal's time-skipping test server, a 64 MB local binary started
+per vitest worker. Nothing here ever advanced a clock, so the skippable clock
+bought nothing a private namespace does not — and the example stopped being
+the one that needs the **network** on a cold cache.
 :::
 
 ## Two sagas, two verticals, one queue
@@ -220,11 +227,13 @@ and would be the wrong answer to "we ran out of time". Temporal's own
 `shutdownGraceTime`; the two are honoured together. See
 [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
 
-## The specs: the time-skipping server as a fixture
+## The specs: a namespace as a fixture
 
-`test-fixtures.ts` builds the `it` every spec imports from
-`@temporal-contract/testing`'s `createTimeSkippingTest`, pointing the
-downloader at the repo-local cache. `serve` boots, through `@btravstack/testing`'s
+`test-fixtures.ts` builds the `it` every spec imports. Its `server` fixture is
+**file-scoped** — `createNamespace(address, "order-worker")` registers a
+namespace on the shared server and waits for every Temporal service's registry
+to catch up before handing it over — and its `tenant` fixture is per test.
+`serve` boots, through `@btravstack/testing`'s
 `boot`, the same `TemporalModule` sugar `main.ts` does, with a per-test task
 queue and a workflow bundle memoised per spec file — and composes
 `BillingModule` beside whichever fulfillment module the test hands it, since

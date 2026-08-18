@@ -24,7 +24,7 @@ src/billing.ts                      BillingModule — the payment provider, as a
 src/module.ts                       orderActivities = TemporalActivities(orderContract)([fulfillOrder, chargeOrder]);
                                      OrderTemporalWorker — the composition root, importing both slices
 src/main.ts                         the process: runMain(OrderTemporalWorker)
-src/test-fixtures.ts                boot / serve / fulfilling / outOfStock / noShipping, against the time-skipping env
+src/test-fixtures.ts                boot / serve / server / tenant / fulfilling / outOfStock / noShipping, against the shared Temporal server
 ```
 
 ## Two sagas, two verticals, one queue
@@ -163,16 +163,28 @@ kernel for `PROBE_PORT` — never by `main.ts`. A blank or malformed value is a
 | `PROBE_PORT`         | `9000`           | `/livez` / `/readyz` |
 | `LOG_LEVEL`          | `info`           | the `Logger`'s floor |
 
-The specs boot the same `TemporalModule` sugar with `env: { TEMPORAL_ADDRESS }`
-pointing at the time-skipping server, so every test opens and closes a
-connection of its own — the environment's shared `nativeConnection` is never
-handed to a scope that would close it.
+The specs boot the same `TemporalModule` sugar with `env: { TEMPORAL_ADDRESS,
+TEMPORAL_NAMESPACE, DATABASE_URL }` pointing at the shared servers, so every
+test opens and closes a connection of its own — no test can close one under
+the next.
 
 ## Running the specs
 
-The suite runs against Temporal's **time-skipping test environment** — a real
-server binary (downloaded once into a repo-local cache; the one example that
-needs network on a cold cache), real Workflow Tasks, real Activity Tasks. The
+The suite needs a **Docker daemon**. It runs against a real Temporal server —
+one `temporalio/auto-setup` container shared by the whole repository
+([`internal/test-infra`](../../internal/test-infra/README.md)) — with a
+**namespace of this spec file's own**, real Workflow Tasks and real Activity
+Tasks. A per-test task queue separates the tests inside the file, and a
+per-test **tenant** separates their rows in the application database on the
+same PostgreSQL the Temporal server uses.
+
+`tenantId` rides every workflow's arguments and every activity's input rather
+than a Temporal header, and `TemporalModule`'s `tenantOf` lifts it onto the
+kernel's ambient unit record where the persistence adapters find it. An input
+is persisted in the event history, so a replay reconstructs the tenant along
+with everything else.
+
+The
 fulfillment saga fulfills, both refusals compensate, the duplicate-order
 answer arrives at the client as a typed contract error it can branch on by
 name, and the billing saga answers on the same task queue as the fulfillment

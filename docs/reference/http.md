@@ -20,7 +20,7 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, http()
 
 | Export              | Kind  | What it is                                                                                                                                                                                                               |
 | ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `HttpModule`        | value | `HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                    |
+| `HttpModule`        | value | `HttpModule(name)({ router, prefix?, port?, hostname?, tenantOf?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment         |
 | `HttpModuleOptions` | type  | The options object `HttpModule(name)` takes                                                                                                                                                                              |
 | `HttpRouter`        | value | `HttpRouter(contract)(deps, { sync })`, or `HttpRouter(contract)(controllers)` — the router as a provider on the starter's own router port, contract-first, either from one `sync` or from a keyed record of controllers |
 | `HttpController`    | value | `HttpController(name, fragment)([deps], { sync })` — one slice of a contract, as a provider on a port minted for it                                                                                                      |
@@ -247,11 +247,12 @@ const http: (
 The primitive `HttpModule` delegates to, for a composition root written by
 hand. `HttpOptions`:
 
-| Option     | Required | Default          | What it is                        |
-| ---------- | -------- | ---------------- | --------------------------------- |
-| `prefix`   | no       | `/rpc`           | where the RPC endpoint is mounted |
-| `port`     | no       | read from `PORT` | pins the port                     |
-| `hostname` | no       | read from `HOST` | pins the host                     |
+| Option     | Required | Default          | What it is                                                                                                                                                                                           |
+| ---------- | -------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prefix`   | no       | `/rpc`           | where the RPC endpoint is mounted                                                                                                                                                                    |
+| `port`     | no       | read from `PORT` | pins the port                                                                                                                                                                                        |
+| `hostname` | no       | read from `HOST` | pins the host                                                                                                                                                                                        |
+| `tenantOf` | no       | —                | `(request) => string \| undefined` — reads the tenant off a request onto `UnitMeta.tenantId`; see [Make an application multi-tenant](/how-to/read-the-ambient-unit#make-an-application-multi-tenant) |
 
 The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
 **needs** `Env` (the kernel discharges it) and the starter's router port

@@ -44,7 +44,9 @@ container's own `hexagonal-order-api`, which composes a `Module` and never calls
 `start`. They are
 consumers, not fixtures: they are part of the gate, and `examples/README.md`
 is their index. `docs/` is the documentation site (see **Documentation
-site** below); it is a workspace but not a published package.
+site** below); it is a workspace but not a published package. `internal/`
+holds one more, `test-infra`, which is neither: it owns the three containers
+the whole gate shares and is documented in its own README.
 
 ## Commands
 
@@ -400,37 +402,80 @@ type checker already verifies.
   transport through the internal `httpModule` with a bare listener, the
   starter proper through `HttpModule`, and the keyed router form through the
   `rpcSliced` fixture.
-- **`examples/order-temporal-worker` is the one workspace whose suite needs the
-  network, and only on a cold cache.** It runs a real `@temporalio/worker`
-  Worker against `@temporalio/testing`'s **time-skipping test server** — a
-  64 MB local binary, not a container — so the whole Workflow-Task /
-  Activity-Task loop is exercised without starting one. A container would be
-  allowed (see the integration-test rule below); this is simply cheaper and
-  faster for the same coverage. The binary is fetched once,
-  keyed by the `@temporalio` SDK version, into
-  **`<repo>/.cache/temporal-test-server`** (gitignored) with **`ttl: "365d"`,
-  set in `src/test-fixtures.ts`. Both are deliberate: the SDK's defaults are
-  the OS temp directory — which CI wipes between jobs and macOS purges on its
-  own schedule — and a one-day ttl, so a developer running the suite twice in a
-  week downloads it twice. A cold cache with no network fails loudly at
-  `createTimeSkipping()`, naming the URL. Measured with no container running: **7.4 s
-  cold** (download included), **3.8–3.9 s warm** — the slowest package in the
-  repo and still under four seconds. **CI does not yet cache that directory**:
-  `.github/workflows/ci.yml` delegates wholly to
-  `btravstack/tools`'s `ci-reusable.yml@workflows-v1`, and a caller cannot
-  inject an `actions/cache` step into a reusable workflow's jobs. Closing it
-  means adding a cache-path input there, not here; until then every test job
-  pays the ~3.5 s download.
-- **`packages/amqp` and `examples/order-amqp-worker` are the two workspaces
-  whose suites need a Docker daemon**, per the integration-test rule below.
-  `@amqp-contract/testing` boots one real RabbitMQ container per vitest run
-  (`globalSetup`) — the retry/dead-letter routing this package leans on is the
-  broker's own behaviour, not something an in-memory fake or a local binary
-  could stand in for. Measured on this machine: `packages/amqp`
-  **17.6 s cold** (image pull included), **7.3–8.0 s warm**; `examples/order-amqp-worker`
-  **15.5 s cold**, **4.8–5.6 s warm** — both slower than `order-temporal-worker`'s
-  network-cache case, and cold only on a machine that has never pulled
-  `rabbitmq:4.2.1-management-alpine` before.
+- **The whole gate runs on THREE containers, shared, and `internal/test-infra`
+  owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine` and
+  one `temporalio/auto-setup:1.29.1`, started once per machine and reused by
+  every workspace's vitest run. Six workspaces need a Docker daemon —
+  `packages/amqp`, `packages/temporal`, and the four `examples/` that boot the
+  application or a broker-backed runtime — and that is a fact a contributor
+  discovers the hard way unless a README says so, which is why each one's
+  does. Measured on this machine: `pnpm test` at turbo's default concurrency,
+  **27/27, ~32 s warm**.
+
+  It used to be **five servers for those six workspaces** — a RabbitMQ
+  container per AMQP vitest run and a Temporal time-skipping server per
+  Temporal vitest _worker_ — and `pnpm test` was intermittently red because
+  the 60 s testcontainers startup wait was what gave out first, with the
+  failing workspace moving between runs (issue #52). Nothing about that was a
+  missing isolation boundary; each system already had one finer than "a server
+  of my own", and only the server was duplicated:
+  - **a vhost per test**, minted by `@amqp-contract/testing`'s `it` extension
+    from the management API — untouched by this;
+  - **a namespace per spec file**, registered by
+    `@btravstack/internal-test-infra/namespace`, which then polls a
+    namespace-scoped read until every Temporal service's registry has caught
+    up (`describeNamespace` answers from the frontend alone and is not
+    enough). Per file, not per test: registration costs that refresh, and a
+    task queue per test — which both suites already mint — separates the tests
+    inside one file;
+  - **a tenant per test**, which is what the example application being
+    multi-tenant buys (see below).
+
+  `withReuse()` is what makes the second, third and fourth workspace attach
+  instead of start. Two consequences are deliberate and stated in
+  `internal/test-infra/README.md`: a reused container is **not** registered
+  with Ryuk, so it outlives the run (`docker rm -f $(docker ps -aq --filter
+label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
+  lock is **in-process**, which does nothing about turbo starting several runs
+  at the same instant — a `mkdir`-based file lock under `<repo>/.cache/`
+  closes that race.
+
+  Two `globalSetup` modules replace the upstream ones
+  (`@amqp-contract/testing/global-setup`,
+  `@temporal-contract/testing/global-setup`) by providing the **same** inject
+  keys, so both upstream `it` extensions keep working unchanged. The
+  time-skipping test server is gone with them: neither Temporal suite ever
+  advanced a clock, so the skippable clock bought nothing a private namespace
+  does not — and with it went the one workspace that needed the **network** on
+  a cold cache, and the CI cache gap that came with it.
+
+- **The example application is multi-tenant, and that is why one database
+  serves the whole gate.** `examples/order-infrastructure` is PostgreSQL on
+  the shared server — a database of its own next to Temporal's — migrated once
+  per run by `src/global-setup.ts` with **`prisma migrate deploy`**, the
+  command a deployment runs, under the same cross-process lock. Nothing is
+  truncated or dropped between tests: each test declares a **tenant** of its
+  own (a UUID), so a shared database costs one migration for the whole gate
+  instead of one per test, and no test can see another's rows whatever order
+  they run in.
+
+  It replaced SQLite **in memory**, which was the right call while every test
+  built its own database — and stopped being one the moment the gate needed a
+  PostgreSQL for Temporal anyway. The tenancy is ambient, per thesis 2: every
+  table carries `tenantId` as the leading column of its identity constraint,
+  the Prisma adapters read `currentUnit()?.tenantId` **per call**, and no port,
+  use case or entity mentions a tenant — none of them has a decision to make
+  about one. A repository call outside a unit is a `Defect`, because there is
+  no sensible default: "every tenant" is a cross-tenant read and "the first
+  one" is nonsense.
+
+  `Outbox.pending(tenantId, limit)` is the **one** exception, and it takes the
+  tenant as an argument for a reason worth keeping: the relay that reads it is
+  a background sweep on its own clock, with no request, delivery or activity
+  behind it and therefore no ambient record to read. Which tenants a relay
+  serves is then genuine deployment configuration (`OUTBOX_TENANTS`), and it
+  sweeps tenant by tenant so one tenant's backlog cannot starve another's.
+
 - **The Prisma client is generated at test time, and there is nothing to
   install.** `@btravstack/example-order-infrastructure`'s `generate`
   script writes a gitignored client into `src/generated`, and turbo's `test` /
@@ -440,20 +485,17 @@ type checker already verifies.
   `prisma generate`: they did until 2026-08-13, and on a cold cache turbo ran
   the `generate` task and the script's inline copy **concurrently**, which
   fails with `EEXIST: mkdir …/generated/prisma/models`. One generator, ordered
-  by the task graph, is what makes that impossible rather than rare. The
-  database is SQLite **in memory** with the schema applied by hand, because it
-  is faster and simpler than a container for a repository test — not because a
-  container was forbidden. See the integration-test rule below.
+  by the task graph, is what makes that impossible rather than rare.
 - **An integration test may boot its real dependency with Docker and
   testcontainers.** A suite that needs a broker, a database or a service starts
   one; there is no rule against a daemon, and a hand-written double that fakes
   the thing under test would prove less than the container does. What is still
   true is the preference underneath: reach for the cheapest fixture that tests
-  the real behaviour — in memory when the behaviour is the library's (SQLite for
-  a repository), a local binary when one exists (Temporal's time-skipping
-  server), a container when neither does (a broker). State the cost in the
-  workspace's README, since a suite that needs a daemon is a fact a contributor
-  discovers the hard way otherwise.
+  the real behaviour, and **share** the one you reach for rather than starting
+  a copy per workspace — a vhost, a namespace or a tenant is a cheaper
+  boundary than a server, and it is the boundary the system under test
+  actually has. State the cost in the workspace's README, since a suite that
+  needs a daemon is a fact a contributor discovers the hard way otherwise.
 - **`examples/order-temporal-worker` consumes `@btravstack/temporal`**, the same
   way `order-api` consumes `@btravstack/http`: it supplies the contract, the
   activities provider and the `mapErrCases` triage, and reads `{ taskQueue,
@@ -571,8 +613,11 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   composition root, a list of slices plus what no slice owns — the
   sugar imports `http()`, provides the router on the starter's
   `HttpRouterPort` and
-  exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` come from the
-  environment inside the graph, the router is mounted under `/rpc`.
+  exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` and `DATABASE_URL` come from the
+  environment inside the graph, the router is mounted under `/rpc`, and
+  `tenantOf` reads `x-tenant-id` off the request so every repository call is
+  scoped to whoever asked — no procedure takes a tenant and no use case
+  mentions one.
   `observability()` is what provides the `Logger` the interactors and the
   request scope write to, and `Logger` is in `exports` because `RequestModule`
   reads it out of the application scope. `RequestModule` rides
@@ -895,13 +940,44 @@ A sixth rule is about production code that tests keep honest:
    `describeEnvIssues`, `abort(78)` by hand in every `main.ts`); they were
    deleted when the kernel took this over.
 
+And a seventh, about the infrastructure a suite runs against:
+
+7. **A test file is isolated by the boundary its infrastructure already has,
+   never by a server of its own.** A RabbitMQ suite gets a **vhost**, a
+   Temporal suite a **namespace**, a database suite a **tenant** — each minted
+   in setup, each free, each finer than the thing it replaces. What a suite
+   must NOT do is start a copy of the server: that is what made `pnpm test`
+   intermittently red at turbo's default concurrency (issue #52), and it buys
+   an isolation the logical boundary already gave for nothing. The shared
+   containers live in `internal/test-infra`; the per-test boundary lives in
+   the workspace's own fixtures.
+
+   The consequence worth stating is that **nothing cleans up after a test**.
+   There is no truncate, no drop, no purge — a test that needed one would be
+   a test sharing a namespace it should have minted. The fixtures create; the
+   run's end is what disposes. A tenant is a UUID and a vhost is a UUID
+   precisely so this holds across spec files and across the workspaces turbo
+   runs at the same instant.
+
+   `@btravstack/testing`'s `unitFixture` is what makes the tenant reachable:
+   the adapters read `currentUnit()?.tenantId`, so a spec has to run its
+   subject **inside a unit**, which the kernel exports no way to open —
+   `examples/order-infrastructure`'s `asTenant` fixture is the one-line
+   wrapper every consumer of this shape writes.
+
 ## Deferred, deliberately
 
-- **Caching the Temporal test-server binary in CI.** The path is stable and
-  gitignored; what is missing is the `actions/cache` step, which cannot be
-  written from `start`'s `ci.yml` while it delegates to
-  `btravstack/tools`'s reusable workflow (see Toolchain & conventions). It
-  costs ~3.5 s per test job, not correctness.
+- ~~Caching the Temporal test-server binary in CI.~~ **Closed by deletion**:
+  there is no binary any more. The Temporal suites run against the shared
+  `temporalio/auto-setup` container, so what CI pays for is a Docker image
+  pull its own layer cache handles, not a 64 MB download into a directory a
+  reusable workflow could not be told to cache.
+- **Reaping the shared containers.** `withReuse()` deliberately keeps them out
+  of Ryuk's hands, so they outlive the run — which is the whole point locally
+  and pure waste on an ephemeral CI runner that discards the machine anyway.
+  There is no harm today; if it ever matters, the fix is a `CI`-conditional
+  `withReuse()` in `internal/test-infra/src/containers.ts`, not a teardown
+  that would pull a container out from under a concurrent workspace.
 - The `@btravstack/oxlint` rule banning `currentUnit()` outside infrastructure
   adapters (Thesis #2) — it needs a way to identify an adapter.
 - **Traces and metrics in `@btravstack/observability`.** The package is named
