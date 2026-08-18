@@ -7,9 +7,18 @@ import { TestRuntimePort, testRuntime } from "./test-runtime.js";
 /**
  * Runs `work` inside a real kernel unit, and answers whatever it answers.
  *
- * `meta` fills in what the caller cares about; `kind` and `id` default to a
- * test's and `id` stays unique per call, so the record's `unitId` and
- * `traceId` behave the way a runtime's would.
+ * `meta` fills in what the caller cares about. `kind` and `id` are
+ * **defaults**, not fixtures: they are spread over, so a spec asserting on a
+ * particular `kind` or pinning a `traceId` can say so. The default `id` is
+ * unique per call, which is the obligation a real runtime carries — and
+ * overriding it costs only what it costs a runtime, a shared `traceId`, since
+ * `UnitRecord.unitId` is minted by the kernel and is unique whatever `meta`
+ * says.
+ *
+ * Returns a bare `Promise`, which is one of the four documented exceptions to
+ * "every async API returns an `AsyncResult`" (root `CLAUDE.md`, thesis 6):
+ * `work` is the test's own body, and a failing `expect` inside it must reach
+ * the runner as a throw.
  */
 export type InUnit = <T>(meta: Partial<UnitMeta>, work: () => T | Promise<T>) => Promise<T>;
 

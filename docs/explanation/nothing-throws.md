@@ -38,8 +38,10 @@ has to remember which ones did and which returned a bare value.
 
 `unthrown/prefer-async-result` cannot enforce this — it flags a
 `Promise<Result<T, E>>`, and a `Promise<void>` is not `Result`-bearing — so it
-is a convention held by review, with exactly three exceptions, each documented
-where it lives:
+is a convention held by review, with exactly four exceptions, each documented
+where it lives — and all but the first are one exception wearing different
+hats: **a test's assertion failure has to reach the test runner as a throw**,
+and an `AsyncResult` never rejects.
 
 - **`runMain` returns `Promise<void>`.** Its whole job is to _leave_ the
   `Result` world and become an exit code. It is the boundary, and a top-level
@@ -47,13 +49,19 @@ where it lives:
 - **`UnitWork`'s `Promise<Result<T, E>>` arm** exists to accept a _caller's_
   `async` handler without a wrapper at every call site; `run` normalises it
   internally.
-- **`bootFixture`**, in `@btravstack/testing` — vitest's own
-  `(ctx, use) => Promise<void>` fixture protocol, which the harness does not
-  get to choose. `use` is the test body: a thrown assertion failure inside it
-  must reach the test runner, and an `AsyncResult` never rejects, so wrapping
-  it would turn a failing `expect` into a `Defect` a caller can forget to
-  unwrap — a green test that asserted nothing. Its teardown rethrows a
-  shutdown `Defect` so the runner sees that too.
+- **`bootFixture`** — and `unitFixture` — in `@btravstack/testing`: vitest's
+  own `(ctx, use) => Promise<void>` fixture protocol, which the harness does
+  not get to choose. `use` is the test body: a thrown assertion failure inside
+  it must reach the test runner, and an `AsyncResult` never rejects, so
+  wrapping it would turn a failing `expect` into a `Defect` a caller can forget
+  to unwrap — a green test that asserted nothing. `bootFixture`'s teardown
+  rethrows a shutdown `Defect` so the runner sees that too.
+- **`TestRuntime.inUnit` / `InUnit`**, in `@btravstack/testing`, returning
+  `Promise<T>`. Same argument with nothing to soften it: `work` **is** the
+  assertion, since the fixture exists to run an `expect` against something that
+  read the ambient record. It is deliberately not the harness's own error
+  channel either — a unit the _kernel_ could not run is still a `Defect`, and
+  surfaces as one.
 
 ## The startup channel is the application's own
 

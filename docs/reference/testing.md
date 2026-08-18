@@ -258,6 +258,10 @@ a transport opens one — not an `AsyncLocalStorage` the harness runs beside it.
 A fabricated record could drift from the one the kernel mints, and the whole
 value of testing an ambient reader is that it saw the real thing.
 
+`inUnit` is one of the four documented exceptions to [every async API returns
+an `AsyncResult`](/explanation/nothing-throws): `work` is the test's own
+body, so a failing `expect` inside it has to reach the runner as a throw.
+
 Two rules. `work` must not **outlive the call**: a unit is closed the instant
 its work settles, so a promise started inside one and awaited outside is
 reading a record that has already gone. And a throw from `work` is

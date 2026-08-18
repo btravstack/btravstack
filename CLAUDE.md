@@ -232,20 +232,32 @@ major.
    `TestRuntime.untilStarted` and `ProbeServer.close` all carry `E = never`.
    `unthrown/prefer-async-result` cannot enforce this — it only flags a
    `Promise<Result<T, E>>`, and a `Promise<void>` is not Result-bearing — so it
-   is a convention held by review. There are exactly **three** exceptions, each
-   documented where it lives:
+   is a convention held by review. There are exactly **four** exceptions, each
+   documented where it lives — and all but the first are the same exception
+   wearing different hats: **a test's assertion failure must reach the test
+   runner as a throw**, and an `AsyncResult` never rejects.
    - **`runMain`** returns `Promise<void>`. Its whole job is to leave the Result
      world and become a process exit code; it is the boundary, and a top-level
      `await runMain(...)` in an entry point is the intended shape.
    - **`UnitWork`'s `Promise<Result<T, E>>` arm** exists to accept a _caller's_
      `async` handler, and carries a reasoned `prefer-async-result` disable in
      `units.ts`.
-   - **`@btravstack/testing`'s `bootFixture`** — vitest's own
-     `(ctx, use) => Promise<void>` fixture protocol, which the harness does not
-     get to choose. `use` is the test body: a thrown assertion failure inside
-     it must reach the test runner, and an `AsyncResult` never rejects, so
-     wrapping it would turn a failing `expect` into a `Defect` a caller can
-     forget to unwrap — a green test that asserted nothing.
+   - **`@btravstack/testing`'s `bootFixture`** — and `unitFixture`, on the same
+     terms — vitest's own `(ctx, use) => Promise<void>` fixture protocol, which
+     the harness does not get to choose. `use` is the test body: a thrown
+     assertion failure inside it must reach the test runner, and an
+     `AsyncResult` never rejects, so wrapping it would turn a failing `expect`
+     into a `Defect` a caller can forget to unwrap — a green test that asserted
+     nothing.
+   - **`@btravstack/testing`'s `TestRuntime.inUnit` / `InUnit`**, returning
+     `Promise<T>`. `work` IS the test body — the whole point of the fixture is
+     to run an `expect` against something that read the ambient record — so the
+     same argument applies with nothing to soften it: an `AsyncResult<T, never>`
+     here would put a failing assertion in the defect channel, and a caller who
+     forgot to unwrap would have a green test that asserted nothing.
+     `unit-fixture.spec.ts` pins the rethrow. It is deliberately NOT the
+     harness's own error channel: a unit the _kernel_ could not run is still a
+     `Defect`, surfaced by `settled.get()` panicking.
 
 7. **The startup error channel is the application's own, unwrapped.** The kernel
    does **not** wrap a construction failure in a kernel error — that would erase

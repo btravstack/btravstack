@@ -54,8 +54,15 @@ export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
    * half of `currentUnit()`, which the kernel deliberately does not export:
    * only a runtime opens a unit, and in a test this runtime is the one that
    * does. `meta` fills in what the caller cares about (`tenantId`, a
-   * `traceId`); `kind` and `id` default to a test's, with `id` unique per
-   * call so the record behaves as a real runtime's would.
+   * `traceId`); `kind` and `id` are **defaults** it is spread over, so a spec
+   * may pin either. The default `id` is unique per call — the obligation a
+   * real runtime carries — and overriding it costs only what it costs a
+   * runtime, a shared `traceId`, since `UnitRecord.unitId` is minted by the
+   * kernel and is unique whatever `meta` says.
+   *
+   * Returns a bare `Promise`: one of the four documented exceptions to "every
+   * async API returns an `AsyncResult`" (root `CLAUDE.md`, thesis 6), because
+   * `work` is the test's own body.
    *
    * `submit()` is the other shape and answers a different question: it hands
    * back a unit the test settles from outside, for asserting on the drain.

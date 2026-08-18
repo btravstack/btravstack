@@ -86,7 +86,12 @@ EXPORTED", missing]` — refusing at the call site a port `module` does not
   kernel deliberately does not export — only a runtime opens a unit, and in a
   test this runtime is the one that does. `meta` is a `Partial<UnitMeta>`
   filling in what the caller cares about (`tenantId`, a `traceId`); `kind`
-  and `id` default to a test's, with `id` unique per call. It is the
+  and `id` are **defaults** it is spread over, so a spec may pin either. The
+  default `id` is unique per call — the obligation a real runtime carries —
+  and overriding it costs only a shared `traceId`, since `UnitRecord.unitId`
+  is minted by the kernel and is unique whatever `meta` says. The bare
+  `Promise` is the **fourth** documented exception to thesis 6, on
+  `bootFixture`'s reasoning: `work` is the test body. It is the
   complement of `submit()`, not a variant: `submit` hands back a unit the test
   settles from **outside**, for asserting on the drain, while `inUnit` is for
   asserting on what code running **inside** a unit read. The outcome travels
