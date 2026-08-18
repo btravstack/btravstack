@@ -53,9 +53,19 @@ docker rm -f $(docker ps -aq --filter label=com.btravstack.test-infra)
 case this repository actually has: turbo starting several workspaces' vitest
 runs at the same instant, each missing the fetch-by-label and each starting a
 container. `withLock` is a `mkdir`-based file lock under `<repo>/.cache/`
-(gitignored) that closes it. A stale lock older than five minutes is broken
-automatically; the error message names the path if one ever needs deleting by
-hand.
+(gitignored) that closes it.
+
+A file lock has one failure mode worth naming, because this repository hit it:
+**a holder that is killed never releases.** Turbo cancels sibling tasks as soon
+as one fails, so a waiter timing out takes down the very process holding the
+lock, and the next run then queues behind a lock nobody owns. `withLock`
+therefore writes its **pid** into the lock and treats a lock whose process is
+gone as free immediately — `process.kill(pid, 0)`, which checks liveness
+without delivering a signal. The time-based window is only the fallback for
+what a pid cannot answer (another machine, a recycled number), and it is
+deliberately **shorter** than the wait: a stale window longer than the wait can
+never self-heal, because every waiter gives up before the lock is old enough to
+break.
 
 ## Entry points
 
