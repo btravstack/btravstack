@@ -25,15 +25,11 @@ docs/superpowers/
 # predating the package cannot leave it visible and sweepable into a commit.
 **/src/generated/prisma/
 
-# The 64 MB Temporal time-skipping test server, downloaded on a cold cache by
-# the Temporal example's suite. Pinned here rather than left in the OS temp
-# directory so it survives across runs and is a stable path CI can cache.
-# See examples/order-temporal-worker/README.md.
+# The shared test infrastructure's cross-process locks — `internal/test-infra`
+# holds one while it starts or reuses a container, so turbo running several
+# workspaces at once cannot start the same container twice. Repository-local
+# rather than in the OS temp directory so a stale one is findable.
 .cache/
-
-# The scratch database `prisma migrate` reaches for when DATABASE_URL is unset.
-# The migrations it writes are committed; the database it applies them to is not.
-**/.migrate.db
 
 # The docs site's build outputs. TypeDoc runs from `docs/` and writes straight
 # into `docs/api/<name>/` (the hand-written docs/api/index.md overview is kept).

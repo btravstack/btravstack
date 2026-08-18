@@ -7,7 +7,8 @@
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./global-setup": "./src/global-setup.ts"
   },
   "scripts": {
     "db:migrate": "prisma migrate deploy",
@@ -16,15 +17,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@btravstack/config": "workspace:*",
+    "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
     "@btravstack/example-order-domain": "workspace:*",
-    "@prisma/adapter-better-sqlite3": "catalog:",
+    "@prisma/adapter-pg": "catalog:",
     "@prisma/client": "catalog:",
     "@unthrown/prisma": "catalog:",
     "unthrown": "catalog:"
   },
   "devDependencies": {
+    "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",

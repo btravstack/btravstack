@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
 import type { Env } from "@btravstack/config";
 import type { RunningApp, StartOptions } from "@btravstack/core";
@@ -20,10 +21,10 @@ import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
-import { test } from "vitest";
+import { inject, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
-import { OrderApi, orderRouter } from "./module.js";
+import { OrderApi, orderRouter, tenantOf } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 import { customersController } from "./slices/customers/controller.js";
 import { CustomersSlice } from "./slices/customers/module.js";
@@ -78,6 +79,7 @@ const recorderOf = () => {
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
     router: orderRouter,
+    tenantOf,
     imports: [
       OrderApplicationModule,
       CustomerApplicationModule,
@@ -106,6 +108,7 @@ const recordingApi = () => {
   return {
     api: HttpModule("RecordingApi")({
       router: orderRouter,
+      tenantOf,
       // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
       // real root, and this root exists to be read.
       imports: [
@@ -189,6 +192,14 @@ export type ApiFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
+   * This test's tenant, and nobody else's. The database is shared by every
+   * workspace's run — one migration for the whole gate rather than one per
+   * test — so a UUID here is what keeps one spec's `o-1` from being another's.
+   * `clientFor` sends it as `x-tenant-id`, which is what the real root's
+   * `tenantOf` reads.
+   */
+  readonly tenant: string;
+  /**
    * Starts an app on an ephemeral loopback port — `env: { PORT: "0", HOST:
    * "127.0.0.1" }`, which is how every composition here, the real one
    * included, gets bound — with `RequestModule` forked around every request,
@@ -230,15 +241,28 @@ export const it = test.extend<ApiFixtures>({
   // `LOG_LEVEL: "fatal"` is what keeps the real `OrderApi` — whose sink is the
   // production `jsonSink()` on stdout — from writing its lines into the
   // runner's own output. The roots a spec reads back pin their level instead.
-  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" } }),
+  boot: bootFixture({
+    env: {
+      PORT: "0",
+      HOST: "127.0.0.1",
+      LOG_LEVEL: "fatal",
+      DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
+    },
+  }),
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  tenant: async ({}, use) => {
+    await use(`t-${randomUUID()}`);
+  },
 
   serve: async ({ boot }, use) => {
     await use((module, options) => boot(module, { unit: RequestModule, ...options }));
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  clientFor: async ({}, use) => {
-    await use(async (app) => createOrderApiClient(await originOf(app)));
+  clientFor: async ({ tenant }, use) => {
+    await use(async (app) =>
+      createOrderApiClient(await originOf(app), { headers: { "x-tenant-id": tenant } }),
+    );
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

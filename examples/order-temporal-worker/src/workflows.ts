@@ -51,11 +51,11 @@ export const fulfillOrder = declareWorkflow({
     // An `AsyncResult` is eager — building a step IS starting its activity —
     // so every later step is constructed inside the `flatMap` of the one
     // before it, or the "sequence" would run as a race.
-    const order = { orderId: args.orderId };
+    const order = { tenantId: args.tenantId, orderId: args.orderId };
 
     return propagateActivityFailure(
       context.activities
-        .place({ orderId: args.orderId, quantity: args.quantity })
+        .place({ tenantId: args.tenantId, orderId: args.orderId, quantity: args.quantity })
         .mapErrCases((matcher) =>
           matcher
             .with({ errorName: "InvalidQuantity" }, (error) =>
@@ -68,7 +68,11 @@ export const fulfillOrder = declareWorkflow({
         )
         .flatMap((placed) =>
           context.activities
-            .reserveStock({ orderId: args.orderId, quantity: args.quantity })
+            .reserveStock({
+              tenantId: args.tenantId,
+              orderId: args.orderId,
+              quantity: args.quantity,
+            })
             .flatMapErrCases((matcher) =>
               matcher
                 // The first walk-back: stock said a permanent no, so the
@@ -118,7 +122,7 @@ export const chargeOrder = declareWorkflow({
   implementation: (context, args) =>
     propagateActivityFailure(
       context.activities
-        .authorizePayment({ orderId: args.orderId, amount: args.amount })
+        .authorizePayment({ tenantId: args.tenantId, orderId: args.orderId, amount: args.amount })
         .mapErrCases((matcher) =>
           matcher
             .with({ errorName: "PaymentDeclined" }, (error) =>
@@ -128,14 +132,20 @@ export const chargeOrder = declareWorkflow({
         )
         .flatMap((authorized) =>
           context.activities
-            .capturePayment({ authorizationId: authorized.authorizationId })
+            .capturePayment({
+              tenantId: args.tenantId,
+              authorizationId: authorized.authorizationId,
+            })
             .flatMapErrCases((matcher) =>
               matcher.with(
                 P.tag(ACTIVITY_ERROR_TAG),
                 P.tag(ACTIVITY_CANCELLED_ERROR_TAG),
                 (error) =>
                   context.activities
-                    .refundPayment({ authorizationId: authorized.authorizationId })
+                    .refundPayment({
+                      tenantId: args.tenantId,
+                      authorizationId: authorized.authorizationId,
+                    })
                     .flatMap(() => ErrAsync(error)),
               ),
             )

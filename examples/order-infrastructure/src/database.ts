@@ -1,52 +1,30 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
+import { Config } from "@btravstack/config";
+import { currentUnit } from "@btravstack/core";
 import { Port, Provider } from "@btravstack/di";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { unthrownPrisma } from "@unthrown/prisma";
-import { fromSafePromise, type AsyncResult } from "unthrown";
+import { OkAsync, fromSafeThrowable, type AsyncResult, type Result } from "unthrown";
 
 import { PrismaClient } from "./generated/prisma/client.ts";
 
 /**
- * The migrations, as `prisma migrate dev` generated them and as they are
- * committed — the single source of truth for this schema's shape.
+ * Where the database is, bound from the environment through the kernel's own
+ * configuration rather than read off `process.env` by hand — the rule the
+ * whole stack follows, and the reason nothing here calls `.parse()`.
  *
- * A deployment with a durable database runs `pnpm db:migrate`
- * (`prisma migrate deploy`) **before the process starts**, which is what the
- * `db:migrate` turbo task exists for; the application never migrates itself at
- * boot. This example's database cannot be reached that way — it is SQLite held
- * *in memory*, born empty inside `openDatabase` and gone when the process is,
- * so no external command can prepare it — so the same committed SQL is applied
- * here instead. That is the point: tests run the exact statements a deployment
- * runs, rather than a hand-kept copy that can drift from the schema.
+ * A deployment runs `pnpm db:migrate` (`prisma migrate deploy`) against this
+ * same URL **before the process starts**, which is what the `db:migrate`
+ * turbo task exists for; the application never migrates itself at boot. The
+ * suites do exactly that too — `src/global-setup.ts` runs the same command
+ * against the shared test server, once per run — so a test exercises the
+ * statements a deployment runs rather than a hand-kept copy that can drift.
  */
-const MIGRATIONS_DIR = fileURLToPath(new URL("../prisma/migrations/", import.meta.url));
+export const databaseConfig = Config.provider("DatabaseConfig")(
+  Config.object({ url: Config.string("DATABASE_URL") }),
+);
 
-const migrations = (): readonly string[] =>
-  readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    // Prisma names migration directories with a leading timestamp, so
-    // lexicographic order IS chronological order — the order they must be
-    // applied in, and the order `migrate deploy` applies them in.
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((entry) => readFileSync(`${MIGRATIONS_DIR}${entry.name}/migration.sql`, "utf8"));
-
-/**
- * One migration file holds several statements; better-sqlite3's `exec` (which
- * `$executeRawUnsafe` reaches) takes one at a time, so the file is split on
- * `;` and the empty tail dropped. Comments survive fine — SQLite parses them.
- */
-const statementsOf = (migration: string): readonly string[] =>
-  migration
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0);
-
-const createClient = () =>
-  new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: ":memory:" }) }).$extends(
-    unthrownPrisma,
-  );
+const createClient = (url: string) =>
+  new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) }).$extends(unthrownPrisma);
 
 /** The extended client: every model operation has a `try*` twin returning an `AsyncResult`. */
 export type OrderDatabaseClient = ReturnType<typeof createClient>;
@@ -60,32 +38,56 @@ export type OrderDatabaseClient = ReturnType<typeof createClient>;
 export class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
 
 /**
- * Opens a fresh in-memory database with every committed migration applied.
+ * Whose data this call is about, read off the kernel's ambient unit record.
  *
- * `AsyncResult`, not a bare `Promise`: this is an exported async surface, and
- * the rule the rest of the stack follows is that every one of them returns a
- * `Result` rather than leaving a caller to mix `await` styles. Opening cannot
- * fail in the application's terms — a database that will not open is a defect,
- * not a domain outcome — so the error channel is empty and the boundary is
- * `fromSafePromise`.
+ * This is the one reader the ambient store sanctions — an infrastructure
+ * adapter stamping a tenant on a query, which is data about the unit and not
+ * a collaborator anything could substitute (root `CLAUDE.md`, thesis 2). It is
+ * read **per call**, never captured at construction: one client is built per
+ * application scope and every unit has its own record. It is also the whole of
+ * the tenancy story above this file — no port, use case or entity mentions a
+ * tenant, because none of them has a decision to make about one.
+ *
+ * A call outside a unit has no tenant, and there is no sensible default —
+ * "every tenant" would be a cross-tenant read and "the first one" is nonsense —
+ * so it is a `Defect`, which is what the empty error channel says. Nothing a
+ * caller did produced it and nothing they can do recovers from it; widening
+ * every repository's `E` with an error no use case can act on would be worse.
+ * `fromSafeThrowable` is how the defect is minted — `Defect` has no public
+ * constructor, so a throw inside a boundary is the only route to one.
  */
-export const openDatabase = (): AsyncResult<OrderDatabaseClient, never> =>
-  fromSafePromise(
-    (async () => {
-      const db = createClient();
-      for (const migration of migrations()) {
-        for (const statement of statementsOf(migration)) await db.$executeRawUnsafe(statement);
-      }
-      return db;
-    })(),
-  );
+const readTenant = fromSafeThrowable((): string => {
+  const tenantId = currentUnit()?.tenantId;
+  if (tenantId === undefined)
+    // oxlint-disable-next-line unthrown/no-throw -- the throw IS the defect channel, and it is caught by the `fromSafeThrowable` boundary one line above
+    throw new Error(
+      "No tenant on the ambient unit record: every repository call must run inside a unit whose runtime supplied `UnitMeta.tenantId`.",
+    );
+  return tenantId;
+});
+
+export const currentTenant = (): Result<string, never> => readTenant();
 
 /**
- * The resourceful arm: the connection is acquired when the scope opens and
- * released when it closes, so the kernel's teardown reaches a real resource
- * rather than a bookkeeping entry.
+ * Opens a client against `url`. Connecting is lazy — the pool dials on the
+ * first statement — so this cannot fail in the application's terms, which is
+ * why the error channel is empty.
  */
-export const orderDatabaseProvider = Provider(OrderDatabase)({
-  acquire: () => openDatabase(),
+export const openDatabase = (url: string): AsyncResult<OrderDatabaseClient, never> =>
+  OkAsync(createClient(url));
+
+/**
+ * The resourceful arm: the pool is acquired when the scope opens and released
+ * when it closes, so the kernel's teardown reaches a real resource.
+ *
+ * `$disconnect()` genuinely ends the driver adapter's pool — measured against
+ * `pg_stat_activity`, the connection count drops — but the client is not dead
+ * afterwards: Prisma reconnects lazily on the next statement, which is why no
+ * spec asserts that a released client refuses to query. That was assertable
+ * only while this example held SQLite **in memory**, where the database itself
+ * died with the connection.
+ */
+export const orderDatabaseProvider = Provider(OrderDatabase)([databaseConfig.port], {
+  acquire: (config) => openDatabase(config.url),
   release: (db) => db.$disconnect(),
 });

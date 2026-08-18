@@ -1,7 +1,7 @@
 import { Module } from "@btravstack/di";
 import { CustomerRepository, OrderRepository, Outbox } from "@btravstack/example-order-application";
 
-import { OrderDatabase, orderDatabaseProvider } from "./database.js";
+import { OrderDatabase, databaseConfig, orderDatabaseProvider } from "./database.js";
 import { customerRepositoryProvider } from "./prisma-customer-repository.js";
 import { orderRepositoryProvider } from "./prisma-order-repository.js";
 import { outboxProvider } from "./prisma-outbox.js";
@@ -15,9 +15,12 @@ import { outboxProvider } from "./prisma-outbox.js";
  * Its provider takes di's `acquire`/`release` arm, so every module that
  * imports this one carries a `Scope` need, and only `Module.scoped`
  * discharges it. A composition root that forgets the scope does not compile.
+ * `DATABASE_URL` is bound here rather than read anywhere: `databaseConfig`
+ * is what puts `ConfigInvalid` in this module's error channel, and with it
+ * every consumer's.
  */
 const DatabaseModule = Module("Database")({
-  provides: [orderDatabaseProvider],
+  provides: [databaseConfig, orderDatabaseProvider],
   exports: [OrderDatabase],
 });
 

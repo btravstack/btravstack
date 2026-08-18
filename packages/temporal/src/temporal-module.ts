@@ -10,6 +10,7 @@ import {
 import type { ContractDefinition } from "@temporal-contract/contract";
 import type { Duration } from "@temporalio/common";
 
+import type { TenantOf } from "./activity-units.js";
 import {
   TemporalActivitiesPort,
   TemporalRuntime,
@@ -69,6 +70,8 @@ export type TemporalModuleOptions<
   readonly gracePeriod?: Duration;
   /** Temporal's `shutdownForceTime`. Default `15 seconds`. Keep it at or below the kernel's `drainTimeoutMs`. */
   readonly forceAfter?: Duration;
+  /** See `TemporalOptions.tenantOf`. */
+  readonly tenantOf?: TenantOf;
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `TemporalRuntime` is added, since `start` resolves it. */
@@ -112,8 +115,16 @@ export const TemporalModule =
   >(
     options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, I, P, X>,
   ) => {
-    const { contract, activities, workflows, address, namespace, gracePeriod, forceAfter } =
-      options;
+    const {
+      contract,
+      activities,
+      workflows,
+      address,
+      namespace,
+      gracePeriod,
+      forceAfter,
+      tenantOf,
+    } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
@@ -124,6 +135,7 @@ export const TemporalModule =
       ...(namespace === undefined ? {} : { namespace }),
       ...(gracePeriod === undefined ? {} : { gracePeriod }),
       ...(forceAfter === undefined ? {} : { forceAfter }),
+      ...(tenantOf === undefined ? {} : { tenantOf }),
     });
     // di's own `Module(name)({...})` over the augmented tuples: its return
     // type IS the sugar's — nothing spelled twice.

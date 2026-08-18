@@ -1,6 +1,6 @@
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
-import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
+import { TemporalActivities, TemporalModule, type TenantOf } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
 import { chargeOrder } from "./slices/billing/activities.js";
@@ -15,6 +15,24 @@ import { FulfillmentSlice } from "./slices/fulfillment/module.js";
  * build.
  */
 export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, chargeOrder]);
+
+/**
+ * Whose work this attempt is, read off the activity's own input and put on
+ * the kernel's ambient unit record — where the persistence adapters find it
+ * and scope every statement by it.
+ *
+ * The input is where it lives because a worker has no request and no delivery
+ * to read a tenant from: the caller hands it to the workflow, the workflow
+ * hands it to each activity, and Temporal persists both in the event history
+ * — so a replay reconstructs the tenant along with everything else. The
+ * starter hands the whole invocation over precisely so an application can
+ * choose where its tenant lives.
+ *
+ * `input` is `unknown` at the middleware boundary and validated against the
+ * contract by the time an activity sees it, so the narrowing is the one claim
+ * this line makes: every activity in `orderContract` declares `tenantId`.
+ */
+export const tenantOf: TenantOf = ({ input }) => (input as { readonly tenantId: string }).tenantId;
 
 /**
  * The composition root of the orchestration deployment — now a list of slices
@@ -53,6 +71,7 @@ export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
   activities: orderActivities,
+  tenantOf,
   workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
   imports: [FulfillmentSlice, BillingSlice, observability()],
 });

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { WorkerMiddleware } from "@amqp-contract/worker";
+import type { WorkerMiddleware, WorkerMiddlewareArgs } from "@amqp-contract/worker";
 import type { RuntimeHost, UnitMeta } from "@btravstack/core";
 
 /**
@@ -17,10 +17,26 @@ import type { RuntimeHost, UnitMeta } from "@btravstack/core";
  * redelivered, which is recovery, not cancellation). A handler that must stop
  * when the kernel stops waiting reads `currentUnit()?.signal`.
  */
+/**
+ * How a delivery says whose data it is about, when it says so at all.
+ *
+ * The library's own middleware example reaches for
+ * `rawMessage.properties.headers?.['x-tenant-id']`, and a contract that
+ * carries the tenant in its validated payload is just as good — so the whole
+ * of the delivery is handed over and the application decides, because only
+ * the application knows its own envelope. A blank or missing answer means no
+ * tenant, which is what every deployment that has one tenant should say.
+ *
+ * This starter maps nothing: `tenantId` reaches the ambient record and stops
+ * there. What an adapter does with it — scope a query, pick a schema, refuse
+ * — is the application's, exactly as `Result` → ack/nack is.
+ */
+export type TenantOf = (args: WorkerMiddlewareArgs<Record<never, never>>) => string | undefined;
+
 export const messageUnits =
-  (host: RuntimeHost<never>): WorkerMiddleware =>
+  (host: RuntimeHost<never>, tenantOf?: TenantOf): WorkerMiddleware =>
   (args, next) =>
-    host.run(metaFor(args.rawMessage), () => next());
+    host.run(metaFor(args.rawMessage, tenantOf?.(args)), () => next());
 
 /**
  * `UnitMeta.id` must be unique per unit, and a **delivery tag is not one**:
@@ -42,16 +58,28 @@ export const messageUnits =
  * exactly as a category-as-id would. `-http` refuses a blank `x-request-id`
  * for the same reason.
  */
-const metaFor = (raw: {
-  readonly properties: {
-    readonly messageId?: string | undefined;
-    readonly correlationId?: string | undefined;
-  };
-}): UnitMeta => {
+const metaFor = (
+  raw: {
+    readonly properties: {
+      readonly messageId?: string | undefined;
+      readonly correlationId?: string | undefined;
+    };
+  },
+  tenantId: string | undefined,
+): UnitMeta => {
   const id = randomUUID();
   const inbound = [raw.properties.messageId, raw.properties.correlationId]
     .map((value) => value?.trim() ?? "")
     .find((value) => value !== "");
+  // Trimmed and refused blank for the same reason the trace id is: `""` is not
+  // nullish, so `??` alone would let a publisher that sets an empty tenant put
+  // one on the record that every adapter then scopes by.
+  const tenant = tenantId?.trim();
 
-  return { kind: "delivery", id, traceId: inbound ?? id };
+  return {
+    kind: "delivery",
+    id,
+    traceId: inbound ?? id,
+    ...(tenant === undefined || tenant === "" ? {} : { tenantId: tenant }),
+  };
 };

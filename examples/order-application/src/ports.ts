@@ -46,8 +46,12 @@ export class CustomerRepository extends Port("CustomerRepository")<{
 /**
  * One event awaiting broadcast — the envelope every subscriber reads.
  *
- * `kind` says what sort of thing changed, `subjectId` says which one, and
- * `payload` says what it now is. A **null payload is the tombstone**: the last
+ * `tenantId` says whose it is, `kind` says what sort of thing changed,
+ * `subjectId` says which one, and `payload` says what it now is. The tenant
+ * travels ON the envelope rather than being read from an ambient record,
+ * because the relay that reads this port sweeps across tenants from outside
+ * any unit — it is the one place in the application that is deliberately not
+ * tenant-scoped, and the event is what carries the tenant to the subscriber. A **null payload is the tombstone**: the last
  * word about a subject, saying it is gone. That is the whole vocabulary a
  * reader needs to rebuild state — the first event for a subject creates it,
  * later ones with a payload replace it, and the null one deletes it — and it
@@ -55,6 +59,7 @@ export class CustomerRepository extends Port("CustomerRepository")<{
  */
 export type OrderEvent = {
   readonly id: number;
+  readonly tenantId: string;
   readonly kind: "order";
   readonly subjectId: string;
   readonly occurredAt: Date;
@@ -68,9 +73,18 @@ export type OrderEvent = {
  * outbox onto a broker: pull what is pending, publish it, mark it sent. Both
  * operations are infallible in the application's terms — a database that will
  * not answer is a defect, not a domain outcome.
+ *
+ * `pending` takes its tenant as an **argument**, and it is the only port here
+ * that does. Every other adapter reads the tenant off the ambient unit record,
+ * because every other caller runs inside a unit; the relay does not — it is a
+ * background sweep on its own clock, with no delivery, request or activity
+ * behind it and therefore no ambient record to read. A tenant it cannot read
+ * is a tenant it must be told, and "which tenants does this relay serve" is
+ * genuine deployment configuration (`OUTBOX_TENANTS`) rather than something to
+ * infer. `markPublished` needs none: an outbox id already names one row.
  */
 export class Outbox extends Port("Outbox")<{
-  readonly pending: (limit: number) => AsyncResult<readonly OrderEvent[], never>;
+  readonly pending: (tenantId: string, limit: number) => AsyncResult<readonly OrderEvent[], never>;
   readonly markPublished: (ids: readonly number[]) => AsyncResult<void, never>;
 }> {}
 

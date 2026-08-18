@@ -4,6 +4,7 @@ import { test } from "vitest";
 
 import { bootFixture, type Boot } from "./boot-fixture.js";
 import { TestRuntimePort, testRuntime, type TestRuntimeInfo } from "./test-runtime.js";
+import { unitFixture, type InUnit } from "./unit-fixture.js";
 
 /**
  * A wrapped or ad-hoc runtime as the module `start` boots — the shape
@@ -33,5 +34,8 @@ export const greetingApp = () => {
   };
 };
 
-/** The package's own `bootFixture`, dogfooded: every app a spec boots is stopped by the fixture. */
-export const it = test.extend<{ boot: Boot }>({ boot: bootFixture() });
+/** The package's own `bootFixture` and `unitFixture`, dogfooded: every app a spec boots is stopped by the fixture, and `inUnit` is the subject of `unit-fixture.spec.ts`. */
+export const it = test.extend<{ boot: Boot; inUnit: InUnit }>({
+  boot: bootFixture(),
+  inUnit: unitFixture(),
+});

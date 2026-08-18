@@ -13,7 +13,23 @@ const orderView = z.object({ id: z.string(), quantity: z.number() });
 /** The payload every declared error carries — which order it was about. */
 const orderRef = z.object({ id: z.string() });
 
-const orderInput = z.object({ orderId: z.string(), quantity: z.number() });
+/**
+ * Every input carries the tenant, and that is not a field the domain gained:
+ * it is who the work is being done for. A worker has no request and no
+ * delivery to read it off, so a workflow is handed it by its caller and hands
+ * it on to each activity, where `temporal({ tenantOf })` lifts it onto the
+ * kernel's ambient unit record and the persistence adapters find it — the
+ * same place the HTTP header and the AMQP envelope land.
+ *
+ * On the input rather than a Temporal header because an activity's input is
+ * persisted in the event history: a replay a year later reconstructs the
+ * tenant along with everything else, which is the whole promise of running
+ * this on a durable platform.
+ */
+const tenanted = z.object({ tenantId: z.string() });
+
+const orderInput = tenanted.extend({ orderId: z.string(), quantity: z.number() });
+const orderTarget = tenanted.extend({ orderId: z.string() });
 
 /**
  * The forward steps: three calls into the application layer, one external
@@ -52,7 +68,7 @@ const reserveStock = defineActivity({
 });
 
 const arrangeShipping = defineActivity({
-  input: z.object({ orderId: z.string() }),
+  input: orderTarget,
   output: z.void(),
   errors: {
     ShippingUnavailable: { data: orderRef, nonRetryable: true },
@@ -71,7 +87,7 @@ const arrangeShipping = defineActivity({
  * whole example runs on this platform to get.
  */
 const releaseStock = defineActivity({
-  input: z.object({ orderId: z.string() }),
+  input: orderTarget,
   output: z.void(),
   activityOptions: {
     startToCloseTimeout: "1 minute",
@@ -80,7 +96,7 @@ const releaseStock = defineActivity({
 });
 
 const cancelPlacement = defineActivity({
-  input: z.object({ orderId: z.string() }),
+  input: orderTarget,
   output: z.void(),
   activityOptions: {
     startToCloseTimeout: "1 minute",
@@ -116,7 +132,8 @@ const fulfillOrder = defineWorkflow({
   activities: { place, reserveStock, arrangeShipping, releaseStock, cancelPlacement },
 });
 
-const amountInput = z.object({ orderId: z.string(), amount: z.number() });
+const amountInput = tenanted.extend({ orderId: z.string(), amount: z.number() });
+const authorizationTarget = tenanted.extend({ authorizationId: z.string() });
 
 const authorizePayment = defineActivity({
   input: amountInput,
@@ -129,7 +146,7 @@ const authorizePayment = defineActivity({
 });
 
 const capturePayment = defineActivity({
-  input: z.object({ authorizationId: z.string() }),
+  input: authorizationTarget,
   output: z.void(),
   activityOptions: {
     startToCloseTimeout: "1 minute",
@@ -138,7 +155,7 @@ const capturePayment = defineActivity({
 });
 
 const refundPayment = defineActivity({
-  input: z.object({ authorizationId: z.string() }),
+  input: authorizationTarget,
   output: z.void(),
   activityOptions: {
     startToCloseTimeout: "1 minute",

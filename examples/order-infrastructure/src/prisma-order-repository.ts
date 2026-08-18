@@ -3,7 +3,7 @@ import { OrderRepository } from "@btravstack/example-order-application";
 import { DuplicateOrder, Order, OrderNotFound } from "@btravstack/example-order-domain";
 import { Err, P, type Result } from "unthrown";
 
-import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
+import { OrderDatabase, currentTenant, type OrderDatabaseClient } from "./database.js";
 
 type OrderRow = { readonly orderId: string; readonly quantity: number };
 
@@ -23,7 +23,9 @@ const hydrate = (row: OrderRow): Result<Order, never> =>
  * The translation this whole layer exists for. `tryCreate`'s error channel is
  * Prisma's vocabulary — three tagged P-codes — and every one of them is named
  * here, because `mapErrCases` has no wildcard to hide behind. Only the
- * duplicate has a meaning the application shares; the other two describe a
+ * duplicate has a meaning the application shares — now the composite
+ * `(tenantId, orderId)` one, so two tenants may hold the same order id and
+ * neither sees the other's; the other two describe a
  * schema this adapter does not have (there is no relation to violate, and
  * `create` has no row of its own to miss), so reaching them means something is
  * wrong with the code, not with the request — the defect channel, not `E`.
@@ -40,16 +42,24 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
   // The event carries a payload, which is what makes it a create-or-replace
   // for its subject. Its tombstone twin is in `remove`.
   save: (order) =>
-    db
-      .$tryTransaction((tx) =>
-        tx.order.tryCreate({ data: { orderId: order.id, quantity: order.quantity } }).flatMap(() =>
-          tx.outboxMessage.tryCreate({
-            data: {
-              kind: "order",
-              subjectId: order.id,
-              payload: JSON.stringify({ quantity: order.quantity }),
-            },
-          }),
+    currentTenant()
+      .toAsync()
+      // Read once and threaded through both writes, so the row and its event
+      // carry the same tenant by construction rather than by two reads.
+      .flatMap((tenantId) =>
+        db.$tryTransaction((tx) =>
+          tx.order
+            .tryCreate({ data: { tenantId, orderId: order.id, quantity: order.quantity } })
+            .flatMap(() =>
+              tx.outboxMessage.tryCreate({
+                data: {
+                  tenantId,
+                  kind: "order",
+                  subjectId: order.id,
+                  payload: JSON.stringify({ quantity: order.quantity }),
+                },
+              }),
+            ),
         ),
       )
       .mapErrCases((matcher, defect) =>
@@ -61,8 +71,11 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
       .map(() => order),
 
   find: (id) =>
-    db.order
-      .tryFindUnique({ where: { orderId: id } })
+    currentTenant()
+      .toAsync()
+      .flatMap((tenantId) =>
+        db.order.tryFindUnique({ where: { tenantId_orderId: { tenantId, orderId: id } } }),
+      )
       .flatMap((row) => (row === null ? Err(new OrderNotFound({ id })) : hydrate(row))),
 
   // Compensation's persistence arm — `delete`, not `deleteMany`, because
@@ -85,12 +98,17 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
   // so a re-run of the saga's `cancelPlacement` cannot append a second
   // tombstone for an order already gone.
   remove: (id) =>
-    db
-      .$tryTransaction((tx) =>
-        tx.order.tryDelete({ where: { orderId: id } }).flatMap(() =>
-          tx.outboxMessage.tryCreate({
-            data: { kind: "order", subjectId: id, payload: null },
-          }),
+    currentTenant()
+      .toAsync()
+      .flatMap((tenantId) =>
+        db.$tryTransaction((tx) =>
+          tx.order
+            .tryDelete({ where: { tenantId_orderId: { tenantId, orderId: id } } })
+            .flatMap(() =>
+              tx.outboxMessage.tryCreate({
+                data: { tenantId, kind: "order", subjectId: id, payload: null },
+              }),
+            ),
         ),
       )
       .map(() => undefined)

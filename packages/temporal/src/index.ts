@@ -1,3 +1,4 @@
+export type { TenantOf } from "./activity-units.js";
 export { TemporalActivities, TemporalModule } from "./temporal-module.js";
 export type { TemporalModuleOptions } from "./temporal-module.js";
 export {

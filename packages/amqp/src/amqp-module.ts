@@ -14,6 +14,7 @@ import {
   type AnyAmqpContract,
   type HandlersInstanceOf,
 } from "./amqp-runtime.js";
+import type { TenantOf } from "./message-units.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
 type AmqpStarter<TContract extends AnyAmqpContract> = Module<
@@ -56,6 +57,8 @@ export type AmqpModuleOptions<
   readonly defaultConsumerOptions?: Record<string, unknown>;
   /** See `AmqpOptions.connectTimeoutMs`. */
   readonly connectTimeoutMs?: number;
+  /** See `AmqpOptions.tenantOf`. */
+  readonly tenantOf?: TenantOf;
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `AmqpRuntime` is added, since `start` resolves it. */
@@ -98,8 +101,15 @@ export const AmqpModule =
   >(
     options: AmqpModuleOptions<TContract, HandlersError, HandlersNeeds, I, P, X>,
   ) => {
-    const { contract, handlers, url, connectionOptions, defaultConsumerOptions, connectTimeoutMs } =
-      options;
+    const {
+      contract,
+      handlers,
+      url,
+      connectionOptions,
+      defaultConsumerOptions,
+      connectTimeoutMs,
+      tenantOf,
+    } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
@@ -109,6 +119,7 @@ export const AmqpModule =
       ...(connectionOptions === undefined ? {} : { connectionOptions }),
       ...(defaultConsumerOptions === undefined ? {} : { defaultConsumerOptions }),
       ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
+      ...(tenantOf === undefined ? {} : { tenantOf }),
     });
     // di's own `Module(name)({...})` over the augmented tuples: its return
     // type IS the sugar's — nothing spelled twice.

@@ -32,6 +32,7 @@
     "unthrown": "catalog:"
   },
   "devDependencies": {
+    "@btravstack/internal-test-infra": "workspace:*",
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@temporal-contract/testing": "catalog:",

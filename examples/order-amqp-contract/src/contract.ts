@@ -19,8 +19,13 @@ const parked = defineExchange("orders-dlx", { type: "direct" });
  * announcements, orchestration carries intent.
  *
  * The envelope is the whole vocabulary a reader needs to rebuild state:
- * `kind` is what sort of thing changed, `id` is which one — the key a reader
- * keys its own copy on — and `payload` is what it now is. **A null payload is
+ * `tenantId` is whose it is, `kind` is what sort of thing changed, `id` is
+ * which one — the key a reader keys its own copy on, WITHIN a tenant — and
+ * `payload` is what it now is. The tenant is on the wire rather than left
+ * ambient because a broadcast crosses processes: the relay reads it off the
+ * outbox row, and the subscriber's runtime puts it back on ITS ambient record
+ * (`amqp({ tenantOf })`), which is where the subscriber's own adapters find
+ * it again. **A null payload is
  * the tombstone**, the last word about a subject, saying it is gone. So the
  * first event for an id creates, later ones with a payload replace, and the
  * null one deletes; a subscriber needs no other event types and no schema
@@ -31,6 +36,7 @@ const parked = defineExchange("orders-dlx", { type: "direct" });
  */
 const orderChanged = defineMessage(
   z.object({
+    tenantId: z.string(),
     kind: z.literal("order"),
     id: z.string(),
     occurredAt: z.string(),

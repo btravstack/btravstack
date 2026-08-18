@@ -1,4 +1,4 @@
-import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { AmqpHandlers, AmqpModule, type TenantOf } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
   OrderApplicationModule,
@@ -22,6 +22,22 @@ import { NotificationsSlice } from "./slices/notifications/module.js";
  * defect at build.
  */
 export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]);
+
+/**
+ * Where this deployment's tenant lives on the wire: the contract's own
+ * envelope carries it, so the validated payload is where it is read from —
+ * the starter hands the whole delivery over precisely because only the
+ * application knows that.
+ *
+ * `message.payload` is `unknown` at the middleware boundary and validated by
+ * the time a handler sees it, so the narrowing is the one claim this line
+ * makes: the contract declares `tenantId: z.string()`, and a delivery that
+ * did not carry one never reaches a handler. What lands on the ambient record
+ * is what every adapter downstream scopes its queries by, which is how a fact
+ * committed by one tenant is read back as that tenant's in another process.
+ */
+const tenantOf: TenantOf = ({ message }) =>
+  (message.payload as { readonly tenantId: string }).tenantId;
 
 /**
  * The composition root of the broadcast deployment — now a list of slices
@@ -49,15 +65,23 @@ export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, or
  * tap. Both write paths leave the outbox an event, which is the property this
  * deployment exists to demonstrate.
  *
- * A constant: the broker URL and the relay's poll interval are read from the
- * environment inside the graph (`AmqpConfig` from `AMQP_URL`, `RelayConfig`
- * from `OUTBOX_POLL_MS`), so nothing has to be passed in — `main.ts` boots
+ * `tenantOf` is what makes the deployment multi-tenant on the READ side: the
+ * starter puts the delivery's tenant on the kernel's ambient unit record, and
+ * the persistence adapters scope every statement by it without a handler,
+ * use case or entity mentioning a tenant at all. The write side is the
+ * relay's `OUTBOX_TENANTS`, since a background sweep has no ambient record.
+ *
+ * A constant: the broker URL, the database and the relay's poll interval and
+ * tenants are read from the environment inside the graph (`AmqpConfig` from
+ * `AMQP_URL`, `DatabaseConfig` from `DATABASE_URL`, `RelayConfig` from
+ * `OUTBOX_POLL_MS` / `OUTBOX_TENANTS`), so nothing has to be passed in — `main.ts` boots
  * this value as is, and the specs boot it with `env` pointing at each test's
  * own vhost.
  */
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   contract: orderContract,
   handlers: orderHandlers,
+  tenantOf,
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,

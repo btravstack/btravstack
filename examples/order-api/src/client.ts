@@ -16,8 +16,24 @@ type Wire = RouterContractClient<typeof contract>;
  */
 export type OrderApiClient = ResultClient<Wire>;
 
+/**
+ * `headers` is what a multi-tenant caller says who it is with: the API reads
+ * `x-tenant-id` off the request (`OrderApi`'s `tenantOf`) and the kernel puts
+ * it on the unit's ambient record, where the persistence adapters find it.
+ * The contract says nothing about it, and neither does any procedure — a
+ * tenant is not an argument to placing an order, it is who is asking.
+ */
 export const createOrderApiClient = (
   origin: string,
-  prefix: `/${string}` = "/rpc",
-): OrderApiClient =>
-  createResultClient(createORPCClient<Wire>(new RPCLink({ origin, url: prefix })));
+  options: {
+    readonly prefix?: `/${string}`;
+    readonly headers?: Readonly<Record<string, string>>;
+  } = {},
+): OrderApiClient => {
+  const { prefix = "/rpc", headers } = options;
+  return createResultClient(
+    createORPCClient<Wire>(
+      new RPCLink({ origin, url: prefix, ...(headers === undefined ? {} : { headers }) }),
+    ),
+  );
+};

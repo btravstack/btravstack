@@ -1,9 +1,9 @@
-import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
+import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import {
   defineActivity,
@@ -11,10 +11,9 @@ import {
   defineWorkflow,
   type ContractDefinition,
 } from "@temporal-contract/contract";
-import type { Client } from "@temporalio/client";
-import { TestWorkflowEnvironment } from "@temporalio/testing";
+import { Client, Connection } from "@temporalio/client";
 import { OkAsync, fromSafePromise } from "unthrown";
-import { test } from "vitest";
+import { inject, test } from "vitest";
 import { z } from "zod";
 
 import { TemporalActivities, TemporalModule } from "./temporal-module.js";
@@ -27,14 +26,14 @@ import {
 import { TemporalWorkflowActivities } from "./workflow-activities.js";
 
 /**
- * The time-skipping server binary, cached where we decide rather than in the
- * OS temp directory — which CI wipes between jobs and macOS purges on its own
- * schedule — and with a year-long ttl rather than the SDK's one day.
+ * One Temporal server for the whole repository — see `internal/test-infra` —
+ * and a namespace of this spec file's own on it. That replaces the
+ * time-skipping test server this suite used to download and start per vitest
+ * worker: a namespace is Temporal's own isolation boundary, and nothing here
+ * ever advanced a clock, so the skippable one bought nothing that a shared
+ * server plus a private namespace does not.
  */
-const downloadDir = fileURLToPath(
-  new URL("../../../.cache/temporal-test-server/", import.meta.url),
-);
-mkdirSync(downloadDir, { recursive: true });
+type Server = { readonly address: string; readonly namespace: string };
 
 export class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 
@@ -321,7 +320,10 @@ type BootOptions = {
 };
 
 export type TemporalFixtures = {
-  readonly env: TestWorkflowEnvironment;
+  /** Where the shared server is, and the namespace this spec file owns on it. */
+  readonly server: Server;
+  /** A client bound to {@link server}'s namespace. */
+  readonly client: Client;
   readonly serve: (options?: BootOptions) => Promise<{
     readonly app: App;
     readonly client: Client;
@@ -346,11 +348,11 @@ export type TemporalFixtures = {
 /**
  * One booted application: the starter composed the way a composition root
  * composes it — `TemporalModule(name)({ contract, activities, workflows })`
- * over the application's providers — and started with the environment's
- * address in `env`, so every test opens and closes a connection of its own
- * rather than sharing the environment's.
+ * over the application's providers — and started against this file's own
+ * namespace on the shared server, so every test opens and closes a connection
+ * of its own rather than sharing the client's.
  */
-const compose = (env: TestWorkflowEnvironment, boot: Boot, options: BootOptions) => {
+const compose = (server: Server, boot: Boot, options: BootOptions) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Worker")({
     contract: { ...echoContract, taskQueue },
@@ -364,40 +366,46 @@ const compose = (env: TestWorkflowEnvironment, boot: Boot, options: BootOptions)
     ],
   });
   const app: App = boot(worker, {
-    env: options.env ?? { TEMPORAL_ADDRESS: env.address },
+    env: options.env ?? { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace },
     ...(options.drainTimeoutMs === undefined ? {} : { drainTimeoutMs: options.drainTimeoutMs }),
   });
   return { app, taskQueue };
 };
 
 export const it = test.extend<TemporalFixtures>({
-  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  env: async ({}, use) => {
-    const env = await TestWorkflowEnvironment.createTimeSkipping({
-      server: {
-        executable: { type: "cached-download", downloadDir, ttl: "365d" },
-      },
-    });
-    // Torn down after `serve`/`serveBroken` stopped their apps — a fixture's
-    // cleanup runs in reverse dependency order — so the time-skipping server
-    // process cannot leak even if an app assertion throws.
-    await use(env);
-    await env.teardown();
+  server: [
+    // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+    async ({}, use) => {
+      const address = `${inject("__TESTCONTAINERS_TEMPORAL_IP__")}:${inject("__TESTCONTAINERS_TEMPORAL_PORT_7233__")}`;
+      await use({ address, namespace: await createNamespace(address, "temporal-pkg") });
+    },
+    // Per FILE, not per test: registering a namespace costs a registry refresh
+    // on every Temporal service, while a task queue per test (which `compose`
+    // already mints) is what separates the tests inside one file.
+    { scope: "file" },
+  ],
+  client: async ({ server }, use) => {
+    const connection = await Connection.connect({ address: server.address });
+    const client = new Client({ connection, namespace: server.namespace });
+    // Closed after `serve`/`serveBroken` stopped their apps — a fixture's
+    // cleanup runs in reverse dependency order.
+    await use(client);
+    await connection.close();
   },
   boot: bootFixture(),
-  serve: async ({ env, boot }, use) => {
+  serve: async ({ server, client, boot }, use) => {
     await use(async (options = {}) => {
-      const { app, taskQueue } = compose(env, boot, options);
+      const { app, taskQueue } = compose(server, boot, options);
       await app.runtimeInfo();
-      return { app, client: env.client, taskQueue };
+      return { app, client, taskQueue };
     });
   },
-  serveBroken: async ({ env, boot }, use) => {
+  serveBroken: async ({ server, boot }, use) => {
     // A failure under test is served against a workflow module that exists, so
     // it is the only failure available; with nothing under test the module is
     // the failure.
     await use((options = {}) => {
-      const { app } = compose(env, boot, {
+      const { app } = compose(server, boot, {
         workflows:
           options.activities === undefined && options.env === undefined
             ? missingWorkflows
@@ -431,7 +439,7 @@ export const it = test.extend<TemporalFixtures>({
   slices: async ({}, use) => {
     await use(slicesOf());
   },
-  serveSliced: async ({ env, boot }, use) => {
+  serveSliced: async ({ server, client, boot }, use) => {
     await use(async (slices) => {
       const taskQueue = nextTaskQueue();
       const app: App = boot(
@@ -444,10 +452,10 @@ export const it = test.extend<TemporalFixtures>({
           // them, same as any other unmet need.
           provides: [...slices.pieces, Provider(Greeting)({ value: { text: "hello" } })],
         }),
-        { env: { TEMPORAL_ADDRESS: env.address } },
+        { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
       );
       await app.runtimeInfo();
-      return { app, client: env.client, taskQueue };
+      return { app, client, taskQueue };
     });
   },
 });

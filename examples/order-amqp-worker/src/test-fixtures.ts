@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { AmqpModule, type AmqpInfo, type AmqpRuntime } from "@btravstack/amqp";
@@ -13,8 +15,8 @@ import {
 } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { observability, type Line } from "@btravstack/observability";
-import { bootFixture, tapped, type Boot } from "@btravstack/testing";
-import type { TestAPI } from "vitest";
+import { bootFixture, tapped, unitFixture, type Boot, type InUnit } from "@btravstack/testing";
+import { inject, type TestAPI } from "vitest";
 
 import { orderHandlers } from "./module.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
@@ -87,6 +89,17 @@ const tappedAmqp = () => {
 export type AmqpFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
+  /** Runs a callback inside a kernel unit, the way a transport would. */
+  readonly inUnit: InUnit;
+  /**
+   * This test's tenant, and nobody else's. The database is shared by every
+   * workspace's run — one migration for the whole gate rather than one per
+   * test — so a UUID here is what separates this test's orders from the rest,
+   * and it is what `OUTBOX_TENANTS` points the relay at.
+   */
+  readonly tenant: string;
+  /** Runs a callback inside a unit carrying {@link tenant} — every write in a spec belongs in one. */
+  readonly asTenant: <T>(work: () => T | Promise<T>) => Promise<T>;
   /** Boots an app against this test's own vhost, through `boot` — so its shutdown is the fixture's. */
   readonly serve: Serve;
   /**
@@ -103,10 +116,28 @@ export type AmqpFixtures = {
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
   boot: bootFixture(),
-  serve: async ({ amqpConnectionUrl, boot }, use) => {
+  inUnit: unitFixture(),
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  tenant: async ({}, use) => {
+    await use(`t-${randomUUID()}`);
+  },
+
+  asTenant: async ({ inUnit, tenant }, use) => {
+    await use((work) => inUnit({ tenantId: tenant }, work));
+  },
+
+  serve: async ({ amqpConnectionUrl, tenant, boot }, use) => {
     // `OUTBOX_POLL_MS` tight on purpose: the specs wait on real broker round
-    // trips, and a production-sized idle sleep would be most of every test's clock.
-    const env = { AMQP_URL: amqpConnectionUrl, OUTBOX_POLL_MS: "25" };
+    // trips, and a production-sized idle sleep would be most of every test's
+    // clock. `OUTBOX_TENANTS` is this test's alone, so the relay sweeps its
+    // own rows and never another test's on the shared database.
+    const env = {
+      AMQP_URL: amqpConnectionUrl,
+      DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
+      OUTBOX_POLL_MS: "25",
+      OUTBOX_TENANTS: tenant,
+    };
 
     await use(async (module, options) => {
       const app = boot(module, { env, ...options });
