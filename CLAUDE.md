@@ -19,18 +19,22 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds eight published packages,
-`di` (the container), `config` (configuration from the environment, as
+pnpm workspace + turbo monorepo. `packages/` holds nine published packages,
+`contract` (contract-level markers shared by a client and the server that
+implements it — zero dependencies, zero peers), `di` (the container), `config`
+(configuration from the environment, as
 providers), `core` (the kernel), `testing` (the test harness — `bootFixture`,
 `tapped`, the in-memory runtime, the fake clock; peers on `core`),
 `observability` (the logging starter — a `Logger` port correlated with the
 ambient unit, a JSON sink, the kernel's events as lines), `http`
 (the HTTP starter — oRPC), `temporal` (the Temporal starter) and `amqp` (the
 AMQP starter). `di` was its own repository until it was merged here
-**with its history**; it is the one package that depends on nothing else in
+**with its history**; it and `contract` are the two packages that depend on
+nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability` and the three transport starters on
-`core`. Its own spec is `packages/di/CLAUDE.md`; the harness's is
+`core`. Its own spec is `packages/di/CLAUDE.md`; `contract`'s is
+`packages/contract/CLAUDE.md`; the harness's is
 `packages/testing/CLAUDE.md`; the logging starter's is
 `packages/observability/CLAUDE.md`.
 `examples/` holds ten private ones — a clean-architecture application
@@ -64,9 +68,9 @@ pnpm build            # tsdown dual CJS/ESM + d.ts
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all eight packages move as one
+## Versioning: all nine packages move as one
 
-The eight published packages share **one version number**, enforced by a
+The nine published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. A release bumps every one of them,
 whether or not it changed — Spring Boot's model, and the reason is the same:
 an application installs a kernel and two or three starters together, and
@@ -346,6 +350,7 @@ the copy with no gate is the one that lies.
 
 | Package                     | Surface lives in                   | Reference page             |
 | --------------------------- | ---------------------------------- | -------------------------- |
+| `@btravstack/contract`      | `packages/contract/CLAUDE.md`      | `/reference/contract`      |
 | `@btravstack/di`            | `packages/di/CLAUDE.md`            | `/reference/di/`           |
 | `@btravstack/config`        | `packages/config/CLAUDE.md`        | `/reference/config`        |
 | `@btravstack/core`          | `packages/core/CLAUDE.md`          | `/reference/core/`         |
@@ -681,7 +686,8 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   a hardcoded `^0.1.0` until the versions went lockstep; a literal range in a
   peer field is a pin that goes stale silently the first time the dependency
   is bumped. `di` itself peers on
-  `unthrown` and depends on nothing; `config` peers on `di` and `unthrown`;
+  `unthrown` and depends on nothing; `contract` depends on nothing at all, not
+  even `unthrown`; `config` peers on `di` and `unthrown`;
   `core` peers on all three; `testing` peers on all four (and not on
   `vitest` — `bootFixture` is a plain function in vitest's fixture shape);
   `observability` peers on all four too and has **no runtime dependency of its
@@ -707,14 +713,14 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `@btravstack/core#typecheck` an explicit edge on
   `@btravstack/testing#build`; `knip.json` ignores the dependency for
   `packages/core`. Four places; a change to one is a change to all.
-- `declarationMap: false` on all eight published packages — the published
+- `declarationMap: false` on all nine published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All eight published packages claim `engines: { node: ">=20" }` while the root
+- All nine published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -785,8 +791,9 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `packages/config/CLAUDE.md`, `packages/testing/CLAUDE.md`,
   `packages/http/CLAUDE.md`, `packages/temporal/CLAUDE.md` or
   `packages/amqp/CLAUDE.md`, whichever is where that package's public
-  surface lives — or `packages/di/CLAUDE.md` for the container. There are
-  **nine** `CLAUDE.md` files; naming the wrong one is how the last drift
+  surface lives — or `packages/di/CLAUDE.md` for the container, or
+  `packages/contract/CLAUDE.md` for the auth marker. There are
+  **ten** `CLAUDE.md` files; naming the wrong one is how the last drift
   happened.
 
 ## Documentation site
@@ -802,12 +809,12 @@ was folded in here when the container was merged; nothing under
 
 - **TypeDoc runs from `docs/`, not from the packages** — it needs its own
   TypeScript (`catalog:typedoc` pins 6.0.3; 7.x is the native port and ships
-  no `typescript.js`). One `typedoc.<name>.json` per package — eight — points
+  no `typescript.js`). One `typedoc.<name>.json` per package — nine — points
   at that package's `src/index.ts` (core's one entry point; the doubles are
   `typedoc.testing.json`'s, and `typedoc.observability.json` names two entry
   points, `src/index.ts` and `src/pino.ts`) and writes straight into
   `api/<name>/` (gitignored; `docs/api/index.md` is the one committed file
-  there); `scripts/build-api.ts` runs the eight concurrently.
+  there); `scripts/build-api.ts` runs the nine concurrently.
   The package list is repeated in four places that must stay in sync: the
   configs, `build-api.ts`, `@btravstack/docs#build`'s `dependsOn` in
   `turbo.json` (explicit `<pkg>#build` edges — the site does not _depend_ on

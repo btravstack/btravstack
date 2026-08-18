@@ -202,6 +202,7 @@ export default defineConfig({
           text: "API Reference",
           items: [
             { text: "Overview", link: "/api/" },
+            { text: "@btravstack/contract", link: "/api/contract/" },
             { text: "@btravstack/di", link: "/api/di/" },
             { text: "@btravstack/config", link: "/api/config/" },
             { text: "@btravstack/core", link: "/api/core/" },

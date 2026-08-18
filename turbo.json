@@ -32,6 +32,7 @@
     },
     "@btravstack/docs#build": {
       "dependsOn": [
+        "@btravstack/contract#build",
         "@btravstack/di#build",
         "@btravstack/config#build",
         "@btravstack/core#build",

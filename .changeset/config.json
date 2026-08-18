@@ -8,6 +8,7 @@
   "ignore": [],
   "fixed": [
     [
+      "@btravstack/contract",
       "@btravstack/di",
       "@btravstack/config",
       "@btravstack/core",
