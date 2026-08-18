@@ -17,6 +17,14 @@ import type { AsyncResult } from "unthrown";
  * adapter, because the use cases own the shape they need — the direction that
  * keeps the dependency arrow pointing inwards.
  *
+ * **Every method names its tenant, and that is the application's design
+ * rather than the framework's.** This deployment serves several tenants from
+ * one database, so "which tenant" is part of what a repository is being asked
+ * — not something read from an ambient store, and not something the kernel or
+ * a starter knows about. Making it a parameter is what keeps it visible: a
+ * use case that forgot to pass one does not compile, and a test needs no
+ * machinery to set one.
+ *
  * Both write paths promise more than a row: `save` also leaves an event in
  * the outbox and `remove` leaves a **tombstone**, each atomically — the write
  * and the fact of the write commit or roll back together, so a subscriber can
@@ -26,9 +34,9 @@ import type { AsyncResult } from "unthrown";
  * tombstone).
  */
 export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (order: Order) => AsyncResult<Order, DuplicateOrder>;
-  readonly find: (id: string) => AsyncResult<Order, OrderNotFound>;
-  readonly remove: (id: string) => AsyncResult<void, OrderNotFound>;
+  readonly save: (tenantId: string, order: Order) => AsyncResult<Order, DuplicateOrder>;
+  readonly find: (tenantId: string, id: string) => AsyncResult<Order, OrderNotFound>;
+  readonly remove: (tenantId: string, id: string) => AsyncResult<void, OrderNotFound>;
 }> {}
 
 /**
@@ -40,7 +48,7 @@ export class OrderRepository extends Port("OrderRepository")<{
  * layer to redesign.
  */
 export class CustomerRepository extends Port("CustomerRepository")<{
-  readonly find: (id: string) => AsyncResult<Customer, CustomerNotFound>;
+  readonly find: (tenantId: string, id: string) => AsyncResult<Customer, CustomerNotFound>;
 }> {}
 
 /**
@@ -74,14 +82,12 @@ export type OrderEvent = {
  * operations are infallible in the application's terms — a database that will
  * not answer is a defect, not a domain outcome.
  *
- * `pending` takes its tenant as an **argument**, and it is the only port here
- * that does. Every other adapter reads the tenant off the ambient unit record,
- * because every other caller runs inside a unit; the relay does not — it is a
- * background sweep on its own clock, with no delivery, request or activity
- * behind it and therefore no ambient record to read. A tenant it cannot read
- * is a tenant it must be told, and "which tenants does this relay serve" is
- * genuine deployment configuration (`OUTBOX_TENANTS`) rather than something to
- * infer. `markPublished` needs none: an outbox id already names one row.
+ * `pending` names its tenant like every other read here. The relay that calls
+ * it is the one caller with no request, delivery or activity behind it — it is
+ * a background sweep on its own clock — so "which tenants does this relay
+ * serve" is genuine deployment configuration (`OUTBOX_TENANTS`) rather than
+ * something to infer. `markPublished` needs no tenant: an outbox id already
+ * names one row.
  */
 export class Outbox extends Port("Outbox")<{
   readonly pending: (tenantId: string, limit: number) => AsyncResult<readonly OrderEvent[], never>;
@@ -122,15 +128,16 @@ export class PaymentService extends Port("PaymentService")<{
 
 export class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (
+    tenantId: string,
     id: string,
     quantity: number,
   ) => AsyncResult<Order, InvalidQuantity | DuplicateOrder>;
 }> {}
 
 export class FindOrder extends Port("FindOrder")<{
-  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
+  readonly execute: (tenantId: string, id: string) => AsyncResult<Order, OrderNotFound>;
 }> {}
 
 export class FindCustomer extends Port("FindCustomer")<{
-  readonly execute: (id: string) => AsyncResult<Customer, CustomerNotFound>;
+  readonly execute: (tenantId: string, id: string) => AsyncResult<Customer, CustomerNotFound>;
 }> {}

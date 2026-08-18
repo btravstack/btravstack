@@ -31,7 +31,7 @@ import {
   type AsyncResult,
 } from "unthrown";
 
-import { activityUnits, type TenantOf } from "./activity-units.js";
+import { activityUnits } from "./activity-units.js";
 
 /** What the worker publishes once it is polling, read back through `RunningApp.runtimeInfo()`. */
 export type TemporalInfo = {
@@ -131,12 +131,6 @@ export type TemporalOptions<C extends ContractDefinition> = {
   readonly forceAfter?: Duration;
   /** Temporal's `shutdownGraceTime`. Default `10 seconds`. */
   readonly gracePeriod?: Duration;
-  /**
-   * Reads the tenant off an activity invocation and puts it on the kernel's
-   * ambient unit record, where an infrastructure adapter can find it. Omitted,
-   * no attempt carries a tenant. See {@link TenantOf}.
-   */
-  readonly tenantOf?: TenantOf;
 };
 
 const DEFAULT_GRACE: Duration = "10 seconds";
@@ -240,7 +234,7 @@ const createWorker = <C extends ContractDefinition>(
     () =>
       declareActivitiesHandler({
         contract: options.contract,
-        middleware: activityUnits(host, options.tenantOf),
+        middleware: activityUnits(host),
         activities,
       }),
     startFailed,

@@ -25,7 +25,7 @@ export const customersController = HttpController("CustomersController", contrac
     sync: (find) => ({
       find: ({ errors }, input) =>
         find
-          .execute(input.id)
+          .execute(input.tenantId, input.id)
           .map(view)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("CustomerNotFound"), (error) =>

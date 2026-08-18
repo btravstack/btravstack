@@ -16,7 +16,7 @@ import { orderContract, type OrderContract } from "@btravstack/example-order-tem
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
-import { bootFixture, tapped, unitFixture, type Boot, type InUnit } from "@btravstack/testing";
+import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import {
   bundleFor,
@@ -30,7 +30,7 @@ import { inject, test } from "vitest";
 
 import { BillingModule } from "./billing.js";
 import { FulfillmentModule } from "./fulfillment.js";
-import { orderActivities, tenantOf } from "./module.js";
+import { orderActivities } from "./module.js";
 import { chargeOrder } from "./slices/billing/activities.js";
 import { fulfillOrder } from "./slices/fulfillment/activities.js";
 
@@ -174,13 +174,10 @@ export type TemporalFixtures = {
    * This test's tenant, and nobody else's. The database is shared by every
    * workspace's run — one migration for the whole gate rather than one per
    * test — so a UUID here is what keeps one test's `o-1` from being another's.
-   * It rides every workflow's arguments, which is how it reaches the adapters.
+   * It rides every workflow's arguments — the contract declares it — which is
+   * how it reaches the adapters.
    */
   readonly tenant: string;
-  /** Runs a callback inside a unit carrying {@link tenant} — how a spec reads the repository back. */
-  readonly asTenant: <T>(work: () => T | Promise<T>) => Promise<T>;
-  /** Runs a callback inside a kernel unit, the way a transport would. */
-  readonly inUnit: InUnit;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
@@ -206,15 +203,10 @@ export const it = test.extend<TemporalFixtures>({
     { scope: "file" },
   ],
   boot: bootFixture(),
-  inUnit: unitFixture(),
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tenant: async ({}, use) => {
     await use(`t-${randomUUID()}`);
-  },
-
-  asTenant: async ({ inUnit, tenant }, use) => {
-    await use((work) => inUnit({ tenantId: tenant }, work));
   },
 
   serve: async ({ server, boot }, use) => {
@@ -249,7 +241,6 @@ export const it = test.extend<TemporalFixtures>({
       const worker = TemporalModule("StubTemporalWorker")({
         contract,
         activities: orderActivities,
-        tenantOf,
         workflows: { workflowBundle },
         imports: [module, BillingModule],
         provides: [fulfillOrder, chargeOrder],

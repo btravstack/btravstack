@@ -8,7 +8,9 @@ describe("FindCustomer", () => {
   it("returns the entity the repository holds, never a wire shape", async ({ testModule }) => {
     // GIVEN the application wired over an in-memory repository
     // WHEN a customer it holds is looked up
-    const result = await Module.scoped(testModule, (ctx) => ctx.get(FindCustomer).execute("c-1"));
+    const result = await Module.scoped(testModule, (ctx) =>
+      ctx.get(FindCustomer).execute("acme", "c-1"),
+    );
 
     // THEN the use case answers with the domain's own entity — converting it
     // for a transport is the controller's job, one layer out
@@ -19,7 +21,7 @@ describe("FindCustomer", () => {
     // GIVEN the same repository
     // WHEN an id nobody registered is looked up
     const result = await Module.scoped(testModule, (ctx) =>
-      ctx.get(FindCustomer).execute("missing"),
+      ctx.get(FindCustomer).execute("acme", "missing"),
     );
 
     // THEN absence is a modeled error, not an empty success

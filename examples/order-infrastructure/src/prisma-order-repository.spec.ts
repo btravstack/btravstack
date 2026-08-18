@@ -2,8 +2,7 @@ import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { OrderRepository } from "@btravstack/example-order-application";
 import { fromSafePromise } from "unthrown";
-import { inject } from "vitest";
-import { describe, expect, vi } from "vitest";
+import { describe, expect, inject, vi } from "vitest";
 
 import { OrderPersistenceModule } from "./index.js";
 import { it } from "./test-fixtures.js";
@@ -34,49 +33,47 @@ const scopedPersistence = (applicationName?: string) =>
   });
 
 describe("the Prisma OrderRepository", () => {
-  it("hands back the entity it saved", async ({ asTenant, repository, anOrder }) => {
+  it("hands back the entity it saved", async ({ tenant, repository, anOrder }) => {
     // GIVEN this test's own tenant
     // WHEN an order is saved under it
     // THEN the write answers with the entity itself
-    await expect(asTenant(() => repository.save(anOrder("o-1", 3)))).resolves.toBeOkWith({
+    await expect(repository.save(tenant, anOrder("o-1", 3))).toBeOkWith({
       id: "o-1",
       quantity: 3,
     });
   });
 
-  it("reads a saved order back as the same entity", async ({ asTenant, repository, anOrder }) => {
+  it("reads a saved order back as the same entity", async ({ tenant, repository, anOrder }) => {
     // GIVEN an order saved under this test's tenant
     // WHEN it is read back — chained, so the write's own `Result` is consumed
     // and a failed write cannot be mistaken for a failed read
-    const roundTripped = await asTenant(() =>
-      repository.save(anOrder("o-1", 3)).flatMap(() => repository.find("o-1")),
-    );
+    const roundTripped = await repository
+      .save(tenant, anOrder("o-1", 3))
+      .flatMap(() => repository.find(tenant, "o-1"));
 
     // THEN the round trip is lossless
     expect(roundTripped).toBeOkWith({ id: "o-1", quantity: 3 });
   });
 
-  it("deletes the one row the unique key names", async ({ asTenant, repository, anOrder }) => {
+  it("deletes the one row the unique key names", async ({ tenant, repository, anOrder }) => {
     // GIVEN a stored order
     // WHEN it is removed and then looked for — chained, so a failed removal
     // cannot be mistaken for a successful one
-    const afterRemoval = await asTenant(() =>
-      repository
-        .save(anOrder("o-1", 3))
-        .flatMap(() => repository.remove("o-1"))
-        .flatMap(() => repository.find("o-1")),
-    );
+    const afterRemoval = await repository
+      .save(tenant, anOrder("o-1", 3))
+      .flatMap(() => repository.remove(tenant, "o-1"))
+      .flatMap(() => repository.find(tenant, "o-1"));
 
     // THEN it is gone: `(tenantId, orderId)` carries the UNIQUE index, so this
     // is a single-row `delete`, not a batch whose count has to be interpreted
     expect(afterRemoval).toBeErrTagged("OrderNotFound", { id: "o-1" });
   });
 
-  it("answers OrderNotFound when there is nothing to remove", async ({ asTenant, repository }) => {
+  it("answers OrderNotFound when there is nothing to remove", async ({ tenant, repository }) => {
     // GIVEN a tenant with nothing in it
     // WHEN a placement that never landed is compensated — what a re-run of the
     // saga's `cancelPlacement` does
-    const removal = await asTenant(() => repository.remove("o-absent"));
+    const removal = await repository.remove(tenant, "o-absent");
 
     // THEN Prisma's P2025 arrives as the domain's own value, so the
     // compensation can ignore it on purpose rather than crash on a throw
@@ -84,15 +81,15 @@ describe("the Prisma OrderRepository", () => {
   });
 
   it("translates a real unique-constraint violation into DuplicateOrder", async ({
-    asTenant,
+    tenant,
     repository,
     anOrder,
   }) => {
     // GIVEN an order already stored in this tenant
     // WHEN the same id is saved again, in the same tenant
-    const duplicate = await asTenant(() =>
-      repository.save(anOrder("o-1", 1)).flatMap(() => repository.save(anOrder("o-1", 2))),
-    );
+    const duplicate = await repository
+      .save(tenant, anOrder("o-1", 1))
+      .flatMap(() => repository.save(tenant, anOrder("o-1", 2)));
 
     // THEN the load-bearing assertion: the UNIQUE index on
     // `Order(tenantId, orderId)` raises a real P2002, `@unthrown/prisma` hands
@@ -102,20 +99,18 @@ describe("the Prisma OrderRepository", () => {
     expect(duplicate).toBeErrTagged("DuplicateOrder", { id: "o-1" });
   });
 
-  it("returns the domain's OrderNotFound for an unknown id", async ({ asTenant, repository }) => {
+  it("returns the domain's OrderNotFound for an unknown id", async ({ tenant, repository }) => {
     // GIVEN a tenant with nothing in it
     // WHEN an unknown id is looked up
     // THEN absence is the one thing `find` reports as an error
-    await expect(asTenant(() => repository.find("missing"))).resolves.toBeErrTagged(
-      "OrderNotFound",
-      { id: "missing" },
-    );
+    await expect(repository.find(tenant, "missing")).toBeErrTagged("OrderNotFound", {
+      id: "missing",
+    });
   });
 });
 
 describe("tenancy", () => {
   it("lets two tenants hold the same order id without either seeing the other", async ({
-    inUnit,
     tenant,
     repository,
     anOrder,
@@ -123,53 +118,35 @@ describe("tenancy", () => {
     // GIVEN the same order id placed by two different tenants — which the
     // composite unique key permits and a single-tenant schema would not
     const other = `${tenant}-other`;
-    await inUnit({ tenantId: tenant }, () => repository.save(anOrder("o-shared", 3)));
-    await inUnit({ tenantId: other }, () => repository.save(anOrder("o-shared", 7)));
+    const seen = await repository
+      .save(tenant, anOrder("o-shared", 3))
+      .flatMap(() => repository.save(other, anOrder("o-shared", 7)))
+      .flatMap(() => repository.find(tenant, "o-shared"));
 
-    // WHEN each tenant reads that id back
-    const seen = await inUnit({ tenantId: tenant }, () => repository.find("o-shared"));
-
-    // THEN the read is scoped to the unit's own tenant: the first tenant's
-    // quantity, never the second's, and never a duplicate error at the write
+    // WHEN the first tenant reads that id back
+    // THEN the read is scoped to the tenant the CALLER named: the first
+    // tenant's quantity, never the second's, and never a duplicate at the write
     expect(seen).toBeOkWith({ id: "o-shared", quantity: 3 });
   });
 
   it("hides another tenant's order entirely, rather than merely reading past it", async ({
-    inUnit,
     tenant,
     repository,
     anOrder,
   }) => {
     // GIVEN an order that belongs to somebody else
-    await inUnit({ tenantId: `${tenant}-other` }, () => repository.save(anOrder("o-theirs", 3)));
+    const seen = await repository
+      .save(`${tenant}-other`, anOrder("o-theirs", 3))
+      .flatMap(() => repository.find(tenant, "o-theirs"));
 
     // WHEN this tenant looks for it
-    const seen = await inUnit({ tenantId: tenant }, () => repository.find("o-theirs"));
-
     // THEN it does not exist as far as this tenant is concerned
     expect(seen).toBeErrTagged("OrderNotFound", { id: "o-theirs" });
-  });
-
-  it("refuses a repository call made outside any unit", async ({ repository }) => {
-    // GIVEN no unit at all — the wiring fault this guard exists for
-    // WHEN a read is attempted
-    const orphaned = await repository.find("o-1");
-
-    // THEN it is a defect, not a widened error channel: no caller did anything
-    // recoverable, and no use case could act on it
-    expect(orphaned).toBeDefectWith(
-      expect.objectContaining({ message: expect.stringContaining("No tenant") }),
-    );
   });
 });
 
 describe("the read path's error channel", () => {
-  it("surfaces a corrupt row as a defect, not as an error", async ({
-    db,
-    tenant,
-    asTenant,
-    repository,
-  }) => {
+  it("surfaces a corrupt row as a defect, not as an error", async ({ db, tenant, repository }) => {
     // GIVEN a row written straight past Prisma into this test's tenant,
     // carrying a quantity the entity's invariant rejects
     await db.$executeRawUnsafe(
@@ -178,7 +155,7 @@ describe("the read path's error channel", () => {
     );
 
     // WHEN it is read back
-    const corrupt = await asTenant(() => repository.find("o-corrupt"));
+    const corrupt = await repository.find(tenant, "o-corrupt");
 
     // THEN it is an unmodelled failure, so it arrives as a defect carrying the
     // entity's own rejection rather than widening `E` with infrastructure
@@ -189,29 +166,24 @@ describe("the read path's error channel", () => {
 
 describe("OrderPersistenceModule", () => {
   it("satisfies the application's OrderRepository need inside a scope", async ({
-    asTenant,
+    tenant,
     anOrder,
   }) => {
     // GIVEN the module the composition root imports, plus the environment the
     // kernel would otherwise provide
     // WHEN a scope is opened over it and both operations run under a tenant
-    const result = await asTenant(() =>
-      Module.scoped(scopedPersistence(), (ctx) => {
-        const repository = ctx.get(OrderRepository);
-        return repository.save(anOrder("o-1", 5)).flatMap(() => repository.find("o-1"));
-      }),
-    );
+    const result = await Module.scoped(scopedPersistence(), (ctx) => {
+      const repository = ctx.get(OrderRepository);
+      return repository
+        .save(tenant, anOrder("o-1", 5))
+        .flatMap(() => repository.find(tenant, "o-1"));
+    });
 
     // THEN the port resolves to a working repository
     expect(result).toBeOkWith({ id: "o-1", quantity: 5 });
   });
 
-  it("ends the connection pool when the scope closes", async ({
-    asTenant,
-    db,
-    tenant,
-    anOrder,
-  }) => {
+  it("ends the connection pool when the scope closes", async ({ db, tenant, anOrder }) => {
     // GIVEN a scope whose connections carry a name no other test uses, so they
     // can be counted on a server the whole repository shares
     const applicationName = `pool-${tenant}`;
@@ -225,13 +197,11 @@ describe("OrderPersistenceModule", () => {
 
     // WHEN the scope acquires the database, writes through it, and closes
     let duringScope = 0;
-    await asTenant(() =>
-      Module.scoped(scopedPersistence(applicationName), (ctx) =>
-        ctx
-          .get(OrderRepository)
-          .save(anOrder("o-1", 1))
-          .flatMap(() => fromSafePromise(backends().then((n) => (duringScope = n)))),
-      ),
+    await Module.scoped(scopedPersistence(applicationName), (ctx) =>
+      ctx
+        .get(OrderRepository)
+        .save(tenant, anOrder("o-1", 1))
+        .flatMap(() => fromSafePromise(backends().then((n) => (duringScope = n)))),
     );
     // Synchronising, not asserting: PostgreSQL retires a backend a moment
     // after the client hangs up.

@@ -4,10 +4,9 @@ import {
   type Runtime,
   type RuntimeHost,
   type Serving,
-  type UnitMeta,
 } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
-import { Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
+import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 export type SubmittedUnit<T, E> = {
   readonly settle: (result: Result<T, E>) => void;
@@ -49,26 +48,6 @@ export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   readonly accepting: () => boolean;
   readonly serving: () => Serving<TestRuntimeInfo>;
   readonly submit: <T = string, E = never>() => SubmittedUnit<T, E>;
-  /**
-   * Runs `work` INSIDE one unit and answers what it answered — the writer
-   * half of `currentUnit()`, which the kernel deliberately does not export:
-   * only a runtime opens a unit, and in a test this runtime is the one that
-   * does. `meta` fills in what the caller cares about (`tenantId`, a
-   * `traceId`); `kind` and `id` are **defaults** it is spread over, so a spec
-   * may pin either. The default `id` is unique per call — the obligation a
-   * real runtime carries — and overriding it costs only what it costs a
-   * runtime, a shared `traceId`, since `UnitRecord.unitId` is minted by the
-   * kernel and is unique whatever `meta` says.
-   *
-   * Returns a bare `Promise`: one of the four documented exceptions to "every
-   * async API returns an `AsyncResult`" (root `CLAUDE.md`, thesis 6), because
-   * `work` is the test's own body.
-   *
-   * `submit()` is the other shape and answers a different question: it hands
-   * back a unit the test settles from outside, for asserting on the drain.
-   * This one is for asserting on what code running inside a unit READ.
-   */
-  readonly inUnit: <T>(meta: Partial<UnitMeta>, work: () => T | Promise<T>) => Promise<T>;
 };
 
 export const testRuntime = (name = "test"): TestRuntime => {
@@ -141,43 +120,6 @@ export const testRuntime = (name = "test"): TestRuntime => {
       });
 
       return { settle, result, signal: forwarded.signal };
-    },
-    inUnit: async <T>(meta: Partial<UnitMeta>, work: () => T | Promise<T>): Promise<T> => {
-      if (run === undefined || !accepting) {
-        // oxlint-disable-next-line unthrown/no-throw -- same rationale as `serving()` above: a test that forgot to start the runtime wants this loud, not routed
-        throw new Error("[test-runtime] not accepting work");
-      }
-
-      submitted += 1;
-      type Outcome =
-        | { readonly ok: true; readonly value: T }
-        | { readonly ok: false; readonly cause: unknown };
-
-      // The outcome travels back OUT of the unit rather than being captured
-      // by a closure, so nothing here depends on when the work ran. `work` is
-      // the test's body, and a failing `expect` inside it must reach the
-      // runner as a throw: folding it into the unit's `Result` would turn
-      // that failure into a `Defect` a caller can forget to unwrap — a green
-      // test that asserted nothing, which is the trap `bootFixture`'s own
-      // TSDoc names.
-      const settled = await run<Outcome, never>(
-        { kind: "test", id: `u${submitted}`, ...meta },
-        async () => {
-          try {
-            return Ok({ ok: true, value: await work() });
-          } catch (cause) {
-            return Ok({ ok: false, cause });
-          }
-        },
-      );
-
-      // `.get()` compiles only on a `Result<T, never>`, which is what the
-      // empty error channel above makes this — and it panics on a Defect,
-      // which is the right answer for a unit the kernel itself could not run.
-      const outcome = settled.get();
-      // oxlint-disable-next-line unthrown/no-throw -- the harness rethrow: this is the only way a failing assertion inside `work` reaches the test runner
-      if (!outcome.ok) throw outcome.cause;
-      return outcome.value;
     },
   };
 

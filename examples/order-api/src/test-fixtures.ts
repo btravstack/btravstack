@@ -24,7 +24,7 @@ import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { inject, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
-import { OrderApi, orderRouter, tenantOf } from "./module.js";
+import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 import { customersController } from "./slices/customers/controller.js";
 import { CustomersSlice } from "./slices/customers/module.js";
@@ -45,7 +45,7 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
       Provider(OrderRepository)({ value: repository }),
       Provider(CustomerRepository)({
         value: {
-          find: (id: string) =>
+          find: (_tenantId: string, id: string) =>
             id === "c-1"
               ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
               : ErrAsync(new CustomerNotFound({ id })),
@@ -79,7 +79,6 @@ const recorderOf = () => {
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
     router: orderRouter,
-    tenantOf,
     imports: [
       OrderApplicationModule,
       CustomerApplicationModule,
@@ -108,7 +107,6 @@ const recordingApi = () => {
   return {
     api: HttpModule("RecordingApi")({
       router: orderRouter,
-      tenantOf,
       // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
       // real root, and this root exists to be read.
       imports: [
@@ -130,8 +128,8 @@ const recordingApi = () => {
  */
 const stubbedApi = () =>
   apiWith({
-    save: (order) => OkAsync(order),
-    find: (id) => ErrAsync(new OrderNotFound({ id })),
+    save: (_tenantId, order) => OkAsync(order),
+    find: (_tenantId, id) => ErrAsync(new OrderNotFound({ id })),
     remove: () => OkAsync(),
   });
 
@@ -142,7 +140,7 @@ const stubbedApi = () =>
  */
 const unmodelledApi = () =>
   apiWith({
-    save: (order) => OkAsync(order),
+    save: (_tenantId, order) => OkAsync(order),
     find: () => fromSafePromise(Promise.reject(new Error("the database is on fire"))),
     remove: () => OkAsync(),
   });
@@ -165,8 +163,8 @@ const gatedApi = () => {
 
   return {
     api: apiWith({
-      save: (order) => OkAsync(order),
-      find: (id) => {
+      save: (_tenantId, order) => OkAsync(order),
+      find: (_tenantId, id) => {
         entered();
         return fromSafePromise(held.then(() => anOrder(id, 1)));
       },
@@ -195,8 +193,7 @@ export type ApiFixtures = {
    * This test's tenant, and nobody else's. The database is shared by every
    * workspace's run — one migration for the whole gate rather than one per
    * test — so a UUID here is what keeps one spec's `o-1` from being another's.
-   * `clientFor` sends it as `x-tenant-id`, which is what the real root's
-   * `tenantOf` reads.
+   * Every call names it, because the contract does.
    */
   readonly tenant: string;
   /**
@@ -259,10 +256,9 @@ export const it = test.extend<ApiFixtures>({
     await use((module, options) => boot(module, { unit: RequestModule, ...options }));
   },
 
-  clientFor: async ({ tenant }, use) => {
-    await use(async (app) =>
-      createOrderApiClient(await originOf(app), { headers: { "x-tenant-id": tenant } }),
-    );
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  clientFor: async ({}, use) => {
+    await use(async (app) => createOrderApiClient(await originOf(app)));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

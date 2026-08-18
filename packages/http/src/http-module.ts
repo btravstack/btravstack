@@ -7,7 +7,7 @@ import {
   type Provider,
 } from "@btravstack/di";
 
-import { HttpRuntime, http, type HttpConfig, type TenantOf } from "./http-runtime.js";
+import { HttpRuntime, http, type HttpConfig } from "./http-runtime.js";
 import type { HttpRouterPort } from "./orpc.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
@@ -33,8 +33,6 @@ export type HttpModuleOptions<
   readonly router: Provider<HttpRouterPort, RouterError, RouterNeeds>;
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
   readonly prefix?: `/${string}`;
-  /** See `HttpOptions.tenantOf`. */
-  readonly tenantOf?: TenantOf;
   /** Pins for a test — otherwise `PORT`/`HOST` from the environment. */
   readonly port?: number;
   readonly hostname?: string;
@@ -75,13 +73,12 @@ export const HttpModule =
   >(
     options: HttpModuleOptions<RouterError, RouterNeeds, I, P, X>,
   ) => {
-    const { router, prefix, port, hostname, tenantOf } = options;
+    const { router, prefix, port, hostname } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
     const starter = http({
       ...(prefix === undefined ? {} : { prefix }),
-      ...(tenantOf === undefined ? {} : { tenantOf }),
       ...(port === undefined ? {} : { port }),
       ...(hostname === undefined ? {} : { hostname }),
     });

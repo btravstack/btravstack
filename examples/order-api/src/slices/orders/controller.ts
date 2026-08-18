@@ -24,6 +24,11 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * matcher has no wildcard to fall back on. A new domain error is a compile
  * error here, at the one place that has to decide what the client sees.
  *
+ * `input.tenantId` is the tenant the caller named, handed straight to the use
+ * case. The transport reads nothing about it and the starter knows nothing
+ * about it — tenancy is this application's design, declared in its own
+ * contract, and `@btravstack/http` has no concept of one.
+ *
  * The use cases arrive as arguments, not through oRPC's context: di injects
  * them into the provider — `HttpController(name, contract)` is di's own
  * `Provider(port)` on a port it mints for this controller, so this is a
@@ -35,7 +40,7 @@ export const ordersController = HttpController("OrdersController", contract.orde
     sync: (place, find) => ({
       place: ({ errors }, input) =>
         place
-          .execute(input.id, input.quantity)
+          .execute(input.tenantId, input.id, input.quantity)
           .map(view)
           .mapErrCases((matcher) =>
             matcher
@@ -48,7 +53,7 @@ export const ordersController = HttpController("OrdersController", contract.orde
           ),
       find: ({ errors }, input) =>
         find
-          .execute(input.id)
+          .execute(input.tenantId, input.id)
           .map(view)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), (error) =>

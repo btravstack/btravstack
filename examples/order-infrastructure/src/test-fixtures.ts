@@ -7,7 +7,6 @@ import type {
   OrderRepository,
 } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
-import { unitFixture, type InUnit } from "@btravstack/testing";
 import { inject, test } from "vitest";
 
 import {
@@ -32,14 +31,13 @@ export type PersistenceFixtures = {
    * whole trick: a shared database costs one migration for the run instead of
    * one per test, and isolation comes from the tenant column rather than from
    * a database nobody else can see.
+   *
+   * Every repository call takes it as its first argument, because the ports
+   * say so. There is no fixture that "enters" a tenant and no ambient store to
+   * set — which is exactly what makes these specs readable: what a call is
+   * scoped to is written at the call.
    */
   readonly tenant: string;
-  /**
-   * Runs a callback inside a kernel unit carrying {@link tenant}. Every
-   * repository call belongs in one: the adapters read the tenant off the
-   * ambient record, exactly as they do under a real transport.
-   */
-  readonly asTenant: <T>(work: () => T | Promise<T>) => Promise<T>;
   readonly repository: ServiceOf<OrderRepository>;
   readonly customers: ServiceOf<CustomerRepository>;
   readonly outbox: ServiceOf<Outbox>;
@@ -53,9 +51,7 @@ export type PersistenceFixtures = {
   readonly aCustomer: (id: string, name: string) => Promise<void>;
 };
 
-export const it = test.extend<PersistenceFixtures & { inUnit: InUnit }>({
-  inUnit: unitFixture(),
-
+export const it = test.extend<PersistenceFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   db: async ({}, use) => {
     // `.get()` compiles only on a `Result<T, never>`, which is exactly what
@@ -69,10 +65,6 @@ export const it = test.extend<PersistenceFixtures & { inUnit: InUnit }>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   tenant: async ({}, use) => {
     await use(`t-${randomUUID()}`);
-  },
-
-  asTenant: async ({ inUnit, tenant }, use) => {
-    await use((work) => inUnit({ tenantId: tenant }, work));
   },
 
   repository: async ({ db }, use) => {

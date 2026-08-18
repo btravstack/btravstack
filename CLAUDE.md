@@ -232,32 +232,20 @@ major.
    `TestRuntime.untilStarted` and `ProbeServer.close` all carry `E = never`.
    `unthrown/prefer-async-result` cannot enforce this — it only flags a
    `Promise<Result<T, E>>`, and a `Promise<void>` is not Result-bearing — so it
-   is a convention held by review. There are exactly **four** exceptions, each
-   documented where it lives — and all but the first are the same exception
-   wearing different hats: **a test's assertion failure must reach the test
-   runner as a throw**, and an `AsyncResult` never rejects.
+   is a convention held by review. There are exactly **three** exceptions, each
+   documented where it lives:
    - **`runMain`** returns `Promise<void>`. Its whole job is to leave the Result
      world and become a process exit code; it is the boundary, and a top-level
      `await runMain(...)` in an entry point is the intended shape.
    - **`UnitWork`'s `Promise<Result<T, E>>` arm** exists to accept a _caller's_
      `async` handler, and carries a reasoned `prefer-async-result` disable in
      `units.ts`.
-   - **`@btravstack/testing`'s `bootFixture`** — and `unitFixture`, on the same
-     terms — vitest's own `(ctx, use) => Promise<void>` fixture protocol, which
-     the harness does not get to choose. `use` is the test body: a thrown
-     assertion failure inside it must reach the test runner, and an
-     `AsyncResult` never rejects, so wrapping it would turn a failing `expect`
-     into a `Defect` a caller can forget to unwrap — a green test that asserted
-     nothing.
-   - **`@btravstack/testing`'s `TestRuntime.inUnit` / `InUnit`**, returning
-     `Promise<T>`. `work` IS the test body — the whole point of the fixture is
-     to run an `expect` against something that read the ambient record — so the
-     same argument applies with nothing to soften it: an `AsyncResult<T, never>`
-     here would put a failing assertion in the defect channel, and a caller who
-     forgot to unwrap would have a green test that asserted nothing.
-     `unit-fixture.spec.ts` pins the rethrow. It is deliberately NOT the
-     harness's own error channel: a unit the _kernel_ could not run is still a
-     `Defect`, surfaced by `settled.get()` panicking.
+   - **`@btravstack/testing`'s `bootFixture`** — vitest's own
+     `(ctx, use) => Promise<void>` fixture protocol, which the harness does not
+     get to choose. `use` is the test body: a thrown assertion failure inside
+     it must reach the test runner, and an `AsyncResult` never rejects, so
+     wrapping it would turn a failing `expect` into a `Defect` a caller can
+     forget to unwrap — a green test that asserted nothing.
 
 7. **The startup error channel is the application's own, unwrapped.** The kernel
    does **not** wrap a construction failure in a kernel error — that would erase
@@ -472,21 +460,38 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   they run in.
 
   It replaced SQLite **in memory**, which was the right call while every test
-  built its own database — and stopped being one the moment the gate needed a
-  PostgreSQL for Temporal anyway. The tenancy is ambient, per thesis 2: every
-  table carries `tenantId` as the leading column of its identity constraint,
-  the Prisma adapters read `currentUnit()?.tenantId` **per call**, and no port,
-  use case or entity mentions a tenant — none of them has a decision to make
-  about one. A repository call outside a unit is a `Defect`, because there is
-  no sensible default: "every tenant" is a cross-tenant read and "the first
-  one" is nonsense.
+  built its own database and stopped being one the moment the gate needed a
+  PostgreSQL for Temporal anyway.
 
-  `Outbox.pending(tenantId, limit)` is the **one** exception, and it takes the
-  tenant as an argument for a reason worth keeping: the relay that reads it is
-  a background sweep on its own clock, with no request, delivery or activity
-  behind it and therefore no ambient record to read. Which tenants a relay
-  serves is then genuine deployment configuration (`OUTBOX_TENANTS`), and it
-  sweeps tenant by tenant so one tenant's backlog cannot starve another's.
+  **The tenancy is the APPLICATION's, and the framework has no concept of
+  one.** Every port names its tenant — `OrderRepository.find(tenantId, id)`,
+  `PlaceOrder.execute(tenantId, id, quantity)` — and each transport supplies it
+  from its own **contract**: an input field on every `order-api` procedure, a
+  field on the AMQP envelope, a field on every Temporal workflow and activity
+  input. No starter reads a tenant off anything.
+
+  That line was drawn deliberately, and an earlier revision of this file
+  described the opposite. A tenant is _context_, and what establishes it — a
+  header, a subdomain, an authenticated subject — is a decision about a
+  specific system, as is what happens when it is missing. A starter with a
+  `tenantOf` hook decides both on the application's behalf and is the first
+  step of a framework tenancy model that owes many more answers than that one.
+  `UnitRecord.tenantId` stays what it always was: a field for a **hand-rolled**
+  runtime whose author has already answered them, set by no shipped starter.
+
+  Two things fall out of making it an argument, and they are the reason rather
+  than the price. A caller that forgets its tenant **does not compile**, where
+  an ambient one fails at runtime or silently reads another tenant's rows. And
+  a test needs no machinery at all — no fixture that "enters" a tenant, no
+  store to set — which is why the persistence specs read
+  `repository.find(tenant, "o-1")`.
+
+  `Outbox.pending(tenantId, limit)` is the case that shows ambient could not
+  have covered this anyway: the relay reading it is a background sweep with no
+  request, delivery or activity behind it, so there is nothing to read a tenant
+  from. Which tenants it serves is deployment configuration
+  (`OUTBOX_TENANTS`), and it sweeps tenant by tenant so one tenant's backlog
+  cannot starve another's.
 
 - **The Prisma client is generated at test time, and there is nothing to
   install.** `@btravstack/example-order-infrastructure`'s `generate`
@@ -626,10 +631,10 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   sugar imports `http()`, provides the router on the starter's
   `HttpRouterPort` and
   exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` and `DATABASE_URL` come from the
-  environment inside the graph, the router is mounted under `/rpc`, and
-  `tenantOf` reads `x-tenant-id` off the request so every repository call is
-  scoped to whoever asked — no procedure takes a tenant and no use case
-  mentions one.
+  environment inside the graph, and the router is mounted under `/rpc`. The
+  contract declares `tenantId` on every input, so a procedure hands it to the
+  use case and the use case to the repository — the transport reads nothing
+  about it.
   `observability()` is what provides the `Logger` the interactors and the
   request scope write to, and `Logger` is in `exports` because `RequestModule`
   reads it out of the application scope. `RequestModule` rides
@@ -971,11 +976,11 @@ And a seventh, about the infrastructure a suite runs against:
    precisely so this holds across spec files and across the workspaces turbo
    runs at the same instant.
 
-   `@btravstack/testing`'s `unitFixture` is what makes the tenant reachable:
-   the adapters read `currentUnit()?.tenantId`, so a spec has to run its
-   subject **inside a unit**, which the kernel exports no way to open —
-   `examples/order-infrastructure`'s `asTenant` fixture is the one-line
-   wrapper every consumer of this shape writes.
+   The tenant needs no machinery to reach a spec, because the application's
+   ports name it: `repository.find(tenant, "o-1")` says what a call is scoped
+   to at the call. That is a consequence of the design choice below, not a
+   coincidence — an ambient tenant would have needed a fixture to establish
+   one, and the kernel exports no way to open a unit.
 
 ## Deferred, deliberately
 

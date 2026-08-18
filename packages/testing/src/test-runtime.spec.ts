@@ -25,16 +25,6 @@ const hostFor = (
 };
 
 describe("testRuntime", () => {
-  it("refuses inUnit before it is started", async () => {
-    // GIVEN a runtime the kernel has not started, so it holds no `run`
-    const runtime = testRuntime();
-
-    // WHEN a spec tries to open a unit on it anyway
-    // THEN it is loud rather than routed: forgetting to start the runtime is a
-    // bug in the test, not an outcome to assert on
-    await expect(runtime.inUnit({}, () => 1)).rejects.toThrow("not accepting work");
-  });
-
   it("starts, and reports itself started", async () => {
     // GIVEN a fresh in-memory runtime
     const runtime = testRuntime();

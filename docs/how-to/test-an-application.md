@@ -313,47 +313,36 @@ truncate, no drop, no purge — a test that needed one would be a test sharing a
 namespace it should have minted. One migration runs for the whole gate, and
 the tests that share that schema never see each other's rows.
 
-Reading a tenant back needs a **unit**, because that is where the ambient
-record lives and the adapters read `currentUnit()?.tenantId` per call. The
-kernel exports no way to open one — only a runtime does — so
-`@btravstack/testing` ships `unitFixture`:
+Reading a tenant back needs nothing at all, because the example application
+names it on its ports rather than reading it from ambient context:
 
 ```ts
-export const it = test.extend<{
-  inUnit: InUnit;
-  tenant: string;
-  asTenant: AsTenant;
-}>({
-  inUnit: unitFixture(),
-  // oxlint-disable-next-line no-empty-pattern -- no other fixture
+export const it = test.extend<{ tenant: string }>({
+  // oxlint-disable-next-line no-empty-pattern -- depends on no other fixture
   tenant: async ({}, use) => {
     await use(`t-${randomUUID()}`);
-  },
-  asTenant: async ({ inUnit, tenant }, use) => {
-    await use((work) => inUnit({ tenantId: tenant }, work));
   },
 });
 
 it("reads back only its own tenant's order", async ({
-  asTenant,
+  tenant,
   repository,
   anOrder,
 }) => {
   // GIVEN an order saved under this test's tenant
   // WHEN it is read back
-  const found = await asTenant(() =>
-    repository.save(anOrder("o-1", 3)).flatMap(() => repository.find("o-1")),
-  );
+  const found = await repository
+    .save(tenant, anOrder("o-1", 3))
+    .flatMap(() => repository.find(tenant, "o-1"));
 
   // THEN the round trip is lossless, and scoped
   expect(found).toBeOkWith({ id: "o-1", quantity: 3 });
 });
 ```
 
-The unit is the kernel's own, opened through `RuntimeHost.run` exactly as a
-transport opens one — a fabricated record could drift from the one `units.ts`
-mints, and the whole value of testing an ambient reader is that it saw the
-real thing.
+That is the whole fixture. See [Multi-tenancy is the application's, not the
+framework's](/how-to/read-the-ambient-unit#multi-tenancy-is-the-application-s-not-the-framework-s)
+for why the tenant is an argument rather than something the transport reads.
 
 ## Follow the repo's test conventions
 

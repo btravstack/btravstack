@@ -28,11 +28,15 @@ class PlaceOrderInteractor {
     this.#logger = logger;
   }
 
-  execute(id: string, quantity: number): AsyncResult<Order, InvalidQuantity | DuplicateOrder> {
-    this.#logger.info("placing an order", { orderId: id, quantity });
+  execute(
+    tenantId: string,
+    id: string,
+    quantity: number,
+  ): AsyncResult<Order, InvalidQuantity | DuplicateOrder> {
+    this.#logger.info("placing an order", { tenantId, orderId: id, quantity });
     return placeOrder(id, quantity)
       .toAsync()
-      .flatMap((order) => this.#repository.save(order));
+      .flatMap((order) => this.#repository.save(tenantId, order));
   }
 }
 
@@ -43,8 +47,8 @@ class FindOrderInteractor {
     this.#repository = repository;
   }
 
-  execute(id: string): AsyncResult<Order, OrderNotFound> {
-    return this.#repository.find(id);
+  execute(tenantId: string, id: string): AsyncResult<Order, OrderNotFound> {
+    return this.#repository.find(tenantId, id);
   }
 }
 
@@ -55,8 +59,8 @@ class FindCustomerInteractor {
     this.#repository = repository;
   }
 
-  execute(id: string): AsyncResult<Customer, CustomerNotFound> {
-    return this.#repository.find(id);
+  execute(tenantId: string, id: string): AsyncResult<Customer, CustomerNotFound> {
+    return this.#repository.find(tenantId, id);
   }
 }
 

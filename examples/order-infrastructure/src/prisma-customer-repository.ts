@@ -3,7 +3,7 @@ import { CustomerRepository } from "@btravstack/example-order-application";
 import { Customer, CustomerNotFound } from "@btravstack/example-order-domain";
 import { Err, P, type Result } from "unthrown";
 
-import { OrderDatabase, currentTenant, type OrderDatabaseClient } from "./database.js";
+import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
 
 type CustomerRow = { readonly customerId: string; readonly name: string };
 
@@ -32,12 +32,9 @@ const hydrate = (row: CustomerRow): Result<Customer, never> =>
 export const prismaCustomerRepository = (
   db: OrderDatabaseClient,
 ): ServiceOf<CustomerRepository> => ({
-  find: (id) =>
-    currentTenant()
-      .toAsync()
-      .flatMap((tenantId) =>
-        db.customer.tryFindUnique({ where: { tenantId_customerId: { tenantId, customerId: id } } }),
-      )
+  find: (tenantId, id) =>
+    db.customer
+      .tryFindUnique({ where: { tenantId_customerId: { tenantId, customerId: id } } })
       .flatMap((row) => (row === null ? Err(new CustomerNotFound({ id })) : hydrate(row))),
 });
 

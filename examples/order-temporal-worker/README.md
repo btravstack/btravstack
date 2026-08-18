@@ -178,11 +178,12 @@ Tasks. A per-test task queue separates the tests inside the file, and a
 per-test **tenant** separates their rows in the application database on the
 same PostgreSQL the Temporal server uses.
 
-`tenantId` rides every workflow's arguments and every activity's input rather
-than a Temporal header, and `TemporalModule`'s `tenantOf` lifts it onto the
-kernel's ambient unit record where the persistence adapters find it. An input
-is persisted in the event history, so a replay reconstructs the tenant along
-with everything else.
+`tenantId` rides every workflow's arguments and every activity's input, because
+the **contract** declares it — `@btravstack/temporal` knows nothing about
+tenants. An activity hands `args.tenantId` to the use case, which hands it to
+the repository. On the input rather than a Temporal header because an input is
+persisted in the event history: a replay a year later reconstructs the tenant
+along with everything else.
 
 The
 fulfillment saga fulfills, both refusals compensate, the duplicate-order

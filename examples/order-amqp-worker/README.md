@@ -182,13 +182,17 @@ test gets a **vhost** of its own from `@amqp-contract/testing`'s `it` extension
 and a **tenant** of its own on the one migrated database.
 
 Tenancy crosses the broker here, which the other two deployments do not have to
-do: a broadcast leaves the process. The relay reads the tenant off the outbox
-row and puts it on the event (the contract declares `tenantId`), and
-`AmqpModule`'s `tenantOf` reads it back onto the subscriber's own ambient unit
-record. The relay itself is told which tenants it serves — `OUTBOX_TENANTS` —
-because a background sweep has no ambient record to read one from, and
-"whatever is in the table" is how one deployment starts broadcasting another's
-facts.
+do: a broadcast leaves the process. The **contract** carries it — `tenantId` is
+a field on the envelope — so the relay reads it off the outbox row, puts it on
+the event, and a subscriber reads it off the message it was already handed.
+`@btravstack/amqp` knows nothing about tenants; there is nothing to configure
+and nothing to hook.
+
+The relay is told which tenants it serves, `OUTBOX_TENANTS`, and that is the
+case that shows why ambient context would not have been enough anyway: a
+background sweep has no delivery behind it, so there is nothing to read a
+tenant from — and "whatever is in the table" is how one deployment starts
+broadcasting another's facts.
 
 The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
 boots the worker against the test's own vhost through the `boot` fixture, so

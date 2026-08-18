@@ -8,12 +8,7 @@ import { describe, expect } from "vitest";
 import { it } from "./test-fixtures.js";
 
 describe("the fulfillment saga", () => {
-  it("fulfills an order: place, reserve, ship, in order", async ({
-    asTenant,
-    tenant,
-    serve,
-    fulfilling,
-  }) => {
+  it("fulfills an order: place, reserve, ship, in order", async ({ tenant, serve, fulfilling }) => {
     // GIVEN the same composition `main.ts` boots, under the time-skipping env
     const { client } = await serve(fulfilling.module);
 
@@ -33,19 +28,18 @@ describe("the fulfillment saga", () => {
     expect(
       fulfilling.lines().map((line) => ({ message: line.message, ...line.attributes })),
     ).toEqual([
-      { message: "placing an order", orderId: "o-1", quantity: 2 },
+      { message: "placing an order", tenantId: tenant, orderId: "o-1", quantity: 2 },
       { message: "reserved stock", orderId: "o-1", quantity: 2 },
       { message: "arranged shipping", orderId: "o-1" },
     ]);
 
     // AND the placement is durably there
-    await expect(asTenant(() => fulfilling.services().repository.find("o-1"))).resolves.toBeOkWith(
+    await expect(fulfilling.services().repository.find(tenant, "o-1")).toBeOkWith(
       expect.objectContaining({ id: "o-1", quantity: 2 }),
     );
   });
 
   it("compensates a stock refusal: the placement is walked back", async ({
-    asTenant,
     tenant,
     serve,
     outOfStock,
@@ -77,15 +71,15 @@ describe("the fulfillment saga", () => {
 
     // AND the placement the saga made before the refusal is gone — the
     // compensation ran, and the database agrees with the answer
-    await expect(
-      asTenant(() => outOfStock.services().repository.find("o-2")),
-    ).resolves.toBeErrTagged("OrderNotFound", {
-      id: "o-2",
-    });
+    await expect(outOfStock.services().repository.find(tenant, "o-2")).toBeErrTagged(
+      "OrderNotFound",
+      {
+        id: "o-2",
+      },
+    );
   });
 
   it("compensates a shipping refusal in reverse order: release, then cancel", async ({
-    asTenant,
     tenant,
     serve,
     noShipping,
@@ -121,11 +115,12 @@ describe("the fulfillment saga", () => {
     expect(noShipping.released()).toEqual(["o-3"]);
 
     // AND the placement is gone too
-    await expect(
-      asTenant(() => noShipping.services().repository.find("o-3")),
-    ).resolves.toBeErrTagged("OrderNotFound", {
-      id: "o-3",
-    });
+    await expect(noShipping.services().repository.find(tenant, "o-3")).toBeErrTagged(
+      "OrderNotFound",
+      {
+        id: "o-3",
+      },
+    );
   });
 
   it("hands the client the OrderAlreadyPlaced the API answers CONFLICT for, as a typed contract error", async ({

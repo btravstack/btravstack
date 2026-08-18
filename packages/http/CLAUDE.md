@@ -8,10 +8,10 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router, prefix?, port?, hostname?, tenantOf?, imports?, provides?, exports? })`**
+- **`HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
-  `http({ prefix?, port?, hostname?, tenantOf? })` to `imports`, prepends the provider to
+  `http({ prefix?, port?, hostname? })` to `imports`, prepends the provider to
   `provides` and `HttpRuntime` to `exports`, and hands the augmented tuples —
   `Imports<I>` / `Provides<P, RouterError, RouterNeeds>`, readonly and exact
   — to di's own `Module(name)({...})`, whose
@@ -117,25 +117,7 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
   `Config.provider("RelayConfig")(schema)` already uses in this repo. Covered
   by `controller.spec.ts`'s `controllers` fixture (the port and declared deps
   a controller carries) and by every gate in `controller.test-d.ts` above.
-- **`tenantOf` — one optional hook, the same shape in all three starters.** It
-  lifts a tenant off the transport's own input onto `UnitMeta.tenantId`, where
-  the kernel puts it on the ambient unit record and an infrastructure adapter
-  reads it per call (root `CLAUDE.md`, thesis 2 — a tenant id is data about
-  the unit, not a collaborator). Omitted, no unit carries a tenant, which is
-  what a single-tenant deployment wants and what every version of this package
-  before it did. It is **not** a mapping: `tenantId` reaches the record and
-  stops there, and refusing work that carries no tenant is a decision about a
-  status code, an ack/nack or an activity failure — which this package
-  declines (thesis 3). The whole of the transport's input is handed over,
-  because only the application knows where its own tenant lives. A blank or
-  whitespace answer is refused the same way a blank `traceId` is: `""` is not
-  nullish, so `??` alone would put an empty tenant on the record that every
-  adapter then scopes by.
-  Here it is **`TenantOf = (request: IncomingMessage) => string | undefined`**,
-  read once per request beside `x-request-id`.
-  `examples/order-api` reads `x-tenant-id`.
-
-- **`http({ prefix?, port?, hostname?, tenantOf? })` →
+- **`http({ prefix?, port?, hostname? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **the one way HTTP is answered here: oRPC, over its own
   node adapter**. The

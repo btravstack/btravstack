@@ -9,7 +9,7 @@ with the code in the same commit, and with `README.md` — the package ships no
 ## Public surface
 
 - **`TemporalModule(name)({ contract, activities, workflows, address?,
-namespace?, gracePeriod?, forceAfter?, tenantOf?, imports?, provides?, exports? })`** —
+namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })`** —
   THE way an application writes its worker root; `temporal-module.ts`, the
   same shape as `@btravstack/http`'s `HttpModule`. `activities` is the
   **provider** of the starter's activities port for THIS contract — a plain
@@ -152,38 +152,8 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   environment, and the declared `Env` need and `ConfigInvalid` stay whatever is
   pinned — one signature, no overload pair: the kernel discharges the one, a
   pinned config never produces the other),
-  `forceAfter` (Temporal's `shutdownForceTime`, default `15 seconds`),
-  `gracePeriod` (`shutdownGraceTime`, default `10 seconds`) and `tenantOf`.
-
-- **`tenantOf` — one optional hook, the same shape in all three starters.** It
-  lifts a tenant off the transport's own input onto `UnitMeta.tenantId`, where
-  the kernel puts it on the ambient unit record and an infrastructure adapter
-  reads it per call (root `CLAUDE.md`, thesis 2 — a tenant id is data about
-  the unit, not a collaborator). Omitted, no unit carries a tenant, which is
-  what a single-tenant deployment wants and what every version of this package
-  before it did. It is **not** a mapping: `tenantId` reaches the record and
-  stops there, and refusing work that carries no tenant is a decision about a
-  status code, an ack/nack or an activity failure — which this package
-  declines (thesis 3). The whole of the transport's input is handed over,
-  because only the application knows where its own tenant lives. A blank or
-  whitespace answer is refused the same way a blank `traceId` is: `""` is not
-  nullish, so `??` alone would put an empty tenant on the record that every
-  adapter then scopes by.
-  Here it is **`TenantOf = (invocation: { activityName, workflowName, input })
-=> string | undefined`** — the activity invocation, whose `input` is already
-  validated against the contract by the time the middleware sees it, and which
-  is where the library's own middleware example reads a tenant from.
-  `examples/order-temporal-worker` puts `tenantId` on every activity input
-  rather than in a Temporal header, because an input is persisted in the event
-  history: a replay reconstructs the tenant along with everything else.
-
-  `TemporalInfo` is
-  `{ taskQueue, namespace }`, published on `Serving.info` once polling. The
-  worked example is `TemporalModule("OrderTemporalWorker")({ contract,
-activities: orderActivities, workflows, imports: [Application, Persistence,
-Fulfillment] })` + `runMain(OrderTemporalWorker)`; a test passes `env: {
-TEMPORAL_ADDRESS }` to `start`.
-
+  `forceAfter` (Temporal's `shutdownForceTime`, default `15 seconds`) and
+  `gracePeriod` (`shutdownGraceTime`, default `10 seconds`).
 - **The activities port is the starter's, provided by the application, and
   the module's one need.** Its service is `ActivitiesOf<C>` =
   `DeclareActivitiesHandlerOptions<C>["activities"]` — the implementations

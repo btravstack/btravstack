@@ -5,6 +5,4 @@ export type { FakeClock } from "./fake-clock.js";
 export { tapped } from "./tapped.js";
 export type { ServicesOf } from "./tapped.js";
 export { TestRuntimePort, testRuntime } from "./test-runtime.js";
-export { unitFixture } from "./unit-fixture.js";
-export type { InUnit } from "./unit-fixture.js";
 export type { SubmittedUnit, TestRuntime, TestRuntimeInfo } from "./test-runtime.js";

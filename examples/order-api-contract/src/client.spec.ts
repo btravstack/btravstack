@@ -12,7 +12,7 @@ describe("contract", () => {
 
     // WHEN a procedure the contract declares is called
     // THEN the contract's own output shape comes back as a value
-    await expect(client.orders.place({ id: "o-1", quantity: 2 })).toBeOkWith({
+    await expect(client.orders.place({ tenantId: "acme", id: "o-1", quantity: 2 })).toBeOkWith({
       id: "o-1",
       quantity: 2,
     });
@@ -22,7 +22,7 @@ describe("contract", () => {
     // GIVEN the same client, and an order the stub does not hold
 
     // WHEN it is looked up
-    const missing = await client.orders.find({ id: "o-404" });
+    const missing = await client.orders.find({ tenantId: "acme", id: "o-404" });
 
     // THEN the code and payload the contract declares arrive on the error
     // channel, inferable — the half of contract-first design a client is

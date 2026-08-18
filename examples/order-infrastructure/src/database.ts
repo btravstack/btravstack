@@ -1,9 +1,8 @@
 import { Config } from "@btravstack/config";
-import { currentUnit } from "@btravstack/core";
 import { Port, Provider } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { unthrownPrisma } from "@unthrown/prisma";
-import { OkAsync, fromSafeThrowable, type AsyncResult, type Result } from "unthrown";
+import { OkAsync, type AsyncResult } from "unthrown";
 
 import { PrismaClient } from "./generated/prisma/client.ts";
 
@@ -36,37 +35,6 @@ export type OrderDatabaseClient = ReturnType<typeof createClient>;
  * things that cross the boundary are the repositories and the outbox.
  */
 export class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
-
-/**
- * Whose data this call is about, read off the kernel's ambient unit record.
- *
- * This is the one reader the ambient store sanctions — an infrastructure
- * adapter stamping a tenant on a query, which is data about the unit and not
- * a collaborator anything could substitute (root `CLAUDE.md`, thesis 2). It is
- * read **per call**, never captured at construction: one client is built per
- * application scope and every unit has its own record. It is also the whole of
- * the tenancy story above this file — no port, use case or entity mentions a
- * tenant, because none of them has a decision to make about one.
- *
- * A call outside a unit has no tenant, and there is no sensible default —
- * "every tenant" would be a cross-tenant read and "the first one" is nonsense —
- * so it is a `Defect`, which is what the empty error channel says. Nothing a
- * caller did produced it and nothing they can do recovers from it; widening
- * every repository's `E` with an error no use case can act on would be worse.
- * `fromSafeThrowable` is how the defect is minted — `Defect` has no public
- * constructor, so a throw inside a boundary is the only route to one.
- */
-const readTenant = fromSafeThrowable((): string => {
-  const tenantId = currentUnit()?.tenantId;
-  if (tenantId === undefined)
-    // oxlint-disable-next-line unthrown/no-throw -- the throw IS the defect channel, and it is caught by the `fromSafeThrowable` boundary one line above
-    throw new Error(
-      "No tenant on the ambient unit record: every repository call must run inside a unit whose runtime supplied `UnitMeta.tenantId`.",
-    );
-  return tenantId;
-});
-
-export const currentTenant = (): Result<string, never> => readTenant();
 
 /**
  * Opens a client against `url`. Connecting is lazy — the pool dials on the

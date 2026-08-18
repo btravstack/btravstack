@@ -23,32 +23,10 @@ import { activityInfo } from "@temporalio/activity";
  * owns the mapping from a settled `Result` to an activity failure, and the
  * kernel maps nothing to a transport.
  */
-/**
- * How an activity attempt says whose data it is about, when it says so at all.
- *
- * The invocation is handed over whole — its schema-validated `input`, its
- * activity and workflow names — because only the application knows where its
- * tenant lives, and the library's own middleware example reads one straight
- * off `invocation.input`. A blank or missing answer means no tenant, which is
- * what a single-tenant deployment wants and what every version of this
- * package before it did.
- *
- * This starter maps nothing beyond that: `tenantId` reaches the ambient record
- * and stops there. Refusing an attempt that carries no tenant is a decision
- * about an activity failure, and the package declines those (root
- * `CLAUDE.md`, thesis 3) — it belongs in the activity, next to the rest of
- * the triage.
- */
-export type TenantOf = (invocation: {
-  readonly activityName: string;
-  readonly workflowName: string | undefined;
-  readonly input: unknown;
-}) => string | undefined;
-
 export const activityUnits =
-  (host: RuntimeHost<never>, tenantOf?: TenantOf): ActivityMiddleware =>
-  (invocation, next) =>
-    host.run(metaFor(tenantOf?.(invocation)), () => next());
+  (host: RuntimeHost<never>): ActivityMiddleware =>
+  (_invocation, next) =>
+    host.run(metaFor(), () => next());
 
 /**
  * `UnitMeta.id` must be unique per unit, and a workflow id is **not** one: an
@@ -62,16 +40,11 @@ export const activityUnits =
  * retry so all attempts join up in a log. An activity with no workflow falls
  * back to the activity id, itself stable across that activity's attempts.
  */
-const metaFor = (tenantId: string | undefined): UnitMeta => {
+const metaFor = (): UnitMeta => {
   const info = activityInfo();
-  // Trimmed and refused blank for the same reason the trace id is: `""` is not
-  // nullish, so an input carrying an empty tenant would otherwise put one on
-  // the record that every adapter then scopes by.
-  const tenant = tenantId?.trim();
   return {
     kind: "activity",
     id: info.base64TaskToken,
     traceId: info.workflowExecution?.workflowId ?? info.activityId,
-    ...(tenant === undefined || tenant === "" ? {} : { tenantId: tenant }),
   };
 };

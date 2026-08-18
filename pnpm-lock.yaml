@@ -527,9 +527,6 @@ importers:
       '@btravstack/config':
         specifier: workspace:*
         version: link:../../packages/config
-      '@btravstack/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       '@btravstack/di':
         specifier: workspace:*
         version: link:../../packages/di
@@ -555,9 +552,6 @@ importers:
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
-      '@btravstack/testing':
-        specifier: workspace:*
-        version: link:../../packages/testing
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0

@@ -3,7 +3,7 @@ import { OrderRepository } from "@btravstack/example-order-application";
 import { DuplicateOrder, Order, OrderNotFound } from "@btravstack/example-order-domain";
 import { Err, P, type Result } from "unthrown";
 
-import { OrderDatabase, currentTenant, type OrderDatabaseClient } from "./database.js";
+import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
 
 type OrderRow = { readonly orderId: string; readonly quantity: number };
 
@@ -41,26 +41,21 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
   //
   // The event carries a payload, which is what makes it a create-or-replace
   // for its subject. Its tombstone twin is in `remove`.
-  save: (order) =>
-    currentTenant()
-      .toAsync()
-      // Read once and threaded through both writes, so the row and its event
-      // carry the same tenant by construction rather than by two reads.
-      .flatMap((tenantId) =>
-        db.$tryTransaction((tx) =>
-          tx.order
-            .tryCreate({ data: { tenantId, orderId: order.id, quantity: order.quantity } })
-            .flatMap(() =>
-              tx.outboxMessage.tryCreate({
-                data: {
-                  tenantId,
-                  kind: "order",
-                  subjectId: order.id,
-                  payload: JSON.stringify({ quantity: order.quantity }),
-                },
-              }),
-            ),
-        ),
+  save: (tenantId, order) =>
+    db
+      .$tryTransaction((tx) =>
+        tx.order
+          .tryCreate({ data: { tenantId, orderId: order.id, quantity: order.quantity } })
+          .flatMap(() =>
+            tx.outboxMessage.tryCreate({
+              data: {
+                tenantId,
+                kind: "order",
+                subjectId: order.id,
+                payload: JSON.stringify({ quantity: order.quantity }),
+              },
+            }),
+          ),
       )
       .mapErrCases((matcher, defect) =>
         matcher
@@ -70,12 +65,9 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
       )
       .map(() => order),
 
-  find: (id) =>
-    currentTenant()
-      .toAsync()
-      .flatMap((tenantId) =>
-        db.order.tryFindUnique({ where: { tenantId_orderId: { tenantId, orderId: id } } }),
-      )
+  find: (tenantId, id) =>
+    db.order
+      .tryFindUnique({ where: { tenantId_orderId: { tenantId, orderId: id } } })
       .flatMap((row) => (row === null ? Err(new OrderNotFound({ id })) : hydrate(row))),
 
   // Compensation's persistence arm — `delete`, not `deleteMany`, because
@@ -97,18 +89,13 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
   // with `RecordNotFound` before the insert, and the transaction rolls back —
   // so a re-run of the saga's `cancelPlacement` cannot append a second
   // tombstone for an order already gone.
-  remove: (id) =>
-    currentTenant()
-      .toAsync()
-      .flatMap((tenantId) =>
-        db.$tryTransaction((tx) =>
-          tx.order
-            .tryDelete({ where: { tenantId_orderId: { tenantId, orderId: id } } })
-            .flatMap(() =>
-              tx.outboxMessage.tryCreate({
-                data: { tenantId, kind: "order", subjectId: id, payload: null },
-              }),
-            ),
+  remove: (tenantId, id) =>
+    db
+      .$tryTransaction((tx) =>
+        tx.order.tryDelete({ where: { tenantId_orderId: { tenantId, orderId: id } } }).flatMap(() =>
+          tx.outboxMessage.tryCreate({
+            data: { tenantId, kind: "order", subjectId: id, payload: null },
+          }),
         ),
       )
       .map(() => undefined)

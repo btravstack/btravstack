@@ -245,40 +245,36 @@ and the kernel binds its own `PROBE_PORT` (default `9000`). A malformed value �
 `startFailed` event and exit code `78`, sysexits(3)'s `EX_CONFIG`; nothing in
 this package validates, prints or exits.
 
-## Who is asking: `tenantOf`
+## Multi-tenant by design, not by framework
 
-The API is multi-tenant, and the whole of it is one hook:
+The API serves several tenants from one database, and the tenant is declared
+in **its own contract**:
 
 ```ts
-export const OrderApi = HttpModule("OrderApi")({
-  router: orderRouter,
-  tenantOf: (request) => {
-    const header = request.headers["x-tenant-id"];
-    return typeof header === "string" ? header : undefined;
-  },
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
-});
+export type Tenanted = { readonly tenantId: string };
+
+const ordersContract = {
+  place: oc
+    .input(type<Tenanted & { readonly id: string; readonly quantity: number }>())
+    .output(type<OrderView>())
+    .errors({ INVALID_QUANTITY: { data: type<OrderRef>() }, CONFLICT: { data: type<OrderRef>() } }),
+  …
+};
 ```
 
-`@btravstack/http` puts what it returns on the kernel's ambient unit record,
-and the persistence adapters read `currentUnit()?.tenantId` per call. **No
-procedure takes a tenant, no use case mentions one, and no entity has a field
-for one** — none of them has a decision to make about it. A tenant is not an
-argument to placing an order; it is who is asking.
+The controller hands `input.tenantId` straight to the use case, which hands it
+to the repository, which puts it in the `WHERE`. `@btravstack/http` knows
+nothing about tenants and has no hook for them — context is the application's
+to own, and a starter that read a tenant off a header would be deciding a
+system's authentication model on its behalf.
 
-A header rather than a subdomain or a path segment because this API is mounted
-under one origin; the starter hands the whole request over precisely so an
-application can choose differently. A request with no tenant gets none, and the
-first repository call it makes is a defect the transport reports as a 500 —
-deliberately not a 400, because refusing an untenanted request is a status-code
-decision, and those live in a procedure's own triage rather than in a transport
-hook (the package maps nothing).
+An argument rather than a header, then, and the trade is worth naming. A
+client cannot forget it (the contract refuses), the router cannot invent one,
+and the path from wire to `WHERE` is visible in three files. What it is not is
+"who is asking": a deployment that authenticates its callers would take the
+tenant from the caller's identity and drop it from the contract — a contract
+change, which is exactly the kind of change that should be.
 
-The specs' client sends it: `createOrderApiClient(origin, { headers:
-{ "x-tenant-id": tenant } })`, with a UUID per test, which is what lets every
-spec place `o-1` against the one shared database without colliding.
-
-It is typechecked by the gate rather than executed by it: the example packages
+It is typechecked by the gate rather than executed by it:It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there
 is no compiled entry for `node` to run, and every spec drives `start` directly.

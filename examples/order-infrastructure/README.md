@@ -129,23 +129,20 @@ makes a shared database cost one migration for the whole gate rather than one
 per test — the reason this stopped being SQLite in memory, where every test
 built its own schema.
 
-The tenancy is ambient. The adapters read `currentUnit()?.tenantId` **per
-call** — the one reader the ambient store sanctions — so no port, use case or
-entity mentions a tenant; none of them has a decision to make about one. A
-repository call outside a unit is a `Defect`, because there is no sensible
-default: "every tenant" is a cross-tenant read and "the first one" is nonsense.
-Specs therefore run their subject inside a unit, through
-`@btravstack/testing`'s `unitFixture`:
+The tenancy is **explicit**: every port names its tenant, so an adapter is
+handed one rather than finding one.
 
 ```ts
-asTenant: async ({ inUnit, tenant }, use) => {
-  await use((work) => inUnit({ tenantId: tenant }, work));
-},
+readonly find: (tenantId: string, id: string) => AsyncResult<Order, OrderNotFound>;
 ```
 
-`Outbox.pending(tenantId, limit)` is the one port that takes its tenant as an
-argument instead, because the relay that reads it sweeps from **outside** any
-unit and has no ambient record to read.
+That is the application's design, not the framework's — no starter has a
+tenancy concept, and none should, because what establishes a tenant is a
+decision about a specific system. Two things fall out of it. A caller that
+forgot its tenant does not compile, where an ambient one would have failed at
+runtime or read the wrong rows in silence. And a spec needs no machinery:
+`repository.find(tenant, "o-1")` says what it is scoped to at the call, so the
+only fixture is the tenant string itself.
 
 The generated client is gitignored and minted by turbo's own `generate` task —
 which `test`, `typecheck` and `test:types` all depend on, so one generator runs,

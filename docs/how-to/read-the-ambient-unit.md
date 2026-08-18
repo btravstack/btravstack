@@ -29,74 +29,70 @@ type UnitRecord = {
 
 `unitId` tells two units apart and needs nothing from the runtime. `traceId` is
 the one that joins a line logged here to a trace that started elsewhere.
-`deadline` is plain data a runtime may stamp; no shipped starter sets it today.
-`tenantId` is stamped by whichever starter you gave a **`tenantOf`** to — see
-[Make an application multi-tenant](#make-an-application-multi-tenant) below. `signal` is always there: the kernel mints one
+`tenantId` and `deadline` are plain data the runtime may stamp; **no shipped
+starter sets either today**, and none has a tenancy concept — see
+[Multi-tenancy is the application's, not the framework's](#multi-tenancy-is-the-application-s-not-the-framework-s). `signal` is always there: the kernel mints one
 `AbortController` per unit, hands its signal to the work callback **and** puts
 that same object on the record, so both routes see one abort — at the drain
 deadline, or at once on a path that skips the drain.
 
-## Make an application multi-tenant
+## Multi-tenancy is the application's, not the framework's
 
-All three starters take one optional `tenantOf`, and it does the same thing in
-each: reads a tenant off the transport's own input and puts it on
-`UnitMeta.tenantId`, from where the kernel puts it on the record.
+`UnitRecord` has a `tenantId` field and **no shipped starter sets it.** That is
+deliberate, and it is worth saying why, because the field's presence invites
+the opposite conclusion.
 
-| Starter                | `tenantOf` receives                                        |
-| ---------------------- | ---------------------------------------------------------- |
-| `@btravstack/http`     | the `IncomingMessage`                                      |
-| `@btravstack/amqp`     | the delivery — validated `message`, and the `rawMessage`   |
-| `@btravstack/temporal` | the activity invocation — its validated `input`, and names |
+A tenant is _context_, and context is the application's to own. What
+establishes it — a header, a subdomain, an authenticated subject, a field on
+the message — is a decision about a specific system, and so is what happens
+when it is missing. A starter that read a tenant off a request would be
+deciding both on the application's behalf, and it would be the beginning of a
+framework tenancy model that has to answer many more questions than that one.
+The `tenantId` field exists for a **hand-rolled** runtime whose author has
+already answered them.
 
-```ts
-// examples/order-api/src/module.ts
-export const OrderApi = HttpModule("OrderApi")({
-  router: orderRouter,
-  tenantOf: (request) => {
-    const header = request.headers["x-tenant-id"];
-    return typeof header === "string" ? header : undefined;
-  },
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
-});
-```
+The example application is multi-tenant, and it needs none of that. It makes
+the tenant part of its **own** vocabulary — the ports name it, so it is an
+argument a caller cannot forget and a reader can see:
 
 ```ts
-// examples/order-infrastructure/src/prisma-order-repository.ts
-find: (id) =>
-  currentTenant()
-    .toAsync()
-    .flatMap((tenantId) =>
-      db.order.tryFindUnique({ where: { tenantId_orderId: { tenantId, orderId: id } } }),
-    )
-    .flatMap((row) => (row === null ? Err(new OrderNotFound({ id })) : hydrate(row))),
+// examples/order-application/src/ports.ts
+export class OrderRepository extends Port("OrderRepository")<{
+  readonly save: (
+    tenantId: string,
+    order: Order,
+  ) => AsyncResult<Order, DuplicateOrder>;
+  readonly find: (
+    tenantId: string,
+    id: string,
+  ) => AsyncResult<Order, OrderNotFound>;
+  readonly remove: (
+    tenantId: string,
+    id: string,
+  ) => AsyncResult<void, OrderNotFound>;
+}> {}
 ```
 
-That is the whole of it. The adapter is the only file that mentions a tenant:
-no procedure takes one, no use case names one, no entity has a field for one,
-because none of them has a decision to make about it. A tenant is not an
-argument to placing an order; it is who is asking.
+Each transport then supplies it from its own contract, which is where a client
+already has to say what it wants:
 
-Three things worth deciding deliberately:
+| Deployment              | Where the tenant comes from                    |
+| ----------------------- | ---------------------------------------------- |
+| `order-api`             | an input field on every procedure (`Tenanted`) |
+| `order-amqp-worker`     | a field on the broadcast envelope              |
+| `order-temporal-worker` | a field on every workflow and activity input   |
 
-- **The whole input is handed to `tenantOf`** because only the application
-  knows where its own tenant lives — a header, a subdomain, a message
-  property, a workflow argument. `examples/order-temporal-worker` puts it on
-  the activity **input** rather than a Temporal header, because an input is
-  persisted in the event history and a replay reconstructs it.
-- **The starter maps nothing beyond that.** Refusing work that carries no
-  tenant is a decision about a status code, an ack/nack or an activity
-  failure, and the starters decline those — it belongs in a procedure or a
-  handler, next to the rest of the triage.
-- **Code with no unit has no tenant.** A background sweep — a relay polling an
-  outbox — has no request, delivery or activity behind it, so it must be
-  _told_: `examples/order-amqp-worker`'s relay reads `OUTBOX_TENANTS` and
-  `Outbox.pending(tenantId, limit)` takes its tenant as an argument. That is
-  the one port in the example that does, and the reason is worth keeping.
+Two consequences are the point rather than the price. A use case that forgot
+its tenant **does not compile**, where an ambient one would have failed at
+runtime or, worse, silently read the wrong tenant's rows. And a test needs no
+machinery at all: `repository.find(tenant, "o-1")` says what it is scoped to
+at the call, with no fixture that "enters" a tenant and no store to set.
 
-To test an adapter that reads the record, use
-[`@btravstack/testing`'s `unitFixture`](/reference/testing#unitfixture): only a
-runtime opens a unit, and in a test that runtime is the harness's.
+The relay in `order-amqp-worker` is the case that shows why ambient would not
+have been enough anyway: it sweeps on its own clock, with no request, delivery
+or activity behind it, so there is no unit to read a tenant from. Which tenants
+it serves is deployment configuration (`OUTBOX_TENANTS`) — a question ambient
+context cannot answer.
 
 ## Who may read it
 

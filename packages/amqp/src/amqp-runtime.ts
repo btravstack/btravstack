@@ -18,7 +18,7 @@ import {
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { HANDLER_PREFIX, type HandlerKeyOf, type HandlerPortOf } from "./handler.js";
-import { messageUnits, type TenantOf } from "./message-units.js";
+import { messageUnits } from "./message-units.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
 export type AmqpInfo = { readonly queues: readonly string[] };
@@ -85,13 +85,6 @@ export type AmqpOptions<TContract extends AnyAmqpContract> = {
    * unreachable broker takes the library's 30s default to report.
    */
   readonly connectTimeoutMs?: number;
-  /**
-   * Reads the tenant off a delivery and puts it on the kernel's ambient unit
-   * record, where an infrastructure adapter can find it. Omitted, no delivery
-   * carries a tenant — which is what a single-tenant deployment wants and what
-   * every version of this package before it did.
-   */
-  readonly tenantOf?: TenantOf;
 };
 
 /**
@@ -236,7 +229,7 @@ const createWorker = <TContract extends AnyAmqpContract>(
   TypedAmqpWorker.create({
     contract: options.contract,
     handlers,
-    middleware: messageUnits(host, options.tenantOf),
+    middleware: messageUnits(host),
     urls: [config.url],
     ...(options.connectionOptions === undefined
       ? {}

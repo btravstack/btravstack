@@ -15,7 +15,7 @@ import {
 } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { observability, type Line } from "@btravstack/observability";
-import { bootFixture, tapped, unitFixture, type Boot, type InUnit } from "@btravstack/testing";
+import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { inject, type TestAPI } from "vitest";
 
 import { orderHandlers } from "./module.js";
@@ -89,17 +89,14 @@ const tappedAmqp = () => {
 export type AmqpFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
-  /** Runs a callback inside a kernel unit, the way a transport would. */
-  readonly inUnit: InUnit;
   /**
    * This test's tenant, and nobody else's. The database is shared by every
    * workspace's run — one migration for the whole gate rather than one per
-   * test — so a UUID here is what separates this test's orders from the rest,
-   * and it is what `OUTBOX_TENANTS` points the relay at.
+   * test — so a UUID here is what separates this test's orders from the rest.
+   * It is what `OUTBOX_TENANTS` points the relay at, and what every write in a
+   * spec names, because the ports say so.
    */
   readonly tenant: string;
-  /** Runs a callback inside a unit carrying {@link tenant} — every write in a spec belongs in one. */
-  readonly asTenant: <T>(work: () => T | Promise<T>) => Promise<T>;
   /** Boots an app against this test's own vhost, through `boot` — so its shutdown is the fixture's. */
   readonly serve: Serve;
   /**
@@ -116,15 +113,10 @@ export type AmqpFixtures = {
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
   boot: bootFixture(),
-  inUnit: unitFixture(),
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tenant: async ({}, use) => {
     await use(`t-${randomUUID()}`);
-  },
-
-  asTenant: async ({ inUnit, tenant }, use) => {
-    await use((work) => inUnit({ tenantId: tenant }, work));
   },
 
   serve: async ({ amqpConnectionUrl, tenant, boot }, use) => {

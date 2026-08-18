@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@btravstack/config": "workspace:*",
-    "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
     "@btravstack/example-order-domain": "workspace:*",
@@ -29,7 +28,6 @@
   },
   "devDependencies": {
     "@btravstack/internal-test-infra": "workspace:*",
-    "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",

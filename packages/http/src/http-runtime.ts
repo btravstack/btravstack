@@ -39,28 +39,11 @@ export class HttpConfig extends Port("HttpConfig")<{
  * on the starter's own router port (`HttpRouter(contract)(deps, arm)`), which
  * this module needs.
  */
-/**
- * Reads the tenant off a request and puts it on the kernel's ambient unit
- * record, where an infrastructure adapter can find it. The whole request is
- * handed over because only the application knows where its tenant lives — a
- * header, a subdomain, a path segment. A blank or missing answer means no
- * tenant, which is what a single-tenant deployment wants and what every
- * version of this package before it did.
- *
- * This starter maps nothing beyond that: `tenantId` reaches the record and
- * stops there. Refusing a request that carries no tenant is a decision about
- * a status code, and the package declines those (root `CLAUDE.md`, thesis 3)
- * — it belongs in a procedure, next to the rest of the triage.
- */
-export type TenantOf = (request: IncomingMessage) => string | undefined;
-
 export type HttpOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
   readonly prefix?: `/${string}`;
   readonly port?: number;
   readonly hostname?: string;
-  /** See {@link TenantOf}. */
-  readonly tenantOf?: TenantOf;
 };
 
 /** The runtime's port: what `http()` provides, and what the module `start` boots must export. */
@@ -69,11 +52,10 @@ export class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}
 const httpRuntime = (
   config: ServiceOf<HttpConfig>,
   handler: ServiceOf<HttpHandler>,
-  tenantOf: TenantOf | undefined,
 ): Runtime<never, HttpInfo> => ({
   name: "http",
   needs: [],
-  start: (host) => listen(host, config, handler, tenantOf),
+  start: (host) => listen(host, config, handler),
 });
 
 /**
@@ -88,10 +70,10 @@ const httpRuntime = (
  * overload pair to keep in step.
  */
 export const httpModule = <N>(
-  options: { readonly port?: number; readonly hostname?: string; readonly tenantOf?: TenantOf },
+  options: { readonly port?: number; readonly hostname?: string },
   handler: Provider<HttpHandler, never, N>,
 ): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N> => {
-  const { port, hostname, tenantOf } = options;
+  const { port, hostname } = options;
   const config =
     port !== undefined && hostname !== undefined
       ? Provider(HttpConfig)({ value: { port, hostname } })
@@ -105,9 +87,7 @@ export const httpModule = <N>(
     provides: [
       config,
       handler,
-      Provider(HttpRuntime)([HttpConfig, HttpHandler], {
-        sync: (c, h) => httpRuntime(c, h, tenantOf),
-      }),
+      Provider(HttpRuntime)([HttpConfig, HttpHandler], { sync: (c, h) => httpRuntime(c, h) }),
     ],
     exports: [HttpRuntime, HttpConfig],
   }) as unknown as Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
@@ -142,7 +122,6 @@ const listen = (
   host: RuntimeHost<never>,
   options: ServiceOf<HttpConfig>,
   handler: ServiceOf<HttpHandler>,
-  tenantOf: TenantOf | undefined,
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   fromSafePromise(
     new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
@@ -182,7 +161,7 @@ const listen = (
         // statically `never` at this call site, so a `match`'s `errCases` arm
         // would be an always-dead branch with no case to name.
         void host
-          .run(metaFor(request, tenantOf?.(request)), (_ctx, signal) => {
+          .run(metaFor(request), (_ctx, signal) => {
             void answer(handler(request, response, signal), response);
             // The unit's lifetime IS the response's. This is what makes the
             // kernel's "flush inside the unit" contract structural rather than
@@ -301,18 +280,13 @@ const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
  * a caller's every request the same blank id — defeating the ambient record
  * exactly as a route template would.
  */
-const metaFor = (request: IncomingMessage, tenantId: string | undefined): UnitMeta => {
+const metaFor = (request: IncomingMessage): UnitMeta => {
   const inbound = request.headers["x-request-id"];
   const traceId = typeof inbound === "string" ? inbound.trim() : "";
-  // Trimmed and refused blank for the same reason the trace id is: `""` is not
-  // nullish, so a client sending an empty tenant header would otherwise put one
-  // on the record that every adapter then scopes by.
-  const tenant = tenantId?.trim();
   return {
     kind: "http",
     id: randomUUID(),
     ...(traceId === "" ? {} : { traceId }),
-    ...(tenant === undefined || tenant === "" ? {} : { tenantId: tenant }),
   };
 };
 

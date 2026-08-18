@@ -15,40 +15,35 @@ const scopedCustomers = () =>
   });
 
 describe("the Prisma CustomerRepository", () => {
-  it("reads a stored row back as the domain's entity", async ({
-    asTenant,
-    customers,
-    aCustomer,
-  }) => {
+  it("reads a stored row back as the domain's entity", async ({ tenant, customers, aCustomer }) => {
     // GIVEN a customer in this test's own tenant
     await aCustomer("c-1", "Ada");
 
     // WHEN it is read back
-    const found = await asTenant(() => customers.find("c-1"));
+    const found = await customers.find(tenant, "c-1");
 
     // THEN what leaves the adapter is the entity, not the row and not the wire
     // shape — the conversion to `CustomerView` happens two layers out
     expect(found).toBeOkWith({ id: "c-1", name: "Ada" });
   });
 
-  it("returns the domain's CustomerNotFound for an unknown id", async ({ asTenant, customers }) => {
+  it("returns the domain's CustomerNotFound for an unknown id", async ({ tenant, customers }) => {
     // GIVEN a tenant with nobody in it
     // WHEN an unknown id is looked up
     // THEN absence is the one thing `find` reports as an error
-    await expect(asTenant(() => customers.find("missing"))).resolves.toBeErrTagged(
-      "CustomerNotFound",
-      { id: "missing" },
-    );
+    await expect(customers.find(tenant, "missing")).toBeErrTagged("CustomerNotFound", {
+      id: "missing",
+    });
   });
 
-  it("does not read another tenant's customer", async ({ inUnit, tenant, customers, db }) => {
+  it("does not read another tenant's customer", async ({ tenant, customers, db }) => {
     // GIVEN a customer registered under somebody else's tenant
     await db.customer.create({
       data: { tenantId: `${tenant}-other`, customerId: "c-theirs", name: "Grace" },
     });
 
     // WHEN this tenant looks for them
-    const found = await inUnit({ tenantId: tenant }, () => customers.find("c-theirs"));
+    const found = await customers.find(tenant, "c-theirs");
 
     // THEN they do not exist as far as this tenant is concerned
     expect(found).toBeErrTagged("CustomerNotFound", { id: "c-theirs" });
@@ -56,13 +51,13 @@ describe("the Prisma CustomerRepository", () => {
 });
 
 describe("CustomerPersistenceModule", () => {
-  it("satisfies the application's CustomerRepository need inside a scope", async ({ asTenant }) => {
+  it("satisfies the application's CustomerRepository need inside a scope", async ({ tenant }) => {
     // GIVEN the module the composition root imports, plus the environment the
     // kernel would otherwise provide
     // WHEN a scope is opened over it and the port is asked about a customer
     // this tenant does not hold
-    const result = await asTenant(() =>
-      Module.scoped(scopedCustomers(), (ctx) => ctx.get(CustomerRepository).find("c-absent")),
+    const result = await Module.scoped(scopedCustomers(), (ctx) =>
+      ctx.get(CustomerRepository).find(tenant, "c-absent"),
     );
 
     // THEN the port resolved to a working repository: the answer is the
