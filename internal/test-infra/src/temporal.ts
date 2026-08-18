@@ -1,7 +1,16 @@
+import type {} from "vitest";
 import type { TestProject } from "vitest/node";
 
 import { sharedPostgres, sharedTemporal } from "./containers.js";
-import type {} from "./vitest.js";
+
+/** The keys this setup provides — see `rabbitmq.ts` for why they live beside the setup that provides them. */
+declare module "vitest" {
+  // oxlint-disable-next-line typescript/consistent-type-definitions -- a module augmentation must be an interface; a type alias cannot merge
+  interface ProvidedContext {
+    __TESTCONTAINERS_TEMPORAL_IP__: string;
+    __TESTCONTAINERS_TEMPORAL_PORT_7233__: number;
+  }
+}
 
 /**
  * The two keys are `@temporal-contract/testing`'s own — its `/extension`

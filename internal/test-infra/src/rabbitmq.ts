@@ -1,7 +1,28 @@
+import type {} from "vitest";
 import type { TestProject } from "vitest/node";
 
 import { sharedRabbitMq } from "./containers.js";
-import type {} from "./vitest.js";
+
+/**
+ * A setup module declares the keys it provides, and a workspace pulls in the
+ * augmentation for exactly the setups its `vitest.config.ts` registers — so
+ * the `import type` list in a `vitest.d.ts` mirrors the `globalSetup` list
+ * beside it, and `inject` knows only what that run actually started.
+ *
+ * `import type {} from "vitest"` above is load-bearing: TypeScript can only
+ * augment a module the program has already loaded, and nothing else here
+ * imports vitest's root entry.
+ */
+declare module "vitest" {
+  // oxlint-disable-next-line typescript/consistent-type-definitions -- a module augmentation must be an interface; a type alias cannot merge
+  interface ProvidedContext {
+    __TESTCONTAINERS_RABBITMQ_IP__: string;
+    __TESTCONTAINERS_RABBITMQ_PORT_5672__: number;
+    __TESTCONTAINERS_RABBITMQ_PORT_15672__: number;
+    __TESTCONTAINERS_RABBITMQ_USERNAME__: string;
+    __TESTCONTAINERS_RABBITMQ_PASSWORD__: string;
+  }
+}
 
 /**
  * The keys are `@amqp-contract/testing`'s own — its `it` extension `inject`s

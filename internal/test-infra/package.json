@@ -10,10 +10,7 @@
     "./lock": "./src/lock.ts",
     "./namespace": "./src/namespace.ts",
     "./rabbitmq": "./src/rabbitmq.ts",
-    "./temporal": "./src/temporal.ts",
-    "./vitest": {
-      "types": "./src/vitest.d.ts"
-    }
+    "./temporal": "./src/temporal.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

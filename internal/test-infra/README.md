@@ -76,12 +76,21 @@ break.
 | `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal`, `postgresUrl`   |
 | `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                      |
 | `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                   |
-| `@btravstack/internal-test-infra/vitest`     | type-only: the `ProvidedContext` keys the setups provide                |
 
 The two setup modules are drop-in replacements for
 `@amqp-contract/testing/global-setup` and
 `@temporal-contract/testing/global-setup`: they provide the **same** inject
 keys, so both upstream `it` extensions keep working unchanged.
+
+**Each setup declares the keys it provides**, in its own module, and a
+workspace pulls in the augmentation for exactly the setups it registers — so
+the `import type` list in a `src/vitest.d.ts` mirrors the `globalSetup` list in
+the `vitest.config.ts` beside it, and `inject` knows only what that run
+actually started. `examples/order-infrastructure/src/global-setup.ts` follows
+the same rule for its own `__ORDERS_DATABASE_URL__`. One caveat, which costs an
+afternoon if missed: an augmenting module needs `import type {} from "vitest"`
+of its own, because TypeScript can only augment a module the program has
+already loaded.
 
 ## Running the gate needs Docker
 

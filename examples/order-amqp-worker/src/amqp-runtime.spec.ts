@@ -1,3 +1,4 @@
+import type { OrderEvent } from "@btravstack/example-order-application";
 import type { Line } from "@btravstack/observability";
 import { describe, expect, vi } from "vitest";
 
@@ -46,14 +47,23 @@ describe("the broadcast deployment", () => {
     await serve(tapped.module);
     const { placeOrder, outbox } = tapped.services();
     await expect(placeOrder.execute(tenant, "o-2", 1)).toBeOk();
+    const pending = async (): Promise<readonly OrderEvent[]> =>
+      (await outbox.pending(tenant, 10)).get();
 
-    // WHEN the relay has swept it
-    await expect
-      .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
-      .toContainEqual({ message: "order placed — notifying", orderId: "o-2", quantity: 1 });
+    // WHEN the relay has swept it. Synchronising on the MARK, not on the
+    // notification: a subscriber's line proves the publish happened, and
+    // `markPublished` runs after it — so waiting on the line and asserting on
+    // the outbox is waiting for one resource and asserting about another,
+    // which is a race the machine wins about half the time under load.
+    await vi.waitUntil(async () => (await pending()).length === 0, { timeout: 5_000 });
 
-    // THEN nothing is left pending — the next sweep has nothing to re-publish
-    await expect(outbox.pending(tenant, 10)).toBeOkWith([]);
+    // THEN nothing is left pending — the next sweep has nothing to re-publish —
+    // and the subscriber heard it exactly once, which is the other half of the
+    // claim and what a re-published event would break
+    expect({ pending: await pending(), notified: notifications(tapped.lines()) }).toEqual({
+      pending: [],
+      notified: [{ message: "order placed — notifying", orderId: "o-2", quantity: 1 }],
+    });
   });
 
   it("relays in commit order", async ({ tenant, serve, tapped }) => {

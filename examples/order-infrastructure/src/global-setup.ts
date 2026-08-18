@@ -8,10 +8,21 @@ import {
   sharedPostgres,
 } from "@btravstack/internal-test-infra/containers";
 import { withLock } from "@btravstack/internal-test-infra/lock";
+import type {} from "vitest";
 import type { TestProject } from "vitest/node";
 
+/**
+ * The key this setup provides, declared beside it — the same rule
+ * `internal/test-infra`'s two setups follow, so a workspace's `vitest.d.ts`
+ * mirrors the `globalSetup` list in its `vitest.config.ts` and `inject` knows
+ * exactly what that run started.
+ *
+ * `import type {} from "vitest"` above is load-bearing: TypeScript can only
+ * augment a module the program has already loaded, and nothing else here
+ * imports vitest's root entry.
+ */
 declare module "vitest" {
-  // oxlint-disable-next-line typescript/consistent-type-definitions -- a TypeScript module augmentation of vitest's own `ProvidedContext` must be an interface; a type alias cannot merge
+  // oxlint-disable-next-line typescript/consistent-type-definitions -- a module augmentation must be an interface; a type alias cannot merge
   interface ProvidedContext {
     __ORDERS_DATABASE_URL__: string;
   }
