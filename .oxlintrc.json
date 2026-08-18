@@ -10,8 +10,7 @@
     "unthrown/no-throw": "error",
     "unthrown/no-unhandled-result": "error",
     "unthrown/no-unused-matcher": "error",
-    "unthrown/prefer-async-result": "error",
-    "unthrown/prefer-ensure": "error"
+    "unthrown/prefer-async-result": "error"
   },
   "overrides": [
     {
