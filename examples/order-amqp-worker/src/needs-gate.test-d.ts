@@ -10,8 +10,18 @@
  * the starter's own handlers port, which the starter DEPENDS on, so a
  * composition without a provider for it is di's own gate: the module's needs
  * channel carries that port, and `start` accepts only `Scope | Env` there.
+ *
+ * The third negative is about **slices**, and it is the mirror of
+ * `order-temporal-worker`'s `FulfillmentlessSlice`. Composing pieces into one
+ * provider shields what those pieces close over from the ROOT's needs channel
+ * — the composed provider's own `deps` are the piece ports, not the ports a
+ * piece declared — and it would be easy to read that as a slice shielding its
+ * own needs too. It is not: `AmqpHandler(contract, key)`'s `deps` are the REAL
+ * ports named in its `sync` call, so a slice surfaces them the moment it is
+ * composed into a root. `LoggerlessAmqp` below is the proof — both slices
+ * carried in, `observability()` left out, and `Logger` still reaching `start`.
  */
-import { AmqpRuntime, amqp } from "@btravstack/amqp";
+import { AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp";
 import { start } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
@@ -20,6 +30,8 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { Logger, observability } from "@btravstack/observability";
 
 import { OrderAmqpWorker, orderHandlers } from "./module.js";
+import { AuditSlice } from "./slices/audit/module.js";
+import { NotificationsSlice } from "./slices/notifications/module.js";
 
 const options = { signals: false, probes: false } as const;
 
@@ -57,3 +69,20 @@ const HandlerlessAmqp = Module("HandlerlessAmqp")({
 // `Module<X, E, Scope | Env>`, and this one still needs the handlers port.
 // @ts-expect-error — the module's needs channel carries the handlers port, which nothing provides.
 const _missingHandlers = start(HandlerlessAmqp, options);
+
+// The two real slices, composed into a root that forgets `observability()`.
+// Neither slice imports it — a subscriber owns no vertical, so `Logger` is the
+// root's to supply — and each slice's handler declares `Logger` in its own
+// `sync` call. The relay is deliberately absent: it needs `Logger` too, and
+// including it would leave the negative unable to say which of the two leaked.
+const LoggerlessAmqp = AmqpModule("LoggerlessAmqp")({
+  contract: orderContract,
+  handlers: orderHandlers,
+  imports: [NotificationsSlice, AuditSlice],
+});
+
+// Negative, and the one this file exists to add: a slice does NOT shield the
+// ports its own pieces declare. Composition shields a piece's deps from the
+// root; being inside a slice shields nothing.
+// @ts-expect-error — UNMET NEED: `Logger` is not assignable to `Env | Scope`.
+const _missingLogger = start(LoggerlessAmqp, options);

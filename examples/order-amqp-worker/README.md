@@ -137,7 +137,12 @@ Configuration is read inside the graph, so the composition root is a
 **constant**: `main.ts` is `await runMain(OrderAmqpWorker)`, and the specs boot
 the same value with `env: { AMQP_URL: <this test's vhost>, DATABASE_URL,
 OUTBOX_POLL_MS: "25", OUTBOX_TENANTS: <this test's tenant> }`.
-The compile-time half (`src/needs-gate.test-d.ts`) pins that `start` finds the
+The compile-time half (`src/needs-gate.test-d.ts`) also pins that a **slice
+does not shield its own pieces' ports**: both slices composed into a root
+without `observability()` still owe `Logger` at `start`, because
+`AmqpHandler(contract, key)` declares the real ports its `sync` call names.
+Composition shields a piece's deps from the root; being inside a slice shields
+nothing. It pins that `start` finds the
 runtime, and that a composition which forgets to provide `orderHandlers` is
 refused — by di's needs channel now, since the runtime itself has no needs
 left for `start`'s gate to check (spelled with the `amqp()` primitive, since

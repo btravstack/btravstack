@@ -424,6 +424,9 @@ its own provider declared — for 15 total. `workflow-activities.test-d.ts`
 pins the composing form's compile-time gates: a piece typed by its own key,
 an array covering every declared key composing into what `TemporalModule`
 takes, a key the contract does not declare refused at the piece's own call,
-and an array missing a key refused at the composing call. Checked by
+an array missing a key refused at the composing call, and a piece built for
+another contract refused there too. The two files are deliberate mirrors —
+six labelled properties each, three of them negatives — and they drifted apart
+once (issue #51). Checked by
 `tsc -p tsconfig.test-d.json`, which the package's own `test:types` script
 runs and `typecheck` runs alongside the ordinary `tsc --noEmit`.

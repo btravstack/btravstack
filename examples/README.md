@@ -198,6 +198,18 @@ router / activities / handlers port fails at `start` — di's own
 `UNSATISFIED DEPENDENCIES` gate, since the runtime provider depends on that
 port. `order-api` also pins both halves of the `unit` gate.
 
+The two **worker** files pin one more, and it is the one worth reading if you
+are about to write a slice: a slice does **not** shield the ports its own
+pieces declare. Composing pieces into one provider shields them from the root
+— the composed provider's `deps` are the piece ports, not what a piece closes
+over — and it is easy to read that as slices hiding their needs generally.
+They do not: `AmqpHandler(contract, key)` and
+`TemporalWorkflowActivities(contract, key)` both declare the REAL ports named
+in their `sync` call, so a slice that forgets a vertical surfaces them the
+moment it is composed into a root. `order-temporal-worker`'s
+`FulfillmentlessSlice` leaks `StockService | ShippingService`;
+`order-amqp-worker`'s `LoggerlessAmqp` leaks `Logger`.
+
 ## `order-api` is a two-slice modulith
 
 `order-api` is the one deployment whose surface is big enough to split, so it

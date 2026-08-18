@@ -78,6 +78,48 @@ TemporalWorkflowActivities(pinContract, "runWhisper");
 // @ts-expect-error -- `runShout` and `audit` are uncovered
 TemporalActivities(pinContract)([echo]);
 
+// Negative: a piece built for ANOTHER contract is refused — the port's id
+// carries only the key, so what separates the two is the SERVICE it carries:
+// that contract's activities record for that key. `otherStep` therefore has a
+// genuinely different input and output, not a second copy of `step` — di's
+// port typing is structural on id and service, so reusing `step` here would
+// make the two `runEcho` pieces the same type and this assertion would report
+// nothing to catch. (`packages/amqp`'s mirror of this gate needed exactly that
+// fix: its first version shared one message shape and the directive sat
+// unused.)
+//
+// Verified rather than assumed, because the raw diagnostic is misleading: with
+// the directive stripped, TypeScript reports `"…:runEcho" is not assignable to
+// "…:runShout"`, which reads like a positional complaint about the array. It
+// is not — that is one arm of the `PieceOf<C>` union being printed. The
+// discriminating experiment is a third contract whose `runEcho` reuses `step`
+// unchanged: composed into the same position of the same array, it is
+// ACCEPTED. So what this line pins really is the service the port carries.
+const otherStep = defineActivity({
+  input: z.number(),
+  output: z.number(),
+  activityOptions: { startToCloseTimeout: "30 seconds", retry: { maximumAttempts: 1 } },
+});
+const otherContract = defineContract({
+  taskQueue: "pin-other",
+  workflows: {
+    runEcho: defineWorkflow({
+      input: z.number(),
+      output: z.number(),
+      idempotency: "allow-duplicate",
+      activities: { echo: otherStep },
+    }),
+  },
+});
+const otherEcho = TemporalWorkflowActivities(
+  otherContract,
+  "runEcho",
+)({
+  value: { echo: (value) => OkAsync(value) },
+});
+// @ts-expect-error -- built for `otherContract`, whose `runEcho` activities take and answer a number
+TemporalActivities(pinContract)([otherEcho, shout, audit]);
+
 // Positive: the two existing arms still resolve, unchanged.
 TemporalActivities(pinContract)({
   value: {
