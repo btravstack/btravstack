@@ -1,7 +1,15 @@
-// The example's persistence schema. `orderId` is the business id the domain
-// speaks, kept distinct from the surrogate primary key and carrying the UNIQUE
-// constraint whose violation (P2002) the adapter translates into the domain's
-// own `DuplicateOrder`. Generated into src/generated (gitignored) by the
+// The example's persistence schema, on PostgreSQL — the same server the
+// Temporal example's test infrastructure runs on, one database each.
+//
+// Every table carries `tenantId`, and it is the LEADING column of every
+// business-identity constraint. That is what makes the application
+// multi-tenant at the layer that should own it: the adapters read the tenant
+// off the kernel's ambient unit record and scope each statement by it, so no
+// use case, port or entity mentions a tenant at all. `orderId` is still the
+// business id the domain speaks, kept distinct from the surrogate primary
+// key — it is now unique *per tenant*, and it is that composite constraint
+// whose violation (P2002) the adapter translates into the domain's own
+// `DuplicateOrder`. Generated into src/generated (gitignored) by the
 // test/typecheck scripts.
 
 generator client {
@@ -10,34 +18,46 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model Order {
   id       Int    @id @default(autoincrement())
-  orderId  String @unique
+  tenantId String
+  orderId  String
   quantity Int
+
+  @@unique([tenantId, orderId])
 }
 
 // The customers vertical, on the same shape: `customerId` is the business id
-// the domain speaks, kept distinct from the surrogate primary key.
+// the domain speaks, unique within its tenant.
 model Customer {
   id         Int    @id @default(autoincrement())
-  customerId String @unique
+  tenantId   String
+  customerId String
   name       String
+
+  @@unique([tenantId, customerId])
 }
 
 // The transactional outbox: one row per fact worth broadcasting, written in
 // the same transaction as the write it describes.
 //
-// The row IS the event envelope — `kind` (which sort of thing changed),
-// `subjectId` (which one, and the key a reader compacts on), `occurredAt`, and
-// `payload`. A NULL payload is the **tombstone**: the last word about a
-// subject, saying it is gone. `id` is the sequence the relay publishes in, so
-// a reader sees a subject's create before its tombstone. `publishedAt` is the
-// relay's own bookkeeping — NULL means pending.
+// The row IS the event envelope — `tenantId` (whose fact it is), `kind` (which
+// sort of thing changed), `subjectId` (which one, and the key a reader
+// compacts on), `occurredAt`, and `payload`. A NULL payload is the
+// **tombstone**: the last word about a subject, saying it is gone. `id` is the
+// sequence the relay publishes in, so a reader sees a subject's create before
+// its tombstone. `publishedAt` is the relay's own bookkeeping — NULL means
+// pending.
+//
+// The relay sweeps ACROSS tenants, which is why nothing here is scoped by one:
+// it runs outside any unit, and the tenant travels on the event it publishes
+// rather than being read from an ambient record it does not have.
 model OutboxMessage {
   id          Int       @id @default(autoincrement())
+  tenantId    String
   kind        String
   subjectId   String
   payload     String?

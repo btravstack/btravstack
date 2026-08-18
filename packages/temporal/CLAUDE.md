@@ -153,12 +153,7 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   pinned — one signature, no overload pair: the kernel discharges the one, a
   pinned config never produces the other),
   `forceAfter` (Temporal's `shutdownForceTime`, default `15 seconds`) and
-  `gracePeriod` (`shutdownGraceTime`, default `10 seconds`). `TemporalInfo` is
-  `{ taskQueue, namespace }`, published on `Serving.info` once polling. The
-  worked example is `TemporalModule("OrderTemporalWorker")({ contract,
-activities: orderActivities, workflows, imports: [Application, Persistence,
-Fulfillment] })` + `runMain(OrderTemporalWorker)`; a test passes `env: {
-TEMPORAL_ADDRESS }` to `start`.
+  `gracePeriod` (`shutdownGraceTime`, default `10 seconds`).
 - **The activities port is the starter's, provided by the application, and
   the module's one need.** Its service is `ActivitiesOf<C>` =
   `DeclareActivitiesHandlerOptions<C>["activities"]` — the implementations

@@ -6,8 +6,8 @@ import { describe, expect } from "vitest";
 import { it } from "./test-fixtures.js";
 
 /**
- * Every `model` schema.prisma declares. SQLite names the table after the model
- * unless `@@map` says otherwise, and nothing here uses `@@map`.
+ * Every `model` schema.prisma declares. PostgreSQL gets a table named after
+ * the model unless `@@map` says otherwise, and nothing here uses `@@map`.
  */
 const modelsInSchema = (): readonly string[] =>
   [
@@ -26,7 +26,7 @@ describe("the committed migrations", () => {
 
     // WHEN the database `openDatabase` built is asked what it actually has
     const tables = await db.$queryRawUnsafe<readonly { readonly name: string }[]>(
-      "SELECT name FROM sqlite_master WHERE type = 'table'",
+      "SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public'",
     );
 
     // THEN every model has its table. The migrations are generated from this

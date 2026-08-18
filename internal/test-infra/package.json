@@ -1,0 +1,29 @@
+{
+  "name": "@btravstack/internal-test-infra",
+  "private": true,
+  "description": "The repository's shared test infrastructure: one PostgreSQL, one RabbitMQ and one Temporal container for the whole gate, reused across every workspace's vitest run",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "exports": {
+    "./containers": "./src/containers.ts",
+    "./lock": "./src/lock.ts",
+    "./namespace": "./src/namespace.ts",
+    "./rabbitmq": "./src/rabbitmq.ts",
+    "./temporal": "./src/temporal.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@temporalio/client": "catalog:",
+    "@temporalio/common": "catalog:",
+    "testcontainers": "catalog:"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

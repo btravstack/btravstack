@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
 import type { Env } from "@btravstack/config";
 import type { RunningApp, StartOptions } from "@btravstack/core";
@@ -20,7 +21,7 @@ import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
-import { test } from "vitest";
+import { inject, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { OrderApi, orderRouter } from "./module.js";
@@ -44,7 +45,7 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
       Provider(OrderRepository)({ value: repository }),
       Provider(CustomerRepository)({
         value: {
-          find: (id: string) =>
+          find: (_tenantId: string, id: string) =>
             id === "c-1"
               ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
               : ErrAsync(new CustomerNotFound({ id })),
@@ -127,8 +128,8 @@ const recordingApi = () => {
  */
 const stubbedApi = () =>
   apiWith({
-    save: (order) => OkAsync(order),
-    find: (id) => ErrAsync(new OrderNotFound({ id })),
+    save: (_tenantId, order) => OkAsync(order),
+    find: (_tenantId, id) => ErrAsync(new OrderNotFound({ id })),
     remove: () => OkAsync(),
   });
 
@@ -139,7 +140,7 @@ const stubbedApi = () =>
  */
 const unmodelledApi = () =>
   apiWith({
-    save: (order) => OkAsync(order),
+    save: (_tenantId, order) => OkAsync(order),
     find: () => fromSafePromise(Promise.reject(new Error("the database is on fire"))),
     remove: () => OkAsync(),
   });
@@ -162,8 +163,8 @@ const gatedApi = () => {
 
   return {
     api: apiWith({
-      save: (order) => OkAsync(order),
-      find: (id) => {
+      save: (_tenantId, order) => OkAsync(order),
+      find: (_tenantId, id) => {
         entered();
         return fromSafePromise(held.then(() => anOrder(id, 1)));
       },
@@ -188,6 +189,13 @@ const portOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<number> => {
 export type ApiFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
+  /**
+   * This test's tenant, and nobody else's. The database is shared by every
+   * workspace's run — one migration for the whole gate rather than one per
+   * test — so a UUID here is what keeps one spec's `o-1` from being another's.
+   * Every call names it, because the contract does.
+   */
+  readonly tenant: string;
   /**
    * Starts an app on an ephemeral loopback port — `env: { PORT: "0", HOST:
    * "127.0.0.1" }`, which is how every composition here, the real one
@@ -230,7 +238,19 @@ export const it = test.extend<ApiFixtures>({
   // `LOG_LEVEL: "fatal"` is what keeps the real `OrderApi` — whose sink is the
   // production `jsonSink()` on stdout — from writing its lines into the
   // runner's own output. The roots a spec reads back pin their level instead.
-  boot: bootFixture({ env: { PORT: "0", HOST: "127.0.0.1", LOG_LEVEL: "fatal" } }),
+  boot: bootFixture({
+    env: {
+      PORT: "0",
+      HOST: "127.0.0.1",
+      LOG_LEVEL: "fatal",
+      DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
+    },
+  }),
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  tenant: async ({}, use) => {
+    await use(`t-${randomUUID()}`);
+  },
 
   serve: async ({ boot }, use) => {
     await use((module, options) => boot(module, { unit: RequestModule, ...options }));

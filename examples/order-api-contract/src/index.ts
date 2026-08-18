@@ -1,1 +1,7 @@
-export { contract, type CustomerView, type OrderRef, type OrderView } from "./contract.js";
+export {
+  contract,
+  type CustomerView,
+  type OrderRef,
+  type OrderView,
+  type Tenanted,
+} from "./contract.js";

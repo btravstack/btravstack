@@ -163,6 +163,7 @@ AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>` either way,
   under `connectionOptions`, where setting it is silently inert — an
   unreachable broker takes the library's 30s default to report without it).
   `AmqpInfo` is `{ queues }`, published on `Serving.info` once consuming.
+
 - **The handlers port's service is `WorkerInferHandlers<TContract>`** —
   the record `TypedAmqpWorker.create` takes, with **no injected context**.
   Inside, `Provider(AmqpRuntime)([AmqpConfig, AmqpHandlersPort as

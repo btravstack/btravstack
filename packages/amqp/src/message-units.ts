@@ -52,6 +52,5 @@ const metaFor = (raw: {
   const inbound = [raw.properties.messageId, raw.properties.correlationId]
     .map((value) => value?.trim() ?? "")
     .find((value) => value !== "");
-
   return { kind: "delivery", id, traceId: inbound ?? id };
 };

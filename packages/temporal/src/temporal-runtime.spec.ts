@@ -3,55 +3,56 @@ import { describe, expect, vi } from "vitest";
 import { it, undeclared } from "./test-fixtures.js";
 
 describe("temporal", () => {
-  it("publishes the task queue and namespace it polls", async ({ serve }) => {
-    // GIVEN a worker polling a queue of this test's own
+  it("publishes the task queue and namespace it polls", async ({ server, serve }) => {
+    // GIVEN a worker polling a queue of this test's own, in this file's own
+    // namespace on the shared server
     const { app, taskQueue } = await serve();
 
     // WHEN the kernel is asked what the runtime published about itself
     const info = app.runtimeInfo();
 
     // THEN it is the pair that identifies a Temporal worker to an operator
-    await expect(info).toBeOkWith({ taskQueue, namespace: "default" });
+    await expect(info).toBeOkWith({ taskQueue, namespace: server.namespace });
   });
 
   it("binds TEMPORAL_ADDRESS and TEMPORAL_NAMESPACE from the environment when nothing is pinned", async ({
-    env,
+    server,
     serve,
     configured,
   }) => {
     // GIVEN an environment naming both, and a starter pinning neither
     await serve({
-      env: { TEMPORAL_ADDRESS: env.address, TEMPORAL_NAMESPACE: "default" },
+      env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace },
       tap: configured.tap,
     });
 
     // WHEN the graph has bound `TemporalConfig`
     // THEN both came from the environment
-    expect(configured.bound()).toEqual({ address: env.address, namespace: "default" });
+    expect(configured.bound()).toEqual({ address: server.address, namespace: server.namespace });
   });
 
   it("pins what it is given and reads the rest from the environment", async ({
-    env,
+    server,
     serve,
     configured,
   }) => {
     // GIVEN the address pinned and the namespace left to the environment
-    await serve({ address: env.address, env: {}, tap: configured.tap });
+    await serve({ address: server.address, env: {}, tap: configured.tap });
 
     // WHEN the graph has bound `TemporalConfig`
     // THEN the pin won for the address and the environment's default for the rest
-    expect(configured.bound()).toEqual({ address: env.address, namespace: "default" });
+    expect(configured.bound()).toEqual({ address: server.address, namespace: "default" });
   });
 
   it("reads nothing from the environment when both are pinned", async ({
-    env,
+    server,
     serve,
     configured,
   }) => {
     // GIVEN both pinned, over an environment that would be a configuration
     // error if it were read — a blank variable is never an absent one
     await serve({
-      address: env.address,
+      address: server.address,
       namespace: "default",
       env: { TEMPORAL_ADDRESS: "" },
       tap: configured.tap,
@@ -59,16 +60,16 @@ describe("temporal", () => {
 
     // WHEN the graph has bound `TemporalConfig`
     // THEN the pins are what it holds, and the environment was never consulted
-    expect(configured.bound()).toEqual({ address: env.address, namespace: "default" });
+    expect(configured.bound()).toEqual({ address: server.address, namespace: "default" });
   });
 
   it("fails startup with ConfigInvalid for TemporalConfig when TEMPORAL_NAMESPACE is blank", async ({
-    env,
+    server,
     serveBroken,
   }) => {
     // GIVEN a namespace that is set but empty
     const app = await serveBroken({
-      env: { TEMPORAL_ADDRESS: env.address, TEMPORAL_NAMESPACE: " " },
+      env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: " " },
     });
 
     // WHEN the application is started

@@ -27,13 +27,14 @@ import { ErrAsync, OkAsync } from "unthrown";
 export const orderNotifications = AmqpHandler(orderContract, "orderNotifications")([Logger], {
   sync:
     (logger) =>
-    ({ payload: { id, payload } }) => {
+    ({ payload: { tenantId, id, payload } }) => {
       if (currentUnit()?.signal.aborted === true) {
         return ErrAsync(
           new RetryableError(`the drain deadline passed before order ${id} was notified`),
         );
       }
       logger.info(payload === null ? "order gone — notifying" : "order placed — notifying", {
+        tenantId,
         orderId: id,
         ...(payload === null ? {} : { quantity: payload.quantity }),
       });

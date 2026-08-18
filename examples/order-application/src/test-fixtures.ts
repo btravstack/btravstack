@@ -33,18 +33,24 @@ import {
  */
 const stubRepository = Provider(OrderRepository)({
   sync: () => {
+    // Keyed by tenant AND id, the way the real schema's composite unique key
+    // is: a stub that ignored the tenant would let these specs pass against a
+    // repository that leaks between tenants.
     const rows = new Map<string, Order>();
+    const key = (tenantId: string, id: string): string => `${tenantId}/${id}`;
     return {
-      save: (order: Order) => {
-        if (rows.has(order.id)) return ErrAsync(new DuplicateOrder({ id: order.id }));
-        rows.set(order.id, order);
+      save: (tenantId: string, order: Order) => {
+        if (rows.has(key(tenantId, order.id)))
+          return ErrAsync(new DuplicateOrder({ id: order.id }));
+        rows.set(key(tenantId, order.id), order);
         return OkAsync(order);
       },
-      find: (id: string) => {
-        const row = rows.get(id);
+      find: (tenantId: string, id: string) => {
+        const row = rows.get(key(tenantId, id));
         return row === undefined ? ErrAsync(new OrderNotFound({ id })) : OkAsync(row);
       },
-      remove: (id: string) => (rows.delete(id) ? OkAsync() : ErrAsync(new OrderNotFound({ id }))),
+      remove: (tenantId: string, id: string) =>
+        rows.delete(key(tenantId, id)) ? OkAsync() : ErrAsync(new OrderNotFound({ id })),
     };
   },
 });
@@ -52,10 +58,10 @@ const stubRepository = Provider(OrderRepository)({
 /** One customer on hand, so the read side has something to answer with. */
 const stubCustomerRepository = Provider(CustomerRepository)({
   sync: () => {
-    const rows = new Map([["c-1", Customer.make({ id: "c-1", name: "Ada" }).getOrThrow()]]);
+    const rows = new Map([["acme/c-1", Customer.make({ id: "c-1", name: "Ada" }).getOrThrow()]]);
     return {
-      find: (id: string) => {
-        const row = rows.get(id);
+      find: (tenantId: string, id: string) => {
+        const row = rows.get(`${tenantId}/${id}`);
         return row === undefined ? ErrAsync(new CustomerNotFound({ id })) : OkAsync(row);
       },
     };

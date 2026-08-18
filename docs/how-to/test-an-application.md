@@ -290,12 +290,59 @@ to prove `completed: 1` and `abandoned: 1` against the real HTTP runtime (see
 follow the same shape — `boot: bootFixture()`, a `serve` that adds the
 transport's own environment, `tapped` over the **services** the specs assert
 through and `observability({ sink })` for the lines — and pay a fixture cost,
-stated in their READMEs:
-`order-temporal-worker` runs a real Worker against `@temporalio/testing`'s
-**time-skipping test server**, a local binary downloaded once into
-`.cache/temporal-test-server` (network on a cold cache only);
-`order-amqp-worker` and `@btravstack/amqp` boot **one RabbitMQ container** per
-vitest run through `@amqp-contract/testing`, so they need a Docker daemon.
+stated in their READMEs: they need a **Docker daemon**.
+
+## Isolate by the boundary, not by the server
+
+Every suite that needs a broker, a workflow platform or a database shares
+**one** of each across the whole repository, and isolates itself by the
+boundary that system already has:
+
+| System     | What a test gets     | Minted by                                   |
+| ---------- | -------------------- | ------------------------------------------- |
+| RabbitMQ   | a vhost per test     | `@amqp-contract/testing`'s `it` extension   |
+| Temporal   | a namespace per file | `@btravstack/internal-test-infra/namespace` |
+| PostgreSQL | a tenant per test    | the workspace's own fixture, a UUID         |
+
+Starting a server per workspace instead is what made `pnpm test` intermittently
+red at turbo's default concurrency, and it bought an isolation these boundaries
+already gave for nothing.
+
+The consequence worth planning for: **nothing cleans up after a test**. No
+truncate, no drop, no purge — a test that needed one would be a test sharing a
+namespace it should have minted. One migration runs for the whole gate, and
+the tests that share that schema never see each other's rows.
+
+Reading a tenant back needs nothing at all, because the example application
+names it on its ports rather than reading it from ambient context:
+
+```ts
+export const it = test.extend<{ tenant: string }>({
+  // oxlint-disable-next-line no-empty-pattern -- depends on no other fixture
+  tenant: async ({}, use) => {
+    await use(`t-${randomUUID()}`);
+  },
+});
+
+it("reads back only its own tenant's order", async ({
+  tenant,
+  repository,
+  anOrder,
+}) => {
+  // GIVEN an order saved under this test's tenant
+  // WHEN it is read back
+  const found = await repository
+    .save(tenant, anOrder("o-1", 3))
+    .flatMap(() => repository.find(tenant, "o-1"));
+
+  // THEN the round trip is lossless, and scoped
+  expect(found).toBeOkWith({ id: "o-1", quantity: 3 });
+});
+```
+
+That is the whole fixture. See [Multi-tenancy is the application's, not the
+framework's](/how-to/read-the-ambient-unit#multi-tenancy-is-the-application-s-not-the-framework-s)
+for why the tenant is an argument rather than something the transport reads.
 
 ## Follow the repo's test conventions
 

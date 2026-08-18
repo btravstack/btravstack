@@ -9,16 +9,33 @@ import { ErrAsync, P, TaggedError, fromSafePromise, type AsyncResult } from "unt
 
 /**
  * What only the relay knows, as a service: its idle sleep, bound from
- * `OUTBOX_POLL_MS`. `0` is rejected — a relay that never sleeps is a busy
- * loop — and so is anything above a minute, which is a typo, not a policy.
+ * `OUTBOX_POLL_MS`, and the tenants it serves, from `OUTBOX_TENANTS`. `0` is
+ * rejected for the sleep — a relay that never sleeps is a busy loop — and so
+ * is anything above a minute, which is a typo, not a policy.
  * `Config.provider(name)(schema)` mints the port (`relayConfig.port`): the
  * slice is this deployment's own, so nothing else ever names it.
+ *
+ * `OUTBOX_TENANTS` is a comma-separated list and has no default, because
+ * there is no safe one: the relay runs outside any unit, so it cannot read a
+ * tenant off the ambient record the way every other adapter does, and
+ * "whatever is in the table" is how one deployment starts broadcasting
+ * another's facts. Naming them is also how a relay is sharded — two
+ * deployments, half the tenants each, and neither can starve the other's
+ * backlog.
  */
 export const relayConfig = Config.provider("RelayConfig")(
   Config.object({
     pollMs: Config.integer("OUTBOX_POLL_MS", { min: 1, max: 60_000, default: 200 }),
+    tenants: Config.string("OUTBOX_TENANTS"),
   }),
 );
+
+/** `"acme, globex"` → `["acme", "globex"]`; blank entries dropped, so a trailing comma is not a tenant named `""`. */
+const tenantsOf = (value: string): readonly string[] =>
+  value
+    .split(",")
+    .map((tenant) => tenant.trim())
+    .filter((tenant) => tenant !== "");
 
 /** The running relay: nothing resolves it, and nothing needs to — it exists to be started and stopped. */
 export class OutboxRelay extends Port("OutboxRelay")<{
@@ -72,7 +89,11 @@ export class BrokerUnreachable extends TaggedError("BrokerUnreachable")<{
 const startOutboxRelay = (
   outbox: ServiceOf<Outbox>,
   logger: ServiceOf<Logger>,
-  { url, pollMs }: { readonly url: string; readonly pollMs: number },
+  {
+    url,
+    pollMs,
+    tenants,
+  }: { readonly url: string; readonly pollMs: number; readonly tenants: readonly string[] },
 ): AsyncResult<ServiceOf<OutboxRelay>, BrokerUnreachable> =>
   TypedAmqpClient.create({ contract: orderContract, urls: [url] })
     .recoverDefect((cause) => ErrAsync(new BrokerUnreachable({ url, cause })))
@@ -92,8 +113,8 @@ const startOutboxRelay = (
           };
         });
 
-      const sweep = async (): Promise<void> => {
-        await outbox.pending(BATCH).match({
+      const sweepTenant = async (tenantId: string): Promise<void> => {
+        await outbox.pending(tenantId, BATCH).match({
           ok: async (events) => {
             const published: number[] = [];
             for (const event of events) {
@@ -103,6 +124,7 @@ const startOutboxRelay = (
                   id: event.subjectId,
                   occurredAt: event.occurredAt.toISOString(),
                   payload: event.payload,
+                  tenantId: event.tenantId,
                 })
                 .match({
                   ok: () => {
@@ -146,9 +168,16 @@ const startOutboxRelay = (
           },
           errCases: (matcher) => matcher,
           defect: (cause) => {
-            logger.warn("reading the outbox failed, will retry", undefined, cause);
+            logger.warn("reading the outbox failed, will retry", { tenantId }, cause);
           },
         });
+      };
+
+      // Tenant by tenant, each with its own `BATCH`, so one tenant's backlog
+      // cannot starve another's — the reason the relay is told which tenants
+      // it serves rather than reading the table.
+      const sweep = async (): Promise<void> => {
+        for (const tenantId of tenants) await sweepTenant(tenantId);
       };
 
       const running = (async () => {
@@ -182,7 +211,7 @@ const startOutboxRelay = (
  * kernel then reports as a `teardownError`.
  */
 export const outboxRelay = Provider(OutboxRelay)([Outbox, Logger, AmqpConfig, relayConfig.port], {
-  acquire: (outbox, logger, { url }, { pollMs }) =>
-    startOutboxRelay(outbox, logger, { url, pollMs }),
+  acquire: (outbox, logger, { url }, { pollMs, tenants }) =>
+    startOutboxRelay(outbox, logger, { url, pollMs, tenants: tenantsOf(tenants) }),
   release: (running) => running.stop().get(),
 });

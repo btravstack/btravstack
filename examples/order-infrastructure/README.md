@@ -1,6 +1,6 @@
 # `@btravstack/core` example: the order infrastructure layer
 
-The adapter side. This layer speaks Prisma, SQLite and P-codes, and its job is
+The adapter side. This layer speaks Prisma, PostgreSQL and P-codes, and its job is
 to make sure none of that vocabulary reaches the layers above it.
 
 ```
@@ -31,12 +31,17 @@ pnpm turbo run db:migrate
 against an unmigrated database. The application never migrates itself at boot —
 that belongs to the deploy step, not the process.
 
-This example's own database is the exception that proves it: SQLite held _in
-memory_, born empty inside `openDatabase` and gone with the process, so no
-external command can reach it. `openDatabase` therefore applies the same
-committed SQL itself — the exact statements a deployment runs, rather than a
-hand-kept copy that can drift from the schema. `schema-drift.spec.ts` pins that
-the migrations were regenerated after a schema change.
+The suites do the same rather than something of their own: `src/global-setup.ts`
+runs **`prisma migrate deploy`** — that very command — against the shared test
+server, once per run, under a cross-process lock so two workspaces cannot race
+to be first. `_prisma_migrations` is what makes running it again a no-op.
+`schema-drift.spec.ts` pins that the migrations were regenerated after a schema
+change.
+
+This used to be SQLite held _in memory_, born empty inside `openDatabase` with
+the committed SQL replayed statement by statement, because no external command
+could reach a database that dies with the process. A shared PostgreSQL both
+removes that hand-rolled runner and lets the tests run the real one.
 
 The migration connection lives in `prisma.config.ts`, not the schema: Prisma 7
 removed `url` from `datasource`, and the application passes a driver adapter to
@@ -107,12 +112,37 @@ no write path because its port has none — this application registers nobody, a
 inventing an adapter method the use cases never call would be infrastructure the
 domain did not ask for.
 
-## A real database, no Docker
+## A real database, shared, and a tenant per test
 
-The specs run against real SQLite held in memory
-(`@prisma/adapter-better-sqlite3`), so the duplicate above is a genuine P2002
-raised by a genuine UNIQUE index, not a stub returning a canned error. The
-generated client is gitignored and minted by the `test` / `typecheck` scripts:
+The specs run against a real PostgreSQL (`@prisma/adapter-pg`), so the
+duplicate above is a genuine P2002 raised by a genuine UNIQUE index, not a stub
+returning a canned error. It is **one** server for the whole repository — the
+same one Temporal's own persistence lives on, a database each — started by
+[`internal/test-infra`](../../internal/test-infra/README.md) and migrated once
+per run by `src/global-setup.ts` with `prisma migrate deploy`, the command a
+deployment runs.
+
+Nothing is truncated or dropped between tests, because nothing needs to be:
+**every table carries `tenantId`** as the leading column of its identity
+constraint, and each test declares a tenant of its own (a UUID). That is what
+makes a shared database cost one migration for the whole gate rather than one
+per test — the reason this stopped being SQLite in memory, where every test
+built its own schema.
+
+The tenancy is **explicit**: every port names its tenant, so an adapter is
+handed one rather than finding one.
+
+```ts
+readonly find: (tenantId: string, id: string) => AsyncResult<Order, OrderNotFound>;
+```
+
+That is the application's design, not the framework's — no starter has a
+tenancy concept, and none should, because what establishes a tenant is a
+decision about a specific system. Two things fall out of it. A caller that
+forgot its tenant does not compile, where an ambient one would have failed at
+runtime or read the wrong rows in silence. And a spec needs no machinery:
+`repository.find(tenant, "o-1")` says what it is scoped to at the call, so the
+only fixture is the tenant string itself.
 
 The generated client is gitignored and minted by turbo's own `generate` task —
 which `test`, `typecheck` and `test:types` all depend on, so one generator runs,

@@ -23,7 +23,9 @@ const hydrate = (row: OrderRow): Result<Order, never> =>
  * The translation this whole layer exists for. `tryCreate`'s error channel is
  * Prisma's vocabulary — three tagged P-codes — and every one of them is named
  * here, because `mapErrCases` has no wildcard to hide behind. Only the
- * duplicate has a meaning the application shares; the other two describe a
+ * duplicate has a meaning the application shares — now the composite
+ * `(tenantId, orderId)` one, so two tenants may hold the same order id and
+ * neither sees the other's; the other two describe a
  * schema this adapter does not have (there is no relation to violate, and
  * `create` has no row of its own to miss), so reaching them means something is
  * wrong with the code, not with the request — the defect channel, not `E`.
@@ -39,18 +41,21 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
   //
   // The event carries a payload, which is what makes it a create-or-replace
   // for its subject. Its tombstone twin is in `remove`.
-  save: (order) =>
+  save: (tenantId, order) =>
     db
       .$tryTransaction((tx) =>
-        tx.order.tryCreate({ data: { orderId: order.id, quantity: order.quantity } }).flatMap(() =>
-          tx.outboxMessage.tryCreate({
-            data: {
-              kind: "order",
-              subjectId: order.id,
-              payload: JSON.stringify({ quantity: order.quantity }),
-            },
-          }),
-        ),
+        tx.order
+          .tryCreate({ data: { tenantId, orderId: order.id, quantity: order.quantity } })
+          .flatMap(() =>
+            tx.outboxMessage.tryCreate({
+              data: {
+                tenantId,
+                kind: "order",
+                subjectId: order.id,
+                payload: JSON.stringify({ quantity: order.quantity }),
+              },
+            }),
+          ),
       )
       .mapErrCases((matcher, defect) =>
         matcher
@@ -60,9 +65,9 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
       )
       .map(() => order),
 
-  find: (id) =>
+  find: (tenantId, id) =>
     db.order
-      .tryFindUnique({ where: { orderId: id } })
+      .tryFindUnique({ where: { tenantId_orderId: { tenantId, orderId: id } } })
       .flatMap((row) => (row === null ? Err(new OrderNotFound({ id })) : hydrate(row))),
 
   // Compensation's persistence arm — `delete`, not `deleteMany`, because
@@ -84,12 +89,12 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
   // with `RecordNotFound` before the insert, and the transaction rolls back —
   // so a re-run of the saga's `cancelPlacement` cannot append a second
   // tombstone for an order already gone.
-  remove: (id) =>
+  remove: (tenantId, id) =>
     db
       .$tryTransaction((tx) =>
-        tx.order.tryDelete({ where: { orderId: id } }).flatMap(() =>
+        tx.order.tryDelete({ where: { tenantId_orderId: { tenantId, orderId: id } } }).flatMap(() =>
           tx.outboxMessage.tryCreate({
-            data: { kind: "order", subjectId: id, payload: null },
+            data: { tenantId, kind: "order", subjectId: id, payload: null },
           }),
         ),
       )

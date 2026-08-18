@@ -98,9 +98,9 @@ EXPORTED", missing]` — refusing at the call site a port `module` does not
 
 Five spec files, 100% lines/functions (`test-fixtures.ts` excluded, per the
 Test conventions). `test-fixtures.ts` exports the extended `it` — the
-package's own `bootFixture`, dogfooded — plus `greetingApp()` (an in-memory
-runtime next to a `Greeting`, both exported: what `tapped` and `boot` are
-exercised against) and `runtimeModule(runtime)`.
+package's own `bootFixture`, dogfooded — plus
+`greetingApp()` (an in-memory runtime next to a `Greeting`, both exported:
+what `tapped` and `boot` are exercised against) and `runtimeModule(runtime)`.
 
 - `boot-fixture.spec.ts` (5): the defaults read back off a booted app
   (`serving`, no probe port), a call's `probes: { port: 0 }` beating the

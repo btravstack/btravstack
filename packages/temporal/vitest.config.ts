@@ -5,9 +5,14 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.spec.ts"],
     setupFiles: ["@unthrown/vitest"],
-    // The time-skipping server download dominates a cold run.
-    testTimeout: 30_000,
-    hookTimeout: 60_000,
+    // ONE Temporal server (and its PostgreSQL) for the whole repository,
+    // reused across every workspace's run rather than a time-skipping test
+    // server per vitest worker — see `internal/test-infra`. Each spec file
+    // registers a namespace of its own on it.
+    globalSetup: ["@btravstack/internal-test-infra/temporal"],
+    // The image pull dominates a cold run.
+    testTimeout: 60_000,
+    hookTimeout: 180_000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],

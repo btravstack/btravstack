@@ -18,8 +18,9 @@ import { OkAsync } from "unthrown";
 export const orderAudit = AmqpHandler(orderContract, "orderAudit")([Logger], {
   sync:
     (logger) =>
-    ({ payload: { id, occurredAt, payload } }) => {
+    ({ payload: { tenantId, id, occurredAt, payload } }) => {
       logger.info("recording an order change", {
+        tenantId,
         orderId: id,
         occurredAt,
         change: payload === null ? "removed" : "placed",

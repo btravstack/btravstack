@@ -32,9 +32,9 @@ const hydrate = (row: CustomerRow): Result<Customer, never> =>
 export const prismaCustomerRepository = (
   db: OrderDatabaseClient,
 ): ServiceOf<CustomerRepository> => ({
-  find: (id) =>
+  find: (tenantId, id) =>
     db.customer
-      .tryFindUnique({ where: { customerId: id } })
+      .tryFindUnique({ where: { tenantId_customerId: { tenantId, customerId: id } } })
       .flatMap((row) => (row === null ? Err(new CustomerNotFound({ id })) : hydrate(row))),
 });
 

@@ -7,6 +7,7 @@ strictPeerDependencies: true
 packages:
   - packages/*
   - examples/*
+  - internal/*
   - docs
 
 catalog:
@@ -41,7 +42,7 @@ catalog:
   "@orpc/client": 2.0.0-beta.28
   "@orpc/contract": 2.0.0-beta.28
   "@orpc/server": 2.0.0-beta.28
-  "@prisma/adapter-better-sqlite3": 7.9.1
+  "@prisma/adapter-pg": 7.9.1
   "@prisma/client": 7.9.1
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.5.0. 8.x also
@@ -74,6 +75,7 @@ catalog:
   turbo: 2.10.10
   typedoc: 0.28.20
   typedoc-plugin-markdown: 4.12.0
+  testcontainers: 12.0.4
   typescript: 7.0.2
   # The TypeScript a *consumer* is realistically on, for the second
   # declaration-emit pass in `examples/hexagonal-order-api`
@@ -121,8 +123,6 @@ allowBuilds:
   # Pulled in by @temporalio/*; both allowed upstream in temporal-contract.
   "@swc/core": true
   protobufjs: true
-  # Native SQLite bindings for the persistence example's tests.
-  better-sqlite3: true
   esbuild: true
   lefthook: true
   prisma: true
@@ -136,6 +136,8 @@ peerDependencyRules:
     - react
     - react-dom
     - "@types/react"
+    # Optional peer of `@docsearch/react`, pulled in transitively by vitepress.
+    - search-insights
 
 minimumReleaseAgeExclude:
   # First-party shared config (@btravstack scope): adopt immediately, skip the delay.

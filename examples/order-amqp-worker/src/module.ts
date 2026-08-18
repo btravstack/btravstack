@@ -49,9 +49,16 @@ export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, or
  * tap. Both write paths leave the outbox an event, which is the property this
  * deployment exists to demonstrate.
  *
- * A constant: the broker URL and the relay's poll interval are read from the
- * environment inside the graph (`AmqpConfig` from `AMQP_URL`, `RelayConfig`
- * from `OUTBOX_POLL_MS`), so nothing has to be passed in — `main.ts` boots
+ * Tenancy is the CONTRACT's, not the transport's. The envelope carries
+ * `tenantId`, so a subscriber reads it off the message it was already given
+ * and `@btravstack/amqp` knows nothing about tenants; the relay's own side is
+ * `OUTBOX_TENANTS`, which says whose facts this deployment is allowed to
+ * broadcast.
+ *
+ * A constant: the broker URL, the database and the relay's poll interval and
+ * tenants are read from the environment inside the graph (`AmqpConfig` from
+ * `AMQP_URL`, `DatabaseConfig` from `DATABASE_URL`, `RelayConfig` from
+ * `OUTBOX_POLL_MS` / `OUTBOX_TENANTS`), so nothing has to be passed in — `main.ts` boots
  * this value as is, and the specs boot it with `env` pointing at each test's
  * own vhost.
  */

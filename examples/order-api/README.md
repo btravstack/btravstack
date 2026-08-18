@@ -238,11 +238,43 @@ stay a single line.
 Configuration is read **inside the graph**: `http()` binds `PORT` (default
 `3000`) and `HOST` (default `0.0.0.0`) from the `Env` port the kernel provides,
 `observability()` binds `LOG_LEVEL` (default `info`),
+`OrderPersistenceModule` binds `DATABASE_URL` (required — a migration aimed at
+an unnamed database is a mistake worth failing on),
 and the kernel binds its own `PROBE_PORT` (default `9000`). A malformed value —
 `PORT=abc`, `PORT=` — is a `ConfigInvalid` the kernel reports as a
 `startFailed` event and exit code `78`, sysexits(3)'s `EX_CONFIG`; nothing in
 this package validates, prints or exits.
 
-It is typechecked by the gate rather than executed by it: the example packages
+## Multi-tenant by design, not by framework
+
+The API serves several tenants from one database, and the tenant is declared
+in **its own contract**:
+
+```ts
+export type Tenanted = { readonly tenantId: string };
+
+const ordersContract = {
+  place: oc
+    .input(type<Tenanted & { readonly id: string; readonly quantity: number }>())
+    .output(type<OrderView>())
+    .errors({ INVALID_QUANTITY: { data: type<OrderRef>() }, CONFLICT: { data: type<OrderRef>() } }),
+  …
+};
+```
+
+The controller hands `input.tenantId` straight to the use case, which hands it
+to the repository, which puts it in the `WHERE`. `@btravstack/http` knows
+nothing about tenants and has no hook for them — context is the application's
+to own, and a starter that read a tenant off a header would be deciding a
+system's authentication model on its behalf.
+
+An argument rather than a header, then, and the trade is worth naming. A
+client cannot forget it (the contract refuses), the router cannot invent one,
+and the path from wire to `WHERE` is visible in three files. What it is not is
+"who is asking": a deployment that authenticates its callers would take the
+tenant from the caller's identity and drop it from the contract — a contract
+change, which is exactly the kind of change that should be.
+
+It is typechecked by the gate rather than executed by it:It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there
 is no compiled entry for `node` to run, and every spec drives `start` directly.

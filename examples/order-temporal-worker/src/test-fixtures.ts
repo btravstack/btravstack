@@ -1,5 +1,4 @@
-import { mkdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 
 import type { ConfigInvalid, Env } from "@btravstack/config";
 import type { RunningApp } from "@btravstack/core";
@@ -14,19 +13,20 @@ import {
 import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domain";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
+import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
-import { createTimeSkippingTest } from "@temporal-contract/testing/time-skipping";
 import {
   bundleFor,
   fixturePath,
   nextTaskQueueId,
   withTaskQueue,
 } from "@temporal-contract/testing/workflow-bundle";
-import type { TestWorkflowEnvironment } from "@temporalio/testing";
+import { Client, Connection } from "@temporalio/client";
 import { ErrAsync, OkAsync } from "unthrown";
+import { inject, test } from "vitest";
 
 import { BillingModule } from "./billing.js";
 import { FulfillmentModule } from "./fulfillment.js";
@@ -35,27 +35,15 @@ import { chargeOrder } from "./slices/billing/activities.js";
 import { fulfillOrder } from "./slices/fulfillment/activities.js";
 
 /**
- * The time-skipping server binary, cached where **we** decide rather than in the
- * OS temp directory.
- *
- * `@temporalio/testing` downloads a 64 MB test server keyed by the SDK version,
- * and its two defaults are both wrong for a repository gate: the system temp
- * directory (which CI wipes between jobs and macOS purges on its own schedule)
- * and a `ttl` of one day (so a developer who runs the suite on Monday and again
- * on Wednesday downloads it twice). A repo-local, gitignored path with a
- * year-long ttl makes the download a once-ever event locally and a cacheable
- * path in CI. `temporal-contract` forwards these options through unchanged.
- *
- * This is the one example in the repository that needs network access on a cold
- * cache — see the README.
+ * One Temporal server for the whole repository — see `internal/test-infra` —
+ * and a namespace of this spec file's own on it. That replaces the 64 MB
+ * time-skipping test server this example used to download and start per vitest
+ * worker: a namespace is Temporal's own isolation boundary, and nothing here
+ * ever advanced a clock, so the skippable one bought nothing a shared server
+ * plus a private namespace does not. The example no longer needs the network
+ * on a cold cache; it needs a Docker daemon, like the AMQP one.
  */
-const downloadDir = fileURLToPath(
-  new URL("../../../.cache/temporal-test-server/", import.meta.url),
-);
-
-// The Rust ephemeral-server downloader writes into this path; creating it here
-// keeps the fixture's failure mode "no network" rather than "no directory".
-mkdirSync(downloadDir, { recursive: true });
+type Server = { readonly address: string; readonly namespace: string };
 
 // The starter's own errors join the app's: a bad environment, or a service
 // that will not answer.
@@ -180,7 +168,16 @@ const noShippingTemporal = () => {
 };
 
 export type TemporalFixtures = {
-  readonly testEnv: TestWorkflowEnvironment;
+  /** Where the shared server is, and the namespace this spec file owns on it. */
+  readonly server: Server;
+  /**
+   * This test's tenant, and nobody else's. The database is shared by every
+   * workspace's run — one migration for the whole gate rather than one per
+   * test — so a UUID here is what keeps one test's `o-1` from being another's.
+   * It rides every workflow's arguments — the contract declares it — which is
+   * how it reaches the adapters.
+   */
+  readonly tenant: string;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
@@ -193,28 +190,46 @@ export type TemporalFixtures = {
   readonly noShipping: ReturnType<typeof noShippingTemporal>;
 };
 
-export const it = createTimeSkippingTest({
-  server: { executable: { type: "cached-download", downloadDir, ttl: "365d" } },
-}).extend<Omit<TemporalFixtures, "testEnv">>({
+export const it = test.extend<TemporalFixtures>({
+  server: [
+    // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+    async ({}, use) => {
+      const address = `${inject("__TESTCONTAINERS_TEMPORAL_IP__")}:${inject("__TESTCONTAINERS_TEMPORAL_PORT_7233__")}`;
+      await use({ address, namespace: await createNamespace(address, "order-worker") });
+    },
+    // Per FILE, not per test: registering a namespace costs a registry refresh
+    // on every Temporal service, while the per-test task queue below is what
+    // separates the tests inside one file.
+    { scope: "file" },
+  ],
   boot: bootFixture(),
-  serve: async ({ testEnv, boot }, use) => {
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  tenant: async ({}, use) => {
+    await use(`t-${randomUUID()}`);
+  },
+
+  serve: async ({ server, boot }, use) => {
     // Memoised per spec file by `bundleFor`: webpack over the workflow module
     // is the single most expensive thing in this suite, and every test needs
     // the same bundle.
     const workflowBundle = await bundleFor(fixturePath(import.meta.url, "workflows"));
 
+    // Closed in this fixture's own teardown, so a test that fails mid-body
+    // still leaves no connection behind on the shared server.
+    const connections: Connection[] = [];
+
     const serve: Serve = async (module) => {
-      // A queue of this test's own: the environment is shared by every test in
-      // the worker process, and two workers polling one queue would race for
-      // each other's tasks.
+      // A queue of this test's own: the namespace is shared by every test in
+      // this file, and two workers polling one queue would race for each
+      // other's tasks.
       const contract = withTaskQueue(orderContract, nextTaskQueueId("orders"));
 
       // The same `TemporalModule` sugar `OrderTemporalWorker` is — built from
       // what only this test knows: its queue and the memoised bundle. The
-      // connection is the starter's own resource, opened against the
-      // environment's address per test and closed with the scope; the shared
-      // `testEnv.nativeConnection` is never handed over, so no test can close
-      // it under the next.
+      // connection is the starter's own resource, opened against the shared
+      // server per test and closed with the scope, so no test can close one
+      // under the next.
       //
       // `BillingModule` sits beside `module` rather than inside it: billing is
       // never swapped by a spec, so it is a sibling import the same way
@@ -231,17 +246,32 @@ export const it = createTimeSkippingTest({
         provides: [fulfillOrder, chargeOrder],
       });
 
-      const app = boot(worker, { env: { TEMPORAL_ADDRESS: testEnv.address } });
+      const app = boot(worker, {
+        env: {
+          TEMPORAL_ADDRESS: server.address,
+          TEMPORAL_NAMESPACE: server.namespace,
+          DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
+        },
+      });
 
+      // A connection of this test's own, on this file's namespace — the
+      // server is shared and nothing may close another test's connection.
+      const connection = await Connection.connect({ address: server.address });
+      connections.push(connection);
       // `.get()`, not `.getOrThrow()`: the error channel is empty, so a client
       // that could not be built is a defect and rethrowing its cause is what
       // should fail the test.
-      const client = (await TypedClient.create({ client: testEnv.client }).get()).for(contract);
+      const client = (
+        await TypedClient.create({
+          client: new Client({ connection, namespace: server.namespace }),
+        }).get()
+      ).for(contract);
 
       return { app, client };
     };
 
     await use(serve);
+    for (const connection of connections) await connection.close();
   },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture

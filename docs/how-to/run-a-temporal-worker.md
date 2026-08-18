@@ -232,9 +232,10 @@ const app = start(OrderTemporalWorker, {
 const info = (await app.runtimeInfo()).get(); // TemporalInfo | undefined
 ```
 
-The specs boot the same `TemporalModule` sugar with `env: { TEMPORAL_ADDRESS }`
-pointing at `@temporalio/testing`'s time-skipping server, a per-test task
-queue and a memoised bundle.
+The specs boot the same `TemporalModule` sugar with `env: { TEMPORAL_ADDRESS,
+TEMPORAL_NAMESPACE }` pointing at the Temporal server the whole repository
+shares — a namespace of the spec file's own, a per-test task queue and a
+memoised bundle.
 
 ## The drain, and the one surprising behaviour
 

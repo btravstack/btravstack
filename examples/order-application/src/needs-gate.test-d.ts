@@ -30,14 +30,14 @@ import {
 
 const orderRepository = Provider(OrderRepository)({
   value: {
-    save: (order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
-    find: (id: string) => ErrAsync(new OrderNotFound({ id })),
-    remove: (id: string) => ErrAsync(new OrderNotFound({ id })),
+    save: (_tenantId: string, order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
+    find: (_tenantId: string, id: string) => ErrAsync(new OrderNotFound({ id })),
+    remove: (_tenantId: string, id: string) => ErrAsync(new OrderNotFound({ id })),
   },
 });
 
 const customerRepository = Provider(CustomerRepository)({
-  value: { find: (id: string) => ErrAsync(new CustomerNotFound({ id })) },
+  value: { find: (_tenantId: string, id: string) => ErrAsync(new CustomerNotFound({ id })) },
 });
 
 const logger = Provider(Logger)({ value: createLogger(() => {}) });
@@ -46,7 +46,7 @@ const logger = Provider(Logger)({ value: createLogger(() => {}) });
 // two-element tuple and the call is an arity error naming the unmet need.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
-  ctx.get(PlaceOrder).execute("o-1", 1),
+  ctx.get(PlaceOrder).execute("acme", "o-1", 1),
 );
 
 // Negative, the same gate on the sibling module and a different port: the
@@ -54,7 +54,7 @@ const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
 // logger, which only `PlaceOrder` writes to.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no CustomerRepository is provided.
 const _unwiredCustomers = Module.scoped(CustomerApplicationModule, (ctx) =>
-  ctx.get(FindCustomer).execute("c-1"),
+  ctx.get(FindCustomer).execute("acme", "c-1"),
 );
 
 // Negative, per vertical: the orders repository closes the orders module, and
@@ -67,7 +67,9 @@ const MiswiredCustomers = Module("MiswiredCustomers")({
 });
 
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no CustomerRepository is provided.
-const _miswired = Module.scoped(MiswiredCustomers, (ctx) => ctx.get(FindCustomer).execute("c-1"));
+const _miswired = Module.scoped(MiswiredCustomers, (ctx) =>
+  ctx.get(FindCustomer).execute("acme", "c-1"),
+);
 
 // Negative, the other port of the orders pair: the repository alone does not
 // close the module, because `PlaceOrder` writes a line.
@@ -78,7 +80,7 @@ const LoglessOrders = Module("LoglessOrders")({
 });
 
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no Logger is provided.
-const _logless = Module.scoped(LoglessOrders, (ctx) => ctx.get(FindOrder).execute("o-1"));
+const _logless = Module.scoped(LoglessOrders, (ctx) => ctx.get(FindOrder).execute("acme", "o-1"));
 
 const WiredOrders = Module("WiredOrders")({
   imports: [OrderApplicationModule],
@@ -94,7 +96,7 @@ const WiredOrders = Module("WiredOrders")({
 
 // Positive: the repository and a logger discharge every need the orders
 // vertical has, and this is an ordinary two-argument call.
-const _wiredOrders = Module.scoped(WiredOrders, (ctx) => ctx.get(FindOrder).execute("o-1"));
+const _wiredOrders = Module.scoped(WiredOrders, (ctx) => ctx.get(FindOrder).execute("acme", "o-1"));
 
 const WiredCustomers = Module("WiredCustomers")({
   imports: [CustomerApplicationModule],
@@ -105,5 +107,5 @@ const WiredCustomers = Module("WiredCustomers")({
 // Positive, and one provider shorter than the orders half: what a vertical
 // owes is now its own.
 const _wiredCustomers = Module.scoped(WiredCustomers, (ctx) =>
-  ctx.get(FindCustomer).execute("c-1"),
+  ctx.get(FindCustomer).execute("acme", "c-1"),
 );

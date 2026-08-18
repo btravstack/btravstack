@@ -135,7 +135,8 @@ work", and the relay's work is outbound.
 
 Configuration is read inside the graph, so the composition root is a
 **constant**: `main.ts` is `await runMain(OrderAmqpWorker)`, and the specs boot
-the same value with `env: { AMQP_URL: <this test's vhost>, OUTBOX_POLL_MS: "25" }`.
+the same value with `env: { AMQP_URL: <this test's vhost>, DATABASE_URL,
+OUTBOX_POLL_MS: "25", OUTBOX_TENANTS: <this test's tenant> }`.
 The compile-time half (`src/needs-gate.test-d.ts`) pins that `start` finds the
 runtime, and that a composition which forgets to provide `orderHandlers` is
 refused — by di's needs channel now, since the runtime itself has no needs
@@ -149,6 +150,8 @@ the sugar cannot leave the handlers out).
 | `AMQP_URL`       | `amqp://127.0.0.1:5672` | the broker (`AmqpConfig`), consumer and relay |
 | `PROBE_PORT`     | `9000`                  | `/livez` / `/readyz`                          |
 | `OUTBOX_POLL_MS` | `200`                   | the relay's idle sleep (`RelayConfig`)        |
+| `OUTBOX_TENANTS` | _(required)_            | the tenants the relay sweeps, comma-separated |
+| `DATABASE_URL`   | _(required)_            | the orders database (`DatabaseConfig`)        |
 | `LOG_LEVEL`      | `info`                  | the `Logger`'s floor (`LoggerConfig`)         |
 
 `OUTBOX_POLL_MS=0` is rejected at boot — a relay that never sleeps is a busy
@@ -171,6 +174,25 @@ contract never heard of, on a third, foreign queue.
 pnpm --filter @btravstack/example-order-amqp-worker test        # broadcast e2e
 pnpm --filter @btravstack/example-order-amqp-worker typecheck   # the needs gate
 ```
+
+The suite needs a **Docker daemon**: a RabbitMQ and a PostgreSQL, both shared
+by the whole repository ([`internal/test-infra`](../../internal/test-infra/README.md)).
+Nothing is started per workspace and nothing is cleaned up between tests — each
+test gets a **vhost** of its own from `@amqp-contract/testing`'s `it` extension
+and a **tenant** of its own on the one migrated database.
+
+Tenancy crosses the broker here, which the other two deployments do not have to
+do: a broadcast leaves the process. The **contract** carries it — `tenantId` is
+a field on the envelope — so the relay reads it off the outbox row, puts it on
+the event, and a subscriber reads it off the message it was already handed.
+`@btravstack/amqp` knows nothing about tenants; there is nothing to configure
+and nothing to hook.
+
+The relay is told which tenants it serves, `OUTBOX_TENANTS`, and that is the
+case that shows why ambient context would not have been enough anyway: a
+background sweep has no delivery behind it, so there is nothing to read a
+tenant from — and "whatever is in the table" is how one deployment starts
+broadcasting another's facts.
 
 The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
 boots the worker against the test's own vhost through the `boot` fixture, so

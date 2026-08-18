@@ -407,12 +407,14 @@ peers. Node `>=20`.
 
 ## Testing
 
-The package's own suite needs no Docker daemon: `temporal-runtime.spec.ts`
+The package's own suite needs a **Docker daemon**: `temporal-runtime.spec.ts`
 and `workflow-activities.spec.ts` boot a real `@temporalio/worker` Worker
-against `@temporal-contract/testing`'s **time-skipping test server** — a
-local binary, cached once per SDK version, rather than a container (see
-[Order Temporal worker](/examples/order-temporal-worker) for the same choice
-and its measured cost). `temporal-runtime.spec.ts` carries 13 specs — one
+against a real Temporal server — one `temporalio/auto-setup` container shared
+by the whole repository, with a **namespace per spec file** for isolation
+(see [Order Temporal worker](/examples/order-temporal-worker) for the same
+choice and its measured cost). It replaced a time-skipping test server started
+per vitest worker; neither suite ever advanced a clock, so the skippable clock
+bought nothing a private namespace does not. `temporal-runtime.spec.ts` carries 13 specs — one
 the published info, four the starter's configuration, one the connection, two
 the qualified startup chain, two the unit boundary, three the drain;
 `workflow-activities.spec.ts`

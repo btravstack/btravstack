@@ -14,18 +14,28 @@ import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
  * `mapErrCases`-ing anything into `E` — `tryFindMany` / `tryUpdateMany` carry
  * only `DriverError`, which the safe boundary would defect anyway.
  *
+ * Scoped to the tenant the caller names, like every other read in this layer.
+ *
  * Ordered by `id` so the relay publishes in commit order; filtered on
  * `publishedAt: null` so a crash between publish and mark re-delivers rather
  * than loses — the outbox trades exactly-once for at-least-once on purpose,
  * and the consumer's idempotency is where that trade is honoured.
  */
 export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
-  pending: (limit) =>
+  pending: (tenantId, limit) =>
     db.outboxMessage
-      .tryFindMany({ where: { publishedAt: null }, orderBy: { id: "asc" }, take: limit })
+      .tryFindMany({
+        where: { tenantId, publishedAt: null },
+        orderBy: { id: "asc" },
+        take: limit,
+      })
       .map((rows) =>
         rows.map((row) => ({
           id: row.id,
+          // Echoed back rather than assumed from the query: the relay puts it
+          // on the event it publishes, which is how the tenant crosses the
+          // broker to a subscriber in another process.
+          tenantId: row.tenantId,
           // The column is a `string`; the port's `kind` is the union of the
           // kinds this application emits, and `save`/`remove` are the only
           // writers. A row carrying anything else was not written by this

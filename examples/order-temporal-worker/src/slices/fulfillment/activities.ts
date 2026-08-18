@@ -47,6 +47,12 @@ import { P } from "unthrown";
  * one case each: the domain's permanent no becomes the declared contract
  * error, which `nonRetryable` in `contract.ts` turns into "stop asking".
  *
+ * `args.tenantId` is the tenant the workflow was started with, threaded to
+ * every call that touches the database. It arrives on the activity's own
+ * input because the CONTRACT declares it — `@btravstack/temporal` knows
+ * nothing about tenants, and an input is what Temporal persists in the event
+ * history, so a replay reconstructs the tenant along with everything else.
+ *
  * The compensations: `releaseStock`'s port already promises `never`; nothing
  * to triage. `cancelPlacement` absorbs `OrderNotFound` on purpose — undoing a
  * placement that never landed is the no-op a *repeated* compensation performs,
@@ -58,7 +64,7 @@ export const fulfillOrder = TemporalWorkflowActivities(orderContract, "fulfillOr
     sync: (place, repository, stock, shipping) => ({
       place: (args, { errors }) =>
         place
-          .execute(args.orderId, args.quantity)
+          .execute(args.tenantId, args.orderId, args.quantity)
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher
@@ -84,7 +90,7 @@ export const fulfillOrder = TemporalWorkflowActivities(orderContract, "fulfillOr
       releaseStock: (args) => stock.release(args.orderId),
       cancelPlacement: (args) =>
         repository
-          .remove(args.orderId)
+          .remove(args.tenantId, args.orderId)
           .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
     }),
   },

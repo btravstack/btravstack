@@ -1,3 +1,4 @@
+import type { OrderEvent } from "@btravstack/example-order-application";
 import type { Line } from "@btravstack/observability";
 import { describe, expect, vi } from "vitest";
 
@@ -12,16 +13,27 @@ import { it } from "./test-fixtures.js";
 const notifications = (lines: readonly Line[]) =>
   lines
     .filter((line) => line.message.includes("notifying"))
-    .map((line) => ({ message: line.message, ...line.attributes }));
+    // `tenantId` is projected away: every line in a test carries the same one,
+    // so asserting it in every expectation would be noise. That the tenant
+    // crossed the broker at all is pinned once, by the foreign-subscriber spec
+    // below reading it off the wire.
+    .map(({ message, attributes }) => ({
+      message,
+      ...attributes,
+      tenantId: undefined,
+    }))
+    .map(({ tenantId: _tenantId, ...line }) => line);
 
 describe("the broadcast deployment", () => {
-  it("broadcasts every committed write, end to end", async ({ serve, tapped }) => {
+  it("broadcasts every committed write, end to end", async ({ tenant, serve, tapped }) => {
     // GIVEN the app serving: relay sweeping the outbox, consumer on the queue
     await serve(tapped.module);
     const { placeOrder } = tapped.services();
 
     // WHEN an order is placed — one ordinary write, no publish in sight
-    await expect(placeOrder.execute("o-1", 2)).toBeOkWith(expect.objectContaining({ id: "o-1" }));
+    await expect(placeOrder.execute(tenant, "o-1", 2)).toBeOkWith(
+      expect.objectContaining({ id: "o-1" }),
+    );
 
     // THEN the fact crosses the outbox, the broker and the queue, and the
     // consumer reacts — the write-side never spoke AMQP
@@ -30,29 +42,38 @@ describe("the broadcast deployment", () => {
       .toContainEqual({ message: "order placed — notifying", orderId: "o-1", quantity: 2 });
   });
 
-  it("marks relayed events published, exactly once each", async ({ serve, tapped }) => {
+  it("marks relayed events published, exactly once each", async ({ tenant, serve, tapped }) => {
     // GIVEN a served app and a committed write
     await serve(tapped.module);
     const { placeOrder, outbox } = tapped.services();
-    await expect(placeOrder.execute("o-2", 1)).toBeOk();
+    await expect(placeOrder.execute(tenant, "o-2", 1)).toBeOk();
+    const pending = async (): Promise<readonly OrderEvent[]> =>
+      (await outbox.pending(tenant, 10)).get();
 
-    // WHEN the relay has swept it
-    await expect
-      .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
-      .toContainEqual({ message: "order placed — notifying", orderId: "o-2", quantity: 1 });
+    // WHEN the relay has swept it. Synchronising on the MARK, not on the
+    // notification: a subscriber's line proves the publish happened, and
+    // `markPublished` runs after it — so waiting on the line and asserting on
+    // the outbox is waiting for one resource and asserting about another,
+    // which is a race the machine wins about half the time under load.
+    await vi.waitUntil(async () => (await pending()).length === 0, { timeout: 5_000 });
 
-    // THEN nothing is left pending — the next sweep has nothing to re-publish
-    await expect(outbox.pending(10)).toBeOkWith([]);
+    // THEN nothing is left pending — the next sweep has nothing to re-publish —
+    // and the subscriber heard it exactly once, which is the other half of the
+    // claim and what a re-published event would break
+    expect({ pending: await pending(), notified: notifications(tapped.lines()) }).toEqual({
+      pending: [],
+      notified: [{ message: "order placed — notifying", orderId: "o-2", quantity: 1 }],
+    });
   });
 
-  it("relays in commit order", async ({ serve, tapped }) => {
+  it("relays in commit order", async ({ tenant, serve, tapped }) => {
     // GIVEN a served app
     await serve(tapped.module);
     const { placeOrder } = tapped.services();
 
     // WHEN two writes commit in order
-    await expect(placeOrder.execute("o-3", 1)).toBeOk();
-    await expect(placeOrder.execute("o-4", 1)).toBeOk();
+    await expect(placeOrder.execute(tenant, "o-3", 1)).toBeOk();
+    await expect(placeOrder.execute(tenant, "o-4", 1)).toBeOk();
 
     // THEN the notifications arrive in the same order: the relay publishes by
     // outbox id, the queue preserves it, the consumer is sequential
@@ -65,16 +86,17 @@ describe("the broadcast deployment", () => {
   });
 
   it("broadcasts the cancellation as a tombstone, after the placement", async ({
+    tenant,
     serve,
     tapped,
   }) => {
     // GIVEN a served app and a placed order
     await serve(tapped.module);
     const { placeOrder, repository } = tapped.services();
-    await expect(placeOrder.execute("o-6", 2)).toBeOk();
+    await expect(placeOrder.execute(tenant, "o-6", 2)).toBeOk();
 
     // WHEN the order is cancelled — the write path the saga's compensation uses
-    await expect(repository.remove("o-6")).toBeOk();
+    await expect(repository.remove(tenant, "o-6")).toBeOk();
 
     // THEN the subscriber hears both words about the subject, in order: what
     // it was, then that it is gone. Without the tombstone a reader keeping its
@@ -88,6 +110,7 @@ describe("the broadcast deployment", () => {
   });
 
   it("is a broadcast: a subscriber this repo never heard of receives it too", async ({
+    tenant,
     serve,
     tapped,
     initConsumer,
@@ -99,12 +122,13 @@ describe("the broadcast deployment", () => {
     const waitForMessages = await initConsumer("orders", "order.changed");
 
     // WHEN an order is placed
-    await expect(tapped.services().placeOrder.execute("o-5", 4)).toBeOk();
+    await expect(tapped.services().placeOrder.execute(tenant, "o-5", 4)).toBeOk();
 
     // THEN the foreign queue receives the same fact the notifier does — the
     // publisher addressed an exchange, never a consumer
     const [message] = await waitForMessages({ count: 1, timeoutMs: 5_000 });
     expect(JSON.parse(String(message?.content))).toEqual({
+      tenantId: tenant,
       kind: "order",
       id: "o-5",
       occurredAt: expect.any(String),
@@ -112,20 +136,24 @@ describe("the broadcast deployment", () => {
     });
   });
 
-  it("delivers one committed fact to every subscriber", async ({ serve, tapped }) => {
+  it("delivers one committed fact to every subscriber", async ({ tenant, serve, tapped }) => {
     // GIVEN a worker whose two slices each drain their own queue off the one
     // orders exchange
     await serve(tapped.module);
     const { placeOrder } = tapped.services();
 
     // WHEN one order is placed, so the relay publishes exactly one event
-    await expect(placeOrder.execute("o-7", 2)).toBeOk();
+    await expect(placeOrder.execute(tenant, "o-7", 2)).toBeOk();
 
-    // THEN both subscribers logged it — a broadcast, not a work queue. Only a
-    // subscriber's own line carries a kernel `unit`, which is what tells the
-    // two apart from `placeOrder.execute`'s own "placing an order" line —
-    // written outside any consumer's delivery.
-    const subscriberLines = () => tapped.lines().filter((line) => line.unit !== undefined);
+    // THEN both subscribers logged it — a broadcast, not a work queue. The
+    // writer's own line is named rather than filtered out by "has no kernel
+    // unit": a multi-tenant write runs inside a unit too (that is where its
+    // tenant comes from), so carrying a `unit` no longer tells a subscriber's
+    // line from the placement's.
+    const subscriberLines = () =>
+      tapped
+        .lines()
+        .filter((line) => line.unit !== undefined && line.message !== "placing an order");
     await vi.waitUntil(() => subscriberLines().length === 2, { timeout: 5_000 });
     expect(
       subscriberLines()

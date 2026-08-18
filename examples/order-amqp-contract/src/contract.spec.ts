@@ -34,6 +34,7 @@ describe("orderContract", () => {
     // GIVEN the contract's own schema, and nothing else — no worker, no
     // connection, no broker
     const event = {
+      tenantId: "acme",
       kind: "order",
       id: "o-1",
       occurredAt: "2026-08-13T22:00:00.000Z",
@@ -50,6 +51,7 @@ describe("orderContract", () => {
   }) => {
     // GIVEN the same schema
     const tombstone = {
+      tenantId: "acme",
       kind: "order",
       id: "o-1",
       occurredAt: "2026-08-13T22:00:00.000Z",
@@ -70,6 +72,7 @@ describe("orderContract", () => {
     // executable, not documentation, and a caller can run it
     expect(
       validate({
+        tenantId: "acme",
         kind: "order",
         id: "o-1",
         occurredAt: "2026-08-13T22:00:00.000Z",

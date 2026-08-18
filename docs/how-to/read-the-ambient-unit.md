@@ -30,10 +30,69 @@ type UnitRecord = {
 `unitId` tells two units apart and needs nothing from the runtime. `traceId` is
 the one that joins a line logged here to a trace that started elsewhere.
 `tenantId` and `deadline` are plain data the runtime may stamp; **no shipped
-starter sets either today**. `signal` is always there: the kernel mints one
+starter sets either today**, and none has a tenancy concept — see
+[Multi-tenancy is the application's, not the framework's](#multi-tenancy-is-the-application-s-not-the-framework-s). `signal` is always there: the kernel mints one
 `AbortController` per unit, hands its signal to the work callback **and** puts
 that same object on the record, so both routes see one abort — at the drain
 deadline, or at once on a path that skips the drain.
+
+## Multi-tenancy is the application's, not the framework's
+
+`UnitRecord` has a `tenantId` field and **no shipped starter sets it.** That is
+deliberate, and it is worth saying why, because the field's presence invites
+the opposite conclusion.
+
+A tenant is _context_, and context is the application's to own. What
+establishes it — a header, a subdomain, an authenticated subject, a field on
+the message — is a decision about a specific system, and so is what happens
+when it is missing. A starter that read a tenant off a request would be
+deciding both on the application's behalf, and it would be the beginning of a
+framework tenancy model that has to answer many more questions than that one.
+The `tenantId` field exists for a **hand-rolled** runtime whose author has
+already answered them.
+
+The example application is multi-tenant, and it needs none of that. It makes
+the tenant part of its **own** vocabulary — the ports name it, so it is an
+argument a caller cannot forget and a reader can see:
+
+```ts
+// examples/order-application/src/ports.ts
+export class OrderRepository extends Port("OrderRepository")<{
+  readonly save: (
+    tenantId: string,
+    order: Order,
+  ) => AsyncResult<Order, DuplicateOrder>;
+  readonly find: (
+    tenantId: string,
+    id: string,
+  ) => AsyncResult<Order, OrderNotFound>;
+  readonly remove: (
+    tenantId: string,
+    id: string,
+  ) => AsyncResult<void, OrderNotFound>;
+}> {}
+```
+
+Each transport then supplies it from its own contract, which is where a client
+already has to say what it wants:
+
+| Deployment              | Where the tenant comes from                    |
+| ----------------------- | ---------------------------------------------- |
+| `order-api`             | an input field on every procedure (`Tenanted`) |
+| `order-amqp-worker`     | a field on the broadcast envelope              |
+| `order-temporal-worker` | a field on every workflow and activity input   |
+
+Two consequences are the point rather than the price. A use case that forgot
+its tenant **does not compile**, where an ambient one would have failed at
+runtime or, worse, silently read the wrong tenant's rows. And a test needs no
+machinery at all: `repository.find(tenant, "o-1")` says what it is scoped to
+at the call, with no fixture that "enters" a tenant and no store to set.
+
+The relay in `order-amqp-worker` is the case that shows why ambient would not
+have been enough anyway: it sweeps on its own clock, with no request, delivery
+or activity behind it, so there is no unit to read a tenant from. Which tenants
+it serves is deployment configuration (`OUTBOX_TENANTS`) — a question ambient
+context cannot answer.
 
 ## Who may read it
 
@@ -41,7 +100,7 @@ deadline, or at once on a path that skips the drain.
 | ---------------------------------------------------------- | ---------------------- |
 | a logger adapter                                           | yes                    |
 | an OTel exporter or span processor                         | yes                    |
-| a database adapter stamping `tenantId` on a query          | yes                    |
+| a database adapter scoping a query by `tenantId`           | yes                    |
 | an adapter checking `signal` before an outbound call       | yes                    |
 | a Temporal activity or an AMQP handler honouring the drain | yes — see below        |
 | a use case, a domain service, a router procedure           | **no**                 |
