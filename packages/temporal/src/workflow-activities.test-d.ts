@@ -89,9 +89,10 @@ TemporalActivities(pinContract)([echo]);
 // unused.)
 //
 // Verified rather than assumed, because the raw diagnostic is misleading: with
-// the directive stripped, TypeScript reports `"…:runEcho" is not assignable to
-// "…:runShout"`, which reads like a positional complaint about the array. It
-// is not — that is one arm of the `PieceOf<C>` union being printed. The
+// the directive stripped, TypeScript reports that this piece's `runEcho` port
+// id is not assignable to `runShout`'s, which reads like a positional
+// complaint about the array. It is not — that is one arm of the `PieceOf<C>`
+// union being printed. The
 // discriminating experiment is a third contract whose `runEcho` reuses `step`
 // unchanged: composed into the same position of the same array, it is
 // ACCEPTED. So what this line pins really is the service the port carries.

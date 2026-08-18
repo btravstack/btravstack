@@ -288,9 +288,9 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
   therefore takes and answers a `number` where `pinContract`'s takes and
   answers a `string`; reuse one shape across both and the two ports are
   structurally identical and the directive sits unused. The raw diagnostic is
-  misleading about this — stripped, TypeScript reports `"…:runEcho" is not
-assignable to "…:runShout"`, which reads positional and is just one arm of
-  the `PieceOf<C>` union being printed. Measured with a third contract whose
+  misleading about this: stripped, it reports that the piece's `runEcho` port id
+  is not assignable to `runShout`'s, which reads positional and is just one arm
+  of the `PieceOf<C>` union being printed. Measured with a third contract whose
   `runEcho` reuses `step` unchanged: composed into the same position of the
   same array, it is **accepted**. The gate is structural on the service, as
   intended. Checked by `tsc -p tsconfig.test-d.json` (`include:
