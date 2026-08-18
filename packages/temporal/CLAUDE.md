@@ -270,16 +270,34 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
   and `activities` together instead of two conflicting candidates once
   `activities` is the composing arm's own, more specific, type.
 - **`workflow-activities.test-d.ts` pins the composing form's compile-time
-  gates**, on a `pinContract` of its own: a piece typed by its own key
+  gates**, on a `pinContract` of its own — **six labelled properties, three of
+  them negatives**, which is exactly what `@btravstack/amqp`'s
+  `handler.test-d.ts` carries: the two are deliberate mirrors and drifted
+  apart once (issue #51). A piece typed by its own key
   (`_echoPort`, against `WorkflowActivitiesPortOf`), an array covering every
   declared key composing into what `TemporalModule` takes, a key the contract
-  does not declare refused at `TemporalWorkflowActivities`'s own call, and an
-  array that misses a key refused at `TemporalActivities`'s composing call —
-  and the two existing arms (`value`, and a hand-written record) still
-  resolving unchanged. Checked by `tsc -p tsconfig.test-d.json` (`include:
+  does not declare refused at `TemporalWorkflowActivities`'s own call, an
+  array that misses a key refused at `TemporalActivities`'s composing call,
+  and a piece built for **another contract** refused there too — and the two
+  existing arms (`value`, and a hand-written record) still resolving
+  unchanged.
+
+  The wrong-contract negative needs care, and amqp's needed a fix before it
+  bit: the port id carries only the KEY, so what separates two pieces for the
+  same key is the **service** the port carries. `otherContract`'s `runEcho`
+  therefore takes and answers a `number` where `pinContract`'s takes and
+  answers a `string`; reuse one shape across both and the two ports are
+  structurally identical and the directive sits unused. The raw diagnostic is
+  misleading about this: stripped, it reports that the piece's `runEcho` port id
+  is not assignable to `runShout`'s, which reads positional and is just one arm
+  of the `PieceOf<C>` union being printed. Measured with a third contract whose
+  `runEcho` reuses `step` unchanged: composed into the same position of the
+  same array, it is **accepted**. The gate is structural on the service, as
+  intended. Checked by `tsc -p tsconfig.test-d.json` (`include:
 ["src/**/*.test-d.ts"]`, extending `tsconfig.json`), which the package's own
   `test:types` script runs and `typecheck` runs alongside the ordinary
   `tsc --noEmit` — the same two-script shape as `@btravstack/amqp`.
+
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
   `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`,
   `@temporal-contract/worker`, `@temporal-contract/contract`.
