@@ -402,11 +402,14 @@ type checker already verifies.
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http/src/controller.test-d.ts`
   pins the
   five compile-time gates the keyed `HttpRouter(contract)(controllers)` form
-  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 26 specs, across
-  `http-runtime.spec.ts`, `orpc.spec.ts` and `controller.spec.ts`, drive the
+  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 32 specs, across
+  `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
+  `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the
-  starter proper through `HttpModule`, and the keyed router form through the
-  `rpcSliced` fixture.
+  starter proper through `HttpModule`, the keyed router form through the
+  `rpcSliced` fixture, and the contract marker's runtime half — the
+  authenticator port and the one middleware it installs — through
+  `rpcAuthed`.
 - **The whole gate runs on THREE containers, shared, and `internal/test-infra`
   owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine` and
   one `temporalio/auto-setup:1.29.1`, started once per machine and reused by

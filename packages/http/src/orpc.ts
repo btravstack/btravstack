@@ -1,4 +1,9 @@
-import type { Authenticated, PrincipalKey, PrincipalOf } from "@btravstack/contract";
+import {
+  isAuthenticated,
+  type Authenticated,
+  type PrincipalKey,
+  type PrincipalOf,
+} from "@btravstack/contract";
 import {
   Port,
   Provider,
@@ -17,6 +22,7 @@ import {
 import { RPCHandler } from "@orpc/server/node";
 import "@unthrown/orpc/extensions/result";
 
+import { AuthenticatorPort, principalMiddleware, type AuthenticatorService } from "./auth.js";
 import { HttpHandler } from "./handler.js";
 
 export type OrpcOptions = {
@@ -59,7 +65,9 @@ export const orpc = (options: OrpcOptions = {}) => {
   return Provider(HttpHandler)([HttpRouterPort], {
     sync: (service) => {
       const rpc = new RPCHandler(service);
-      return (request, response) => rpc.handle(request, response, { prefix });
+      // The request rides oRPC's initial context so `principalMiddleware` can
+      // read its headers; nothing else in this package reads it.
+      return (request, response) => rpc.handle(request, response, { prefix, context: { request } });
     },
   });
 };
@@ -120,42 +128,65 @@ export const HttpRouter = <C extends Record<string, RouterContract>>(contract: C
   ): Provider<
     PortInstance<"HttpRouter", Router<Record<never, never>>>,
     never,
-    InstanceType<D[number]>
+    InstanceType<D[number]> | ([ContractPrincipal<C>] extends [never] ? never : AuthenticatorPort)
   > & {
     readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
+    readonly principal: ContractPrincipal<C>;
   };
   function build<M extends { readonly [K in keyof C]: ControllerFor<C[K]> }>(
     controllers: M & { readonly [K in Exclude<keyof M, keyof C>]: never },
   ): Provider<
     PortInstance<"HttpRouter", Router<Record<never, never>>>,
     never,
-    InstanceType<M[keyof M]["port"]>
-  > & { readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>> };
+    | InstanceType<M[keyof M]["port"]>
+    | ([ContractPrincipal<C>] extends [never] ? never : AuthenticatorPort)
+  > & {
+    readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
+    readonly principal: ContractPrincipal<C>;
+  };
   function build(depsOrControllers: unknown, options?: unknown): unknown {
+    // The authenticator is appended LAST to the dependency array so every
+    // existing positional service keeps the index `sync` already reads it at.
+    const guarded = hasMarked(contract);
+    const authenticatorOf = (services: readonly unknown[]): AuthenticatorService<unknown> =>
+      services.at(-1) as AuthenticatorService<unknown>;
+
     // `Array.isArray` discriminates the two forms, the same way
     // `Provider(port)(depsOrOptions, …)` discriminates its own.
     if (Array.isArray(depsOrControllers)) {
+      const deps = depsOrControllers as readonly AnyPort[];
       const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
         os.router(
           routerOf(
             os,
             (options as { readonly sync: (...s: readonly unknown[]) => unknown }).sync(
-              ...services,
+              ...services.slice(0, deps.length),
             ) as Record<string, unknown>,
+            contract,
+            false,
+            guarded ? authenticatorOf(services) : undefined,
           ),
         );
-      return Provider(HttpRouterPort)(depsOrControllers as readonly AnyPort[], { sync } as never);
+      return Provider(HttpRouterPort)(guarded ? [...deps, AuthenticatorPort] : deps, {
+        sync,
+      } as never);
     }
 
     const entries = Object.entries(depsOrControllers as Record<string, { readonly port: AnyPort }>);
     const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
       os.router(
-        routerOf(os, Object.fromEntries(entries.map(([key], index) => [key, services[index]]))),
+        routerOf(
+          os,
+          Object.fromEntries(entries.map(([key], index) => [key, services[index]])),
+          contract,
+          false,
+          guarded ? authenticatorOf(services) : undefined,
+        ),
       );
-    return Provider(HttpRouterPort)(
-      entries.map(([, controller]) => controller.port),
-      { sync } as never,
-    );
+    const ports = entries.map(([, controller]) => controller.port);
+    return Provider(HttpRouterPort)(guarded ? [...ports, AuthenticatorPort] : ports, {
+      sync,
+    } as never);
   }
 
   return build;
@@ -217,22 +248,70 @@ export type ContractPrincipal<C extends RouterContract> = [PrincipalOf<C>] exten
       }[Exclude<keyof C, PrincipalKey>]
   : PrincipalOf<C>;
 
-// Walks the implementation record next to the implementer: a function is a
-// procedure and becomes `implementer.result(fn)`, anything else is a nested
-// router. The types above are the whole check; the walk trusts them, and
-// drops a key the implementer has no node for rather than defecting on it.
+/**
+ * Whether the contract marks anything, anywhere. Walked once, at composition,
+ * because it is what makes the authenticator dependency conditional: a router
+ * with no marked leaf declares no such need, so an application with no
+ * protected route provides nothing. The type side of the same condition is the
+ * `[ContractPrincipal<C>] extends [never]` arm on both `build` overloads; these
+ * two must agree.
+ */
+const hasMarked = (node: unknown): boolean => {
+  if (typeof node !== "object" || node === null) return false;
+  if (isAuthenticated(node)) return true;
+  // Only a plain record is a contract router. Descending into a
+  // `ProcedureContract` or a schema finds no marker (`authenticated` is applied
+  // to the node itself) and a recursive schema would not terminate.
+  const proto: unknown = Object.getPrototypeOf(node);
+  if (proto !== Object.prototype && proto !== null) return false;
+  return Object.values(node as Record<string, unknown>).some(hasMarked);
+};
+
+// Walks the implementation record next to the implementer and the contract: a
+// function is a procedure and becomes `implementer.result(fn)`, anything else
+// is a nested router. The types above are the whole check; the walk trusts
+// them, and drops a key the implementer has no node for rather than defecting
+// on it. `inherited` carries a marked record's mark down to its procedures —
+// `isAuthenticated` answers for one node only — the same way `Inherit<T, P>`
+// carries it in the types. `.use` must come BEFORE `.result`: `.result`
+// returns an `ImplementedProcedure`, whose own `.use` has no `.result` left.
 const routerOf = (
   implementer: Record<string, unknown>,
   implementation: Record<string, unknown>,
+  contract: Record<string, unknown>,
+  inherited: boolean,
+  authenticate: AuthenticatorService<unknown> | undefined,
 ): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(implementation).flatMap(([key, value]) => {
       const node = implementer[key] as
-        | (Record<string, unknown> & { readonly result: (fn: unknown) => unknown })
+        | (Record<string, unknown> & {
+            readonly result: (fn: unknown) => unknown;
+            readonly use: (middleware: unknown) => Record<string, unknown> & {
+              readonly result: (fn: unknown) => unknown;
+            };
+          })
         | undefined;
       if (node === undefined) return [];
-      return typeof value === "function"
-        ? [[key, node.result(value)]]
-        : [[key, routerOf(node, value as Record<string, unknown>)]];
+      const child = contract[key];
+      const marked =
+        inherited || (typeof child === "object" && child !== null && isAuthenticated(child));
+      if (typeof value === "function") {
+        const target =
+          marked && authenticate !== undefined ? node.use(principalMiddleware(authenticate)) : node;
+        return [[key, target.result(value)]];
+      }
+      return [
+        [
+          key,
+          routerOf(
+            node,
+            value as Record<string, unknown>,
+            (child ?? {}) as Record<string, unknown>,
+            marked,
+            authenticate,
+          ),
+        ],
+      ];
     }),
   );

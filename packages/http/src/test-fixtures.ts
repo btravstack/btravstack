@@ -26,15 +26,17 @@ import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
+import { auth } from "@btravstack/contract";
 import { currentUnit, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import { oc, type RouterContractClient } from "@orpc/contract";
-import { OkAsync, fromSafePromise } from "unthrown";
+import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
+import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
+import { HttpAuthenticator, Unauthenticated } from "./auth.js";
 import { HttpController } from "./controller.js";
 import { HttpHandler } from "./handler.js";
 import { HttpModule } from "./http-module.js";
@@ -116,6 +118,78 @@ const rpcSlicedAppOf = () =>
       Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } }),
     ],
   });
+
+type AuthedPrincipal = { readonly userId: string };
+
+const { authenticated } = auth<AuthedPrincipal>();
+
+/** One protected fragment and one public one — the marker's runtime half, end to end. */
+const whoami = oc.input(ocType<{ readonly id: string }>()).output(ocType<AuthedPrincipal>());
+const ping = oc.output(ocType<{ readonly ok: true }>());
+const authedContract = { orders: authenticated({ whoami }), health: { ping } };
+
+/** Counted so a test can assert the handler was never entered on a refusal. */
+let authedRuns = 0;
+
+const authedOrdersController = HttpController("AuthedOrders", authedContract.orders)([], {
+  sync: () => ({
+    whoami: ({ context }) => {
+      authedRuns += 1;
+      return OkAsync(context.principal);
+    },
+  }),
+});
+
+const authedHealthController = HttpController("AuthedHealth", authedContract.health)([], {
+  sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
+});
+
+const authenticator = HttpAuthenticator<AuthedPrincipal>()([], {
+  sync: () => (headers) => {
+    if (headers.authorization === "Bearer boom") {
+      return OkAsync().map((): AuthedPrincipal => {
+        // oxlint-disable-next-line unthrown/no-throw -- an authenticator bug IS the subject under test, and a throw inside a combinator is the only way to mint a Defect
+        throw new Error("authenticator bug");
+      });
+    }
+    return headers.authorization === "Bearer good"
+      ? OkAsync({ userId: "u-good" })
+      : ErrAsync(new Unauthenticated({ reason: "not the good token" }));
+  },
+});
+
+const authedRouter = HttpRouter(authedContract)({
+  orders: authedOrdersController,
+  health: authedHealthController,
+});
+
+/**
+ * The same marked contract through the positional form, so where the
+ * authenticator lands in `deps` is pinned for both arms of `build`.
+ */
+const authedPositionalRouter = HttpRouter(authedContract)([Greeter], {
+  sync: (greeter) => ({
+    orders: {
+      whoami: ({ context }) => OkAsync({ userId: greeter.greet(context.principal.userId) }),
+    },
+    health: { ping: () => OkAsync({ ok: true as const }) },
+  }),
+});
+
+/** `HttpModule` over the protected router, with the authenticator the router now needs. */
+const rpcAuthedAppOf = () =>
+  HttpModule("RpcAuthedApp")({
+    router: authedRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [authedOrdersController, authedHealthController, authenticator],
+  });
+
+/** The marker is erased from the client's view — it is a phantom key, never a procedure. */
+type AuthedClient = RouterContractClient<{
+  readonly orders: { readonly whoami: typeof whoami };
+  readonly health: { readonly ping: typeof ping };
+}>;
 
 /**
  * The same implementation carrying a key the contract never declared — only
@@ -284,8 +358,11 @@ export type HttpFixtures = {
     }>;
     readonly stoppedAccepting: (origin: string) => Promise<void>;
   };
-  /** The controllers the keyed router form composes. */
-  readonly controllers: { readonly controller: typeof helloController };
+  /** The controllers the keyed router form composes, and what the unmarked router they build declares. */
+  readonly controllers: {
+    readonly controller: typeof helloController;
+    readonly unmarkedRouterDeps: readonly string[];
+  };
   /**
    * The starter over a router composed from several controllers, keyed by
    * the contract — the same shape as `rpc`, but built from `slicedRouter`.
@@ -295,6 +372,23 @@ export type HttpFixtures = {
     readonly origin: string;
     readonly client: RouterContractClient<typeof slicedContract>;
   }>;
+  /**
+   * The starter over a contract whose `orders` fragment is `authenticated(...)`,
+   * with an authenticator that accepts exactly one token. Shut down by the
+   * fixture; the handler's run count is reset before the test body.
+   */
+  readonly rpcAuthed: {
+    /** A typed client presenting `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
+    readonly clientWith: (token: string | undefined) => AuthedClient;
+    /** How many times the protected handler has been entered. */
+    readonly handlerRuns: () => number;
+    readonly url: string;
+  };
+  /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
+  readonly authedRouterDeps: {
+    readonly keyed: readonly string[];
+    readonly positional: readonly string[];
+  };
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -469,7 +563,10 @@ export const it = test.extend<HttpFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   controllers: async ({}, use) => {
-    await use({ controller: helloController });
+    await use({
+      controller: helloController,
+      unmarkedRouterDeps: slicedRouter.deps.map((dep) => dep.portId),
+    });
   },
 
   rpcSliced: async ({ boot }, use) => {
@@ -482,6 +579,35 @@ export const it = test.extend<HttpFixtures>({
         new RPCLink({ origin, url: "/rpc" }),
       );
       return { origin, client };
+    });
+  },
+
+  rpcAuthed: async ({ boot }, use) => {
+    const app = boot(rpcAuthedAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const origin = `http://127.0.0.1:${info.port}`;
+    authedRuns = 0;
+
+    await use({
+      clientWith: (token) =>
+        createORPCClient(
+          new RPCLink({
+            origin,
+            url: "/rpc",
+            ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
+          }),
+        ),
+      handlerRuns: () => authedRuns,
+      url: `${origin}/rpc`,
+    });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  authedRouterDeps: async ({}, use) => {
+    await use({
+      keyed: authedRouter.deps.map((dep) => dep.portId),
+      positional: authedPositionalRouter.deps.map((dep) => dep.portId),
     });
   },
 });
