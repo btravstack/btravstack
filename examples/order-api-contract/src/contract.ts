@@ -1,3 +1,4 @@
+import { auth } from "@btravstack/contract";
 import { oc, type } from "@orpc/contract";
 
 /**
@@ -28,6 +29,19 @@ export type Tenanted = { readonly tenantId: string };
 
 /** What a customer looks like on the wire. */
 export type CustomerView = { readonly id: string; readonly name: string };
+
+/**
+ * Who the caller is, as this API models it. Named in the contract because that
+ * is what makes a protected route legible to a client: `authenticated` is one
+ * word in the shared artifact, visible in a diff and in the generated types.
+ *
+ * `tenantId` is on the principal AND on every input, deliberately: moving
+ * tenancy onto the caller's identity is a separate contract change, and this
+ * one is about the transport.
+ */
+export type Principal = { readonly userId: string; readonly tenantId: string };
+
+const { authenticated } = auth<Principal>();
 
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
 const ordersContract = {
@@ -65,5 +79,13 @@ const customersContract = {
  * Each code is one arm of the exhaustive `mapErrCases` in a slice's own
  * controller. Adding a domain error without adding a code here stops that
  * file compiling.
+ *
+ * `orders` is `authenticated(...)`, `customers` is not: the marker is a
+ * type-level fact about the fragment, so a client reads which half of this API
+ * needs credentials off the contract itself, and a server that serves the
+ * marked half without an authenticator does not compile.
  */
-export const contract = { orders: ordersContract, customers: customersContract };
+export const contract = {
+  orders: authenticated(ordersContract),
+  customers: customersContract,
+};
