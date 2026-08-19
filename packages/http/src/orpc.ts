@@ -119,99 +119,113 @@ export const orpc = (options: OrpcOptions = {}) => {
  * fragment is composed as-is rather than re-implemented, and every key of the
  * contract must be covered — a missing or extra key is a compile error.
  */
-export const HttpRouter = <C extends Record<string, RouterContract>>(contract: C) => {
-  // The implementer is walked untyped: `Implementation<C>` above is the
-  // whole check — a key the contract does not declare is a compile error
-  // there, and `routerOf` skips one anyway rather than reading `.result` off
-  // `undefined` — and `implement(contract)`'s own type is a per-contract
-  // intersection this generic body cannot index into.
-  const os = implement(contract) as unknown as Record<string, unknown> & {
-    readonly router: (record: Record<string, unknown>) => Router<Record<never, never>>;
-  };
+export const routerFor =
+  <Identity>() =>
+  <C extends Record<string, RouterContract>>(contract: C) => {
+    // The implementer is walked untyped: `Implementation<C>` above is the
+    // whole check — a key the contract does not declare is a compile error
+    // there, and `routerOf` skips one anyway rather than reading `.result` off
+    // `undefined` — and `implement(contract)`'s own type is a per-contract
+    // intersection this generic body cannot index into.
+    const os = implement(contract) as unknown as Record<string, unknown> & {
+      readonly router: (record: Record<string, unknown>) => Router<Record<never, never>>;
+    };
 
-  function build<const D extends readonly AnyPort[]>(
-    deps: D,
-    options: {
-      readonly sync: (
-        ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
-      ) => Implementation<C>;
-    },
-  ): Provider<
-    PortInstance<"HttpRouter", Router<Record<never, never>>>,
-    never,
-    InstanceType<D[number]> | ([ContractPrincipal<C>] extends [never] ? never : AuthenticatorPort)
-  > & {
-    readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-    readonly principal: ContractPrincipal<C>;
-  };
-  function build<
-    M extends {
-      readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K], PrincipalOf<C>>>;
-    },
-  >(
-    controllers: M & {
-      readonly [K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>]: never;
-    },
-  ): Provider<
-    PortInstance<"HttpRouter", Router<Record<never, never>>>,
-    never,
-    | InstanceType<M[keyof M]["port"]>
-    | ([ContractPrincipal<C>] extends [never] ? never : AuthenticatorPort)
-  > & {
-    readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-    readonly principal: ContractPrincipal<C>;
-  };
-  function build(depsOrControllers: unknown, options?: unknown): unknown {
-    // The authenticator is appended LAST to the dependency array so every
-    // existing positional service keeps the index `sync` already reads it at.
-    const guarded = hasMarked(contract);
-    const authenticatorOf = (services: readonly unknown[]): AuthenticatorService<unknown> =>
-      services.at(-1) as AuthenticatorService<unknown>;
+    function build<const D extends readonly AnyPort[]>(
+      deps: D,
+      options: {
+        readonly sync: (
+          ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
+        ) => Implementation<C, Identity>;
+      },
+    ): Provider<
+      PortInstance<"HttpRouter", Router<Record<never, never>>>,
+      never,
+      InstanceType<D[number]> | ([ContractPrincipal<C>] extends [never] ? never : AuthenticatorPort)
+    > & {
+      readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
+      readonly principal: ContractPrincipal<C>;
+    };
+    function build<
+      M extends {
+        readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<
+          Inherit<C[K], PrincipalOf<C>>,
+          Identity
+        >;
+      },
+    >(
+      controllers: M & {
+        readonly [K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>]: never;
+      },
+    ): Provider<
+      PortInstance<"HttpRouter", Router<Record<never, never>>>,
+      never,
+      | InstanceType<M[keyof M]["port"]>
+      | ([ContractPrincipal<C>] extends [never] ? never : AuthenticatorPort)
+    > & {
+      readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
+      readonly principal: ContractPrincipal<C>;
+    };
+    function build(depsOrControllers: unknown, options?: unknown): unknown {
+      // The authenticator is appended LAST to the dependency array so every
+      // existing positional service keeps the index `sync` already reads it at.
+      const guarded = hasMarked(contract);
+      const authenticatorOf = (services: readonly unknown[]): AuthenticatorService<unknown> =>
+        services.at(-1) as AuthenticatorService<unknown>;
 
-    // `Array.isArray` discriminates the two forms, the same way
-    // `Provider(port)(depsOrOptions, …)` discriminates its own.
-    if (Array.isArray(depsOrControllers)) {
-      const deps = depsOrControllers as readonly AnyPort[];
+      // `Array.isArray` discriminates the two forms, the same way
+      // `Provider(port)(depsOrOptions, …)` discriminates its own.
+      if (Array.isArray(depsOrControllers)) {
+        const deps = depsOrControllers as readonly AnyPort[];
+        const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
+          os.router(
+            routerOf(
+              os,
+              (options as { readonly sync: (...s: readonly unknown[]) => unknown }).sync(
+                ...services.slice(0, deps.length),
+              ) as Record<string, unknown>,
+              contract,
+              isAuthenticated(contract),
+              guarded ? authenticatorOf(services) : undefined,
+            ),
+          );
+        return Provider(HttpRouterPort)(guarded ? [...deps, AuthenticatorPort] : deps, {
+          sync,
+        } as never);
+      }
+
+      const entries = Object.entries(
+        depsOrControllers as Record<string, { readonly port: AnyPort }>,
+      );
       const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
         os.router(
           routerOf(
             os,
-            (options as { readonly sync: (...s: readonly unknown[]) => unknown }).sync(
-              ...services.slice(0, deps.length),
-            ) as Record<string, unknown>,
+            Object.fromEntries(entries.map(([key], index) => [key, services[index]])),
             contract,
             isAuthenticated(contract),
             guarded ? authenticatorOf(services) : undefined,
           ),
         );
-      return Provider(HttpRouterPort)(guarded ? [...deps, AuthenticatorPort] : deps, {
+      const ports = entries.map(([, controller]) => controller.port);
+      return Provider(HttpRouterPort)(guarded ? [...ports, AuthenticatorPort] : ports, {
         sync,
       } as never);
     }
 
-    const entries = Object.entries(depsOrControllers as Record<string, { readonly port: AnyPort }>);
-    const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
-      os.router(
-        routerOf(
-          os,
-          Object.fromEntries(entries.map(([key], index) => [key, services[index]])),
-          contract,
-          isAuthenticated(contract),
-          guarded ? authenticatorOf(services) : undefined,
-        ),
-      );
-    const ports = entries.map(([, controller]) => controller.port);
-    return Provider(HttpRouterPort)(guarded ? [...ports, AuthenticatorPort] : ports, {
-      sync,
-    } as never);
-  }
+    return build;
+  };
 
-  return build;
-};
+/**
+ * The router, with no server-side identity: a handler under a marked key sees
+ * the principal the **contract** declares. `httpAuth<Identity>()` is what mints
+ * the form whose handlers see the application's own.
+ */
+export const HttpRouter: ReturnType<typeof routerFor<never>> = routerFor<never>();
 
 /** A controller for one fragment — what `HttpController` returns, as the keyed form consumes it. */
-type ControllerFor<Fragment extends RouterContract> = {
-  readonly port: PortClassOf<string, Implementation<Fragment>>;
+type ControllerFor<Fragment extends RouterContract, Identity = never> = {
+  readonly port: PortClassOf<string, Implementation<Fragment, Identity>>;
 };
 
 /**
@@ -221,14 +235,20 @@ type ControllerFor<Fragment extends RouterContract> = {
  * the input is the contract's parsed input, the output its declared output
  * and the `errors` helpers its declared error map.
  */
-export type Implementation<C extends RouterContract> =
+export type Implementation<C extends RouterContract, Identity = never> =
   C extends ProcedureContract<infer I, infer O, infer E>
     ? Parameters<
-        ProcedureImplementer<DefaultInitialContext & object, ContextOf<C>, I, O, E>["result"]
+        ProcedureImplementer<
+          DefaultInitialContext & object,
+          ContextOf<C, Identity>,
+          I,
+          O,
+          E
+        >["result"]
       >[0]
     : {
         readonly [K in Exclude<keyof C, PrincipalKey>]: C[K] extends RouterContract
-          ? Implementation<Inherit<C[K], PrincipalOf<C>>>
+          ? Implementation<Inherit<C[K], PrincipalOf<C>>, Identity>
           : never;
       };
 
@@ -239,10 +259,17 @@ export type Implementation<C extends RouterContract> =
  * type parameter, so this package adds no second handler parameter and wraps no
  * `.result()` handler. `[X] extends [never]` rather than `X extends never`: a
  * bare check distributes over a union and answers `never` for every arm.
+ *
+ * `Identity` is the server's own principal, from `httpAuth<Identity>()`. It
+ * replaces the contract's declared one on a **marked** leaf and invents none on
+ * an unmarked one: the contract still says *whether* a route is protected, and
+ * the factory says *what* the caller is. `never` — what the top-level
+ * `HttpRouter` / `HttpController` pass — is "no factory", and leaves the
+ * contract's own type in place.
  */
-type ContextOf<C> = [PrincipalOf<C>] extends [never]
+type ContextOf<C, Identity> = [PrincipalOf<C>] extends [never]
   ? object
-  : { readonly principal: PrincipalOf<C> };
+  : { readonly principal: [Identity] extends [never] ? PrincipalOf<C> : Identity };
 
 /**
  * Pushes a record's marker onto each of its children, so a marked fragment
