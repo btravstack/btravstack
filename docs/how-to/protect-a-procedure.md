@@ -35,8 +35,8 @@ that a client should be able to read without taking the server:
 import { auth } from "@btravstack/contract";
 import { oc, type } from "@orpc/contract";
 
-/** Who the caller is, as this API models it. */
-export type Principal = { readonly userId: string; readonly tenantId: string };
+/** The MINIMUM a caller's identity must carry for this API's semantics. */
+export type Principal = { readonly tenantId: string };
 
 const { authenticated } = auth<Principal>();
 
@@ -72,11 +72,13 @@ starter's `AuthenticatorPort`. It resolves a principal from the request's
 body, and the narrower argument is what keeps it testable without a socket.
 
 ```ts
-import type { Principal } from "./contract.js";
 import { HttpAuthenticator, Unauthenticated } from "@btravstack/http";
 import { ErrAsync, OkAsync } from "unthrown";
 
-export const bearerAuthenticator = HttpAuthenticator<Principal>()([], {
+/** What the server knows — more than the contract asks for. */
+type Identity = { readonly tenantId: string; readonly userId: string };
+
+export const bearerAuthenticator = HttpAuthenticator<Identity>()([], {
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
@@ -92,6 +94,18 @@ export const bearerAuthenticator = HttpAuthenticator<Principal>()([], {
   },
 });
 ```
+
+**Declare the minimum in the contract, and let the authenticator resolve
+more.** The gate `HttpModule` applies is `Auth extends { principal: Principal }`,
+so a _subtype_ discharges it: this authenticator resolves `{ tenantId, userId }`
+against a contract asking only for `{ tenantId }`. Enriching what a deployment
+knows about its callers — roles, an org tier, an internal id — is therefore not
+a contract change, and none of it reaches a client.
+
+The limit worth knowing: a handler sees the **contract's** type, not the
+authenticator's. A field a handler needs must be declared in the contract, and
+is client-visible once it is. That is the price of the field, and the reason to
+keep `Principal` as small as the API's semantics allow.
 
 `Bearer <tenantId>:<userId>` is a stand-in, not a recommendation — what
 matters is the shape. `[]` because this one needs no service; a JWT verifier, a

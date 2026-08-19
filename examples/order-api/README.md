@@ -108,6 +108,15 @@ and it is an ordinary provider, so swapping this example's
 `Bearer <tenantId>:<userId>` stand-in for JWT verification changes nothing
 else.
 
+It resolves **more** than the contract asks for, on purpose: `Principal` is
+`{ tenantId }`, because that is all this API's semantics depend on, while the
+authenticator returns `{ tenantId, userId }`. The gate is
+`Auth extends { principal: Principal }`, so a subtype discharges it — adding
+roles or an internal id to what a deployment knows about its callers is not a
+contract change, and none of it reaches a client. The limit: a handler sees the
+contract's type, so a field a handler needs has to be declared there and is
+client-visible once it is.
+
 The root is a list of **slices**. Each one imports the vertical it needs —
 `OrderApplicationModule`, whose repository is an unmet need, and
 `OrderPersistenceModule`, which provides it — and exports only its controller:

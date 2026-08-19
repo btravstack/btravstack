@@ -41,7 +41,8 @@ single procedure (which protects itself):
 import { auth } from "@btravstack/contract";
 import { oc, type } from "@orpc/contract";
 
-export type Principal = { readonly userId: string; readonly tenantId: string };
+/** The minimum a caller's identity must carry for this API's own semantics. */
+export type Principal = { readonly tenantId: string };
 
 const { authenticated } = auth<Principal>();
 
@@ -93,6 +94,23 @@ implying a marked child — is the caller's to carry: this package tracks nodes,
 not trees. `@btravstack/http`'s router walk carries an `inherited` flag for
 exactly that, mirroring what the types do when a marked record pushes its
 marker onto each child.
+
+## Declare the minimum, resolve more
+
+`P` is what a **client** learns about the identity your API expects, so it
+belongs in the contract only to the extent the API's own semantics depend on
+it. Everything else the server knows stays on the server.
+
+The starter's gate is `Auth extends { principal: P }`, so a **subtype**
+discharges it: an authenticator resolving `{ tenantId, userId, roles }`
+satisfies a contract that declares `{ tenantId }`. Enriching what a deployment
+knows about its callers is therefore not a contract change, and none of it
+reaches a client.
+
+The limit worth knowing: a handler sees `PrincipalOf<C>` — the contract's
+type, not the authenticator's richer one. A field a handler needs must be
+declared here, and is client-visible once it is. That is the price of the
+field, and the reason to keep `P` as small as the API allows.
 
 ## Three load-bearing properties
 

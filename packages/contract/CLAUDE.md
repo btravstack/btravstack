@@ -34,6 +34,22 @@ never`. Recovers the principal type a node was marked with, `never` when it
   marked. Ancestry (a marked parent implying a marked child) is the caller's
   to carry; the package tracks nodes, not trees.
 
+## Declare the minimum, resolve more
+
+`P` is what a **client** learns about the identity the API expects, so it
+belongs in the contract only as far as the API's own semantics depend on it.
+`@btravstack/http`'s gate is `Auth extends { principal: P }`, so a **subtype**
+discharges it — an authenticator resolving `{ tenantId, userId, roles }`
+satisfies a contract declaring `{ tenantId }`. Enriching what a deployment
+knows about its callers is therefore not a contract change and reaches no
+client.
+
+The limit: a handler sees `PrincipalOf<C>`, the contract's type, not the
+authenticator's. A field a handler needs must be declared in the contract and
+is client-visible once it is. Keep `P` as small as the API allows.
+`examples/order-api-contract` is the worked case — `{ tenantId }` in the
+contract, `{ tenantId, userId }` out of the authenticator.
+
 ## Three load-bearing properties
 
 **Zero dependencies and zero peers.** Nothing here imports oRPC, `di`, `core`
