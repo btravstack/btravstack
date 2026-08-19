@@ -390,12 +390,12 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **39 specs, 100% lines/functions.** Every app boots through the `boot`
+- **40 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
   failure (`configured`'s `ConfigInvalid`, `occupied`'s port in use) is the
-  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 20,
+  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 21,
   through `test-fixtures.ts`'s `appOf` — `httpModule({ port: 0, hostname:
 "127.0.0.1" }, Provider(HttpHandler)({ value: handler }))` — so the
   guarantees (`404`/`500` fallbacks, the unit open until `'close'`, the drain,
@@ -405,10 +405,12 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   pinned"_, _"pins what it is given and reads the rest from the environment"_,
   _"fails startup with ConfigInvalid for HttpConfig when PORT is not a port"_,
   through the `configured` fixture, whose `BoundConfig` provider captures what
-  the graph bound), and three of them are `securityHeaders`: the defaults on a
+  the graph bound), and four of them are `securityHeaders`: the defaults on a
   served response through `serve`, the same defaults on the runtime's own
-  `404` through `rpc` — the path a handler plugin would never reach — and
-  their absence when `securityHeaders: false` is pinned, `serve`'s third
+  `404` through `rpc` — the path a handler plugin would never reach — their
+  absence when `securityHeaders: false` is pinned, and a **custom record**
+  applied verbatim (the given headers on the response and the defaults gone,
+  since the record replaces them rather than extending them), `serve`'s third
   argument threading straight into `appOf`. `orpc.spec.ts` carries 8 the starter proper answers
   for, through the `rpc` fixture — `HttpModule("RpcApp")({ router:
 greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over

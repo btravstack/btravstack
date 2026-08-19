@@ -306,6 +306,25 @@ describe("httpRuntime", () => {
     expect(response.headers.get("x-content-type-options")).toBeNull();
   });
 
+  it("applies a custom securityHeaders record verbatim", async ({ serve }) => {
+    // GIVEN an app whose starter was handed a record of its own
+    const { origin } = await serve(undefined, undefined, {
+      "permissions-policy": "geolocation=()",
+      "x-frame-options": "SAMEORIGIN",
+    });
+
+    // WHEN a request is answered
+    const response = await fetch(origin);
+
+    // THEN exactly that record is on the response — the given value replaces
+    // the defaults rather than extending them
+    expect({
+      policy: response.headers.get("permissions-policy"),
+      frame: response.headers.get("x-frame-options"),
+      nosniff: response.headers.get("x-content-type-options"),
+    }).toEqual({ policy: "geolocation=()", frame: "SAMEORIGIN", nosniff: null });
+  });
+
   it("ends the socket after a response whose headers were already on the wire when the drain began", async ({
     serve,
     streamedGate,
