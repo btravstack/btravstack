@@ -273,8 +273,8 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
   `@orpc/server/node` — forwards straight to `new RPCHandler(service, {
 plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
-  already expresses as handler plugins, so this is configuration rather than a
-  middleware slot. It threads through all three surfaces on the same
+  already expresses as handler plugins, so the ordinary use is configuration
+  rather than a middleware slot for application logic. It threads through all three surfaces on the same
   `...(x === undefined ? {} : { x })` spread every other option here uses —
   `OrpcOptions.plugins` (`orpc.ts`) → `HttpOptions.plugins` (`http-runtime.ts`)
   → `HttpModuleOptions.plugins` (`http-module.ts`) — and needs no generic
@@ -347,8 +347,11 @@ plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
   `handler` option and no listener port to provide — one way), a middleware
   slot for application logic, `Result` → HTTP status, HTTPS, HTTP/2 — see the
   package README's _"What it does not do"_ for why each is a non-goal.
-  `plugins` (above) is not this: it is transport policy handed to oRPC's own
-  `RPCHandler`, not a hook an application's use case runs inside of.
+  `plugins` (above) is an honest escape hatch rather than a keyhole — a plugin
+  can reach `StandardHandlerOptions.interceptors` and therefore a procedure's
+  execution — but the ordinary path is visible configuration at the
+  composition root, and an application middleware acting on the handler's
+  `Result` is what stays refused.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
   `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@orpc/server`,
   `@orpc/contract`, `@unthrown/orpc`. `@btravstack/contract` is a peer for the
