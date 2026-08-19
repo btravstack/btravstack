@@ -185,10 +185,50 @@ const rpcAuthedAppOf = () =>
     provides: [authedOrdersController, authedHealthController, authenticator],
   });
 
+/**
+ * The marker on the contract's ROOT, where the walk has no `contract[key]` to
+ * read it from: every leaf inherits it, the same way `Implementation<C>`'s
+ * record arm inherits `PrincipalOf<C>`.
+ */
+const rootMarkedContract = authenticated({ orders: { whoami } });
+
+let rootMarkedRuns = 0;
+
+const rootMarkedRouter = HttpRouter(rootMarkedContract)([], {
+  sync: () => ({
+    orders: {
+      whoami: ({ context }) => {
+        rootMarkedRuns += 1;
+        return OkAsync(context.principal);
+      },
+    },
+  }),
+});
+
+const rpcRootMarkedAppOf = () =>
+  HttpModule("RpcRootMarkedApp")({
+    router: rootMarkedRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [authenticator],
+  });
+
+/** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
+const linkOf = (origin: string, token: string | undefined) =>
+  new RPCLink({
+    origin,
+    url: "/rpc",
+    ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
+  });
+
 /** The marker is erased from the client's view — it is a phantom key, never a procedure. */
 type AuthedClient = RouterContractClient<{
   readonly orders: { readonly whoami: typeof whoami };
   readonly health: { readonly ping: typeof ping };
+}>;
+
+type RootMarkedClient = RouterContractClient<{
+  readonly orders: { readonly whoami: typeof whoami };
 }>;
 
 /**
@@ -383,6 +423,14 @@ export type HttpFixtures = {
     /** How many times the protected handler has been entered. */
     readonly handlerRuns: () => number;
     readonly url: string;
+  };
+  /**
+   * The starter over a contract whose **root** is `authenticated(...)` — the
+   * case no `contract[key]` lookup can see. Shut down by the fixture.
+   */
+  readonly rpcRootMarked: {
+    readonly clientWith: (token: string | undefined) => RootMarkedClient;
+    readonly handlerRuns: () => number;
   };
   /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
   readonly authedRouterDeps: {
@@ -590,16 +638,22 @@ export const it = test.extend<HttpFixtures>({
     authedRuns = 0;
 
     await use({
-      clientWith: (token) =>
-        createORPCClient(
-          new RPCLink({
-            origin,
-            url: "/rpc",
-            ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
-          }),
-        ),
+      clientWith: (token) => createORPCClient(linkOf(origin, token)),
       handlerRuns: () => authedRuns,
       url: `${origin}/rpc`,
+    });
+  },
+
+  rpcRootMarked: async ({ boot }, use) => {
+    const app = boot(rpcRootMarkedAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const origin = `http://127.0.0.1:${info.port}`;
+    rootMarkedRuns = 0;
+
+    await use({
+      clientWith: (token) => createORPCClient(linkOf(origin, token)),
+      handlerRuns: () => rootMarkedRuns,
     });
   },
 

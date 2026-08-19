@@ -1,5 +1,6 @@
 import { describe, expect } from "vitest";
 
+import { Unauthenticated, noAuthenticator } from "./auth.js";
 import { it } from "./test-fixtures.js";
 
 describe("an authenticated procedure", () => {
@@ -54,6 +55,33 @@ describe("an authenticated procedure", () => {
   });
 });
 
+describe("a contract marked at its root", () => {
+  it("protects every leaf beneath it", async ({ rpcRootMarked }) => {
+    // GIVEN a client presenting a token the authenticator rejects
+    const client = rpcRootMarked.clientWith("bad");
+
+    // WHEN the only procedure — marked by the root alone — is called
+    const call = client.orders.whoami({ id: "o-1" }).catch((cause: unknown) => cause);
+
+    // THEN the authenticator ran, refused, and the handler was never entered
+    await expect(
+      call.then((error) => ({
+        code: (error as { code: string }).code,
+        ran: rpcRootMarked.handlerRuns(),
+      })),
+    ).resolves.toEqual({ code: "UNAUTHORIZED", ran: 0 });
+  });
+
+  it("hands the principal to a leaf the root alone marked", async ({ rpcRootMarked }) => {
+    // GIVEN a client presenting a token the authenticator accepts
+    const client = rpcRootMarked.clientWith("good");
+
+    // WHEN the only procedure is called
+    // THEN the principal the authenticator resolved reached the handler
+    await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-good" });
+  });
+});
+
 describe("a router over a marked contract", () => {
   it("appends the authenticator after the dependencies it already declared", ({
     authedRouterDeps,
@@ -72,5 +100,16 @@ describe("a router over a marked contract", () => {
     // WHEN its declared dependencies are read
     // THEN nothing was appended — an application with no protected route provides nothing
     expect(controllers.unmarkedRouterDeps).toEqual(["HelloController", "EchoesController"]);
+  });
+});
+
+describe("the fail-closed authenticator", () => {
+  it("refuses every caller, so a mark with nothing behind it is a 401", async () => {
+    // GIVEN the stand-in a marked leaf gets when no authenticator reached the walk
+    // WHEN it is asked to name a caller
+    // THEN it refuses — the safe direction for a disagreement between the two halves
+    await expect(noAuthenticator({})).resolves.toBeErrWith(
+      expect.objectContaining({ reason: "no authenticator", constructor: Unauthenticated }),
+    );
   });
 });

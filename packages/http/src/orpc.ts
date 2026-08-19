@@ -22,7 +22,12 @@ import {
 import { RPCHandler } from "@orpc/server/node";
 import "@unthrown/orpc/extensions/result";
 
-import { AuthenticatorPort, principalMiddleware, type AuthenticatorService } from "./auth.js";
+import {
+  AuthenticatorPort,
+  noAuthenticator,
+  principalMiddleware,
+  type AuthenticatorService,
+} from "./auth.js";
 import { HttpHandler } from "./handler.js";
 
 export type OrpcOptions = {
@@ -163,7 +168,7 @@ export const HttpRouter = <C extends Record<string, RouterContract>>(contract: C
               ...services.slice(0, deps.length),
             ) as Record<string, unknown>,
             contract,
-            false,
+            isAuthenticated(contract),
             guarded ? authenticatorOf(services) : undefined,
           ),
         );
@@ -179,7 +184,7 @@ export const HttpRouter = <C extends Record<string, RouterContract>>(contract: C
           os,
           Object.fromEntries(entries.map(([key], index) => [key, services[index]])),
           contract,
-          false,
+          isAuthenticated(contract),
           guarded ? authenticatorOf(services) : undefined,
         ),
       );
@@ -256,15 +261,16 @@ export type ContractPrincipal<C extends RouterContract> = [PrincipalOf<C>] exten
  * `[ContractPrincipal<C>] extends [never]` arm on both `build` overloads; these
  * two must agree.
  */
-const hasMarked = (node: unknown): boolean => {
-  if (typeof node !== "object" || node === null) return false;
+const hasMarked = (node: unknown, seen: WeakSet<object> = new WeakSet()): boolean => {
+  if (typeof node !== "object" || node === null || seen.has(node)) return false;
+  // Every object, not only a plain record: `routerOf` reaches a mark through
+  // whatever `contract[key]` holds, so anything this walk declines to enter is
+  // a mark it can miss and the walk cannot — and missing one is the unsafe
+  // direction. `seen` is what makes entering everything terminate, since a
+  // schema is free to be recursive.
+  seen.add(node);
   if (isAuthenticated(node)) return true;
-  // Only a plain record is a contract router. Descending into a
-  // `ProcedureContract` or a schema finds no marker (`authenticated` is applied
-  // to the node itself) and a recursive schema would not terminate.
-  const proto: unknown = Object.getPrototypeOf(node);
-  if (proto !== Object.prototype && proto !== null) return false;
-  return Object.values(node as Record<string, unknown>).some(hasMarked);
+  return Object.values(node as Record<string, unknown>).some((child) => hasMarked(child, seen));
 };
 
 // Walks the implementation record next to the implementer and the contract: a
@@ -297,8 +303,11 @@ const routerOf = (
       const marked =
         inherited || (typeof child === "object" && child !== null && isAuthenticated(child));
       if (typeof value === "function") {
-        const target =
-          marked && authenticate !== undefined ? node.use(principalMiddleware(authenticate)) : node;
+        // Fail closed: a mark with no authenticator behind it refuses every
+        // caller rather than serving the leaf unprotected.
+        const target = marked
+          ? node.use(principalMiddleware(authenticate ?? noAuthenticator))
+          : node;
         return [[key, target.result(value)]];
       }
       return [

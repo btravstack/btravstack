@@ -9,7 +9,7 @@ import {
   type ServiceOf,
 } from "@btravstack/di";
 import { ORPCError } from "@orpc/server";
-import { TaggedError, type AsyncResult } from "unthrown";
+import { ErrAsync, TaggedError, type AsyncResult } from "unthrown";
 
 /** Why a caller was refused. The reason is for the operator's log, not the client's body. */
 export class Unauthenticated extends TaggedError("Unauthenticated")<{
@@ -61,6 +61,15 @@ export const HttpAuthenticator =
     },
   ): Provider<AuthenticatorPort, never, InstanceType<D[number]>> & { readonly principal: P } =>
     Provider(AuthenticatorPort)(deps, options as never) as never;
+
+/**
+ * What a marked leaf authenticates with when no authenticator reached the walk —
+ * a state the two halves of the condition agreeing should make unreachable, and
+ * the reason this exists is that a disagreement must fail **closed**: every
+ * caller refused, rather than the leaf served unprotected.
+ */
+export const noAuthenticator: AuthenticatorService<never> = () =>
+  ErrAsync(new Unauthenticated({ reason: "no authenticator" }));
 
 /**
  * The one middleware this package installs, and only on a marked leaf. It reads
