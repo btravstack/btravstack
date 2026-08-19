@@ -876,6 +876,9 @@ importers:
       '@btravstack/config':
         specifier: workspace:*
         version: link:../config
+      '@btravstack/contract':
+        specifier: workspace:*
+        version: link:../contract
       '@btravstack/core':
         specifier: workspace:*
         version: link:../core

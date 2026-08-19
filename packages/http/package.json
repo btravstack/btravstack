@@ -53,6 +53,7 @@
   },
   "devDependencies": {
     "@btravstack/config": "workspace:*",
+    "@btravstack/contract": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/testing": "workspace:*",
@@ -71,6 +72,7 @@
   },
   "peerDependencies": {
     "@btravstack/config": "workspace:^",
+    "@btravstack/contract": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@orpc/contract": "^2.0.0-beta",

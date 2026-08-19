@@ -40,8 +40,8 @@ Router<Record<never, never>>>`, with the matching `PortInstance` alias. A
 - **`HttpRouter(contract)(deps, { sync })`** (`orpc.ts`) — contract-first
   router provider. `Implementation<C>` is the record type: recursing the
   contract's shape, each `ProcedureContract<I, O, E>` becomes
-  `Parameters<ProcedureImplementer<DefaultInitialContext & object, object, I,
-O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
+  `Parameters<ProcedureImplementer<DefaultInitialContext & object, ContextOf<C>,
+I, O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   procedure's implementer (`import "@unthrown/orpc/extensions/result"` here;
   `@orpc/contract` and `@unthrown/orpc` are peers for it) — so `sync`'s return
   is typed by the contract at the call. At runtime `implement(contract)` is
@@ -96,7 +96,15 @@ never }` — the exactness intersection is on the parameter, not on `M`: a key
   composed and hands back what it built. The gate names the controller
   deliberately — a fresh `sync` literal over the fragment would pin only that
   a fragment is a valid contract, the weaker half, which says nothing about
-  the controller surviving the lift.
+  the controller surviving the lift. All five are pinned **twice**: once
+  against a plain contract and once against one whose `orders` fragment is
+  `authenticated(...)`, so the marker's phantom key cannot quietly break any of
+  them — the fifth least of all. The same block pins the one direction that
+  must be refused: a controller whose handler reads `opts.context.principal`
+  cannot be mounted under an **unmarked** contract key, where nothing would
+  inject one. The reverse is accepted and correctly so — an unmarked
+  controller under a marked key is a handler that ignores the principal, which
+  is contravariantly fine.
   Covered at runtime by the `rpcSliced` fixture, composing
   `helloController` and `echoesController` over `slicedContract`'s two
   fragments.
@@ -117,6 +125,26 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
   `Config.provider("RelayConfig")(schema)` already uses in this repo. Covered
   by `controller.spec.ts`'s `controllers` fixture (the port and declared deps
   a controller carries) and by every gate in `controller.test-d.ts` above.
+- **`@btravstack/contract`'s marker, read by the types only (so far).**
+  `auth<P>()`'s `authenticated(node)` brands a contract node
+  `Authenticated<T, P>` — an intersection with a `unique symbol` key, no
+  runtime property — and `Implementation<C>` branches on it. A marked **leaf**
+  gets `{ readonly principal: P }` in `ProcedureImplementer`'s **second** type
+  parameter (`TInjectedContext`), so the principal arrives on
+  `opts.context.principal`: **oRPC's own context channel**, not a second
+  handler parameter this package invents and not a wrapper around
+  `.result()`. A marked **record** pushes its marker onto each child
+  (`Inherit<T, P>`), so a marked fragment protects every procedure beneath it,
+  and the record arm walks `Exclude<keyof C, PrincipalKey>` so the phantom key
+  never becomes a procedure key. An unmarked leaf keeps today's spelling,
+  `object`, exactly — which is what makes the negative gate meaningful, since
+  `DefaultInitialContext` is an empty interface rather than an index
+  signature. `ContractPrincipal<C>` (exported from `orpc.ts`, not from
+  `index.ts`) is the principal a contract declares **anywhere** in its tree, or
+  `never`. Pinned by `auth.test-d.ts`, mutation-checked. **Nothing injects the
+  principal at runtime yet** — `routerOf` still walks every leaf as
+  `node.result(fn)`; the middleware that makes the type true is a later task.
+  Do not describe the marker as enforced until it is.
 - **`http({ prefix?, port?, hostname? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **the one way HTTP is answered here: oRPC, over its own
@@ -187,8 +215,11 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `Result` → HTTP status, HTTPS, HTTP/2 — see the package README's _"What it
   does not do"_ for why each is a non-goal.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
-  `@btravstack/di`, `unthrown`, `@orpc/server`, `@orpc/contract`,
-  `@unthrown/orpc`. Hono and `@hono/node-server` were peers until the second
+  `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@orpc/server`,
+  `@orpc/contract`, `@unthrown/orpc`. `@btravstack/contract` is a peer for the
+  same dual-copy reason as the rest: its marker is a `unique symbol` and two
+  copies of the package are two different symbols, so a contract marked
+  against one would read as unmarked here. Hono and `@hono/node-server` were peers until the second
   code review of PR #40: Hono routed exactly one pattern (`${prefix}/*`) to
   oRPC's fetch adapter and 404'd the rest, which `@orpc/server/node`'s
   `RPCHandler.handle(req, res, { prefix })` plus the runtime's own `404` do

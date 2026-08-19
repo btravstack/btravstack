@@ -1,3 +1,4 @@
+import type { Authenticated, PrincipalKey, PrincipalOf } from "@btravstack/contract";
 import {
   Port,
   Provider,
@@ -174,8 +175,47 @@ type ControllerFor<Fragment extends RouterContract> = {
  */
 export type Implementation<C extends RouterContract> =
   C extends ProcedureContract<infer I, infer O, infer E>
-    ? Parameters<ProcedureImplementer<DefaultInitialContext & object, object, I, O, E>["result"]>[0]
-    : { readonly [K in keyof C]: C[K] extends RouterContract ? Implementation<C[K]> : never };
+    ? Parameters<
+        ProcedureImplementer<DefaultInitialContext & object, ContextOf<C>, I, O, E>["result"]
+      >[0]
+    : {
+        readonly [K in Exclude<keyof C, PrincipalKey>]: C[K] extends RouterContract
+          ? Implementation<Inherit<C[K], PrincipalOf<C>>>
+          : never;
+      };
+
+/**
+ * What a leaf's handler gets on `opts.context`: the principal when the leaf is
+ * marked, and `object` — today's spelling, unchanged — when it is not. It rides
+ * oRPC's own context channel, injected into `ProcedureImplementer`'s second
+ * type parameter, so this package adds no second handler parameter and wraps no
+ * `.result()` handler. `[X] extends [never]` rather than `X extends never`: a
+ * bare check distributes over a union and answers `never` for every arm.
+ */
+type ContextOf<C> = [PrincipalOf<C>] extends [never]
+  ? object
+  : { readonly principal: PrincipalOf<C> };
+
+/**
+ * Pushes a record's marker onto each of its children, so a marked fragment
+ * protects every procedure beneath it. The runtime walk in `routerOf` carries
+ * the same fact as an argument; these two must agree.
+ */
+type Inherit<T, P> = [P] extends [never] ? T : Authenticated<T, P>;
+
+/**
+ * The principal a contract declares anywhere in its tree, or `never` if none
+ * does — what a composition root reads to know which authenticator it owes.
+ */
+export type ContractPrincipal<C extends RouterContract> = [PrincipalOf<C>] extends [never]
+  ? C extends ProcedureContract<infer _I, infer _O, infer _E>
+    ? never
+    : {
+        readonly [K in Exclude<keyof C, PrincipalKey>]: C[K] extends RouterContract
+          ? ContractPrincipal<C[K]>
+          : never;
+      }[Exclude<keyof C, PrincipalKey>]
+  : PrincipalOf<C>;
 
 // Walks the implementation record next to the implementer: a function is a
 // procedure and becomes `implementer.result(fn)`, anything else is a nested
