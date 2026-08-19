@@ -8,6 +8,7 @@ import { OkAsync } from "unthrown";
 
 import { HttpAuthenticator } from "./auth.js";
 import { HttpController } from "./controller.js";
+import { httpAuth } from "./http-auth.js";
 import { HttpModule } from "./http-module.js";
 import { HttpRouter, type ContractPrincipal, type Implementation } from "./orpc.js";
 
@@ -151,3 +152,69 @@ const _rootKeyed = HttpModule("RootKeyed")({
 });
 
 void _rootKeyed;
+
+// The server-side factory. The contract declares the client-visible minimum —
+// `{ tenantId }` — and says WHETHER a route is protected; `httpAuth<Identity>()`
+// says WHAT the principal is, server-side, and a handler minted from it sees
+// that. Each arm below is spelled against `scopedContract`, whose principal is
+// deliberately narrower than the identity the server resolves.
+type Tenant = { readonly tenantId: string };
+const { authenticated: scoped } = auth<Tenant>();
+const scopedContract = { orders: scoped({ place: oc }), health: { ping: oc } };
+
+type Identity = Tenant & { readonly userId: string };
+const {
+  HttpController: IdentityController,
+  HttpRouter: IdentityRouter,
+  HttpAuthenticator: IdentityAuthenticator,
+} = httpAuth<Identity>();
+
+// 12. A factory-minted controller's MARKED handler sees the factory's identity,
+//     including a field the contract declares nowhere.
+const scopedOrders = IdentityController("ScopedOrders", scopedContract.orders)([], {
+  sync: () => ({ place: ({ context }) => OkAsync(context.principal.userId) }),
+});
+
+// 13. The top-level `HttpController` is unchanged: the same fragment types the
+//     CONTRACT's principal, which has no `userId`.
+void HttpController("ContractOrders", scopedContract.orders)([], {
+  // @ts-expect-error — `userId` is the server's identity, not the contract's principal
+  sync: () => ({ place: ({ context }) => OkAsync(context.principal.userId) }),
+});
+
+// 14. A factory invents no principal on an UNMARKED fragment: the identity
+//     replaces the contract's type where there is one, and adds none where
+//     there is not.
+void IdentityController("ScopedHealth", scopedContract.health)([], {
+  // @ts-expect-error — `principal` is not on an unmarked handler's context
+  sync: () => ({ ping: ({ context }) => OkAsync(context.principal.tenantId) }),
+});
+
+// 15. A factory-minted router composes factory-minted controllers, and the
+//     `HttpModule` gate still checks the authenticator against the CONTRACT's
+//     principal — which an identity richer than it satisfies as a subtype.
+const scopedHealth = IdentityController("ScopedHealthOk", scopedContract.health)([], {
+  sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
+});
+const identityAuthenticator = IdentityAuthenticator([], {
+  sync: () => () => OkAsync({ tenantId: "t", userId: "u" }),
+});
+const _scoped = HttpModule("Scoped")({
+  router: IdentityRouter(scopedContract)({ orders: scopedOrders, health: scopedHealth }),
+  authenticator: identityAuthenticator,
+  provides: [scopedOrders, scopedHealth],
+});
+
+// 16. An authenticator whose identity does not satisfy the contract's principal
+//     is still refused, factory or not.
+const strayAuthenticator = HttpAuthenticator<{ readonly sub: string }>()([], {
+  sync: () => () => OkAsync({ sub: "s" }),
+});
+const _strayScoped = HttpModule("StrayScoped")({
+  router: IdentityRouter(scopedContract)({ orders: scopedOrders, health: scopedHealth }),
+  // @ts-expect-error — the authenticator's principal is not the contract's
+  authenticator: strayAuthenticator,
+});
+
+void _scoped;
+void _strayScoped;

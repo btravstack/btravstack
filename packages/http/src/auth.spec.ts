@@ -121,3 +121,16 @@ describe("the fail-closed authenticator", () => {
     );
   });
 });
+
+describe("a controller minted by httpAuth", () => {
+  it("sees the identity the authenticator resolved, not the contract's principal", async ({
+    rpcIdentity,
+  }) => {
+    // GIVEN a client the deployment's authenticator accepts
+    const client = rpcIdentity.clientWith("good");
+
+    // WHEN a marked procedure reads a field the contract declares nowhere
+    // THEN the handler read it off the very object the authenticator resolved
+    await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-good" });
+  });
+});

@@ -40,6 +40,7 @@ import { test } from "vitest";
 import { HttpAuthenticator, Unauthenticated } from "./auth.js";
 import { HttpController } from "./controller.js";
 import { HttpHandler } from "./handler.js";
+import { httpAuth } from "./http-auth.js";
 import { HttpModule } from "./http-module.js";
 import {
   HttpConfig,
@@ -227,6 +228,47 @@ const rpcRootMarkedAppOf = () =>
     hostname: "127.0.0.1",
     authenticator,
   });
+
+/**
+ * The gap `httpAuth<Identity>()` closes, end to end: the contract declares the
+ * client-visible minimum (`{ tenantId }`) while this deployment's
+ * authenticator resolves `{ tenantId, userId }`, and the handler — minted from
+ * the factory — reads the field the contract declares nowhere.
+ */
+type ScopedPrincipal = { readonly tenantId: string };
+type Identity = ScopedPrincipal & { readonly userId: string };
+const { authenticated: scoped } = auth<ScopedPrincipal>();
+const {
+  HttpController: IdentityController,
+  HttpRouter: IdentityRouter,
+  HttpAuthenticator: IdentityAuthenticator,
+} = httpAuth<Identity>();
+
+const identityContract = { orders: scoped({ whoami }) };
+
+const identityController = IdentityController("IdentityOrders", identityContract.orders)([], {
+  sync: () => ({ whoami: ({ context }) => OkAsync({ userId: context.principal.userId }) }),
+});
+
+const identityAuthenticator = IdentityAuthenticator([], {
+  sync: () => (headers) =>
+    headers.authorization === "Bearer good"
+      ? OkAsync({ tenantId: "t-good", userId: "u-good" })
+      : ErrAsync(new Unauthenticated({ reason: "not the good token" })),
+});
+
+const rpcIdentityAppOf = () =>
+  HttpModule("RpcIdentityApp")({
+    router: IdentityRouter(identityContract)({ orders: identityController }),
+    port: 0,
+    hostname: "127.0.0.1",
+    authenticator: identityAuthenticator,
+    provides: [identityController],
+  });
+
+type IdentityClient = RouterContractClient<{
+  readonly orders: { readonly whoami: typeof whoami };
+}>;
 
 /** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
 const linkOf = (origin: string, token: string | undefined) =>
@@ -470,6 +512,12 @@ export type HttpFixtures = {
     readonly clientWith: (token: string | undefined) => RootMarkedClient;
     readonly handlerRuns: () => number;
   };
+  /**
+   * The starter over a router and a controller minted by `httpAuth<Identity>()`,
+   * where the identity is richer than the contract's principal. Shut down by
+   * the fixture.
+   */
+  readonly rpcIdentity: { readonly clientWith: (token: string) => IdentityClient };
   /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
   readonly authedRouterDeps: {
     readonly keyed: readonly string[];
@@ -698,6 +746,15 @@ export const it = test.extend<HttpFixtures>({
       clientWith: (token) => createORPCClient(linkOf(origin, token)),
       handlerRuns: () => rootMarkedRuns,
     });
+  },
+
+  rpcIdentity: async ({ boot }, use) => {
+    const app = boot(rpcIdentityAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const origin = `http://127.0.0.1:${info.port}`;
+
+    await use({ clientWith: (token) => createORPCClient(linkOf(origin, token)) });
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
