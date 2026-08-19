@@ -281,8 +281,12 @@ const ordersContract = {
 };
 ```
 
-The controller hands `input.tenantId` straight to the use case, which hands it
-to the repository, which puts it in the `WHERE`. `@btravstack/http` knows
+The `customers` controller hands `input.tenantId` straight to the use case,
+which hands it to the repository, which puts it in the `WHERE`. The `orders`
+fragment is marked `authenticated`, so its controller takes the tenant from
+`context.principal.tenantId` instead — the input field is still declared by
+the contract and deliberately goes unread there. Either way `@btravstack/http`
+knows
 nothing about tenants and has no hook for them — context is the application's
 to own, and a starter that read a tenant off a header would be deciding a
 system's authentication model on its behalf.
@@ -290,9 +294,14 @@ system's authentication model on its behalf.
 An argument rather than a header, then, and the trade is worth naming. A
 client cannot forget it (the contract refuses), the router cannot invent one,
 and the path from wire to `WHERE` is visible in three files. What it is not is
-"who is asking": a deployment that authenticates its callers would take the
-tenant from the caller's identity and drop it from the contract — a contract
-change, which is exactly the kind of change that should be.
+"who is asking": a deployment that authenticates its callers takes the tenant
+from the caller's identity instead, which is what marking a fragment
+`authenticated` does — a contract change, which is exactly the kind of change
+that should be. `orders` has made it and `customers` has not, which is why the
+two controllers read the tenant from different places. Dropping the now-unread
+`tenantId` from the `orders` inputs would be a second contract change, and is
+left undone on purpose: keeping both fragments' inputs the same shape is what
+makes the one difference legible.
 
 It is typechecked by the gate rather than executed by it:It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there

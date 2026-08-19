@@ -180,6 +180,24 @@ major.
    convention this stack has not established — so today it is a documented
    convention with no enforcement. Do not describe it as enforced.
 
+   **A transaction is not on the record either, and that is the decision, not
+   an omission.** Commit boundaries belong to the **adapter**, spelled
+   explicitly at the call — `examples/order-infrastructure`'s
+   `prismaOrderRepository` already does exactly this: `save` writes the order
+   row and its outbox row inside one `db.$tryTransaction`, and `remove` does
+   the same for the tombstone, with `@unthrown/prisma` supplying the
+   primitive. Nothing is hand-rolling a missing framework feature there.
+   Cross-store atomicity is the **outbox** plus a **saga**, which is what the
+   three examples are built on. Three reasons a unit-scoped transaction is
+   the wrong shape: it makes every request an **interactive** transaction,
+   which Prisma's own documentation says to reach for last; the unit does not
+   close until the response is **flushed** (the first contract a runtime
+   owes), so a pooled connection would stay pinned while bytes go to the
+   client; and a **port does not say where its data lives**, so a boundary
+   drawn around a unit spans stores the framework cannot see inside — a
+   promise it has no way to keep. Nested and joined transactions follow from
+   this: not supported, and not a framework concept.
+
 3. **The kernel never maps an outcome to a transport.** `Result` → HTTP status
    belongs to the router an application hands `@btravstack/http`
    (oRPC's `.result()` triage) — the package itself declines that mapping,
@@ -337,6 +355,49 @@ its work (a response's `'close'`) must first check whether it already fired:
 `@btravstack/http`'s `closedOf` checks `response.closed` for exactly this,
 found by a client hanging up during a slow per-request acquire and leaving a
 unit open for the process lifetime.
+
+## Cross-cutting concerns: configuration, not a middleware slot
+
+CORS, body limits, compression, CSRF, security headers and authentication all
+arrive at the same door, and the answer is the same for all of them: **they are
+handler configuration, not a middleware slot.** Thesis #3's refusal survives
+intact, narrowed to what it was always about. An oRPC plugin and the starter's
+own `principalMiddleware` act on the **request/response envelope** — bytes,
+headers, a principal resolved before dispatch. An application middleware would
+act on the handler's **`Result`**, and that is the only one `@btravstack/http`
+refuses, because it is the one that would put a use case's outcome in the
+transport's hands.
+
+- **`plugins` is an honest escape hatch, not a keyhole.** It forwards straight
+  to `new RPCHandler(service, { plugins })`, and an oRPC plugin can reach
+  oRPC's interceptors — so an application determined to see a procedure's
+  outcome can get there. Nothing pretends otherwise. What the option buys is
+  that the ordinary path is configuration a reader can see at the composition
+  root, and reaching past it is a visible act rather than the default shape.
+- **Security headers are set on the listener, not as a plugin.** A plugin only
+  runs for a request oRPC **matched**, so the runtime's own `404` would go out
+  bare — the opposite of what helmet-style headers are for.
+- **Rate limiting is a stated non-goal.** A per-process counter is the wrong
+  unit: an `api` deployment is N pods (thesis #1), so a per-process budget is
+  N independent budgets and none of them is the limit anybody meant. The
+  ingress or gateway is where a request count is counted once. An application
+  that wants one anyway writes a plugin and passes it through `plugins` —
+  which is the escape hatch doing its job, not a gap.
+- **An unmarked procedure is public, and nothing fails if the marker is
+  forgotten.** `@btravstack/contract`'s marker makes the requirement
+  **legible** in the contract and makes the principal's type reach the
+  handler; it does not detect a procedure that should have been marked. There
+  is no gate for "you forgot", and there cannot be one — the contract is the
+  only statement of intent there is. Do not describe an unmarked procedure as
+  checked.
+- **Authorization is deliberately not in the contract.** "May this caller do
+  this?" often depends on the resource — the order's owner, its state, the
+  row's tenant — which cannot be answered before the handler has run and
+  fetched it. Putting the caller-shaped half in the contract and leaving the
+  resource-shaped half in the handler splits one rule across two files, and
+  the half in the contract is the half that looks complete. Authentication —
+  "is there a principal, and what is it?" — is answerable before dispatch, and
+  is the only half the contract carries.
 
 ## Public surface
 
@@ -664,7 +725,7 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   it without providing `orderRouter` fails di's own gate at `start`, since the
   starter's runtime provider depends on its router port.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
-  `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
+  `2.0.0-beta.28` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
   range resolves 1.x and fails `strictPeerDependencies`. The exact beta is the
   contract until v2 goes stable; raise it deliberately, not on a bot bump.

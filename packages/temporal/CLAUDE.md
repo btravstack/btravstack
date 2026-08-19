@@ -215,6 +215,17 @@ TemporalConfig, TemporalActivitiesPort as ActivitiesPortOf<C>], { sync })` —
 - **Not included, deliberately**: `Result` → activity failure, which
   `declareActivitiesHandler` already owns. Doing it twice is what the removal of
   the raw-worker path was about.
+- **Cross-cutting concerns: the question does not arise here.** There is no
+  origin, no preflight and no browser, so CORS and security headers are
+  meaningless on this transport, and the connection is already authenticated —
+  by Temporal itself, at `TEMPORAL_ADDRESS` and its namespace, before a task is
+  polled. Per-activity identity is a **field on the contract's own input**, the
+  way `tenantId` already is on every workflow and activity input in
+  `examples/order-temporal-worker`, and nothing this package reads. Limiting
+  throughput is the Worker's own concurrency options, not a policy slot.
+  `@btravstack/contract` is dependency-free, so its marker combinator _would_
+  work over a Temporal contract; it is deliberately not wired, because there is
+  nothing here to authenticate **from**.
 - **`temporal-runtime.spec.ts` carries 13 specs, and `workflow-activities.spec.ts` 2 more — 15 in the package.** One is the published
   info (_"publishes the task queue and namespace it polls"_), four the starter's
   configuration (_"binds TEMPORAL_ADDRESS and TEMPORAL_NAMESPACE from the

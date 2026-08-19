@@ -256,6 +256,18 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   transport. `retry: { mode: "ttl-backoff", maxRetries: 3 }` also means
   **four** total attempts (first plus three retries), not the same count as
   Temporal's `maximumAttempts: 3`.
+- **Cross-cutting concerns: the question does not arise here.** There is no
+  origin, no preflight and no browser, so CORS and security headers are
+  meaningless on this transport, and the connection is already authenticated —
+  by the broker, at `url` / `connectionOptions`, before a delivery exists.
+  Per-message identity is a **field on the contract's own envelope**, the way
+  `tenantId` already is: the same argument-not-ambient trade
+  `examples/order-amqp-worker` makes, and nothing this package reads. Limiting
+  throughput is **prefetch**, reachable today through
+  `defaultConsumerOptions` — issue #25's bag, a different question from this
+  one. `@btravstack/contract` is dependency-free, so its marker combinator
+  _would_ work over an AMQP contract; it is deliberately not wired, because
+  there is nothing here to authenticate **from**.
 - **The suite needs Docker** (`@amqp-contract/testing` boots one RabbitMQ per
   run) and carries **10 specs**: **8** in `amqp-runtime.spec.ts` — one the
   published info, one the unreachable broker, three the unit boundary (_"opens
