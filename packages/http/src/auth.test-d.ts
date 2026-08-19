@@ -74,9 +74,15 @@ void _none;
 void _absent;
 
 // The composition half: a marked contract needs an authenticator, and the
-// composition root is where the router and the authenticator meet. Both gates
-// are di's own `UNSATISFIED DEPENDENCIES`, which fires at `start` — the same
-// arm `examples/order-api/src/needs-gate.test-d.ts` pins for the router.
+// composition root is where the router and the authenticator meet. The two
+// gates below are DIFFERENT gates, and fire at different calls. Whether an
+// authenticator is there at all is di's own `UNSATISFIED DEPENDENCIES` at
+// `start` (7) — the same arm `examples/order-api/src/needs-gate.test-d.ts`
+// pins for the router. Whether it resolves the contract's principal is this
+// package's own options check at the `HttpModule(...)` call (8), because
+// `AuthenticatorPort`'s service type is erased to `AuthenticatorService<
+// unknown>`: the need cannot carry the principal, so only the options type
+// can compare it.
 const markedRouter = HttpRouter({ orders: contract.orders, health: contract.health })([], {
   sync: () => ({
     orders: { place: ({ context }) => OkAsync({ id: context.principal.userId }) },
