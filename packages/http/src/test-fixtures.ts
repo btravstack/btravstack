@@ -180,7 +180,7 @@ const authenticator = AuthedAuthenticator([], {
     }
     return headers.authorization === "Bearer good"
       ? OkAsync({ tenantId: "t-good", userId: "u-good" })
-      : ErrAsync(new Unauthenticated({ reason: "not the good token" }));
+      : ErrAsync(new Unauthenticated());
   },
 });
 

@@ -183,14 +183,15 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
   `Provider<AuthenticatorPort, never, …> & { readonly principal: P }`. The
   type argument is explicit rather than inferred from `sync`: inference
   through a returned function's `AsyncResult` is exactly where a `Principal`
-  silently widens to `unknown`. `Unauthenticated` is a `TaggedError` carrying
-  a `reason`, and the reason is the **application's own**: the starter does
-  not surface it, so an authenticator that wants it recorded logs it itself.
-  Forwarding it would put "no such user" versus "bad signature" in a 401 body
-  by default — an information-disclosure footgun shipped as the default.
+  silently widens to `unknown`. `Unauthenticated` is a `TaggedError` with an
+  **empty payload**: the starter surfaces no reason — a refused caller gets an
+  `UNAUTHORIZED` and oRPC's default message — so a field here would be
+  write-only. An authenticator that wants to record why logs it before
+  returning. Forwarding a reason would put "no such user" versus "bad
+  signature" in a 401 body by default.
 - **`httpAuth<Identity>()` → `{ HttpController, HttpRouter, HttpAuthenticator }`,
-  plus `HttpAuth<Identity>` / `HttpControllerOf<Identity>` /
-  `HttpRouterOf<Identity>` / `HttpAuthenticatorOf<Identity>`**
+  plus `HttpControllerOf<Identity>` / `HttpRouterOf<Identity>` /
+  `HttpAuthenticatorOf<Identity>`**
   (`http-auth.ts`) — **the** place a principal type is stated.
   **The contract says whether a route is protected; this says what the
   principal is.** `Implementation<C, Identity>` and `ContextOf<C, Identity>`

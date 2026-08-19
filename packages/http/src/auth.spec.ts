@@ -118,7 +118,7 @@ describe("the fail-closed authenticator", () => {
     // WHEN it is asked to name a caller
     // THEN it refuses — the safe direction for a disagreement between the two halves
     await expect(noAuthenticator({})).resolves.toBeErrWith(
-      expect.objectContaining({ reason: "no authenticator", constructor: Unauthenticated }),
+      expect.objectContaining({ constructor: Unauthenticated }),
     );
   });
 });

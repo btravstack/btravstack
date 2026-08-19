@@ -12,15 +12,12 @@ import { ORPCError } from "@orpc/server";
 import { ErrAsync, TaggedError, type AsyncResult } from "unthrown";
 
 /**
- * Why a caller was refused. The reason is the **application's own**: the starter
- * does not surface it — a rejected caller gets an `UNAUTHORIZED` carrying oRPC's
- * default message and nothing else — so an authenticator that wants the reason
- * recorded logs it itself. Forwarding it would put "no such user" versus "bad
- * signature" in a 401 body by default.
+ * A caller was refused. Carries nothing: the starter surfaces no reason — a
+ * rejected caller gets an `UNAUTHORIZED` and oRPC's default message — so a
+ * payload here would be write-only. An authenticator that wants to record why
+ * logs it before returning this.
  */
-export class Unauthenticated extends TaggedError("Unauthenticated")<{
-  readonly reason: string;
-}> {}
+export class Unauthenticated extends TaggedError("Unauthenticated") {}
 
 /**
  * What an application provides so a marked procedure can name its caller.
@@ -69,13 +66,14 @@ export const HttpAuthenticator =
     Provider(AuthenticatorPort)(deps, options as never) as never;
 
 /**
- * What a marked leaf authenticates with when no authenticator reached the walk —
- * a state the two halves of the condition agreeing should make unreachable, and
- * the reason this exists is that a disagreement must fail **closed**: every
- * caller refused, rather than the leaf served unprotected.
+ * Unreachable today, and kept anyway. `routerOf` falls back to this when a
+ * marked leaf has no authenticator behind it — which `HasMark<C>` and
+ * `hasMarked` agreeing makes impossible, since a mark anywhere requires one.
+ * It is two lines of insurance on a seam that has already failed twice, and it
+ * fails **closed**: every caller refused, never a leaf served unprotected.
+ * `auth.spec.ts` exercises it directly, because no router can reach it.
  */
-export const noAuthenticator: AuthenticatorService<never> = () =>
-  ErrAsync(new Unauthenticated({ reason: "no authenticator" }));
+export const noAuthenticator: AuthenticatorService<never> = () => ErrAsync(new Unauthenticated());
 
 /**
  * The one middleware this package installs, and only on a marked leaf. It reads
@@ -92,8 +90,8 @@ export const principalMiddleware =
   }): Promise<unknown> => {
     const resolved = await authenticate(options.context.request.headers);
     if (resolved.isErr()) {
-      // The reason stays here: it is the application's, and oRPC serializes
-      // `message` to the client.
+      // No message: oRPC serializes `message` to the client, and a refusal
+      // has nothing a caller is entitled to.
       // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm to use instead
       throw new ORPCError("UNAUTHORIZED");
     }

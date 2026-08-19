@@ -21,7 +21,7 @@ export const bearerAuthenticator = HttpAuthenticator([], {
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
     const [tenantId, userId] = token.split(":");
     return tenantId === undefined || tenantId === "" || userId === undefined || userId === ""
-      ? ErrAsync(new Unauthenticated({ reason: "no usable bearer token" }))
+      ? ErrAsync(new Unauthenticated())
       : OkAsync({ tenantId, userId });
   },
 });
