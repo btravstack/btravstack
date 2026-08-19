@@ -21,9 +21,13 @@ export type OrderRef = { readonly id: string };
  * application's to own. Naming it in the contract is what makes it the
  * application's: a client cannot forget it, the router cannot invent one, and
  * the use case it reaches takes it as a parameter all the way to the
- * repository. A deployment that later authenticates its callers would put the
- * tenant on the caller's identity instead and drop it from here; that is a
- * contract change, which is exactly the kind of change it should be.
+ * repository.
+ *
+ * `orders` is where that already moved: the fragment is marked
+ * `authenticated`, and its handlers serve `Principal.tenantId` rather than
+ * this field — a caller does not get to name the tenant it is served. The
+ * field stays declared on every input, `orders` included, because dropping it
+ * is a separate contract change and this one was about the transport.
  */
 export type Tenanted = { readonly tenantId: string };
 

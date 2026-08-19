@@ -97,13 +97,10 @@ const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()([], {
   sync: () => () => OkAsync({ sub: "s-1" }),
 });
 
-const MismatchedApi = HttpModule("MismatchedApi")({
+const _mismatchedApi = HttpModule("MismatchedApi")({
   router: orderRouter,
   // @ts-expect-error — the authenticator resolves `{ sub }`, not the contract's Principal.
   authenticator: wrongAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
-
-void _missingAuthenticator;
-void MismatchedApi;

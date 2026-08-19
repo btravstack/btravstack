@@ -93,10 +93,20 @@ root that is a `Module(...)` which also knows about it:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
+
+`authenticator` is owed because the contract marks its `orders` fragment
+`authenticated`: the router provider carries `AuthenticatorPort` as a need, so
+omitting the line is an unmet dependency `start` refuses, and supplying one
+that resolves a different principal is a compile error at this call. It sits at
+the root rather than in a slice — who a caller is is one answer per process —
+and it is an ordinary provider, so swapping this example's
+`Bearer <tenantId>:<userId>` stand-in for JWT verification changes nothing
+else.
 
 The root is a list of **slices**. Each one imports the vertical it needs —
 `OrderApplicationModule`, whose repository is an unmet need, and
@@ -163,9 +173,11 @@ and no handler code manages any of it.
 ## The client half
 
 ```ts
-const client = createOrderApiClient("http://127.0.0.1:3000");
+const client = createOrderApiClient("http://127.0.0.1:3000", "/rpc", {
+  authorization: `Bearer ${tenantId}:${userId}`,
+});
 
-const named = (await client.orders.place({ id, quantity })).match({
+const named = (await client.orders.place({ tenantId, id, quantity })).match({
   ok: () => "placed",
   errCases: (matcher) =>
     matcher.with(
@@ -176,6 +188,13 @@ const named = (await client.orders.place({ id, quantity })).match({
   defect: () => "bug",
 });
 ```
+
+The header is not optional here: `orders` is the marked half of the contract,
+so the same call without it is refused before any procedure runs — as an
+`UNAUTHORIZED` the contract does not declare, which means it is not inferable
+and lands in `defect` rather than `errCases`. `customers` is unmarked and
+answers either way. The tenant on the input is still declared and still sent;
+the server serves the token's, not this one.
 
 The error channel is the raw `ORPCError` union discriminated by `code` — not
 re-wrapped into a second error concept — so the client's match is the mirror of
