@@ -176,7 +176,10 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
   type argument is explicit rather than inferred from `sync`: inference
   through a returned function's `AsyncResult` is exactly where a `Principal`
   silently widens to `unknown`. `Unauthenticated` is a `TaggedError` carrying
-  a `reason` — for the operator's log, not the client's body.
+  a `reason`, and the reason is the **application's own**: the starter does
+  not surface it, so an authenticator that wants it recorded logs it itself.
+  Forwarding it would put "no such user" versus "bad signature" in a 401 body
+  by default — an information-disclosure footgun shipped as the default.
 - **`principalMiddleware` and `noAuthenticator`** (`auth.ts`, internal —
   **not** exported from `index.ts`, like `HttpHandler`) — the one middleware this package installs,
   and only on a marked leaf. It reads the request off oRPC's **initial
@@ -184,11 +187,15 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
   `RPCHandler.handle`, which is what initial context is for), calls the
   authenticator with its headers, and either injects
   `{ context: { principal } }` through `next` or terminates the request. An
-  `Unauthenticated` becomes `throw new ORPCError("UNAUTHORIZED", …)` — oRPC's
+  `Unauthenticated` becomes `throw new ORPCError("UNAUTHORIZED")` — oRPC's
   middleware protocol has no returned-error arm, which is the one place in
   this package a `throw` is right, carried by an `unthrown/no-throw` disable
-  naming why. A **defect** is rethrown as its own cause instead, so a bug in
-  the authenticator stays oRPC's `INTERNAL_SERVER_ERROR` collapse rather than
+  naming why. **No message is derived from the refusal**: oRPC serializes
+  `message` to the client, so the caller gets oRPC's default `"Unauthorized"`
+  and the `reason` never leaves the process. Pinned by `auth.spec.ts`'s
+  _"answers 401 without the authenticator's reason"_, mutation-verified. A
+  **defect** is rethrown as its own cause instead, so a bug in the
+  authenticator stays oRPC's `INTERNAL_SERVER_ERROR` collapse rather than
   being reported as a rejected caller.
 - **The authenticator dependency is conditional, and the two halves must
   agree — a disagreement is an auth bypass.** `routerOf` walks the
@@ -272,11 +279,16 @@ plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
   `OrpcOptions.plugins` (`orpc.ts`) → `HttpOptions.plugins` (`http-runtime.ts`)
   → `HttpModuleOptions.plugins` (`http-module.ts`) — and needs no generic
   parameter on any of the three, since it is a plain optional field like
-  `prefix`. It is **not** the middleware door thesis #3 and the "Not included"
-  bullet below still refuse: a plugin configures the transport once, at
-  composition, with no access to a procedure's `Result` or its application
-  logic — `principalMiddleware` (below) is the one per-request hook this
-  package installs, and only on a marked leaf.
+  `prefix`. It is an **honest escape hatch, not a keyhole**: oRPC's
+  `StandardHandlerPlugin.init` transforms handler options **including
+  `StandardHandlerOptions.interceptors`**, so a plugin can wrap execution and
+  an application determined to see a procedure's outcome can get there. What
+  the option buys is that the ordinary path is visible configuration at the
+  composition root rather than a middleware slot for application logic —
+  which is the one thing thesis #3 and the "Not included" bullet below still
+  refuse, and reaching past it is a visible act rather than the default shape.
+  `principalMiddleware` (below) is the one per-request hook this package
+  itself installs, and only on a marked leaf.
 - **`securityHeaders`** — `boolean | Readonly<Record<string, string>>`,
   default `true`. **Not** routed through `orpc()`: it stays on `HttpOptions`
   after `prefix` and `plugins` are destructured out of `http()`'s options, so

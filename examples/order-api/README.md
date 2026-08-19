@@ -303,6 +303,6 @@ two controllers read the tenant from different places. Dropping the now-unread
 left undone on purpose: keeping both fragments' inputs the same shape is what
 makes the one difference legible.
 
-It is typechecked by the gate rather than executed by it:It is typechecked by the gate rather than executed by it: the example packages
+It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there
 is no compiled entry for `node` to run, and every spec drives `start` directly.

@@ -27,7 +27,7 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAu
 | `HttpAuthenticator`    | value | `HttpAuthenticator<P>()([deps], { sync })` — the provider that turns a request's headers into a principal `P`, on `AuthenticatorPort`                                                                                                             |
 | `AuthenticatorPort`    | value | `Port("HttpAuthenticator")` over `AuthenticatorService<unknown>` — the port a marked contract's router depends on                                                                                                                                 |
 | `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<P, Unauthenticated>` — headers in, principal out                                                                                                                                                   |
-| `Unauthenticated`      | value | a `TaggedError` carrying a `reason` — the refusal, for the operator's log rather than the client's body                                                                                                                                           |
+| `Unauthenticated`      | value | a `TaggedError` carrying a `reason` — the refusal, the application's own; the starter does not surface it to the client                                                                                                                           |
 | `ContractPrincipal`    | type  | `ContractPrincipal<C>` — the principal a contract declares anywhere in its tree, or `never`                                                                                                                                                       |
 | `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                 |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                |
@@ -291,8 +291,11 @@ are di's, so a JWT verifier or a user directory is injected the way any
 provider's dependencies are. The type argument is **explicit** rather than
 inferred from `sync` — inference through a returned function's `AsyncResult` is
 where a principal silently widens to `unknown`. `Unauthenticated` is a
-`TaggedError` carrying a `reason`, for the operator's log rather than the
-client's body.
+`TaggedError` carrying a `reason`, and the reason is the **application's own**:
+the starter does not surface it. A rejected caller gets an `UNAUTHORIZED`
+carrying oRPC's default message and nothing derived from the refusal, so an
+authenticator that wants the reason recorded logs it itself — forwarding it
+would put "no such user" versus "bad signature" in a 401 body by default.
 
 ```ts
 export const bearerAuthenticator = HttpAuthenticator<Principal>()([], {
@@ -377,16 +380,23 @@ latter.
 `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
 `@orpc/server/node`, forwarded straight to `new RPCHandler(service, { plugins })`.
 CORS, body limits, compression and CSRF are transport policy oRPC already
-expresses as handler plugins, so this is **configuration**, not a middleware
-slot — `plugins: [new CORSHandlerPlugin({ origin: () => "https://orders.example" })]`
+expresses as handler plugins, so the ordinary use is **configuration** rather
+than a middleware slot for application logic —
+`plugins: [new CORSHandlerPlugin({ origin: () => "https://orders.example" })]`
 on `HttpModule` or `http()`, with the plugin imported from
 `@orpc/server/plugins`.
 
-A plugin configures the transport once, at composition, with no access to a
-procedure's `Result` or to any application logic — which is why it is not the
-door [Deliberately not included](#deliberately-not-included) still refuses. It
-threads through all three surfaces (`http()`, `HttpModule` and the internal
-oRPC options) as a plain optional field.
+`plugins` is an **honest escape hatch, not a keyhole**. oRPC's
+`StandardHandlerPlugin.init` transforms handler options — including
+`StandardHandlerOptions.interceptors` — so a plugin can wrap execution, and an
+application determined to see a procedure's outcome can get there. Nothing
+pretends otherwise. What the option buys is that the ordinary path is
+configuration a reader can see at the composition root, and reaching past it is
+a visible act rather than the default shape; an application middleware acting on
+the handler's `Result` is still what
+[Deliberately not included](#deliberately-not-included) refuses. It threads
+through all three surfaces (`http()`, `HttpModule` and the internal oRPC
+options) as a plain optional field.
 
 Note what a plugin does **not** cover: it only runs for a request oRPC
 **matched**, so the runtime's own `404` and `500` never reach one. That is why
@@ -510,8 +520,11 @@ read as unmarked here. Node `>=20`.
   `RPCHandler` is the one way HTTP is answered; there is no `handler` option
   and no listener port to provide.
 - **A middleware slot for application logic.** oRPC's own, inside the
-  router's procedures. `plugins` is not this — it is transport policy handed
-  to oRPC's `RPCHandler` at composition — and `principalMiddleware` is the one
-  per-request hook the package installs, only on a marked leaf.
+  router's procedures. `principalMiddleware` is the one per-request hook the
+  package installs, only on a marked leaf. [`plugins`](#plugins) is an honest
+  escape hatch rather than a keyhole — a plugin can reach the handler's
+  interceptors — but the ordinary path is configuration visible at the
+  composition root, and an application middleware acting on the handler's
+  `Result` is what this package refuses.
 - **`Result` → HTTP status.** The router's `.result()` triage owns it.
 - **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.

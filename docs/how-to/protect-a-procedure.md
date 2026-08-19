@@ -104,8 +104,11 @@ through a returned function's `AsyncResult` is exactly where a principal
 silently widens to `unknown`, and stating it is what makes a mismatch a compile
 error at step 4 instead of an `unknown` reaching a handler.
 
-`Unauthenticated` carries a `reason` — for the operator's log, not the client's
-body. A rejected caller gets an `UNAUTHORIZED` and nothing else.
+`Unauthenticated` carries a `reason`, and the reason is **yours**: the starter
+does not surface it. A rejected caller gets an `UNAUTHORIZED` carrying oRPC's
+default message and nothing derived from the refusal — so an authenticator that
+wants the reason recorded logs it itself, which is one more argument for naming
+a logger in `deps`.
 
 ## Step 3 — read the principal
 
