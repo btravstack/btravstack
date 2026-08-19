@@ -216,6 +216,48 @@ const OrdersApi = HttpModule("OrdersApi")({
 });
 ```
 
+### When the server knows more than the contract says
+
+A contract declares the **client-visible minimum** — often `{ tenantId }` — and
+says _whether_ a route is protected. What the authenticator resolves is usually
+more, and a handler could not see the extra fields: their type was read off the
+contract. `httpAuth<Identity>()` states the server's own principal instead, once
+per application, and hands back the three pieces fixed to it:
+
+```ts
+// src/auth.ts — the one file that names the identity
+import {
+  httpAuth,
+  type HttpControllerOf,
+  type HttpRouterOf,
+  type HttpAuthenticatorOf,
+} from "@btravstack/http";
+
+export type Identity = { readonly tenantId: string; readonly userId: string };
+
+const identity = httpAuth<Identity>();
+
+export const HttpController: HttpControllerOf<Identity> =
+  identity.HttpController;
+export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
+export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
+  identity.HttpAuthenticator;
+```
+
+Every slice imports `HttpController` from there instead of from this package,
+and its handlers see `Identity` on `context.principal` — `userId` included —
+with no annotation of their own. Nothing else about a controller changes. The
+authenticator drops its type argument (`HttpAuthenticator([deps], { sync })`),
+because this call already fixed it, which is also why the authenticator and the
+controllers cannot disagree.
+
+An unmarked procedure still gets no principal: the contract decides _whether_,
+the factory decides _what_. `HttpModule`'s gate is unchanged and still checks
+the authenticator against the contract's own `Principal` — an `Identity` richer
+than it discharges that as a subtype. The three aliases are annotations, not
+ceremony: a controller's port expands to a type carrying the marker's phantom
+`unique symbol`, which a consumer's `.d.ts` cannot name.
+
 A marked router carries the authenticator port as a **need**, so forgetting
 `authenticator` is an unmet dependency `start` refuses, and supplying one that
 resolves a different principal is a compile error at the `HttpModule(...)` call.

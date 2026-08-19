@@ -9,7 +9,9 @@ socket, and the router itself is a di-provided service. The contract lives in
 its own package, because a client needs it and needs none of this.
 
 ```
-src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder], { sync }) — where the orders slice's own domain error becomes an ORPCError
+src/auth.ts                           Identity, and the HttpController / HttpRouter / HttpAuthenticator httpAuth<Identity>() mints from it
+src/authenticator.ts                  bearerAuthenticator — headers in, Identity out, on the starter's port
+src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder, Logger], { sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
 src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([FindCustomer], { sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
@@ -113,9 +115,31 @@ It resolves **more** than the contract asks for, on purpose: `Principal` is
 authenticator returns `{ tenantId, userId }`. The gate is
 `Auth extends { principal: Principal }`, so a subtype discharges it — adding
 roles or an internal id to what a deployment knows about its callers is not a
-contract change, and none of it reaches a client. The limit: a handler sees the
-contract's type, so a field a handler needs has to be declared there and is
-client-visible once it is.
+contract change, and none of it reaches a client.
+
+Where that extra field is **stated** is `src/auth.ts`, the whole of it:
+
+```ts
+export type Identity = { readonly tenantId: string; readonly userId: string };
+
+const identity = httpAuth<Identity>();
+
+export const HttpController: HttpControllerOf<Identity> =
+  identity.HttpController;
+export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
+export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
+  identity.HttpAuthenticator;
+```
+
+The contract says the client-visible minimum and **whether** a route is
+protected; `httpAuth<Identity>()` says **what** the principal is, server-side.
+Both slices import `HttpController` from there instead of from
+`@btravstack/http`, and the orders controller reads
+`context.principal.userId` — a field the contract declares nowhere — to log who
+asked for a placement. Who placed an order is a transport-boundary fact, so it
+is logged there rather than pushed through a use case that has no business with
+it. Nothing else about either controller changed, which is the point of the
+factory: it is written once, and every slice infers from it.
 
 The root is a list of **slices**. Each one imports the vertical it needs —
 `OrderApplicationModule`, whose repository is an unmet need, and
@@ -302,7 +326,8 @@ const ordersContract = {
 The `customers` controller hands `input.tenantId` straight to the use case,
 which hands it to the repository, which puts it in the `WHERE`. The `orders`
 fragment is marked `authenticated`, so its controller takes the tenant from
-`context.principal.tenantId` — and its inputs name none: a required field the
+`context.principal.tenantId` — the server's `Identity`, not merely the
+contract's `Principal` — and its inputs name none: a required field the
 handler ignores is a field that lies, and a caller that could name a tenant it
 is not served is a confused deputy waiting to happen. Either way
 `@btravstack/http` knows

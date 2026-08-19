@@ -25,6 +25,11 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAu
 | `HttpRouter`           | value | `HttpRouter(contract)(deps, { sync })`, or `HttpRouter(contract)(controllers)` — the router as a provider on the starter's own router port, contract-first, either from one `sync` or from a keyed record of controllers                          |
 | `HttpController`       | value | `HttpController(name, fragment)([deps], { sync })` — one slice of a contract, as a provider on a port minted for it                                                                                                                               |
 | `HttpAuthenticator`    | value | `HttpAuthenticator<P>()([deps], { sync })` — the provider that turns a request's headers into a principal `P`, on `AuthenticatorPort`                                                                                                             |
+| `httpAuth`             | value | `httpAuth<Identity>()` — mints `HttpController`, `HttpRouter` and `HttpAuthenticator` fixed to the server's own identity, so a marked handler sees `Identity` rather than the contract's principal                                                |
+| `HttpAuth`             | type  | what `httpAuth<Identity>()` returns — the three, as one type                                                                                                                                                                                      |
+| `HttpControllerOf`     | type  | `HttpControllerOf<Identity>` — the annotation a file exporting the factory's `HttpController` needs                                                                                                                                               |
+| `HttpRouterOf`         | type  | `HttpRouterOf<Identity>` — the same, for the router                                                                                                                                                                                               |
+| `HttpAuthenticatorOf`  | type  | `HttpAuthenticatorOf<Identity>` — the same, for the authenticator                                                                                                                                                                                 |
 | `AuthenticatorPort`    | value | `Port("HttpAuthenticator")` over `AuthenticatorService<unknown>` — the port a marked contract's router depends on                                                                                                                                 |
 | `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<P, Unauthenticated>` — headers in, principal out                                                                                                                                                   |
 | `Unauthenticated`      | value | a `TaggedError` carrying a `reason` — the refusal, the application's own; the starter does not surface it to the client                                                                                                                           |
@@ -319,6 +324,49 @@ export const bearerAuthenticator = HttpAuthenticator<Principal>()([], {
   },
 });
 ```
+
+### `httpAuth<Identity>()` — what the principal is, server-side
+
+A contract declares the **client-visible minimum** and says _whether_ a route
+is protected. What the authenticator resolves is usually more — `{ tenantId }`
+in the contract, `{ tenantId, userId }` in the deployment — and a handler could
+not see the extra fields: their type was read off the contract.
+`httpAuth<Identity>()` states the server's own principal instead, and hands
+back the three pieces fixed to it:
+
+```ts
+// src/auth.ts — one per application
+export type Identity = { readonly tenantId: string; readonly userId: string };
+
+const identity = httpAuth<Identity>();
+
+export const HttpController: HttpControllerOf<Identity> =
+  identity.HttpController;
+export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
+export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
+  identity.HttpAuthenticator;
+```
+
+Every slice imports `HttpController` from there, and its marked handlers see
+`Identity` on `context.principal` with no annotation of their own; nothing else
+about a controller changes. The `HttpAuthenticator` handed back is already
+applied, so it is called `HttpAuthenticator([deps], { sync })` — which is also
+why the authenticator and the controllers cannot disagree about the identity.
+
+It is per application rather than per slice because a handler's parameter types
+are fixed **where the arrow is written**: a composition root cannot re-type a
+`sync` callback that lives in another module, so the identity has to be in
+scope where the handler is. The three `…Of<Identity>` aliases are annotations
+rather than ceremony — a controller's port expands to a type carrying the
+marker's phantom `unique symbol`, which a consumer's own `.d.ts` cannot name.
+
+The factory replaces the contract's type only on a **marked** node and invents
+none on an unmarked one: the contract still decides _whether_, and the gates
+below are unchanged — `HttpModule` still checks the authenticator against the
+contract's `Principal`, which an `Identity` richer than it discharges as a
+subtype. `HttpController` and `HttpRouter` imported from the package are the
+`Identity = never` case: their handlers see the contract's principal, exactly
+as before.
 
 ### Two gates, and why they are two
 

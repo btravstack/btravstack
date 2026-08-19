@@ -21,8 +21,9 @@ authenticator port, and the marked procedures' handlers grow a
 
 1. Declare the principal and mark the contract with
    `auth<Principal>()`'s `authenticated`.
-2. Write the authenticator with `HttpAuthenticator<Principal>()([deps], { sync })`
-   — headers in, `AsyncResult<Principal, Unauthenticated>` out.
+2. State the server's own identity once with `httpAuth<Identity>()`, and write
+   the authenticator it hands back — headers in,
+   `AsyncResult<Identity, Unauthenticated>` out.
 3. Read `opts.context.principal` in the handlers of the marked procedures.
 4. Pass the provider as `HttpModule(name)({ router, authenticator })`.
 
@@ -64,21 +65,55 @@ fragment with one of each. Apply `authenticated` to a **finished** node — the
 last call in a builder chain, or a whole record of finished nodes. Applied
 mid-chain it is silently dropped, because `oc.router(...)` rebuilds every node.
 
-## Step 2 — write the authenticator
+## Step 2 — state the identity, and write the authenticator
 
-`HttpAuthenticator<P>()([deps], { sync })` is an ordinary di provider on the
-starter's `AuthenticatorPort`. It resolves a principal from the request's
-**headers** — not the request: an authenticator has no business reading a
-body, and the narrower argument is what keeps it testable without a socket.
+The contract declares the **client-visible minimum** and says _whether_ a route
+is protected. What the server resolves is usually more, and where that is
+stated is `httpAuth<Identity>()` — one file per application, which hands back
+`HttpController`, `HttpRouter` and `HttpAuthenticator` all fixed to that
+identity:
 
 ```ts
-import { HttpAuthenticator, Unauthenticated } from "@btravstack/http";
-import { ErrAsync, OkAsync } from "unthrown";
+// src/auth.ts
+import {
+  httpAuth,
+  type HttpAuthenticatorOf,
+  type HttpControllerOf,
+  type HttpRouterOf,
+} from "@btravstack/http";
 
 /** What the server knows — more than the contract asks for. */
-type Identity = { readonly tenantId: string; readonly userId: string };
+export type Identity = { readonly tenantId: string; readonly userId: string };
 
-export const bearerAuthenticator = HttpAuthenticator<Identity>()([], {
+const identity = httpAuth<Identity>();
+
+export const HttpController: HttpControllerOf<Identity> =
+  identity.HttpController;
+export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
+export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
+  identity.HttpAuthenticator;
+```
+
+Written once per application, because a handler's parameter types are fixed
+where the arrow is written: a composition root cannot re-type a `sync` callback
+that lives in a slice's module, so the identity has to be in scope where the
+handler is. The three aliases are annotations rather than ceremony — a
+controller's port expands to a type carrying the marker's phantom
+`unique symbol`, which the file's own `.d.ts` cannot name.
+
+`HttpAuthenticator([deps], { sync })` is then an ordinary di provider on the
+starter's `AuthenticatorPort`, with no type argument left to state. It resolves
+the identity from the request's **headers** — not the request: an authenticator
+has no business reading a body, and the narrower argument is what keeps it
+testable without a socket.
+
+```ts
+import { Unauthenticated } from "@btravstack/http";
+import { ErrAsync, OkAsync } from "unthrown";
+
+import { HttpAuthenticator } from "./auth.js";
+
+export const bearerAuthenticator = HttpAuthenticator([], {
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
@@ -102,10 +137,12 @@ against a contract asking only for `{ tenantId }`. Enriching what a deployment
 knows about its callers — roles, an org tier, an internal id — is therefore not
 a contract change, and none of it reaches a client.
 
-The limit worth knowing: a handler sees the **contract's** type, not the
-authenticator's. A field a handler needs must be declared in the contract, and
-is client-visible once it is. That is the price of the field, and the reason to
-keep `Principal` as small as the API's semantics allow.
+A handler minted from the factory sees `Identity`, so those extra fields are
+readable where the work happens: the contract decides _whether_ a route is
+protected, the factory decides _what_ the principal is. Neither invents one —
+an unmarked procedure's context still has no `principal` at all. The top-level
+`HttpController` and `HttpRouter` are unchanged for an application that states
+no identity: their handlers see the contract's principal, as before.
 
 `Bearer <tenantId>:<userId>` is a stand-in, not a recommendation — what
 matters is the shape. `[]` because this one needs no service; a JWT verifier, a
@@ -113,10 +150,12 @@ key set or a user directory is named there and injected the way any provider's
 dependencies are, so swapping the stand-in for real verification changes
 nothing else in the composition.
 
-The type argument is **explicit** rather than inferred from `sync`: inference
-through a returned function's `AsyncResult` is exactly where a principal
-silently widens to `unknown`, and stating it is what makes a mismatch a compile
-error at step 4 instead of an `unknown` reaching a handler.
+The identity is **stated**, never inferred from `sync`: inference through a
+returned function's `AsyncResult` is exactly where a principal silently widens
+to `unknown`, and stating it once is what makes a mismatch a compile error at
+step 4 instead of an `unknown` reaching a handler. It also means the
+authenticator and the controllers cannot disagree — both come from the same
+`httpAuth` call.
 
 `Unauthenticated` carries a `reason`, and the reason is **yours**: the starter
 does not surface it. A rejected caller gets an `UNAUTHORIZED` carrying oRPC's
@@ -127,17 +166,24 @@ a logger in `deps`.
 ## Step 3 — read the principal
 
 A marked procedure's handler receives the principal on **oRPC's own context
-channel**, `opts.context.principal`, typed with what the contract declared. No
-second parameter, no wrapper:
+channel**, `opts.context.principal`. No second parameter, no wrapper.
+`HttpController` is imported from the application's own `auth.ts`, so
+`context.principal` is the `Identity` — `userId` included, though the contract
+declares only `tenantId`:
 
 ```ts
+import { HttpController } from "../../auth.js";
+
 export const ordersController = HttpController(
   "OrdersController",
   contract.orders,
-)([PlaceOrder, FindOrder], {
-  sync: (place, find) => ({
-    place: ({ errors, context }, input) =>
-      place
+)([PlaceOrder, FindOrder, Logger], {
+  sync: (place, find, logger) => ({
+    place: ({ errors, context }, input) => {
+      logger.info("order placement requested", {
+        userId: context.principal.userId,
+      });
+      return place
         .execute(context.principal.tenantId, input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
@@ -154,7 +200,8 @@ export const ordersController = HttpController(
                 data: { id: error.id },
               }),
             ),
-        ),
+        );
+    },
     find: ({ errors, context }, input) =>
       find
         .execute(context.principal.tenantId, input.id)
