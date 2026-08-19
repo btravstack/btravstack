@@ -463,7 +463,7 @@ type checker already verifies.
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http/src/controller.test-d.ts`
   pins the
   five compile-time gates the keyed `HttpRouter(contract)(controllers)` form
-  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 35 specs, across
+  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 40 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
   `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the
