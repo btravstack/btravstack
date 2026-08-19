@@ -1,18 +1,22 @@
 /**
  * The phantom key the marker occupies. Declared, never defined: it exists only
  * in the type system, so a marked node carries no runtime property and there is
- * nothing for oRPC's `implement()` to walk as a procedure.
+ * nothing for oRPC's `implement()` to walk as a procedure. It is never exported
+ * as a value either — a nameable brand could be hand-written onto a contract
+ * without the corresponding registry entry, which types as protected and runs
+ * unmarked: no authenticator demanded, and a handler reading a principal
+ * nothing ever injected.
  */
 declare const PRINCIPAL: unique symbol;
 
-/** A contract node whose procedures require an authenticated principal of type `P`. */
-export type Authenticated<T, P> = T & { readonly [PRINCIPAL]: P };
+/** A contract node whose procedures require an authenticated principal. */
+export type Authenticated<T> = T & { readonly [PRINCIPAL]: true };
 
 /** The marker's key, so a consumer's mapped type can `Exclude` it from `keyof`. */
 export type PrincipalKey = typeof PRINCIPAL;
 
-/** The principal a node was marked with, or `never` when it carries no marker. */
-export type PrincipalOf<T> = T extends { readonly [PRINCIPAL]: infer P } ? P : never;
+/** Whether this exact node carries the marker — a yes/no, not a type. */
+export type IsMarked<T> = T extends { readonly [PRINCIPAL]: true } ? true : false;
 
 // Identity, not a property: a marked node must stay `===` what the contract
 // declared, so `implement()` walks it unchanged and a consumer can still index
@@ -29,12 +33,9 @@ const store = globalThis as unknown as { [registry]?: WeakSet<object> };
 const marked = (store[registry] ??= new WeakSet<object>());
 
 /**
- * Mints the combinator for one contract's principal type.
+ * Marks a contract node as requiring an authenticated caller.
  *
  * ```ts
- * export type Principal = { readonly userId: string };
- * const { authenticated } = auth<Principal>();
- *
  * export const contract = {
  *   orders: authenticated({ place, find }),
  *   customers: { find, quote: authenticated(oc.input(…).output(…)) },
@@ -44,15 +45,16 @@ const marked = (store[registry] ??= new WeakSet<object>());
  * A marked record protects every procedure beneath it; a marked procedure
  * protects itself. Applied AFTER a builder chain is finished, never inside
  * one, so nothing about oRPC's builders has to preserve it.
+ *
+ * The contract says **whether** a route is protected and nothing about who the
+ * caller is: no principal type is named here, so nothing about the server's
+ * identity reaches a client. What the principal actually is, is the
+ * application's `httpAuth<Identity>()` to say.
  */
-export const auth = <P>(): {
-  readonly authenticated: <T extends object>(node: T) => Authenticated<T, P>;
-} => ({
-  authenticated: <T extends object>(node: T): Authenticated<T, P> => {
-    marked.add(node);
-    return node as Authenticated<T, P>;
-  },
-});
+export const authenticated = <T extends object>(node: T): Authenticated<T> => {
+  marked.add(node);
+  return node as Authenticated<T>;
+};
 
 /** Whether this exact node was marked. Ancestry is the caller's to carry. */
 export const isAuthenticated = (node: object): boolean => marked.has(node);

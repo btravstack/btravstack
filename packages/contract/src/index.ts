@@ -1,7 +1,7 @@
 export {
-  auth,
+  authenticated,
   isAuthenticated,
   type Authenticated,
+  type IsMarked,
   type PrincipalKey,
-  type PrincipalOf,
 } from "./auth.js";

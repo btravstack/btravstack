@@ -1,10 +1,10 @@
 import { describe, expect } from "vitest";
 
-import { isAuthenticated } from "./auth.js";
+import { authenticated, isAuthenticated } from "./auth.js";
 import { it } from "./test-fixtures.js";
 
 describe("authenticated", () => {
-  it("marks the node it is given", ({ authenticated, fragment }) => {
+  it("marks the node it is given", ({ fragment }) => {
     // GIVEN an unmarked contract fragment
     // WHEN it is marked
     const marked = authenticated(fragment);
@@ -15,7 +15,7 @@ describe("authenticated", () => {
     });
   });
 
-  it("adds no enumerable key", ({ authenticated, fragment }) => {
+  it("adds no enumerable key", ({ fragment }) => {
     // GIVEN a fragment with exactly one key
     // WHEN it is marked
     const marked = authenticated(fragment);
@@ -30,10 +30,7 @@ describe("authenticated", () => {
     expect(isAuthenticated(fragment)).toBe(false);
   });
 
-  it("registers the mark where a second copy of this package would find it", ({
-    authenticated,
-    fragment,
-  }) => {
+  it("registers the mark where a second copy of this package would find it", ({ fragment }) => {
     // GIVEN the registry as any other copy of this package would reach it
     const registry = (globalThis as Record<symbol, WeakSet<object> | undefined>)[
       Symbol.for("@btravstack/contract/marked")
@@ -45,7 +42,7 @@ describe("authenticated", () => {
     expect(registry?.has(fragment)).toBe(true);
   });
 
-  it("keeps two contracts' markers independent", ({ authenticated, fragment }) => {
+  it("keeps two contracts' markers independent", ({ fragment }) => {
     // GIVEN two nodes, one marked
     const other = { find: { kind: "procedure" } as const };
     // WHEN only the first is marked

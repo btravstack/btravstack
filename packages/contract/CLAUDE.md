@@ -16,46 +16,44 @@ marker over `WeakSet` identity, transport-agnostic by construction.
 
 ## Public surface
 
-- **`auth<P>()`** (`auth.ts`) — `(): { readonly authenticated: <T extends
-object>(node: T) => Authenticated<T, P> }`. Mints the combinator for one
-  contract's principal type `P`. Call it once per contract, destructure
-  `authenticated`, and apply it to a record of procedures (protects every
-  procedure beneath it) or to a single procedure (protects itself).
-- **`Authenticated<T, P>`** — `T & { readonly [PrincipalKey]: P }`. The typed
+- **`authenticated(node)`** (`auth.ts`) — `<T extends object>(node: T) =>
+Authenticated<T>`. One export, no factory and no type parameter: apply it to
+  a record of procedures (protects every procedure beneath it) or to a single
+  procedure (protects itself).
+- **`Authenticated<T>`** — `T & { readonly [PrincipalKey]: true }`. The typed
   shape a marked node carries — `T`'s own keys plus one phantom key that
   exists only for the type checker.
 - **`PrincipalKey`** — `typeof PRINCIPAL`, the marker's key. Exported so a
   consumer's own mapped type can `Exclude<keyof C, PrincipalKey>` and land on
   exactly the contract's own keys.
-- **`PrincipalOf<T>`** — `T extends { readonly [PrincipalKey]: infer P } ? P :
-never`. Recovers the principal type a node was marked with, `never` when it
-  carries no marker.
+- **`IsMarked<T>`** — `T extends { readonly [PrincipalKey]: true } ? true :
+false`. Whether this exact node carries the marker. A **yes/no**, not a type:
+  a consumer reads it to decide whether to inject a principal, never to learn
+  what one is.
 - **`isAuthenticated(node: object): boolean`** — whether this exact node was
   marked. Ancestry (a marked parent implying a marked child) is the caller's
   to carry; the package tracks nodes, not trees.
 
-## Declare the minimum, resolve more
+## The contract says whether; the application says what
 
-`P` is what a **client** learns about the identity the API expects, so it
-belongs in the contract only as far as the API's own semantics depend on it.
-`@btravstack/http`'s gate is `Auth extends { principal: P }`, so a **subtype**
-discharges it — an authenticator resolving `{ tenantId, userId, roles }`
-satisfies a contract declaring `{ tenantId }`. Enriching what a deployment
-knows about its callers is therefore not a contract change and reaches no
-client.
+**The contract names no identity type at all.** A marked node says a caller
+must be authenticated and stops there; `@btravstack/http`'s
+`httpAuth<Identity>()` is what says what a principal is, server-side, and a
+handler minted from it sees that type. So nothing about the server's own view
+of a caller — roles, an org tier, an internal id — reaches a client, and
+enriching it is never a contract change and never a client-visible field.
 
-The limit: a handler sees `PrincipalOf<C>`, the contract's type, not the
-authenticator's. A field a handler needs must be declared in the contract and
-is client-visible once it is. Keep `P` as small as the API allows.
-`examples/order-api-contract` is the worked case — `{ tenantId }` in the
-contract, `{ tenantId, userId }` out of the authenticator.
+There is therefore nothing here to keep minimal and nothing here to leak. The
+gate that used to compare a contract's principal against an authenticator's
+now compares the **router's** identity against the authenticator's, inside
+`@btravstack/http`, where both come from the same `httpAuth` call.
 
 ## Three load-bearing properties
 
 **Zero dependencies and zero peers.** Nothing here imports oRPC, `di`, `core`
 or `unthrown`. That is what lets a client take a contract without pulling in
 the server that implements it, and what would let an AMQP or Temporal
-contract reuse the exact same `auth()` combinator — the marker has no
+contract reuse the exact same `authenticated` marker — the marker has no
 opinion about which transport reads it.
 
 **The combinator returns the node unchanged and sets no property on it.**
@@ -76,6 +74,14 @@ shares the one `WeakSet`. A stray second copy then degrades to a compile
 error — the two copies' `PRINCIPAL` symbols are different `unique symbol`s —
 rather than to a silently unprotected route.
 
+`PRINCIPAL` is `declare`d and **never exported as a value**, and must stay
+that way. A nameable brand could be hand-written onto a contract node without
+the corresponding `WeakSet` entry: typed as protected, unmarked at runtime —
+so no authenticator is demanded and a handler reads a principal nothing ever
+injected. The TS2527 wart a consumer hits when re-exporting an inferred
+controller type is the price, and the aliases `@btravstack/http` exports
+(`HttpControllerOf<Identity>` and friends) are how it is paid.
+
 **Applied after a builder chain is finished, never inside one.** `authenticated`
 wraps a finished contract node — the last call in a chain, or a whole record
 of finished nodes — never a step in the middle of building one. No oRPC
@@ -83,16 +89,21 @@ builder has to know the marker exists or preserve it through its own chain.
 
 ## Specs
 
-`vitest run --coverage`, 100% lines/functions, 4 tests in one file,
+`vitest run --coverage`, 100% lines/functions, 5 tests in one file,
 `auth.spec.ts`: marking returns the same reference and a readable marker, no
-enumerable key is added, an unmarked node reads as unmarked, and two
-contracts' markers stay independent. `test-fixtures.ts` provides the
-`authenticated` combinator and a one-key `fragment`, both as lazy fixtures.
+enumerable key is added, an unmarked node reads as unmarked, the mark lands in
+the `globalThis` registry a second copy would read, and two contracts' markers
+stay independent. `test-fixtures.ts` provides a one-key `fragment` as a lazy
+fixture. `auth.test-d.ts` pins the type side: the phantom key excludes cleanly
+out of `keyof`, `IsMarked` is **exactly** `true` / `false` (asserted both
+directions — a `boolean` result would satisfy assignability to either), a
+marked node still satisfies the plain shape, and a plain one does not satisfy
+the marked shape.
 
 ## Deferred, deliberately
 
-Nothing consumes this yet. A later package reads `PrincipalKey` /
-`PrincipalOf` off a marked contract to type a handler's context with the
-principal, and a starter maps a missing or invalid principal to a transport
-error — neither exists here, and this package does not anticipate their
-shape.
+**A transport other than HTTP reading the marker.** `@btravstack/http` is the
+only consumer today. Nothing here is HTTP-shaped — an AMQP or Temporal
+contract could mark a node with the same `authenticated` and its starter read
+`isAuthenticated` — but neither does, and this package does not anticipate
+what a broker's or a workflow's authenticator would look like.
