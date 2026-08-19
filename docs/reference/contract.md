@@ -106,7 +106,8 @@ reads it.
 `authenticated(node) === node`, with nothing added — `PRINCIPAL` is `declare`d
 and never assigned, so it exists only in the type system. There is no key for
 oRPC's `implement()` to walk as a procedure and nothing for its builders to
-strip; the mark lives in a module-private `WeakSet`, keyed by identity.
+strip; the mark lives in a `WeakSet` keyed by identity, shared across copies of
+this package (see the warning below).
 
 **Applied after a builder chain is finished, never inside one.**
 `authenticated` wraps a finished node — the last call in a chain, or a whole
@@ -131,12 +132,19 @@ a bypass. No oRPC builder has to know the marker exists.
 None, and no runtime dependencies either. `pnpm add @btravstack/contract`, and
 that is the whole install. Node `>=20`.
 
-::: warning One copy, or the marker reads as unmarked
-`PrincipalKey` is a `unique symbol` and the mark is a module-private
-`WeakSet` — two copies of this package are two different symbols and two
-different sets, so a contract marked against one reads as unmarked in the
-other. `@btravstack/http` peers on it for that reason; an application holds a
-single copy. See [Peer dependencies](/explanation/peer-dependencies).
+::: warning One copy — and a second one is a compile error, not an open route
+`PrincipalKey` is a `unique symbol`, so two copies of this package mint two
+different brands: a contract marked against one does not type as marked in the
+other. The **runtime** registry does not split that way — it hangs off
+`globalThis` under `Symbol.for("@btravstack/contract/marked")`, so every copy
+reads and writes one `WeakSet`.
+
+That asymmetry is deliberate. A module-private set would make a second copy
+silent: `isAuthenticated` false everywhere, no authenticator required, and a
+marked route **served open**. Sharing the registry makes the two halves fail
+together, and the type half fails loudly. `@btravstack/http` peers on this
+package so an application holds a single copy in the first place. See
+[Peer dependencies](/explanation/peer-dependencies).
 :::
 
 ## See also

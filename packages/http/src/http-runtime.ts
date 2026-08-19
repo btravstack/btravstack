@@ -168,12 +168,15 @@ const listen = (
     new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
       // Resolved once, outside the per-request callback: a request answers
       // no faster for re-deriving the same record every time.
-      const headers: Readonly<Record<string, string>> =
+      const headerRecord: Readonly<Record<string, string>> =
         securityHeaders === false
           ? {}
           : securityHeaders === true || securityHeaders === undefined
             ? DEFAULT_SECURITY_HEADERS
             : securityHeaders;
+      // Entries too, not just the record: the loop below runs per request, and
+      // `Object.entries` would rebuild the same pairs every time.
+      const headers = Object.entries(headerRecord);
 
       // `close()` waits for every connection to end, and a keep-alive client
       // holds one open long after its response. Tracking sockets is what lets
@@ -204,7 +207,7 @@ const listen = (
       const server: Server = createServer((request, response) => {
         // FIRST, before dispatch: covers the runtime's own 404/500 and a
         // drained/retired response alike, not only what oRPC matched.
-        for (const [name, value] of Object.entries(headers)) response.setHeader(name, value);
+        for (const [name, value] of headers) response.setHeader(name, value);
         open.add(response);
         response.once("close", () => open.delete(response));
         if (draining) retire(response);
