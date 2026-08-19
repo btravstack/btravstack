@@ -81,10 +81,10 @@ const markedUsers = IdentityController("GateMarkedUsers", markedContract.users)(
 void IdentityRouter(markedContract)({ orders: markedOrders });
 
 // 2. A key the contract does not declare is rejected.
-// @ts-expect-error — `billing` is not in the contract
 void IdentityRouter(markedContract)({
   orders: markedOrders,
   users: markedUsers,
+  // @ts-expect-error — `billing` is not in the contract
   billing: markedOrders,
 });
 

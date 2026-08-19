@@ -25,7 +25,7 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAu
 | `HttpRouter`           | value | `HttpRouter(contract)(deps, { sync })`, or `HttpRouter(contract)(controllers)` — the router as a provider on the starter's own router port, contract-first, either from one `sync` or from a keyed record of controllers                          |
 | `HttpController`       | value | `HttpController(name, fragment)([deps], { sync })` — one slice of a contract, as a provider on a port minted for it                                                                                                                               |
 | `HttpAuthenticator`    | value | `HttpAuthenticator<P>()([deps], { sync })` — the provider that turns a request's headers into a principal `P`, on `AuthenticatorPort`                                                                                                             |
-| `httpAuth`             | value | `httpAuth<Identity>()` — mints `HttpController`, `HttpRouter` and `HttpAuthenticator` fixed to the server's own identity, so a marked handler sees `Identity` rather than the contract's principal                                                |
+| `httpAuth`             | value | `httpAuth<Identity>()` — mints `HttpController`, `HttpRouter` and `HttpAuthenticator` fixed to the server's own identity; the only thing that gives a marked handler a readable `context.principal`                                               |
 | `HttpAuth`             | type  | what `httpAuth<Identity>()` returns — the three, as one type                                                                                                                                                                                      |
 | `HttpControllerOf`     | type  | `HttpControllerOf<Identity>` — the annotation a file exporting the factory's `HttpController` needs                                                                                                                                               |
 | `HttpRouterOf`         | type  | `HttpRouterOf<Identity>` — the same, for the router                                                                                                                                                                                               |
@@ -33,7 +33,7 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAu
 | `AuthenticatorPort`    | value | `Port("HttpAuthenticator")` over `AuthenticatorService<unknown>` — the port a marked contract's router depends on                                                                                                                                 |
 | `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<P, Unauthenticated>` — headers in, principal out                                                                                                                                                   |
 | `Unauthenticated`      | value | a `TaggedError` carrying a `reason` — the refusal, the application's own; the starter does not surface it to the client                                                                                                                           |
-| `ContractPrincipal`    | type  | `ContractPrincipal<C>` — the principal a contract declares anywhere in its tree, or `never`                                                                                                                                                       |
+| `HasMark`              | type  | `HasMark<C>` — exactly `true` or `false`: whether the contract marks anything, anywhere in its tree                                                                                                                                               |
 | `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                 |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                |
 | `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                        |
@@ -177,7 +177,7 @@ export const orderRouter = HttpRouter(contract)({
 Each value is what [`HttpController`](#httpcontrollername-fragment)
 returns. The call is **exact**: `M` is constrained to
 `{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
-PrincipalOf<C>>> }`, and the `controllers`
+IsMarked<C>>, Identity> }`, and the `controllers`
 **parameter** itself is typed `M & { readonly [K in Exclude<keyof M,
 Exclude<keyof C, PrincipalKey>>]: never }` — the exactness intersection sits on
 the parameter, not on `M`, so a key `C` does not declare is typed `never` there
@@ -266,15 +266,15 @@ A contract marked with [`@btravstack/contract`](/reference/contract)'s
 starter: the marker is a fact about the contract, and both halves of the
 package follow it.
 
-**In the types.** `Implementation<C>` branches on the marker. A marked **leaf**
-gets `{ readonly principal: P }` in its implementer's injected context, so the
-handler reads `opts.context.principal` — oRPC's own context channel, not a
-second handler parameter this package invents and not a wrapper around
-`.result()`. A marked **record** pushes its marker onto each child, so a marked
-fragment protects every procedure beneath it. An unmarked leaf's context is
-unchanged, which is what makes reading a principal there a compile error.
-`ContractPrincipal<C>` is the principal a contract declares anywhere in its
-tree, or `never`.
+**In the types.** `Implementation<C, Identity>` branches on the marker. A
+marked **leaf** gets `{ readonly principal: Identity }` in its implementer's
+injected context, so the handler reads `opts.context.principal` — oRPC's own
+context channel, not a second handler parameter this package invents and not a
+wrapper around `.result()`. A marked **record** pushes its marker onto each
+child, so a marked fragment protects every procedure beneath it. An unmarked
+leaf's context is unchanged, which is what makes reading a principal there a
+compile error. `HasMark<C>` is whether the contract marks anything anywhere in
+its tree — a yes/no, since the contract names no principal to recover.
 
 **At runtime.** `HttpRouter`'s walk carries the mark down the contract exactly
 as the types do, and a marked leaf is built as
@@ -300,7 +300,9 @@ and the narrower argument is what keeps it testable without a socket. `deps`
 are di's, so a JWT verifier or a user directory is injected the way any
 provider's dependencies are. The type argument is **explicit** rather than
 inferred from `sync` — inference through a returned function's `AsyncResult` is
-where a principal silently widens to `unknown`. `Unauthenticated` is a
+where a principal silently widens to `unknown` — though in an application that
+has an `src/auth.ts` the argument is already fixed by `httpAuth<Identity>()`
+and the call is `HttpAuthenticator([deps], { sync })`. `Unauthenticated` is a
 `TaggedError` carrying a `reason`, and the reason is the **application's own**:
 the starter does not surface it. A rejected caller gets an `UNAUTHORIZED`
 carrying oRPC's default message and nothing derived from the refusal, so an
@@ -308,7 +310,7 @@ authenticator that wants the reason recorded logs it itself — forwarding it
 would put "no such user" versus "bad signature" in a 401 body by default.
 
 ```ts
-export const bearerAuthenticator = HttpAuthenticator<Principal>()([], {
+export const bearerAuthenticator = HttpAuthenticator([], {
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
@@ -327,12 +329,11 @@ export const bearerAuthenticator = HttpAuthenticator<Principal>()([], {
 
 ### `httpAuth<Identity>()` — what the principal is, server-side
 
-A contract declares the **client-visible minimum** and says _whether_ a route
-is protected. What the authenticator resolves is usually more — `{ tenantId }`
-in the contract, `{ tenantId, userId }` in the deployment — and a handler could
-not see the extra fields: their type was read off the contract.
-`httpAuth<Identity>()` states the server's own principal instead, and hands
-back the three pieces fixed to it:
+**The contract says _whether_ a route is protected; this says _what_ the
+principal is.** The contract names no identity type at all, so nothing about
+the server's view of a caller reaches a client — and this factory is the only
+thing that gives a marked handler a readable `context.principal`. It states the
+identity once and hands back the three pieces fixed to it:
 
 ```ts
 // src/auth.ts — one per application
@@ -360,13 +361,11 @@ scope where the handler is. The three `…Of<Identity>` aliases are annotations
 rather than ceremony — a controller's port expands to a type carrying the
 marker's phantom `unique symbol`, which a consumer's own `.d.ts` cannot name.
 
-The factory replaces the contract's type only on a **marked** node and invents
-none on an unmarked one: the contract still decides _whether_, and the gates
-below are unchanged — `HttpModule` still checks the authenticator against the
-contract's `Principal`, which an `Identity` richer than it discharges as a
-subtype. `HttpController` and `HttpRouter` imported from the package are the
-`Identity = never` case: their handlers see the contract's principal, exactly
-as before.
+The identity reaches a **marked** node only, and none is invented on an
+unmarked one: the contract still decides _whether_. `HttpController` and
+`HttpRouter` imported from the package itself are the `Identity = never` case —
+a marked fragment reached through them types `principal: never`, so every read
+is a compile error. That is the signal to use the factory, not a fallback.
 
 ### Two gates, and why they are two
 
@@ -377,13 +376,16 @@ channel. Which makes a marked router with no authenticator behind it di's
 existing `UNSATISFIED DEPENDENCIES` gate at `start`, not a gate this package
 invented.
 
-What di cannot see is the **principal**: `AuthenticatorPort`'s service type is
+What di cannot see is the **identity**: `AuthenticatorPort`'s service type is
 erased to `unknown`, so any authenticator discharges that need. So
-`HttpModule` checks the other half — `Principal` is inferred from the router's
-own, and an authenticator resolving something else is a compile error at the
-`HttpModule(...)` call. An **unmarked** router accepts any authenticator,
-including none: a provider nothing needs is di's business and not an error to
-invent.
+`HttpModule` checks the other half — the **router's** identity, inferred from
+`router.identity`, against the **authenticator's**. A router minted by
+`httpAuth<A>()` refuses an authenticator minted by `httpAuth<B>()`, at the
+`HttpModule(...)` call. The direction is `AuthIdentity extends RouterIdentity`:
+the authenticator must resolve **at least** what the handlers read, so a
+subtype discharges it. A router from the package's own top-level `HttpRouter`
+carries no identity and accepts any authenticator, including none — a provider
+nothing needs is di's business and not an error to invent.
 
 A mark with no authenticator behind it still **fails closed**: an internal
 `noAuthenticator` refuses every caller, so such a leaf answers `401` rather

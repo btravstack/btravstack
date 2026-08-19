@@ -15,12 +15,15 @@ Three moves, in this order: **mark** the contract, **write** the
 `Authenticator`, **pass** it to `HttpModule`. The marker is what makes the
 other two type-checked — the router provider grows a dependency on the
 authenticator port, and the marked procedures' handlers grow a
-`context.principal` typed with what the contract declared.
+`context.principal` typed with the identity the application stated.
+
+**The contract says _whether_ a route is protected; `httpAuth<Identity>()` says
+_what_ the principal is.** No identity type is named in the contract at all, so
+nothing about the server's view of a caller reaches a client.
 
 ## Recipe
 
-1. Declare the principal and mark the contract with
-   `auth<Principal>()`'s `authenticated`.
+1. Mark the contract with `authenticated`.
 2. State the server's own identity once with `httpAuth<Identity>()`, and write
    the authenticator it hands back — headers in,
    `AsyncResult<Identity, Unauthenticated>` out.
@@ -33,13 +36,8 @@ The marker goes in the contract package, because it is a fact about the API
 that a client should be able to read without taking the server:
 
 ```ts
-import { auth } from "@btravstack/contract";
+import { authenticated } from "@btravstack/contract";
 import { oc, type } from "@orpc/contract";
-
-/** The MINIMUM a caller's identity must carry for this API's semantics. */
-export type Principal = { readonly tenantId: string };
-
-const { authenticated } = auth<Principal>();
 
 const ordersContract = {
   place: oc
@@ -65,13 +63,14 @@ fragment with one of each. Apply `authenticated` to a **finished** node — the
 last call in a builder chain, or a whole record of finished nodes. Applied
 mid-chain it is silently dropped, because `oc.router(...)` rebuilds every node.
 
+The contract stops here. It names no principal, so there is nothing in it to
+keep minimal and nothing in it to leak.
+
 ## Step 2 — state the identity, and write the authenticator
 
-The contract declares the **client-visible minimum** and says _whether_ a route
-is protected. What the server resolves is usually more, and where that is
-stated is `httpAuth<Identity>()` — one file per application, which hands back
-`HttpController`, `HttpRouter` and `HttpAuthenticator` all fixed to that
-identity:
+`httpAuth<Identity>()` is where the principal's type is stated — one file per
+application, which hands back `HttpController`, `HttpRouter` and
+`HttpAuthenticator` all fixed to that identity:
 
 ```ts
 // src/auth.ts
@@ -82,7 +81,7 @@ import {
   type HttpRouterOf,
 } from "@btravstack/http";
 
-/** What the server knows — more than the contract asks for. */
+/** What this deployment knows about a caller. The contract names none. */
 export type Identity = { readonly tenantId: string; readonly userId: string };
 
 const identity = httpAuth<Identity>();
@@ -130,19 +129,16 @@ export const bearerAuthenticator = HttpAuthenticator([], {
 });
 ```
 
-**Declare the minimum in the contract, and let the authenticator resolve
-more.** The gate `HttpModule` applies is `Auth extends { principal: Principal }`,
-so a _subtype_ discharges it: this authenticator resolves `{ tenantId, userId }`
-against a contract asking only for `{ tenantId }`. Enriching what a deployment
-knows about its callers — roles, an org tier, an internal id — is therefore not
-a contract change, and none of it reaches a client.
+Enriching what a deployment knows about its callers — roles, an org tier, an
+internal id — is a change to this file alone: not a contract change, and none
+of it reaches a client.
 
-A handler minted from the factory sees `Identity`, so those extra fields are
-readable where the work happens: the contract decides _whether_ a route is
-protected, the factory decides _what_ the principal is. Neither invents one —
-an unmarked procedure's context still has no `principal` at all. The top-level
-`HttpController` and `HttpRouter` are unchanged for an application that states
-no identity: their handlers see the contract's principal, as before.
+The factory is also the **only** way a handler gets a readable principal.
+`@btravstack/http`'s own top-level `HttpController` and `HttpRouter` name no
+identity, so a marked fragment reached through them types `principal: never`
+and every read of it is a compile error — the signal to use the factory, not a
+fallback. Neither form invents one: an unmarked procedure's context still has
+no `principal` at all.
 
 `Bearer <tenantId>:<userId>` is a stand-in, not a recommendation — what
 matters is the shape. `[]` because this one needs no service; a JWT verifier, a
@@ -168,8 +164,8 @@ a logger in `deps`.
 A marked procedure's handler receives the principal on **oRPC's own context
 channel**, `opts.context.principal`. No second parameter, no wrapper.
 `HttpController` is imported from the application's own `auth.ts`, so
-`context.principal` is the `Identity` — `userId` included, though the contract
-declares only `tenantId`:
+`context.principal` is the `Identity` — `userId` and `tenantId` both, neither
+of which the contract names:
 
 ```ts
 import { HttpController } from "../../auth.js";
@@ -244,13 +240,18 @@ Two things are checked here, and they are different gates:
   the contract marks anything, `HttpRouter` appends `AuthenticatorPort` to the
   router provider's dependencies, so the need is real and unmet — no new gate,
   and nothing this package invents.
-- **Supplying one that resolves a different principal** is a compile error at
+- **Supplying one minted on a different identity** is a compile error at
   the `HttpModule(...)` call itself. di cannot see it — `AuthenticatorPort`'s
   service type is erased to `unknown`, so any authenticator discharges the need
-  — so `HttpModule` checks the principal against the router's own.
+  — so `HttpModule` compares the **router's** identity against the
+  **authenticator's**, both of which came from the same `httpAuth` call in an
+  application that has one. The direction is
+  `AuthIdentity extends RouterIdentity`: the authenticator must resolve at
+  least what the handlers read, so a subtype discharges it.
 
-An **unmarked** router accepts any authenticator, including none: a provider
-nothing needs is di's business and not an error to invent.
+A router minted by the package's own top-level `HttpRouter` carries no identity
+and accepts any authenticator, including none: a provider nothing needs is di's
+business and not an error to invent.
 
 ## What a rejected caller gets
 
@@ -298,8 +299,8 @@ handler, where the use case is.
 
 ## See also
 
-- [`@btravstack/contract`](/reference/contract) — `auth`, `Authenticated`,
-  `PrincipalKey`, `PrincipalOf`, `isAuthenticated`.
+- [`@btravstack/contract`](/reference/contract) — `authenticated`,
+  `Authenticated`, `PrincipalKey`, `IsMarked`, `isAuthenticated`.
 - [`@btravstack/http`](/reference/http) — `HttpAuthenticator`,
   `AuthenticatorPort`, `Unauthenticated`, and the request table.
 - [Split a router into controllers](/how-to/split-a-router-into-controllers) —

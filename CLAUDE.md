@@ -463,19 +463,24 @@ type checker already verifies.
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http/src/controller.test-d.ts`
   pins the
   five compile-time gates the keyed `HttpRouter(contract)(controllers)` form
-  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 41 specs, across
+  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 40 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
   `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the
   starter proper through `HttpModule`, the keyed router form through the
   `rpcSliced` fixture, and the contract marker's runtime half — the
   authenticator port and the one middleware it installs — through
-  `rpcAuthed`. The server's own principal is `httpAuth<Identity>()`'s:
-  the contract declares the client-visible minimum and says _whether_ a route
-  is protected, the factory says _what_ the caller is, and a handler minted
-  from it sees `Identity` where the contract's `Principal` used to be the only
-  type available (`examples/order-api/src/auth.ts` is the one file per
-  application that names it).
+  `rpcAuthed`. **The contract says WHETHER a route is protected; the
+  application's `httpAuth<Identity>()` says WHAT the principal is.**
+  `@btravstack/contract` names no identity type at all — `authenticated` is one
+  export with no factory and no type parameter — so nothing about a server's
+  view of a caller reaches a client, and a marked fragment reached through the
+  top-level `HttpController` types `principal: never`, which makes every read a
+  compile error and is the signal to use the factory.
+  `examples/order-api/src/auth.ts` is the one file per application that names an
+  identity, and `HttpModule`'s gate pairs the **router's** identity with the
+  **authenticator's** — both from that one call — since there is no
+  contract-side principal left to compare against.
 - **The whole gate runs on THREE containers, shared, and `internal/test-infra`
   owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine` and
   one `temporalio/auto-setup:1.29.1`, started once per machine and reused by
