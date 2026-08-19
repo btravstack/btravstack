@@ -187,9 +187,9 @@ describe("order-api", () => {
       .place({ id: "o-1", quantity: 1 })
       .flatMap(() => client.orders.place({ id: "o-2", quantity: 1 }));
 
-    // THEN two calls, two interactor lines plus two request-scope teardown
-    // lines, carrying two distinct trace ids and never one written outside a
-    // unit — read off the line's own `unit` field, which is what the logger
+    // THEN two calls, each writing a controller line, an interactor line and a
+    // request-scope teardown line, carrying two distinct trace ids and never
+    // one written outside a unit — read off the line's own `unit` field, which is what the logger
     // stamps from `currentUnit()` per call
     const traced = served
       .map(() => recording.lines())
@@ -199,7 +199,7 @@ describe("order-api", () => {
         outOfUnit: lines.filter((line) => line.unit === undefined).length,
       }));
 
-    expect(traced).toBeOkWith({ lines: 4, distinct: 2, outOfUnit: 0 });
+    expect(traced).toBeOkWith({ lines: 6, distinct: 2, outOfUnit: 0 });
   });
 
   it("lets an in-flight call finish while draining", async ({ serve, clientFor, gate }) => {

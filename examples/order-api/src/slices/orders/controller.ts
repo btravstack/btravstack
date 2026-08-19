@@ -1,8 +1,10 @@
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
-import { HttpController } from "@btravstack/http";
+import { Logger } from "@btravstack/observability";
 import { P } from "unthrown";
+
+import { HttpController } from "../../auth.js";
 
 const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quantity });
 
@@ -27,7 +29,12 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * The tenant comes off `context.principal`, the value this application's own
  * authenticator resolved from the request's headers — `contract.orders` is
  * marked `authenticated`, so the principal is typed here and a handler that
- * misreads it does not compile. The fragment's inputs name **no** tenant: a
+ * misreads it does not compile. `HttpController` is `../../auth.ts`'s, minted
+ * by `httpAuth<Identity>()`, which is why `userId` is readable at all: the
+ * contract declares `{ tenantId }` and the authenticator resolves more, and
+ * the factory is what puts the server's own type in scope where the handler is
+ * written. Who placed an order is a transport-boundary fact, so it is logged
+ * here rather than pushed through a use case that has no business with it. The fragment's inputs name **no** tenant: a
  * caller does not get to name the tenant it is served, and a required field
  * these handlers ignore would be a lie in the contract. The unmarked
  * `customers` fragment still names one, which is where that contrast is
@@ -41,11 +48,12 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * provider like any other in the graph.
  */
 export const ordersController = HttpController("OrdersController", contract.orders)(
-  [PlaceOrder, FindOrder],
+  [PlaceOrder, FindOrder, Logger],
   {
-    sync: (place, find) => ({
-      place: ({ errors, context }, input) =>
-        place
+    sync: (place, find, logger) => ({
+      place: ({ errors, context }, input) => {
+        logger.info("order placement requested", { userId: context.principal.userId });
+        return place
           .execute(context.principal.tenantId, input.id, input.quantity)
           .map(view)
           .mapErrCases((matcher) =>
@@ -56,7 +64,8 @@ export const ordersController = HttpController("OrdersController", contract.orde
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.CONFLICT({ message: error.message, data: { id: error.id } }),
               ),
-          ),
+          );
+      },
       find: ({ errors, context }, input) =>
         find
           .execute(context.principal.tenantId, input.id)

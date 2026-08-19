@@ -33,12 +33,25 @@ import { routerFor } from "./orpc.js";
  * `HttpAuthenticator<P>()` exists to state is what this factory just fixed —
  * so it is called `HttpAuthenticator([deps], { sync })`.
  */
-export const httpAuth = <Identity>(): {
-  readonly HttpController: ReturnType<typeof controllerFor<Identity>>;
-  readonly HttpRouter: ReturnType<typeof routerFor<Identity>>;
-  readonly HttpAuthenticator: ReturnType<typeof HttpAuthenticator<Identity>>;
-} => ({
+export const httpAuth = <Identity>(): HttpAuth<Identity> => ({
   HttpController: controllerFor<Identity>(),
   HttpRouter: routerFor<Identity>(),
   HttpAuthenticator: HttpAuthenticator<Identity>(),
 });
+
+/**
+ * The three, as one type. `Identity` reaches a `.d.ts` through these aliases
+ * rather than through the inferred type of the call: what a controller's port
+ * expands to carries `@btravstack/contract`'s phantom `unique symbol`, which no
+ * consumer can name (TS2527, measured on `examples/order-api`). A file that
+ * exports what `httpAuth` returns annotates with them.
+ */
+export type HttpAuth<Identity> = {
+  readonly HttpController: HttpControllerOf<Identity>;
+  readonly HttpRouter: HttpRouterOf<Identity>;
+  readonly HttpAuthenticator: HttpAuthenticatorOf<Identity>;
+};
+
+export type HttpControllerOf<Identity> = ReturnType<typeof controllerFor<Identity>>;
+export type HttpRouterOf<Identity> = ReturnType<typeof routerFor<Identity>>;
+export type HttpAuthenticatorOf<Identity> = ReturnType<typeof HttpAuthenticator<Identity>>;

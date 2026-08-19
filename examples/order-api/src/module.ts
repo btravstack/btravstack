@@ -1,7 +1,8 @@
 import { contract } from "@btravstack/example-order-api-contract";
-import { HttpModule, HttpRouter } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
+import { HttpRouter } from "./auth.js";
 import { bearerAuthenticator } from "./authenticator.js";
 import { customersController } from "./slices/customers/controller.js";
 import { CustomersSlice } from "./slices/customers/module.js";
