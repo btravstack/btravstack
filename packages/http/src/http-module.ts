@@ -7,6 +7,7 @@ import {
   type Provider,
 } from "@btravstack/di";
 
+import type { AuthenticatorPort } from "./auth.js";
 import { HttpRuntime, http, type HttpConfig } from "./http-runtime.js";
 import type { HttpRouterPort } from "./orpc.js";
 
@@ -16,21 +17,46 @@ type HttpStarter = Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRou
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */
 type Imports<I extends readonly AnyModule[]> = readonly [...I, HttpStarter];
 
-/** The router provider plus the application's own — the tuple `Module(name)` is handed. */
-type Provides<P extends readonly AnyProvider[], RouterError, RouterNeeds> = readonly [
+/**
+ * The router provider, the authenticator when there is one, and the
+ * application's own — the tuple `Module(name)` is handed. `Auth` is inferred
+ * from the option, so an omitted authenticator contributes no element and the
+ * marked router's need for one stays unmet: di's gate, at `start`.
+ */
+type Provides<
+  P extends readonly AnyProvider[],
+  RouterError,
+  RouterNeeds,
+  Auth extends AnyProvider | undefined,
+> = readonly [
   Provider<HttpRouterPort, RouterError, RouterNeeds>,
+  ...([Auth] extends [undefined] ? [] : [NonNullable<Auth>]),
   ...P,
 ];
 
 export type HttpModuleOptions<
   RouterError,
   RouterNeeds,
+  Principal,
+  Auth extends AnyProvider | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
-  X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds>>[],
+  X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>>[],
 > = {
   /** The application's oRPC router — `HttpRouter(contract)(deps, arm)`, the provider that builds it from the services its procedures call. */
-  readonly router: Provider<HttpRouterPort, RouterError, RouterNeeds>;
+  readonly router: Provider<HttpRouterPort, RouterError, RouterNeeds> & {
+    readonly principal: Principal;
+  };
+  /**
+   * Resolves the principal a marked procedure's handler receives —
+   * `HttpAuthenticator<P>()([deps], { sync })`. Required exactly when the
+   * router's contract marks something: a marked router declares
+   * `AuthenticatorPort` as a need, and di refuses a graph that does not
+   * discharge it. Whether it resolves the contract's own principal is the one
+   * thing that need cannot say — the port's service type is erased — so
+   * `Principal`, read off `router`, is what checks it here.
+   */
+  readonly authenticator?: Auth;
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
   readonly prefix?: `/${string}`;
   /** Pins for a test — otherwise `PORT`/`HOST` from the environment. */
@@ -67,13 +93,20 @@ export const HttpModule =
   <
     RouterError,
     RouterNeeds,
+    Principal,
+    const Auth extends
+      | (Provider<AuthenticatorPort, never, unknown> & {
+          readonly principal: [Principal] extends [never] ? unknown : Principal;
+        })
+      | undefined = undefined,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
-    const X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds>>[] = [],
+    const X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>>[] =
+      [],
   >(
-    options: HttpModuleOptions<RouterError, RouterNeeds, I, P, X>,
+    options: HttpModuleOptions<RouterError, RouterNeeds, Principal, Auth, I, P, X>,
   ) => {
-    const { router, prefix, port, hostname } = options;
+    const { router, authenticator, prefix, port, hostname } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
@@ -86,7 +119,11 @@ export const HttpModule =
     // type IS the sugar's — nothing spelled twice.
     return Module(name)({
       imports: [...imports, starter] as Imports<I>,
-      provides: [router, ...provides] as Provides<P, RouterError, RouterNeeds>,
+      provides: [
+        router,
+        ...(authenticator === undefined ? [] : [authenticator]),
+        ...provides,
+      ] as unknown as Provides<P, RouterError, RouterNeeds, Auth>,
       exports: [HttpRuntime, ...exports] as readonly [typeof HttpRuntime, ...X],
     });
   };

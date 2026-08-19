@@ -8,25 +8,41 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })`**
+- **`HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, imports?, provides?, exports? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
   `http({ prefix?, port?, hostname? })` to `imports`, prepends the provider to
   `provides` and `HttpRuntime` to `exports`, and hands the augmented tuples —
-  `Imports<I>` / `Provides<P, RouterError, RouterNeeds>`, readonly and exact
+  `Imports<I>` / `Provides<P, RouterError, RouterNeeds, Auth>`, readonly and exact
   — to di's own `Module(name)({...})`, whose
   return type IS the sugar's: nothing spelled twice. di exports `AnyModule`,
   `AnyProvider` and `Exportable` for exactly that (constraining the tuples the
   way `Module(name)` does); its other module-typing pieces stay internal.
   (Spelling the return through a named generic alias was tried and removed:
   declaration emit keeps such an alias unreduced and cannot name imported
-  modules' internal ports — TS2883, measured.) `router` is a plain
+  modules' internal ports — TS2883, measured.) `router` is
   `Provider<HttpRouterPort, RouterError, RouterNeeds>` — a provider on the
   starter's own router port, which is what `HttpRouter(contract)(deps, arm)`
   returns — so a provider of anything else fails at the call, and there is no
   port to read off it: the starter needs `HttpRouterPort`, and the sugar's
   job is to provide it. Covered by the package's own `rpc` fixture, which
   composes `RpcApp` through it. Options `port`/`hostname` pin as for `http()`.
+  **`authenticator`** is what a marked contract needs —
+  `HttpAuthenticator<P>()([deps], { sync })` — and it is a plain optional
+  field: present, it joins `provides`, which is all discharging di's need
+  takes. `Auth` is inferred from it and `Provides` spreads
+  `[Auth] extends [undefined] ? [] : [NonNullable<Auth>]`, so an **omitted**
+  authenticator contributes no element and a marked router's need survives
+  to `start` — di's `UNSATISFIED DEPENDENCIES`, no gate of this package's.
+  What di cannot see is the **principal**: `AuthenticatorPort`'s service type
+  is erased to `unknown`, so any authenticator discharges the need whatever it
+  resolves. That half is checked here instead — `Principal` is inferred from
+  `router`'s own `readonly principal`, and `Auth`'s constraint requires
+  `readonly principal: [Principal] extends [never] ? unknown : Principal` — so
+  a mismatch fails at the `HttpModule(...)` call, while an **unmarked**
+  router (`Principal` is `never`) accepts any authenticator, since a provider
+  nothing needs is di's business and not an error to invent. Both are pinned by
+  `auth.test-d.ts`, on the two different lines they fire at.
 - **`HttpRouterPort`** (`orpc.ts`, exported from the file for the package's
   own tests, **not** from `index.ts`) — the router's port, one id, the
   starter's own: `Port("HttpRouter")` cast to di's `PortClassOf<"HttpRouter",
@@ -207,7 +223,10 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
   `[ContractPrincipal<C>] extends [never] ? never : AuthenticatorPort` to the
   needs channel plus `readonly principal: ContractPrincipal<C>` to the result.
   A marked router whose root provides no authenticator is therefore di's
-  existing `UNSATISFIED DEPENDENCIES` gate — no new gate. Note
+  existing `UNSATISFIED DEPENDENCIES` gate — no new gate. Whether the
+  authenticator resolves the contract's **principal** is the one thing that
+  gate cannot see, and `HttpModule`'s `authenticator` option is where it is
+  checked (see the first bullet). Note
   `oc.router(...)` **rebuilds** every node, so a marker applied inside a
   builder chain is lost — on **both** sides at once
   (`AugmentedContractRouter<T, …>` maps `[K in keyof T]` and answers `never`

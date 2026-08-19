@@ -182,7 +182,8 @@ const rpcAuthedAppOf = () =>
     router: authedRouter,
     port: 0,
     hostname: "127.0.0.1",
-    provides: [authedOrdersController, authedHealthController, authenticator],
+    authenticator,
+    provides: [authedOrdersController, authedHealthController],
   });
 
 /**
@@ -210,7 +211,7 @@ const rpcRootMarkedAppOf = () =>
     router: rootMarkedRouter,
     port: 0,
     hostname: "127.0.0.1",
-    provides: [authenticator],
+    authenticator,
   });
 
 /** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
