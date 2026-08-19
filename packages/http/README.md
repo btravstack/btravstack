@@ -149,22 +149,45 @@ declaring the very provider the modulith composed. See
 ## Protecting a procedure
 
 A contract can say a procedure needs an authenticated caller. The marker is
-`@btravstack/contract`'s, so it lives in the artifact a client holds too:
+`@btravstack/contract`'s, so it lives in the artifact a client holds too — and
+it says **whether**, not who: no identity type is named there, so nothing about
+the server's view of a caller reaches a client.
+
+`httpAuth<Identity>()` is what says **what** the principal is. It is written
+once per application and hands back `HttpController`, `HttpRouter` and
+`HttpAuthenticator` fixed to that identity:
 
 ```ts
-import { auth } from "@btravstack/contract";
+// src/auth.ts — the one file that names the identity
 import {
-  HttpAuthenticator,
-  HttpModule,
-  HttpRouter,
-  Unauthenticated,
+  httpAuth,
+  type HttpControllerOf,
+  type HttpRouterOf,
+  type HttpAuthenticatorOf,
 } from "@btravstack/http";
+
+export type Identity = { readonly tenantId: string; readonly userId: string };
+
+const identity = httpAuth<Identity>();
+
+export const HttpController: HttpControllerOf<Identity> =
+  identity.HttpController;
+export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
+export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
+  identity.HttpAuthenticator;
+```
+
+The three aliases are annotations, not ceremony: a controller's port expands to
+a type carrying the marker's phantom `unique symbol`, which a consumer's
+`.d.ts` cannot name.
+
+```ts
+import { authenticated } from "@btravstack/contract";
+import { HttpModule, Unauthenticated } from "@btravstack/http";
 import { oc, type } from "@orpc/contract";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
-type Principal = { readonly userId: string; readonly tenantId: string };
-
-const { authenticated } = auth<Principal>();
+import { HttpAuthenticator, HttpRouter } from "./auth.js";
 
 const ordersContract = authenticated({
   find: oc
@@ -174,11 +197,10 @@ const ordersContract = authenticated({
 });
 
 // An ordinary di provider on the starter's port: `deps` are di's, so a JWT
-// verifier or a user directory is injected the way any provider's are. The
-// principal type is stated at the call rather than inferred from `sync` —
-// inference through the returned function's AsyncResult is exactly where it
-// would silently widen to `unknown`.
-const bearerAuthenticator = HttpAuthenticator<Principal>()([], {
+// verifier or a user directory is injected the way any provider's are. It
+// takes no type argument — `httpAuth<Identity>()` already fixed one, which is
+// why the authenticator and the controllers cannot disagree.
+const bearerAuthenticator = HttpAuthenticator([], {
   sync: () => (headers) => {
     const [tenantId, userId] = (headers.authorization ?? "")
       .replace("Bearer ", "")
@@ -189,7 +211,7 @@ const bearerAuthenticator = HttpAuthenticator<Principal>()([], {
   },
 });
 
-// The principal arrives on oRPC's own context channel, typed by the contract.
+// The principal arrives on oRPC's own context channel, typed by `Identity`.
 const ordersRouter = HttpRouter({ orders: ordersContract })([FindOrder], {
   sync: (find) => ({
     orders: {
@@ -216,51 +238,19 @@ const OrdersApi = HttpModule("OrdersApi")({
 });
 ```
 
-### When the server knows more than the contract says
-
-A contract declares the **client-visible minimum** — often `{ tenantId }` — and
-says _whether_ a route is protected. What the authenticator resolves is usually
-more, and a handler could not see the extra fields: their type was read off the
-contract. `httpAuth<Identity>()` states the server's own principal instead, once
-per application, and hands back the three pieces fixed to it:
-
-```ts
-// src/auth.ts — the one file that names the identity
-import {
-  httpAuth,
-  type HttpControllerOf,
-  type HttpRouterOf,
-  type HttpAuthenticatorOf,
-} from "@btravstack/http";
-
-export type Identity = { readonly tenantId: string; readonly userId: string };
-
-const identity = httpAuth<Identity>();
-
-export const HttpController: HttpControllerOf<Identity> =
-  identity.HttpController;
-export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
-export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
-  identity.HttpAuthenticator;
-```
-
-Every slice imports `HttpController` from there instead of from this package,
-and its handlers see `Identity` on `context.principal` — `userId` included —
-with no annotation of their own. Nothing else about a controller changes. The
-authenticator drops its type argument (`HttpAuthenticator([deps], { sync })`),
-because this call already fixed it, which is also why the authenticator and the
-controllers cannot disagree.
-
-An unmarked procedure still gets no principal: the contract decides _whether_,
-the factory decides _what_. `HttpModule`'s gate is unchanged and still checks
-the authenticator against the contract's own `Principal` — an `Identity` richer
-than it discharges that as a subtype. The three aliases are annotations, not
-ceremony: a controller's port expands to a type carrying the marker's phantom
-`unique symbol`, which a consumer's `.d.ts` cannot name.
+Every slice imports `HttpController` from `src/auth.ts` instead of from this
+package, and its handlers see `Identity` on `context.principal` with no
+annotation of their own. It is the **only** way to read one: the top-level
+`HttpController` and `HttpRouter` name no identity, so a marked fragment
+reached through them types `principal: never` and every read is a compile
+error — the signal to use the factory. An unmarked procedure still gets no
+principal at all: the contract decides _whether_, the factory decides _what_.
 
 A marked router carries the authenticator port as a **need**, so forgetting
-`authenticator` is an unmet dependency `start` refuses, and supplying one that
-resolves a different principal is a compile error at the `HttpModule(...)` call.
+`authenticator` is an unmet dependency `start` refuses, and supplying one
+minted on a different identity is a compile error at the `HttpModule(...)`
+call — the router's identity against the authenticator's, both from the same
+`httpAuth` call.
 A marked record protects every procedure beneath it. `Unauthenticated` carries a
 `reason` that is **yours**: the starter does not surface it — a rejected caller
 gets an `UNAUTHORIZED` and nothing derived from the refusal — so an
