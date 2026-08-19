@@ -13,20 +13,28 @@ describe("an authenticated procedure", () => {
     await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-good" });
   });
 
-  it("answers 401 and never runs the handler when the token is rejected", async ({ rpcAuthed }) => {
-    // GIVEN a client presenting a token the authenticator rejects
+  it("answers 401 without the authenticator's reason, and never runs the handler", async ({
+    rpcAuthed,
+  }) => {
+    // GIVEN a client presenting a token the authenticator rejects with a reason
     const client = rpcAuthed.clientWith("bad");
 
     // WHEN a marked procedure is called
     const call = client.orders.whoami({ id: "o-1" }).catch((cause: unknown) => cause);
 
-    // THEN the request was refused and the handler was not entered
+    // THEN the request was refused, the reason stayed in the process, and the
+    // handler was not entered
     await expect(
       call.then((error) => ({
         code: (error as { code: string }).code,
+        message: (error as { message: string }).message,
         ran: rpcAuthed.handlerRuns(),
       })),
-    ).resolves.toEqual({ code: "UNAUTHORIZED", ran: 0 });
+    ).resolves.toEqual({
+      code: "UNAUTHORIZED",
+      message: expect.not.stringContaining("not the good token"),
+      ran: 0,
+    });
   });
 
   it("collapses an authenticator's own defect to a 500, not a 401", async ({ rpcAuthed }) => {

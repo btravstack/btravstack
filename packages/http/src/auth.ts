@@ -11,7 +11,13 @@ import {
 import { ORPCError } from "@orpc/server";
 import { ErrAsync, TaggedError, type AsyncResult } from "unthrown";
 
-/** Why a caller was refused. The reason is for the operator's log, not the client's body. */
+/**
+ * Why a caller was refused. The reason is the **application's own**: the starter
+ * does not surface it — a rejected caller gets an `UNAUTHORIZED` carrying oRPC's
+ * default message and nothing else — so an authenticator that wants the reason
+ * recorded logs it itself. Forwarding it would put "no such user" versus "bad
+ * signature" in a 401 body by default.
+ */
 export class Unauthenticated extends TaggedError("Unauthenticated")<{
   readonly reason: string;
 }> {}
@@ -86,8 +92,10 @@ export const principalMiddleware =
   }): Promise<unknown> => {
     const resolved = await authenticate(options.context.request.headers);
     if (resolved.isErr()) {
+      // The reason stays here: it is the application's, and oRPC serializes
+      // `message` to the client.
       // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm to use instead
-      throw new ORPCError("UNAUTHORIZED", { message: resolved.error.reason });
+      throw new ORPCError("UNAUTHORIZED");
     }
     if (resolved.isDefect()) {
       // A defect is a bug in the authenticator, not a refusal. Its own cause
