@@ -33,6 +33,7 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
+import { CORSHandlerPlugin } from "@orpc/server/plugins";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
@@ -254,6 +255,28 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
     provides: [Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } })],
   });
 
+/**
+ * A one-procedure `greet` contract, named for the plugin test's own request
+ * path — `greetingContract`'s `hello` would not match `/rpc/greet` and the
+ * CORS plugin only decorates a MATCHED response.
+ */
+const corsContract = oc.router({
+  greet: oc.input(ocType<{ readonly name: string }>()).output(ocType<string>()),
+});
+
+const corsRouter = HttpRouter(corsContract)([], {
+  sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
+});
+
+/** The same starter shape as `rpcAppOf`, with oRPC's CORS plugin configured. */
+const rpcWithCorsAppOf = () =>
+  HttpModule("RpcWithCorsApp")({
+    router: corsRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    plugins: [new CORSHandlerPlugin({ origin: () => "https://example.test" })],
+  });
+
 /** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
 class BoundConfig extends Port("BoundConfig")<{ readonly value: ServiceOf<HttpConfig> }> {}
 
@@ -438,6 +461,8 @@ export type HttpFixtures = {
     readonly keyed: readonly string[];
     readonly positional: readonly string[];
   };
+  /** The starter over a router with oRPC's CORS plugin configured. Shut down by the fixture. */
+  readonly rpcWithCors: { readonly url: string };
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -664,5 +689,12 @@ export const it = test.extend<HttpFixtures>({
       keyed: authedRouter.deps.map((dep) => dep.portId),
       positional: authedPositionalRouter.deps.map((dep) => dep.portId),
     });
+  },
+
+  rpcWithCors: async ({ boot }, use) => {
+    const app = boot(rpcWithCorsAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    await use({ url: `http://127.0.0.1:${info.port}` });
   },
 });

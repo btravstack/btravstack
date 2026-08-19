@@ -19,7 +19,7 @@ import {
   type ProcedureImplementer,
   type Router,
 } from "@orpc/server";
-import { RPCHandler } from "@orpc/server/node";
+import { RPCHandler, type NodeHttpHandlerPlugin } from "@orpc/server/node";
 import "@unthrown/orpc/extensions/result";
 
 import {
@@ -33,6 +33,12 @@ import { HttpHandler } from "./handler.js";
 export type OrpcOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
   readonly prefix?: `/${string}`;
+  /**
+   * oRPC handler plugins — CORS, body limits, compression, CSRF. Transport
+   * policy configuring the transport; this is NOT a middleware slot for
+   * application logic, which the package still declines.
+   */
+  readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
 };
 
 /**
@@ -69,7 +75,7 @@ export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
   return Provider(HttpHandler)([HttpRouterPort], {
     sync: (service) => {
-      const rpc = new RPCHandler(service);
+      const rpc = new RPCHandler(service, { plugins: [...(options.plugins ?? [])] });
       // The request rides oRPC's initial context so `principalMiddleware` can
       // read its headers; nothing else in this package reads it.
       return (request, response) => rpc.handle(request, response, { prefix, context: { request } });

@@ -12,6 +12,8 @@ import {
   type UnitMeta,
 } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import type { DefaultInitialContext } from "@orpc/server";
+import type { NodeHttpHandlerPlugin } from "@orpc/server/node";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { HttpHandler } from "./handler.js";
@@ -44,6 +46,12 @@ export type HttpOptions = {
   readonly prefix?: `/${string}`;
   readonly port?: number;
   readonly hostname?: string;
+  /**
+   * oRPC handler plugins — CORS, body limits, compression, CSRF. Transport
+   * policy configuring the transport; this is NOT a middleware slot for
+   * application logic, which the package still declines.
+   */
+  readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
 };
 
 /** The runtime's port: what `http()` provides, and what the module `start` boots must export. */
@@ -114,8 +122,14 @@ export const httpModule = <N>(
 export const http = (
   options: HttpOptions = {},
 ): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort> => {
-  const { prefix, ...socket } = options;
-  return httpModule(socket, orpc(prefix === undefined ? {} : { prefix }));
+  const { prefix, plugins, ...socket } = options;
+  return httpModule(
+    socket,
+    orpc({
+      ...(prefix === undefined ? {} : { prefix }),
+      ...(plugins === undefined ? {} : { plugins }),
+    }),
+  );
 };
 
 const listen = (

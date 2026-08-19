@@ -8,7 +8,7 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, imports?, provides?, exports? })`**
+- **`HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, imports?, provides?, exports? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
   `http({ prefix?, port?, hostname? })` to `imports`, prepends the provider to
@@ -234,7 +234,7 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
   dropped protection rather than a bypass. `authenticated(...)` is applied to
   the finished node, which is what `@btravstack/contract` already documents.
 
-- **`http({ prefix?, port?, hostname? })` →
+- **`http({ prefix?, port?, hostname?, plugins? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **the one way HTTP is answered here: oRPC, over its own
   node adapter**. The
@@ -262,7 +262,21 @@ http()], provides: [orderRouter], exports:
 [HttpRuntime] })` + `runMain(OrderApi)`; a test passes `env: { PORT: "0",
 HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `Serving.info` once bound; `0` lets the OS pick, read back via
-  `runtimeInfo()`.
+  `runtimeInfo()`. **`plugins`** —
+  `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
+  `@orpc/server/node` — forwards straight to `new RPCHandler(service, {
+plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
+  already expresses as handler plugins, so this is configuration rather than a
+  middleware slot. It threads through all three surfaces on the same
+  `...(x === undefined ? {} : { x })` spread every other option here uses —
+  `OrpcOptions.plugins` (`orpc.ts`) → `HttpOptions.plugins` (`http-runtime.ts`)
+  → `HttpModuleOptions.plugins` (`http-module.ts`) — and needs no generic
+  parameter on any of the three, since it is a plain optional field like
+  `prefix`. It is **not** the middleware door thesis #3 and the "Not included"
+  bullet below still refuse: a plugin configures the transport once, at
+  composition, with no access to a procedure's `Result` or its application
+  logic — `principalMiddleware` (below) is the one per-request hook this
+  package installs, and only on a marked leaf.
 - **Two gates, both compile-time.** `start`'s phantom rest tuple turns a
   composition exporting no `HttpRuntime` into an arity error (`NO RUNTIME`);
   and because the runtime provider depends on the router port **through di**,
@@ -300,9 +314,11 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   miss a response with a request in flight; that is why retirement is tracked
   per-response rather than left to it.
 - **Not included, deliberately**: any other router or handler (there is no
-  `handler` option and no listener port to provide — one way), middleware,
-  `Result` → HTTP status, HTTPS, HTTP/2 — see the package README's _"What it
-  does not do"_ for why each is a non-goal.
+  `handler` option and no listener port to provide — one way), a middleware
+  slot for application logic, `Result` → HTTP status, HTTPS, HTTP/2 — see the
+  package README's _"What it does not do"_ for why each is a non-goal.
+  `plugins` (above) is not this: it is transport policy handed to oRPC's own
+  `RPCHandler`, not a hook an application's use case runs inside of.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
   `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@orpc/server`,
   `@orpc/contract`, `@unthrown/orpc`. `@btravstack/contract` is a peer for the
@@ -334,7 +350,7 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **35 specs, 100% lines/functions.** Every app boots through the `boot`
+- **36 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
@@ -349,13 +365,17 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   pinned"_, _"pins what it is given and reads the rest from the environment"_,
   _"fails startup with ConfigInvalid for HttpConfig when PORT is not a port"_,
   through the `configured` fixture, whose `BoundConfig` provider captures what
-  the graph bound). `orpc.spec.ts` carries 7 the starter proper answers
+  the graph bound). `orpc.spec.ts` carries 8 the starter proper answers
   for, through the `rpc` fixture — `HttpModule("RpcApp")({ router:
 greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   a router provider that declares a `Greeter`, with a typed `RPCLink` client:
   dependencies injected, a nested procedure, a stray implementation key
   dropped, `prefix` honoured, the runtime's 404 outside and under the prefix,
-  and oRPC's `INTERNAL_SERVER_ERROR` collapse. `controller.spec.ts` carries the
+  and oRPC's `INTERNAL_SERVER_ERROR` collapse — plus one through `rpcWithCors`,
+  a `greet`-only router configured with oRPC's own `CORSHandlerPlugin`, proving
+  `plugins` reaches `RPCHandler` rather than being silently accepted and
+  dropped: the plugin, not this package, decided the response's
+  `access-control-allow-origin`. `controller.spec.ts` carries the
   remaining 2, through the `controllers` and `rpcSliced` fixtures: a
   `HttpController` carries the port it was minted under and the deps it
   declared, and `HttpRouter(contract)({...})` serves a router composed from

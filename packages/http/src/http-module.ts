@@ -6,6 +6,8 @@ import {
   type Exportable,
   type Provider,
 } from "@btravstack/di";
+import type { DefaultInitialContext } from "@orpc/server";
+import type { NodeHttpHandlerPlugin } from "@orpc/server/node";
 
 import type { AuthenticatorPort } from "./auth.js";
 import { HttpRuntime, http, type HttpConfig } from "./http-runtime.js";
@@ -62,6 +64,12 @@ export type HttpModuleOptions<
   /** Pins for a test — otherwise `PORT`/`HOST` from the environment. */
   readonly port?: number;
   readonly hostname?: string;
+  /**
+   * oRPC handler plugins — CORS, body limits, compression, CSRF. Transport
+   * policy configuring the transport; this is NOT a middleware slot for
+   * application logic, which the package still declines.
+   */
+  readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `HttpRuntime` is added, since `start` resolves it. */
@@ -106,7 +114,7 @@ export const HttpModule =
   >(
     options: HttpModuleOptions<RouterError, RouterNeeds, Principal, Auth, I, P, X>,
   ) => {
-    const { router, authenticator, prefix, port, hostname } = options;
+    const { router, authenticator, prefix, port, hostname, plugins } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
@@ -114,6 +122,7 @@ export const HttpModule =
       ...(prefix === undefined ? {} : { prefix }),
       ...(port === undefined ? {} : { port }),
       ...(hostname === undefined ? {} : { hostname }),
+      ...(plugins === undefined ? {} : { plugins }),
     });
     // di's own `Module(name)({...})` over the augmented tuples: its return
     // type IS the sugar's — nothing spelled twice.
