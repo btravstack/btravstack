@@ -47,7 +47,18 @@ opinion about which transport reads it.
 to it — `PRINCIPAL` is `declare`d, never assigned, so it exists only in the
 type system. There is no key for oRPC's `implement()` to walk as a
 procedure, and nothing for its builders to strip. The marker lives in a
-module-private `WeakSet`, keyed by identity.
+`WeakSet`, keyed by identity.
+
+Identity is exactly why a consumer takes this package as a **peer** rather
+than an ordinary dependency — `@btravstack/http` and
+`examples/order-api-contract` both do. Two copies in one install would each
+hold their own registry, a contract marked by one would read unmarked to the
+other, `HttpRouter` would declare no authenticator need and the protected
+route would be served **open**. So the registry is copy-proof: it hangs off
+`globalThis` under `Symbol.for("@btravstack/contract/marked")`, and every copy
+shares the one `WeakSet`. A stray second copy then degrades to a compile
+error — the two copies' `PRINCIPAL` symbols are different `unique symbol`s —
+rather than to a silently unprotected route.
 
 **Applied after a builder chain is finished, never inside one.** `authenticated`
 wraps a finished contract node — the last call in a chain, or a whole record

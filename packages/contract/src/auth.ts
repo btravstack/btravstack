@@ -17,7 +17,16 @@ export type PrincipalOf<T> = T extends { readonly [PRINCIPAL]: infer P } ? P : n
 // Identity, not a property: a marked node must stay `===` what the contract
 // declared, so `implement()` walks it unchanged and a consumer can still index
 // the fragment out of the contract it lives in.
-const marked = new WeakSet<object>();
+//
+// The registry hangs off `globalThis`, not off this module, because identity is
+// what the marker IS: two copies of this package with a private set each read
+// every node the other marked as unmarked, so `hasMarked` answers false, the
+// router declares no authenticator and the route is served OPEN. One shared
+// registry makes the second copy a compile error (the `unique symbol` differs)
+// rather than a silent hole.
+const registry: unique symbol = Symbol.for("@btravstack/contract/marked");
+const store = globalThis as unknown as { [registry]?: WeakSet<object> };
+const marked = (store[registry] ??= new WeakSet<object>());
 
 /**
  * Mints the combinator for one contract's principal type.

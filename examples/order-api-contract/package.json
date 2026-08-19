@@ -15,10 +15,10 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "dependencies": {
-    "@btravstack/contract": "workspace:*",
     "@orpc/contract": "catalog:"
   },
   "devDependencies": {
+    "@btravstack/contract": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@orpc/client": "catalog:",
     "@types/node": "catalog:",
@@ -27,5 +27,8 @@
     "typescript": "catalog:",
     "unthrown": "catalog:",
     "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@btravstack/contract": "workspace:^"
   }
 }
