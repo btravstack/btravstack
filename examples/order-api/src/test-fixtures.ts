@@ -23,6 +23,7 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { inject, test } from "vitest";
 
+import { bearerAuthenticator } from "./authenticator.js";
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
@@ -79,6 +80,11 @@ const recorderOf = () => {
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
     router: orderRouter,
+    // The same authenticator as the real root: the contract marks `orders`, so
+    // every composition serving that router owes one. Swapping it out is how a
+    // spec would test a different identity story — not something the transport
+    // can be asked to skip.
+    authenticator: bearerAuthenticator,
     imports: [
       OrderApplicationModule,
       CustomerApplicationModule,
@@ -107,6 +113,7 @@ const recordingApi = () => {
   return {
     api: HttpModule("RecordingApi")({
       router: orderRouter,
+      authenticator: bearerAuthenticator,
       // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
       // real root, and this root exists to be read.
       imports: [
@@ -213,7 +220,23 @@ export type ApiFixtures = {
     module: Module<HttpRuntime | Logger, E, Scope | Env>,
     options?: Pick<StartOptions, "drainTimeoutMs" | "probes">,
   ) => RunningApp<E, HttpInfo>;
+  /**
+   * A client already carrying credentials for this test's tenant — the shape
+   * every spec here wants, since the contract marks the orders fragment and an
+   * anonymous call to it never reaches a use case. `u-1` is a user id and
+   * nothing reads it; what the token establishes that a test cares about is
+   * the tenant.
+   */
   readonly clientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;
+  /**
+   * The same client with the `authorization` header stated verbatim, and
+   * absent when the token is `undefined` — what a spec about the refusal
+   * itself needs, rather than one about what a caller is then allowed to do.
+   */
+  readonly clientWith: <E>(
+    app: RunningApp<E, HttpInfo>,
+    token: string | undefined,
+  ) => Promise<OrderApiClient>;
   readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<string>;
   readonly statusOf: (url: string) => Promise<number>;
   /** The real composition root. */
@@ -257,8 +280,18 @@ export const it = test.extend<ApiFixtures>({
   },
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
-  clientFor: async ({}, use) => {
-    await use(async (app) => createOrderApiClient(await originOf(app)));
+  clientWith: async ({}, use) => {
+    await use(async (app, token) =>
+      createOrderApiClient(
+        await originOf(app),
+        "/rpc",
+        token === undefined ? {} : { authorization: token },
+      ),
+    );
+  },
+
+  clientFor: async ({ tenant, clientWith }, use) => {
+    await use(async (app) => clientWith(app, `Bearer ${tenant}:u-1`));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

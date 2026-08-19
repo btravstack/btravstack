@@ -325,6 +325,80 @@ describe("order-api", () => {
     expect(probed).toEqual({ livez: 200, readyz: 200, ready: true });
   });
 
+  it("refuses a call to the marked fragment when the caller presents nothing", async ({
+    tenant,
+    serve,
+    clientWith,
+    api,
+  }) => {
+    // GIVEN the real composition root and a caller with no credentials
+    const client = await clientWith(serve(api), undefined);
+
+    // WHEN a procedure of the authenticated fragment is called
+    const refused = await client.orders.place({ tenantId: tenant, id: "o-1", quantity: 1 });
+
+    // THEN it was refused before the use case was reached. `UNAUTHORIZED` is
+    // not a code the contract declares, so oRPC does not mark it inferable and
+    // the client hands it back on the defect channel — the same treatment a
+    // collapsed 500 gets, and the reason a refusal is not something a caller
+    // has to match on
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
+    );
+  });
+
+  it("serves the unmarked fragment to a caller presenting nothing", async ({
+    tenant,
+    serve,
+    clientWith,
+    stubbed,
+  }) => {
+    // GIVEN the same absent credentials, and a customer registered behind the
+    // slice whose fragment carries no marker
+    const client = await clientWith(serve(stubbed), undefined);
+
+    // WHEN a procedure of that fragment is called
+    // THEN it answers: the marker is per-fragment, so protecting `orders` did
+    // not quietly close the rest of the API
+    await expect(client.customers.find({ tenantId: tenant, id: "c-1" })).toBeOkWith({
+      id: "c-1",
+      name: "Ada",
+    });
+  });
+
+  it("serves the tenant the token names, not the one the input claims", async ({
+    tenant,
+    serve,
+    clientFor,
+    clientWith,
+    api,
+  }) => {
+    // GIVEN two callers on one app, each holding a token for its own tenant
+    const app = serve(api);
+    const claimed = `${tenant}-claimed`;
+    const client = await clientFor(app);
+    const claimant = await clientWith(app, `Bearer ${claimed}:u-2`);
+
+    // WHEN the first places an order whose input names the OTHER tenant, and
+    // that other tenant then looks it up
+    const found = await client.orders
+      .place({ tenantId: claimed, id: "o-1", quantity: 2 })
+      .flatMap(() => claimant.orders.find({ tenantId: claimed, id: "o-1" }));
+
+    // THEN the write landed under the authenticated tenant and not the claimed
+    // one: the input's `tenantId` is still on the wire and the handler reads
+    // `context.principal.tenantId` instead, so a caller cannot name the tenant
+    // it is served
+    expect(found).toBeErrWith(
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "NOT_FOUND",
+        data: { id: "o-1" },
+        inferable: true,
+      }),
+    );
+  });
+
   it("serves the customers slice alongside the orders slice", async ({
     tenant,
     serve,

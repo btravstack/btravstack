@@ -16,8 +16,15 @@ type Wire = RouterContractClient<typeof contract>;
  */
 export type OrderApiClient = ResultClient<Wire>;
 
+/**
+ * `headers` is where a caller's credentials go: the contract marks its `orders`
+ * fragment `authenticated`, so a call to that half without an `authorization`
+ * header is refused before any procedure runs. The `customers` fragment is
+ * unmarked and answers either way.
+ */
 export const createOrderApiClient = (
   origin: string,
   prefix: `/${string}` = "/rpc",
+  headers: Readonly<Record<string, string>> = {},
 ): OrderApiClient =>
-  createResultClient(createORPCClient<Wire>(new RPCLink({ origin, url: prefix })));
+  createResultClient(createORPCClient<Wire>(new RPCLink({ origin, url: prefix, headers })));

@@ -24,10 +24,15 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * matcher has no wildcard to fall back on. A new domain error is a compile
  * error here, at the one place that has to decide what the client sees.
  *
- * `input.tenantId` is the tenant the caller named, handed straight to the use
- * case. The transport reads nothing about it and the starter knows nothing
- * about it — tenancy is this application's design, declared in its own
- * contract, and `@btravstack/http` has no concept of one.
+ * The tenant comes off `context.principal`, the value this application's own
+ * authenticator resolved from the request's headers — `contract.orders` is
+ * marked `authenticated`, so the principal is typed here and a handler that
+ * misreads it does not compile. `input.tenantId` is still declared by the
+ * contract and is deliberately NOT what these handlers use: a caller does not
+ * get to name the tenant it is served, and moving tenancy off the inputs
+ * altogether is a contract change of its own. The starter still knows nothing
+ * about tenancy — it resolved a principal this application defined, and what
+ * the fields on it mean is the application's business.
  *
  * The use cases arrive as arguments, not through oRPC's context: di injects
  * them into the provider — `HttpController(name, contract)` is di's own
@@ -38,9 +43,9 @@ export const ordersController = HttpController("OrdersController", contract.orde
   [PlaceOrder, FindOrder],
   {
     sync: (place, find) => ({
-      place: ({ errors }, input) =>
+      place: ({ errors, context }, input) =>
         place
-          .execute(input.tenantId, input.id, input.quantity)
+          .execute(context.principal.tenantId, input.id, input.quantity)
           .map(view)
           .mapErrCases((matcher) =>
             matcher
@@ -51,9 +56,9 @@ export const ordersController = HttpController("OrdersController", contract.orde
                 errors.CONFLICT({ message: error.message, data: { id: error.id } }),
               ),
           ),
-      find: ({ errors }, input) =>
+      find: ({ errors, context }, input) =>
         find
-          .execute(input.tenantId, input.id)
+          .execute(context.principal.tenantId, input.id)
           .map(view)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), (error) =>
