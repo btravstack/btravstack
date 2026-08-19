@@ -49,7 +49,8 @@ export const controllerFor =
 
 /**
  * The controller, with no server-side identity: a handler under a marked
- * fragment sees the principal the **contract** declares. `httpAuth<Identity>()`
- * is what mints the form whose handlers see the application's own.
+ * fragment sees `principal: never`, so any read of it is a compile error —
+ * the "use the factory" signal. `httpAuth<Identity>()` mints the form whose
+ * handlers see the application's own principal.
  */
 export const HttpController: ReturnType<typeof controllerFor<never>> = controllerFor<never>();

@@ -4,25 +4,24 @@ import { routerFor } from "./orpc.js";
 
 /**
  * Mints `HttpController`, `HttpRouter` and `HttpAuthenticator` fixed to **this
- * deployment's** identity — the server-side mirror of `auth<P>()` on the
- * contract side:
+ * deployment's** identity:
  *
  * ```ts
  * type Identity = { readonly tenantId: string; readonly userId: string };
  * export const { HttpController, HttpRouter, HttpAuthenticator } = httpAuth<Identity>();
  * ```
  *
- * A contract declares the **client-visible minimum** — `{ tenantId }` — and
- * says *whether* a route is protected. What the server actually resolved is
- * usually more, and a handler could not see the extra fields: their type was
- * read off the contract. `Identity` is where that is stated instead, once, and
- * every slice's controller infers from it with no annotation of its own. The
- * authenticator and the controllers cannot disagree, because both come from
- * this call.
+ * **The contract says whether a route is protected; this says what the
+ * principal is.** The contract names no identity type at all, so nothing about
+ * the server's own view of a caller reaches a client, and `Identity` is stated
+ * here once — every slice's controller infers from it with no annotation of
+ * its own, and the authenticator and the controllers cannot disagree, because
+ * both come from this call.
  *
- * `HttpModule`'s gate is unchanged and still checks the authenticator's
- * principal satisfies the contract's — a subtype discharges it, which is
- * exactly what an `Identity` richer than the contract's `Principal` is.
+ * That is also what `HttpModule`'s gate now compares: the **router's** identity
+ * against the **authenticator's**, so a router from `httpAuth<A>()` refuses an
+ * authenticator from `httpAuth<B>()`. The authenticator must resolve at least
+ * what the handlers read, so a subtype discharges it.
  *
  * Written once per application, and per application rather than per slice
  * because a handler's parameter types are fixed where the arrow is written: a

@@ -1,8 +1,8 @@
 import {
   isAuthenticated,
   type Authenticated,
+  type IsMarked,
   type PrincipalKey,
-  type PrincipalOf,
 } from "@btravstack/contract";
 import {
   Port,
@@ -141,15 +141,15 @@ export const routerFor =
     ): Provider<
       PortInstance<"HttpRouter", Router<Record<never, never>>>,
       never,
-      InstanceType<D[number]> | ([ContractPrincipal<C>] extends [never] ? never : AuthenticatorPort)
+      InstanceType<D[number]> | (HasMark<C> extends true ? AuthenticatorPort : never)
     > & {
       readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-      readonly principal: ContractPrincipal<C>;
+      readonly identity: Identity;
     };
     function build<
       M extends {
         readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<
-          Inherit<C[K], PrincipalOf<C>>,
+          Inherit<C[K], IsMarked<C>>,
           Identity
         >;
       },
@@ -160,11 +160,10 @@ export const routerFor =
     ): Provider<
       PortInstance<"HttpRouter", Router<Record<never, never>>>,
       never,
-      | InstanceType<M[keyof M]["port"]>
-      | ([ContractPrincipal<C>] extends [never] ? never : AuthenticatorPort)
+      InstanceType<M[keyof M]["port"]> | (HasMark<C> extends true ? AuthenticatorPort : never)
     > & {
       readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-      readonly principal: ContractPrincipal<C>;
+      readonly identity: Identity;
     };
     function build(depsOrControllers: unknown, options?: unknown): unknown {
       // The authenticator is appended LAST to the dependency array so every
@@ -218,8 +217,9 @@ export const routerFor =
 
 /**
  * The router, with no server-side identity: a handler under a marked key sees
- * the principal the **contract** declares. `httpAuth<Identity>()` is what mints
- * the form whose handlers see the application's own.
+ * `principal: never`, so any read of it is a compile error. That is the
+ * "use the factory" signal — `httpAuth<Identity>()` is what mints the form
+ * whose handlers see the application's own principal.
  */
 export const HttpRouter: ReturnType<typeof routerFor<never>> = routerFor<never>();
 
@@ -248,7 +248,7 @@ export type Implementation<C extends RouterContract, Identity = never> =
       >[0]
     : {
         readonly [K in Exclude<keyof C, PrincipalKey>]: C[K] extends RouterContract
-          ? Implementation<Inherit<C[K], PrincipalOf<C>>, Identity>
+          ? Implementation<Inherit<C[K], IsMarked<C>>, Identity>
           : never;
       };
 
@@ -257,48 +257,47 @@ export type Implementation<C extends RouterContract, Identity = never> =
  * marked, and `object` — today's spelling, unchanged — when it is not. It rides
  * oRPC's own context channel, injected into `ProcedureImplementer`'s second
  * type parameter, so this package adds no second handler parameter and wraps no
- * `.result()` handler. `[X] extends [never]` rather than `X extends never`: a
- * bare check distributes over a union and answers `never` for every arm.
+ * `.result()` handler.
  *
- * `Identity` is the server's own principal, from `httpAuth<Identity>()`. It
- * replaces the contract's declared one on a **marked** leaf and invents none on
- * an unmarked one: the contract still says *whether* a route is protected, and
- * the factory says *what* the caller is. `never` — what the top-level
- * `HttpRouter` / `HttpController` pass — is "no factory", and leaves the
- * contract's own type in place.
+ * The contract says only **whether** a leaf is protected; `Identity` — from
+ * `httpAuth<Identity>()` — says **what** the principal is. The top-level
+ * `HttpRouter` / `HttpController` pass `never`, so a marked leaf reached
+ * without the factory types `principal: never` and any read of it is a compile
+ * error: the "use the factory" signal, rather than a principal invented from a
+ * type the contract no longer carries.
  */
-type ContextOf<C, Identity> = [PrincipalOf<C>] extends [never]
-  ? object
-  : { readonly principal: [Identity] extends [never] ? PrincipalOf<C> : Identity };
+type ContextOf<C, Identity> = IsMarked<C> extends true ? { readonly principal: Identity } : object;
 
 /**
  * Pushes a record's marker onto each of its children, so a marked fragment
  * protects every procedure beneath it. The runtime walk in `routerOf` carries
  * the same fact as an argument; these two must agree.
  */
-type Inherit<T, P> = [P] extends [never] ? T : Authenticated<T, P>;
+type Inherit<T, Marked extends boolean> = Marked extends true ? Authenticated<T> : T;
 
 /**
- * The principal a contract declares anywhere in its tree, or `never` if none
- * does — what a composition root reads to know which authenticator it owes.
+ * Whether the contract marks anything, anywhere — a yes/no, not a type, since
+ * the contract names no principal. It is what makes the authenticator
+ * dependency conditional on both `build` overloads, and the type side of the
+ * `hasMarked` walk below; these two must agree.
  */
-export type ContractPrincipal<C extends RouterContract> = [PrincipalOf<C>] extends [never]
-  ? C extends ProcedureContract<infer _I, infer _O, infer _E>
-    ? never
-    : {
-        readonly [K in Exclude<keyof C, PrincipalKey>]: C[K] extends RouterContract
-          ? ContractPrincipal<C[K]>
-          : never;
-      }[Exclude<keyof C, PrincipalKey>]
-  : PrincipalOf<C>;
+export type HasMark<C> =
+  IsMarked<C> extends true
+    ? true
+    : C extends ProcedureContract<infer _I, infer _O, infer _E>
+      ? false
+      : true extends {
+            readonly [K in Exclude<keyof C, PrincipalKey>]: HasMark<C[K]>;
+          }[Exclude<keyof C, PrincipalKey>]
+        ? true
+        : false;
 
 /**
  * Whether the contract marks anything, anywhere. Walked once, at composition,
  * because it is what makes the authenticator dependency conditional: a router
  * with no marked leaf declares no such need, so an application with no
- * protected route provides nothing. The type side of the same condition is the
- * `[ContractPrincipal<C>] extends [never]` arm on both `build` overloads; these
- * two must agree.
+ * protected route provides nothing. The type side of the same condition is
+ * `HasMark<C>` on both `build` overloads; these two must agree.
  */
 const hasMarked = (node: unknown, seen: WeakSet<object> = new WeakSet()): boolean => {
   if (typeof node !== "object" || node === null || seen.has(node)) return false;

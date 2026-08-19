@@ -1,11 +1,12 @@
 // The five compile gates the keyed router form exists to provide. Each
 // `@ts-expect-error` is an assertion: if one stops erroring, the gate is gone.
-import { auth } from "@btravstack/contract";
+import { authenticated } from "@btravstack/contract";
 import { Provider } from "@btravstack/di";
 import { oc } from "@orpc/contract";
 import { OkAsync } from "unthrown";
 
 import { HttpController } from "./controller.js";
+import { httpAuth } from "./http-auth.js";
 import { HttpRouter } from "./orpc.js";
 
 const contract = { orders: { place: oc }, users: { find: oc } };
@@ -60,34 +61,45 @@ type _ComposedNeedsAreDeclared = Expect<[NeedsOf<typeof composed>] extends [neve
 // All five again, against a contract whose `orders` fragment is MARKED. The
 // marker is a phantom key on the fragment, so every gate above has to survive
 // it — the fifth especially: a marked slice must still lift out of the composed
-// router with its controller unchanged.
-const { authenticated } = auth<{ readonly userId: string }>();
+// router with its controller unchanged. The contract names no principal, so the
+// controllers here come from `httpAuth<Identity>()`, which is what types one.
 const markedContract = { orders: authenticated(contract.orders), users: contract.users };
 
-const markedOrders = HttpController("GateMarkedOrders", markedContract.orders)([], {
+const { HttpController: IdentityController, HttpRouter: IdentityRouter } = httpAuth<{
+  readonly userId: string;
+}>();
+
+const markedOrders = IdentityController("GateMarkedOrders", markedContract.orders)([], {
   sync: () => ({ place: (opts) => OkAsync(opts.context.principal.userId) }),
+});
+const markedUsers = IdentityController("GateMarkedUsers", markedContract.users)([], {
+  sync: () => ({ find: () => OkAsync("found") }),
 });
 
 // 1. Every contract key must be covered.
 // @ts-expect-error — `users` is missing from the record
-void HttpRouter(markedContract)({ orders: markedOrders });
+void IdentityRouter(markedContract)({ orders: markedOrders });
 
 // 2. A key the contract does not declare is rejected.
 // @ts-expect-error — `billing` is not in the contract
-void HttpRouter(markedContract)({ orders: markedOrders, users, billing: markedOrders });
+void IdentityRouter(markedContract)({
+  orders: markedOrders,
+  users: markedUsers,
+  billing: markedOrders,
+});
 
 // 3. A controller wired under the wrong key is rejected.
 // @ts-expect-error — `users`'s fragment is not the marked `orders`'s
-void HttpRouter(markedContract)({ orders: users, users: markedOrders });
+void IdentityRouter(markedContract)({ orders: markedUsers, users: markedOrders });
 
 // 4. A procedure the fragment does not declare is rejected inside the controller.
-void HttpController("GateMarkedTypo", markedContract.orders)([], {
+void IdentityController("GateMarkedTypo", markedContract.orders)([], {
   // @ts-expect-error — the fragment declares `place`, not `plce`
   sync: () => ({ plce: () => OkAsync("placed") }),
 });
 
 // 5. The do-not-break lift, for a marked fragment.
-void HttpRouter(markedContract.orders)([markedOrders.port], {
+void IdentityRouter(markedContract.orders)([markedOrders.port], {
   sync: (implementation) => implementation,
 });
 
@@ -96,6 +108,6 @@ void HttpRouter(markedContract.orders)([markedOrders.port], {
 // under an unmarked contract key, where nothing would inject one. (The reverse
 // — an unmarked controller under a marked key — is accepted, and correctly so:
 // a handler that ignores `opts.context.principal` is contravariantly fine.)
-void HttpRouter(markedContract)({ orders: markedOrders, users });
+void IdentityRouter(markedContract)({ orders: markedOrders, users: markedUsers });
 // @ts-expect-error — `markedOrders` needs a principal the unmarked contract declares nowhere
-void HttpRouter(contract)({ orders: markedOrders, users });
+void IdentityRouter(contract)({ orders: markedOrders, users: markedUsers });

@@ -4,12 +4,13 @@ import { Unauthenticated, noAuthenticator } from "./auth.js";
 import { it } from "./test-fixtures.js";
 
 describe("an authenticated procedure", () => {
-  it("hands the principal to the handler", async ({ rpcAuthed }) => {
+  it("hands the handler the identity its factory typed", async ({ rpcAuthed }) => {
     // GIVEN a client presenting a token the authenticator accepts
     const client = rpcAuthed.clientWith("good");
 
-    // WHEN a marked procedure is called
-    // THEN the handler saw the principal the authenticator resolved
+    // WHEN a marked procedure reads a field the contract declares nowhere —
+    // the contract names no identity type, so `httpAuth<Identity>()` is the
+    // only thing that could have typed it
     await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-good" });
   });
 
@@ -119,18 +120,5 @@ describe("the fail-closed authenticator", () => {
     await expect(noAuthenticator({})).resolves.toBeErrWith(
       expect.objectContaining({ reason: "no authenticator", constructor: Unauthenticated }),
     );
-  });
-});
-
-describe("a controller minted by httpAuth", () => {
-  it("sees the identity the authenticator resolved, not the contract's principal", async ({
-    rpcIdentity,
-  }) => {
-    // GIVEN a client the deployment's authenticator accepts
-    const client = rpcIdentity.clientWith("good");
-
-    // WHEN a marked procedure reads a field the contract declares nowhere
-    // THEN the handler read it off the very object the authenticator resolved
-    await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-good" });
   });
 });

@@ -1,7 +1,7 @@
 // The type half of the auth marker: a marked contract node types its handler's
 // principal on oRPC's own context channel, and an unmarked one does not. Each
 // `@ts-expect-error` is an assertion: if one stops erroring, the gate is gone.
-import { auth, type Authenticated } from "@btravstack/contract";
+import { authenticated, type Authenticated } from "@btravstack/contract";
 import { start } from "@btravstack/core";
 import { oc } from "@orpc/contract";
 import { OkAsync } from "unthrown";
@@ -10,16 +10,21 @@ import { HttpAuthenticator } from "./auth.js";
 import { HttpController } from "./controller.js";
 import { httpAuth } from "./http-auth.js";
 import { HttpModule } from "./http-module.js";
-import { HttpRouter, type ContractPrincipal, type Implementation } from "./orpc.js";
+import { HttpRouter, type HasMark, type Implementation } from "./orpc.js";
 
-type Principal = { readonly userId: string; readonly tenantId: string };
-const { authenticated } = auth<Principal>();
+type Identity = { readonly userId: string; readonly tenantId: string };
 
 const contract = {
   orders: authenticated({ place: oc }),
   health: { ping: oc },
   quote: authenticated(oc),
 };
+
+const {
+  HttpController: IdentityController,
+  HttpRouter: IdentityRouter,
+  HttpAuthenticator: IdentityAuthenticator,
+} = httpAuth<Identity>();
 
 type Expect<T extends true> = T;
 type HandlerContext<H> = H extends (opts: infer O, ...rest: never) => unknown
@@ -28,19 +33,19 @@ type HandlerContext<H> = H extends (opts: infer O, ...rest: never) => unknown
     : never
   : never;
 
-type OrdersImpl = Implementation<(typeof contract)["orders"]>;
-type HealthImpl = Implementation<(typeof contract)["health"]>;
-type QuoteImpl = Implementation<(typeof contract)["quote"]>;
+type OrdersImpl = Implementation<(typeof contract)["orders"], Identity>;
+type HealthImpl = Implementation<(typeof contract)["health"], Identity>;
+type QuoteImpl = Implementation<(typeof contract)["quote"], Identity>;
 
 // 1. A marked RECORD pushes its marker onto every procedure beneath it, and the
-//    principal arrives on `opts.context` — oRPC's own channel, no second
-//    handler parameter added by this package.
+//    factory's identity arrives on `opts.context` — oRPC's own channel, no
+//    second handler parameter added by this package.
 declare const ordersContext: HandlerContext<OrdersImpl["place"]>;
-const _inherited: Principal = ordersContext.principal;
+const _inherited: Identity = ordersContext.principal;
 
 // 2. A marked PROCEDURE protects itself.
 declare const quoteContext: HandlerContext<QuoteImpl>;
-const _leaf: Principal = quoteContext.principal;
+const _leaf: Identity = quoteContext.principal;
 
 // 3. The marker's phantom key never becomes a procedure key.
 type _OrdersKeys = Expect<
@@ -54,48 +59,53 @@ type _OrdersKeys = Expect<
 // 4. An unmarked procedure's context carries no principal.
 declare const healthContext: HandlerContext<HealthImpl["ping"]>;
 // @ts-expect-error — `principal` is not on an unmarked handler's context
-const _none: Principal = healthContext.principal;
+const _none: Identity = healthContext.principal;
 
-// 5. The principal a contract declares is found through the nesting — pinned
-//    both ways, since assignability alone would also hold if it widened.
-type _FoundPrincipal = Expect<
-  [ContractPrincipal<typeof contract>] extends [Principal]
-    ? [Principal] extends [ContractPrincipal<typeof contract>]
+// 5. `HasMark` finds a mark through the nesting, and is EXACTLY `true` — a
+//    `boolean` result would satisfy both this assertion and its opposite.
+type _Marked = Expect<
+  [HasMark<typeof contract>] extends [true]
+    ? [true] extends [HasMark<typeof contract>]
       ? true
       : false
     : false
 >;
 
-// 6. An all-public contract declares no principal at all.
-// @ts-expect-error — `ContractPrincipal` of an unmarked tree is `never`
-const _absent: ContractPrincipal<{ readonly health: { readonly ping: typeof oc } }> = {};
+// 6. An all-public contract is exactly `false`, on the same footing.
+type _Unmarked = Expect<
+  [HasMark<{ readonly health: { readonly ping: typeof oc } }>] extends [false]
+    ? [false] extends [HasMark<{ readonly health: { readonly ping: typeof oc } }>]
+      ? true
+      : false
+    : false
+>;
 
 void _inherited;
 void _leaf;
 void _none;
-void _absent;
 
 // The composition half: a marked contract needs an authenticator, and the
 // composition root is where the router and the authenticator meet. The two
 // gates below are DIFFERENT gates, and fire at different calls. Whether an
 // authenticator is there at all is di's own `UNSATISFIED DEPENDENCIES` at
 // `start` (7) — the same arm `examples/order-api/src/needs-gate.test-d.ts`
-// pins for the router. Whether it resolves the contract's principal is this
+// pins for the router. Whether it resolves what the handlers read is this
 // package's own options check at the `HttpModule(...)` call (8), because
 // `AuthenticatorPort`'s service type is erased to `AuthenticatorService<
-// unknown>`: the need cannot carry the principal, so only the options type
-// can compare it.
-const markedRouter = HttpRouter({ orders: contract.orders, health: contract.health })([], {
+// unknown>`: the need cannot carry the identity, so only the options type
+// can compare it — the ROUTER's identity against the AUTHENTICATOR's, since
+// the contract declares none.
+const markedRouter = IdentityRouter({ orders: contract.orders, health: contract.health })([], {
   sync: () => ({
     orders: { place: ({ context }) => OkAsync({ id: context.principal.userId }) },
     health: { ping: () => OkAsync({ ok: true as const }) },
   }),
 });
 
-const matching = HttpAuthenticator<Principal>()([], {
+const matching = IdentityAuthenticator([], {
   sync: () => () => OkAsync({ userId: "u", tenantId: "t" }),
 });
-const other = HttpAuthenticator<{ readonly sub: string }>()([], {
+const other = httpAuth<{ readonly sub: string }>().HttpAuthenticator([], {
   sync: () => () => OkAsync({ sub: "s" }),
 });
 
@@ -107,12 +117,12 @@ const MissingApi = HttpModule("Missing")({ router: markedRouter });
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides the authenticator port the marked router needs.
 const _missing = start(MissingApi, options);
 
-// 8. An authenticator whose principal is not the contract's is refused. Unlike
-//    7, this one is NOT di's gate and does not wait for `start`: the
+// 8. An authenticator minted on a DIFFERENT identity is refused. Unlike 7,
+//    this one is NOT di's gate and does not wait for `start`: the
 //    authenticator port's service type is erased to `unknown`, so di sees the
-//    need discharged. The principals meet on `HttpModule`'s own options —
-//    `Principal` is inferred from the router — which is where it is caught.
-// @ts-expect-error — the authenticator's principal is not the contract's.
+//    need discharged. The two identities meet on `HttpModule`'s own options —
+//    `RouterIdentity` is inferred from the router — which is where it is caught.
+// @ts-expect-error — the authenticator's identity is not the router's.
 const MismatchedApi = HttpModule("Mismatched")({ router: markedRouter, authenticator: other });
 
 // 9. The matching pair compiles.
@@ -121,7 +131,7 @@ const _wired = start(WiredApi, options);
 
 // 10. An unmarked router with an authenticator supplied is not this package's
 //     error to raise: di decides, and a provider nothing needs is no defect.
-const publicRouter = HttpRouter({ health: contract.health })([], {
+const publicRouter = IdentityRouter({ health: contract.health })([], {
   sync: () => ({ health: { ping: () => OkAsync({ ok: true as const }) } }),
 });
 const _public = start(
@@ -135,84 +145,75 @@ void _wired;
 void _public;
 
 // 11. A ROOT-marked contract composes through the KEYED form, and a controller
-//     under it reads the principal the root mark declares. The keyed overload
+//     under it reads the identity the factory declares. The keyed overload
 //     must therefore `Exclude` the phantom key from the keys it demands (or the
 //     record can never be complete) and `Inherit` the root's mark down to each
 //     fragment (or no controller under it could type `context.principal`) —
 //     both of which the positional arm already did. `contract.orders` above
 //     marks a KEY, so neither omission showed there.
-declare const ordersFragment: Authenticated<{ readonly whoami: typeof oc }, Principal>;
-const rootOrders = HttpController("RootOrders", ordersFragment)([], {
+declare const ordersFragment: Authenticated<{ readonly whoami: typeof oc }>;
+const rootOrders = IdentityController("RootOrders", ordersFragment)([], {
   sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
 });
 const rootMarkedContract = authenticated({ orders: { whoami: oc } });
 const _rootKeyed = HttpModule("RootKeyed")({
-  router: HttpRouter(rootMarkedContract)({ orders: rootOrders }),
+  router: IdentityRouter(rootMarkedContract)({ orders: rootOrders }),
   authenticator: matching,
 });
 
 void _rootKeyed;
 
-// The server-side factory. The contract declares the client-visible minimum —
-// `{ tenantId }` — and says WHETHER a route is protected; `httpAuth<Identity>()`
-// says WHAT the principal is, server-side, and a handler minted from it sees
-// that. Each arm below is spelled against `scopedContract`, whose principal is
-// deliberately narrower than the identity the server resolves.
-type Tenant = { readonly tenantId: string };
-const { authenticated: scoped } = auth<Tenant>();
-const scopedContract = { orders: scoped({ place: oc }), health: { ping: oc } };
-
-type Identity = Tenant & { readonly userId: string };
-const {
-  HttpController: IdentityController,
-  HttpRouter: IdentityRouter,
-  HttpAuthenticator: IdentityAuthenticator,
-} = httpAuth<Identity>();
+// The contract says WHETHER a route is protected; the factory says WHAT the
+// principal is. The arms below are what makes that division checkable: an
+// identity a contract could never have named, and the top-level form — which
+// names none — refusing to invent one.
 
 // 12. A factory-minted controller's MARKED handler sees the factory's identity,
-//     including a field the contract declares nowhere.
-const scopedOrders = IdentityController("ScopedOrders", scopedContract.orders)([], {
-  sync: () => ({ place: ({ context }) => OkAsync(context.principal.userId) }),
+//     a type the contract declares nowhere.
+const scopedOrders = IdentityController("ScopedOrders", contract.orders)([], {
+  sync: () => ({ place: ({ context }) => OkAsync(context.principal.tenantId) }),
 });
 
-// 13. The top-level `HttpController` is unchanged: the same fragment types the
-//     CONTRACT's principal, which has no `userId`.
-void HttpController("ContractOrders", scopedContract.orders)([], {
-  // @ts-expect-error — `userId` is the server's identity, not the contract's principal
+// 13. The top-level `HttpController` mints no identity, so the same marked
+//     fragment types `principal: never` — the "use the factory" signal, since
+//     any read of it is a compile error.
+void HttpController("ContractOrders", contract.orders)([], {
+  // @ts-expect-error — no factory, so there is no principal type to read
   sync: () => ({ place: ({ context }) => OkAsync(context.principal.userId) }),
 });
 
 // 14. A factory invents no principal on an UNMARKED fragment: the identity
-//     replaces the contract's type where there is one, and adds none where
-//     there is not.
-void IdentityController("ScopedHealth", scopedContract.health)([], {
+//     reaches a marked leaf and no other.
+void IdentityController("ScopedHealth", contract.health)([], {
   // @ts-expect-error — `principal` is not on an unmarked handler's context
   sync: () => ({ ping: ({ context }) => OkAsync(context.principal.tenantId) }),
 });
 
 // 15. A factory-minted router composes factory-minted controllers, and the
-//     `HttpModule` gate still checks the authenticator against the CONTRACT's
-//     principal — which an identity richer than it satisfies as a subtype.
-const scopedHealth = IdentityController("ScopedHealthOk", scopedContract.health)([], {
+//     `HttpModule` gate checks the authenticator against the ROUTER's identity.
+const scopedHealth = IdentityController("ScopedHealthOk", contract.health)([], {
   sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
 });
-const identityAuthenticator = IdentityAuthenticator([], {
-  sync: () => () => OkAsync({ tenantId: "t", userId: "u" }),
-});
 const _scoped = HttpModule("Scoped")({
-  router: IdentityRouter(scopedContract)({ orders: scopedOrders, health: scopedHealth }),
-  authenticator: identityAuthenticator,
+  router: IdentityRouter({ orders: contract.orders, health: contract.health })({
+    orders: scopedOrders,
+    health: scopedHealth,
+  }),
+  authenticator: matching,
   provides: [scopedOrders, scopedHealth],
 });
 
-// 16. An authenticator whose identity does not satisfy the contract's principal
-//     is still refused, factory or not.
+// 16. An authenticator minted on another identity is still refused, and a
+//     hand-written `HttpAuthenticator<P>()` is no way around it.
 const strayAuthenticator = HttpAuthenticator<{ readonly sub: string }>()([], {
   sync: () => () => OkAsync({ sub: "s" }),
 });
 const _strayScoped = HttpModule("StrayScoped")({
-  router: IdentityRouter(scopedContract)({ orders: scopedOrders, health: scopedHealth }),
-  // @ts-expect-error — the authenticator's principal is not the contract's
+  router: IdentityRouter({ orders: contract.orders, health: contract.health })({
+    orders: scopedOrders,
+    health: scopedHealth,
+  }),
+  // @ts-expect-error — the authenticator's identity is not the router's
   authenticator: strayAuthenticator,
 });
 

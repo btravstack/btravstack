@@ -26,7 +26,7 @@ import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
-import { auth } from "@btravstack/contract";
+import { authenticated } from "@btravstack/contract";
 import { currentUnit, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
@@ -37,7 +37,7 @@ import { CORSHandlerPlugin } from "@orpc/server/plugins";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
-import { HttpAuthenticator, Unauthenticated } from "./auth.js";
+import { Unauthenticated } from "./auth.js";
 import { HttpController } from "./controller.js";
 import { HttpHandler } from "./handler.js";
 import { httpAuth } from "./http-auth.js";
@@ -134,46 +134,57 @@ const rpcSlicedAppOf = () =>
     ],
   });
 
-type AuthedPrincipal = { readonly userId: string };
+/**
+ * What this deployment knows about a caller. The contract names no identity
+ * type at all, so the factory is the only place one is stated — and the only
+ * route by which a handler gets a readable `context.principal`.
+ */
+type Identity = { readonly tenantId: string; readonly userId: string };
 
-const { authenticated } = auth<AuthedPrincipal>();
+const {
+  HttpController: AuthedController,
+  HttpRouter: AuthedRouter,
+  HttpAuthenticator: AuthedAuthenticator,
+} = httpAuth<Identity>();
 
 /** One protected fragment and one public one — the marker's runtime half, end to end. */
-const whoami = oc.input(ocType<{ readonly id: string }>()).output(ocType<AuthedPrincipal>());
+const whoami = oc
+  .input(ocType<{ readonly id: string }>())
+  .output(ocType<{ readonly userId: string }>());
 const ping = oc.output(ocType<{ readonly ok: true }>());
 const authedContract = { orders: authenticated({ whoami }), health: { ping } };
 
 /** Counted so a test can assert the handler was never entered on a refusal. */
 let authedRuns = 0;
 
-const authedOrdersController = HttpController("AuthedOrders", authedContract.orders)([], {
+const authedOrdersController = AuthedController("AuthedOrders", authedContract.orders)([], {
   sync: () => ({
     whoami: ({ context }) => {
       authedRuns += 1;
-      return OkAsync(context.principal);
+      return OkAsync({ userId: context.principal.userId });
     },
   }),
 });
 
-const authedHealthController = HttpController("AuthedHealth", authedContract.health)([], {
+const authedHealthController = AuthedController("AuthedHealth", authedContract.health)([], {
   sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
 });
 
-const authenticator = HttpAuthenticator<AuthedPrincipal>()([], {
+const authenticator = AuthedAuthenticator([], {
   sync: () => (headers) => {
     if (headers.authorization === "Bearer boom") {
-      return OkAsync().map((): AuthedPrincipal => {
+      return OkAsync().map((): Identity => {
         // oxlint-disable-next-line unthrown/no-throw -- an authenticator bug IS the subject under test, and a throw inside a combinator is the only way to mint a Defect
         throw new Error("authenticator bug");
       });
     }
     return headers.authorization === "Bearer good"
-      ? OkAsync({ userId: "u-good" })
+      ? OkAsync({ tenantId: "t-good", userId: "u-good" })
       : ErrAsync(new Unauthenticated({ reason: "not the good token" }));
   },
 });
 
-const authedRouter = HttpRouter(authedContract)({
+const authedRouter = AuthedRouter(authedContract)({
   orders: authedOrdersController,
   health: authedHealthController,
 });
@@ -182,7 +193,7 @@ const authedRouter = HttpRouter(authedContract)({
  * The same marked contract through the positional form, so where the
  * authenticator lands in `deps` is pinned for both arms of `build`.
  */
-const authedPositionalRouter = HttpRouter(authedContract)([Greeter], {
+const authedPositionalRouter = AuthedRouter(authedContract)([Greeter], {
   sync: (greeter) => ({
     orders: {
       whoami: ({ context }) => OkAsync({ userId: greeter.greet(context.principal.userId) }),
@@ -204,18 +215,18 @@ const rpcAuthedAppOf = () =>
 /**
  * The marker on the contract's ROOT, where the walk has no `contract[key]` to
  * read it from: every leaf inherits it, the same way `Implementation<C>`'s
- * record arm inherits `PrincipalOf<C>`.
+ * record arm inherits `IsMarked<C>`.
  */
 const rootMarkedContract = authenticated({ orders: { whoami } });
 
 let rootMarkedRuns = 0;
 
-const rootMarkedRouter = HttpRouter(rootMarkedContract)([], {
+const rootMarkedRouter = AuthedRouter(rootMarkedContract)([], {
   sync: () => ({
     orders: {
       whoami: ({ context }) => {
         rootMarkedRuns += 1;
-        return OkAsync(context.principal);
+        return OkAsync({ userId: context.principal.userId });
       },
     },
   }),
@@ -228,47 +239,6 @@ const rpcRootMarkedAppOf = () =>
     hostname: "127.0.0.1",
     authenticator,
   });
-
-/**
- * The gap `httpAuth<Identity>()` closes, end to end: the contract declares the
- * client-visible minimum (`{ tenantId }`) while this deployment's
- * authenticator resolves `{ tenantId, userId }`, and the handler — minted from
- * the factory — reads the field the contract declares nowhere.
- */
-type ScopedPrincipal = { readonly tenantId: string };
-type Identity = ScopedPrincipal & { readonly userId: string };
-const { authenticated: scoped } = auth<ScopedPrincipal>();
-const {
-  HttpController: IdentityController,
-  HttpRouter: IdentityRouter,
-  HttpAuthenticator: IdentityAuthenticator,
-} = httpAuth<Identity>();
-
-const identityContract = { orders: scoped({ whoami }) };
-
-const identityController = IdentityController("IdentityOrders", identityContract.orders)([], {
-  sync: () => ({ whoami: ({ context }) => OkAsync({ userId: context.principal.userId }) }),
-});
-
-const identityAuthenticator = IdentityAuthenticator([], {
-  sync: () => (headers) =>
-    headers.authorization === "Bearer good"
-      ? OkAsync({ tenantId: "t-good", userId: "u-good" })
-      : ErrAsync(new Unauthenticated({ reason: "not the good token" })),
-});
-
-const rpcIdentityAppOf = () =>
-  HttpModule("RpcIdentityApp")({
-    router: IdentityRouter(identityContract)({ orders: identityController }),
-    port: 0,
-    hostname: "127.0.0.1",
-    authenticator: identityAuthenticator,
-    provides: [identityController],
-  });
-
-type IdentityClient = RouterContractClient<{
-  readonly orders: { readonly whoami: typeof whoami };
-}>;
 
 /** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
 const linkOf = (origin: string, token: string | undefined) =>
@@ -494,8 +464,9 @@ export type HttpFixtures = {
   }>;
   /**
    * The starter over a contract whose `orders` fragment is `authenticated(...)`,
-   * with an authenticator that accepts exactly one token. Shut down by the
-   * fixture; the handler's run count is reset before the test body.
+   * with an authenticator that accepts exactly one token — router, controllers
+   * and authenticator all minted by one `httpAuth<Identity>()`. Shut down by
+   * the fixture; the handler's run count is reset before the test body.
    */
   readonly rpcAuthed: {
     /** A typed client presenting `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
@@ -512,12 +483,6 @@ export type HttpFixtures = {
     readonly clientWith: (token: string | undefined) => RootMarkedClient;
     readonly handlerRuns: () => number;
   };
-  /**
-   * The starter over a router and a controller minted by `httpAuth<Identity>()`,
-   * where the identity is richer than the contract's principal. Shut down by
-   * the fixture.
-   */
-  readonly rpcIdentity: { readonly clientWith: (token: string) => IdentityClient };
   /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
   readonly authedRouterDeps: {
     readonly keyed: readonly string[];
@@ -746,15 +711,6 @@ export const it = test.extend<HttpFixtures>({
       clientWith: (token) => createORPCClient(linkOf(origin, token)),
       handlerRuns: () => rootMarkedRuns,
     });
-  },
-
-  rpcIdentity: async ({ boot }, use) => {
-    const app = boot(rpcIdentityAppOf());
-    const info = (await app.runtimeInfo()).get();
-    assert.ok(info !== undefined, "the runtime published no Serving.info");
-    const origin = `http://127.0.0.1:${info.port}`;
-
-    await use({ clientWith: (token) => createORPCClient(linkOf(origin, token)) });
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

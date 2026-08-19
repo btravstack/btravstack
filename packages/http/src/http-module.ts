@@ -39,7 +39,7 @@ type Provides<
 export type HttpModuleOptions<
   RouterError,
   RouterNeeds,
-  Principal,
+  RouterIdentity,
   Auth extends AnyProvider | undefined,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
@@ -47,16 +47,20 @@ export type HttpModuleOptions<
 > = {
   /** The application's oRPC router — `HttpRouter(contract)(deps, arm)`, the provider that builds it from the services its procedures call. */
   readonly router: Provider<HttpRouterPort, RouterError, RouterNeeds> & {
-    readonly principal: Principal;
+    readonly identity: RouterIdentity;
   };
   /**
    * Resolves the principal a marked procedure's handler receives —
-   * `HttpAuthenticator<P>()([deps], { sync })`. Required exactly when the
-   * router's contract marks something: a marked router declares
+   * `HttpAuthenticator<Identity>()([deps], { sync })`. Required exactly when
+   * the router's contract marks something: a marked router declares
    * `AuthenticatorPort` as a need, and di refuses a graph that does not
-   * discharge it. Whether it resolves the contract's own principal is the one
-   * thing that need cannot say — the port's service type is erased — so
-   * `Principal`, read off `router`, is what checks it here.
+   * discharge it. Whether it resolves what the handlers actually read is the
+   * one thing that need cannot say — the port's service type is erased — so
+   * `RouterIdentity`, read off `router`, is what checks it here: the
+   * authenticator must resolve **at least** the identity the router was minted
+   * with, so a router from `httpAuth<A>()` refuses an authenticator from
+   * `httpAuth<B>()`. A router minted by the top-level `HttpRouter` carries no
+   * identity (`never`), and there is then nothing to compare.
    */
   readonly authenticator?: Auth;
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
@@ -107,10 +111,10 @@ export const HttpModule =
   <
     RouterError,
     RouterNeeds,
-    Principal,
+    RouterIdentity,
     const Auth extends
       | (Provider<AuthenticatorPort, never, unknown> & {
-          readonly principal: [Principal] extends [never] ? unknown : Principal;
+          readonly principal: [RouterIdentity] extends [never] ? unknown : RouterIdentity;
         })
       | undefined = undefined,
     const I extends readonly AnyModule[] = [],
@@ -118,7 +122,7 @@ export const HttpModule =
     const X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>>[] =
       [],
   >(
-    options: HttpModuleOptions<RouterError, RouterNeeds, Principal, Auth, I, P, X>,
+    options: HttpModuleOptions<RouterError, RouterNeeds, RouterIdentity, Auth, I, P, X>,
   ) => {
     const { router, authenticator, prefix, port, hostname, plugins, securityHeaders } = options;
     const imports = (options.imports ?? []) as I;
