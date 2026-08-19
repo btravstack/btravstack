@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/http"
-description: The HTTP starter — HttpModule, HttpRouter, HttpController, http(), HttpRuntime, HttpConfig and HttpInfo, what each request is answered with, and how the drain retires a keep-alive connection.
+description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
 # @btravstack/http
@@ -18,17 +18,22 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, http()
 
 `packages/http/src/index.ts` exports exactly this:
 
-| Export              | Kind  | What it is                                                                                                                                                                                                               |
-| ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `HttpModule`        | value | `HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                    |
-| `HttpModuleOptions` | type  | The options object `HttpModule(name)` takes                                                                                                                                                                              |
-| `HttpRouter`        | value | `HttpRouter(contract)(deps, { sync })`, or `HttpRouter(contract)(controllers)` — the router as a provider on the starter's own router port, contract-first, either from one `sync` or from a keyed record of controllers |
-| `HttpController`    | value | `HttpController(name, fragment)([deps], { sync })` — one slice of a contract, as a provider on a port minted for it                                                                                                      |
-| `http`              | value | `http({ prefix?, port?, hostname? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                    |
-| `HttpOptions`       | type  | `http()`'s options                                                                                                                                                                                                       |
-| `HttpRuntime`       | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                               |
-| `HttpConfig`        | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                                          |
-| `HttpInfo`          | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                  |
+| Export                 | Kind  | What it is                                                                                                                                                                                                                                        |
+| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HttpModule`           | value | `HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
+| `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                       |
+| `HttpRouter`           | value | `HttpRouter(contract)(deps, { sync })`, or `HttpRouter(contract)(controllers)` — the router as a provider on the starter's own router port, contract-first, either from one `sync` or from a keyed record of controllers                          |
+| `HttpController`       | value | `HttpController(name, fragment)([deps], { sync })` — one slice of a contract, as a provider on a port minted for it                                                                                                                               |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P>()([deps], { sync })` — the provider that turns a request's headers into a principal `P`, on `AuthenticatorPort`                                                                                                             |
+| `AuthenticatorPort`    | value | `Port("HttpAuthenticator")` over `AuthenticatorService<unknown>` — the port a marked contract's router depends on                                                                                                                                 |
+| `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<P, Unauthenticated>` — headers in, principal out                                                                                                                                                   |
+| `Unauthenticated`      | value | a `TaggedError` carrying a `reason` — the refusal, for the operator's log rather than the client's body                                                                                                                                           |
+| `ContractPrincipal`    | type  | `ContractPrincipal<C>` — the principal a contract declares anywhere in its tree, or `never`                                                                                                                                                       |
+| `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                 |
+| `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                |
+| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                        |
+| `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                                                                   |
+| `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                           |
 
 `HttpRouterPort` (the starter's router port, `Port("HttpRouter")`),
 `Implementation<C>` (the record type `HttpRouter`'s `sync` returns) and
@@ -40,34 +45,42 @@ inferred at the call, the third is an internal seam.
 ## `HttpModule(name)({...})`
 
 Everything `Module(name)({...})` takes — `imports`, `provides`, `exports` —
-plus the starter's own fields. It appends `http({ prefix, port, hostname })`
-to `imports`, prepends `router` to `provides`, prepends `HttpRuntime` to
-`exports`, and hands the augmented tuples to di's own `Module(name)`, whose
-return type is the sugar's. The kernel and both gates see a plain module.
+plus the starter's own fields. It appends
+`http({ prefix, port, hostname, plugins, securityHeaders })` to `imports`,
+prepends `router` (and `authenticator`, when one is given) to `provides`,
+prepends `HttpRuntime` to `exports`, and hands the augmented tuples to di's own
+`Module(name)`, whose return type is the sugar's. The kernel and both gates see
+a plain module.
 
-| Option     | Required | Default          | What it is                                                                                                                                                                 |
-| ---------- | -------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`   | yes      | —                | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
-| `prefix`   | no       | `/rpc`           | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                |
-| `port`     | no       | read from `PORT` | pins the port instead of reading it                                                                                                                                        |
-| `hostname` | no       | read from `HOST` | pins the host instead of reading it                                                                                                                                        |
-| `imports`  | no       | `[]`             | the application's modules                                                                                                                                                  |
-| `provides` | no       | `[]`             | the application's own providers                                                                                                                                            |
-| `exports`  | no       | `[]`             | the application's own exports; `HttpRuntime` is added                                                                                                                      |
+| Option            | Required | Default          | What it is                                                                                                                                                                 |
+| ----------------- | -------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router`          | yes      | —                | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
+| `authenticator`   | no\*     | —                | what `HttpAuthenticator<P>()([deps], { sync })` returns; \*owed whenever the contract marks anything (see [Authentication](#authentication))                               |
+| `prefix`          | no       | `/rpc`           | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                |
+| `port`            | no       | read from `PORT` | pins the port instead of reading it                                                                                                                                        |
+| `hostname`        | no       | read from `HOST` | pins the host instead of reading it                                                                                                                                        |
+| `plugins`         | no       | `[]`             | oRPC handler plugins, forwarded to `RPCHandler` — CORS, body limits, compression, CSRF                                                                                     |
+| `securityHeaders` | no       | `true`           | response headers set on the raw listener, before dispatch                                                                                                                  |
+| `imports`         | no       | `[]`             | the application's modules                                                                                                                                                  |
+| `provides`        | no       | `[]`             | the application's own providers                                                                                                                                            |
+| `exports`         | no       | `[]`             | the application's own exports; `HttpRuntime` is added                                                                                                                      |
 
 The worked composition root, from `examples/order-api/src/module.ts`:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  authenticator: bearerAuthenticator,
+  imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
 
 That is exactly the module
-`Module("OrderApi")({ imports: [OrderApplicationModule, OrderPersistenceModule, observability(), http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })`
-would have declared. [`observability()`](/reference/observability) is a second
+`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(), http()], provides: [orderRouter, bearerAuthenticator], exports: [HttpRuntime, Logger] })`
+would have declared. `authenticator` is a plain optional field: present, it
+joins `provides`, which is all discharging di's need takes.
+[`observability()`](/reference/observability) is a second
 starter, not this package's business: it brings the `Logger` the application
 writes to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
 carrying the trace id of the unit this runtime opened.
@@ -236,6 +249,99 @@ export const ordersRouter = HttpRouter(contract.orders)(
 That property is marked do-not-break: it is what makes composing several
 slices into one router a starting point rather than a trap.
 
+## Authentication
+
+A contract marked with [`@btravstack/contract`](/reference/contract)'s
+`authenticated` is what turns this on. Nothing here is a switch on the
+starter: the marker is a fact about the contract, and both halves of the
+package follow it.
+
+**In the types.** `Implementation<C>` branches on the marker. A marked **leaf**
+gets `{ readonly principal: P }` in its implementer's injected context, so the
+handler reads `opts.context.principal` — oRPC's own context channel, not a
+second handler parameter this package invents and not a wrapper around
+`.result()`. A marked **record** pushes its marker onto each child, so a marked
+fragment protects every procedure beneath it. An unmarked leaf's context is
+unchanged, which is what makes reading a principal there a compile error.
+`ContractPrincipal<C>` is the principal a contract declares anywhere in its
+tree, or `never`.
+
+**At runtime.** `HttpRouter`'s walk carries the mark down the contract exactly
+as the types do, and a marked leaf is built as
+`node.use(principalMiddleware(authenticate)).result(fn)` — `.use` before
+`.result`, which is the only order oRPC leaves available. The middleware reads
+the request off oRPC's initial context, calls the authenticator with its
+headers, and either injects `{ context: { principal } }` or terminates the
+request.
+
+### `HttpAuthenticator<P>()([deps], { sync })`
+
+An ordinary di provider on `AuthenticatorPort`, whose service is
+`AuthenticatorService<P>`:
+
+```ts
+type AuthenticatorService<P> = (
+  headers: IncomingHttpHeaders,
+) => AsyncResult<P, Unauthenticated>;
+```
+
+**Headers, not the request**: an authenticator has no business reading a body,
+and the narrower argument is what keeps it testable without a socket. `deps`
+are di's, so a JWT verifier or a user directory is injected the way any
+provider's dependencies are. The type argument is **explicit** rather than
+inferred from `sync` — inference through a returned function's `AsyncResult` is
+where a principal silently widens to `unknown`. `Unauthenticated` is a
+`TaggedError` carrying a `reason`, for the operator's log rather than the
+client's body.
+
+```ts
+export const bearerAuthenticator = HttpAuthenticator<Principal>()([], {
+  sync: () => (headers) => {
+    const header = headers.authorization ?? "";
+    const token = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : "";
+    const [tenantId, userId] = token.split(":");
+    return tenantId === undefined ||
+      tenantId === "" ||
+      userId === undefined ||
+      userId === ""
+      ? ErrAsync(new Unauthenticated({ reason: "no usable bearer token" }))
+      : OkAsync({ tenantId, userId });
+  },
+});
+```
+
+### Two gates, and why they are two
+
+When the contract marks anything, `HttpRouter` appends `AuthenticatorPort`
+**last** to the router provider's dependency array — so every existing
+positional service keeps its index — and adds it to the provider's needs
+channel. Which makes a marked router with no authenticator behind it di's
+existing `UNSATISFIED DEPENDENCIES` gate at `start`, not a gate this package
+invented.
+
+What di cannot see is the **principal**: `AuthenticatorPort`'s service type is
+erased to `unknown`, so any authenticator discharges that need. So
+`HttpModule` checks the other half — `Principal` is inferred from the router's
+own, and an authenticator resolving something else is a compile error at the
+`HttpModule(...)` call. An **unmarked** router accepts any authenticator,
+including none: a provider nothing needs is di's business and not an error to
+invent.
+
+A mark with no authenticator behind it still **fails closed**: an internal
+`noAuthenticator` refuses every caller, so such a leaf answers `401` rather
+than serving unprotected. It is unreachable while the types and the walk
+agree, which is exactly why it is there.
+
+### The marker is legibility, not enforcement
+
+An unmarked procedure is public, and **nothing fails if the marker is
+forgotten** — no compile error, no startup failure. There is no
+deny-by-default here; the contract makes a protected route visible to both
+sides, and that is all it claims. See
+[Protect a procedure](/how-to/protect-a-procedure).
+
 ## `http(options)`
 
 ```ts
@@ -247,11 +353,13 @@ const http: (
 The primitive `HttpModule` delegates to, for a composition root written by
 hand. `HttpOptions`:
 
-| Option     | Required | Default          | What it is                        |
-| ---------- | -------- | ---------------- | --------------------------------- |
-| `prefix`   | no       | `/rpc`           | where the RPC endpoint is mounted |
-| `port`     | no       | read from `PORT` | pins the port                     |
-| `hostname` | no       | read from `HOST` | pins the host                     |
+| Option            | Required | Default          | What it is                                                      |
+| ----------------- | -------- | ---------------- | --------------------------------------------------------------- |
+| `prefix`          | no       | `/rpc`           | where the RPC endpoint is mounted                               |
+| `port`            | no       | read from `PORT` | pins the port                                                   |
+| `hostname`        | no       | read from `HOST` | pins the host                                                   |
+| `plugins`         | no       | `[]`             | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler` |
+| `securityHeaders` | no       | `true`           | `boolean \| Record<string, string>`, applied on the listener    |
 
 The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
 **needs** `Env` (the kernel discharges it) and the starter's router port
@@ -263,6 +371,44 @@ option: there is no other port it could be on. The
 declared type is the same whether or not a field is pinned: `Env` and
 `ConfigInvalid` stay in the signature, and a pinned config never produces the
 latter.
+
+### `plugins`
+
+`readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
+`@orpc/server/node`, forwarded straight to `new RPCHandler(service, { plugins })`.
+CORS, body limits, compression and CSRF are transport policy oRPC already
+expresses as handler plugins, so this is **configuration**, not a middleware
+slot — `plugins: [new CORSHandlerPlugin({ origin: () => "https://orders.example" })]`
+on `HttpModule` or `http()`, with the plugin imported from
+`@orpc/server/plugins`.
+
+A plugin configures the transport once, at composition, with no access to a
+procedure's `Result` or to any application logic — which is why it is not the
+door [Deliberately not included](#deliberately-not-included) still refuses. It
+threads through all three surfaces (`http()`, `HttpModule` and the internal
+oRPC options) as a plain optional field.
+
+Note what a plugin does **not** cover: it only runs for a request oRPC
+**matched**, so the runtime's own `404` and `500` never reach one. That is why
+`securityHeaders` is not a plugin.
+
+### `securityHeaders`
+
+`boolean | Readonly<Record<string, string>>`, default `true`. Applied by the
+package on the **raw node listener**, before dispatch — the first statement of
+the request handler — so it covers a served response, the runtime's `404`, its
+`500` and a drained response alike.
+
+| Value                    | Effect                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| `true` (default)         | `x-content-type-options: nosniff`, `x-frame-options: DENY`, `referrer-policy: no-referrer` |
+| `false`                  | nothing is set                                                                             |
+| `Record<string, string>` | replaces the defaults outright — the record is the whole set                               |
+
+The set is resolved once per `listen`, not per request. It is deliberately
+small: a default that has to be right for every deployment cannot include a
+CSP, an HSTS max-age or a permissions policy, all of which are a deployment's
+own decision — pass a record when you have made those.
 
 ## `HttpConfig`, and the environment
 
@@ -290,15 +436,17 @@ that is the only way to learn the port that was actually bound.
 
 ## What it decides about a request
 
-| Request                                     | Answer                                                                | Decided by       |
-| ------------------------------------------- | --------------------------------------------------------------------- | ---------------- |
-| a procedure under `prefix`                  | the procedure's output, or the `ORPCError` its `Result` was mapped to | oRPC, the router |
-| a defect thrown inside a procedure          | oRPC's own `INTERNAL_SERVER_ERROR` collapse                           | oRPC             |
-| a path under `prefix` naming no procedure   | `404 {"error":"NotFound"}` — oRPC declines it unwritten               | this package     |
-| any path outside `prefix`                   | `404 {"error":"NotFound"}` — likewise                                 | this package     |
-| the listener resolved without writing       | `404 {"error":"NotFound"}`                                            | this package     |
-| the listener failed before headers were out | `500 {"error":"InternalError"}`                                       | this package     |
-| a failure with headers already on the wire  | the socket is destroyed — a reset, not a hang                         | this package     |
+| Request                                                           | Answer                                                                 | Decided by       |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------- |
+| a procedure under `prefix`                                        | the procedure's output, or the `ORPCError` its `Result` was mapped to  | oRPC, the router |
+| a defect thrown inside a procedure                                | oRPC's own `INTERNAL_SERVER_ERROR` collapse                            | oRPC             |
+| a marked procedure whose authenticator returned `Unauthenticated` | `401 UNAUTHORIZED`, the handler never entered                          | this package     |
+| a marked procedure whose authenticator defected                   | oRPC's `INTERNAL_SERVER_ERROR` collapse — a bug, not a rejected caller | oRPC             |
+| a path under `prefix` naming no procedure                         | `404 {"error":"NotFound"}` — oRPC declines it unwritten                | this package     |
+| any path outside `prefix`                                         | `404 {"error":"NotFound"}` — likewise                                  | this package     |
+| the listener resolved without writing                             | `404 {"error":"NotFound"}`                                             | this package     |
+| the listener failed before headers were out                       | `500 {"error":"InternalError"}`                                        | this package     |
+| a failure with headers already on the wire                        | the socket is destroyed — a reset, not a hang                          | this package     |
 
 The last three are the package's own fallbacks, guaranteeing that every
 request produces exactly one completed response. The two `500` shapes are
@@ -349,15 +497,21 @@ so a transient accept fault cannot become an `uncaughtException` teardown.
 
 ## Peer dependencies
 
-`@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`,
-`@orpc/server`, `@orpc/contract`, `@unthrown/orpc`. All peers, so an
-application holds one copy of each. Node `>=20`.
+`@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
+`@btravstack/contract`, `unthrown`, `@orpc/server`, `@orpc/contract`,
+`@unthrown/orpc`. All peers, so an application holds one copy of each —
+`@btravstack/contract` most of all, since its marker is a `unique symbol` and
+two copies are two different symbols, so a contract marked against one would
+read as unmarked here. Node `>=20`.
 
 ## Deliberately not included
 
 - **Any other router or handler.** oRPC through `@orpc/server/node`'s
   `RPCHandler` is the one way HTTP is answered; there is no `handler` option
   and no listener port to provide.
-- **Middleware.** oRPC's own, inside the router's procedures.
+- **A middleware slot for application logic.** oRPC's own, inside the
+  router's procedures. `plugins` is not this — it is transport policy handed
+  to oRPC's `RPCHandler` at composition — and `principalMiddleware` is the one
+  per-request hook the package installs, only on a marked leaf.
 - **`Result` → HTTP status.** The router's `.result()` triage owns it.
 - **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.

@@ -1,11 +1,11 @@
 ---
 title: Packages and install
-description: The eight published packages, who peers on what, and one install command per kind of deployment.
+description: The nine published packages, who peers on what, and one install command per kind of deployment.
 ---
 
 # Packages and install
 
-> **Reference.** The eight published packages, their peer-dependency matrix and the
+> **Reference.** The nine published packages, their peer-dependency matrix and the
 > install command for each kind of deployment. For _why_ everything is a peer
 > dependency, see [Peer dependencies](/explanation/peer-dependencies); for what
 > a starter is, see [Starters](/explanation/starters).
@@ -14,6 +14,7 @@ description: The eight published packages, who peers on what, and one install co
 
 | Package                     | What it is                                                                                                                                                                                             | Reference                                                                                                                                                                                        |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@btravstack/contract`      | Contract-level markers a client and a server share: `authenticated` says a procedure needs a principal, and the handler's type carries it. Depends on nothing.                                         | [@btravstack/contract](/reference/contract)                                                                                                                                                      |
 | `@btravstack/di`            | The container: ports as the vocabulary, providers bound at one edge, modules that declare their imports and exports. Depends on nothing.                                                               | [Ports](/reference/di/ports), [Providers](/reference/di/providers), [Modules](/reference/di/modules), [Entry points](/reference/di/entry-points), [Wiring defects](/reference/di/wiring-defects) |
 | `@btravstack/config`        | Configuration the twelve-factor way: `Env` as a port, typed fields bound from it through a schema, `ConfigInvalid` naming every fault.                                                                 | [@btravstack/config](/reference/config)                                                                                                                                                          |
 | `@btravstack/core`          | The kernel: boot a module into a running process with one runtime, drain on SIGTERM, close the scope on every path, decide the exit code.                                                              | [start](/reference/core/start), [RunningApp](/reference/core/running-app), [Runtime](/reference/core/runtime), [Exit codes](/reference/core/exit-codes)                                          |
@@ -50,7 +51,8 @@ single copy.
 | `@btravstack/config`        | `@btravstack/di`, `unthrown`                                                                                                                                                                            |
 | `@btravstack/core`          | `@btravstack/config`, `@btravstack/di`, `unthrown`                                                                                                                                                      |
 | `@btravstack/observability` | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `pino`, the family's one **optional** peer, needed only by the `@btravstack/observability/pino` subpath                    |
-| `@btravstack/http`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@orpc/server`, `@orpc/contract`, `@unthrown/orpc`                                                                              |
+| `@btravstack/contract`      | nothing — zero peers and zero dependencies, so a client can take a contract without the server                                                                                                          |
+| `@btravstack/http`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@orpc/server`, `@orpc/contract`, `@unthrown/orpc`                                                      |
 | `@btravstack/temporal`      | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`, `@temporal-contract/worker`, `@temporal-contract/contract`  |
 | `@btravstack/amqp`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`                                                                                   |
 | `@btravstack/testing`       | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and **not** `vitest`: `bootFixture` is a plain `(ctx, use) => Promise<void>`, vitest's fixture protocol met without the import |
@@ -80,8 +82,8 @@ does, the first package alone suffices.
 ::: code-group
 
 ```sh [HTTP API]
-pnpm add @btravstack/http @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @orpc/server @orpc/contract @unthrown/orpc
+pnpm add @btravstack/http @btravstack/core @btravstack/config @btravstack/di \
+  @btravstack/contract unthrown @orpc/server @orpc/contract @unthrown/orpc
 ```
 
 ```sh [Temporal worker]
@@ -132,9 +134,10 @@ yet. The commands above are what they will be once it has.
 | `@btravstack/testing`            | `bootFixture`, `tapped`, `testRuntime`, `TestRuntimePort`, `createFakeClock` and the types — a package of its own, so a production bundle never pulls the fakes in; see [@btravstack/testing](/reference/testing) |
 | `@btravstack/config`             | `Env`, `Config`, `ConfigInvalid`, `ConfigFieldInvalid` and the types — see [@btravstack/config](/reference/config)                                                                                                |
 | `@btravstack/di`                 | `Port`, `Provider`, `Module`, `Context` and the types — see [Ports](/reference/di/ports)                                                                                                                          |
+| `@btravstack/contract`           | `auth`, `isAuthenticated`, `Authenticated`, `PrincipalKey`, `PrincipalOf` — see [@btravstack/contract](/reference/contract)                                                                                       |
 | `@btravstack/observability`      | `Logger`, `createLogger`, `jsonSink`, `observability`, `LoggerConfig`, `logLevel`, `kernelEvents`, `LEVELS` and the types — see [@btravstack/observability](/reference/observability)                             |
 | `@btravstack/observability/pino` | `pinoSink` alone, so `pino` stays an optional peer a consumer that never imports this never installs                                                                                                              |
 
-All eight packages ship dual CJS/ESM builds with `.d.ts` files and no source
+All nine packages ship dual CJS/ESM builds with `.d.ts` files and no source
 maps (the tarball carries no `src/`, so a map would be a dead end).
 `@btravstack/observability` is the only one with a second entry point.
