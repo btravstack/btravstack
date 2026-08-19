@@ -1,12 +1,13 @@
 // The type half of the auth marker: a marked contract node types its handler's
 // principal on oRPC's own context channel, and an unmarked one does not. Each
 // `@ts-expect-error` is an assertion: if one stops erroring, the gate is gone.
-import { auth } from "@btravstack/contract";
+import { auth, type Authenticated } from "@btravstack/contract";
 import { start } from "@btravstack/core";
 import { oc } from "@orpc/contract";
 import { OkAsync } from "unthrown";
 
 import { HttpAuthenticator } from "./auth.js";
+import { HttpController } from "./controller.js";
 import { HttpModule } from "./http-module.js";
 import { HttpRouter, type ContractPrincipal, type Implementation } from "./orpc.js";
 
@@ -131,3 +132,22 @@ void _missing;
 void MismatchedApi;
 void _wired;
 void _public;
+
+// 11. A ROOT-marked contract composes through the KEYED form, and a controller
+//     under it reads the principal the root mark declares. The keyed overload
+//     must therefore `Exclude` the phantom key from the keys it demands (or the
+//     record can never be complete) and `Inherit` the root's mark down to each
+//     fragment (or no controller under it could type `context.principal`) —
+//     both of which the positional arm already did. `contract.orders` above
+//     marks a KEY, so neither omission showed there.
+declare const ordersFragment: Authenticated<{ readonly whoami: typeof oc }, Principal>;
+const rootOrders = HttpController("RootOrders", ordersFragment)([], {
+  sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
+});
+const rootMarkedContract = authenticated({ orders: { whoami: oc } });
+const _rootKeyed = HttpModule("RootKeyed")({
+  router: HttpRouter(rootMarkedContract)({ orders: rootOrders }),
+  authenticator: matching,
+});
+
+void _rootKeyed;

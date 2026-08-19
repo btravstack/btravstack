@@ -171,11 +171,16 @@ export const orderRouter = HttpRouter(contract)({
 
 Each value is what [`HttpController`](#httpcontrollername-fragment)
 returns. The call is **exact**: `M` is constrained to
-`{ readonly [K in keyof C]: ControllerFor<C[K]> }`, and the `controllers`
-**parameter** itself is typed `M & { readonly [K in Exclude<keyof M, keyof
-C>]: never }` — the exactness intersection sits on the parameter, not on `M`,
-so a key `C` does not declare is typed `never` there without collapsing `M`
-(and with it the needs channel di orders the controllers by) to `never` too.
+`{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
+PrincipalOf<C>>> }`, and the `controllers`
+**parameter** itself is typed `M & { readonly [K in Exclude<keyof M,
+Exclude<keyof C, PrincipalKey>>]: never }` — the exactness intersection sits on
+the parameter, not on `M`, so a key `C` does not declare is typed `never` there
+without collapsing `M` (and with it the needs channel di orders the controllers
+by) to `never` too. The `Exclude`/`Inherit` pair is the same one
+[`Implementation<C>`](#authentication) carries: a contract marked at its
+**root** composes through this form too, and each fragment inherits that mark,
+so a controller under it types `context.principal`.
 Five gates are pinned by
 `packages/http/src/controller.test-d.ts`: every contract key must be covered;
 a key the contract does not declare is rejected; a controller wired under the

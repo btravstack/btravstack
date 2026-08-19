@@ -144,8 +144,14 @@ export const HttpRouter = <C extends Record<string, RouterContract>>(contract: C
     readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
     readonly principal: ContractPrincipal<C>;
   };
-  function build<M extends { readonly [K in keyof C]: ControllerFor<C[K]> }>(
-    controllers: M & { readonly [K in Exclude<keyof M, keyof C>]: never },
+  function build<
+    M extends {
+      readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K], PrincipalOf<C>>>;
+    },
+  >(
+    controllers: M & {
+      readonly [K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>]: never;
+    },
   ): Provider<
     PortInstance<"HttpRouter", Router<Record<never, never>>>,
     never,

@@ -87,9 +87,16 @@ PortInstance<…> }`) rather than the class's own type because a class
   second overload of `build`) — for `contract: Record<string, RouterContract>`,
   a record keyed by the contract's own top-level keys, one
   `HttpController` per key, instead of `(deps, { sync })`. `M` is constrained
-  `{ readonly [K in keyof C]: ControllerFor<C[K]> }`, and the `controllers`
-  **parameter** is typed `M & { readonly [K in Exclude<keyof M, keyof C>]:
-never }` — the exactness intersection is on the parameter, not on `M`: a key
+  `{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
+PrincipalOf<C>>> }`, and the `controllers`
+  **parameter** is typed `M & { readonly [K in Exclude<keyof M, Exclude<keyof C,
+PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
+  positional arm's `Implementation<C>` carries, so a **root-marked** contract
+  composes here at all (the phantom key is not a controller to supply) and each
+  fragment inherits the root's mark (a controller under it types
+  `context.principal`). Both were missing until `auth.test-d.ts`'s eleventh arm
+  went in; the marked fixtures in `controller.test-d.ts` mark a **key**, which
+  is why neither showed there. The exactness intersection is on the parameter, not on `M`: a key
   `M` has that `C` does not declare types
   as `never` there, so the call fails to compile rather than silently
   dropping the key, without the intersection leaking into `M` and collapsing
