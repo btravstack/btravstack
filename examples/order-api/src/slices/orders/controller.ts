@@ -27,12 +27,13 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * The tenant comes off `context.principal`, the value this application's own
  * authenticator resolved from the request's headers — `contract.orders` is
  * marked `authenticated`, so the principal is typed here and a handler that
- * misreads it does not compile. `input.tenantId` is still declared by the
- * contract and is deliberately NOT what these handlers use: a caller does not
- * get to name the tenant it is served, and moving tenancy off the inputs
- * altogether is a contract change of its own. The starter still knows nothing
- * about tenancy — it resolved a principal this application defined, and what
- * the fields on it mean is the application's business.
+ * misreads it does not compile. The fragment's inputs name **no** tenant: a
+ * caller does not get to name the tenant it is served, and a required field
+ * these handlers ignore would be a lie in the contract. The unmarked
+ * `customers` fragment still names one, which is where that contrast is
+ * legible. The starter knows nothing about tenancy either way — it resolved a
+ * principal this application defined, and what the fields on it mean is the
+ * application's business.
  *
  * The use cases arrive as arguments, not through oRPC's context: di injects
  * them into the provider — `HttpController(name, contract)` is di's own

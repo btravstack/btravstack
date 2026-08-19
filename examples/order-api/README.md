@@ -177,7 +177,7 @@ const client = createOrderApiClient("http://127.0.0.1:3000", "/rpc", {
   authorization: `Bearer ${tenantId}:${userId}`,
 });
 
-const named = (await client.orders.place({ tenantId, id, quantity })).match({
+const named = (await client.orders.place({ id, quantity })).match({
   ok: () => "placed",
   errCases: (matcher) =>
     matcher.with(
@@ -193,8 +193,9 @@ The header is not optional here: `orders` is the marked half of the contract,
 so the same call without it is refused before any procedure runs — as an
 `UNAUTHORIZED` the contract does not declare, which means it is not inferable
 and lands in `defect` rather than `errCases`. `customers` is unmarked and
-answers either way. The tenant on the input is still declared and still sent;
-the server serves the token's, not this one.
+answers either way — and names its tenant on the input, which `orders` does
+not: the tenant a marked procedure serves is the token's, so there is nothing
+for the caller to say about it.
 
 The error channel is the raw `ORPCError` union discriminated by `code` — not
 re-wrapped into a second error concept — so the client's match is the mirror of
@@ -267,14 +268,22 @@ this package validates, prints or exits.
 ## Multi-tenant by design, not by framework
 
 The API serves several tenants from one database, and the tenant is declared
-in **its own contract**:
+in **its own contract** — on the unmarked fragment, where the caller is the
+only one who can say which tenant is meant:
 
 ```ts
 export type Tenanted = { readonly tenantId: string };
 
+const customersContract = {
+  find: oc
+    .input(type<Tenanted & { readonly id: string }>())
+    .output(type<CustomerView>())
+    .errors({ NOT_FOUND: { data: type<{ readonly id: string }>() } }),
+};
+
 const ordersContract = {
   place: oc
-    .input(type<Tenanted & { readonly id: string; readonly quantity: number }>())
+    .input(type<{ readonly id: string; readonly quantity: number }>())
     .output(type<OrderView>())
     .errors({ INVALID_QUANTITY: { data: type<OrderRef>() }, CONFLICT: { data: type<OrderRef>() } }),
   …
@@ -284,24 +293,23 @@ const ordersContract = {
 The `customers` controller hands `input.tenantId` straight to the use case,
 which hands it to the repository, which puts it in the `WHERE`. The `orders`
 fragment is marked `authenticated`, so its controller takes the tenant from
-`context.principal.tenantId` instead — the input field is still declared by
-the contract and deliberately goes unread there. Either way `@btravstack/http`
-knows
+`context.principal.tenantId` — and its inputs name none: a required field the
+handler ignores is a field that lies, and a caller that could name a tenant it
+is not served is a confused deputy waiting to happen. Either way
+`@btravstack/http` knows
 nothing about tenants and has no hook for them — context is the application's
 to own, and a starter that read a tenant off a header would be deciding a
 system's authentication model on its behalf.
 
-An argument rather than a header, then, and the trade is worth naming. A
-client cannot forget it (the contract refuses), the router cannot invent one,
-and the path from wire to `WHERE` is visible in three files. What it is not is
-"who is asking": a deployment that authenticates its callers takes the tenant
-from the caller's identity instead, which is what marking a fragment
-`authenticated` does — a contract change, which is exactly the kind of change
-that should be. `orders` has made it and `customers` has not, which is why the
-two controllers read the tenant from different places. Dropping the now-unread
-`tenantId` from the `orders` inputs would be a second contract change, and is
-left undone on purpose: keeping both fragments' inputs the same shape is what
-makes the one difference legible.
+The contrast between the two fragments is the lesson. Where nothing
+authenticates the caller, the tenant is an **argument**: the client cannot
+forget it (the contract refuses), the router cannot invent one, and the path
+from wire to `WHERE` is visible in three files. Where the caller is
+authenticated, the tenant is **who is asking**, and it comes off the principal
+— which is a contract change, exactly the kind of change that should be one.
+`orders` has made it and `customers` has not, which is why the two controllers
+read the tenant from different places and why only one of the two inputs
+mentions it.
 
 It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there

@@ -701,9 +701,13 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `HttpRouterPort` and
   exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` and `DATABASE_URL` come from the
   environment inside the graph, and the router is mounted under `/rpc`. The
-  contract declares `tenantId` on every input, so a procedure hands it to the
-  use case and the use case to the repository — the transport reads nothing
-  about it.
+  **unmarked** `customers` fragment declares `tenantId` on its input, so a
+  procedure hands it to the use case and the use case to the repository; the
+  **marked** `orders` fragment declares none and its handlers read
+  `context.principal.tenantId` instead — a caller does not name the tenant it
+  is served, and a required field the handler ignores would be a confused
+  deputy in contract form. Either way the transport reads nothing about
+  tenancy.
   `observability()` is what provides the `Logger` the interactors and the
   request scope write to, and `Logger` is in `exports` because `RequestModule`
   reads it out of the application scope. `RequestModule` rides

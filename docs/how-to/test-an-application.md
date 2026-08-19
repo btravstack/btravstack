@@ -61,9 +61,10 @@ describe("order-api", () => {
 
     // WHEN a call goes over the wire
     // THEN it reached the use case behind the transport
-    await expect(
-      client.orders.place({ tenantId, id: "o-1", quantity: 2 }),
-    ).toBeOkWith({ id: "o-1", quantity: 2 });
+    await expect(client.orders.place({ id: "o-1", quantity: 2 })).toBeOkWith({
+      id: "o-1",
+      quantity: 2,
+    });
   });
 });
 ```
@@ -141,7 +142,6 @@ const recordingApi = HttpModule("RecordingApi")({
 });
 
 it("runs each call in its own unit, with its own trace id", async ({
-  tenant,
   serve,
   clientFor,
 }) => {
@@ -150,10 +150,8 @@ it("runs each call in its own unit, with its own trace id", async ({
 
   // WHEN two calls are served — chained, so neither `Result` is dropped
   const served = await client.orders
-    .place({ tenantId: tenant, id: "o-1", quantity: 1 })
-    .flatMap(() =>
-      client.orders.place({ tenantId: tenant, id: "o-2", quantity: 1 }),
-    );
+    .place({ id: "o-1", quantity: 1 })
+    .flatMap(() => client.orders.place({ id: "o-2", quantity: 1 }));
 
   // THEN four lines, two distinct trace ids, none written outside a unit
   const traced = served.map(() => ({
@@ -307,12 +305,12 @@ const recordingApi = () => {
 };
 ```
 
-The tenant a handler serves is **not** `input.tenantId` any more: the `orders`
+The tenant a handler serves is **not** an input field any more: the `orders`
 handlers read `context.principal.tenantId`, the value the authenticator
-resolved from the request's headers. The contract still declares the input
-field — dropping it is a separate contract change — and those handlers
-deliberately do not use it, which is why a spec's token and its `tenantId`
-argument name the same tenant.
+resolved from the request's headers, and the marked fragment's inputs declare
+no tenant at all. So a spec's tenant reaches the server through the **token**
+`clientFor` mints and nowhere else. The unmarked `customers` fragment still
+names its tenant on the input, which is why its calls still pass one.
 
 `api.spec.ts` then swaps the repository for a stub that holds a request open
 to prove `completed: 1` and `abandoned: 1` against the real HTTP runtime (see

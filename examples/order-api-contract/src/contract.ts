@@ -13,21 +13,19 @@ export type OrderView = { readonly id: string; readonly quantity: number };
 export type OrderRef = { readonly id: string };
 
 /**
- * Every input names its tenant, because this API serves several from one
- * database and "which tenant" is part of what is being asked.
+ * An **unauthenticated** input names its tenant, because this API serves
+ * several from one database and "which tenant" is then part of what is being
+ * asked. It is an argument, not a header the transport reads:
+ * `@btravstack/http` has no tenancy concept and should not grow one — context
+ * is the application's to own, and naming it in the contract is what makes it
+ * the application's.
  *
- * It is an **argument**, not a header the transport reads: `@btravstack/http`
- * has no tenancy concept and should not grow one — context is the
- * application's to own. Naming it in the contract is what makes it the
- * application's: a client cannot forget it, the router cannot invent one, and
- * the use case it reaches takes it as a parameter all the way to the
- * repository.
- *
- * `orders` is where that already moved: the fragment is marked
- * `authenticated`, and its handlers serve `Principal.tenantId` rather than
- * this field — a caller does not get to name the tenant it is served. The
- * field stays declared on every input, `orders` included, because dropping it
- * is a separate contract change and this one was about the transport.
+ * `orders` is marked `authenticated` and therefore does **not** name it: its
+ * handlers serve `Principal.tenantId`, so a caller does not get to name the
+ * tenant it is served, and a field the handlers ignore would be a lie in the
+ * contract. `customers` is unmarked and keeps it. The contrast is the lesson —
+ * where a caller's identity establishes the tenant, the input has nothing to
+ * say about it.
  */
 export type Tenanted = { readonly tenantId: string };
 
@@ -39,9 +37,9 @@ export type CustomerView = { readonly id: string; readonly name: string };
  * is what makes a protected route legible to a client: `authenticated` is one
  * word in the shared artifact, visible in a diff and in the generated types.
  *
- * `tenantId` is on the principal AND on every input, deliberately: moving
- * tenancy onto the caller's identity is a separate contract change, and this
- * one is about the transport.
+ * `tenantId` is on the principal, and the marked fragment's inputs therefore
+ * do not carry one: for a protected procedure the caller's identity is what
+ * establishes the tenant.
  */
 export type Principal = { readonly userId: string; readonly tenantId: string };
 
@@ -50,14 +48,14 @@ const { authenticated } = auth<Principal>();
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
 const ordersContract = {
   place: oc
-    .input(type<Tenanted & { readonly id: string; readonly quantity: number }>())
+    .input(type<{ readonly id: string; readonly quantity: number }>())
     .output(type<OrderView>())
     .errors({
       INVALID_QUANTITY: { data: type<OrderRef>() },
       CONFLICT: { data: type<OrderRef>() },
     }),
   find: oc
-    .input(type<Tenanted & OrderRef>())
+    .input(type<OrderRef>())
     .output(type<OrderView>())
     .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
 };

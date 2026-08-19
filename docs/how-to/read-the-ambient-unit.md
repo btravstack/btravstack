@@ -76,11 +76,11 @@ export class OrderRepository extends Port("OrderRepository")<{
 Each transport then supplies it from its own contract, which is where a client
 already has to say what it wants:
 
-| Deployment              | Where the tenant comes from                    |
-| ----------------------- | ---------------------------------------------- |
-| `order-api`             | an input field on every procedure (`Tenanted`) |
-| `order-amqp-worker`     | a field on the broadcast envelope              |
-| `order-temporal-worker` | a field on every workflow and activity input   |
+| Deployment              | Where the tenant comes from                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| `order-api`             | an input field on a public procedure (`Tenanted`), the authenticated caller's principal on a marked one |
+| `order-amqp-worker`     | a field on the broadcast envelope                                                                       |
+| `order-temporal-worker` | a field on every workflow and activity input                                                            |
 
 Two consequences are the point rather than the price. A use case that forgot
 its tenant **does not compile**, where an ambient one would have failed at
