@@ -8,7 +8,7 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, imports?, provides?, exports? })`**
+- **`HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
   `http({ prefix?, port?, hostname? })` to `imports`, prepends the provider to
@@ -234,7 +234,7 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
   dropped protection rather than a bypass. `authenticated(...)` is applied to
   the finished node, which is what `@btravstack/contract` already documents.
 
-- **`http({ prefix?, port?, hostname?, plugins? })` →
+- **`http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **the one way HTTP is answered here: oRPC, over its own
   node adapter**. The
@@ -277,6 +277,24 @@ plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
   composition, with no access to a procedure's `Result` or its application
   logic — `principalMiddleware` (below) is the one per-request hook this
   package installs, and only on a marked leaf.
+- **`securityHeaders`** — `boolean | Readonly<Record<string, string>>`,
+  default `true`. **Not** routed through `orpc()`: it stays on `HttpOptions`
+  after `prefix` and `plugins` are destructured out of `http()`'s options, so
+  it lands in `socket` — the rest handed to `httpModule` — and is applied by
+  `http-runtime.ts`'s `listen`, on the raw node listener, **before**
+  dispatch. That placement, not an oRPC plugin, is deliberate: a plugin only
+  runs for a request oRPC **matched**, so the runtime's own `404` and `500`
+  would go out bare — the opposite of what helmet-style headers are for.
+  `true` applies the package's small default set
+  (`x-content-type-options: nosniff`, `x-frame-options: DENY`,
+  `referrer-policy: no-referrer`); `false` disables the feature; a record
+  replaces the defaults outright. Resolved once per `listen` call, outside
+  the per-request `createServer` callback, and set as its **first**
+  statement — before `open.add(response)` — so it covers a served response,
+  the runtime's `404`, its `500`, and a drained/retired response alike.
+  `HttpModuleOptions.securityHeaders` (`http-module.ts`) forwards it to
+  `http()` on the same `...(x === undefined ? {} : { x })` spread every
+  other option here uses.
 - **Two gates, both compile-time.** `start`'s phantom rest tuple turns a
   composition exporting no `HttpRuntime` into an arity error (`NO RUNTIME`);
   and because the runtime provider depends on the router port **through di**,
@@ -350,12 +368,12 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **36 specs, 100% lines/functions.** Every app boots through the `boot`
+- **39 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
   failure (`configured`'s `ConfigInvalid`, `occupied`'s port in use) is the
-  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 17,
+  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 20,
   through `test-fixtures.ts`'s `appOf` — `httpModule({ port: 0, hostname:
 "127.0.0.1" }, Provider(HttpHandler)({ value: handler }))` — so the
   guarantees (`404`/`500` fallbacks, the unit open until `'close'`, the drain,
@@ -365,7 +383,11 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   pinned"_, _"pins what it is given and reads the rest from the environment"_,
   _"fails startup with ConfigInvalid for HttpConfig when PORT is not a port"_,
   through the `configured` fixture, whose `BoundConfig` provider captures what
-  the graph bound). `orpc.spec.ts` carries 8 the starter proper answers
+  the graph bound), and three of them are `securityHeaders`: the defaults on a
+  served response through `serve`, the same defaults on the runtime's own
+  `404` through `rpc` — the path a handler plugin would never reach — and
+  their absence when `securityHeaders: false` is pinned, `serve`'s third
+  argument threading straight into `appOf`. `orpc.spec.ts` carries 8 the starter proper answers
   for, through the `rpc` fixture — `HttpModule("RpcApp")({ router:
 greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   a router provider that declares a `Greeter`, with a typed `RPCLink` client:

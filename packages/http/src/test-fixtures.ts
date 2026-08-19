@@ -41,7 +41,13 @@ import { HttpAuthenticator, Unauthenticated } from "./auth.js";
 import { HttpController } from "./controller.js";
 import { HttpHandler } from "./handler.js";
 import { HttpModule } from "./http-module.js";
-import { HttpConfig, HttpRuntime, httpModule, type HttpInfo } from "./http-runtime.js";
+import {
+  HttpConfig,
+  HttpRuntime,
+  httpModule,
+  type HttpInfo,
+  type HttpOptions,
+} from "./http-runtime.js";
 import { HttpRouter } from "./orpc.js";
 
 type Handler = ServiceOf<HttpHandler>;
@@ -52,10 +58,17 @@ type Handler = ServiceOf<HttpHandler>;
  * (`404`/`500`, the unit open until `'close'`, the drain) are exercised without
  * a router in the way. Loopback and an ephemeral port unless told otherwise.
  */
-const appOf = (handler: Handler, port = 0) =>
+const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securityHeaders"]) =>
   Module("App")({
     imports: [
-      httpModule({ port, hostname: "127.0.0.1" }, Provider(HttpHandler)({ value: handler })),
+      httpModule(
+        {
+          port,
+          hostname: "127.0.0.1",
+          ...(securityHeaders === undefined ? {} : { securityHeaders }),
+        },
+        Provider(HttpHandler)({ value: handler }),
+      ),
     ],
     exports: [HttpRuntime],
   });
@@ -352,6 +365,7 @@ export type HttpFixtures = {
   readonly serve: (
     handler?: Handler,
     unit?: SlowUnit["module"],
+    securityHeaders?: HttpOptions["securityHeaders"],
   ) => Promise<{ readonly app: App; readonly origin: string }>;
   /**
    * An app whose starter binds `HttpConfig` from `env` (plus whatever `options`
@@ -469,8 +483,11 @@ export const it = test.extend<HttpFixtures>({
   boot: bootFixture(),
 
   serve: async ({ boot }, use) => {
-    await use(async (handler = noop, unit) => {
-      const app = boot(appOf(handler), unit === undefined ? {} : { unit });
+    await use(async (handler = noop, unit, securityHeaders) => {
+      const app = boot(
+        appOf(handler, undefined, securityHeaders),
+        unit === undefined ? {} : { unit },
+      );
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { app, origin: `http://127.0.0.1:${info.port}` };

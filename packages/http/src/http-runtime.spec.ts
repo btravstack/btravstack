@@ -266,6 +266,46 @@ describe("httpRuntime", () => {
     await expect(held.head()).resolves.toContain("Connection: close");
   });
 
+  it("sets the security headers on a served response", async ({ serve }) => {
+    // GIVEN an app with the default security headers
+    const { origin } = await serve();
+
+    // WHEN a request is answered
+    const response = await fetch(`${origin}/anything`);
+
+    // THEN the defaults are on the response
+    expect({
+      nosniff: response.headers.get("x-content-type-options"),
+      frame: response.headers.get("x-frame-options"),
+      referrer: response.headers.get("referrer-policy"),
+    }).toEqual({ nosniff: "nosniff", frame: "DENY", referrer: "no-referrer" });
+  });
+
+  it("sets them on the runtime's own 404 too", async ({ rpc }) => {
+    // GIVEN an app whose oRPC handler declines a path
+    const { origin } = await rpc();
+
+    // WHEN an unmatched path is requested
+    const response = await fetch(`${origin}/not-a-procedure`);
+
+    // THEN the headers are there, on the path a handler plugin would never reach
+    expect({
+      status: response.status,
+      nosniff: response.headers.get("x-content-type-options"),
+    }).toEqual({ status: 404, nosniff: "nosniff" });
+  });
+
+  it("omits the security headers when securityHeaders is false", async ({ serve }) => {
+    // GIVEN an app with the feature explicitly disabled
+    const { origin } = await serve(undefined, undefined, false);
+
+    // WHEN a request is answered
+    const response = await fetch(origin);
+
+    // THEN none of the default headers are present
+    expect(response.headers.get("x-content-type-options")).toBeNull();
+  });
+
   it("ends the socket after a response whose headers were already on the wire when the drain began", async ({
     serve,
     streamedGate,

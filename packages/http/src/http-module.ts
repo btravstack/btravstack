@@ -70,6 +70,12 @@ export type HttpModuleOptions<
    * application logic, which the package still declines.
    */
   readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
+  /**
+   * Headers set on every response, before dispatch — a listener concern, not
+   * oRPC's. `true` (default) applies the package's small helmet-style
+   * default set; `false` disables it; a record replaces it outright.
+   */
+  readonly securityHeaders?: boolean | Readonly<Record<string, string>>;
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `HttpRuntime` is added, since `start` resolves it. */
@@ -114,7 +120,7 @@ export const HttpModule =
   >(
     options: HttpModuleOptions<RouterError, RouterNeeds, Principal, Auth, I, P, X>,
   ) => {
-    const { router, authenticator, prefix, port, hostname, plugins } = options;
+    const { router, authenticator, prefix, port, hostname, plugins, securityHeaders } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
@@ -123,6 +129,7 @@ export const HttpModule =
       ...(port === undefined ? {} : { port }),
       ...(hostname === undefined ? {} : { hostname }),
       ...(plugins === undefined ? {} : { plugins }),
+      ...(securityHeaders === undefined ? {} : { securityHeaders }),
     });
     // di's own `Module(name)({...})` over the augmented tuples: its return
     // type IS the sugar's — nothing spelled twice.

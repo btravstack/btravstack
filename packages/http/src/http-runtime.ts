@@ -52,6 +52,25 @@ export type HttpOptions = {
    * application logic, which the package still declines.
    */
   readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
+  /**
+   * Headers set on every response, before dispatch — the listener's own
+   * concern, not oRPC's: a handler plugin only runs for a request oRPC
+   * matched, so the runtime's own `404`/`500` would go out bare otherwise.
+   * `true` (default) applies {@link DEFAULT_SECURITY_HEADERS}; `false`
+   * disables the feature entirely; a record replaces the defaults outright.
+   */
+  readonly securityHeaders?: boolean | Readonly<Record<string, string>>;
+};
+
+/**
+ * Set before dispatch, so they also cover the runtime's own `404` and `500` —
+ * which is why they are here and not an oRPC plugin: a plugin runs only for a
+ * request oRPC matched.
+ */
+const DEFAULT_SECURITY_HEADERS: Readonly<Record<string, string>> = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
 };
 
 /** The runtime's port: what `http()` provides, and what the module `start` boots must export. */
@@ -60,10 +79,11 @@ export class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}
 const httpRuntime = (
   config: ServiceOf<HttpConfig>,
   handler: ServiceOf<HttpHandler>,
+  securityHeaders: HttpOptions["securityHeaders"],
 ): Runtime<never, HttpInfo> => ({
   name: "http",
   needs: [],
-  start: (host) => listen(host, config, handler),
+  start: (host) => listen(host, config, handler, securityHeaders),
 });
 
 /**
@@ -78,10 +98,14 @@ const httpRuntime = (
  * overload pair to keep in step.
  */
 export const httpModule = <N>(
-  options: { readonly port?: number; readonly hostname?: string },
+  options: {
+    readonly port?: number;
+    readonly hostname?: string;
+    readonly securityHeaders?: HttpOptions["securityHeaders"];
+  },
   handler: Provider<HttpHandler, never, N>,
 ): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N> => {
-  const { port, hostname } = options;
+  const { port, hostname, securityHeaders } = options;
   const config =
     port !== undefined && hostname !== undefined
       ? Provider(HttpConfig)({ value: { port, hostname } })
@@ -95,7 +119,9 @@ export const httpModule = <N>(
     provides: [
       config,
       handler,
-      Provider(HttpRuntime)([HttpConfig, HttpHandler], { sync: (c, h) => httpRuntime(c, h) }),
+      Provider(HttpRuntime)([HttpConfig, HttpHandler], {
+        sync: (c, h) => httpRuntime(c, h, securityHeaders),
+      }),
     ],
     exports: [HttpRuntime, HttpConfig],
   }) as unknown as Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
@@ -136,9 +162,19 @@ const listen = (
   host: RuntimeHost<never>,
   options: ServiceOf<HttpConfig>,
   handler: ServiceOf<HttpHandler>,
+  securityHeaders: HttpOptions["securityHeaders"],
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   fromSafePromise(
     new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
+      // Resolved once, outside the per-request callback: a request answers
+      // no faster for re-deriving the same record every time.
+      const headers: Readonly<Record<string, string>> =
+        securityHeaders === false
+          ? {}
+          : securityHeaders === true || securityHeaders === undefined
+            ? DEFAULT_SECURITY_HEADERS
+            : securityHeaders;
+
       // `close()` waits for every connection to end, and a keep-alive client
       // holds one open long after its response. Tracking sockets is what lets
       // `stop` destroy them instead of hanging.
@@ -166,6 +202,9 @@ const listen = (
       };
 
       const server: Server = createServer((request, response) => {
+        // FIRST, before dispatch: covers the runtime's own 404/500 and a
+        // drained/retired response alike, not only what oRPC matched.
+        for (const [name, value] of Object.entries(headers)) response.setHeader(name, value);
         open.add(response);
         response.once("close", () => open.delete(response));
         if (draining) retire(response);
