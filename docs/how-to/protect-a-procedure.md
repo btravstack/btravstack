@@ -123,7 +123,7 @@ export const bearerAuthenticator = HttpAuthenticator([], {
       tenantId === "" ||
       userId === undefined ||
       userId === ""
-      ? ErrAsync(new Unauthenticated({ reason: "no usable bearer token" }))
+      ? ErrAsync(new Unauthenticated())
       : OkAsync({ tenantId, userId });
   },
 });
@@ -153,11 +153,10 @@ step 4 instead of an `unknown` reaching a handler. It also means the
 authenticator and the controllers cannot disagree — both come from the same
 `httpAuth` call.
 
-`Unauthenticated` carries a `reason`, and the reason is **yours**: the starter
-does not surface it. A rejected caller gets an `UNAUTHORIZED` carrying oRPC's
-default message and nothing derived from the refusal — so an authenticator that
-wants the reason recorded logs it itself, which is one more argument for naming
-a logger in `deps`.
+`Unauthenticated` carries **nothing**: the starter surfaces no reason — a
+rejected caller gets an `UNAUTHORIZED` and oRPC's default message — so a payload
+would be write-only. An authenticator that wants to record why logs it before
+returning, which is one more argument for naming a logger in `deps`.
 
 ## Step 3 — read the principal
 

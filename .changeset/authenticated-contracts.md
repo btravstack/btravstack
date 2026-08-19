@@ -27,8 +27,8 @@ authenticator; a marked router whose root provides none is di's existing
 `UNSATISFIED DEPENDENCIES` gate, and an authenticator minted on a different
 identity than the router is refused at `HttpModule`. A marked procedure whose
 authenticator declines is answered `UNAUTHORIZED` before dispatch, with the
-handler never running and the `Unauthenticated`'s `reason` left in the process
-— it is the application's, to log where it decides.
+handler never running and no reason reaching the caller — `Unauthenticated`
+carries none, so an authenticator logs why before returning.
 
 `http()` and `HttpModule` also gain `plugins`, forwarding oRPC handler plugins
 (CORS, body limits, compression, CSRF) straight to `RPCHandler`, and

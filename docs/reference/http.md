@@ -32,7 +32,7 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAu
 | `HttpAuthenticatorOf`  | type  | `HttpAuthenticatorOf<Identity>` — the same, for the authenticator                                                                                                                                                                                 |
 | `AuthenticatorPort`    | value | `Port("HttpAuthenticator")` over `AuthenticatorService<unknown>` — the port a marked contract's router depends on                                                                                                                                 |
 | `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<P, Unauthenticated>` — headers in, principal out                                                                                                                                                   |
-| `Unauthenticated`      | value | a `TaggedError` carrying a `reason` — the refusal, the application's own; the starter does not surface it to the client                                                                                                                           |
+| `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                          |
 | `HasMark`              | type  | `HasMark<C>` — exactly `true` or `false`: whether the contract marks anything, anywhere in its tree                                                                                                                                               |
 | `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                 |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                |
@@ -303,11 +303,11 @@ inferred from `sync` — inference through a returned function's `AsyncResult` i
 where a principal silently widens to `unknown` — though in an application that
 has an `src/auth.ts` the argument is already fixed by `httpAuth<Identity>()`
 and the call is `HttpAuthenticator([deps], { sync })`. `Unauthenticated` is a
-`TaggedError` carrying a `reason`, and the reason is the **application's own**:
-the starter does not surface it. A rejected caller gets an `UNAUTHORIZED`
-carrying oRPC's default message and nothing derived from the refusal, so an
-authenticator that wants the reason recorded logs it itself — forwarding it
-would put "no such user" versus "bad signature" in a 401 body by default.
+`TaggedError` with an **empty payload**: the starter surfaces no reason, so a
+field would be write-only. A rejected caller gets an `UNAUTHORIZED` and oRPC's
+default message; an authenticator that wants to record why logs it before
+returning. Forwarding a reason would put "no such user" versus "bad signature"
+in a 401 body by default.
 
 ```ts
 export const bearerAuthenticator = HttpAuthenticator([], {
@@ -321,7 +321,7 @@ export const bearerAuthenticator = HttpAuthenticator([], {
       tenantId === "" ||
       userId === undefined ||
       userId === ""
-      ? ErrAsync(new Unauthenticated({ reason: "no usable bearer token" }))
+      ? ErrAsync(new Unauthenticated())
       : OkAsync({ tenantId, userId });
   },
 });

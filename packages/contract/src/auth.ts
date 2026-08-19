@@ -1,7 +1,9 @@
-// Never exported as a value: a nameable brand could be hand-written onto a
-// contract without the matching registry entry, which types as protected and
-// runs unmarked — no authenticator demanded, and a handler reading a principal
-// nothing injected.
+// Never exported as a value, so the brand cannot be applied by accident and
+// cannot be written literally. It is not unforgeable: `Authenticated<T>` is
+// exported (`@btravstack/http` needs it), so a deliberate
+// `node as unknown as Authenticated<typeof node>` types as protected while the
+// registry stays empty — no middleware installed, and a handler reading a
+// principal nothing injected. Exporting the symbol would drop the cast.
 declare const PRINCIPAL: unique symbol;
 
 /** A contract node whose procedures require an authenticated caller. */

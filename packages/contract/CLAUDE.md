@@ -75,12 +75,18 @@ error — the two copies' `PRINCIPAL` symbols are different `unique symbol`s —
 rather than to a silently unprotected route.
 
 `PRINCIPAL` is `declare`d and **never exported as a value**, and must stay
-that way. A nameable brand could be hand-written onto a contract node without
-the corresponding `WeakSet` entry: typed as protected, unmarked at runtime —
-so no authenticator is demanded and a handler reads a principal nothing ever
-injected. The TS2527 wart a consumer hits when re-exporting an inferred
-controller type is the price, and the aliases `@btravstack/http` exports
-(`HttpControllerOf<Identity>` and friends) are how it is paid.
+that way — but be precise about what that buys. It stops the brand being
+applied by accident or written literally; it does **not** make it unforgeable.
+`Authenticated<T>` is exported, because `@btravstack/http`'s `Inherit` needs
+it, so a deliberate `node as unknown as Authenticated<typeof node>` types as
+protected while the registry stays empty: `HasMark<C>` answers `true` and
+`HttpModule` demands an authenticator, `hasMarked` answers `false` and
+`routerOf` installs no middleware, and the leaf serves unauthenticated. It
+takes a double cast to reach, which is the whole of the protection. Exporting
+the symbol would remove even that, which is why the TS2527 wart a consumer
+hits when re-exporting an inferred controller type is worth paying — the
+aliases `@btravstack/http` exports (`HttpControllerOf<Identity>` and friends)
+are how it is paid.
 
 **Applied after a builder chain is finished, never inside one.** `authenticated`
 wraps a finished contract node — the last call in a chain, or a whole record

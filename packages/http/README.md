@@ -202,11 +202,18 @@ const ordersContract = authenticated({
 // why the authenticator and the controllers cannot disagree.
 const bearerAuthenticator = HttpAuthenticator([], {
   sync: () => (headers) => {
-    const [tenantId, userId] = (headers.authorization ?? "")
-      .replace("Bearer ", "")
-      .split(":");
-    return tenantId === undefined || userId === undefined
-      ? ErrAsync(new Unauthenticated({ reason: "no usable bearer token" }))
+    const header = headers.authorization ?? "";
+    const token = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : "";
+    const [tenantId, userId] = token.split(":");
+    // Empty is not absent: `Authorization: :` splits into two defined strings,
+    // and admitting them is admitting an anonymous caller as tenant "".
+    return tenantId === undefined ||
+      tenantId === "" ||
+      userId === undefined ||
+      userId === ""
+      ? ErrAsync(new Unauthenticated())
       : OkAsync({ tenantId, userId });
   },
 });
@@ -251,10 +258,10 @@ A marked router carries the authenticator port as a **need**, so forgetting
 minted on a different identity is a compile error at the `HttpModule(...)`
 call — the router's identity against the authenticator's, both from the same
 `httpAuth` call.
-A marked record protects every procedure beneath it. `Unauthenticated` carries a
-`reason` that is **yours**: the starter does not surface it — a rejected caller
-gets an `UNAUTHORIZED` and nothing derived from the refusal — so an
-authenticator that wants the reason recorded logs it itself. See
+A marked record protects every procedure beneath it. `Unauthenticated` carries
+**nothing**: the starter surfaces no reason — a rejected caller gets an
+`UNAUTHORIZED` and oRPC's default message — so an authenticator that wants to
+record why logs it before returning. See
 [Protect a procedure](https://btravstack.github.io/start/how-to/protect-a-procedure).
 
 ## What it guarantees
