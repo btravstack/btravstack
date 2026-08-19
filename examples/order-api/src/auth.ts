@@ -6,18 +6,15 @@ import {
 } from "@btravstack/http";
 
 /**
- * What this deployment knows about a caller, which is **more** than the
- * contract asks for: `Principal` declares `{ tenantId }` alone, because that is
- * all the API's own semantics depend on. `userId` is the server's business and
- * never reaches a client.
+ * What this deployment knows about a caller — and the one place it is stated.
  *
- * This is the layering the contract's own doc names, and this file is the one
- * place it is stated. The contract says **whether** a route is protected and
- * what a client must know; `httpAuth<Identity>()` says **what** the principal
- * is, server-side — so a handler sees `Identity`, `userId` included, with no
- * annotation at its own call site. `HttpModule`'s gate is unchanged and still
- * checks the authenticator against the contract's `Principal`; a subtype
- * discharges it, which is what `Identity` is.
+ * **The contract says whether a route is protected; this says what the
+ * principal is.** `@btravstack/example-order-api-contract` names no identity
+ * type at all, so none of this reaches a client and enriching it — roles, an
+ * org tier, an internal id — is never a contract change. A handler minted
+ * below sees `Identity` with no annotation at its own call site, and
+ * `HttpModule`'s gate compares the router's identity against the
+ * authenticator's, both of which come from the one call here.
  */
 export type Identity = { readonly tenantId: string; readonly userId: string };
 
@@ -28,7 +25,9 @@ export type Identity = { readonly tenantId: string; readonly userId: string };
  * cannot re-type a `sync` callback that lives in a slice's module.
  *
  * The authenticator and the controllers cannot disagree about the identity,
- * since both come from this call.
+ * since both come from this call — and there is no other way to read a
+ * principal: a marked fragment reached through `@btravstack/http`'s own
+ * top-level `HttpController` types `principal: never`.
  *
  * Each is annotated rather than left to inference: a controller's port expands
  * to a type carrying `@btravstack/contract`'s phantom `unique symbol`, which

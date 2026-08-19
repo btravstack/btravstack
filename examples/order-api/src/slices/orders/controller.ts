@@ -30,9 +30,9 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * authenticator resolved from the request's headers — `contract.orders` is
  * marked `authenticated`, so the principal is typed here and a handler that
  * misreads it does not compile. `HttpController` is `../../auth.ts`'s, minted
- * by `httpAuth<Identity>()`, which is why `userId` is readable at all: the
- * contract declares `{ tenantId }` and the authenticator resolves more, and
- * the factory is what puts the server's own type in scope where the handler is
+ * by `httpAuth<Identity>()`, which is why the principal has a readable type at
+ * all: the contract says only that the route is protected, and the factory is
+ * what puts this deployment's own identity in scope where the handler is
  * written. Who placed an order is a transport-boundary fact, so it is logged
  * here rather than pushed through a use case that has no business with it. The fragment's inputs name **no** tenant: a
  * caller does not get to name the tenant it is served, and a required field

@@ -1,4 +1,4 @@
-import { auth } from "@btravstack/contract";
+import { authenticated } from "@btravstack/contract";
 import { oc, type } from "@orpc/contract";
 
 /**
@@ -21,44 +21,16 @@ export type OrderRef = { readonly id: string };
  * the application's.
  *
  * `orders` is marked `authenticated` and therefore does **not** name it: its
- * handlers serve `Principal.tenantId`, so a caller does not get to name the
- * tenant it is served, and a field the handlers ignore would be a lie in the
- * contract. `customers` is unmarked and keeps it. The contrast is the lesson —
- * where a caller's identity establishes the tenant, the input has nothing to
- * say about it.
+ * handlers serve the tenant the caller's own identity establishes, so a caller
+ * does not get to name the tenant it is served, and a field the handlers ignore
+ * would be a lie in the contract. `customers` is unmarked and keeps it. The
+ * contrast is the lesson — where a caller's identity establishes the tenant,
+ * the input has nothing to say about it.
  */
 export type Tenanted = { readonly tenantId: string };
 
 /** What a customer looks like on the wire. */
 export type CustomerView = { readonly id: string; readonly name: string };
-
-/**
- * The **minimum** a caller's identity must carry for this API's own semantics
- * to work — not everything the server knows about them. Named in the contract
- * because that is what makes a protected route legible to a client:
- * `authenticated` is one word in the shared artifact, visible in a diff and in
- * the generated types.
- *
- * `tenantId` is here because the marked fragment's inputs therefore do not
- * carry one: for a protected procedure the caller's identity is what
- * establishes the tenant. Nothing else is, on purpose.
- *
- * **The rule this file exists to demonstrate: declare the minimum here, and
- * let the authenticator resolve more.** The starter's gate is
- * `Auth extends { principal: Principal }`, so a *subtype* discharges it —
- * `bearerAuthenticator` resolves `{ tenantId, userId }` and satisfies a
- * contract asking only for `{ tenantId }`. Enriching what a deployment knows
- * about its callers — roles, an org tier, an internal id — is therefore NOT a
- * contract change, and none of it reaches a client.
- *
- * The limit worth knowing: a handler sees this type, not the authenticator's
- * richer one. A field a handler needs must be declared here, and is then
- * client-visible. That is the price of the field, and the reason to keep this
- * type as small as the API's semantics allow.
- */
-export type Principal = { readonly tenantId: string };
-
-const { authenticated } = auth<Principal>();
 
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
 const ordersContract = {
@@ -101,6 +73,12 @@ const customersContract = {
  * type-level fact about the fragment, so a client reads which half of this API
  * needs credentials off the contract itself, and a server that serves the
  * marked half without an authenticator does not compile.
+ *
+ * **The contract says WHETHER a route is protected, and nothing about who the
+ * caller is.** No principal type is named here, so nothing about what this
+ * deployment knows about a caller — a user id, roles, an org tier — reaches a
+ * client, and enriching it is never a contract change. What the principal
+ * actually is, is `examples/order-api`'s `httpAuth<Identity>()` to say.
  */
 export const contract = {
   orders: authenticated(ordersContract),

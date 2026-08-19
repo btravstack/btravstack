@@ -104,20 +104,13 @@ export const OrderApi = HttpModule("OrderApi")({
 `authenticator` is owed because the contract marks its `orders` fragment
 `authenticated`: the router provider carries `AuthenticatorPort` as a need, so
 omitting the line is an unmet dependency `start` refuses, and supplying one
-that resolves a different principal is a compile error at this call. It sits at
+minted on a different identity is a compile error at this call. It sits at
 the root rather than in a slice — who a caller is is one answer per process —
 and it is an ordinary provider, so swapping this example's
 `Bearer <tenantId>:<userId>` stand-in for JWT verification changes nothing
 else.
 
-It resolves **more** than the contract asks for, on purpose: `Principal` is
-`{ tenantId }`, because that is all this API's semantics depend on, while the
-authenticator returns `{ tenantId, userId }`. The gate is
-`Auth extends { principal: Principal }`, so a subtype discharges it — adding
-roles or an internal id to what a deployment knows about its callers is not a
-contract change, and none of it reaches a client.
-
-Where that extra field is **stated** is `src/auth.ts`, the whole of it:
+Where the identity is **stated** is `src/auth.ts`, the whole of it:
 
 ```ts
 export type Identity = { readonly tenantId: string; readonly userId: string };
@@ -131,15 +124,21 @@ export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
   identity.HttpAuthenticator;
 ```
 
-The contract says the client-visible minimum and **whether** a route is
-protected; `httpAuth<Identity>()` says **what** the principal is, server-side.
-Both slices import `HttpController` from there instead of from
-`@btravstack/http`, and the orders controller reads
-`context.principal.userId` — a field the contract declares nowhere — to log who
-asked for a placement. Who placed an order is a transport-boundary fact, so it
-is logged there rather than pushed through a use case that has no business with
-it. Nothing else about either controller changed, which is the point of the
-factory: it is written once, and every slice infers from it.
+**The contract says whether a route is protected; `httpAuth<Identity>()` says
+what the principal is.** The contract names no identity type at all, so nothing
+here reaches a client and enriching it — roles, an org tier, an internal id —
+is never a contract change. Both slices import `HttpController` from there
+instead of from `@btravstack/http`, and the orders controller reads
+`context.principal.userId` to log who asked for a placement. Who placed an
+order is a transport-boundary fact, so it is logged there rather than pushed
+through a use case that has no business with it.
+
+It is also the only way to read a principal at all: a marked fragment reached
+through `@btravstack/http`'s own top-level `HttpController` types
+`principal: never`, so every read of it is a compile error. And it is written
+once per application rather than per slice — a handler's parameter types are
+fixed where the arrow is written, so the composition root cannot re-type a
+`sync` callback living in a slice's module.
 
 The root is a list of **slices**. Each one imports the vertical it needs —
 `OrderApplicationModule`, whose repository is an unmet need, and
@@ -326,8 +325,8 @@ const ordersContract = {
 The `customers` controller hands `input.tenantId` straight to the use case,
 which hands it to the repository, which puts it in the `WHERE`. The `orders`
 fragment is marked `authenticated`, so its controller takes the tenant from
-`context.principal.tenantId` — the server's `Identity`, not merely the
-contract's `Principal` — and its inputs name none: a required field the
+`context.principal.tenantId` — this deployment's `Identity`, which the
+contract never names — and its inputs name none: a required field the
 handler ignores is a field that lies, and a caller that could name a tenant it
 is not served is a confused deputy waiting to happen. Either way
 `@btravstack/http` knows

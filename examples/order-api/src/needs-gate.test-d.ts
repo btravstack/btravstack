@@ -88,18 +88,19 @@ const UnauthenticatedApi = HttpModule("UnauthenticatedApi")({
 const _missingAuthenticator = start(UnauthenticatedApi, options);
 
 // The OTHER authenticator gate, and a different one: whether the authenticator
-// resolves the contract's own principal. `AuthenticatorPort`'s service type is
+// resolves what the handlers read. `AuthenticatorPort`'s service type is
 // erased to `unknown`, so di sees the need discharged and would let this
-// through — `HttpModuleOptions` compares the two itself, at the
-// `HttpModule(...)` call, which is why this directive sits on the option and
-// not on a `start` below it.
+// through — `HttpModuleOptions` compares the ROUTER's identity against the
+// authenticator's itself, at the `HttpModule(...)` call, which is why this
+// directive sits on the option and not on a `start` below it. The contract
+// declares no principal to compare against; `./auth.ts` is what declares one.
 const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()([], {
   sync: () => () => OkAsync({ sub: "s-1" }),
 });
 
 const _mismatchedApi = HttpModule("MismatchedApi")({
   router: orderRouter,
-  // @ts-expect-error — the authenticator resolves `{ sub }`, not the contract's Principal.
+  // @ts-expect-error — the authenticator resolves `{ sub }`, not the router's Identity.
   authenticator: wrongAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
