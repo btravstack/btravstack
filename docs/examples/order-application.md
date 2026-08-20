@@ -221,6 +221,9 @@ the router's exhaustive `mapErrCases`, so adding a domain error without a code
 stops the router compiling:
 
 ```ts
+import { oc } from "@orpc/contract";
+import { z } from "zod";
+
 const orderView = z.object({ id: z.string(), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 

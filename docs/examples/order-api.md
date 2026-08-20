@@ -22,14 +22,26 @@ The contract splits into two fragments, `orders` and `customers`, each a
 `RouterContract` in its own right:
 
 ```ts
+import { oc } from "@orpc/contract";
+import { z } from "zod";
+
 const orderView = z.object({ id: z.string(), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 
 const orderRef = z.object({ id: z.string() });
 export type OrderRef = z.infer<typeof orderRef>;
 
+// The unmarked fragment names its tenant on the input; the marked one does not,
+// because a caller's identity establishes it there.
+const tenanted = z.object({ tenantId: z.string() });
+
 const customerView = z.object({ id: z.string(), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
+
+// Same shape as `orderRef`, deliberately not the same schema: reusing it would
+// type a customer id as "which order it was about".
+const customerRef = z.object({ id: z.string() });
+export type CustomerRef = z.infer<typeof customerRef>;
 
 const ordersContract = {
   place: oc
@@ -47,9 +59,9 @@ const ordersContract = {
 
 const customersContract = {
   find: oc
-    .input(z.object({ id: z.string() }))
+    .input(tenanted.extend({ id: z.string() }))
     .output(customerView)
-    .errors({ NOT_FOUND: { data: orderRef } }),
+    .errors({ NOT_FOUND: { data: customerRef } }),
 };
 
 export const contract = {

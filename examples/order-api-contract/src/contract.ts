@@ -44,6 +44,15 @@ export type Tenanted = z.infer<typeof tenanted>;
 const customerView = z.object({ id: z.string(), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
 
+/**
+ * What the customers fragment's `NOT_FOUND` carries. The same *shape* as
+ * `orderRef` and deliberately not the same schema: reusing that one would type
+ * a customer id as "which order it was about", and the exported type would lie
+ * to a client about which entity it names.
+ */
+const customerRef = z.object({ id: z.string() });
+export type CustomerRef = z.infer<typeof customerRef>;
+
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
 const ordersContract = {
   place: oc
@@ -64,7 +73,7 @@ const customersContract = {
   find: oc
     .input(tenanted.extend({ id: z.string() }))
     .output(customerView)
-    .errors({ NOT_FOUND: { data: orderRef } }),
+    .errors({ NOT_FOUND: { data: customerRef } }),
 };
 
 /**
