@@ -1091,16 +1091,34 @@ And a seventh, about the infrastructure a suite runs against:
   the three transport starters — and the auto-instrumentation constraint that
   will not go away are in `packages/observability/CLAUDE.md`. Never describe
   them as shipped.
-- **A `docs-examples.test-d.ts` for `@btravstack/http`, `@btravstack/temporal`,
-  `@btravstack/amqp` and `@btravstack/observability`.** `packages/core`'s exists precisely so its README and
-  the kernel-only pages of the documentation site cannot drift from
-  `runtime.ts` / `drain.ts` without failing `pnpm typecheck`; the four
-  other packages' README and site samples have no such gate — they were
+- **A `docs-examples.test-d.ts` for `@btravstack/temporal`, `@btravstack/amqp`
+  and `@btravstack/observability`.** `packages/core`'s exists precisely so its
+  README and the kernel-only pages of the documentation site cannot drift from
+  `runtime.ts` / `drain.ts` without failing `pnpm typecheck`; those three
+  packages' README and site samples have no such gate — they were
   compiled by hand in a scratch file inside the matching example workspace
-  when written, and by nothing since. Deliberately not built — four
-  packages' worth of samples still did not justify the harness. Add it the
+  when written, and by nothing since. Deliberately not built — three
+  packages' worth of samples still do not justify the harness. Add one the
   next time one of those samples is found to have drifted, the same way this
   gap itself was found.
+
+  **The HTTP half is no longer deferred**, because that trigger fired twice in
+  two days (issues #74 and #75, six pages describing `examples/order-api` as it
+  was before it had authentication). `examples/order-api/src/docs-examples.test-d.ts`
+  is the gate, and it lives in the **example** rather than in
+  `packages/http`: the samples call the real `PlaceOrder` / `FindOrder` /
+  `FindCustomer` against the real `contract` through the application's own
+  `src/auth.ts`, and a stub would have accepted every broken call — passing an
+  order id where a tenant goes was exactly the drift. It covers both
+  controllers, the keyed router, the `HttpModule` root with its authenticator,
+  the lifted single-slice root and the positional form the three
+  router-shaped pages share. It does **not** cover the pages' own contract
+  declarations: `zod` and `@btravstack/contract` are
+  `examples/order-api-contract`'s dependencies, not `examples/order-api`'s, so
+  a fragment is compiled where it lives — though a marker removed from it
+  still fails this file, since the controllers are typed by it. No config
+  change was needed; the workspace already wires `test:types`.
+
 - ~~Bringing `packages/core`'s 13 spec files under the Test conventions.~~
   **Closed by decision, not by doing it** (three of the 13 — `test-runtime`,
   `fake-clock`, `with-app` — have since moved to `packages/testing`, on the

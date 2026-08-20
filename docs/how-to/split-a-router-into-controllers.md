@@ -25,6 +25,7 @@ positional form already takes, just smaller — and the root contract is a
 record of them:
 
 ```ts
+import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
@@ -36,6 +37,11 @@ export type OrderRef = z.infer<typeof orderRef>;
 
 const customerView = z.object({ id: z.string(), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
+
+// The same shape as `orderRef` and deliberately its own schema: sharing that
+// one would type a customer id as "which order it was about".
+const customerRef = z.object({ id: z.string() });
+export type CustomerRef = z.infer<typeof customerRef>;
 
 const ordersContract = {
   place: oc
@@ -53,13 +59,13 @@ const ordersContract = {
 
 const customersContract = {
   find: oc
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ tenantId: z.string(), id: z.string() }))
     .output(customerView)
-    .errors({ NOT_FOUND: { data: orderRef } }),
+    .errors({ NOT_FOUND: { data: customerRef } }),
 };
 
 export const contract = {
-  orders: ordersContract,
+  orders: authenticated(ordersContract),
   customers: customersContract,
 };
 ```
@@ -71,6 +77,13 @@ fragment is made of, not a bare `type<T>()`: it validates what arrives at the
 slice, and inferring the view type from it keeps the checked shape and the
 compiled one from drifting apart.
 
+The two fragments differ in one more way, and it is worth reading as part of
+the split: `orders` is [`authenticated`](/reference/contract) and names no
+tenant on its inputs, because a caller's own identity establishes it; the
+unmarked `customers` names one, because "which tenant" is then part of what is
+being asked. A marker is per fragment, so slicing a contract is also where a
+public half and a protected one stop being one undifferentiated surface.
+
 ## Step 2 — a controller per slice
 
 `HttpController(name, fragment)([deps], { sync })` is `HttpRouter`'s own
@@ -80,14 +93,16 @@ so `sync`'s return is typed by the fragment at the call — a typo'd or missing
 procedure is a compile error inside the controller itself, not at the root:
 
 ```ts
+import { HttpController } from "../../auth.js";
+
 export const ordersController = HttpController(
   "OrdersController",
   contract.orders,
 )([PlaceOrder, FindOrder], {
   sync: (place, find) => ({
-    place: ({ errors }, input) =>
+    place: ({ errors, context }, input) =>
       place
-        .execute(input.id, input.quantity)
+        .execute(context.principal.tenantId, input.id, input.quantity)
         .map(view)
         .mapErrCases((matcher) =>
           matcher
@@ -104,9 +119,9 @@ export const ordersController = HttpController(
               }),
             ),
         ),
-    find: ({ errors }, input) =>
+    find: ({ errors, context }, input) =>
       find
-        .execute(input.id)
+        .execute(context.principal.tenantId, input.id)
         .map(view)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
@@ -119,6 +134,14 @@ export const ordersController = HttpController(
   }),
 });
 ```
+
+`HttpController` comes from the application's own `auth.ts`, not from
+`@btravstack/http`: the marker on the fragment says the route is protected, and
+`httpAuth<Identity>()` in that one file is what says what a principal is, so
+`context.principal` has a readable type here. Reached through the package's own
+top-level `HttpController` it would be `never`, and every read a compile error.
+The unmarked `customers` controller is unaffected either way — its context has
+no `principal` at all. See [Protect a procedure](/how-to/protect-a-procedure).
 
 The controller does no oRPC work of its own — it stores a plain record, and
 `HttpRouter` wraps each leaf in `.result(...)` when it composes the router.
@@ -167,6 +190,7 @@ owns:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
@@ -174,7 +198,11 @@ export const OrderApi = HttpModule("OrderApi")({
 
 `observability()` is here because every slice's layers write to its `Logger`
 and none of them owns it; `Logger` is exported because the per-request module
-reads it. Nothing else about what a slice needs is spelled at the root.
+reads it. The `authenticator` is here for the same kind of reason and a
+stronger one: who a caller is is one answer per process, not a slice's
+question. It is required because a marked fragment made it a dependency of the
+router provider, so omitting it is di's own `UNSATISFIED DEPENDENCIES` at
+`start`. Nothing else about what a slice needs is spelled at the root.
 
 This form is **exact**: a key the record above is missing, a key the
 contract does not declare, and a controller wired under the wrong key are all
@@ -198,9 +226,14 @@ export const ordersRouter = HttpRouter(contract.orders)(
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
+  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, observability()],
 });
 ```
+
+`HttpRouter` here is `auth.ts`'s too — the lifted fragment carries its marker,
+so the lifted root needs the same authenticator the modulith did, and that is
+the only line about identity extraction adds.
 
 `OrdersSlice` is the very module the modulith imported and `ordersController`
 the very provider it composed — not a copy, not a rewritten `sync`. Extraction
@@ -215,5 +248,7 @@ composing slices into one router a starting point rather than a trap.
   positional form, and everything the starter itself decides.
 - [`@btravstack/http`](/reference/http) — `HttpController` and
   `HttpRouter`'s full signatures.
+- [Protect a procedure](/how-to/protect-a-procedure) — `auth.ts`, the
+  authenticator, and what a marked fragment does to a controller.
 - [Order API (HTTP)](/examples/order-api) — the two-slice example these
   samples come from.

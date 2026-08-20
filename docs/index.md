@@ -32,19 +32,22 @@ features:
 ## At a glance
 
 `examples/order-api`'s **orders slice**, served on its own and condensed to one
-procedure: a contract, a router that is a provider, a composition root, and one
-call. The example itself composes that slice and a `customers` one into a
-single router through
+procedure: a contract, a router that is a provider, an authenticator, a
+composition root, and one call. The example itself composes that slice and a
+`customers` one into a single router through
 [controllers](/how-to/split-a-router-into-controllers).
 
 ```ts
+import { authenticated } from "@btravstack/contract";
 import { runMain } from "@btravstack/core";
-import { HttpModule, HttpRouter } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http";
 import { oc } from "@orpc/contract";
 import { P } from "unthrown";
 import { z } from "zod";
 
 import { OrderApplicationModule, PlaceOrder } from "./application.js";
+import { HttpRouter } from "./auth.js";
+import { bearerAuthenticator } from "./authenticator.js";
 import { OrderPersistenceModule } from "./persistence.js";
 
 // The contract comes first; a client can take it without the server.
@@ -52,7 +55,9 @@ import { OrderPersistenceModule } from "./persistence.js";
 const orderView = z.object({ id: z.string(), quantity: z.number() });
 const orderRef = z.object({ id: z.string() });
 
-const ordersContract = {
+// `authenticated` marks the fragment. It names no tenant on the input: a
+// caller does not get to pick the tenant it is served.
+const ordersContract = authenticated({
   place: oc
     .input(z.object({ id: z.string(), quantity: z.number() }))
     .output(orderView)
@@ -60,15 +65,15 @@ const ordersContract = {
       INVALID_QUANTITY: { data: orderRef },
       CONFLICT: { data: orderRef },
     }),
-};
+});
 
 // The router is a provider: it declares the use case its procedure calls.
 // Every domain error is named here — the one place a Result becomes HTTP.
 const ordersRouter = HttpRouter(ordersContract)([PlaceOrder], {
   sync: (place) => ({
-    place: ({ errors }, input) =>
+    place: ({ errors, context }, input) =>
       place
-        .execute(input.id, input.quantity)
+        .execute(context.principal.tenantId, input.id, input.quantity)
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
           matcher
@@ -91,6 +96,7 @@ const ordersRouter = HttpRouter(ordersContract)([PlaceOrder], {
 // The composition root. The runtime is a service of this module.
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
+  authenticator: bearerAuthenticator,
   imports: [OrderApplicationModule, OrderPersistenceModule],
 });
 
@@ -104,6 +110,13 @@ builds the graph, resolves that port and drives what it finds. `PORT` and
 `HOST` are read from the environment _inside_ the graph, through a
 configuration provider — nothing in `main.ts` touches `process.env`, and a
 malformed value is a `startFailed` event and exit code `78`.
+
+**The contract says _whether_ a route is protected; the application says _what_
+the principal is.** `authenticated` is the fact a client reads off the
+contract; `httpAuth<Identity>()` in `auth.ts` is what mints the `HttpRouter`
+above, so `context.principal` is typed where the handler is written; and the
+authenticator resolves it once per request, at the root. See
+[Protect a procedure](/how-to/protect-a-procedure).
 
 **SIGTERM drains in three beats.** Readiness flips false; the kernel waits for
 Kubernetes to stop routing to the pod _before_ telling the runtime to stop
