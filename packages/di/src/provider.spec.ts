@@ -20,9 +20,17 @@ test("a value provider yields its service and declares no deps", async () => {
   await expect(p.construct([])).resolves.toBeOkWith({ n: 1 });
 });
 
-test("a sync provider receives its dependencies positionally", async () => {
-  const p = Provider(Value)({ sync: () => ({ n: 2 }) });
-  await expect(p.construct([])).resolves.toBeOkWith({ n: 2 });
+test("a sync provider receives its dependencies by name", async () => {
+  const p = Provider(Value)({ seed: Seed }, { sync: ({ seed }) => ({ n: seed + 1 }) });
+  await expect(p.construct([1])).resolves.toBeOkWith({ n: 2 });
+});
+
+test("an EMPTY deps record still hands the factory a record, not nothing", async () => {
+  // Arity is what says a factory takes a services record, so a caller who
+  // wrote `{}` gets `{}` — not the `undefined` a key count would hand them.
+  // `HttpRouter(contract)({}, { sync })` is the shape that found this.
+  const p = Provider(Value)({}, { sync: (services) => ({ n: Object.keys(services).length }) });
+  await expect(p.construct([])).resolves.toBeOkWith({ n: 0 });
 });
 
 test("a make provider propagates the Err it returns", async () => {

@@ -203,7 +203,12 @@ export type Provider<P, E, N> = {
 const descriptor = (
   port: AnyPort,
   deps: readonly AnyPort[],
-  keys: readonly string[],
+  // `undefined` for the no-deps overload, an array — possibly EMPTY — for the
+  // one that declares a record. The distinction is arity, not key count: a
+  // caller who writes `Provider(P)({}, { sync })` declared a record and the
+  // types hand their factory one, so `keys.length === 0` is the wrong test and
+  // handing that factory nothing is how it read `undefined` instead.
+  keys: readonly string[] | undefined,
   options: Record<string, unknown>,
 ): Provider<unknown, never, never> => {
   // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- see the field comment on `Provider.construct`
@@ -214,7 +219,7 @@ const descriptor = (
     // arm below spreads: one element for a provider with deps, none without —
     // which is why a no-deps factory still takes no arguments.
     const args: readonly unknown[] =
-      keys.length === 0
+      keys === undefined
         ? []
         : [Object.fromEntries(keys.map((key, index) => [key, services[index]]))];
     if ("sync" in options) {
@@ -280,7 +285,7 @@ export function Provider<P extends AnyPort, S = ServiceOf<P>>(port: P) {
     // Two arguments means the first is `deps`; one means it is the options of a
     // provider that declares none.
     if (maybeOptions === undefined) {
-      return descriptor(port, [], [], depsOrOptions as Record<string, unknown>) as Provider<
+      return descriptor(port, [], undefined, depsOrOptions as Record<string, unknown>) as Provider<
         unknown,
         never,
         never
