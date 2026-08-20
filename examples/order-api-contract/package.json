@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "dependencies": {
-    "@orpc/contract": "catalog:"
+    "@orpc/contract": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@btravstack/contract": "workspace:*",

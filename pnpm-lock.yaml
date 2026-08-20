@@ -431,6 +431,9 @@ importers:
       '@orpc/contract':
         specifier: 'catalog:'
         version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@btravstack/contract':
         specifier: workspace:*
