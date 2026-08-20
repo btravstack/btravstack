@@ -4,7 +4,7 @@ import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
 import { RuntimePort, type Runtime, type Serving } from "./runtime.js";
-import { start, type RunningApp } from "./start.js";
+import { start, type RunningApp, type StartGate } from "./start.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 class Clock extends Port("Clock")<{ readonly now: () => number }> {}
@@ -57,9 +57,18 @@ const Unsatisfied = Module("Unsatisfied")({
 // @ts-expect-error -- UNSATISFIED RUNTIME NEEDS: the runtime needs `Clock`, which the module does not export
 start(Unsatisfied);
 
+// WHICH arm rejected it, pinned: the directive above accepts ANY error, so the
+// sentence a reader is actually shown is asserted here or nowhere.
+expectTypeOf<
+  StartGate<Greeting | NeedsClock>
+>().toEqualTypeOf<"UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export">();
+
 // The other way the gate bites: a module that exports no runtime port at all.
 // @ts-expect-error -- NO RUNTIME: `AppModule` exports no port declared over `RuntimePort`
 start(AppModule);
+expectTypeOf<
+  StartGate<Greeting>
+>().toEqualTypeOf<"NO RUNTIME — the module exports no port declared over RuntimePort">();
 
 // A needs-free runtime works against any module: `InstanceType<never>` is
 // `never`, and `[never] extends [X]` holds for every `X`. `testRuntime` ships
@@ -85,6 +94,9 @@ const ClockyUnit = Module("ClockyUnit")({
 
 // @ts-expect-error -- UNSATISFIED UNIT NEEDS: the unit module reads `Clock`, which the module does not export
 start(Satisfied, { unit: ClockyUnit });
+expectTypeOf<
+  StartGate<Greeting | NeedsGreeting, Clock>
+>().toEqualTypeOf<"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export">();
 
 // A runtime may NOT draw a need from the unit module's exports: `Span` exists
 // only while a unit is open, and `RuntimeHost.ctx` is the application context

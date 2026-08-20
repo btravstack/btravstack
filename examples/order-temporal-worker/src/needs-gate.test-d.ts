@@ -30,6 +30,7 @@ import { Module } from "@btravstack/di";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { observability } from "@btravstack/observability";
 import { TemporalModule, TemporalRuntime, temporal } from "@btravstack/temporal";
 
 import { OrderTemporalWorker, orderActivities } from "./module.js";
@@ -45,15 +46,17 @@ const options = { signals: false, probes: false } as const;
 const _wired = start(OrderTemporalWorker, options);
 
 // The same graph without the starter: nothing declared over `RuntimePort` is
-// exported, so there is nothing for `start` to boot.
+// exported, so there is nothing for `start` to boot. `observability()` is here
+// so this arm fails on the RUNTIME alone — the two slices owe `Logger`
+// otherwise, and a module failing two gates at once elaborates the other one.
 const RuntimelessTemporal = Module("RuntimelessTemporal")({
-  imports: [FulfillmentSlice, BillingSlice],
+  imports: [FulfillmentSlice, BillingSlice, observability()],
   provides: [orderActivities],
   exports: [orderActivities.port],
 });
 
-// Negative: the gate becomes a required two-element tuple naming the absence,
-// and the call fails on arity.
+// Negative: the marker intersected onto `module` becomes a sentence naming the
+// absence, which is what the call fails to match.
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _noRuntime = start(RuntimelessTemporal, options);
 
