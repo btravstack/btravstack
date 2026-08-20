@@ -91,7 +91,7 @@ Provider<HandlersPortOf<C>>> & Compose<C>` — di's builder first, the composer
   last. Reversed, TypeScript reports the FIRST arm's failure on a
   non-covering array, and the diagnostic degrades to `not assignable to
 'Qualification<readonly [], Handlers>'`, naming nothing; last, it reports the
-  composing arm's own conditional against `readonly ["UNCOVERED HANDLERS",
+  composing arm's own conditional against `readonly ["UNCOVERED HANDLERS — …",
 K]`, which always names the marker — the missing key `K` itself appears only
   when the array's length matches that marker tuple's own length of 2; a
   single-element array's diagnostic names the marker alone — measured, not
@@ -287,7 +287,7 @@ right])`, pinning that both slices run (_"serves a record composed from one
   composing form's compile-time gates on a contract of its own — a piece typed
   by its own key, an array covering every declared key, an uncovered array
   refused as `@ts-expect-error` (its own single-element case reports only the
-  `"UNCOVERED HANDLERS"` marker, not the missing key — see the composing-arm
+  `"UNCOVERED HANDLERS — …"` marker, not the missing key — see the composing-arm
   entry above for when the key itself is named), and a piece built for another contract
   refused structurally (that contract's own key needs its own message, not a
   reused one, or the two ports are the same type and there is nothing to

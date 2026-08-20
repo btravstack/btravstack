@@ -229,7 +229,7 @@ is refused right there — not at the root, and not at startup.
 The third is caught at the composing call. `AmqpHandlers(contract)([...])`
 and `TemporalActivities(contract)([...])` are exact against every top-level
 key the contract declares: an array missing one is refused, against an
-`"UNCOVERED HANDLERS"` / `"UNCOVERED ACTIVITIES"` marker — readable straight
+`"UNCOVERED HANDLERS — …"` / `"UNCOVERED ACTIVITIES — …"` marker — readable straight
 off the type error rather than a runtime stack trace, and never a silent
 failure or an `undefined` merged into the record:
 
@@ -242,10 +242,10 @@ TemporalActivities(orderContract)([chargeOrder]);
 ```
 
 Both arrays above are one element long, so both diagnostics report only the
-marker (`"UNCOVERED HANDLERS"`, `"UNCOVERED ACTIVITIES"`) — the missing key
+marker (`"UNCOVERED HANDLERS — …"`, `"UNCOVERED ACTIVITIES — …"`) — the missing key
 itself is not in either message. The key IS named — as
-`readonly ["UNCOVERED HANDLERS", "orderAudit"]` or
-`readonly ["UNCOVERED ACTIVITIES", "fulfillOrder"]` — but only once the array
+`readonly ["UNCOVERED HANDLERS — …", "orderAudit"]` or
+`readonly ["UNCOVERED ACTIVITIES — …", "fulfillOrder"]` — but only once the array
 under test is as long as the marker tuple itself (2), a two-piece array
 missing one key being the common case. Below that length TypeScript can no
 longer line the array up against the tuple positionally and falls back to

@@ -200,8 +200,9 @@ constructs every piece first — they are the composed provider's own `deps`,
 declared under the very key each piece's port id carries, so the services
 record IS the activities record. Every top-level key the contract's
 activities record declares must be covered: an array missing one is refused
-at the call, against an `"UNCOVERED ACTIVITIES"` marker
-(`readonly ["UNCOVERED ACTIVITIES", ...]`) — the missing key itself is named
+at the call, against an
+`"UNCOVERED ACTIVITIES — the contract declares a workflow this array does not cover"`
+marker (`readonly ["UNCOVERED ACTIVITIES — …", ...]`) — the missing key itself is named
 too once the array's length matches that marker tuple's own length of 2; a
 single-element array's diagnostic names the marker alone; a piece built for
 another contract is refused too, structurally, since its port's service is

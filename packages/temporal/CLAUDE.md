@@ -78,7 +78,7 @@ Provider<ActivitiesPortOf<C>>> & Compose<C>` — di's builder first, the
   non-covering array, and the diagnostic degrades to `not assignable to
 'Qualification<readonly [], Activities>'`, naming nothing; last, it reports
   the composing arm's own conditional against `readonly ["UNCOVERED
-ACTIVITIES", K]`, which always names the marker — the missing key `K` itself
+ACTIVITIES — …", K]`, which always names the marker — the missing key `K` itself
   appears only when the array's length matches that marker tuple's own length
   of 2; a single-element array's diagnostic names the marker alone —
   measured, not stylistic. The

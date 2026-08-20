@@ -670,8 +670,8 @@ AuditSlice, observability()], … })`),
   the piece's own port id rather than on a record position — and
   `AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])`
   compose them: every key the contract declares must be covered (an uncovered
-  one is refused at the call, against an `"UNCOVERED HANDLERS"` /
-  `"UNCOVERED ACTIVITIES"` marker that names the missing key too once the
+  one is refused at the call, against an `"UNCOVERED HANDLERS — …"` /
+  `"UNCOVERED ACTIVITIES — …"` marker that names the missing key too once the
   array's length matches the marker tuple's own length of 2), and two slices
   both discharged for one key are di's duplicate-provider defect at build —
   the same exactness the keyed HTTP

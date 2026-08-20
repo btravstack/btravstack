@@ -170,8 +170,9 @@ A third call composes several **pieces** instead of one record:
 piece first — they are the composed provider's own `deps`, declared under the
 very key each piece's port id carries, so the services record IS the handlers
 record. Every key the contract declares must be covered: an array
-missing one is refused at the call, against an `"UNCOVERED HANDLERS"` marker
-(`readonly ["UNCOVERED HANDLERS", ...]`) — the missing key itself is named
+missing one is refused at the call, against an
+`"UNCOVERED HANDLERS — the contract declares a consumer this array does not cover"`
+marker (`readonly ["UNCOVERED HANDLERS — …", ...]`) — the missing key itself is named
 too once the array's length matches that marker tuple's own length of 2; a
 single-element array's diagnostic names the marker alone; a piece built for
 another contract
