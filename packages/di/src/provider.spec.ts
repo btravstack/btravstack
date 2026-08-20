@@ -45,14 +45,14 @@ test("a throw inside a factory becomes a defect, not an error", async () => {
 test("a class provider constructs with the resolved dependencies", async () => {
   class Impl {
     private readonly seed: number;
-    constructor(seed: number) {
+    constructor({ seed }: { readonly seed: number }) {
       this.seed = seed;
     }
     get n(): number {
       return this.seed + 1;
     }
   }
-  const p = Provider(Value)([Seed], { class: Impl });
+  const p = Provider(Value)({ seed: Seed }, { class: Impl });
   const built = await p.construct([41]);
   expect(built.isOk() && (built.value as Impl).n).toBe(42);
 });

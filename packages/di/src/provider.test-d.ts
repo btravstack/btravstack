@@ -33,8 +33,8 @@ type ChannelsOf<T> = T extends Provider<infer P, infer E, infer N> ? readonly [P
 
 class RepoImpl {
   private readonly cfg: ServiceOf<AppConfig>;
-  constructor(cfg: ServiceOf<AppConfig>) {
-    this.cfg = cfg;
+  constructor({ config }: { readonly config: ServiceOf<AppConfig> }) {
+    this.cfg = config;
   }
   find(): string {
     return this.cfg.dbUrl;
@@ -60,28 +60,57 @@ describe("Provider", () => {
     void needsIsNever;
   });
 
-  test("deps are typed into the factory parameters, positionally", () => {
-    Provider(AppConfig)([Env], {
-      sync: (env) => ({ dbUrl: env["DATABASE_URL"] ?? "" }),
-    });
+  test("deps are typed into the services record, under the names they were declared with", () => {
+    Provider(AppConfig)(
+      { env: Env },
+      {
+        sync: ({ env }) => ({ dbUrl: env["DATABASE_URL"] ?? "" }),
+      },
+    );
   });
 
-  test("a factory parameter has the dependency's service shape, not the port", () => {
-    Provider(AppConfig)([Env], {
-      // @ts-expect-error the parameter is the env record, which has no `portId`
-      sync: (env) => ({ dbUrl: env.portId }),
-    });
+  test("a key the deps record does not declare is not on the services record", () => {
+    Provider(AppConfig)(
+      { env: Env },
+      {
+        // @ts-expect-error `logger` was never declared as a dependency
+        sync: ({ env, logger }) => ({ dbUrl: (env["DATABASE_URL"] ?? "") + String(logger) }),
+      },
+    );
+  });
+
+  test("a deps value that is not a port is rejected", () => {
+    Provider(AppConfig)(
+      // @ts-expect-error `"Env"` is a string, not a port class
+      { env: "Env" },
+      {
+        sync: () => ({ dbUrl: "" }),
+      },
+    );
+  });
+
+  test("a services record entry has the dependency's service shape, not the port", () => {
+    Provider(AppConfig)(
+      { env: Env },
+      {
+        // @ts-expect-error the entry is the env record, which has no `portId`
+        sync: ({ env }) => ({ dbUrl: env.portId }),
+      },
+    );
   });
 
   test("make infers E from the Err it returns", () => {
-    const p = Provider(AppConfig)([Env], {
-      make: (env) => {
-        const url = env["DATABASE_URL"];
-        return url === undefined
-          ? Err(new ConfigError({ reason: "DATABASE_URL is unset" }))
-          : Ok({ dbUrl: url });
+    const p = Provider(AppConfig)(
+      { env: Env },
+      {
+        make: ({ env }) => {
+          const url = env["DATABASE_URL"];
+          return url === undefined
+            ? Err(new ConfigError({ reason: "DATABASE_URL is unset" }))
+            : Ok({ dbUrl: url });
+        },
       },
-    });
+    );
     const typed: Provider<AppConfig, ConfigError, Env> = p;
     void typed;
 
@@ -102,12 +131,12 @@ describe("Provider", () => {
   });
 
   test("class checks the constructor against the declared deps", () => {
-    Provider(Repo)([AppConfig], { class: RepoImpl });
+    Provider(Repo)({ config: AppConfig }, { class: RepoImpl });
   });
 
   test("a class whose constructor does not match the deps is rejected", () => {
     // @ts-expect-error RepoImpl takes an AppConfig service, not a Logger service
-    Provider(Repo)([Logger], { class: RepoImpl });
+    Provider(Repo)({ config: Logger }, { class: RepoImpl });
   });
 
   test("two qualifications at once are rejected", () => {
@@ -185,7 +214,10 @@ describe("Provider", () => {
    * launders the channel silently.
    */
   test("an unmet requirement cannot be laundered to no requirement", () => {
-    const p = Provider(Repo)([AppConfig], { sync: (cfg) => ({ find: () => cfg.dbUrl }) });
+    const p = Provider(Repo)(
+      { config: AppConfig },
+      { sync: ({ config }) => ({ find: () => config.dbUrl }) },
+    );
     // @ts-expect-error AppConfig is still an unmet requirement
     const typed: Provider<Repo, never, never> = p;
     void typed;
@@ -197,19 +229,25 @@ describe("Provider", () => {
     // nothing registered for `AppConfig` at all.
     const makeRepoProvider = (): Provider<Repo, never, never> =>
       // @ts-expect-error AppConfig is still an unmet requirement
-      Provider(Repo)([AppConfig], { sync: (cfg) => ({ find: () => cfg.dbUrl }) });
+      Provider(Repo)(
+        { config: AppConfig },
+        { sync: ({ config }) => ({ find: () => config.dbUrl }) },
+      );
     void makeRepoProvider;
   });
 
   test("a wider error union cannot be narrowed away", () => {
-    const p = Provider(AppConfig)([Env], {
-      make: (env) => {
-        const url = env["DATABASE_URL"];
-        if (url === undefined) return Err(new ConfigError({ reason: "unset" }));
-        if (url === "") return Err(new PoolError({ url }));
-        return Ok({ dbUrl: url });
+    const p = Provider(AppConfig)(
+      { env: Env },
+      {
+        make: ({ env }) => {
+          const url = env["DATABASE_URL"];
+          if (url === undefined) return Err(new ConfigError({ reason: "unset" }));
+          if (url === "") return Err(new PoolError({ url }));
+          return Ok({ dbUrl: url });
+        },
       },
-    });
+    );
 
     type Channels = ChannelsOf<typeof p>;
     const errorIsUnion: Equal<Channels[1], ConfigError | PoolError> = true;

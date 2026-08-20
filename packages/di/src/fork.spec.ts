@@ -19,10 +19,13 @@ test("a fork releases only its own resources and leaves the parent up", async ()
   });
   const request = Module("Request")({
     provides: [
-      Provider(Txn)([Pool], {
-        acquire: (pool) => Ok({ id: `txn-on-${pool.id}` }),
-        release: () => void released.push("txn"),
-      }),
+      Provider(Txn)(
+        { pool: Pool },
+        {
+          acquire: ({ pool }) => Ok({ id: `txn-on-${pool.id}` }),
+          release: () => void released.push("txn"),
+        },
+      ),
     ],
     exports: [Txn],
   });

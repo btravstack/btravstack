@@ -37,12 +37,15 @@ class GetOrder extends Port("GetOrder")<{
 }> {}
 
 // A provider binds a port to a construction and declares what it needs — the
-// arguments arrive typed from the ports listed, in order.
-const getOrder = Provider(GetOrder)([OrderRepository], {
-  sync: (orders): ServiceOf<GetOrder> => ({
-    execute: (id) => orders.findById(id),
-  }),
-});
+// services arrive typed, under the names the deps record gave them.
+const getOrder = Provider(GetOrder)(
+  { orders: OrderRepository },
+  {
+    sync: ({ orders }): ServiceOf<GetOrder> => ({
+      execute: (id) => orders.findById(id),
+    }),
+  },
+);
 
 const inMemoryOrders = Provider(OrderRepository)({
   sync: () => {

@@ -30,7 +30,7 @@ All runtime code lives in `packages/di/src`, one concept per file:
   once an audit found no consumer in any of the eight packages or ten
   examples, and the exemption they needed had rippled into `plan`'s levelling
   (a `Set<AnyProvider>` plus two count maps, now one membership test).
-- **`provider.ts`** — `Provider(Port)([deps], arm)` with a construction family of
+- **`provider.ts`** — `Provider(Port)({ name: Dep }, arm)` with a construction family of
   mutually exclusive option arms: `value` / `sync` / `make` (fallible, returns
   `Result`) / `class` / `acquire`+`release` (resourceful — puts `Scope` in
   `Needs`). Exclusivity is enforced by giving each arm the other keys as optional
@@ -72,13 +72,13 @@ missing: N]`. `exports` accepts an available **port class**, a **provider** for
   (`{ portId: Id; new (): PortInstance<Id, Service> }`, both types only) so a
   provider over a port declared inside a helper — one minted per call
   (`Config.provider("RelayConfig")(schema)`) or the helper's own fixed one
-  (`HttpRouter(contract)(deps, { sync })`, on `@btravstack/http`'s
+  (`HttpRouter(contract)({ name: Dep }, { sync })`, on `@btravstack/http`'s
   `HttpRouterPort`) — has a nameable
   declared type when a consumer exports it: the class expression
   `class extends Port(id)<S> {}` has an anonymous type declaration emit cannot
   name across packages (TS4023, measured), `PortClassOf` is its nameable
   spelling, and naming the instance type forges nothing (the brand keys stay
-  private). `Provider(port)(deps, arm)`'s return type is `Provider<P, E, N> &
+  private). `Provider(port)({ name: Dep }, arm)`'s return type is `Provider<P, E, N> &
 { readonly port: typeof port }` — the provider carries its port class typed,
   so `provider.port` is what a dependent lists in its deps; purely additive. `AnyModule`, `AnyProvider` and
   `Exportable` are exported so a package offering a **shaped module** (a
