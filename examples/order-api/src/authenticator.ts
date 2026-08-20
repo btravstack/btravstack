@@ -15,13 +15,16 @@ import { HttpAuthenticator } from "./auth.js";
  * controllers are minted from — so a token resolving to the wrong shape is a
  * compile error here, and the handlers cannot be reading a different one.
  */
-export const bearerAuthenticator = HttpAuthenticator([], {
-  sync: () => (headers) => {
-    const header = headers.authorization ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
-    const [tenantId, userId] = token.split(":");
-    return tenantId === undefined || tenantId === "" || userId === undefined || userId === ""
-      ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+export const bearerAuthenticator = HttpAuthenticator(
+  {},
+  {
+    sync: () => (headers) => {
+      const header = headers.authorization ?? "";
+      const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+      const [tenantId, userId] = token.split(":");
+      return tenantId === undefined || tenantId === "" || userId === undefined || userId === ""
+        ? ErrAsync(new Unauthenticated())
+        : OkAsync({ tenantId, userId });
+    },
   },
-});
+);

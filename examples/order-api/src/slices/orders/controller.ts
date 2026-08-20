@@ -48,9 +48,9 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * provider like any other in the graph.
  */
 export const ordersController = HttpController("OrdersController", contract.orders)(
-  [PlaceOrder, FindOrder, Logger],
+  { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
-    sync: (place, find, logger) => ({
+    sync: ({ place, find, logger }) => ({
       place: ({ errors, context }, input) => {
         logger.info("order placement requested", { userId: context.principal.userId });
         return place

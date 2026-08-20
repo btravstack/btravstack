@@ -21,9 +21,9 @@ const view = (customer: Customer): CustomerView => ({ id: customer.id, name: cus
  * triage, not by owning a private adapter.
  */
 export const customersController = HttpController("CustomersController", contract.customers)(
-  [FindCustomer],
+  { find: FindCustomer },
   {
-    sync: (find) => ({
+    sync: ({ find }) => ({
       find: ({ errors }, input) =>
         find
           .execute(input.tenantId, input.id)

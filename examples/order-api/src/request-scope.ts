@@ -21,15 +21,18 @@ export class RequestSpan extends Port("RequestSpan")<{ readonly finish: () => vo
  */
 export const RequestModule = Module("Request")({
   provides: [
-    Provider(RequestSpan)([Logger], {
-      sync: (logger) => {
-        const startedAt = Date.now();
-        return {
-          finish: () => logger.info("request finished", { durationMs: Date.now() - startedAt }),
-        };
+    Provider(RequestSpan)(
+      { logger: Logger },
+      {
+        sync: ({ logger }) => {
+          const startedAt = Date.now();
+          return {
+            finish: () => logger.info("request finished", { durationMs: Date.now() - startedAt }),
+          };
+        },
+        onStop: (span) => span.finish(),
       },
-      onStop: (span) => span.finish(),
-    }),
+    ),
   ],
   exports: [RequestSpan],
 });
