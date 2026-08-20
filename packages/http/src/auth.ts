@@ -44,8 +44,8 @@ export type AuthenticatorPort = PortInstance<"HttpAuthenticator", AuthenticatorS
  * The authenticator as a provider, with its principal type stated at the call:
  *
  * ```ts
- * export const jwtAuthenticator = HttpAuthenticator<Principal>()([JwtVerifier], {
- *   sync: (verify) => (headers) => verify(headers.authorization),
+ * export const jwtAuthenticator = HttpAuthenticator<Principal>()({ verify: JwtVerifier }, {
+ *   sync: ({ verify }) => (headers) => verify(headers.authorization),
  * });
  * ```
  *
@@ -55,14 +55,14 @@ export type AuthenticatorPort = PortInstance<"HttpAuthenticator", AuthenticatorS
  */
 export const HttpAuthenticator =
   <P>() =>
-  <const D extends readonly AnyPort[]>(
+  <const D extends Readonly<Record<string, AnyPort>>>(
     deps: D,
     options: {
-      readonly sync: (
-        ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
-      ) => AuthenticatorService<P>;
+      readonly sync: (services: {
+        readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
+      }) => AuthenticatorService<P>;
     },
-  ): Provider<AuthenticatorPort, never, InstanceType<D[number]>> & { readonly principal: P } =>
+  ): Provider<AuthenticatorPort, never, InstanceType<D[keyof D]>> & { readonly principal: P } =>
     Provider(AuthenticatorPort)(deps, options as never) as never;
 
 /**

@@ -29,14 +29,14 @@ import type { Implementation } from "./orpc.js";
 export const controllerFor =
   <Identity>() =>
   <const Name extends string, C extends RouterContract>(name: Name, contract: C) =>
-  <const D extends readonly AnyPort[]>(
+  <const D extends Readonly<Record<string, AnyPort>>>(
     deps: D,
     options: {
-      readonly sync: (
-        ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
-      ) => Implementation<C, Identity>;
+      readonly sync: (services: {
+        readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
+      }) => Implementation<C, Identity>;
     },
-  ): Provider<PortInstance<Name, Implementation<C, Identity>>, never, InstanceType<D[number]>> & {
+  ): Provider<PortInstance<Name, Implementation<C, Identity>>, never, InstanceType<D[keyof D]>> & {
     readonly port: PortClassOf<Name, Implementation<C, Identity>>;
   } => {
     // The parameter is named, not `_`-prefixed, so it reads as `contract` in the

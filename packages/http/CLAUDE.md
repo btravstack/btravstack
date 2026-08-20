@@ -67,10 +67,10 @@ I, O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   `undefined` for an undeclared key, measured), and `os.router(built)` is the
   port's service. `C` is bounded `Record<string, RouterContract>` — a router
   record, not a bare procedure, since a bare procedure has no keys to walk. The
-  second call is di's `Provider(HttpRouterPort)(deps, { sync })` with the
+  second call is di's `Provider(HttpRouterPort)({ name: Dep }, { sync })` with the
   router built from what `sync` returns; there is no name to give. The
   return is `Provider<PortInstance<"HttpRouter", Router<…>>, never,
-InstanceType<D[number]>> & { port: PortClassOf<"HttpRouter", Router<…>> }`,
+InstanceType<D[keyof D]>> & { port: PortClassOf<"HttpRouter", Router<…>> }`,
   spelled through di's `PortInstance` / `PortClassOf` (`{ portId; new ():
 PortInstance<…> }`) rather than the class's own type because a class
   expression's type expands the brand keys in a consumer's declaration emit
@@ -91,7 +91,7 @@ PortInstance<…> }`) rather than the class's own type because a class
 IsMarked<C>>, Identity> }`, and the `controllers`
   **parameter** is typed `M & { readonly [K in Exclude<keyof M, Exclude<keyof C,
 PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
-  positional arm's `Implementation<C>` carries, so a **root-marked** contract
+  deps arm's `Implementation<C>` carries, so a **root-marked** contract
   composes here at all (the phantom key is not a controller to supply) and each
   fragment inherits the root's mark (a controller under it types
   `context.principal`). Both were missing until `auth.test-d.ts`'s eleventh arm
@@ -102,13 +102,15 @@ PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
   dropping the key, without the intersection leaking into `M` and collapsing
   the needs channel di orders the controllers by (the failure mode
   `controller.test-d.ts`'s `_ComposedNeedsAreDeclared` check exists to catch).
-  `Array.isArray(depsOrControllers)` discriminates this arm
-  from the positional one, the same way `Provider(port)(depsOrOptions, …)`
-  discriminates its own two forms. `deps` for the underlying
-  `Provider(HttpRouterPort)(...)` are the record's values' `.port`, in
-  declaration order, so di builds every controller before the router; `sync`
-  rebuilds the flat implementation record from what each controller's `sync`
-  returned and hands it to the same `routerOf` walk the positional form uses.
+  **Arity** discriminates this arm from the deps one — one argument versus
+  two — the same way `Provider(port)(depsOrOptions, …)` discriminates its own
+  two forms, since a deps record and a controllers record are both non-array
+  objects and there is nothing to sniff. `deps` for the underlying
+  `Provider(HttpRouterPort)(...)` is the controllers record with each value
+  replaced by its `.port`, so di builds every controller before the router —
+  and the services record comes back keyed by the SAME contract keys, so the
+  implementation record needs no reassembling before the `routerOf` walk the
+  deps form uses.
   Five compile-time gates are pinned by `controller.test-d.ts`: every contract
   key covered, an undeclared key rejected, a controller under the wrong key
   rejected, a procedure a controller's fragment does not declare rejected
@@ -137,9 +139,9 @@ PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
   fragment does not declare or a handler whose input or output has drifted is
   a compile error inside the controller rather than at the root — and mints
   `class extends Port(name)<Implementation<C>> {}`; the second is di's
-  `Provider(port)(deps, { sync })`, unchanged. Returns
+  `Provider(port)({ name: Dep }, { sync })`, unchanged. Returns
   `Provider<PortInstance<Name, Implementation<C>>, never,
-InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>> }` —
+InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C>> }` —
   the same `PortInstance`/`PortClassOf` spelling `HttpRouter` uses and for the
   same reason (TS4023 on a class expression's own type). The controller does
   no oRPC work: it is a plain record; `HttpRouter`'s `routerOf` walk is what
@@ -274,9 +276,12 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
     Unreachable while the two halves agree, which is exactly why it is there.
 
   When `hasMarked(contract)` answers true,
-  `AuthenticatorPort` is appended **last** to the provider's dependency array
-  (so every existing positional service keeps its index; `sync` is called with
-  the leading slice) and both `build` overloads add
+  `AuthenticatorPort` joins the provider's deps record under the **namespaced**
+  key `"@btravstack/http/authenticator"` — namespaced for the same reason
+  `tapped`'s port id is, since every other key on that record is a name the
+  caller chose and this one must not be able to collide with a dependency
+  somebody called `authenticator`; `sync` reads it off the services record and
+  hands the caller's own `sync` the rest — and both `build` overloads add
   `HasMark<C> extends true ? AuthenticatorPort : never` to the needs channel
   plus `readonly identity: Identity` to the result.
   A marked router whose root provides no authenticator is therefore di's
@@ -420,7 +425,7 @@ plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
   di `Port` whose service is the node listener,
   `(request, response, signal) => PromiseLike<unknown>`. `http()` provides it
   from the router port (`orpc.ts`'s `orpc({ prefix })`, a
-  `Provider(HttpHandler)([HttpRouterPort], …)`: `@orpc/server/node`'s
+  `Provider(HttpHandler)({ router: HttpRouterPort }, …)`: `@orpc/server/node`'s
   `RPCHandler`, `(request, response) => rpc.handle(request, response, {
 prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider depends on it through
   di. It returns `PromiseLike<unknown>` rather than `void` because the

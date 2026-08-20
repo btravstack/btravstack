@@ -119,9 +119,12 @@ export const httpModule = <N>(
     provides: [
       config,
       handler,
-      Provider(HttpRuntime)([HttpConfig, HttpHandler], {
-        sync: (c, h) => httpRuntime(c, h, securityHeaders),
-      }),
+      Provider(HttpRuntime)(
+        { config: HttpConfig, handler: HttpHandler },
+        {
+          sync: ({ config: bound, handler: handle }) => httpRuntime(bound, handle, securityHeaders),
+        },
+      ),
     ],
     exports: [HttpRuntime, HttpConfig],
   }) as unknown as Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;

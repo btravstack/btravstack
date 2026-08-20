@@ -27,45 +27,48 @@ import { HttpModule, HttpRouter } from "@btravstack/http";
 import { P } from "unthrown";
 
 // Contract-first: the record is shaped like the contract, each leaf a plain
-// Result-returning function typed by it. The use cases arrive as arguments —
-// di injects them; oRPC's context stays empty.
-const ordersRouter = HttpRouter(ordersContract)([PlaceOrder, FindOrder], {
-  sync: (place, find) => ({
-    place: ({ errors }, input) =>
-      place
-        .execute(input.id, input.quantity)
-        .map(view)
-        // The one place a domain error becomes a transport one — exhaustive,
-        // so a new domain error is a compile error right here.
-        .mapErrCases((matcher) =>
-          matcher
-            .with(P.tag("InvalidQuantity"), (error) =>
-              errors.INVALID_QUANTITY({
-                message: error.message,
-                data: { id: error.id },
-              }),
-            )
-            .with(P.tag("DuplicateOrder"), (error) =>
-              errors.CONFLICT({
+// Result-returning function typed by it. The use cases arrive under the names
+// the deps record gave them — di injects them; oRPC's context stays empty.
+const ordersRouter = HttpRouter(ordersContract)(
+  { place: PlaceOrder, find: FindOrder },
+  {
+    sync: ({ place, find }) => ({
+      place: ({ errors }, input) =>
+        place
+          .execute(input.id, input.quantity)
+          .map(view)
+          // The one place a domain error becomes a transport one — exhaustive,
+          // so a new domain error is a compile error right here.
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
+          ),
+      find: ({ errors }, input) =>
+        find
+          .execute(input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
-        ),
-    find: ({ errors }, input) =>
-      find
-        .execute(input.id)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher.with(P.tag("OrderNotFound"), (error) =>
-            errors.NOT_FOUND({
-              message: error.message,
-              data: { id: error.id },
-            }),
           ),
-        ),
-  }),
-});
+    }),
+  },
+);
 
 // A di module that also knows about its router: imports the starter, provides
 // the router on the starter's own port (a process serves one router, so
@@ -200,43 +203,49 @@ const ordersContract = authenticated({
 // verifier or a user directory is injected the way any provider's are. It
 // takes no type argument — `httpAuth<Identity>()` already fixed one, which is
 // why the authenticator and the controllers cannot disagree.
-const bearerAuthenticator = HttpAuthenticator([], {
-  sync: () => (headers) => {
-    const header = headers.authorization ?? "";
-    const token = header.startsWith("Bearer ")
-      ? header.slice("Bearer ".length)
-      : "";
-    const [tenantId, userId] = token.split(":");
-    // Empty is not absent: `Authorization: :` splits into two defined strings,
-    // and admitting them is admitting an anonymous caller as tenant "".
-    return tenantId === undefined ||
-      tenantId === "" ||
-      userId === undefined ||
-      userId === ""
-      ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+const bearerAuthenticator = HttpAuthenticator(
+  {},
+  {
+    sync: () => (headers) => {
+      const header = headers.authorization ?? "";
+      const token = header.startsWith("Bearer ")
+        ? header.slice("Bearer ".length)
+        : "";
+      const [tenantId, userId] = token.split(":");
+      // Empty is not absent: `Authorization: :` splits into two defined strings,
+      // and admitting them is admitting an anonymous caller as tenant "".
+      return tenantId === undefined ||
+        tenantId === "" ||
+        userId === undefined ||
+        userId === ""
+        ? ErrAsync(new Unauthenticated())
+        : OkAsync({ tenantId, userId });
+    },
   },
-});
+);
 
 // The principal arrives on oRPC's own context channel, typed by `Identity`.
-const ordersRouter = HttpRouter({ orders: ordersContract })([FindOrder], {
-  sync: (find) => ({
-    orders: {
-      find: ({ context, errors }, input) =>
-        find
-          .execute(context.principal.tenantId, input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
-                message: error.message,
-                data: { id: error.id },
-              }),
+const ordersRouter = HttpRouter({ orders: ordersContract })(
+  { find: FindOrder },
+  {
+    sync: ({ find }) => ({
+      orders: {
+        find: ({ context, errors }, input) =>
+          find
+            .execute(context.principal.tenantId, input.id)
+            .map(view)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("OrderNotFound"), (error) =>
+                errors.NOT_FOUND({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
             ),
-          ),
-    },
-  }),
-});
+      },
+    }),
+  },
+);
 
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,

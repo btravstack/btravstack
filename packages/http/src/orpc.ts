@@ -73,22 +73,26 @@ export type HttpRouterPort = PortInstance<"HttpRouter", Router<Record<never, nev
  */
 export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
-  return Provider(HttpHandler)([HttpRouterPort], {
-    sync: (service) => {
-      const rpc = new RPCHandler(service, { plugins: [...(options.plugins ?? [])] });
-      // The request rides oRPC's initial context so `principalMiddleware` can
-      // read its headers; nothing else in this package reads it.
-      return (request, response) => rpc.handle(request, response, { prefix, context: { request } });
+  return Provider(HttpHandler)(
+    { router: HttpRouterPort },
+    {
+      sync: ({ router }) => {
+        const rpc = new RPCHandler(router, { plugins: [...(options.plugins ?? [])] });
+        // The request rides oRPC's initial context so `principalMiddleware` can
+        // read its headers; nothing else in this package reads it.
+        return (request, response) =>
+          rpc.handle(request, response, { prefix, context: { request } });
+      },
     },
-  });
+  );
 };
 
 /**
  * The router as a provider, **from the contract**:
  *
  * ```ts
- * const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
- *   sync: (place, find) => ({
+ * const orderRouter = HttpRouter(orderContract)({ place: PlaceOrder, find: FindOrder }, {
+ *   sync: ({ place, find }) => ({
  *     orders: {
  *       place: ({ errors }, input) => place.execute(input.id, input.quantity).map(view).mapErrCases(…),
  *       find: ({ errors }, input) => find.execute(input.id).map(view).mapErrCases(…),
@@ -107,14 +111,15 @@ export const orpc = (options: OrpcOptions = {}) => {
  * `os.router(...)` are what this call does for you.
  *
  * The first call fixes the contract; the second is di's
- * `Provider(port)([deps], { sync })` on the starter's own router port, with
+ * `Provider(port)({ name: Dep }, { sync })` on the starter's own router port, with
  * one difference: `sync` returns the implementation record and the router is
  * built from it. There is no name to give — a process serves one router, so
  * the port is the starter's (`HttpRouterPort`), and the provider carries it
  * typed (`orderRouter.port`) for whoever else needs the class.
  *
  * The second call also takes a **keyed record of controllers** instead of
- * `(deps, { sync })`: `HttpRouter(contract)({ orders: ordersController, users:
+ * `(deps, { sync })` — one argument rather than two, which is what tells the
+ * two apart, exactly as `Provider(port)(…)` discriminates its own: `HttpRouter(contract)({ orders: ordersController, users:
  * usersController })`, one `HttpController` per top-level contract key. Each
  * fragment is composed as-is rather than re-implemented, and every key of the
  * contract must be covered — a missing or extra key is a compile error.
@@ -131,17 +136,17 @@ export const routerFor =
       readonly router: (record: Record<string, unknown>) => Router<Record<never, never>>;
     };
 
-    function build<const D extends readonly AnyPort[]>(
+    function build<const D extends Readonly<Record<string, AnyPort>>>(
       deps: D,
       options: {
-        readonly sync: (
-          ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
-        ) => Implementation<C, Identity>;
+        readonly sync: (services: {
+          readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
+        }) => Implementation<C, Identity>;
       },
     ): Provider<
       PortInstance<"HttpRouter", Router<Record<never, never>>>,
       never,
-      InstanceType<D[number]> | (HasMark<C> extends true ? AuthenticatorPort : never)
+      InstanceType<D[keyof D]> | (HasMark<C> extends true ? AuthenticatorPort : never)
     > & {
       readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
       readonly identity: Identity;
@@ -166,50 +171,63 @@ export const routerFor =
       readonly identity: Identity;
     };
     function build(depsOrControllers: unknown, options?: unknown): unknown {
-      // The authenticator is appended LAST to the dependency array so every
-      // existing positional service keeps the index `sync` already reads it at.
       const guarded = hasMarked(contract);
-      const authenticatorOf = (services: readonly unknown[]): AuthenticatorService<unknown> =>
-        services.at(-1) as AuthenticatorService<unknown>;
-
-      // `Array.isArray` discriminates the two forms, the same way
-      // `Provider(port)(depsOrOptions, …)` discriminates its own.
-      if (Array.isArray(depsOrControllers)) {
-        const deps = depsOrControllers as readonly AnyPort[];
-        const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
-          os.router(
-            routerOf(
-              os,
-              (options as { readonly sync: (...s: readonly unknown[]) => unknown }).sync(
-                ...services.slice(0, deps.length),
-              ) as Record<string, unknown>,
-              contract,
-              isAuthenticated(contract),
-              guarded ? authenticatorOf(services) : undefined,
-            ),
-          );
-        return Provider(HttpRouterPort)(guarded ? [...deps, AuthenticatorPort] : deps, {
-          sync,
-        } as never);
-      }
-
-      const entries = Object.entries(
-        depsOrControllers as Record<string, { readonly port: AnyPort }>,
-      );
-      const sync = (...services: readonly unknown[]): Router<Record<never, never>> =>
+      // The authenticator rides a NAMESPACED key on the deps record, for the
+      // same reason `tapped`'s port id is namespaced: the other keys are the
+      // caller's own names, and this one must not be able to collide with a
+      // dependency somebody called `authenticator`.
+      const own = (services: Record<string, unknown>): Record<string, unknown> => {
+        const { [AUTHENTICATOR]: _authenticator, ...rest } = services;
+        return rest;
+      };
+      const withAuthenticator = (deps: Record<string, AnyPort>): Record<string, AnyPort> =>
+        guarded ? { ...deps, [AUTHENTICATOR]: AuthenticatorPort } : deps;
+      const routerFrom = (
+        implementation: Record<string, unknown>,
+        services: Record<string, unknown>,
+      ): Router<Record<never, never>> =>
         os.router(
           routerOf(
             os,
-            Object.fromEntries(entries.map(([key], index) => [key, services[index]])),
+            implementation,
             contract,
             isAuthenticated(contract),
-            guarded ? authenticatorOf(services) : undefined,
+            guarded ? (services[AUTHENTICATOR] as AuthenticatorService<unknown>) : undefined,
           ),
         );
-      const ports = entries.map(([, controller]) => controller.port);
-      return Provider(HttpRouterPort)(guarded ? [...ports, AuthenticatorPort] : ports, {
-        sync,
-      } as never);
+
+      // ARITY discriminates the two forms, the same way
+      // `Provider(port)(depsOrOptions, …)` discriminates its own: a deps record
+      // and a controllers record are both non-array objects, so there is
+      // nothing to sniff.
+      if (options !== undefined) {
+        const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
+          routerFrom(
+            (options as { readonly sync: (s: Record<string, unknown>) => unknown }).sync(
+              own(services),
+            ) as Record<string, unknown>,
+            services,
+          );
+        return Provider(HttpRouterPort)(
+          withAuthenticator(depsOrControllers as Record<string, AnyPort>),
+          { sync } as never,
+        );
+      }
+
+      // The controllers record is keyed by contract key, and so is the services
+      // record it becomes — so the implementation IS what the graph resolved,
+      // with nothing to reassemble positionally.
+      const controllers = depsOrControllers as Record<string, { readonly port: AnyPort }>;
+      const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
+        routerFrom(own(services), services);
+      return Provider(HttpRouterPort)(
+        withAuthenticator(
+          Object.fromEntries(
+            Object.entries(controllers).map(([key, controller]) => [key, controller.port]),
+          ),
+        ),
+        { sync } as never,
+      );
     }
 
     return build;
@@ -222,6 +240,9 @@ export const routerFor =
  * whose handlers see the application's own principal.
  */
 export const HttpRouter: ReturnType<typeof routerFor<never>> = routerFor<never>();
+
+// Namespaced so it cannot collide with a key the caller wrote; see `build`.
+const AUTHENTICATOR = "@btravstack/http/authenticator";
 
 /** A controller for one fragment — what `HttpController` returns, as the keyed form consumes it. */
 type ControllerFor<Fragment extends RouterContract, Identity = never> = {
