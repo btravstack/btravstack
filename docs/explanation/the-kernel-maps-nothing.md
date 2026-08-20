@@ -50,12 +50,13 @@ them answers it in the kernel.
 oRPC router and declines to map anything itself. The router's procedures are
 `Result`-returning functions typed by the contract, and the one place a domain
 error becomes a status is the `mapErrCases` in each procedure. From
-[`examples/order-api`](/examples/order-api):
+[`examples/order-api`](/examples/order-api), whose `orders` fragment is
+`authenticated`, so the tenant comes off the principal rather than the input:
 
 ```ts
-      place: ({ errors }, input) =>
+      place: ({ errors, context }, input) =>
         place
-          .execute(input.id, input.quantity)
+          .execute(context.principal.tenantId, input.id, input.quantity)
           .map(view)
           .mapErrCases((matcher) =>
             matcher
