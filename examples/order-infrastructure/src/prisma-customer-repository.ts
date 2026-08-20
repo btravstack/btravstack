@@ -38,6 +38,7 @@ export const prismaCustomerRepository = (
       .flatMap((row) => (row === null ? Err(new CustomerNotFound({ id })) : hydrate(row))),
 });
 
-export const customerRepositoryProvider = Provider(CustomerRepository)([OrderDatabase], {
-  sync: prismaCustomerRepository,
-});
+export const customerRepositoryProvider = Provider(CustomerRepository)(
+  { db: OrderDatabase },
+  { sync: ({ db }) => prismaCustomerRepository(db) },
+);

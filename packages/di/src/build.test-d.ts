@@ -28,7 +28,7 @@ describe("Module.build", () => {
     const mod = Module("Complete")({
       provides: [
         Provider(Cfg)({ value: { url: "u" } }),
-        Provider(Repo)([Cfg], { sync: (c) => ({ find: () => c.url }) }),
+        Provider(Repo)({ config: Cfg }, { sync: ({ config }) => ({ find: () => config.url }) }),
       ],
       exports: [Repo],
     });
@@ -50,12 +50,15 @@ describe("Module.build", () => {
     const mod = Module("Fallible")({
       provides: [
         Provider(Env)({ value: {} }),
-        Provider(Cfg)([Env], {
-          make: (env) =>
-            env["URL"] === undefined
-              ? Err(new CfgError({ reason: "unset" }))
-              : Ok({ url: env["URL"] }),
-        }),
+        Provider(Cfg)(
+          { env: Env },
+          {
+            make: ({ env }) =>
+              env["URL"] === undefined
+                ? Err(new CfgError({ reason: "unset" }))
+                : Ok({ url: env["URL"] }),
+          },
+        ),
       ],
       exports: [Cfg],
     });
@@ -75,7 +78,9 @@ describe("Module.build", () => {
 
   test("a module with unmet needs does not compile", () => {
     const mod = Module("Incomplete")({
-      provides: [Provider(Repo)([Cfg], { sync: (c) => ({ find: () => c.url }) })],
+      provides: [
+        Provider(Repo)({ config: Cfg }, { sync: ({ config }) => ({ find: () => config.url }) }),
+      ],
       exports: [Repo],
     });
     // @ts-expect-error unsatisfied dependency: Cfg — the rest parameter

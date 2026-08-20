@@ -54,18 +54,25 @@ piece's own file, not at the root:
 export const orderNotifications = AmqpHandler(
   orderContract,
   "orderNotifications",
-)([Logger], {
-  sync: (logger) => (message) => {
-    const { id, payload } = message.payload;
-    logger.info(
-      payload === null ? "order gone — notifying" : "order placed — notifying",
-      {
-        orderId: id,
+)(
+  { logger: Logger },
+  {
+    sync:
+      ({ logger }) =>
+      (message) => {
+        const { id, payload } = message.payload;
+        logger.info(
+          payload === null
+            ? "order gone — notifying"
+            : "order placed — notifying",
+          {
+            orderId: id,
+          },
+        );
+        return OkAsync();
       },
-    );
-    return OkAsync();
   },
-});
+);
 ```
 
 ```ts
@@ -73,21 +80,24 @@ export const orderNotifications = AmqpHandler(
 export const chargeOrder = TemporalWorkflowActivities(
   orderContract,
   "chargeOrder",
-)([PaymentService], {
-  sync: (payments) => ({
-    authorizePayment: (args, { errors }) =>
-      payments
-        .authorize(args.orderId, args.amount)
-        .map((authorizationId) => ({ authorizationId }))
-        .mapErrCases((matcher) =>
-          matcher.with(P.tag("PaymentDeclined"), (error) =>
-            errors.PaymentDeclined({ id: error.id }),
+)(
+  { payments: PaymentService },
+  {
+    sync: ({ payments }) => ({
+      authorizePayment: (args, { errors }) =>
+        payments
+          .authorize(args.orderId, args.amount)
+          .map((authorizationId) => ({ authorizationId }))
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("PaymentDeclined"), (error) =>
+              errors.PaymentDeclined({ id: error.id }),
+            ),
           ),
-        ),
-    capturePayment: (args) => payments.capture(args.authorizationId),
-    refundPayment: (args) => payments.refund(args.authorizationId),
-  }),
-});
+      capturePayment: (args) => payments.capture(args.authorizationId),
+      refundPayment: (args) => payments.refund(args.authorizationId),
+    }),
+  },
+);
 ```
 
 Each piece declares only the ports **it** calls: `orderNotifications` takes
@@ -142,9 +152,9 @@ export const orderActivities = TemporalActivities(orderContract)([
 ```
 
 Di constructs every piece first — they are the composed provider's own
-`deps`, in array order — and this reassembles the record from them, keyed by
-what each piece's port id carries. The composed provider's own `deps` are the
-**pieces' ports**, not what a piece closes over, so a piece still needs
+`deps`, declared under the very key each piece's port id carries, so the
+services record IS the record the starter needs. The composed provider's own
+`deps` are the **pieces' ports**, not what a piece closes over, so a piece still needs
 discharging like any other need: the root **imports every slice module**,
 even though nothing in it names a piece directly —
 

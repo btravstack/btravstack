@@ -35,7 +35,7 @@ const databaseConfig = Config.provider("DatabaseConfig")(
 const Persistence = Module("Persistence")({
   provides: [
     databaseConfig,
-    Provider(Database)([databaseConfig.port], { acquire: (config) => …, release: … }),
+    Provider(Database)({ config: databaseConfig.port }, { acquire: ({ config }) => …, release: … }),
   ],
   exports: [Database],
 });

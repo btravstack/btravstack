@@ -50,9 +50,10 @@ const databaseConfig = Config.provider("DatabaseConfig")(
 export const Persistence = Module("Persistence")({
   provides: [
     databaseConfig,
-    Provider(Database)([databaseConfig.port], {
-      sync: (config) => openDatabase(config),
-    }),
+    Provider(Database)(
+      { config: databaseConfig.port },
+      { sync: ({ config }) => openDatabase(config) },
+    ),
   ],
   exports: [Database],
 });

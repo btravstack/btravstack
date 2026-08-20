@@ -92,28 +92,63 @@ const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
 });
 
 /** The router as a service, built from the greeter it declares — contract-first, on the starter's own router port. */
-const greetingRouter = HttpRouter(greetingContract)([Greeter], {
-  sync: greetingImplementation,
-});
+const greetingRouter = HttpRouter(greetingContract)(
+  { greeter: Greeter },
+  {
+    sync: ({ greeter }) => greetingImplementation(greeter),
+  },
+);
 
 /** Two controllers over the same contract's two halves — what the keyed router composes. */
-export const helloController = HttpController("HelloController", helloFragment)([Greeter], {
-  sync: (greeter) => ({ hello: () => OkAsync(greeter.greet("world")) }),
-});
+export const helloController = HttpController("HelloController", helloFragment)(
+  { greeter: Greeter },
+  { sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet("world")) }) },
+);
 
 /**
  * The keyed form's own contract, over the same two fragments. Not a constraint
  * — a bare procedure is a `RouterContract` too, so a controller sits at such a
- * key as happily as at a nested one — but `greetingContract` is the positional
+ * key as happily as at a nested one — but `greetingContract` is the deps
  * form's fixture, carrying its `boom` defect and the stray key smuggled past
  * the types, and the two arms are worth exercising side by side.
  */
 const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
 
 /** The other half of `slicedContract`, alongside the reused `helloController`. */
-const echoesController = HttpController("EchoesController", nestedFragment)([], {
+const echoesController = HttpController(
+  "EchoesController",
+  nestedFragment,
+)({
   sync: () => ({ ping: () => OkAsync("pong") }),
 });
+
+/**
+ * A contract whose top-level key is literally `sync` — the one input that could
+ * confuse `HttpRouter`'s runtime discriminator, which tells its arm-only form
+ * from its keyed-controllers form by whether `sync` holds a function. A
+ * contract may name a key anything, so this is the adversarial case: the value
+ * under `sync` here is a CONTROLLER, an object carrying `.port`, and the check
+ * must keep picking the keyed arm.
+ */
+const syncKeyedContract = oc.router({ sync: helloFragment });
+
+export const syncKeyedRouter = HttpRouter(syncKeyedContract)({ sync: helloController });
+
+/**
+ * An arm-only router whose `sync` records its own arity. The arm-only form is
+ * typed `() => Implementation`, so the runtime must hand it nothing; passing a
+ * record would be invisible to an arrow and visible to a rest parameter.
+ */
+export const armOnlyRouterRecording = () => {
+  let seen = -1;
+  const provider = HttpRouter(oc.router({ greetings: helloFragment }))({
+    sync: (...args: readonly unknown[]) => {
+      seen = args.length;
+      return { greetings: { hello: () => OkAsync("hello world") } };
+    },
+  } as never);
+  return { provider, arity: () => seen };
+};
 
 /** The same kind of API as `greetingRouter`, composed from controllers instead of one `sync`. */
 const slicedRouter = HttpRouter(slicedContract)({
@@ -157,7 +192,10 @@ const authedContract = { orders: authenticated({ whoami }), health: { ping } };
 /** Counted so a test can assert the handler was never entered on a refusal. */
 let authedRuns = 0;
 
-const authedOrdersController = AuthedController("AuthedOrders", authedContract.orders)([], {
+const authedOrdersController = AuthedController(
+  "AuthedOrders",
+  authedContract.orders,
+)({
   sync: () => ({
     whoami: ({ context }) => {
       authedRuns += 1;
@@ -166,11 +204,14 @@ const authedOrdersController = AuthedController("AuthedOrders", authedContract.o
   }),
 });
 
-const authedHealthController = AuthedController("AuthedHealth", authedContract.health)([], {
+const authedHealthController = AuthedController(
+  "AuthedHealth",
+  authedContract.health,
+)({
   sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
 });
 
-const authenticator = AuthedAuthenticator([], {
+const authenticator = AuthedAuthenticator({
   sync: () => (headers) => {
     if (headers.authorization === "Bearer boom") {
       return OkAsync().map((): Identity => {
@@ -190,17 +231,20 @@ const authedRouter = AuthedRouter(authedContract)({
 });
 
 /**
- * The same marked contract through the positional form, so where the
- * authenticator lands in `deps` is pinned for both arms of `build`.
+ * The same marked contract through the deps form, so the authenticator's own
+ * key on the deps record is pinned for both arms of `build`.
  */
-const authedPositionalRouter = AuthedRouter(authedContract)([Greeter], {
-  sync: (greeter) => ({
-    orders: {
-      whoami: ({ context }) => OkAsync({ userId: greeter.greet(context.principal.userId) }),
-    },
-    health: { ping: () => OkAsync({ ok: true as const }) },
-  }),
-});
+const authedPositionalRouter = AuthedRouter(authedContract)(
+  { greeter: Greeter },
+  {
+    sync: ({ greeter }) => ({
+      orders: {
+        whoami: ({ context }) => OkAsync({ userId: greeter.greet(context.principal.userId) }),
+      },
+      health: { ping: () => OkAsync({ ok: true as const }) },
+    }),
+  },
+);
 
 /** `HttpModule` over the protected router, with the authenticator the router now needs. */
 const rpcAuthedAppOf = () =>
@@ -221,7 +265,7 @@ const rootMarkedContract = authenticated({ orders: { whoami } });
 
 let rootMarkedRuns = 0;
 
-const rootMarkedRouter = AuthedRouter(rootMarkedContract)([], {
+const rootMarkedRouter = AuthedRouter(rootMarkedContract)({
   sync: () => ({
     orders: {
       whoami: ({ context }) => {
@@ -263,12 +307,15 @@ type RootMarkedClient = RouterContractClient<{
  * reachable past the types (the assertion is the bypass), which is what
  * `routerOf`'s own guard exists for: the stray key is dropped, not defected on.
  */
-const strayRouter = HttpRouter(greetingContract)([Greeter], {
-  sync: (greeter) =>
-    ({ ...greetingImplementation(greeter), stray: () => OkAsync("stray") }) as ReturnType<
-      typeof greetingImplementation
-    >,
-});
+const strayRouter = HttpRouter(greetingContract)(
+  { greeter: Greeter },
+  {
+    sync: ({ greeter }) =>
+      ({ ...greetingImplementation(greeter), stray: () => OkAsync("stray") }) as ReturnType<
+        typeof greetingImplementation
+      >,
+  },
+);
 
 /** The starter as an application uses it: `HttpModule` sugar over a router provider. */
 const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
@@ -289,7 +336,7 @@ const corsContract = oc.router({
   greet: oc.input(ocType<{ readonly name: string }>()).output(ocType<string>()),
 });
 
-const corsRouter = HttpRouter(corsContract)([], {
+const corsRouter = HttpRouter(corsContract)({
   sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
 });
 
@@ -312,12 +359,15 @@ const configuredAppOf = (options: { readonly port?: number; readonly hostname?: 
     module: Module("ConfiguredApp")({
       imports: [httpModule(options, Provider(HttpHandler)({ value: noop }))],
       provides: [
-        Provider(BoundConfig)([HttpConfig], {
-          sync: (config) => {
-            bound = config;
-            return { value: config };
+        Provider(BoundConfig)(
+          { config: HttpConfig },
+          {
+            sync: ({ config }) => {
+              bound = config;
+              return { value: config };
+            },
           },
-        }),
+        ),
       ],
       exports: [HttpRuntime],
     }),
@@ -486,7 +536,7 @@ export type HttpFixtures = {
   /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
   readonly authedRouterDeps: {
     readonly keyed: readonly string[];
-    readonly positional: readonly string[];
+    readonly fromDeps: readonly string[];
   };
   /** The starter over a router with oRPC's CORS plugin configured. Shut down by the fixture. */
   readonly rpcWithCors: { readonly url: string };
@@ -717,7 +767,7 @@ export const it = test.extend<HttpFixtures>({
   authedRouterDeps: async ({}, use) => {
     await use({
       keyed: authedRouter.deps.map((dep) => dep.portId),
-      positional: authedPositionalRouter.deps.map((dep) => dep.portId),
+      fromDeps: authedPositionalRouter.deps.map((dep) => dep.portId),
     });
   },
 

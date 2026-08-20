@@ -88,17 +88,20 @@ const contractSeamOf = () => {
   let greeting = "";
 
   return {
-    activities: EchoActivities([Greeting], {
-      sync: (service) => ({
-        runEcho: {
-          echo: (value) => {
-            seen.push(currentUnit());
-            greeting = service.text;
-            return OkAsync(value);
+    activities: EchoActivities(
+      { greeting: Greeting },
+      {
+        sync: ({ greeting: service }) => ({
+          runEcho: {
+            echo: (value) => {
+              seen.push(currentUnit());
+              greeting = service.text;
+              return OkAsync(value);
+            },
           },
-        },
-      }),
-    }),
+        }),
+      },
+    ),
     seen: (): readonly (UnitRecord | undefined)[] => seen,
     greeting: (): string => greeting,
   };
@@ -203,12 +206,15 @@ const gateOf = () => {
 const configuredOf = () => {
   let bound: ServiceOf<TemporalConfig> | undefined;
   return {
-    tap: Provider(BoundConfig)([TemporalConfig], {
-      sync: (config) => {
-        bound = config;
-        return config;
+    tap: Provider(BoundConfig)(
+      { config: TemporalConfig },
+      {
+        sync: ({ config }) => {
+          bound = config;
+          return config;
+        },
       },
-    }),
+    ),
     bound: (): ServiceOf<TemporalConfig> | undefined => bound,
   };
 };
@@ -262,14 +268,17 @@ const slicedContract = defineContract({
  */
 const slicesOf = () => {
   let greeting = "";
-  const echo = TemporalWorkflowActivities(slicedContract, "runEcho")([Greeting], {
-    sync: (service) => ({
-      echo: (value) => {
-        greeting = service.text;
-        return OkAsync(value);
-      },
-    }),
-  });
+  const echo = TemporalWorkflowActivities(slicedContract, "runEcho")(
+    { greeting: Greeting },
+    {
+      sync: ({ greeting: service }) => ({
+        echo: (value) => {
+          greeting = service.text;
+          return OkAsync(value);
+        },
+      }),
+    },
+  );
   const shout = TemporalWorkflowActivities(
     slicedContract,
     "runShout",

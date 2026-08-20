@@ -114,13 +114,16 @@ export const amqp = <TContract extends AnyAmqpContract>(
   return Module("Amqp")({
     provides: [
       config,
-      Provider(AmqpRuntime)([AmqpConfig, AmqpHandlersPort as HandlersPortOf<TContract>], {
-        sync: (c, handlers): Runtime<never, AmqpInfo> => ({
-          name: "amqp",
-          needs: [],
-          start: (host) => createWorker(host, c, options, handlers),
-        }),
-      }),
+      Provider(AmqpRuntime)(
+        { config: AmqpConfig, handlers: AmqpHandlersPort as HandlersPortOf<TContract> },
+        {
+          sync: ({ config: bound, handlers }): Runtime<never, AmqpInfo> => ({
+            name: "amqp",
+            needs: [],
+            start: (host) => createWorker(host, bound, options, handlers),
+          }),
+        },
+      ),
     ],
     exports: [AmqpRuntime, AmqpConfig],
   });
@@ -162,7 +165,7 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  * The handlers as a provider, from the contract. Three call forms, one port.
  *
  * ```ts
- * AmqpHandlers(orderContract)([Logger], { sync: (logger) => ({ orderNotifications: (m) => … }) })
+ * AmqpHandlers(orderContract)({ logger: Logger }, { sync: ({ logger }) => ({ orderNotifications: (m) => … }) })
  * AmqpHandlers(orderContract)([orderNotifications, orderAudit])
  * ```
  *
@@ -170,8 +173,9 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  * typed for the contract — any arm, same typing, checked against the record
  * before any module sees it. The third takes the **pieces**
  * `AmqpHandler(contract, key)` builds, one per consumer or rpc: di constructs
- * every piece first (they are the provider's deps, in array order) and this
- * reassembles the record from them. Every key the contract declares must be
+ * every piece first — they are the provider's deps, keyed by the very contract
+ * key each piece's port id carries, so the services record IS the handlers
+ * record. Every key the contract declares must be
  * covered, and two slices claiming one key are two providers for one port —
  * di's duplicate-provider defect at build, which is the point.
  *
@@ -183,22 +187,18 @@ export const AmqpHandlers = <C extends AnyAmqpContract>(
 ): ReturnType<typeof Provider<HandlersPortOf<C>>> & Compose<C> => {
   void contract;
   const build = Provider(AmqpHandlersPort as HandlersPortOf<C>);
-  const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown => {
-    const keys = pieces.map((piece) => piece.port.portId.slice(HANDLER_PREFIX.length));
-    return build(
-      pieces.map((piece) => piece.port) as never,
-      {
-        sync: (...services: readonly unknown[]) =>
-          Object.fromEntries(keys.map((key, index) => [key, services[index]])),
-      } as never,
+  const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
+    build(
+      Object.fromEntries(
+        pieces.map((piece) => [piece.port.portId.slice(HANDLER_PREFIX.length), piece.port]),
+      ) as never,
+      { sync: (services: unknown) => services } as never,
     );
-  };
   // One array argument is never a valid `Provider(port)` call — its arms are
-  // `(deps, options)` and `(options)` — so the arity plus `Array.isArray` is a
-  // sound discriminator. Not the same dispatch di's own `Provider(port)`
-  // build uses, though: that one narrows on `Array.isArray` alone (`provider.ts`),
-  // which is enough for ITS two arms since a lone array is never valid there;
-  // the arity check here is what this THIRD, composing arm needs on top of it.
+  // `(deps, options)` and `(options)`, and both objects are records — so
+  // `Array.isArray` alone identifies this THIRD, composing arm. The arity check
+  // rides along because di's own build discriminates on arity (`provider.ts`)
+  // and a two-argument call is never this arm.
   return ((first: unknown, second?: unknown) =>
     second === undefined && Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])

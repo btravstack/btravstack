@@ -598,9 +598,9 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. It is a **two-slice
   modulith**: `FulfillmentSlice`'s `fulfillOrder = TemporalWorkflowActivities(orderContract,
-"fulfillOrder")([PlaceOrder, OrderRepository, StockService, ShippingService],
-{ sync })` and `BillingSlice`'s `chargeOrder = TemporalWorkflowActivities(orderContract,
-"chargeOrder")([PaymentService], { sync })` are each a **piece** — a provider
+"fulfillOrder")({ place: PlaceOrder, repository: OrderRepository, stock: StockService,
+shipping: ShippingService }, { sync })` and `BillingSlice`'s `chargeOrder = TemporalWorkflowActivities(orderContract,
+"chargeOrder")({ payments: PaymentService }, { sync })` are each a **piece** — a provider
   on the port its own contract key mints, closing over only the services its
   own saga calls, no context read at call time — and the root composes them,
   `orderActivities = TemporalActivities(orderContract)([fulfillOrder,
@@ -615,8 +615,8 @@ observability()] })`, the sugar importing the starter. `FulfillmentSlice`
   from the starter, and `LOG_LEVEL` and the `Logger` the sagas' stand-in
   services write to come from `observability()`. `order-amqp-worker` is the
   same shape — `NotificationsSlice`'s `orderNotifications = AmqpHandler(orderContract,
-"orderNotifications")([Logger], { sync })` and `AuditSlice`'s `orderAudit =
-AmqpHandler(orderContract, "orderAudit")([Logger], { sync })`, composed as
+"orderNotifications")({ logger: Logger }, { sync })` and `AuditSlice`'s `orderAudit =
+AmqpHandler(orderContract, "orderAudit")({ logger: Logger }, { sync })`, composed as
   `orderHandlers = AmqpHandlers(orderContract)([orderNotifications,
 orderAudit])` — but **neither** slice imports a vertical: a subscriber reacts
   to a fact somebody else already committed, so the orders vertical stays at
@@ -646,13 +646,13 @@ AuditSlice, observability()], … })`),
   (if it needs one) its own adapter, and ships as an ordinary di `Module` that
   exports only that piece's port — everything else about the slice stays
   private. `@btravstack/http`'s
-  `HttpController(name, fragment)([deps], { sync })` mints the controller's
+  `HttpController(name, fragment)({ name: Dep }, { sync })` mints the controller's
   port; the root composes every slice's controller into one router with the
   keyed `HttpRouter(contract)(controllers)` form, exact against the contract
   (see `packages/http/CLAUDE.md`). **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
   controller changing at all: the lifted root is
-  `HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`,
+  `HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
   declaring the very provider the modulith composed and handing back what it
   built — a new composition root and one fewer import,
   not a rewrite of the slice. That exact call is `controller.test-d.ts`'s fifth

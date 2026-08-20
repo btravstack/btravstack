@@ -21,11 +21,11 @@ is a declaration — building happens only at an
 const Persistence = Module("Persistence")({
   imports: [Config],
   provides: [
-    Provider(Pool)([AppConfig], {
-      acquire: openPool,
-      release: (p) => p.close(),
-    }),
-    Provider(OrderRepository)([Pool], { sync: makeRepository }),
+    Provider(Pool)(
+      { config: AppConfig },
+      { acquire: openPool, release: (p) => p.close() },
+    ),
+    Provider(OrderRepository)({ pool: Pool }, { sync: makeRepository }),
   ],
   exports: [OrderRepository],
 });

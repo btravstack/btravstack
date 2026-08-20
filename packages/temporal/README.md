@@ -29,20 +29,23 @@ import { P } from "unthrown";
 // cases it declares — closures over them, no context read at call time — on
 // the starter's own activities port, typed by the contract (a worker serves
 // one activities record, so there is nothing to name).
-const orderActivities = TemporalActivities(contract)([PlaceOrder], {
-  sync: (place) => ({
-    placeOrder: {
-      place: (args, { errors }) =>
-        place
-          .execute(args.orderId, args.quantity)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("DuplicateOrder"), (error) =>
-              errors.OrderAlreadyPlaced({ id: error.id }),
+const orderActivities = TemporalActivities(contract)(
+  { place: PlaceOrder },
+  {
+    sync: ({ place }) => ({
+      placeOrder: {
+        place: (args, { errors }) =>
+          place
+            .execute(args.orderId, args.quantity)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("DuplicateOrder"), (error) =>
+                errors.OrderAlreadyPlaced({ id: error.id }),
+              ),
             ),
-          ),
-    },
-  }),
-});
+      },
+    }),
+  },
+);
 
 // The composition root: a di module, plus the contract, the activities
 // provider and the workflow source — and nothing else to know.
@@ -69,7 +72,7 @@ startup `Err`, not a defect. `runtimeInfo()` reads `{ taskQueue, namespace }`
 back once the worker is polling.
 
 A worker polling for several workflows can be several slices instead of one
-record: `TemporalWorkflowActivities(contract, key)([deps], arm)` mints a
+record: `TemporalWorkflowActivities(contract, key)({ name: Dep }, arm)` mints a
 provider for ONE workflow's activities (or a contract-global activity),
 typed by the key alone, and `TemporalActivities(contract)([...])` composes an
 array of them into the same activities provider `TemporalModule` takes — the

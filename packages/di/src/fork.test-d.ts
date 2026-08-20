@@ -9,12 +9,12 @@ class RequestId extends Port("FRequestId")<{ readonly value: string }> {}
 class Missing extends Port("FMissing")<{ readonly nope: true }> {}
 
 const RequestModule = Module("Request")({
-  provides: [Provider(RequestId)([Db], { sync: (db) => ({ value: db.q() }) })],
+  provides: [Provider(RequestId)({ db: Db }, { sync: ({ db }) => ({ value: db.q() }) })],
   exports: [RequestId],
 });
 
 const NeedsMissing = Module("NeedsMissing")({
-  provides: [Provider(RequestId)([Missing], { sync: () => ({ value: "x" }) })],
+  provides: [Provider(RequestId)({ missing: Missing }, { sync: () => ({ value: "x" }) })],
   exports: [RequestId],
 });
 

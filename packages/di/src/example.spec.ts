@@ -39,7 +39,7 @@ class GetOrderInteractor {
   // `erasableSyntaxOnly` (this repo's tsconfig) rejects TypeScript's parameter-property
   // shorthand — `constructor(private readonly orders: ...)` — since it has no
   // type-erasure-only meaning; the field is declared and assigned explicitly instead.
-  constructor(orders: ServiceOf<OrderRepository>) {
+  constructor({ orders }: { readonly orders: ServiceOf<OrderRepository> }) {
     this.orders = orders;
   }
   execute(id: string): AsyncResult<Order, OrderNotFound> {
@@ -50,12 +50,15 @@ class GetOrderInteractor {
 const ConfigModule = Module("Config")({
   provides: [
     Provider(Env)({ value: { XDATABASE_URL: "postgres://localhost/app" } }),
-    Provider(AppConfig)([Env], {
-      make: (env) =>
-        env["XDATABASE_URL"] === undefined
-          ? Err(new ConfigError({ reason: "XDATABASE_URL is unset" }))
-          : Ok({ dbUrl: env["XDATABASE_URL"] }),
-    }),
+    Provider(AppConfig)(
+      { env: Env },
+      {
+        make: ({ env }) =>
+          env["XDATABASE_URL"] === undefined
+            ? Err(new ConfigError({ reason: "XDATABASE_URL is unset" }))
+            : Ok({ dbUrl: env["XDATABASE_URL"] }),
+      },
+    ),
   ],
   exports: [AppConfig],
 });
@@ -72,18 +75,24 @@ const makePersistenceModule = (released: string[]) =>
   Module("Persistence")({
     imports: [ConfigModule],
     provides: [
-      Provider(Database)([AppConfig], {
-        acquire: () => Ok({ rows: [{ id: "o-1", total: 10 }] }),
-        release: () => void released.push("database"),
-      }),
-      Provider(OrderRepository)([Database], {
-        sync: (db) => ({
-          findById: (id) => {
-            const row = db.rows.find((r) => r.id === id);
-            return (row === undefined ? Err(new OrderNotFound({ id })) : Ok(row)).toAsync();
-          },
-        }),
-      }),
+      Provider(Database)(
+        { config: AppConfig },
+        {
+          acquire: () => Ok({ rows: [{ id: "o-1", total: 10 }] }),
+          release: () => void released.push("database"),
+        },
+      ),
+      Provider(OrderRepository)(
+        { db: Database },
+        {
+          sync: ({ db }) => ({
+            findById: (id) => {
+              const row = db.rows.find((r) => r.id === id);
+              return (row === undefined ? Err(new OrderNotFound({ id })) : Ok(row)).toAsync();
+            },
+          }),
+        },
+      ),
     ],
     exports: [OrderRepository],
   });
@@ -110,7 +119,7 @@ const InMemoryPersistenceModule = Module("InMemoryPersistence")({
 const makeAppModule = <E, N>(persistence: Module<OrderRepository, E, N>) =>
   Module("App")({
     imports: [persistence],
-    provides: [Provider(GetOrder)([OrderRepository], { class: GetOrderInteractor })],
+    provides: [Provider(GetOrder)({ orders: OrderRepository }, { class: GetOrderInteractor })],
     exports: [GetOrder],
   });
 

@@ -57,26 +57,33 @@ name, since the contract key IS the port's name:
 export const orderNotifications = AmqpHandler(
   orderContract,
   "orderNotifications",
-)([Logger], {
-  sync: (logger) => (message) => {
-    const { id, payload } = message.payload;
-    if (currentUnit()?.signal.aborted === true) {
-      return ErrAsync(
-        new RetryableError(
-          `the drain deadline passed before order ${id} was notified`,
-        ),
-      );
-    }
-    logger.info(
-      payload === null ? "order gone — notifying" : "order placed — notifying",
-      {
-        orderId: id,
-        ...(payload === null ? {} : { quantity: payload.quantity }),
+)(
+  { logger: Logger },
+  {
+    sync:
+      ({ logger }) =>
+      (message) => {
+        const { id, payload } = message.payload;
+        if (currentUnit()?.signal.aborted === true) {
+          return ErrAsync(
+            new RetryableError(
+              `the drain deadline passed before order ${id} was notified`,
+            ),
+          );
+        }
+        logger.info(
+          payload === null
+            ? "order gone — notifying"
+            : "order placed — notifying",
+          {
+            orderId: id,
+            ...(payload === null ? {} : { quantity: payload.quantity }),
+          },
+        );
+        return OkAsync();
       },
-    );
-    return OkAsync();
   },
-});
+);
 ```
 
 The audit slice is the same shape over `"orderAudit"`, minus the deadline

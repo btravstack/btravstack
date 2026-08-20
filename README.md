@@ -99,31 +99,34 @@ export const ordersContract = {
 import { HttpRouter } from "@btravstack/http";
 import { P } from "unthrown";
 
-export const ordersRouter = HttpRouter(ordersContract)([PlaceOrder], {
-  sync: (place) => ({
-    place: ({ errors }, input) =>
-      place
-        .execute(input.id, input.quantity)
-        .map((order) => ({ id: order.id, quantity: order.quantity }))
-        // The one place a domain error becomes a transport one — exhaustive,
-        // so a new domain error is a compile error here.
-        .mapErrCases((matcher) =>
-          matcher
-            .with(P.tag("InvalidQuantity"), (error) =>
-              errors.INVALID_QUANTITY({
-                message: error.message,
-                data: { id: error.id },
-              }),
-            )
-            .with(P.tag("DuplicateOrder"), (error) =>
-              errors.CONFLICT({
-                message: error.message,
-                data: { id: error.id },
-              }),
-            ),
-        ),
-  }),
-});
+export const ordersRouter = HttpRouter(ordersContract)(
+  { place: PlaceOrder },
+  {
+    sync: ({ place }) => ({
+      place: ({ errors }, input) =>
+        place
+          .execute(input.id, input.quantity)
+          .map((order) => ({ id: order.id, quantity: order.quantity }))
+          // The one place a domain error becomes a transport one — exhaustive,
+          // so a new domain error is a compile error here.
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
+          ),
+    }),
+  },
+);
 ```
 
 ```ts

@@ -151,9 +151,9 @@ error at the record.
 The kernel's `Runtime` has a `needs` field, and `start`'s gate checks it
 against the module's exports. **No shipped starter uses it any more.** Each
 takes the application's router / activities / handlers as a port its runtime
-provider _depends on_ through di — `Provider(HttpRuntime)([HttpConfig, HttpHandler], …)` where `HttpHandler`
-is built from the router port, `Provider(AmqpRuntime)([AmqpConfig,
-AmqpHandlersPort], …)` — so their `Needs` is `never` and `RuntimeHost.ctx`
+provider _depends on_ through di — `Provider(HttpRuntime)({ config: HttpConfig, handler: HttpHandler }, …)` where
+`HttpHandler` is built from the router port,
+`Provider(AmqpRuntime)({ config: AmqpConfig, handlers: AmqpHandlersPort }, …)` — so their `Needs` is `never` and `RuntimeHost.ctx`
 goes unread.
 
 The reason is not tidiness. A port's service type is fixed at declaration, so

@@ -16,10 +16,13 @@ test("onStart runs after the whole graph is built, in declaration order", async 
         value: { port: 8080 },
         onStart: (s) => void events.push(`start-server-${s.port}`),
       }),
-      Provider(Worker)([Server], {
-        sync: () => ({ name: "w" }),
-        onStart: (w) => void events.push(`start-${w.name}`),
-      }),
+      Provider(Worker)(
+        { server: Server },
+        {
+          sync: () => ({ name: "w" }),
+          onStart: (w) => void events.push(`start-${w.name}`),
+        },
+      ),
     ],
     exports: [Server, Worker],
   });
@@ -36,10 +39,13 @@ test("onStop runs in reverse declaration order during teardown", async () => {
         value: { port: 1 },
         onStop: () => void events.push("stop-server"),
       }),
-      Provider(Worker)([Server], {
-        sync: () => ({ name: "w" }),
-        onStop: () => void events.push("stop-worker"),
-      }),
+      Provider(Worker)(
+        { server: Server },
+        {
+          sync: () => ({ name: "w" }),
+          onStop: () => void events.push("stop-worker"),
+        },
+      ),
     ],
     exports: [Server, Worker],
   });
@@ -74,11 +80,14 @@ test("release and onStop interleave in one combined LIFO unwind, not two separat
         value: { port: 1 },
         onStop: () => void events.push("server-onStop"),
       }),
-      Provider(Worker)([Server], {
-        acquire: () => Ok({ name: "w" }),
-        release: () => void events.push("worker-release"),
-        onStop: () => void events.push("worker-onStop"),
-      }),
+      Provider(Worker)(
+        { server: Server },
+        {
+          acquire: () => Ok({ name: "w" }),
+          release: () => void events.push("worker-release"),
+          onStop: () => void events.push("worker-onStop"),
+        },
+      ),
     ],
     exports: [Server, Worker],
   });

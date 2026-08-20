@@ -15,9 +15,9 @@ import { P } from "unthrown";
  * stuck half-done.
  */
 export const chargeOrder = TemporalWorkflowActivities(orderContract, "chargeOrder")(
-  [PaymentService],
+  { payments: PaymentService },
   {
-    sync: (payments) => ({
+    sync: ({ payments }) => ({
       authorizePayment: (args, { errors }) =>
         payments
           .authorize(args.orderId, args.amount)

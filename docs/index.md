@@ -69,29 +69,32 @@ const ordersContract = authenticated({
 
 // The router is a provider: it declares the use case its procedure calls.
 // Every domain error is named here — the one place a Result becomes HTTP.
-const ordersRouter = HttpRouter(ordersContract)([PlaceOrder], {
-  sync: (place) => ({
-    place: ({ errors, context }, input) =>
-      place
-        .execute(context.principal.tenantId, input.id, input.quantity)
-        .map((order) => ({ id: order.id, quantity: order.quantity }))
-        .mapErrCases((matcher) =>
-          matcher
-            .with(P.tag("InvalidQuantity"), (error) =>
-              errors.INVALID_QUANTITY({
-                message: error.message,
-                data: { id: error.id },
-              }),
-            )
-            .with(P.tag("DuplicateOrder"), (error) =>
-              errors.CONFLICT({
-                message: error.message,
-                data: { id: error.id },
-              }),
-            ),
-        ),
-  }),
-});
+const ordersRouter = HttpRouter(ordersContract)(
+  { place: PlaceOrder },
+  {
+    sync: ({ place }) => ({
+      place: ({ errors, context }, input) =>
+        place
+          .execute(context.principal.tenantId, input.id, input.quantity)
+          .map((order) => ({ id: order.id, quantity: order.quantity }))
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
+          ),
+    }),
+  },
+);
 
 // The composition root. The runtime is a service of this module.
 const OrdersApi = HttpModule("OrdersApi")({

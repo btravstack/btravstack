@@ -15,22 +15,25 @@ import { OkAsync } from "unthrown";
  */
 export const BillingModule = Module("Billing")({
   provides: [
-    Provider(PaymentService)([Logger], {
-      sync: (logger) => ({
-        authorize: (orderId, amount) => {
-          logger.info("authorized the payment", { orderId, amount });
-          return OkAsync(`auth-${orderId}`);
-        },
-        capture: (authorizationId) => {
-          logger.info("captured the payment", { authorizationId });
-          return OkAsync();
-        },
-        refund: (authorizationId) => {
-          logger.info("refunded the payment", { authorizationId });
-          return OkAsync();
-        },
-      }),
-    }),
+    Provider(PaymentService)(
+      { logger: Logger },
+      {
+        sync: ({ logger }) => ({
+          authorize: (orderId, amount) => {
+            logger.info("authorized the payment", { orderId, amount });
+            return OkAsync(`auth-${orderId}`);
+          },
+          capture: (authorizationId) => {
+            logger.info("captured the payment", { authorizationId });
+            return OkAsync();
+          },
+          refund: (authorizationId) => {
+            logger.info("refunded the payment", { authorizationId });
+            return OkAsync();
+          },
+        }),
+      },
+    ),
   ],
   exports: [PaymentService],
 });

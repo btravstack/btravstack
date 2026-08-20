@@ -85,10 +85,13 @@ describe("resources", () => {
     class Other extends Port("SOther")<{ readonly n: number }> {}
     const needsOther = Module("NeedsOther")({
       provides: [
-        Provider(Pool)([Other], {
-          acquire: () => Ok({ close: async () => {} }),
-          release: (pool) => pool.close(),
-        }),
+        Provider(Pool)(
+          { other: Other },
+          {
+            acquire: () => Ok({ close: async () => {} }),
+            release: (pool) => pool.close(),
+          },
+        ),
       ],
       exports: [Pool],
     });

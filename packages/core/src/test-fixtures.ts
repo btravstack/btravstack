@@ -165,18 +165,21 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
 
     const UnitModule = Module("UnitFixtureUnit")({
       provides: [
-        Provider(Span)([Parent], {
-          sync: () => {
-            counts.spanBuilds += 1;
-            seen.build = currentUnit()?.unitId;
-            return { openedIn: seen.build };
+        Provider(Span)(
+          { parent: Parent },
+          {
+            sync: () => {
+              counts.spanBuilds += 1;
+              seen.build = currentUnit()?.unitId;
+              return { openedIn: seen.build };
+            },
+            onStop: () => {
+              counts.spanStops += 1;
+              seen.stop = currentUnit()?.unitId;
+              return teardown();
+            },
           },
-          onStop: () => {
-            counts.spanStops += 1;
-            seen.stop = currentUnit()?.unitId;
-            return teardown();
-          },
-        }),
+        ),
       ],
       exports: [Span],
     });

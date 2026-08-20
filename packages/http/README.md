@@ -27,45 +27,48 @@ import { HttpModule, HttpRouter } from "@btravstack/http";
 import { P } from "unthrown";
 
 // Contract-first: the record is shaped like the contract, each leaf a plain
-// Result-returning function typed by it. The use cases arrive as arguments —
-// di injects them; oRPC's context stays empty.
-const ordersRouter = HttpRouter(ordersContract)([PlaceOrder, FindOrder], {
-  sync: (place, find) => ({
-    place: ({ errors }, input) =>
-      place
-        .execute(input.id, input.quantity)
-        .map(view)
-        // The one place a domain error becomes a transport one — exhaustive,
-        // so a new domain error is a compile error right here.
-        .mapErrCases((matcher) =>
-          matcher
-            .with(P.tag("InvalidQuantity"), (error) =>
-              errors.INVALID_QUANTITY({
-                message: error.message,
-                data: { id: error.id },
-              }),
-            )
-            .with(P.tag("DuplicateOrder"), (error) =>
-              errors.CONFLICT({
+// Result-returning function typed by it. The use cases arrive under the names
+// the deps record gave them — di injects them; oRPC's context stays empty.
+const ordersRouter = HttpRouter(ordersContract)(
+  { place: PlaceOrder, find: FindOrder },
+  {
+    sync: ({ place, find }) => ({
+      place: ({ errors }, input) =>
+        place
+          .execute(input.id, input.quantity)
+          .map(view)
+          // The one place a domain error becomes a transport one — exhaustive,
+          // so a new domain error is a compile error right here.
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
+          ),
+      find: ({ errors }, input) =>
+        find
+          .execute(input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
-        ),
-    find: ({ errors }, input) =>
-      find
-        .execute(input.id)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher.with(P.tag("OrderNotFound"), (error) =>
-            errors.NOT_FOUND({
-              message: error.message,
-              data: { id: error.id },
-            }),
           ),
-        ),
-  }),
-});
+    }),
+  },
+);
 
 // A di module that also knows about its router: imports the starter, provides
 // the router on the starter's own port (a process serves one router, so
@@ -136,13 +139,14 @@ const orderRouter = HttpRouter(orderContract)({
 });
 ```
 
-`HttpController(name, fragment)([deps], { sync })` is the same two-call shape
+`HttpController(name, fragment)({ name: Dep }, { sync })` — or just
+`({ sync })` when the slice calls nothing — is the same two-call shape
 as `HttpRouter`, aimed at one fragment: it mints a port under `name` and
 returns the provider carrying it on `.port`. The keyed form is **exact** — a
 missing slice, an undeclared key and a controller under the wrong key are all
 compile errors — and because a fragment is itself a valid contract, a slice
 can be served alone, its controller unchanged: the lifted root is
-`HttpRouter(ordersContract)([ordersController.port], { sync: (implementation) => implementation })`,
+`HttpRouter(ordersContract)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
 declaring the very provider the modulith composed. See
 [Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
 
@@ -200,7 +204,7 @@ const ordersContract = authenticated({
 // verifier or a user directory is injected the way any provider's are. It
 // takes no type argument — `httpAuth<Identity>()` already fixed one, which is
 // why the authenticator and the controllers cannot disagree.
-const bearerAuthenticator = HttpAuthenticator([], {
+const bearerAuthenticator = HttpAuthenticator({
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
@@ -219,24 +223,27 @@ const bearerAuthenticator = HttpAuthenticator([], {
 });
 
 // The principal arrives on oRPC's own context channel, typed by `Identity`.
-const ordersRouter = HttpRouter({ orders: ordersContract })([FindOrder], {
-  sync: (find) => ({
-    orders: {
-      find: ({ context, errors }, input) =>
-        find
-          .execute(context.principal.tenantId, input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
-                message: error.message,
-                data: { id: error.id },
-              }),
+const ordersRouter = HttpRouter({ orders: ordersContract })(
+  { find: FindOrder },
+  {
+    sync: ({ find }) => ({
+      orders: {
+        find: ({ context, errors }, input) =>
+          find
+            .execute(context.principal.tenantId, input.id)
+            .map(view)
+            .mapErrCases((matcher) =>
+              matcher.with(P.tag("OrderNotFound"), (error) =>
+                errors.NOT_FOUND({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
             ),
-          ),
-    },
-  }),
-});
+      },
+    }),
+  },
+);
 
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,

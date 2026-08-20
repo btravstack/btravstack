@@ -14,18 +14,24 @@ test("providers construct in dependency order, not declaration order", async () 
   const order: string[] = [];
   const mod = Module("Ordered")({
     provides: [
-      Provider(C)([B], {
-        sync: (b) => {
-          order.push("C");
-          return { v: `${b.v}C` };
+      Provider(C)(
+        { b: B },
+        {
+          sync: ({ b }) => {
+            order.push("C");
+            return { v: `${b.v}C` };
+          },
         },
-      }),
-      Provider(B)([A], {
-        sync: (a) => {
-          order.push("B");
-          return { v: `${a.v}B` };
+      ),
+      Provider(B)(
+        { a: A },
+        {
+          sync: ({ a }) => {
+            order.push("B");
+            return { v: `${a.v}B` };
+          },
         },
-      }),
+      ),
       Provider(A)({
         sync: () => {
           order.push("A");
@@ -49,12 +55,12 @@ test("a port shared by two branches constructs exactly once", async () => {
   });
   const left = Module("Left")({
     imports: [shared],
-    provides: [Provider(B)([A], { sync: (a) => ({ v: a.v }) })],
+    provides: [Provider(B)({ a: A }, { sync: ({ a }) => ({ v: a.v }) })],
     exports: [B],
   });
   const right = Module("Right")({
     imports: [shared],
-    provides: [Provider(C)([A], { sync: (a) => ({ v: a.v }) })],
+    provides: [Provider(C)({ a: A }, { sync: ({ a }) => ({ v: a.v }) })],
     exports: [C],
   });
   const app = Module("App")({ imports: [left, right], exports: [left, right] });
@@ -66,7 +72,10 @@ test("a port shared by two branches constructs exactly once", async () => {
 test("a cycle within one module is a defect, reported before any factory runs", async () => {
   const ran = vi.fn();
   const cyclic = Module("Cyclic")({
-    provides: [Provider(A)([B], { sync: ran as never }), Provider(B)([A], { sync: ran as never })],
+    provides: [
+      Provider(A)({ b: B }, { sync: ran as never }),
+      Provider(B)({ a: A }, { sync: ran as never }),
+    ],
     exports: [A],
   });
   const built = await Module.build(cyclic);
@@ -160,7 +169,7 @@ test("a dependency no provider supplies is a defect, before any factory runs", a
     provides: [
       Provider(A)({ sync: sibling }),
       // `B` is provided by nobody, here or in any import.
-      Provider(C)([A, B], { sync: dependent }),
+      Provider(C)({ a: A, b: B }, { sync: dependent }),
     ],
     exports: [A, C],
   });

@@ -123,12 +123,15 @@ export const it = test.extend<ObservabilityFixtures>({
     await use(
       Module("UnitLogging")({
         provides: [
-          Provider(UnitSpan)([Logger], {
-            sync: (logger) => {
-              logger.info("inside the unit");
-              return { opened: true };
+          Provider(UnitSpan)(
+            { logger: Logger },
+            {
+              sync: ({ logger }) => {
+                logger.info("inside the unit");
+                return { opened: true };
+              },
             },
-          }),
+          ),
         ],
         exports: [UnitSpan],
       }),

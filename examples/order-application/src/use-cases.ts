@@ -23,7 +23,13 @@ class PlaceOrderInteractor {
   readonly #repository: ServiceOf<OrderRepository>;
   readonly #logger: ServiceOf<Logger>;
 
-  constructor(repository: ServiceOf<OrderRepository>, logger: ServiceOf<Logger>) {
+  constructor({
+    repository,
+    logger,
+  }: {
+    readonly repository: ServiceOf<OrderRepository>;
+    readonly logger: ServiceOf<Logger>;
+  }) {
     this.#repository = repository;
     this.#logger = logger;
   }
@@ -43,7 +49,7 @@ class PlaceOrderInteractor {
 class FindOrderInteractor {
   readonly #repository: ServiceOf<OrderRepository>;
 
-  constructor(repository: ServiceOf<OrderRepository>) {
+  constructor({ repository }: { readonly repository: ServiceOf<OrderRepository> }) {
     this.#repository = repository;
   }
 
@@ -55,7 +61,7 @@ class FindOrderInteractor {
 class FindCustomerInteractor {
   readonly #repository: ServiceOf<CustomerRepository>;
 
-  constructor(repository: ServiceOf<CustomerRepository>) {
+  constructor({ repository }: { readonly repository: ServiceOf<CustomerRepository> }) {
     this.#repository = repository;
   }
 
@@ -64,14 +70,23 @@ class FindCustomerInteractor {
   }
 }
 
-export const placeOrderProvider = Provider(PlaceOrder)([OrderRepository, Logger], {
-  class: PlaceOrderInteractor,
-});
+export const placeOrderProvider = Provider(PlaceOrder)(
+  { repository: OrderRepository, logger: Logger },
+  {
+    class: PlaceOrderInteractor,
+  },
+);
 
-export const findOrderProvider = Provider(FindOrder)([OrderRepository], {
-  class: FindOrderInteractor,
-});
+export const findOrderProvider = Provider(FindOrder)(
+  { repository: OrderRepository },
+  {
+    class: FindOrderInteractor,
+  },
+);
 
-export const findCustomerProvider = Provider(FindCustomer)([CustomerRepository], {
-  class: FindCustomerInteractor,
-});
+export const findCustomerProvider = Provider(FindCustomer)(
+  { repository: CustomerRepository },
+  {
+    class: FindCustomerInteractor,
+  },
+);

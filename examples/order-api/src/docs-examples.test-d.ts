@@ -61,9 +61,9 @@ const customerViewOf = (customer: Customer): CustomerView => ({
 // ---------------------------------------------------------------------------
 
 const ordersController = HttpController("DocsOrdersController", contract.orders)(
-  [PlaceOrder, FindOrder, Logger],
+  { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
-    sync: (place, find, logger) => ({
+    sync: ({ place, find, logger }) => ({
       place: ({ errors, context }, input) => {
         logger.info("order placement requested", { userId: context.principal.userId });
         return place
@@ -95,9 +95,9 @@ const ordersController = HttpController("DocsOrdersController", contract.orders)
 // The unmarked half, and the contrast every page draws: no `principal` on the
 // context at all, the tenant off the input instead.
 const customersController = HttpController("DocsCustomersController", contract.customers)(
-  [FindCustomer],
+  { find: FindCustomer },
   {
-    sync: (find) => ({
+    sync: ({ find }) => ({
       find: ({ errors }, input) =>
         find
           .execute(input.tenantId, input.id)
@@ -151,9 +151,10 @@ const _DocsOrderApi = HttpModule("DocsOrderApi")({
 // the same authenticator.
 // ---------------------------------------------------------------------------
 
-const liftedOrdersRouter = HttpRouter(contract.orders)([ordersController.port], {
-  sync: (implementation) => implementation,
-});
+const liftedOrdersRouter = HttpRouter(contract.orders)(
+  { implementation: ordersController.port },
+  { sync: ({ implementation }) => implementation },
+);
 
 const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
   router: liftedOrdersRouter,
@@ -163,41 +164,44 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
 
 // ---------------------------------------------------------------------------
 // "Step 2 — the router, as a provider" — docs/how-to/serve-orpc-over-http.md;
-// "`HttpRouter(contract)(deps, arm)`" — docs/reference/http.md; "At a glance" —
-// docs/index.md. The positional form over the same marked fragment, with no
+// "`HttpRouter(contract)({ name: Dep }, arm)`" — docs/reference/http.md; "At a
+// glance" — docs/index.md. The deps form over the same marked fragment, with no
 // controller layer: the three pages that show a router rather than a
 // controller all reduce to this call.
 // ---------------------------------------------------------------------------
 
-const positionalOrdersRouter = HttpRouter(contract.orders)([PlaceOrder, FindOrder], {
-  sync: (place, find) => ({
-    place: ({ errors, context }, input) =>
-      place
-        .execute(context.principal.tenantId, input.id, input.quantity)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher
-            .with(P.tag("InvalidQuantity"), (error) =>
-              errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
-            )
-            .with(P.tag("DuplicateOrder"), (error) =>
-              errors.CONFLICT({ message: error.message, data: { id: error.id } }),
-            ),
-        ),
-    find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher.with(P.tag("OrderNotFound"), (error) =>
-            errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+const depsOrdersRouter = HttpRouter(contract.orders)(
+  { place: PlaceOrder, find: FindOrder },
+  {
+    sync: ({ place, find }) => ({
+      place: ({ errors, context }, input) =>
+        place
+          .execute(context.principal.tenantId, input.id, input.quantity)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({ message: error.message, data: { id: error.id } }),
+              ),
           ),
-        ),
-  }),
-});
+      find: ({ errors, context }, input) =>
+        find
+          .execute(context.principal.tenantId, input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+            ),
+          ),
+    }),
+  },
+);
 
-const _DocsPositionalApi = HttpModule("DocsPositionalApi")({
-  router: positionalOrdersRouter,
+const _DocsDepsApi = HttpModule("DocsDepsApi")({
+  router: depsOrdersRouter,
   authenticator: bearerAuthenticator,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],

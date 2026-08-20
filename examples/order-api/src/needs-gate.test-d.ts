@@ -44,7 +44,7 @@ const _missingRuntime = start(RuntimelessApi, options);
 
 // The starter imported without its router provided: `http()`'s runtime
 // provider depends on the starter's own router port (the one
-// `HttpRouter(contract)(deps, arm)` provides), so the composition carries it
+// `HttpRouter(contract)({ name: Dep }, arm)` provides), so the composition carries it
 // as an unmet need — di's gate, not the kernel's, and it rejects the module
 // at `start` rather than at arity.
 const RouterlessApi = Module("RouterlessApi")({
@@ -94,7 +94,7 @@ const _missingAuthenticator = start(UnauthenticatedApi, options);
 // authenticator's itself, at the `HttpModule(...)` call, which is why this
 // directive sits on the option and not on a `start` below it. The contract
 // declares no principal to compare against; `./auth.ts` is what declares one.
-const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()([], {
+const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()({
   sync: () => () => OkAsync({ sub: "s-1" }),
 });
 

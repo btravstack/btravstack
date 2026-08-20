@@ -38,9 +38,13 @@ export const tapped = <X, E, N, const P extends readonly AnyPort[]>(
 ): { readonly module: Module<X, E, N>; readonly services: () => ServicesOf<P> } => {
   void gate;
   let services: ServicesOf<P> | undefined;
-  const tap = Provider(Tap)(ports, {
-    sync: (...built: readonly unknown[]) => {
-      services = built as unknown as ServicesOf<P>;
+  // `ports` stays an array — it is what `services()` answers positionally, not
+  // a dependency declaration a reader writes. Keying it by index is the
+  // translation into the one shape `Provider` takes, and index keys are what
+  // put the services record back in `ports` order.
+  const tap = Provider(Tap)(Object.fromEntries(ports.map((port, index) => [index, port])), {
+    sync: (built: Record<number, unknown>) => {
+      services = ports.map((_, index) => built[index]) as unknown as ServicesOf<P>;
       return {};
     },
   } as never);

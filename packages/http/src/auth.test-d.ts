@@ -96,17 +96,17 @@ void _none;
 // unknown>`: the need cannot carry the identity, so only the options type
 // can compare it — the ROUTER's identity against the AUTHENTICATOR's, since
 // the contract declares none.
-const markedRouter = IdentityRouter({ orders: contract.orders, health: contract.health })([], {
+const markedRouter = IdentityRouter({ orders: contract.orders, health: contract.health })({
   sync: () => ({
     orders: { place: ({ context }) => OkAsync({ id: context.principal.userId }) },
     health: { ping: () => OkAsync({ ok: true as const }) },
   }),
 });
 
-const matching = IdentityAuthenticator([], {
+const matching = IdentityAuthenticator({
   sync: () => () => OkAsync({ userId: "u", tenantId: "t" }),
 });
-const other = httpAuth<{ readonly sub: string }>().HttpAuthenticator([], {
+const other = httpAuth<{ readonly sub: string }>().HttpAuthenticator({
   sync: () => () => OkAsync({ sub: "s" }),
 });
 
@@ -132,7 +132,7 @@ const _wired = start(WiredApi, options);
 
 // 10. An unmarked router with an authenticator supplied is not this package's
 //     error to raise: di decides, and a provider nothing needs is no defect.
-const publicRouter = IdentityRouter({ health: contract.health })([], {
+const publicRouter = IdentityRouter({ health: contract.health })({
   sync: () => ({ health: { ping: () => OkAsync({ ok: true as const }) } }),
 });
 const _public = start(
@@ -150,10 +150,13 @@ void _public;
 //     must therefore `Exclude` the phantom key from the keys it demands (or the
 //     record can never be complete) and `Inherit` the root's mark down to each
 //     fragment (or no controller under it could type `context.principal`) —
-//     both of which the positional arm already did. `contract.orders` above
+//     both of which the deps arm already did. `contract.orders` above
 //     marks a KEY, so neither omission showed there.
 declare const ordersFragment: Authenticated<{ readonly whoami: typeof oc }>;
-const rootOrders = IdentityController("RootOrders", ordersFragment)([], {
+const rootOrders = IdentityController(
+  "RootOrders",
+  ordersFragment,
+)({
   sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
 });
 const rootMarkedContract = authenticated({ orders: { whoami: oc } });
@@ -171,28 +174,40 @@ void _rootKeyed;
 
 // 12. A factory-minted controller's MARKED handler sees the factory's identity,
 //     a type the contract declares nowhere.
-const scopedOrders = IdentityController("ScopedOrders", contract.orders)([], {
+const scopedOrders = IdentityController(
+  "ScopedOrders",
+  contract.orders,
+)({
   sync: () => ({ place: ({ context }) => OkAsync(context.principal.tenantId) }),
 });
 
 // 13. The top-level `HttpController` mints no identity, so the same marked
 //     fragment types `principal: never` — the "use the factory" signal, since
 //     any read of it is a compile error.
-void HttpController("ContractOrders", contract.orders)([], {
+void HttpController(
+  "ContractOrders",
+  contract.orders,
+)({
   // @ts-expect-error — no factory, so there is no principal type to read
   sync: () => ({ place: ({ context }) => OkAsync(context.principal.userId) }),
 });
 
 // 14. A factory invents no principal on an UNMARKED fragment: the identity
 //     reaches a marked leaf and no other.
-void IdentityController("ScopedHealth", contract.health)([], {
+void IdentityController(
+  "ScopedHealth",
+  contract.health,
+)({
   // @ts-expect-error — `principal` is not on an unmarked handler's context
   sync: () => ({ ping: ({ context }) => OkAsync(context.principal.tenantId) }),
 });
 
 // 15. A factory-minted router composes factory-minted controllers, and the
 //     `HttpModule` gate checks the authenticator against the ROUTER's identity.
-const scopedHealth = IdentityController("ScopedHealthOk", contract.health)([], {
+const scopedHealth = IdentityController(
+  "ScopedHealthOk",
+  contract.health,
+)({
   sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
 });
 const _scoped = HttpModule("Scoped")({
@@ -206,7 +221,7 @@ const _scoped = HttpModule("Scoped")({
 
 // 16. An authenticator minted on another identity is still refused, and a
 //     hand-written `HttpAuthenticator<P>()` is no way around it.
-const strayAuthenticator = HttpAuthenticator<{ readonly sub: string }>()([], {
+const strayAuthenticator = HttpAuthenticator<{ readonly sub: string }>()({
   sync: () => () => OkAsync({ sub: "s" }),
 });
 const _strayScoped = HttpModule("StrayScoped")({
@@ -223,17 +238,22 @@ const _strayScoped = HttpModule("StrayScoped")({
 //     like any other. Pinned because nothing else covers it: every other
 //     authenticator on this branch takes `[]`, so the one form every adopter
 //     actually writes was checked by a reviewer's scratch file and by nothing
-//     that runs. `deps` are di's, so the services arrive positionally and
+//     that runs. `deps` are di's, so the services arrive by name and
 //     `sync` closes over them; what reaches `HttpModule` is still a provider
 //     on the same identity.
 class Verifier extends Port("Verifier")<(token: string) => Identity | undefined> {}
 
-const verifiedAuthenticator = IdentityAuthenticator([Verifier], {
-  sync: (verify) => (headers) => {
-    const claimed = verify(headers.authorization ?? "");
-    return claimed === undefined ? ErrAsync(new Unauthenticated()) : OkAsync(claimed);
+const verifiedAuthenticator = IdentityAuthenticator(
+  { verify: Verifier },
+  {
+    sync:
+      ({ verify }) =>
+      (headers) => {
+        const claimed = verify(headers.authorization ?? "");
+        return claimed === undefined ? ErrAsync(new Unauthenticated()) : OkAsync(claimed);
+      },
   },
-});
+);
 
 const _verified = HttpModule("Verified")({
   router: IdentityRouter({ orders: contract.orders, health: contract.health })({
@@ -251,9 +271,12 @@ const _verified = HttpModule("Verified")({
 
 // 18. The dependency does not loosen the identity check: the same declared
 //     deps with a foreign identity are still refused at the same call.
-const verifiedStray = HttpAuthenticator<{ readonly sub: string }>()([Verifier], {
-  sync: () => () => OkAsync({ sub: "s" }),
-});
+const verifiedStray = HttpAuthenticator<{ readonly sub: string }>()(
+  { verify: Verifier },
+  {
+    sync: () => () => OkAsync({ sub: "s" }),
+  },
+);
 const _verifiedStray = HttpModule("VerifiedStray")({
   router: IdentityRouter({ orders: contract.orders, health: contract.health })({
     orders: scopedOrders,

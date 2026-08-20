@@ -22,13 +22,19 @@ module provides but does not export is internal:
 const Persistence = Module("Persistence")({
   imports: [Config],
   provides: [
-    Provider(Pool)([AppConfig], {
-      acquire: openPool,
-      release: (pool) => pool.close(),
-    }),
-    Provider(OrderRepository)([Pool], {
-      sync: (pool) => makeRepository(pool),
-    }),
+    Provider(Pool)(
+      { config: AppConfig },
+      {
+        acquire: openPool,
+        release: (pool) => pool.close(),
+      },
+    ),
+    Provider(OrderRepository)(
+      { pool: Pool },
+      {
+        sync: ({ pool }) => makeRepository(pool),
+      },
+    ),
   ],
   exports: [OrderRepository], // Pool and AppConfig: not listed, not visible
 });
@@ -40,8 +46,11 @@ Any module importing `Persistence` sees exactly one port:
 const App = Module("App")({
   imports: [Persistence],
   provides: [
-    Provider(GetOrder)([OrderRepository], { class: GetOrderInteractor }),
-    Provider(Audit)([Pool], { sync: makeAudit }), // Pool is not visible here
+    Provider(GetOrder)(
+      { orders: OrderRepository },
+      { class: GetOrderInteractor },
+    ),
+    Provider(Audit)({ pool: Pool }, { sync: makeAudit }), // Pool is not visible here
   ],
   exports: [GetOrder],
 });
@@ -78,7 +87,9 @@ The `exports` list cannot lie:
 
 ```ts
 Module("Persistence")({
-  provides: [Provider(OrderRepository)([Pool], { sync: makeRepository })],
+  provides: [
+    Provider(OrderRepository)({ pool: Pool }, { sync: makeRepository }),
+  ],
   exports: [OrderRepository, Metrics], // Metrics: neither provided nor imported
 });
 ```

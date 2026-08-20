@@ -59,9 +59,14 @@ import { P } from "unthrown";
  * and an activity Temporal may re-run has to answer the same both times.
  */
 export const fulfillOrder = TemporalWorkflowActivities(orderContract, "fulfillOrder")(
-  [PlaceOrder, OrderRepository, StockService, ShippingService],
   {
-    sync: (place, repository, stock, shipping) => ({
+    place: PlaceOrder,
+    repository: OrderRepository,
+    stock: StockService,
+    shipping: ShippingService,
+  },
+  {
+    sync: ({ place, repository, stock, shipping }) => ({
       place: (args, { errors }) =>
         place
           .execute(args.tenantId, args.orderId, args.quantity)

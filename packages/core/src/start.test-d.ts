@@ -78,10 +78,13 @@ class Span extends Port("GateSpan")<{ readonly note: string }> {}
 
 const ClockyUnit = Module("ClockyUnit")({
   provides: [
-    Provider(Span)([Clock], {
-      sync: (clock) => ({ note: `${clock.now()}` }),
-      onStop: () => {},
-    }),
+    Provider(Span)(
+      { clock: Clock },
+      {
+        sync: ({ clock }) => ({ note: `${clock.now()}` }),
+        onStop: () => {},
+      },
+    ),
   ],
   exports: [Span],
 });
@@ -99,10 +102,13 @@ start(Satisfied, { unit: ClockyUnit }, "UNSATISFIED UNIT NEEDS", new Clock());
 // throwing at startup.
 const GreetingSpanUnit = Module("GreetingSpanUnit")({
   provides: [
-    Provider(Span)([Greeting], {
-      sync: (greeting) => ({ note: greeting.text }),
-      onStop: () => {},
-    }),
+    Provider(Span)(
+      { greeting: Greeting },
+      {
+        sync: ({ greeting }) => ({ note: greeting.text }),
+        onStop: () => {},
+      },
+    ),
   ],
   exports: [Span],
 });

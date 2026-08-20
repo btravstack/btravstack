@@ -11,9 +11,9 @@ its own package, because a client needs it and needs none of this.
 ```
 src/auth.ts                           Identity, and the HttpController / HttpRouter / HttpAuthenticator httpAuth<Identity>() mints from it
 src/authenticator.ts                  bearerAuthenticator — headers in, Identity out, on the starter's port
-src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder, Logger], { sync }) — where the orders slice's own domain error becomes an ORPCError
+src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
-src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([FindCustomer], { sync }) — same shape, for the customers slice's own domain error
+src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts                         an AsyncResult client for the same contract
@@ -83,7 +83,7 @@ Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
 `/rpc` all live in [`@btravstack/http`](../../packages/http) —
 see its README for the guarantee it makes and the one way it answers HTTP.
-What this example writes is two slices, each an `HttpController(name, fragment)([deps], { sync })`
+What this example writes is two slices, each an `HttpController(name, fragment)({ name: Dep }, { sync })`
 over its own contract fragment, and a root router composed by the **keyed**
 `HttpRouter(contract)({ orders: ordersController, customers:
 customersController })` — contract-first, exact (a missing slice, a stray

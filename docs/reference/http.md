@@ -23,8 +23,8 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAu
 | `HttpModule`           | value | `HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                       |
 | `HttpRouter`           | value | `HttpRouter(contract)(deps, { sync })`, or `HttpRouter(contract)(controllers)` — the router as a provider on the starter's own router port, contract-first, either from one `sync` or from a keyed record of controllers                          |
-| `HttpController`       | value | `HttpController(name, fragment)([deps], { sync })` — one slice of a contract, as a provider on a port minted for it                                                                                                                               |
-| `HttpAuthenticator`    | value | `HttpAuthenticator<P>()([deps], { sync })` — the provider that turns a request's headers into a principal `P`, on `AuthenticatorPort`                                                                                                             |
+| `HttpController`       | value | `HttpController(name, fragment)({ name: Dep }, { sync })`, or `({ sync })` with no deps — one slice of a contract, as a provider on a port minted for it                                                                                          |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — the provider that turns a request's headers into a principal `P`, on `AuthenticatorPort`                                                                        |
 | `httpAuth`             | value | `httpAuth<Identity>()` — mints `HttpController`, `HttpRouter` and `HttpAuthenticator` fixed to the server's own identity; the only thing that gives a marked handler a readable `context.principal`                                               |
 | `HttpAuth`             | type  | what `httpAuth<Identity>()` returns — the three, as one type                                                                                                                                                                                      |
 | `HttpControllerOf`     | type  | `HttpControllerOf<Identity>` — the annotation a file exporting the factory's `HttpController` needs                                                                                                                                               |
@@ -60,7 +60,7 @@ a plain module.
 | Option            | Required | Default          | What it is                                                                                                                                                                 |
 | ----------------- | -------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `router`          | yes      | —                | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
-| `authenticator`   | no\*     | —                | what `HttpAuthenticator<P>()([deps], { sync })` returns; \*owed whenever the contract marks anything (see [Authentication](#authentication))                               |
+| `authenticator`   | no\*     | —                | what `HttpAuthenticator<P>()({ name: Dep }, { sync })` returns; \*owed whenever the contract marks anything (see [Authentication](#authentication))                        |
 | `prefix`          | no       | `/rpc`           | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                |
 | `port`            | no       | read from `PORT` | pins the port instead of reading it                                                                                                                                        |
 | `hostname`        | no       | read from `HOST` | pins the host instead of reading it                                                                                                                                        |
@@ -110,11 +110,11 @@ There is no name to give: a process serves one router as it boots one
 runtime, so the port is the starter's — `Port("HttpRouter")`, declared once,
 framework-owned like `HttpConfig` — and two router providers in one graph are
 di's duplicate-provider defect at build. Returns
-`Provider<PortInstance<"HttpRouter", Router<…>>, never, InstanceType<D[number]>> & { readonly port: PortClassOf<"HttpRouter", Router<…>> }` —
+`Provider<PortInstance<"HttpRouter", Router<…>>, never, InstanceType<D[keyof D]>> & { readonly port: PortClassOf<"HttpRouter", Router<…>> }` —
 `provider.port` is the port class, for a hand-declared provider or a type
 test. The implementation below is the one in
 `examples/order-api/src/slices/orders/controller.ts`, served through the
-positional form — the example composes it as a controller instead (see the
+deps form — the example composes it as a controller instead (see the
 keyed form), and a fragment is a contract, so the same `sync` reads either way.
 `contract.orders` is `authenticated`, so `HttpRouter` here is the application's
 own — `httpAuth<Identity>()`'s, from its `src/auth.ts` — and the tenant comes
@@ -122,9 +122,9 @@ off `context.principal` rather than off the input:
 
 ```ts
 export const ordersRouter = HttpRouter(contract.orders)(
-  [PlaceOrder, FindOrder],
+  { place: PlaceOrder, find: FindOrder },
   {
-    sync: (place, find) => ({
+    sync: ({ place, find }) => ({
       place: ({ errors, context }, input) =>
         place
           .execute(context.principal.tenantId, input.id, input.quantity)
@@ -196,12 +196,13 @@ wrong key is rejected (its fragment does not match that key's); a
 procedure a controller's own fragment does not declare is rejected inside the
 controller, before the root ever sees it; and a slice lifts into a process of
 its own with its controller untouched —
-`HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`
+`HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
 compiles — the property a slice's independent deployability
-rests on. The positional `(deps, { sync })`
+rests on. The `(deps, { sync })`
 form is unchanged and stays correct for a small API — the two are
-discriminated at the call the same way `Provider(port)(depsOrOptions, …)`
-discriminates its own two forms. See
+discriminated **by arity** at the call, the same way
+`Provider(port)(depsOrOptions, …)` discriminates its own two forms, since a
+deps record and a controllers record are both objects. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the worked recipe.
 
@@ -211,24 +212,24 @@ the worked recipe.
 const HttpController: <const Name extends string, C extends RouterContract>(
   name: Name,
   fragment: C,
-) => <const D extends readonly AnyPort[]>(
+) => <const D extends Readonly<Record<string, AnyPort>>>(
   deps: D,
   options: {
-    readonly sync: (
-      ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
-    ) => Implementation<C>;
+    readonly sync: (services: {
+      readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
+    }) => Implementation<C>;
   },
 ) => Provider<
   PortInstance<Name, Implementation<C>>,
   never,
-  InstanceType<D[number]>
+  InstanceType<D[keyof D]>
 > & {
   readonly port: PortClassOf<Name, Implementation<C>>;
 };
 ```
 
 One slice of a contract, as a provider over a port minted for it — the same
-two-call shape as `HttpRouter(contract)(deps, { sync })`, aimed at a
+two-call shape as `HttpRouter(contract)({ name: Dep }, { sync })`, aimed at a
 `fragment` rather than the whole contract. `fragment` is read for its
 **type** only: it shapes `sync`'s return, so a procedure the fragment does
 not declare, or a handler whose input or output has drifted, is a compile
@@ -252,10 +253,8 @@ declares the controller's own port and hands back what it built:
 
 ```ts
 export const ordersRouter = HttpRouter(contract.orders)(
-  [ordersController.port],
-  {
-    sync: (implementation) => implementation,
-  },
+  { implementation: ordersController.port },
+  { sync: ({ implementation }) => implementation },
 );
 ```
 
@@ -287,7 +286,7 @@ the request off oRPC's initial context, calls the authenticator with its
 headers, and either injects `{ context: { principal } }` or terminates the
 request.
 
-### `HttpAuthenticator<P>()([deps], { sync })`
+### `HttpAuthenticator<P>()({ name: Dep }, { sync })` / `({ sync })`
 
 An ordinary di provider on `AuthenticatorPort`, whose service is
 `AuthenticatorService<P>`:
@@ -305,7 +304,7 @@ provider's dependencies are. The type argument is **explicit** rather than
 inferred from `sync` — inference through a returned function's `AsyncResult` is
 where a principal silently widens to `unknown` — though in an application that
 has an `src/auth.ts` the argument is already fixed by `httpAuth<Identity>()`
-and the call is `HttpAuthenticator([deps], { sync })`. `Unauthenticated` is a
+and the call is `HttpAuthenticator({ name: Dep }, { sync })`. `Unauthenticated` is a
 `TaggedError` with an **empty payload**: the starter surfaces no reason, so a
 field would be write-only. A rejected caller gets an `UNAUTHORIZED` and oRPC's
 default message; an authenticator that wants to record why logs it before
@@ -313,7 +312,7 @@ returning. Forwarding a reason would put "no such user" versus "bad signature"
 in a 401 body by default.
 
 ```ts
-export const bearerAuthenticator = HttpAuthenticator([], {
+export const bearerAuthenticator = HttpAuthenticator({
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
@@ -354,7 +353,7 @@ export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
 Every slice imports `HttpController` from there, and its marked handlers see
 `Identity` on `context.principal` with no annotation of their own; nothing else
 about a controller changes. The `HttpAuthenticator` handed back is already
-applied, so it is called `HttpAuthenticator([deps], { sync })` — which is also
+applied, so it is called `HttpAuthenticator({ name: Dep }, { sync })` — which is also
 why the authenticator and the controllers cannot disagree about the identity.
 
 It is per application rather than per slice because a handler's parameter types
@@ -372,10 +371,11 @@ is a compile error. That is the signal to use the factory, not a fallback.
 
 ### Two gates, and why they are two
 
-When the contract marks anything, `HttpRouter` appends `AuthenticatorPort`
-**last** to the router provider's dependency array — so every existing
-positional service keeps its index — and adds it to the provider's needs
-channel. Which makes a marked router with no authenticator behind it di's
+When the contract marks anything, `HttpRouter` adds `AuthenticatorPort` to the
+router provider's deps record under a **namespaced** key
+(`"@btravstack/http/authenticator"`, so it cannot collide with one you wrote),
+strips it back out before your own `sync` sees the record, and adds it to the
+provider's needs channel. Which makes a marked router with no authenticator behind it di's
 existing `UNSATISFIED DEPENDENCIES` gate at `start`, not a gate this package
 invented.
 

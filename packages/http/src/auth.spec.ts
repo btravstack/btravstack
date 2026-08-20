@@ -92,15 +92,15 @@ describe("a contract marked at its root", () => {
 });
 
 describe("a router over a marked contract", () => {
-  it("appends the authenticator after the dependencies it already declared", ({
+  it("adds the authenticator to the dependencies the caller already declared", ({
     authedRouterDeps,
   }) => {
     // GIVEN the same marked contract composed through both arms of HttpRouter
     // WHEN each provider's declared dependencies are read
-    // THEN the authenticator is last in both, so every existing service keeps its index
+    // THEN the authenticator joins both, alongside — never in place of — the caller's own
     expect(authedRouterDeps).toEqual({
       keyed: ["AuthedOrders", "AuthedHealth", "HttpAuthenticator"],
-      positional: ["Greeter", "HttpAuthenticator"],
+      fromDeps: ["Greeter", "HttpAuthenticator"],
     });
   });
 

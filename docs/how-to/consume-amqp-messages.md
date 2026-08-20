@@ -46,32 +46,35 @@ import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Logger } from "@btravstack/observability";
 import { OkAsync } from "unthrown";
 
-export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
-  sync: (logger) => ({
-    orderNotifications: (message) => {
-      const { id, payload } = message.payload;
-      logger.info(
-        payload === null
-          ? "order gone — notifying"
-          : "order placed — notifying",
-        {
+export const orderHandlers = AmqpHandlers(orderContract)(
+  { logger: Logger },
+  {
+    sync: ({ logger }) => ({
+      orderNotifications: (message) => {
+        const { id, payload } = message.payload;
+        logger.info(
+          payload === null
+            ? "order gone — notifying"
+            : "order placed — notifying",
+          {
+            orderId: id,
+            ...(payload === null ? {} : { quantity: payload.quantity }),
+          },
+        );
+        return OkAsync();
+      },
+      orderAudit: (message) => {
+        const { id, occurredAt, payload } = message.payload;
+        logger.info("recording an order change", {
           orderId: id,
-          ...(payload === null ? {} : { quantity: payload.quantity }),
-        },
-      );
-      return OkAsync();
-    },
-    orderAudit: (message) => {
-      const { id, occurredAt, payload } = message.payload;
-      logger.info("recording an order change", {
-        orderId: id,
-        occurredAt,
-        change: payload === null ? "removed" : "placed",
-      });
-      return OkAsync();
-    },
-  }),
-});
+          occurredAt,
+          change: payload === null ? "removed" : "placed",
+        });
+        return OkAsync();
+      },
+    }),
+  },
+);
 ```
 
 `examples/order-amqp-worker` composes these two consumers from a slice each
@@ -104,27 +107,34 @@ import { AmqpHandlers } from "@btravstack/amqp";
 import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
-export const placingHandlers = AmqpHandlers(orderContract)([PlaceOrder], {
-  sync: (place) => ({
-    orderNotifications: (message) =>
-      place
-        .execute(message.payload.id, message.payload.payload?.quantity ?? 0)
-        .map(() => undefined)
-        .mapErrCases((matcher) =>
-          matcher.with(
-            P.tag("InvalidQuantity"),
-            P.tag("DuplicateOrder"),
-            (error) => new NonRetryableError(error._tag, error),
+export const placingHandlers = AmqpHandlers(orderContract)(
+  { place: PlaceOrder },
+  {
+    sync: ({ place }) => ({
+      orderNotifications: (message) =>
+        place
+          .execute(
+            message.payload.tenantId,
+            message.payload.id,
+            message.payload.payload?.quantity ?? 0,
+          )
+          .map(() => undefined)
+          .mapErrCases((matcher) =>
+            matcher.with(
+              P.tag("InvalidQuantity"),
+              P.tag("DuplicateOrder"),
+              (error) => new NonRetryableError(error._tag, error),
+            ),
+          )
+          .recoverDefect((cause) =>
+            ErrAsync(new RetryableError("placing the order failed", cause)),
           ),
-        )
-        .recoverDefect((cause) =>
-          ErrAsync(new RetryableError("placing the order failed", cause)),
-        ),
-    // Not the point of this example — a bare ack keeps `placingHandlers`
-    // focused on the triage `PlaceOrder` needs.
-    orderAudit: () => OkAsync(),
-  }),
-});
+      // Not the point of this example — a bare ack keeps `placingHandlers`
+      // focused on the triage `PlaceOrder` needs.
+      orderAudit: () => OkAsync(),
+    }),
+  },
+);
 ```
 
 The queue's policy is contract configuration the broker enforces — the

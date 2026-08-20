@@ -221,7 +221,7 @@ same three-package vertical below it.
 order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
                             │                        │
 order-api              slices/orders/           slices/customers/
-                         controller.ts            controller.ts     ← HttpController(name, fragment)([deps], { sync })
+                         controller.ts            controller.ts     ← HttpController(name, fragment)({ name: Dep }, { sync })
                          module.ts                module.ts         ← the slice's own di module
                             └───────────┬────────────┘
                                    module.ts                        ← HttpRouter(contract)({ orders, customers })
@@ -229,8 +229,8 @@ order-api              slices/orders/           slices/customers/
                        PlaceOrder / FindOrder    FindCustomer       ← use cases, entities, Prisma adapters — the same three packages
 ```
 
-A **controller** is `HttpController("OrdersController", contract.orders)([PlaceOrder,
-FindOrder], { sync })` — an ordinary di provider on a port `HttpController`
+A **controller** is `HttpController("OrdersController", contract.orders)({ place:
+PlaceOrder, find: FindOrder }, { sync })` — an ordinary di provider on a port `HttpController`
 mints and hands back on `.port`. A **slice** is an ordinary di `Module` that
 **imports the vertical it needs**, provides its controller and exports
 **only** that controller, so nothing outside the slice can reach anything else
@@ -255,7 +255,7 @@ module, a modulith is several slice modules in one root — and `exports:
 port and there is no class to name. And because a
 fragment is itself a valid contract, lifting `orders` into a process of its
 own leaves the slice untouched —
-`HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`
+`HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
 is the whole of the lifted root's router. `packages/http/src/controller.test-d.ts`
 pins that, and the four other gates, at compile time.
 

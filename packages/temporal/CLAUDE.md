@@ -159,8 +159,9 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   `DeclareActivitiesHandlerOptions<C>["activities"]` — the implementations
   record `declareActivitiesHandler` takes for `C`, with no injected context —
   built by a provider from the application's own services (closures; nothing
-  resolved from a `ctx`). Inside, `Provider(TemporalRuntime)([TemporalConnection,
-TemporalConfig, TemporalActivitiesPort as ActivitiesPortOf<C>], { sync })` —
+  resolved from a `ctx`). Inside, `Provider(TemporalRuntime)({ connection: TemporalConnection,
+config: TemporalConfig, activities: TemporalActivitiesPort as
+ActivitiesPortOf<C> }, { sync })` —
   the port rides di, which is why `ActivitiesInstanceOf<C>` is in the module's
   `Needs` and a root that imports the starter without providing the
   activities is rejected by `start` for still owing it (the

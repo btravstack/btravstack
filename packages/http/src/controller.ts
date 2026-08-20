@@ -26,25 +26,44 @@ import type { Implementation } from "./orpc.js";
  * and a consumer that exports the provider cannot emit its declaration (TS4023,
  * measured on `examples/order-api`).
  */
+/** What both arms of a minted controller return; `N` is the only thing that differs. */
+type Minted<Name extends string, C extends RouterContract, Identity, N> = Provider<
+  PortInstance<Name, Implementation<C, Identity>>,
+  never,
+  N
+> & { readonly port: PortClassOf<Name, Implementation<C, Identity>> };
+
 export const controllerFor =
   <Identity>() =>
-  <const Name extends string, C extends RouterContract>(name: Name, contract: C) =>
-  <const D extends readonly AnyPort[]>(
-    deps: D,
-    options: {
-      readonly sync: (
-        ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
-      ) => Implementation<C, Identity>;
-    },
-  ): Provider<PortInstance<Name, Implementation<C, Identity>>, never, InstanceType<D[number]>> & {
-    readonly port: PortClassOf<Name, Implementation<C, Identity>>;
-  } => {
+  <const Name extends string, C extends RouterContract>(name: Name, contract: C) => {
     // The parameter is named, not `_`-prefixed, so it reads as `contract` in the
     // published `.d.ts` and in an editor hint; nothing needs its value.
     void contract;
     // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
     const port = class extends Port(name)<Implementation<C, Identity>> {};
-    return Provider(port as never)(deps, options as never) as never;
+
+    // Two arms, discriminated by ARITY, mirroring `Provider(port)`'s own —
+    // a controller that calls no use case is the common shape here, not an
+    // edge case, and `({}, { sync })` is what it would otherwise have to
+    // spell. Delegating both to di's `build` is also what keeps the
+    // no-deps factory taking no argument at all.
+    function build<const D extends Readonly<Record<string, AnyPort>>>(
+      deps: D,
+      options: {
+        readonly sync: (services: {
+          readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
+        }) => Implementation<C, Identity>;
+      },
+    ): Minted<Name, C, Identity, InstanceType<D[keyof D]>>;
+    function build(options: {
+      readonly sync: () => Implementation<C, Identity>;
+    }): Minted<Name, C, Identity, never>;
+    function build(depsOrOptions: unknown, options?: unknown): unknown {
+      return options === undefined
+        ? Provider(port as never)(depsOrOptions as never)
+        : Provider(port as never)(depsOrOptions as never, options as never);
+    }
+    return build;
   };
 
 /**

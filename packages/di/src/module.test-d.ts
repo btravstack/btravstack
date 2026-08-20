@@ -13,19 +13,28 @@ class Database extends Port("MDatabase")<{ readonly query: () => readonly unknow
 class OrderRepository extends Port("MOrderRepository")<{ readonly find: () => string }> {}
 
 const EnvProvider = Provider(Env)({ value: {} });
-const AppConfigProvider = Provider(AppConfig)([Env], {
-  make: (env) =>
-    env["DATABASE_URL"] === undefined
-      ? Err(new ConfigError({ reason: "unset" }))
-      : Ok({ dbUrl: env["DATABASE_URL"] }),
-});
-const DatabaseProvider = Provider(Database)([AppConfig], {
-  make: (cfg) =>
-    cfg.dbUrl === "" ? Err(new PoolError({ url: cfg.dbUrl })) : Ok({ query: () => [] }),
-});
-const OrderRepositoryProvider = Provider(OrderRepository)([Database], {
-  sync: (db) => ({ find: () => String(db.query().length) }),
-});
+const AppConfigProvider = Provider(AppConfig)(
+  { env: Env },
+  {
+    make: ({ env }) =>
+      env["DATABASE_URL"] === undefined
+        ? Err(new ConfigError({ reason: "unset" }))
+        : Ok({ dbUrl: env["DATABASE_URL"] }),
+  },
+);
+const DatabaseProvider = Provider(Database)(
+  { config: AppConfig },
+  {
+    make: ({ config }) =>
+      config.dbUrl === "" ? Err(new PoolError({ url: config.dbUrl })) : Ok({ query: () => [] }),
+  },
+);
+const OrderRepositoryProvider = Provider(OrderRepository)(
+  { db: Database },
+  {
+    sync: ({ db }) => ({ find: () => String(db.query().length) }),
+  },
+);
 
 const ConfigModule = Module("Config")({
   provides: [EnvProvider, AppConfigProvider],

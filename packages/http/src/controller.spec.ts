@@ -1,3 +1,4 @@
+import { OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it } from "./test-fixtures.js";
@@ -13,6 +14,39 @@ describe("HttpController", () => {
       portId: controller.port.portId,
       deps: controller.deps.map((dep) => dep.portId),
     }).toEqual({ portId: "HelloController", deps: ["Greeter"] });
+  });
+
+  it("keeps the keyed form when a contract names a key `sync`", async () => {
+    // GIVEN a contract whose top-level key is literally `sync` — the one input
+    // that could confuse `HttpRouter`'s runtime discriminator, which tells its
+    // arm-only form from its keyed-controllers form by whether `sync` holds a
+    // function
+    const { syncKeyedRouter } = await import("./test-fixtures.js");
+
+    // WHEN the router provider is constructed from its controller's service
+    const built = await syncKeyedRouter.construct([{ hello: () => OkAsync("hello world") }]);
+
+    // THEN the keyed arm ran: the contract's `sync` key is a mounted procedure,
+    // not a factory the arm-only form would have called. A controller is an
+    // object carrying `.port`, never a function, which is what makes the check
+    // total rather than a heuristic
+    expect(built).toBeOkWith(expect.objectContaining({ sync: expect.anything() }));
+  });
+
+  it("hands an arm-only router's sync no arguments", async () => {
+    // GIVEN an arm-only router whose `sync` records how many arguments it got.
+    // Its declared type is `() => Implementation`, and the whole point of the
+    // no-deps arm is that the runtime honours that
+    const { armOnlyRouterRecording } = await import("./test-fixtures.js");
+    const { provider, arity } = armOnlyRouterRecording();
+
+    // WHEN the graph constructs it
+    await provider.construct([]);
+
+    // THEN it was called with none — a record would be ignored by an arrow but
+    // seen by a rest parameter, and it would contradict the arity `Provider`
+    // guarantees a no-deps factory
+    expect(arity()).toBe(0);
   });
 
   it("serves a router composed from several controllers", async ({ rpcSliced }) => {
