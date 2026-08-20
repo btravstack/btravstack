@@ -37,18 +37,19 @@ that a client should be able to read without taking the server:
 
 ```ts
 import { authenticated } from "@btravstack/contract";
-import { oc, type } from "@orpc/contract";
+import { oc } from "@orpc/contract";
+import { z } from "zod";
 
 const ordersContract = {
   place: oc
-    .input(type<{ readonly id: string; readonly quantity: number }>())
-    .output(type<{ readonly id: string }>()),
+    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .output(z.object({ id: z.string() })),
 };
 
 const customersContract = {
   find: oc
-    .input(type<{ readonly id: string }>())
-    .output(type<{ readonly name: string }>()),
+    .input(z.object({ id: z.string() }))
+    .output(z.object({ name: z.string() })),
 };
 
 export const contract = {
