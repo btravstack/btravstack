@@ -101,7 +101,7 @@ handler is. The three aliases are annotations rather than ceremony — a
 controller's port expands to a type carrying the marker's phantom
 `unique symbol`, which the file's own `.d.ts` cannot name.
 
-`HttpAuthenticator([deps], { sync })` is then an ordinary di provider on the
+`HttpAuthenticator({ name: Dep }, { sync })` is then an ordinary di provider on the
 starter's `AuthenticatorPort`, with no type argument left to state. It resolves
 the identity from the request's **headers** — not the request: an authenticator
 has no business reading a body, and the narrower argument is what keeps it
@@ -113,21 +113,24 @@ import { ErrAsync, OkAsync } from "unthrown";
 
 import { HttpAuthenticator } from "./auth.js";
 
-export const bearerAuthenticator = HttpAuthenticator([], {
-  sync: () => (headers) => {
-    const header = headers.authorization ?? "";
-    const token = header.startsWith("Bearer ")
-      ? header.slice("Bearer ".length)
-      : "";
-    const [tenantId, userId] = token.split(":");
-    return tenantId === undefined ||
-      tenantId === "" ||
-      userId === undefined ||
-      userId === ""
-      ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+export const bearerAuthenticator = HttpAuthenticator(
+  {},
+  {
+    sync: () => (headers) => {
+      const header = headers.authorization ?? "";
+      const token = header.startsWith("Bearer ")
+        ? header.slice("Bearer ".length)
+        : "";
+      const [tenantId, userId] = token.split(":");
+      return tenantId === undefined ||
+        tenantId === "" ||
+        userId === undefined ||
+        userId === ""
+        ? ErrAsync(new Unauthenticated())
+        : OkAsync({ tenantId, userId });
+    },
   },
-});
+);
 ```
 
 Enriching what a deployment knows about its callers — roles, an org tier, an
@@ -173,45 +176,48 @@ import { HttpController } from "../../auth.js";
 export const ordersController = HttpController(
   "OrdersController",
   contract.orders,
-)([PlaceOrder, FindOrder, Logger], {
-  sync: (place, find, logger) => ({
-    place: ({ errors, context }, input) => {
-      logger.info("order placement requested", {
-        userId: context.principal.userId,
-      });
-      return place
-        .execute(context.principal.tenantId, input.id, input.quantity)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher
-            .with(P.tag("InvalidQuantity"), (error) =>
-              errors.INVALID_QUANTITY({
-                message: error.message,
-                data: { id: error.id },
-              }),
-            )
-            .with(P.tag("DuplicateOrder"), (error) =>
-              errors.CONFLICT({
+)(
+  { place: PlaceOrder, find: FindOrder, logger: Logger },
+  {
+    sync: ({ place, find, logger }) => ({
+      place: ({ errors, context }, input) => {
+        logger.info("order placement requested", {
+          userId: context.principal.userId,
+        });
+        return place
+          .execute(context.principal.tenantId, input.id, input.quantity)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
+          );
+      },
+      find: ({ errors, context }, input) =>
+        find
+          .execute(context.principal.tenantId, input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
-        );
-    },
-    find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher.with(P.tag("OrderNotFound"), (error) =>
-            errors.NOT_FOUND({
-              message: error.message,
-              data: { id: error.id },
-            }),
           ),
-        ),
-  }),
-});
+    }),
+  },
+);
 ```
 
 An **unmarked** procedure's `context` has no `principal`, so reading one there

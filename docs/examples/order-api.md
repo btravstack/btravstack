@@ -156,21 +156,24 @@ import { ErrAsync, OkAsync } from "unthrown";
 
 import { HttpAuthenticator } from "./auth.js";
 
-export const bearerAuthenticator = HttpAuthenticator([], {
-  sync: () => (headers) => {
-    const header = headers.authorization ?? "";
-    const token = header.startsWith("Bearer ")
-      ? header.slice("Bearer ".length)
-      : "";
-    const [tenantId, userId] = token.split(":");
-    return tenantId === undefined ||
-      tenantId === "" ||
-      userId === undefined ||
-      userId === ""
-      ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+export const bearerAuthenticator = HttpAuthenticator(
+  {},
+  {
+    sync: () => (headers) => {
+      const header = headers.authorization ?? "";
+      const token = header.startsWith("Bearer ")
+        ? header.slice("Bearer ".length)
+        : "";
+      const [tenantId, userId] = token.split(":");
+      return tenantId === undefined ||
+        tenantId === "" ||
+        userId === undefined ||
+        userId === ""
+        ? ErrAsync(new Unauthenticated())
+        : OkAsync({ tenantId, userId });
+    },
   },
-});
+);
 ```
 
 `Bearer <tenantId>:<userId>` is a stand-in, not a recommendation — what matters
@@ -189,9 +192,9 @@ use cases in [`order-application`](/examples/order-application), and the
 entities and Prisma adapters behind it.
 
 ```
-src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder, Logger], { sync })
+src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
 src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
-src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([FindCustomer], { sync })
+src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 ```
 
@@ -205,45 +208,48 @@ import { HttpController } from "../../auth.js";
 export const ordersController = HttpController(
   "OrdersController",
   contract.orders,
-)([PlaceOrder, FindOrder, Logger], {
-  sync: (place, find, logger) => ({
-    place: ({ errors, context }, input) => {
-      logger.info("order placement requested", {
-        userId: context.principal.userId,
-      });
-      return place
-        .execute(context.principal.tenantId, input.id, input.quantity)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher
-            .with(P.tag("InvalidQuantity"), (error) =>
-              errors.INVALID_QUANTITY({
-                message: error.message,
-                data: { id: error.id },
-              }),
-            )
-            .with(P.tag("DuplicateOrder"), (error) =>
-              errors.CONFLICT({
+)(
+  { place: PlaceOrder, find: FindOrder, logger: Logger },
+  {
+    sync: ({ place, find, logger }) => ({
+      place: ({ errors, context }, input) => {
+        logger.info("order placement requested", {
+          userId: context.principal.userId,
+        });
+        return place
+          .execute(context.principal.tenantId, input.id, input.quantity)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
+          );
+      },
+      find: ({ errors, context }, input) =>
+        find
+          .execute(context.principal.tenantId, input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
-        );
-    },
-    find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher.with(P.tag("OrderNotFound"), (error) =>
-            errors.NOT_FOUND({
-              message: error.message,
-              data: { id: error.id },
-            }),
           ),
-        ),
-  }),
-});
+    }),
+  },
+);
 ```
 
 Each leaf is the `.result()` handler `@unthrown/orpc` gives that procedure's
@@ -310,7 +316,7 @@ the recipe, and `packages/http/src/controller.test-d.ts` for the five gates
 that pin these errors and the lift below. Because a fragment is itself a valid
 contract, `ordersController` serves `contract.orders` alone unchanged: the
 lifted root is
-`HttpRouter(contract.orders)([ordersController.port], { sync: (implementation) => implementation })`
+`HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
 over `OrdersSlice`, so extracting a slice out of this modulith is a new
 composition root and one fewer import, not a rewrite.
 
@@ -407,18 +413,21 @@ export class RequestSpan extends Port("RequestSpan")<{
 
 export const RequestModule = Module("Request")({
   provides: [
-    Provider(RequestSpan)([Logger], {
-      sync: (logger) => {
-        const startedAt = Date.now();
-        return {
-          finish: () =>
-            logger.info("request finished", {
-              durationMs: Date.now() - startedAt,
-            }),
-        };
+    Provider(RequestSpan)(
+      { logger: Logger },
+      {
+        sync: ({ logger }) => {
+          const startedAt = Date.now();
+          return {
+            finish: () =>
+              logger.info("request finished", {
+                durationMs: Date.now() - startedAt,
+              }),
+          };
+        },
+        onStop: (span) => span.finish(),
       },
-      onStop: (span) => span.finish(),
-    }),
+    ),
   ],
   exports: [RequestSpan],
 });
@@ -556,9 +565,12 @@ authenticator discharges the need. `HttpModule` compares the router's identity
 against the authenticator's itself, at the option:
 
 ```ts
-const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()([], {
-  sync: () => () => OkAsync({ sub: "s-1" }),
-});
+const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()(
+  {},
+  {
+    sync: () => () => OkAsync({ sub: "s-1" }),
+  },
+);
 
 const _mismatchedApi = HttpModule("MismatchedApi")({
   router: orderRouter,

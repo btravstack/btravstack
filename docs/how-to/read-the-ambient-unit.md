@@ -212,26 +212,33 @@ broker, so a `RetryableError` hands the message to the next worker —
 export const orderNotifications = AmqpHandler(
   orderContract,
   "orderNotifications",
-)([Logger], {
-  sync: (logger) => (message) => {
-    const { id, payload } = message.payload;
-    if (currentUnit()?.signal.aborted === true) {
-      return ErrAsync(
-        new RetryableError(
-          `the drain deadline passed before order ${id} was notified`,
-        ),
-      );
-    }
-    logger.info(
-      payload === null ? "order gone — notifying" : "order placed — notifying",
-      {
-        orderId: id,
-        ...(payload === null ? {} : { quantity: payload.quantity }),
+)(
+  { logger: Logger },
+  {
+    sync:
+      ({ logger }) =>
+      (message) => {
+        const { id, payload } = message.payload;
+        if (currentUnit()?.signal.aborted === true) {
+          return ErrAsync(
+            new RetryableError(
+              `the drain deadline passed before order ${id} was notified`,
+            ),
+          );
+        }
+        logger.info(
+          payload === null
+            ? "order gone — notifying"
+            : "order placed — notifying",
+          {
+            orderId: id,
+            ...(payload === null ? {} : { quantity: payload.quantity }),
+          },
+        );
+        return OkAsync();
       },
-    );
-    return OkAsync();
   },
-});
+);
 ```
 
 On Temporal, the platform retries an attempt that fails as a **defect** on
@@ -240,20 +247,23 @@ contract's own `ShippingUnavailable` is a permanent no and would be the wrong
 error. `examples/order-temporal-worker/src/fulfillment.ts`:
 
 ```ts
-Provider(ShippingService)([Logger], {
-  sync: (logger) => ({
-    arrange: (orderId) =>
-      currentUnit()?.signal.aborted === true
-        ? fromSafePromise(
-            Promise.reject(
-              new Error(
-                `the drain deadline passed before shipping for ${orderId} was arranged`,
+Provider(ShippingService)(
+  { logger: Logger },
+  {
+    sync: ({ logger }) => ({
+      arrange: (orderId) =>
+        currentUnit()?.signal.aborted === true
+          ? fromSafePromise(
+              Promise.reject(
+                new Error(
+                  `the drain deadline passed before shipping for ${orderId} was arranged`,
+                ),
               ),
-            ),
-          )
-        : (logger.info("arranged shipping", { orderId }), OkAsync()),
-  }),
-});
+            )
+          : (logger.info("arranged shipping", { orderId }), OkAsync()),
+    }),
+  },
+);
 ```
 
 A transport's **own** cancellation is a different clock and stays separate.

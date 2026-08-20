@@ -21,7 +21,7 @@ lifted from `examples/order-api`, which serves an `orders` slice and a
 ## Step 1 — a fragment per slice
 
 A slice's contract is a plain `RouterContract` — the same shape the
-positional form already takes, just smaller — and the root contract is a
+whole-contract form already takes, just smaller — and the root contract is a
 record of them:
 
 ```ts
@@ -86,9 +86,10 @@ public half and a protected one stop being one undifferentiated surface.
 
 ## Step 2 — a controller per slice
 
-`HttpController(name, fragment)([deps], { sync })` is `HttpRouter`'s own
+`HttpController(name, fragment)({ name: Dep }, { sync })` is `HttpRouter`'s own
 shape, aimed at one fragment: the first call fixes the fragment's type and
-mints a port under `name`; the second is di's `Provider(port)(deps, { sync })`,
+mints a port under `name`; the second is di's
+`Provider(port)({ name: Dep }, { sync })`,
 so `sync`'s return is typed by the fragment at the call — a typo'd or missing
 procedure is a compile error inside the controller itself, not at the root:
 
@@ -98,41 +99,44 @@ import { HttpController } from "../../auth.js";
 export const ordersController = HttpController(
   "OrdersController",
   contract.orders,
-)([PlaceOrder, FindOrder], {
-  sync: (place, find) => ({
-    place: ({ errors, context }, input) =>
-      place
-        .execute(context.principal.tenantId, input.id, input.quantity)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher
-            .with(P.tag("InvalidQuantity"), (error) =>
-              errors.INVALID_QUANTITY({
-                message: error.message,
-                data: { id: error.id },
-              }),
-            )
-            .with(P.tag("DuplicateOrder"), (error) =>
-              errors.CONFLICT({
+)(
+  { place: PlaceOrder, find: FindOrder },
+  {
+    sync: ({ place, find }) => ({
+      place: ({ errors, context }, input) =>
+        place
+          .execute(context.principal.tenantId, input.id, input.quantity)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.CONFLICT({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              ),
+          ),
+      find: ({ errors, context }, input) =>
+        find
+          .execute(context.principal.tenantId, input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
-        ),
-    find: ({ errors, context }, input) =>
-      find
-        .execute(context.principal.tenantId, input.id)
-        .map(view)
-        .mapErrCases((matcher) =>
-          matcher.with(P.tag("OrderNotFound"), (error) =>
-            errors.NOT_FOUND({
-              message: error.message,
-              data: { id: error.id },
-            }),
           ),
-        ),
-  }),
-});
+    }),
+  },
+);
 ```
 
 `HttpController` comes from the application's own `auth.ts`, not from
@@ -174,8 +178,8 @@ is built.
 ## Step 3 — the keyed root
 
 `HttpRouter(contract)(controllers)` — a record keyed by the contract's own
-top-level keys, one `HttpController` per key — replaces the positional
-`(deps, { sync })` call at the root:
+top-level keys, one `HttpController` per key — replaces the
+`(deps, { sync })` call at the root, and is told apart from it by **arity**:
 
 ```ts
 export const orderRouter = HttpRouter(contract)({
@@ -218,10 +222,8 @@ controller built:
 
 ```ts
 export const ordersRouter = HttpRouter(contract.orders)(
-  [ordersController.port],
-  {
-    sync: (implementation) => implementation,
-  },
+  { implementation: ordersController.port },
+  { sync: ({ implementation }) => implementation },
 );
 
 export const OrdersApi = HttpModule("OrdersApi")({
@@ -245,7 +247,7 @@ composing slices into one router a starting point rather than a trap.
 ## See also
 
 - [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http) — the
-  positional form, and everything the starter itself decides.
+  one-router form, and everything the starter itself decides.
 - [`@btravstack/http`](/reference/http) — `HttpController` and
   `HttpRouter`'s full signatures.
 - [Protect a procedure](/how-to/protect-a-procedure) — `auth.ts`, the

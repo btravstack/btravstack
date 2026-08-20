@@ -158,9 +158,10 @@ const databaseConfig = Config.provider("DatabaseConfig")(
 const Persistence = Module("Persistence")({
   provides: [
     databaseConfig,
-    Provider(Database)([databaseConfig.port], {
-      sync: (config) => ({ url: config.url }),
-    }),
+    Provider(Database)(
+      { config: databaseConfig.port },
+      { sync: ({ config }) => ({ url: config.url }) },
+    ),
   ],
   exports: [Database],
 });

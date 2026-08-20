@@ -55,21 +55,24 @@ declare is a compile error in that slice's own file, not a defect
 export const chargeOrder = TemporalWorkflowActivities(
   orderContract,
   "chargeOrder",
-)([PaymentService], {
-  sync: (payments) => ({
-    authorizePayment: (args, { errors }) =>
-      payments
-        .authorize(args.orderId, args.amount)
-        .map((authorizationId) => ({ authorizationId }))
-        .mapErrCases((matcher) =>
-          matcher.with(P.tag("PaymentDeclined"), (error) =>
-            errors.PaymentDeclined({ id: error.id }),
+)(
+  { payments: PaymentService },
+  {
+    sync: ({ payments }) => ({
+      authorizePayment: (args, { errors }) =>
+        payments
+          .authorize(args.orderId, args.amount)
+          .map((authorizationId) => ({ authorizationId }))
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("PaymentDeclined"), (error) =>
+              errors.PaymentDeclined({ id: error.id }),
+            ),
           ),
-        ),
-    capturePayment: (args) => payments.capture(args.authorizationId),
-    refundPayment: (args) => payments.refund(args.authorizationId),
-  }),
-});
+      capturePayment: (args) => payments.capture(args.authorizationId),
+      refundPayment: (args) => payments.refund(args.authorizationId),
+    }),
+  },
+);
 ```
 
 `fulfillOrder`'s own piece is the same activities record this example always

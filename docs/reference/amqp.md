@@ -19,20 +19,20 @@ description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime,
 
 `packages/amqp/src/index.ts` exports exactly this:
 
-| Export                  | Kind  | What it is                                                                                                                                                                                                         |
-| ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AmqpModule`            | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the handlers provider |
-| `AmqpModuleOptions`     | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                        |
-| `AmqpHandlers`          | value | `AmqpHandlers(contract)` — di's `Provider(port)` builder on the starter's own handlers port, typed for `contract`, so the next call is `(deps, arm)`, or `([pieces])` to compose one provider per consumer/rpc     |
-| `HandlersPortOf<C>`     | type  | The handlers port's class typed for `C` — what a composed `orderHandlers`'s `.port` is                                                                                                                             |
-| `HandlersInstanceOf<C>` | type  | That port's instance typed for `C` (service `WorkerInferHandlers<C>`)                                                                                                                                              |
-| `AmqpHandler`           | value | `AmqpHandler(contract, key)` — one consumer or rpc as a provider of its own, typed by `key` alone; the next call is `(deps, arm)`, and the piece is what `AmqpHandlers(contract)([...])` composes                  |
-| `HandlerPortOf<C, K>`   | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                    |
-| `amqp`                  | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                           |
-| `AmqpOptions`           | type  | `amqp()`'s options                                                                                                                                                                                                 |
-| `AmqpRuntime`           | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                          |
-| `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string }> {}` — the broker, bound from `AMQP_URL`; a publisher sharing the consumer's broker reads it too                                                      |
-| `AmqpInfo`              | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                              |
+| Export                  | Kind  | What it is                                                                                                                                                                                                              |
+| ----------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AmqpModule`            | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the handlers provider      |
+| `AmqpModuleOptions`     | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                             |
+| `AmqpHandlers`          | value | `AmqpHandlers(contract)` — di's `Provider(port)` builder on the starter's own handlers port, typed for `contract`, so the next call is `({ name: Dep }, arm)`, or `([pieces])` to compose one provider per consumer/rpc |
+| `HandlersPortOf<C>`     | type  | The handlers port's class typed for `C` — what a composed `orderHandlers`'s `.port` is                                                                                                                                  |
+| `HandlersInstanceOf<C>` | type  | That port's instance typed for `C` (service `WorkerInferHandlers<C>`)                                                                                                                                                   |
+| `AmqpHandler`           | value | `AmqpHandler(contract, key)` — one consumer or rpc as a provider of its own, typed by `key` alone; the next call is `({ name: Dep }, arm)`, and the piece is what `AmqpHandlers(contract)([...])` composes              |
+| `HandlerPortOf<C, K>`   | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                         |
+| `amqp`                  | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                                |
+| `AmqpOptions`           | type  | `amqp()`'s options                                                                                                                                                                                                      |
+| `AmqpRuntime`           | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                               |
+| `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string }> {}` — the broker, bound from `AMQP_URL`; a publisher sharing the consumer's broker reads it too                                                           |
+| `AmqpInfo`              | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                                   |
 
 `HandlersPortOf<C>` / `HandlersInstanceOf<C>` / `HandlerPortOf<C, K>` are
 exported as **types only**, and only because declaration emit forces it: an
@@ -127,32 +127,35 @@ record covers **every** consumer and rpc the contract declares —
 the one `orderChanged` event on their own queue:
 
 ```ts
-export const orderHandlers = AmqpHandlers(orderContract)([Logger], {
-  sync: (logger) => ({
-    orderNotifications: (message) => {
-      const { id, payload } = message.payload;
-      logger.info(
-        payload === null
-          ? "order gone — notifying"
-          : "order placed — notifying",
-        {
+export const orderHandlers = AmqpHandlers(orderContract)(
+  { logger: Logger },
+  {
+    sync: ({ logger }) => ({
+      orderNotifications: (message) => {
+        const { id, payload } = message.payload;
+        logger.info(
+          payload === null
+            ? "order gone — notifying"
+            : "order placed — notifying",
+          {
+            orderId: id,
+            ...(payload === null ? {} : { quantity: payload.quantity }),
+          },
+        );
+        return OkAsync();
+      },
+      orderAudit: (message) => {
+        const { id, occurredAt, payload } = message.payload;
+        logger.info("recording an order change", {
           orderId: id,
-          ...(payload === null ? {} : { quantity: payload.quantity }),
-        },
-      );
-      return OkAsync();
-    },
-    orderAudit: (message) => {
-      const { id, occurredAt, payload } = message.payload;
-      logger.info("recording an order change", {
-        orderId: id,
-        occurredAt,
-        change: payload === null ? "removed" : "placed",
-      });
-      return OkAsync();
-    },
-  }),
-});
+          occurredAt,
+          change: payload === null ? "removed" : "placed",
+        });
+        return OkAsync();
+      },
+    }),
+  },
+);
 ```
 
 `examples/order-amqp-worker` no longer calls `AmqpHandlers` this way — its two
@@ -163,10 +166,10 @@ that has not outgrown one function.
 
 A third call composes several **pieces** instead of one record:
 `AmqpHandlers(contract)([piece, piece, ...])`, where each piece is what
-`AmqpHandler(contract, key)(deps, arm)` returns. Di constructs every piece
-first — they are the composed provider's own `deps`, in array order — and this
-call reassembles the handlers record from them, keyed by what each piece's
-port id carries. Every key the contract declares must be covered: an array
+`AmqpHandler(contract, key)({ name: Dep }, arm)` returns. Di constructs every
+piece first — they are the composed provider's own `deps`, declared under the
+very key each piece's port id carries, so the services record IS the handlers
+record. Every key the contract declares must be covered: an array
 missing one is refused at the call, against an `"UNCOVERED HANDLERS"` marker
 (`readonly ["UNCOVERED HANDLERS", ...]`) — the missing key itself is named
 too once the array's length matches that marker tuple's own length of 2; a
@@ -198,21 +201,28 @@ is on `AmqpHandlers(contract)`, and the provider carries its port as
 
 ```ts
 const orderNotifications = AmqpHandler(orderContract, "orderNotifications")(
-  [Logger],
+  { logger: Logger },
   {
-    sync: (logger) => (message) => {
-      logger.info("order changed", { orderId: message.payload.id });
-      return OkAsync(undefined);
-    },
+    sync:
+      ({ logger }) =>
+      (message) => {
+        logger.info("order changed", { orderId: message.payload.id });
+        return OkAsync(undefined);
+      },
   },
 );
 
-const orderAudit = AmqpHandler(orderContract, "orderAudit")([Logger], {
-  sync: (logger) => (message) => {
-    logger.info("order audited", { orderId: message.payload.id });
-    return OkAsync(undefined);
+const orderAudit = AmqpHandler(orderContract, "orderAudit")(
+  { logger: Logger },
+  {
+    sync:
+      ({ logger }) =>
+      (message) => {
+        logger.info("order audited", { orderId: message.payload.id });
+        return OkAsync(undefined);
+      },
   },
-});
+);
 
 const orderHandlers = AmqpHandlers(orderContract)([
   orderNotifications,

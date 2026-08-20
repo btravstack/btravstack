@@ -22,10 +22,13 @@ release, nor an `acquire` never torn down:
 const Persistence = Module("Persistence")({
   imports: [Config],
   provides: [
-    Provider(Database)([AppConfig], {
-      acquire: (config) => openPool(config.dbUrl), // Result | AsyncResult — may fail
-      release: (pool) => pool.close(), // void | Promise<void>
-    }),
+    Provider(Database)(
+      { config: AppConfig },
+      {
+        acquire: ({ config }) => openPool(config.dbUrl), // Result | AsyncResult — may fail
+        release: (pool) => pool.close(), // void | Promise<void>
+      },
+    ),
   ],
   exports: [Database],
 });
@@ -99,11 +102,14 @@ Every arm — not only `acquire`/`release` — accepts optional lifecycle hooks 
 the same options literal:
 
 ```ts
-Provider(Cache)([AppConfig], {
-  make: (config) => connectCache(config),
-  onStart: (cache) => cache.warm(), // after the WHOLE graph is built
-  onStop: (cache) => cache.flush(), // during teardown, LIFO with releases
-});
+Provider(Cache)(
+  { config: AppConfig },
+  {
+    make: ({ config }) => connectCache(config),
+    onStart: (cache) => cache.warm(), // after the WHOLE graph is built
+    onStop: (cache) => cache.flush(), // during teardown, LIFO with releases
+  },
+);
 ```
 
 - `onStart` fires only once the **entire** graph has finished constructing —

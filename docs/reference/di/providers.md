@@ -18,20 +18,21 @@ not an instance: nothing runs until a module containing it is built.
 ## `Provider(port)(deps, options)` / `Provider(port)(options)`
 
 ```ts
-Provider(OrderRepository)([Database], {
-  sync: (db) => ({ findById: (id) => db.query(id) }),
-});
+Provider(OrderRepository)(
+  { db: Database },
+  { sync: ({ db }) => ({ findById: (id) => db.query(id) }) },
+);
 
 Provider(AppConfig)({ value: { dbUrl: "postgres://localhost/orders" } }); // no deps
 ```
 
-| Parameter | Meaning                                                                                                                                                                                                                                  |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deps`    | An array of ports this construction reads. The resolved services are passed to the arm's function (or constructor) **positionally**, and their types are checked against its parameters. Omitting the array is the zero-dependency form. |
-| `options` | Exactly one construction arm, plus the optional hooks.                                                                                                                                                                                   |
+| Parameter | Meaning                                                                                                                                                                                                                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `deps`    | A **record** of the ports this construction reads, under the names you choose for them. The arm's function (or constructor) receives one argument: a record with the same keys, holding the resolved services. A key the record does not declare is a compile error, and a value that is not a port is too. Omitting the record is the zero-dependency form. |
+| `options` | Exactly one construction arm, plus the optional hooks.                                                                                                                                                                                                                                                                                                       |
 
-The dependency array is also what feeds the module's `Needs` channel: every
-port listed here must be available where the module is built, or the graph is
+The dependency record is also what feeds the module's `Needs` channel: every
+port named here must be available where the module is built, or the graph is
 rejected — at compile time if the type is missing, as a
 [wiring defect](/reference/di/wiring-defects) if a widened type slipped past.
 
@@ -44,13 +45,13 @@ provider carries the very port class it was declared for, typed — see
 Exactly one arm per provider. The arms are mutually exclusive by construction —
 an options literal supplying two arms' keys fails to compile, not merely warns:
 
-| Arm                   | Shape                                                                                              | When                                                                                | `Scope` in `Needs`? |
-| --------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------- |
-| `value`               | `S`                                                                                                | The service is already at hand — a config object, a constant.                       | No                  |
-| `sync`                | `(...deps) => S`                                                                                   | Built synchronously from its dependencies, and cannot fail.                         | No                  |
-| `make`                | `(...deps) => Result<S, E> \| AsyncResult<S, E>`                                                   | Built fallibly, possibly asynchronously — a parsed config, a validated client.      | No                  |
-| `class`               | `new (...deps) => S`                                                                               | Built by constructing a class, dependencies passed positionally to the constructor. | No                  |
-| `acquire` + `release` | `acquire: (...deps) => Result<S, E> \| AsyncResult<S, E>`, `release: (s) => void \| Promise<void>` | A real resource — a connection, a file handle — that must be torn down.             | Yes                 |
+| Arm                   | Shape                                                                                               | When                                                                                | `Scope` in `Needs`? |
+| --------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------- |
+| `value`               | `S`                                                                                                 | The service is already at hand — a config object, a constant.                       | No                  |
+| `sync`                | `(services) => S`                                                                                   | Built synchronously from its dependencies, and cannot fail.                         | No                  |
+| `make`                | `(services) => Result<S, E> \| AsyncResult<S, E>`                                                   | Built fallibly, possibly asynchronously — a parsed config, a validated client.      | No                  |
+| `class`               | `new (services) => S`                                                                               | Built by constructing a class, which takes the services record as its one argument. | No                  |
+| `acquire` + `release` | `acquire: (services) => Result<S, E> \| AsyncResult<S, E>`, `release: (s) => void \| Promise<void>` | A real resource — a connection, a file handle — that must be torn down.             | Yes                 |
 
 Notes per arm:
 
@@ -61,7 +62,8 @@ Notes per arm:
   and surfaces through the entry point's `Result` as an `Err`. A `make` that
   **throws** instead of returning is a defect, not an `Err`.
 - **`class`** — the port's service type is the class's **instance** type; the
-  constructor's parameters are checked against `deps`.
+  constructor's one parameter is checked against the services record `deps`
+  describes, so it destructures the same keys.
 - **`acquire`/`release`** come as a pair; neither exists without the other.
   `acquire` may fail exactly as `make` may. `release` runs during scope close,
   in reverse acquisition order; a failure in it is reported (see
@@ -73,11 +75,14 @@ Notes per arm:
 Optional on **every** arm, supplied inline in the same options literal:
 
 ```ts
-Provider(Cache)([AppConfig], {
-  make: (config) => connectCache(config),
-  onStart: (cache) => cache.warm(),
-  onStop: (cache) => cache.flush(),
-});
+Provider(Cache)(
+  { config: AppConfig },
+  {
+    make: ({ config }) => connectCache(config),
+    onStart: (cache) => cache.warm(),
+    onStop: (cache) => cache.flush(),
+  },
+);
 ```
 
 | Hook                                          | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -94,22 +99,21 @@ What `Provider(port)(…)` returns is `Provider<P, E, N> & { readonly port: P }`
 — the port class, typed, rides on the provider. It exists for the helpers that
 hand back a provider on a port the application never declared —
 `Config.provider("Name")(schema)`, which mints one; a starter's
-`HttpRouter(contract)(deps, arm)` / `TemporalActivities(…)` /
+`HttpRouter(contract)({ name: Dep }, arm)` / `TemporalActivities(…)` /
 `AmqpHandlers(…)`, which target the starter's own fixed port — so the
 application holds one value and reads the port off it: `provider.port` is
 what another provider lists in its `deps`, what a module lists in `exports`,
 and what a hand-declared provider or a type test names.
 
 ```ts
-const cacheProvider = Provider(Cache)([AppConfig], {
-  make: (config) => connectCache(config),
-});
+const cacheProvider = Provider(Cache)(
+  { config: AppConfig },
+  { make: ({ config }) => connectCache(config) },
+);
 
 const Warmer = Provider(Port("Warmer")<{ readonly go: () => void }>)(
-  [cacheProvider.port],
-  {
-    sync: (cache) => ({ go: () => void cache.warm() }),
-  },
+  { cache: cacheProvider.port },
+  { sync: ({ cache }) => ({ go: () => void cache.warm() }) },
 );
 ```
 
