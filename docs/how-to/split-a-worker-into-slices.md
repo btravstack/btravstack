@@ -169,6 +169,36 @@ Dropping a slice's import here would leave its piece's port unmet — a runtime
 `TemporalActivities` cannot see what a slice's module has or has not been
 imported by; only `start` can.
 
+## Sequencing a saga: `flatTap`, never sibling `const`s
+
+An `AsyncResult` is **eager** — constructing it starts the work. So the
+readable spelling of a sequence, each step in its own `const` and then chained,
+is a **race**: it type-checks, it returns a `Result`, and it runs the steps
+concurrently. Nothing catches it.
+
+Sequence with [`flatTap`](https://github.com/btravstack/unthrown) instead. It
+runs a failable step, discards its value and passes the **original** one
+through, so the next step is a callback that cannot start before the previous
+settles — and each step's error triage and compensation stay at one level of
+indentation rather than accumulating:
+
+```ts
+context.activities
+  .place(order)
+  .mapErrCases(/* triage */)
+  .flatTap(() =>
+    context.activities.reserveStock(order).flatMapErrCases(/* compensate */),
+  )
+  .flatTap(() =>
+    context.activities.arrangeShipping(order).flatMapErrCases(/* compensate */),
+  );
+```
+
+Where a later step needs an earlier step's _value_ rather than just its
+success, `DoAsync().bind("name", (scope) => …)` is the same idea with an
+accumulating scope. See
+[Order Temporal worker](/examples/order-temporal-worker) for both at full size.
+
 ## What a mistake looks like at compile time
 
 Two mistakes are caught before the array is ever composed, both inside

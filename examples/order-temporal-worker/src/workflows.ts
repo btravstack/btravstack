@@ -48,9 +48,12 @@ export const fulfillOrder = declareWorkflow({
   workflowName: "fulfillOrder",
   contract: orderContract,
   implementation: (context, args) => {
-    // An `AsyncResult` is eager — building a step IS starting its activity —
-    // so every later step is constructed inside the `flatMap` of the one
-    // before it, or the "sequence" would run as a race.
+    // Flat, and sequential because of it. An `AsyncResult` is eager — building
+    // a step IS starting its activity — so a sequence must never construct two
+    // steps as siblings. `flatTap` is what keeps that from needing a nesting
+    // ladder: it runs a failable step, discards its value, and passes the
+    // original one through, so each step's own error triage and compensation
+    // stay at one level of indentation instead of accumulating.
     const order = { tenantId: args.tenantId, orderId: args.orderId };
 
     return propagateActivityFailure(
@@ -66,7 +69,7 @@ export const fulfillOrder = declareWorkflow({
             )
             .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) => error),
         )
-        .flatMap((placed) =>
+        .flatTap(() =>
           context.activities
             .reserveStock({
               tenantId: args.tenantId,
@@ -85,26 +88,25 @@ export const fulfillOrder = declareWorkflow({
                 .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) =>
                   ErrAsync(error),
                 ),
-            )
-            .flatMap(() =>
-              context.activities.arrangeShipping(order).flatMapErrCases((matcher) =>
-                matcher
-                  // The deeper walk-back, in reverse order of the steps it
-                  // undoes: release the reservation, then the placement.
-                  .with({ errorName: "ShippingUnavailable" }, (error) =>
-                    context.activities
-                      .releaseStock(order)
-                      .flatMap(() => context.activities.cancelPlacement(order))
-                      .flatMap(() =>
-                        ErrAsync(context.errors.ShippingUnavailable({ id: error.data.id })),
-                      ),
-                  )
-                  .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) =>
-                    ErrAsync(error),
+            ),
+        )
+        .flatTap(() =>
+          context.activities.arrangeShipping(order).flatMapErrCases((matcher) =>
+            matcher
+              // The deeper walk-back, in reverse order of the steps it undoes:
+              // release the reservation, then the placement.
+              .with({ errorName: "ShippingUnavailable" }, (error) =>
+                context.activities
+                  .releaseStock(order)
+                  .flatMap(() => context.activities.cancelPlacement(order))
+                  .flatMap(() =>
+                    ErrAsync(context.errors.ShippingUnavailable({ id: error.data.id })),
                   ),
+              )
+              .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) =>
+                ErrAsync(error),
               ),
-            )
-            .map(() => placed),
+          ),
         ),
     );
   },
@@ -130,7 +132,7 @@ export const chargeOrder = declareWorkflow({
             )
             .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) => error),
         )
-        .flatMap((authorized) =>
+        .flatTap((authorized) =>
           context.activities
             .capturePayment({
               tenantId: args.tenantId,
@@ -148,8 +150,7 @@ export const chargeOrder = declareWorkflow({
                     })
                     .flatMap(() => ErrAsync(error)),
               ),
-            )
-            .map(() => authorized),
+            ),
         ),
     ),
 });
