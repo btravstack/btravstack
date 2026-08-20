@@ -55,7 +55,10 @@ export const openDatabase = (url: string): AsyncResult<OrderDatabaseClient, neve
  * only while this example held SQLite **in memory**, where the database itself
  * died with the connection.
  */
-export const orderDatabaseProvider = Provider(OrderDatabase)([databaseConfig.port], {
-  acquire: (config) => openDatabase(config.url),
-  release: (db) => db.$disconnect(),
-});
+export const orderDatabaseProvider = Provider(OrderDatabase)(
+  { config: databaseConfig.port },
+  {
+    acquire: ({ config }) => openDatabase(config.url),
+    release: (db) => db.$disconnect(),
+  },
+);
