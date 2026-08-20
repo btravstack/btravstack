@@ -48,9 +48,12 @@ export const observability = (
   Module("Observability")({
     provides: [
       Config.provider(LoggerConfig)(loggerSchema(options.level)),
-      Provider(Logger)([LoggerConfig], {
-        sync: (config) => createLogger(options.sink ?? jsonSink(), config.level),
-      }),
+      Provider(Logger)(
+        { config: LoggerConfig },
+        {
+          sync: ({ config }) => createLogger(options.sink ?? jsonSink(), config.level),
+        },
+      ),
     ],
     exports: [Logger, LoggerConfig],
   });
