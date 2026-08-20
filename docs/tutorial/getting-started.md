@@ -19,21 +19,21 @@ to stop. It takes about ten minutes.
 ::: code-group
 
 ```sh [pnpm]
-pnpm add @btravstack/core @btravstack/http @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc
+pnpm add @btravstack/core @btravstack/http @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
 ```
 
 ```sh [npm]
-npm install @btravstack/core @btravstack/http @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc
+npm install @btravstack/core @btravstack/http @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
 ```
 
 ```sh [yarn]
-yarn add @btravstack/core @btravstack/http @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc
+yarn add @btravstack/core @btravstack/http @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
 ```
 
 :::
 
-Every one of those is a **peer** of `@btravstack/http`, so your application
-holds a single copy of each ([why](/explanation/peer-dependencies)). The
+Every one of those but `zod` is a **peer** of `@btravstack/http`, so your
+application holds a single copy of each ([why](/explanation/peer-dependencies)). The
 project needs `"type": "module"` in its `package.json` — `main.ts` ends in a
 top-level `await` — TypeScript in `strict` mode, and Node `>=20`.
 
@@ -74,18 +74,22 @@ procedure, `hello`, with a typed input and output:
 
 ```ts
 // contract.ts
-import { oc, type } from "@orpc/contract";
+import { oc } from "@orpc/contract";
+import { z } from "zod";
 
 export const contract = {
   hello: oc
-    .input(type<{ readonly name: string }>())
-    .output(type<{ readonly message: string }>()),
+    .input(z.object({ name: z.string() }))
+    .output(z.object({ message: z.string() })),
 };
 ```
 
-`oc` is oRPC's contract builder; `type<T>()` declares a shape without a schema
-library. A client can import this file and call the service without the
-server's code — which is why it is its own file.
+`oc` is oRPC's contract builder, and the schemas are **validated at the
+boundary**: a client that posts `{ name: 42 }` is rejected before `hello` runs.
+Reach for oRPC's `type<T>()` only where you genuinely trust a shape without
+checking it — it validates nothing, so an unchecked input arrives typed as
+whatever the contract claimed. A client can import this file and call the
+service without the server's code — which is why it is its own file.
 
 ## Step 4 — Implement the contract as a router
 

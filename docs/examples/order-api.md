@@ -22,25 +22,46 @@ The contract splits into two fragments, `orders` and `customers`, each a
 `RouterContract` in its own right:
 
 ```ts
+import { oc } from "@orpc/contract";
+import { z } from "zod";
+
+const orderView = z.object({ id: z.string(), quantity: z.number() });
+export type OrderView = z.infer<typeof orderView>;
+
+const orderRef = z.object({ id: z.string() });
+export type OrderRef = z.infer<typeof orderRef>;
+
+// The unmarked fragment names its tenant on the input; the marked one does not,
+// because a caller's identity establishes it there.
+const tenanted = z.object({ tenantId: z.string() });
+
+const customerView = z.object({ id: z.string(), name: z.string() });
+export type CustomerView = z.infer<typeof customerView>;
+
+// Same shape as `orderRef`, deliberately not the same schema: reusing it would
+// type a customer id as "which order it was about".
+const customerRef = z.object({ id: z.string() });
+export type CustomerRef = z.infer<typeof customerRef>;
+
 const ordersContract = {
   place: oc
-    .input(type<{ readonly id: string; readonly quantity: number }>())
-    .output(type<OrderView>())
+    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .output(orderView)
     .errors({
-      INVALID_QUANTITY: { data: type<OrderRef>() },
-      CONFLICT: { data: type<OrderRef>() },
+      INVALID_QUANTITY: { data: orderRef },
+      CONFLICT: { data: orderRef },
     }),
   find: oc
-    .input(type<OrderRef>())
-    .output(type<OrderView>())
-    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+    .input(orderRef)
+    .output(orderView)
+    .errors({ NOT_FOUND: { data: orderRef } }),
 };
 
 const customersContract = {
   find: oc
-    .input(type<{ readonly id: string }>())
-    .output(type<CustomerView>())
-    .errors({ NOT_FOUND: { data: type<{ readonly id: string }>() } }),
+    .input(tenanted.extend({ id: z.string() }))
+    .output(customerView)
+    .errors({ NOT_FOUND: { data: customerRef } }),
 };
 
 export const contract = {
@@ -49,8 +70,18 @@ export const contract = {
 };
 ```
 
-The two fragments are module-private; `contract` is the package's only value
-export, and every consumer reaches a fragment through it —
+The wire shapes are **zod schemas**, with the view types inferred from them
+rather than declared beside them. They are not the entities: `Order`'s fields
+are branded (`OrderId`, `Quantity`) and a brand is a compile-time fiction that
+does not survive serialization, so the transport speaks its own shape and each
+slice's controller is the one place the two are converted. oRPC's `type<T>()`
+would say the same thing to the compiler and check nothing at runtime, which
+is how `{ quantity: "abc" }` reaches a use case typed `number`; a schema is
+what makes the boundary real, and inferring the type from it is what keeps
+the checked shape and the compiled one from drifting.
+
+The two fragments are module-private; `contract` and the view types are the
+package's exports, and every consumer reaches a fragment through it —
 `contract.orders`, `contract.customers`.
 
 Each slice lives under `slices/<name>/` — a `controller.ts` implementing that

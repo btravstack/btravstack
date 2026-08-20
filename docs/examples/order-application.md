@@ -221,22 +221,37 @@ the router's exhaustive `mapErrCases`, so adding a domain error without a code
 stops the router compiling:
 
 ```ts
+import { oc } from "@orpc/contract";
+import { z } from "zod";
+
+const orderView = z.object({ id: z.string(), quantity: z.number() });
+export type OrderView = z.infer<typeof orderView>;
+
+const orderRef = z.object({ id: z.string() });
+export type OrderRef = z.infer<typeof orderRef>;
+
 export const orderContract = {
   orders: {
     place: oc
-      .input(type<{ readonly id: string; readonly quantity: number }>())
-      .output(type<OrderView>())
+      .input(z.object({ id: z.string(), quantity: z.number() }))
+      .output(orderView)
       .errors({
-        INVALID_QUANTITY: { data: type<OrderRef>() },
-        CONFLICT: { data: type<OrderRef>() },
+        INVALID_QUANTITY: { data: orderRef },
+        CONFLICT: { data: orderRef },
       }),
     find: oc
-      .input(type<OrderRef>())
-      .output(type<OrderView>())
-      .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+      .input(orderRef)
+      .output(orderView)
+      .errors({ NOT_FOUND: { data: orderRef } }),
   },
 };
 ```
+
+All three are **schemas**, with the wire types inferred from them rather than
+declared beside them — one definition, so what a procedure checks and what the
+compiler believes cannot drift apart. That is why `zod` is in the list above:
+oRPC's `type<T>()` would type the same procedures and validate nothing, and an
+input nobody checks arrives typed as whatever the contract claimed.
 
 `order-temporal-contract` declares one workflow and five activities, four
 errors marked `nonRetryable`; `order-amqp-contract` one exchange, one event

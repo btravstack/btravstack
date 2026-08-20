@@ -1,16 +1,26 @@
 import { authenticated } from "@btravstack/contract";
-import { oc, type } from "@orpc/contract";
+import { oc } from "@orpc/contract";
+import { z } from "zod";
 
 /**
  * What an order looks like on the wire. Not the entity: `Order`'s fields are
  * branded (`OrderId`, `Quantity`), and a brand is a compile-time fiction that
  * does not survive serialization. The transport speaks its own shape, and
  * the orders slice's controller is the one place the two are converted.
+ *
+ * A **schema**, with the type inferred from it rather than declared beside it.
+ * `type<T>()` — what this contract used before — is oRPC's escape hatch for
+ * "trust this without validating", so every procedure accepted whatever a
+ * client sent and `{ quantity: "abc" }` reached the use case typed `number`.
+ * One definition means the checked shape and the compiled shape cannot drift,
+ * which is what `order-temporal-contract` and `order-amqp-contract` already do.
  */
-export type OrderView = { readonly id: string; readonly quantity: number };
+const orderView = z.object({ id: z.string(), quantity: z.number() });
+export type OrderView = z.infer<typeof orderView>;
 
 /** The payload every declared error carries — which order it was about. */
-export type OrderRef = { readonly id: string };
+const orderRef = z.object({ id: z.string() });
+export type OrderRef = z.infer<typeof orderRef>;
 
 /**
  * An **unauthenticated** input names its tenant, because this API serves
@@ -27,32 +37,43 @@ export type OrderRef = { readonly id: string };
  * contrast is the lesson — where a caller's identity establishes the tenant,
  * the input has nothing to say about it.
  */
-export type Tenanted = { readonly tenantId: string };
+const tenanted = z.object({ tenantId: z.string() });
+export type Tenanted = z.infer<typeof tenanted>;
 
 /** What a customer looks like on the wire. */
-export type CustomerView = { readonly id: string; readonly name: string };
+const customerView = z.object({ id: z.string(), name: z.string() });
+export type CustomerView = z.infer<typeof customerView>;
+
+/**
+ * What the customers fragment's `NOT_FOUND` carries. The same *shape* as
+ * `orderRef` and deliberately not the same schema: reusing that one would type
+ * a customer id as "which order it was about", and the exported type would lie
+ * to a client about which entity it names.
+ */
+const customerRef = z.object({ id: z.string() });
+export type CustomerRef = z.infer<typeof customerRef>;
 
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
 const ordersContract = {
   place: oc
-    .input(type<{ readonly id: string; readonly quantity: number }>())
-    .output(type<OrderView>())
+    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .output(orderView)
     .errors({
-      INVALID_QUANTITY: { data: type<OrderRef>() },
-      CONFLICT: { data: type<OrderRef>() },
+      INVALID_QUANTITY: { data: orderRef },
+      CONFLICT: { data: orderRef },
     }),
   find: oc
-    .input(type<OrderRef>())
-    .output(type<OrderView>())
-    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+    .input(orderRef)
+    .output(orderView)
+    .errors({ NOT_FOUND: { data: orderRef } }),
 };
 
 /** The customers slice's own fragment. Reached as `contract.customers`; a fragment is a contract in its own right, so the slice can be served alone. */
 const customersContract = {
   find: oc
-    .input(type<Tenanted & { readonly id: string }>())
-    .output(type<CustomerView>())
-    .errors({ NOT_FOUND: { data: type<{ readonly id: string }>() } }),
+    .input(tenanted.extend({ id: z.string() }))
+    .output(customerView)
+    .errors({ NOT_FOUND: { data: customerRef } }),
 };
 
 /**

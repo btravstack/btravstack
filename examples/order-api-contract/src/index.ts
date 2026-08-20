@@ -1,5 +1,6 @@
 export {
   contract,
+  type CustomerRef,
   type CustomerView,
   type OrderRef,
   type OrderView,

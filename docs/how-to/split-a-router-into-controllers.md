@@ -25,25 +25,37 @@ positional form already takes, just smaller — and the root contract is a
 record of them:
 
 ```ts
+import { oc } from "@orpc/contract";
+import { z } from "zod";
+
+const orderView = z.object({ id: z.string(), quantity: z.number() });
+export type OrderView = z.infer<typeof orderView>;
+
+const orderRef = z.object({ id: z.string() });
+export type OrderRef = z.infer<typeof orderRef>;
+
+const customerView = z.object({ id: z.string(), name: z.string() });
+export type CustomerView = z.infer<typeof customerView>;
+
 const ordersContract = {
   place: oc
-    .input(type<{ readonly id: string; readonly quantity: number }>())
-    .output(type<OrderView>())
+    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .output(orderView)
     .errors({
-      INVALID_QUANTITY: { data: type<OrderRef>() },
-      CONFLICT: { data: type<OrderRef>() },
+      INVALID_QUANTITY: { data: orderRef },
+      CONFLICT: { data: orderRef },
     }),
   find: oc
-    .input(type<OrderRef>())
-    .output(type<OrderView>())
-    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+    .input(orderRef)
+    .output(orderView)
+    .errors({ NOT_FOUND: { data: orderRef } }),
 };
 
 const customersContract = {
   find: oc
-    .input(type<{ readonly id: string }>())
-    .output(type<CustomerView>())
-    .errors({ NOT_FOUND: { data: type<{ readonly id: string }>() } }),
+    .input(z.object({ id: z.string() }))
+    .output(customerView)
+    .errors({ NOT_FOUND: { data: orderRef } }),
 };
 
 export const contract = {
@@ -52,9 +64,12 @@ export const contract = {
 };
 ```
 
-The fragments stay module-private; `contract` is the only export, and every
-consumer below reaches a fragment through it — `contract.orders`,
-`contract.customers`.
+The fragments stay module-private; `contract` and the view types inferred from
+its schemas are the only exports, and every consumer below reaches a fragment
+through it — `contract.orders`, `contract.customers`. A schema is what a
+fragment is made of, not a bare `type<T>()`: it validates what arrives at the
+slice, and inferring the view type from it keeps the checked shape and the
+compiled one from drifting apart.
 
 ## Step 2 — a controller per slice
 

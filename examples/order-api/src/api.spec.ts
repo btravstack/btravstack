@@ -335,6 +335,44 @@ describe("order-api", () => {
     );
   });
 
+  it("refuses a malformed input before the use case is reached", async ({
+    serve,
+    clientFor,
+    api,
+  }) => {
+    // GIVEN the real composition root and a credentialed caller
+    const app = serve(api);
+    const client = await clientFor(app);
+
+    // WHEN a procedure is called with an input the contract's schema rejects,
+    // past the client's own types
+    const refused = await client.orders.place({ id: "o-1", quantity: "abc" } as never);
+
+    // THEN oRPC refused it before dispatch. This is the property `type<T>()`
+    // did not have: it validates nothing, so `"abc"` reached the use case
+    // typed `number`. `BAD_REQUEST` is undeclared, so it lands on the defect
+    // channel like any error the contract does not model
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", inferable: false }),
+    );
+  });
+
+  it("never enters the handler for a malformed input", async ({ serve, clientFor, recording }) => {
+    // GIVEN the real graph, recording every line its logger writes
+    const client = await clientFor(serve(recording.api));
+
+    // WHEN a malformed input is sent, past the client's own types
+    await client.orders.place({ id: "o-rejected", quantity: "abc" } as never);
+
+    // THEN neither the controller nor the interactor wrote a line: oRPC
+    // refused the input before dispatch, so the handler was never entered. The
+    // request-scope line still lands, because the unit opened. Asserting on
+    // the absence of those two rather than on the stored row, because the
+    // DOMAIN would refuse `"abc"` too — a test that checks nothing was stored
+    // passes whether or not the contract validates, and pins nothing
+    expect(recording.lines().map((line) => line.message)).toEqual(["request finished"]);
+  });
+
   it("serves the unmarked fragment to a caller presenting nothing", async ({
     tenant,
     serve,
