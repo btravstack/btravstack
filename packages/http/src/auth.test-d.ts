@@ -3,10 +3,11 @@
 // `@ts-expect-error` is an assertion: if one stops erroring, the gate is gone.
 import { authenticated, type Authenticated } from "@btravstack/contract";
 import { start } from "@btravstack/core";
+import { Module, Port, Provider } from "@btravstack/di";
 import { oc } from "@orpc/contract";
-import { OkAsync } from "unthrown";
+import { ErrAsync, OkAsync } from "unthrown";
 
-import { HttpAuthenticator } from "./auth.js";
+import { HttpAuthenticator, Unauthenticated } from "./auth.js";
 import { HttpController } from "./controller.js";
 import { httpAuth } from "./http-auth.js";
 import { HttpModule } from "./http-module.js";
@@ -217,5 +218,52 @@ const _strayScoped = HttpModule("StrayScoped")({
   authenticator: strayAuthenticator,
 });
 
+// 17. An authenticator that DECLARES DEPENDENCIES is the documented shape — a
+//     JWT verifier, a key set, a user directory — and it discharges the gate
+//     like any other. Pinned because nothing else covers it: every other
+//     authenticator on this branch takes `[]`, so the one form every adopter
+//     actually writes was checked by a reviewer's scratch file and by nothing
+//     that runs. `deps` are di's, so the services arrive positionally and
+//     `sync` closes over them; what reaches `HttpModule` is still a provider
+//     on the same identity.
+class Verifier extends Port("Verifier")<(token: string) => Identity | undefined> {}
+
+const verifiedAuthenticator = IdentityAuthenticator([Verifier], {
+  sync: (verify) => (headers) => {
+    const claimed = verify(headers.authorization ?? "");
+    return claimed === undefined ? ErrAsync(new Unauthenticated()) : OkAsync(claimed);
+  },
+});
+
+const _verified = HttpModule("Verified")({
+  router: IdentityRouter({ orders: contract.orders, health: contract.health })({
+    orders: scopedOrders,
+    health: scopedHealth,
+  }),
+  authenticator: verifiedAuthenticator,
+  imports: [
+    Module("Verifying")({
+      provides: [Provider(Verifier)({ value: () => undefined })],
+      exports: [Verifier],
+    }),
+  ],
+});
+
+// 18. The dependency does not loosen the identity check: the same declared
+//     deps with a foreign identity are still refused at the same call.
+const verifiedStray = HttpAuthenticator<{ readonly sub: string }>()([Verifier], {
+  sync: () => () => OkAsync({ sub: "s" }),
+});
+const _verifiedStray = HttpModule("VerifiedStray")({
+  router: IdentityRouter({ orders: contract.orders, health: contract.health })({
+    orders: scopedOrders,
+    health: scopedHealth,
+  }),
+  // @ts-expect-error — declaring deps is no way around the identity gate
+  authenticator: verifiedStray,
+});
+
 void _scoped;
 void _strayScoped;
+void _verified;
+void _verifiedStray;
