@@ -172,15 +172,16 @@ type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C
  * The activities as a provider, from the contract. Three call forms, one port.
  *
  * ```ts
- * TemporalActivities(orderContract)([PlaceOrder], { sync: (place) => ({ fulfillOrder: { … } }) })
+ * TemporalActivities(orderContract)({ place: PlaceOrder }, { sync: ({ place }) => ({ fulfillOrder: { … } }) })
  * TemporalActivities(orderContract)([fulfillOrder, chargeOrder])
  * ```
  *
  * The first two are di's own `Provider(port)` on the starter's activities port
  * typed for the contract — any arm, same typing. The third takes the **pieces**
  * `TemporalWorkflowActivities(contract, key)` builds, one per top-level key of
- * the record: di constructs every piece first (they are the provider's deps, in
- * array order) and this reassembles the record from them. Every key must be
+ * the record: di constructs every piece first — they are the provider's deps,
+ * keyed by the very contract key each piece's port id carries, so the services
+ * record IS the activities record. Every key must be
  * covered, and two slices claiming one key are two providers for one port — di's
  * duplicate-provider defect at build, which is the point.
  */
@@ -189,22 +190,21 @@ export const TemporalActivities = <C extends ContractDefinition>(
 ): ReturnType<typeof Provider<ActivitiesPortOf<C>>> & Compose<C> => {
   void contract;
   const build = Provider(TemporalActivitiesPort as ActivitiesPortOf<C>);
-  const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown => {
-    const keys = pieces.map((piece) => piece.port.portId.slice(WORKFLOW_ACTIVITIES_PREFIX.length));
-    return build(
-      pieces.map((piece) => piece.port) as never,
-      {
-        sync: (...services: readonly unknown[]) =>
-          Object.fromEntries(keys.map((key, index) => [key, services[index]])),
-      } as never,
+  const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
+    build(
+      Object.fromEntries(
+        pieces.map((piece) => [
+          piece.port.portId.slice(WORKFLOW_ACTIVITIES_PREFIX.length),
+          piece.port,
+        ]),
+      ) as never,
+      { sync: (services: unknown) => services } as never,
     );
-  };
   // One array argument is never a valid `Provider(port)` call — its arms are
-  // `(deps, options)` and `(options)` — so the arity plus `Array.isArray` is a
-  // sound discriminator. Not the same dispatch di's own `Provider(port)`
-  // build uses, though: that one narrows on `Array.isArray` alone (`provider.ts`),
-  // which is enough for ITS two arms since a lone array is never valid there;
-  // the arity check here is what this THIRD, composing arm needs on top of it.
+  // `(deps, options)` and `(options)`, and both objects are records — so
+  // `Array.isArray` alone identifies this THIRD, composing arm. The arity check
+  // rides along because di's own build discriminates on arity (`provider.ts`)
+  // and a two-argument call is never this arm.
   return ((first: unknown, second?: unknown) =>
     second === undefined && Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])
