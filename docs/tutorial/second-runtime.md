@@ -36,8 +36,8 @@ yarn add @btravstack/temporal @temporalio/worker @temporalio/activity @temporali
 
 `@btravstack/core`, `config`, `di` and `unthrown` are already there from
 lesson one; the rest are `@btravstack/temporal`'s peers. `zod` is for the
-contract — Temporal persists every input and output, so its contract wants a
-real schema rather than a `type<T>()` shape.
+contract, the same as lesson one's — and it earns its place twice over here,
+because Temporal persists every input and output and replays them later.
 
 You also need a Temporal service to poll. The
 [Temporal CLI](https://docs.temporal.io/cli) ships one for development:
