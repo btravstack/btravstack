@@ -102,10 +102,14 @@ PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
   dropping the key, without the intersection leaking into `M` and collapsing
   the needs channel di orders the controllers by (the failure mode
   `controller.test-d.ts`'s `_ComposedNeedsAreDeclared` check exists to catch).
-  **Arity** discriminates this arm from the deps one — one argument versus
-  two — the same way `Provider(port)(depsOrOptions, …)` discriminates its own
-  two forms, since a deps record and a controllers record are both non-array
-  objects and there is nothing to sniff. `deps` for the underlying
+  **`HttpRouter` is the one helper in the family with THREE forms and only two
+  arguments' worth of arity**, so it is the one place arity alone cannot
+  decide. `(deps, arm)` is settled by arity as everywhere else; the two
+  one-argument forms — an arm, and a controllers record — are told apart by
+  whether **`sync` holds a function**. That is total rather than a heuristic:
+  this helper accepts no arm but `sync`, so a contract free to declare a key
+  called `sync` would put a _controller_ there, and a controller is an object
+  carrying a `.port`, never a function. `deps` for the underlying
   `Provider(HttpRouterPort)(...)` is the controllers record with each value
   replaced by its `.port`, so di builds every controller before the router —
   and the services record comes back keyed by the SAME contract keys, so the
@@ -133,13 +137,17 @@ PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
   Covered at runtime by the `rpcSliced` fixture, composing
   `helloController` and `echoesController` over `slicedContract`'s two
   fragments.
-- **`HttpController(name, fragment)({ name: Dep }, { sync })`** (`controller.ts`) —
+- **`HttpController(name, fragment)({ name: Dep }, { sync })`, or `({ sync })`
+  with no deps** (`controller.ts`) —
   one slice of a contract, as a provider on a port minted for it. The first
   call fixes `fragment`'s type — read for its type only, so a procedure the
   fragment does not declare or a handler whose input or output has drifted is
   a compile error inside the controller rather than at the root — and mints
   `class extends Port(name)<Implementation<C>> {}`; the second is di's
-  `Provider(port)({ name: Dep }, { sync })`, unchanged. Returns
+  `Provider(port)({ name: Dep }, { sync })`, unchanged — **including its
+  no-deps arm**, which this helper mirrors by arity for the same reason di
+  has one: a controller that calls no use case is the common shape here, not
+  an edge case, and `({}, { sync })` is what it would otherwise spell. Returns
   `Provider<PortInstance<Name, Implementation<C>>, never,
 InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C>> }` —
   the same `PortInstance`/`PortClassOf` spelling `HttpRouter` uses and for the
@@ -170,7 +178,9 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C>
   `auth.test-d.ts` because a `boolean` result would satisfy either. Pinned by
   `auth.test-d.ts`, mutation-checked. What makes the type true at runtime is
   `principalMiddleware`, below.
-- **`HttpAuthenticator<P>()({ name: Dep }, { sync })`, `AuthenticatorPort`,
+- **`HttpAuthenticator<P>()({ name: Dep }, { sync })` — or `({ sync })`, the
+  common shape, since an authenticator reading only headers declares no
+  dependencies — plus `AuthenticatorPort`,
   `Unauthenticated`, `AuthenticatorService<P>`** (`auth.ts`) — what an
   application provides so a marked procedure can name its caller.
   `AuthenticatorService<P>` is

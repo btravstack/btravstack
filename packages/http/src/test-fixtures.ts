@@ -115,12 +115,12 @@ export const helloController = HttpController("HelloController", helloFragment)(
 const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
 
 /** The other half of `slicedContract`, alongside the reused `helloController`. */
-const echoesController = HttpController("EchoesController", nestedFragment)(
-  {},
-  {
-    sync: () => ({ ping: () => OkAsync("pong") }),
-  },
-);
+const echoesController = HttpController(
+  "EchoesController",
+  nestedFragment,
+)({
+  sync: () => ({ ping: () => OkAsync("pong") }),
+});
 
 /** The same kind of API as `greetingRouter`, composed from controllers instead of one `sync`. */
 const slicedRouter = HttpRouter(slicedContract)({
@@ -164,41 +164,38 @@ const authedContract = { orders: authenticated({ whoami }), health: { ping } };
 /** Counted so a test can assert the handler was never entered on a refusal. */
 let authedRuns = 0;
 
-const authedOrdersController = AuthedController("AuthedOrders", authedContract.orders)(
-  {},
-  {
-    sync: () => ({
-      whoami: ({ context }) => {
-        authedRuns += 1;
-        return OkAsync({ userId: context.principal.userId });
-      },
-    }),
-  },
-);
-
-const authedHealthController = AuthedController("AuthedHealth", authedContract.health)(
-  {},
-  {
-    sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
-  },
-);
-
-const authenticator = AuthedAuthenticator(
-  {},
-  {
-    sync: () => (headers) => {
-      if (headers.authorization === "Bearer boom") {
-        return OkAsync().map((): Identity => {
-          // oxlint-disable-next-line unthrown/no-throw -- an authenticator bug IS the subject under test, and a throw inside a combinator is the only way to mint a Defect
-          throw new Error("authenticator bug");
-        });
-      }
-      return headers.authorization === "Bearer good"
-        ? OkAsync({ tenantId: "t-good", userId: "u-good" })
-        : ErrAsync(new Unauthenticated());
+const authedOrdersController = AuthedController(
+  "AuthedOrders",
+  authedContract.orders,
+)({
+  sync: () => ({
+    whoami: ({ context }) => {
+      authedRuns += 1;
+      return OkAsync({ userId: context.principal.userId });
     },
+  }),
+});
+
+const authedHealthController = AuthedController(
+  "AuthedHealth",
+  authedContract.health,
+)({
+  sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
+});
+
+const authenticator = AuthedAuthenticator({
+  sync: () => (headers) => {
+    if (headers.authorization === "Bearer boom") {
+      return OkAsync().map((): Identity => {
+        // oxlint-disable-next-line unthrown/no-throw -- an authenticator bug IS the subject under test, and a throw inside a combinator is the only way to mint a Defect
+        throw new Error("authenticator bug");
+      });
+    }
+    return headers.authorization === "Bearer good"
+      ? OkAsync({ tenantId: "t-good", userId: "u-good" })
+      : ErrAsync(new Unauthenticated());
   },
-);
+});
 
 const authedRouter = AuthedRouter(authedContract)({
   orders: authedOrdersController,
@@ -240,19 +237,16 @@ const rootMarkedContract = authenticated({ orders: { whoami } });
 
 let rootMarkedRuns = 0;
 
-const rootMarkedRouter = AuthedRouter(rootMarkedContract)(
-  {},
-  {
-    sync: () => ({
-      orders: {
-        whoami: ({ context }) => {
-          rootMarkedRuns += 1;
-          return OkAsync({ userId: context.principal.userId });
-        },
+const rootMarkedRouter = AuthedRouter(rootMarkedContract)({
+  sync: () => ({
+    orders: {
+      whoami: ({ context }) => {
+        rootMarkedRuns += 1;
+        return OkAsync({ userId: context.principal.userId });
       },
-    }),
-  },
-);
+    },
+  }),
+});
 
 const rpcRootMarkedAppOf = () =>
   HttpModule("RpcRootMarkedApp")({
@@ -314,12 +308,9 @@ const corsContract = oc.router({
   greet: oc.input(ocType<{ readonly name: string }>()).output(ocType<string>()),
 });
 
-const corsRouter = HttpRouter(corsContract)(
-  {},
-  {
-    sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
-  },
-);
+const corsRouter = HttpRouter(corsContract)({
+  sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
+});
 
 /** The same starter shape as `rpcAppOf`, with oRPC's CORS plugin configured. */
 const rpcWithCorsAppOf = () =>

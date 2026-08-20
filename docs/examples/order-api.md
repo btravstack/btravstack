@@ -156,24 +156,21 @@ import { ErrAsync, OkAsync } from "unthrown";
 
 import { HttpAuthenticator } from "./auth.js";
 
-export const bearerAuthenticator = HttpAuthenticator(
-  {},
-  {
-    sync: () => (headers) => {
-      const header = headers.authorization ?? "";
-      const token = header.startsWith("Bearer ")
-        ? header.slice("Bearer ".length)
-        : "";
-      const [tenantId, userId] = token.split(":");
-      return tenantId === undefined ||
-        tenantId === "" ||
-        userId === undefined ||
-        userId === ""
-        ? ErrAsync(new Unauthenticated())
-        : OkAsync({ tenantId, userId });
-    },
+export const bearerAuthenticator = HttpAuthenticator({
+  sync: () => (headers) => {
+    const header = headers.authorization ?? "";
+    const token = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : "";
+    const [tenantId, userId] = token.split(":");
+    return tenantId === undefined ||
+      tenantId === "" ||
+      userId === undefined ||
+      userId === ""
+      ? ErrAsync(new Unauthenticated())
+      : OkAsync({ tenantId, userId });
   },
-);
+});
 ```
 
 `Bearer <tenantId>:<userId>` is a stand-in, not a recommendation — what matters
@@ -565,12 +562,9 @@ authenticator discharges the need. `HttpModule` compares the router's identity
 against the authenticator's itself, at the option:
 
 ```ts
-const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()(
-  {},
-  {
-    sync: () => () => OkAsync({ sub: "s-1" }),
-  },
-);
+const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()({
+  sync: () => () => OkAsync({ sub: "s-1" }),
+});
 
 const _mismatchedApi = HttpModule("MismatchedApi")({
   router: orderRouter,

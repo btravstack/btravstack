@@ -151,6 +151,14 @@ export const routerFor =
       readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
       readonly identity: Identity;
     };
+    function build(options: { readonly sync: () => Implementation<C, Identity> }): Provider<
+      PortInstance<"HttpRouter", Router<Record<never, never>>>,
+      never,
+      HasMark<C> extends true ? AuthenticatorPort : never
+    > & {
+      readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
+      readonly identity: Identity;
+    };
     function build<
       M extends {
         readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<
@@ -196,22 +204,27 @@ export const routerFor =
           ),
         );
 
-      // ARITY discriminates the two forms, the same way
-      // `Provider(port)(depsOrOptions, …)` discriminates its own: a deps record
-      // and a controllers record are both non-array objects, so there is
-      // nothing to sniff.
-      if (options !== undefined) {
+      // THREE forms, two arguments' worth of arity — so this is the one place
+      // in the family that cannot discriminate on arity alone. `(deps, arm)`
+      // is settled by arity as everywhere else; the two one-argument forms —
+      // an arm, and a controllers record — are told apart by whether `sync`
+      // holds a FUNCTION. That is total rather than a heuristic: this helper
+      // accepts no arm but `sync`, and a contract free to declare a key called
+      // `sync` would put a *controller* there, which is an object carrying a
+      // `.port`, never a function.
+      const arm = (first: unknown): { readonly sync: (s: never) => unknown } | undefined =>
+        typeof (first as { readonly sync?: unknown }).sync === "function"
+          ? (first as { readonly sync: (s: never) => unknown })
+          : undefined;
+      const armOnly = options === undefined ? arm(depsOrControllers) : undefined;
+      if (options !== undefined || armOnly !== undefined) {
+        const supplied = (options ?? armOnly) as {
+          readonly sync: (s: Record<string, unknown>) => unknown;
+        };
+        const deps = armOnly === undefined ? (depsOrControllers as Record<string, AnyPort>) : {};
         const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
-          routerFrom(
-            (options as { readonly sync: (s: Record<string, unknown>) => unknown }).sync(
-              own(services),
-            ) as Record<string, unknown>,
-            services,
-          );
-        return Provider(HttpRouterPort)(
-          withAuthenticator(depsOrControllers as Record<string, AnyPort>),
-          { sync } as never,
-        );
+          routerFrom(supplied.sync(own(services)) as Record<string, unknown>, services);
+        return Provider(HttpRouterPort)(withAuthenticator(deps), { sync } as never);
       }
 
       // The controllers record is keyed by contract key, and so is the services

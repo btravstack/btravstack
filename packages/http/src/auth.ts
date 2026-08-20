@@ -47,23 +47,39 @@ export type AuthenticatorPort = PortInstance<"HttpAuthenticator", AuthenticatorS
  * export const jwtAuthenticator = HttpAuthenticator<Principal>()({ verify: JwtVerifier }, {
  *   sync: ({ verify }) => (headers) => verify(headers.authorization),
  * });
+ *
+ * // An authenticator that reads nothing but the headers declares no deps:
+ * export const bearerAuthenticator = HttpAuthenticator<Principal>()({
+ *   sync: () => (headers) => principalOf(headers.authorization),
+ * });
  * ```
  *
  * The type argument is explicit rather than inferred from `sync`: inference
  * through a returned function's `AsyncResult` is exactly where a `Principal`
  * silently widens to `unknown`, and the whole point is that it cannot.
  */
-export const HttpAuthenticator =
-  <P>() =>
-  <const D extends Readonly<Record<string, AnyPort>>>(
+export const HttpAuthenticator = <P>() => {
+  // Two arms, discriminated by ARITY, mirroring `Provider(port)`'s own — an
+  // authenticator that reads only the request's headers declares no
+  // dependencies, which is the common shape rather than an edge case.
+  function build<const D extends Readonly<Record<string, AnyPort>>>(
     deps: D,
     options: {
       readonly sync: (services: {
         readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
       }) => AuthenticatorService<P>;
     },
-  ): Provider<AuthenticatorPort, never, InstanceType<D[keyof D]>> & { readonly principal: P } =>
-    Provider(AuthenticatorPort)(deps, options as never) as never;
+  ): Provider<AuthenticatorPort, never, InstanceType<D[keyof D]>> & { readonly principal: P };
+  function build(options: {
+    readonly sync: () => AuthenticatorService<P>;
+  }): Provider<AuthenticatorPort, never, never> & { readonly principal: P };
+  function build(depsOrOptions: unknown, options?: unknown): unknown {
+    return options === undefined
+      ? Provider(AuthenticatorPort)(depsOrOptions as never)
+      : Provider(AuthenticatorPort)(depsOrOptions as never, options as never);
+  }
+  return build;
+};
 
 /**
  * Unreachable today, and kept anyway. `routerOf` falls back to this when a

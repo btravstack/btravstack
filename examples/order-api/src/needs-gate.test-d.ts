@@ -94,12 +94,9 @@ const _missingAuthenticator = start(UnauthenticatedApi, options);
 // authenticator's itself, at the `HttpModule(...)` call, which is why this
 // directive sits on the option and not on a `start` below it. The contract
 // declares no principal to compare against; `./auth.ts` is what declares one.
-const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()(
-  {},
-  {
-    sync: () => () => OkAsync({ sub: "s-1" }),
-  },
-);
+const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()({
+  sync: () => () => OkAsync({ sub: "s-1" }),
+});
 
 const _mismatchedApi = HttpModule("MismatchedApi")({
   router: orderRouter,

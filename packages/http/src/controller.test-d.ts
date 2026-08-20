@@ -11,18 +11,18 @@ import { HttpRouter } from "./orpc.js";
 
 const contract = { orders: { place: oc }, users: { find: oc } };
 
-const orders = HttpController("GateOrders", contract.orders)(
-  {},
-  {
-    sync: () => ({ place: () => OkAsync("placed") }),
-  },
-);
-const users = HttpController("GateUsers", contract.users)(
-  {},
-  {
-    sync: () => ({ find: () => OkAsync("found") }),
-  },
-);
+const orders = HttpController(
+  "GateOrders",
+  contract.orders,
+)({
+  sync: () => ({ place: () => OkAsync("placed") }),
+});
+const users = HttpController(
+  "GateUsers",
+  contract.users,
+)({
+  sync: () => ({ find: () => OkAsync("found") }),
+});
 
 // 1. Every contract key must be covered.
 // @ts-expect-error — `users` is missing from the record
@@ -37,13 +37,13 @@ void HttpRouter(contract)({ orders, users, billing: orders });
 void HttpRouter(contract)({ orders: users, users: orders });
 
 // 4. A procedure the fragment does not declare is rejected inside the controller.
-void HttpController("GateTypo", contract.orders)(
-  {},
-  {
-    // @ts-expect-error — the fragment declares `place`, not `plce`
-    sync: () => ({ plce: () => OkAsync("placed") }),
-  },
-);
+void HttpController(
+  "GateTypo",
+  contract.orders,
+)({
+  // @ts-expect-error — the fragment declares `place`, not `plce`
+  sync: () => ({ plce: () => OkAsync("placed") }),
+});
 
 // 5. A slice lifts out into its own process with its controller UNCHANGED: a
 //    fragment is a valid contract in its own right, and the lifted root takes
@@ -56,17 +56,18 @@ void HttpRouter(contract.orders)(
   { sync: ({ implementation }) => implementation },
 );
 
-// The correct composition, and the deps form, both still compile.
+// The correct composition and the ARM-ONLY form, over the same contract, both
+// still compile. This pair is `HttpRouter`'s discrimination gate: it is the one
+// helper in the family with three forms and two arguments' worth of arity, so
+// these two one-argument calls are told apart by whether `sync` holds a
+// function (orpc.ts). Break that and one of these two lines stops compiling.
 const composed = HttpRouter(contract)({ orders, users });
-void HttpRouter(contract)(
-  {},
-  {
-    sync: () => ({
-      orders: { place: () => OkAsync("placed") },
-      users: { find: () => OkAsync("f") },
-    }),
-  },
-);
+void HttpRouter(contract)({
+  sync: () => ({
+    orders: { place: () => OkAsync("placed") },
+    users: { find: () => OkAsync("f") },
+  }),
+});
 
 // The composed provider must DECLARE its controllers as needs — if the
 // exactness intersection on the keyed `build` overload (orpc.ts) ever
@@ -87,18 +88,18 @@ const { HttpController: IdentityController, HttpRouter: IdentityRouter } = httpA
   readonly userId: string;
 }>();
 
-const markedOrders = IdentityController("GateMarkedOrders", markedContract.orders)(
-  {},
-  {
-    sync: () => ({ place: (opts) => OkAsync(opts.context.principal.userId) }),
-  },
-);
-const markedUsers = IdentityController("GateMarkedUsers", markedContract.users)(
-  {},
-  {
-    sync: () => ({ find: () => OkAsync("found") }),
-  },
-);
+const markedOrders = IdentityController(
+  "GateMarkedOrders",
+  markedContract.orders,
+)({
+  sync: () => ({ place: (opts) => OkAsync(opts.context.principal.userId) }),
+});
+const markedUsers = IdentityController(
+  "GateMarkedUsers",
+  markedContract.users,
+)({
+  sync: () => ({ find: () => OkAsync("found") }),
+});
 
 // 1. Every contract key must be covered.
 // @ts-expect-error — `users` is missing from the record
@@ -117,13 +118,13 @@ void IdentityRouter(markedContract)({
 void IdentityRouter(markedContract)({ orders: markedUsers, users: markedOrders });
 
 // 4. A procedure the fragment does not declare is rejected inside the controller.
-void IdentityController("GateMarkedTypo", markedContract.orders)(
-  {},
-  {
-    // @ts-expect-error — the fragment declares `place`, not `plce`
-    sync: () => ({ plce: () => OkAsync("placed") }),
-  },
-);
+void IdentityController(
+  "GateMarkedTypo",
+  markedContract.orders,
+)({
+  // @ts-expect-error — the fragment declares `place`, not `plce`
+  sync: () => ({ plce: () => OkAsync("placed") }),
+});
 
 // 5. The do-not-break lift, for a marked fragment.
 void IdentityRouter(markedContract.orders)(

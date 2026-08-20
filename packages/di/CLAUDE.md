@@ -34,7 +34,23 @@ All runtime code lives in `packages/di/src`, one concept per file:
   mutually exclusive option arms: `value` / `sync` / `make` (fallible, returns
   `Result`) / `class` / `acquire`+`release` (resourceful — puts `Scope` in
   `Needs`). Exclusivity is enforced by giving each arm the other keys as optional
-  `never`.
+  `never`. Deps are a **record**, never an array or a parameter list, and the
+  factory receives one services record keyed the same way; a provider that
+  declares none omits the record entirely, which is what the two overloads'
+  arity discriminates.
+
+  **The keyed form costs point-free, and that is accepted rather than a
+  formatting accident.** `Provider(OrderRepository)([Database], { sync:
+prismaOrderRepository })` handed the factory straight to `sync`; the same
+  provider now has to spell `{ db: Database }, { sync: ({ db }) =>
+prismaOrderRepository(db) }` — an adapter factory takes the client, not a
+  record, so the wrapper arrow is unavoidable, and oxfmt then breaks the
+  two-argument call across lines. That is inherent to naming dependencies:
+  a name only exists at a call site if something writes it. One shape was the
+  decision (the library is experimental and two spellings of one idea is the
+  thing it declines to ship), so this is its price, not a bug to route around.
+  Do not reintroduce a positional arm to recover it.
+
 - **`module.ts`** — the `Module<Exports, E, Needs>` algebra. Three phantom
   channels with a deliberate variance rule: capability channels (`_exports`) are
   contravariant ("you may forget what you have"), obligation channels (`_error`,

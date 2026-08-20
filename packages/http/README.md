@@ -139,7 +139,8 @@ const orderRouter = HttpRouter(orderContract)({
 });
 ```
 
-`HttpController(name, fragment)({ name: Dep }, { sync })` is the same two-call shape
+`HttpController(name, fragment)({ name: Dep }, { sync })` — or just
+`({ sync })` when the slice calls nothing — is the same two-call shape
 as `HttpRouter`, aimed at one fragment: it mints a port under `name` and
 returns the provider carrying it on `.port`. The keyed form is **exact** — a
 missing slice, an undeclared key and a controller under the wrong key are all
@@ -203,26 +204,23 @@ const ordersContract = authenticated({
 // verifier or a user directory is injected the way any provider's are. It
 // takes no type argument — `httpAuth<Identity>()` already fixed one, which is
 // why the authenticator and the controllers cannot disagree.
-const bearerAuthenticator = HttpAuthenticator(
-  {},
-  {
-    sync: () => (headers) => {
-      const header = headers.authorization ?? "";
-      const token = header.startsWith("Bearer ")
-        ? header.slice("Bearer ".length)
-        : "";
-      const [tenantId, userId] = token.split(":");
-      // Empty is not absent: `Authorization: :` splits into two defined strings,
-      // and admitting them is admitting an anonymous caller as tenant "".
-      return tenantId === undefined ||
-        tenantId === "" ||
-        userId === undefined ||
-        userId === ""
-        ? ErrAsync(new Unauthenticated())
-        : OkAsync({ tenantId, userId });
-    },
+const bearerAuthenticator = HttpAuthenticator({
+  sync: () => (headers) => {
+    const header = headers.authorization ?? "";
+    const token = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : "";
+    const [tenantId, userId] = token.split(":");
+    // Empty is not absent: `Authorization: :` splits into two defined strings,
+    // and admitting them is admitting an anonymous caller as tenant "".
+    return tenantId === undefined ||
+      tenantId === "" ||
+      userId === undefined ||
+      userId === ""
+      ? ErrAsync(new Unauthenticated())
+      : OkAsync({ tenantId, userId });
   },
-);
+});
 
 // The principal arrives on oRPC's own context channel, typed by `Identity`.
 const ordersRouter = HttpRouter({ orders: ordersContract })(

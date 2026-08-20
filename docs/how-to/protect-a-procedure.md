@@ -113,24 +113,21 @@ import { ErrAsync, OkAsync } from "unthrown";
 
 import { HttpAuthenticator } from "./auth.js";
 
-export const bearerAuthenticator = HttpAuthenticator(
-  {},
-  {
-    sync: () => (headers) => {
-      const header = headers.authorization ?? "";
-      const token = header.startsWith("Bearer ")
-        ? header.slice("Bearer ".length)
-        : "";
-      const [tenantId, userId] = token.split(":");
-      return tenantId === undefined ||
-        tenantId === "" ||
-        userId === undefined ||
-        userId === ""
-        ? ErrAsync(new Unauthenticated())
-        : OkAsync({ tenantId, userId });
-    },
+export const bearerAuthenticator = HttpAuthenticator({
+  sync: () => (headers) => {
+    const header = headers.authorization ?? "";
+    const token = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : "";
+    const [tenantId, userId] = token.split(":");
+    return tenantId === undefined ||
+      tenantId === "" ||
+      userId === undefined ||
+      userId === ""
+      ? ErrAsync(new Unauthenticated())
+      : OkAsync({ tenantId, userId });
   },
-);
+});
 ```
 
 Enriching what a deployment knows about its callers — roles, an org tier, an

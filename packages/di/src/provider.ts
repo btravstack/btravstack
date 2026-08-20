@@ -208,6 +208,15 @@ const descriptor = (
   // caller who writes `Provider(P)({}, { sync })` declared a record and the
   // types hand their factory one, so `keys.length === 0` is the wrong test and
   // handing that factory nothing is how it read `undefined` instead.
+  //
+  // The starters' own helpers (`HttpController`, `HttpRouter`,
+  // `HttpAuthenticator`) now mirror this arity discrimination, so no CALLER
+  // has to write `{}` any more. That does NOT make this distinction dead:
+  // `Provider(P)({}, arm)` is still a legal, typed call, the helpers still
+  // reach `build` with an empty record of their own (`HttpRouter` passes one
+  // whenever an unguarded router declares no deps), and the two questions are
+  // different anyway — the helpers decide what a caller may omit, this decides
+  // what a factory is handed. Do not delete one because the other exists.
   keys: readonly string[] | undefined,
   options: Record<string, unknown>,
 ): Provider<unknown, never, never> => {

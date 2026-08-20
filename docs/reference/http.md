@@ -23,8 +23,8 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAu
 | `HttpModule`           | value | `HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                       |
 | `HttpRouter`           | value | `HttpRouter(contract)(deps, { sync })`, or `HttpRouter(contract)(controllers)` — the router as a provider on the starter's own router port, contract-first, either from one `sync` or from a keyed record of controllers                          |
-| `HttpController`       | value | `HttpController(name, fragment)({ name: Dep }, { sync })` — one slice of a contract, as a provider on a port minted for it                                                                                                                        |
-| `HttpAuthenticator`    | value | `HttpAuthenticator<P>()({ name: Dep }, { sync })` — the provider that turns a request's headers into a principal `P`, on `AuthenticatorPort`                                                                                                      |
+| `HttpController`       | value | `HttpController(name, fragment)({ name: Dep }, { sync })`, or `({ sync })` with no deps — one slice of a contract, as a provider on a port minted for it                                                                                          |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — the provider that turns a request's headers into a principal `P`, on `AuthenticatorPort`                                                                        |
 | `httpAuth`             | value | `httpAuth<Identity>()` — mints `HttpController`, `HttpRouter` and `HttpAuthenticator` fixed to the server's own identity; the only thing that gives a marked handler a readable `context.principal`                                               |
 | `HttpAuth`             | type  | what `httpAuth<Identity>()` returns — the three, as one type                                                                                                                                                                                      |
 | `HttpControllerOf`     | type  | `HttpControllerOf<Identity>` — the annotation a file exporting the factory's `HttpController` needs                                                                                                                                               |
@@ -286,7 +286,7 @@ the request off oRPC's initial context, calls the authenticator with its
 headers, and either injects `{ context: { principal } }` or terminates the
 request.
 
-### `HttpAuthenticator<P>()({ name: Dep }, { sync })`
+### `HttpAuthenticator<P>()({ name: Dep }, { sync })` / `({ sync })`
 
 An ordinary di provider on `AuthenticatorPort`, whose service is
 `AuthenticatorService<P>`:
@@ -312,24 +312,21 @@ returning. Forwarding a reason would put "no such user" versus "bad signature"
 in a 401 body by default.
 
 ```ts
-export const bearerAuthenticator = HttpAuthenticator(
-  {},
-  {
-    sync: () => (headers) => {
-      const header = headers.authorization ?? "";
-      const token = header.startsWith("Bearer ")
-        ? header.slice("Bearer ".length)
-        : "";
-      const [tenantId, userId] = token.split(":");
-      return tenantId === undefined ||
-        tenantId === "" ||
-        userId === undefined ||
-        userId === ""
-        ? ErrAsync(new Unauthenticated())
-        : OkAsync({ tenantId, userId });
-    },
+export const bearerAuthenticator = HttpAuthenticator({
+  sync: () => (headers) => {
+    const header = headers.authorization ?? "";
+    const token = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : "";
+    const [tenantId, userId] = token.split(":");
+    return tenantId === undefined ||
+      tenantId === "" ||
+      userId === undefined ||
+      userId === ""
+      ? ErrAsync(new Unauthenticated())
+      : OkAsync({ tenantId, userId });
   },
-);
+});
 ```
 
 ### `httpAuth<Identity>()` — what the principal is, server-side
