@@ -139,13 +139,13 @@ const orderRouter = HttpRouter(orderContract)({
 });
 ```
 
-`HttpController(name, fragment)([deps], { sync })` is the same two-call shape
+`HttpController(name, fragment)({ name: Dep }, { sync })` is the same two-call shape
 as `HttpRouter`, aimed at one fragment: it mints a port under `name` and
 returns the provider carrying it on `.port`. The keyed form is **exact** — a
 missing slice, an undeclared key and a controller under the wrong key are all
 compile errors — and because a fragment is itself a valid contract, a slice
 can be served alone, its controller unchanged: the lifted root is
-`HttpRouter(ordersContract)([ordersController.port], { sync: (implementation) => implementation })`,
+`HttpRouter(ordersContract)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
 declaring the very provider the modulith composed. See
 [Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
 

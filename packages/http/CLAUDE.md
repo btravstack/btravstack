@@ -28,7 +28,7 @@ the same commit, and with `README.md` — the package ships no
   job is to provide it. Covered by the package's own `rpc` fixture, which
   composes `RpcApp` through it. Options `port`/`hostname` pin as for `http()`.
   **`authenticator`** is what a marked contract needs —
-  `HttpAuthenticator<P>()([deps], { sync })` — and it is a plain optional
+  `HttpAuthenticator<P>()({ name: Dep }, { sync })` — and it is a plain optional
   field: present, it joins `provides`, which is all discharging di's need
   takes. `Auth` is inferred from it and `Provides` spreads
   `[Auth] extends [undefined] ? [] : [NonNullable<Auth>]`, so an **omitted**
@@ -116,7 +116,7 @@ PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
   rejected, a procedure a controller's fragment does not declare rejected
   inside the controller, and — the fifth, marked "do not break" — a slice
   lifting out of the composed router **with its controller unchanged**:
-  `HttpRouter(contract.orders)([orders.port], { sync: (implementation) => implementation })`
+  `HttpRouter(contract.orders)({ implementation: orders.port }, { sync: ({ implementation }) => implementation })`
   compiles, so the lifted root declares the very controller the modulith
   composed and hands back what it built. The gate names the controller
   deliberately — a fresh `sync` literal over the fragment would pin only that
@@ -133,7 +133,7 @@ PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
   Covered at runtime by the `rpcSliced` fixture, composing
   `helloController` and `echoesController` over `slicedContract`'s two
   fragments.
-- **`HttpController(name, fragment)([deps], { sync })`** (`controller.ts`) —
+- **`HttpController(name, fragment)({ name: Dep }, { sync })`** (`controller.ts`) —
   one slice of a contract, as a provider on a port minted for it. The first
   call fixes `fragment`'s type — read for its type only, so a procedure the
   fragment does not declare or a handler whose input or output has drifted is
@@ -170,7 +170,7 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C>
   `auth.test-d.ts` because a `boolean` result would satisfy either. Pinned by
   `auth.test-d.ts`, mutation-checked. What makes the type true at runtime is
   `principalMiddleware`, below.
-- **`HttpAuthenticator<P>()([deps], { sync })`, `AuthenticatorPort`,
+- **`HttpAuthenticator<P>()({ name: Dep }, { sync })`, `AuthenticatorPort`,
   `Unauthenticated`, `AuthenticatorService<P>`** (`auth.ts`) — what an
   application provides so a marked procedure can name its caller.
   `AuthenticatorService<P>` is
@@ -223,7 +223,7 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C>
   `HttpRouter` themselves are annotated `ReturnType<typeof controllerFor<never>>`
   here). `HttpAuthenticator` is handed back **already applied** — the type
   argument it exists to state is what the factory just fixed — so it is called
-  `HttpAuthenticator([deps], { sync })`.
+  `HttpAuthenticator({ name: Dep }, { sync })`.
   `HttpModule`'s gate compares the authenticator's principal to the
   **router's** identity, both of which come from the same `httpAuth` call in an
   ordinary application. Pinned by `auth.test-d.ts`'s arms 12–16 (the identity

@@ -51,7 +51,7 @@ export type HttpModuleOptions<
   };
   /**
    * Resolves the principal a marked procedure's handler receives —
-   * `HttpAuthenticator<Identity>()([deps], { sync })`. Required exactly when
+   * `HttpAuthenticator<Identity>()({ name: Dep }, { sync })`. Required exactly when
    * the router's contract marks something: a marked router declares
    * `AuthenticatorPort` as a need, and di refuses a graph that does not
    * discharge it. Whether it resolves what the handlers actually read is the

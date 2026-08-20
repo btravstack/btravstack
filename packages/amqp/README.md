@@ -69,7 +69,7 @@ call, not on the first delivery. `runtimeInfo()` reads `{ queues }` back once
 consuming.
 
 A worker with several consumers can be several slices instead of one record:
-`AmqpHandler(contract, key)([deps], arm)` mints a provider for ONE consumer or
+`AmqpHandler(contract, key)({ name: Dep }, arm)` mints a provider for ONE consumer or
 rpc, typed by the key alone, and `AmqpHandlers(contract)([...])` composes an
 array of them into the same handlers provider `AmqpModule` takes — the array
 must cover every key the contract declares, and each piece's own port must

@@ -72,7 +72,7 @@ startup `Err`, not a defect. `runtimeInfo()` reads `{ taskQueue, namespace }`
 back once the worker is polling.
 
 A worker polling for several workflows can be several slices instead of one
-record: `TemporalWorkflowActivities(contract, key)([deps], arm)` mints a
+record: `TemporalWorkflowActivities(contract, key)({ name: Dep }, arm)` mints a
 provider for ONE workflow's activities (or a contract-global activity),
 typed by the key alone, and `TemporalActivities(contract)([...])` composes an
 array of them into the same activities provider `TemporalModule` takes — the
