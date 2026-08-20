@@ -1,7 +1,9 @@
 import { contract } from "@btravstack/example-order-api-contract";
-import { HttpModule, HttpRouter } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
+import { HttpRouter } from "./auth.js";
+import { bearerAuthenticator } from "./authenticator.js";
 import { customersController } from "./slices/customers/controller.js";
 import { CustomersSlice } from "./slices/customers/module.js";
 import { ordersController } from "./slices/orders/controller.js";
@@ -26,7 +28,13 @@ export const orderRouter = HttpRouter(contract)({
  *
  * What is left here is what no slice owns: `observability()`, whose `Logger`
  * every layer writes to and which is exported because the per-request
- * `RequestModule` reads it out of the application scope. Importing the router
+ * `RequestModule` reads it out of the application scope, and the
+ * `authenticator` — one per process, because who a caller is is not a slice's
+ * question. It is required here and nowhere else because the contract marks
+ * `orders`: the router provider carries `AuthenticatorPort` as a need, so
+ * dropping this line is an unmet dependency `start` refuses, and supplying one
+ * that resolves a different principal is a compile error at this very call.
+ * Importing the router
  * and the starter is what closes di's arity gate (a composition without the
  * router provider does not compile — the starter's provider depends on it),
  * and `HttpRuntime`, which the sugar exports, is what closes the kernel's.
@@ -41,6 +49,7 @@ export const orderRouter = HttpRouter(contract)({
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });

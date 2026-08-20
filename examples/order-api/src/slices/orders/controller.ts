@@ -1,8 +1,10 @@
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
-import { HttpController } from "@btravstack/http";
+import { Logger } from "@btravstack/observability";
 import { P } from "unthrown";
+
+import { HttpController } from "../../auth.js";
 
 const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quantity });
 
@@ -24,10 +26,21 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * matcher has no wildcard to fall back on. A new domain error is a compile
  * error here, at the one place that has to decide what the client sees.
  *
- * `input.tenantId` is the tenant the caller named, handed straight to the use
- * case. The transport reads nothing about it and the starter knows nothing
- * about it — tenancy is this application's design, declared in its own
- * contract, and `@btravstack/http` has no concept of one.
+ * The tenant comes off `context.principal`, the value this application's own
+ * authenticator resolved from the request's headers — `contract.orders` is
+ * marked `authenticated`, so the principal is typed here and a handler that
+ * misreads it does not compile. `HttpController` is `../../auth.ts`'s, minted
+ * by `httpAuth<Identity>()`, which is why the principal has a readable type at
+ * all: the contract says only that the route is protected, and the factory is
+ * what puts this deployment's own identity in scope where the handler is
+ * written. Who placed an order is a transport-boundary fact, so it is logged
+ * here rather than pushed through a use case that has no business with it. The fragment's inputs name **no** tenant: a
+ * caller does not get to name the tenant it is served, and a required field
+ * these handlers ignore would be a lie in the contract. The unmarked
+ * `customers` fragment still names one, which is where that contrast is
+ * legible. The starter knows nothing about tenancy either way — it resolved a
+ * principal this application defined, and what the fields on it mean is the
+ * application's business.
  *
  * The use cases arrive as arguments, not through oRPC's context: di injects
  * them into the provider — `HttpController(name, contract)` is di's own
@@ -35,12 +48,13 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * provider like any other in the graph.
  */
 export const ordersController = HttpController("OrdersController", contract.orders)(
-  [PlaceOrder, FindOrder],
+  [PlaceOrder, FindOrder, Logger],
   {
-    sync: (place, find) => ({
-      place: ({ errors }, input) =>
-        place
-          .execute(input.tenantId, input.id, input.quantity)
+    sync: (place, find, logger) => ({
+      place: ({ errors, context }, input) => {
+        logger.info("order placement requested", { userId: context.principal.userId });
+        return place
+          .execute(context.principal.tenantId, input.id, input.quantity)
           .map(view)
           .mapErrCases((matcher) =>
             matcher
@@ -50,10 +64,11 @@ export const ordersController = HttpController("OrdersController", contract.orde
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.CONFLICT({ message: error.message, data: { id: error.id } }),
               ),
-          ),
-      find: ({ errors }, input) =>
+          );
+      },
+      find: ({ errors, context }, input) =>
         find
-          .execute(input.tenantId, input.id)
+          .execute(context.principal.tenantId, input.id)
           .map(view)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), (error) =>

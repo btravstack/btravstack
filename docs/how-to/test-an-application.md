@@ -51,7 +51,13 @@ describe("order-api", () => {
     // GIVEN the real composition root, bound to a loopback port the OS picks
     const app = boot(OrderApi, { unit: RequestModule });
     const info = (await app.runtimeInfo()).get();
-    const client = createOrderApiClient(`http://127.0.0.1:${info?.port}`);
+    const client = createOrderApiClient(
+      `http://127.0.0.1:${info?.port}`,
+      "/rpc",
+      {
+        authorization: `Bearer ${tenantId}:u-1`,
+      },
+    );
 
     // WHEN a call goes over the wire
     // THEN it reached the use case behind the transport
@@ -62,6 +68,15 @@ describe("order-api", () => {
   });
 });
 ```
+
+The credentials are not optional: the contract marks its `orders` fragment
+[`authenticated`](/reference/contract), so the same call without an
+`authorization` header is refused before any procedure runs — and
+`UNAUTHORIZED` is not an error the contract declares, so it arrives as a
+`Defect` rather than in `errCases`. What the token establishes here is the
+tenant; the example's fixtures wrap this up as `clientFor`, which is why every
+spec below takes that fixture rather than building a client by hand. See
+[Protect a procedure](/how-to/protect-a-procedure).
 
 `runtimeInfo()` is whatever the runtime published on `Serving.info` — the
 HTTP starter publishes `{ port }` — and `probePort()` the probe port that
@@ -113,9 +128,12 @@ const lines: Line[] = [];
 
 const recordingApi = HttpModule("RecordingApi")({
   router: orderRouter,
+  // The same authenticator as the real root: the contract marks `orders`, so
+  // every composition serving that router owes one.
+  authenticator: bearerAuthenticator,
   imports: [
-    OrderApplicationModule,
-    OrderPersistenceModule,
+    OrdersSlice,
+    CustomersSlice,
     // Pinned rather than bound: the fixture's `LOG_LEVEL` silences the real
     // root, and this root exists to be read.
     observability({ sink: (line) => lines.push(line), level: "trace" }),
@@ -263,8 +281,10 @@ export const it = test.extend<ApiFixtures>({
 
 `serve` is `boot` with `RequestModule` forked around every request, so its
 shutdown is still the fixture's; `clientFor` builds the oRPC client from
-`runtimeInfo()`; and `recording` is the real root's composition with a
-recording sink in place of stdout:
+`runtimeInfo()` **and gives it credentials for this test's tenant**
+(`Bearer ${tenant}:u-1`), since the contract marks the `orders` fragment and an
+anonymous call to it never reaches a use case; and `recording` is the real
+root's composition with a recording sink in place of stdout:
 
 ```ts
 const recordingApi = () => {
@@ -272,9 +292,10 @@ const recordingApi = () => {
   return {
     api: HttpModule("RecordingApi")({
       router: orderRouter,
+      authenticator: bearerAuthenticator,
       imports: [
-        OrderApplicationModule,
-        OrderPersistenceModule,
+        OrdersSlice,
+        CustomersSlice,
         observability({ sink: recorder.sink, level: "trace" }),
       ],
       exports: [Logger],
@@ -283,6 +304,13 @@ const recordingApi = () => {
   };
 };
 ```
+
+The tenant a handler serves is **not** an input field any more: the `orders`
+handlers read `context.principal.tenantId`, the value the authenticator
+resolved from the request's headers, and the marked fragment's inputs declare
+no tenant at all. So a spec's tenant reaches the server through the **token**
+`clientFor` mints and nowhere else. The unmarked `customers` fragment still
+names its tenant on the input, which is why its calls still pass one.
 
 `api.spec.ts` then swaps the repository for a stub that holds a request open
 to prove `completed: 1` and `abandoned: 1` against the real HTTP runtime (see

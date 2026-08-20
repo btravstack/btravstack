@@ -1,0 +1,8 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/contract",
+  "entryPoints": ["../packages/contract/src/index.ts"],
+  "tsconfig": "../packages/contract/tsconfig.json",
+  "out": "api/contract",
+  "intentionallyNotExported": []
+}

@@ -19,18 +19,22 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds eight published packages,
-`di` (the container), `config` (configuration from the environment, as
+pnpm workspace + turbo monorepo. `packages/` holds nine published packages,
+`contract` (contract-level markers shared by a client and the server that
+implements it — zero dependencies, zero peers), `di` (the container), `config`
+(configuration from the environment, as
 providers), `core` (the kernel), `testing` (the test harness — `bootFixture`,
 `tapped`, the in-memory runtime, the fake clock; peers on `core`),
 `observability` (the logging starter — a `Logger` port correlated with the
 ambient unit, a JSON sink, the kernel's events as lines), `http`
 (the HTTP starter — oRPC), `temporal` (the Temporal starter) and `amqp` (the
 AMQP starter). `di` was its own repository until it was merged here
-**with its history**; it is the one package that depends on nothing else in
+**with its history**; it and `contract` are the two packages that depend on
+nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
 back, with `testing`, `observability` and the three transport starters on
-`core`. Its own spec is `packages/di/CLAUDE.md`; the harness's is
+`core`. Its own spec is `packages/di/CLAUDE.md`; `contract`'s is
+`packages/contract/CLAUDE.md`; the harness's is
 `packages/testing/CLAUDE.md`; the logging starter's is
 `packages/observability/CLAUDE.md`.
 `examples/` holds ten private ones — a clean-architecture application
@@ -64,9 +68,9 @@ pnpm build            # tsdown dual CJS/ESM + d.ts
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all eight packages move as one
+## Versioning: all nine packages move as one
 
-The eight published packages share **one version number**, enforced by a
+The nine published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. A release bumps every one of them,
 whether or not it changed — Spring Boot's model, and the reason is the same:
 an application installs a kernel and two or three starters together, and
@@ -175,6 +179,24 @@ major.
    rule does not exist yet** — it needs a way to identify an adapter, a
    convention this stack has not established — so today it is a documented
    convention with no enforcement. Do not describe it as enforced.
+
+   **A transaction is not on the record either, and that is the decision, not
+   an omission.** Commit boundaries belong to the **adapter**, spelled
+   explicitly at the call — `examples/order-infrastructure`'s
+   `prismaOrderRepository` already does exactly this: `save` writes the order
+   row and its outbox row inside one `db.$tryTransaction`, and `remove` does
+   the same for the tombstone, with `@unthrown/prisma` supplying the
+   primitive. Nothing is hand-rolling a missing framework feature there.
+   Cross-store atomicity is the **outbox** plus a **saga**, which is what the
+   three examples are built on. Three reasons a unit-scoped transaction is
+   the wrong shape: it makes every request an **interactive** transaction,
+   which Prisma's own documentation says to reach for last; the unit does not
+   close until the response is **flushed** (the first contract a runtime
+   owes), so a pooled connection would stay pinned while bytes go to the
+   client; and a **port does not say where its data lives**, so a boundary
+   drawn around a unit spans stores the framework cannot see inside — a
+   promise it has no way to keep. Nested and joined transactions follow from
+   this: not supported, and not a framework concept.
 
 3. **The kernel never maps an outcome to a transport.** `Result` → HTTP status
    belongs to the router an application hands `@btravstack/http`
@@ -334,6 +356,49 @@ its work (a response's `'close'`) must first check whether it already fired:
 found by a client hanging up during a slow per-request acquire and leaving a
 unit open for the process lifetime.
 
+## Cross-cutting concerns: configuration, not a middleware slot
+
+CORS, body limits, compression, CSRF, security headers and authentication all
+arrive at the same door, and the answer is the same for all of them: **they are
+handler configuration, not a middleware slot.** Thesis #3's refusal survives
+intact, narrowed to what it was always about. An oRPC plugin and the starter's
+own `principalMiddleware` act on the **request/response envelope** — bytes,
+headers, a principal resolved before dispatch. An application middleware would
+act on the handler's **`Result`**, and that is the only one `@btravstack/http`
+refuses, because it is the one that would put a use case's outcome in the
+transport's hands.
+
+- **`plugins` is an honest escape hatch, not a keyhole.** It forwards straight
+  to `new RPCHandler(service, { plugins })`, and an oRPC plugin can reach
+  oRPC's interceptors — so an application determined to see a procedure's
+  outcome can get there. Nothing pretends otherwise. What the option buys is
+  that the ordinary path is configuration a reader can see at the composition
+  root, and reaching past it is a visible act rather than the default shape.
+- **Security headers are set on the listener, not as a plugin.** A plugin only
+  runs for a request oRPC **matched**, so the runtime's own `404` would go out
+  bare — the opposite of what helmet-style headers are for.
+- **Rate limiting is a stated non-goal.** A per-process counter is the wrong
+  unit: an `api` deployment is N pods (thesis #1), so a per-process budget is
+  N independent budgets and none of them is the limit anybody meant. The
+  ingress or gateway is where a request count is counted once. An application
+  that wants one anyway writes a plugin and passes it through `plugins` —
+  which is the escape hatch doing its job, not a gap.
+- **An unmarked procedure is public, and nothing fails if the marker is
+  forgotten.** `@btravstack/contract`'s marker makes the requirement
+  **legible** in the contract and makes the principal's type reach the
+  handler; it does not detect a procedure that should have been marked. There
+  is no gate for "you forgot", and there cannot be one — the contract is the
+  only statement of intent there is. Do not describe an unmarked procedure as
+  checked.
+- **Authorization is deliberately not in the contract.** "May this caller do
+  this?" often depends on the resource — the order's owner, its state, the
+  row's tenant — which cannot be answered before the handler has run and
+  fetched it. Putting the caller-shaped half in the contract and leaving the
+  resource-shaped half in the handler splits one rule across two files, and
+  the half in the contract is the half that looks complete. Authentication —
+  "is there a principal, and what is it?" — is answerable before dispatch, and
+  is the only half the contract carries.
+
 ## Public surface
 
 Each package's surface is stated **once**, in that package's own `CLAUDE.md`,
@@ -346,6 +411,7 @@ the copy with no gate is the one that lies.
 
 | Package                     | Surface lives in                   | Reference page             |
 | --------------------------- | ---------------------------------- | -------------------------- |
+| `@btravstack/contract`      | `packages/contract/CLAUDE.md`      | `/reference/contract`      |
 | `@btravstack/di`            | `packages/di/CLAUDE.md`            | `/reference/di/`           |
 | `@btravstack/config`        | `packages/config/CLAUDE.md`        | `/reference/config`        |
 | `@btravstack/core`          | `packages/core/CLAUDE.md`          | `/reference/core/`         |
@@ -397,11 +463,24 @@ type checker already verifies.
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http/src/controller.test-d.ts`
   pins the
   five compile-time gates the keyed `HttpRouter(contract)(controllers)` form
-  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 26 specs, across
-  `http-runtime.spec.ts`, `orpc.spec.ts` and `controller.spec.ts`, drive the
+  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 40 specs, across
+  `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
+  `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the
-  starter proper through `HttpModule`, and the keyed router form through the
-  `rpcSliced` fixture.
+  starter proper through `HttpModule`, the keyed router form through the
+  `rpcSliced` fixture, and the contract marker's runtime half — the
+  authenticator port and the one middleware it installs — through
+  `rpcAuthed`. **The contract says WHETHER a route is protected; the
+  application's `httpAuth<Identity>()` says WHAT the principal is.**
+  `@btravstack/contract` names no identity type at all — `authenticated` is one
+  export with no factory and no type parameter — so nothing about a server's
+  view of a caller reaches a client, and a marked fragment reached through the
+  top-level `HttpController` types `principal: never`, which makes every read a
+  compile error and is the signal to use the factory.
+  `examples/order-api/src/auth.ts` is the one file per application that names an
+  identity, and `HttpModule`'s gate pairs the **router's** identity with the
+  **authenticator's** — both from that one call — since there is no
+  contract-side principal left to compare against.
 - **The whole gate runs on THREE containers, shared, and `internal/test-infra`
   owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine` and
   one `temporalio/auto-setup:1.29.1`, started once per machine and reused by
@@ -632,9 +711,13 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `HttpRouterPort` and
   exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` and `DATABASE_URL` come from the
   environment inside the graph, and the router is mounted under `/rpc`. The
-  contract declares `tenantId` on every input, so a procedure hands it to the
-  use case and the use case to the repository — the transport reads nothing
-  about it.
+  **unmarked** `customers` fragment declares `tenantId` on its input, so a
+  procedure hands it to the use case and the use case to the repository; the
+  **marked** `orders` fragment declares none and its handlers read
+  `context.principal.tenantId` instead — a caller does not name the tenant it
+  is served, and a required field the handler ignores would be a confused
+  deputy in contract form. Either way the transport reads nothing about
+  tenancy.
   `observability()` is what provides the `Logger` the interactors and the
   request scope write to, and `Logger` is in `exports` because `RequestModule`
   reads it out of the application scope. `RequestModule` rides
@@ -656,7 +739,7 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   it without providing `orderRouter` fails di's own gate at `start`, since the
   starter's runtime provider depends on its router port.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
-  `2.0.0-beta.23` in the catalog because oRPC v2's `latest` dist-tag is still
+  `2.0.0-beta.28` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
   range resolves 1.x and fails `strictPeerDependencies`. The exact beta is the
   contract until v2 goes stable; raise it deliberately, not on a bot bump.
@@ -681,7 +764,8 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   a hardcoded `^0.1.0` until the versions went lockstep; a literal range in a
   peer field is a pin that goes stale silently the first time the dependency
   is bumped. `di` itself peers on
-  `unthrown` and depends on nothing; `config` peers on `di` and `unthrown`;
+  `unthrown` and depends on nothing; `contract` depends on nothing at all, not
+  even `unthrown`; `config` peers on `di` and `unthrown`;
   `core` peers on all three; `testing` peers on all four (and not on
   `vitest` — `bootFixture` is a plain function in vitest's fixture shape);
   `observability` peers on all four too and has **no runtime dependency of its
@@ -707,14 +791,14 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `@btravstack/core#typecheck` an explicit edge on
   `@btravstack/testing#build`; `knip.json` ignores the dependency for
   `packages/core`. Four places; a change to one is a change to all.
-- `declarationMap: false` on all eight published packages — the published
+- `declarationMap: false` on all nine published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All eight published packages claim `engines: { node: ">=20" }` while the root
+- All nine published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -785,8 +869,9 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `packages/config/CLAUDE.md`, `packages/testing/CLAUDE.md`,
   `packages/http/CLAUDE.md`, `packages/temporal/CLAUDE.md` or
   `packages/amqp/CLAUDE.md`, whichever is where that package's public
-  surface lives — or `packages/di/CLAUDE.md` for the container. There are
-  **nine** `CLAUDE.md` files; naming the wrong one is how the last drift
+  surface lives — or `packages/di/CLAUDE.md` for the container, or
+  `packages/contract/CLAUDE.md` for the auth marker. There are
+  **ten** `CLAUDE.md` files; naming the wrong one is how the last drift
   happened.
 
 ## Documentation site
@@ -802,12 +887,12 @@ was folded in here when the container was merged; nothing under
 
 - **TypeDoc runs from `docs/`, not from the packages** — it needs its own
   TypeScript (`catalog:typedoc` pins 6.0.3; 7.x is the native port and ships
-  no `typescript.js`). One `typedoc.<name>.json` per package — eight — points
+  no `typescript.js`). One `typedoc.<name>.json` per package — nine — points
   at that package's `src/index.ts` (core's one entry point; the doubles are
   `typedoc.testing.json`'s, and `typedoc.observability.json` names two entry
   points, `src/index.ts` and `src/pino.ts`) and writes straight into
   `api/<name>/` (gitignored; `docs/api/index.md` is the one committed file
-  there); `scripts/build-api.ts` runs the eight concurrently.
+  there); `scripts/build-api.ts` runs the nine concurrently.
   The package list is repeated in four places that must stay in sync: the
   configs, `build-api.ts`, `@btravstack/docs#build`'s `dependsOn` in
   `turbo.json` (explicit `<pkg>#build` edges — the site does not _depend_ on

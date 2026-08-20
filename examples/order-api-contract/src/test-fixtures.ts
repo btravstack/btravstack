@@ -48,24 +48,23 @@ const stubServer = (): StubFetch => {
   const stored = new Map<string, OrderView>();
 
   return async (_url, init, _options, path) => {
-    // Keyed by tenant AND id, the way the real schema is: a stub that ignored
-    // the tenant would let a contract test pass against an API that leaks
-    // between them. `tenantId` is an INPUT here and never an output — the
-    // views the contract declares carry no tenant, because a caller that
-    // named one does not need telling.
+    // Keyed by id alone: `orders` is the MARKED fragment, so its inputs name
+    // no tenant — a protected procedure is served the tenant its caller's
+    // principal carries, which is a server's business and not something this
+    // client-side stub has an identity to model. The unmarked `customers`
+    // fragment is where an input still names one.
     if (path.join(".") === "orders.place") {
-      const { tenantId, id, quantity } = inputOf<{
-        readonly tenantId: string;
+      const { id, quantity } = inputOf<{
         readonly id: string;
         readonly quantity: number;
       }>(init);
-      if (stored.has(`${tenantId}/${id}`)) return declared(409, "CONFLICT", id);
-      stored.set(`${tenantId}/${id}`, { id, quantity });
+      if (stored.has(id)) return declared(409, "CONFLICT", id);
+      stored.set(id, { id, quantity });
       return rpc(200, { id, quantity });
     }
 
-    const { tenantId, id } = inputOf<{ readonly tenantId: string; readonly id: string }>(init);
-    const found = stored.get(`${tenantId}/${id}`);
+    const { id } = inputOf<{ readonly id: string }>(init);
+    const found = stored.get(id);
     return found === undefined ? declared(404, "NOT_FOUND", id) : rpc(200, found);
   };
 };

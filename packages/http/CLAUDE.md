@@ -8,25 +8,41 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })`**
+- **`HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
   `http({ prefix?, port?, hostname? })` to `imports`, prepends the provider to
   `provides` and `HttpRuntime` to `exports`, and hands the augmented tuples —
-  `Imports<I>` / `Provides<P, RouterError, RouterNeeds>`, readonly and exact
+  `Imports<I>` / `Provides<P, RouterError, RouterNeeds, Auth>`, readonly and exact
   — to di's own `Module(name)({...})`, whose
   return type IS the sugar's: nothing spelled twice. di exports `AnyModule`,
   `AnyProvider` and `Exportable` for exactly that (constraining the tuples the
   way `Module(name)` does); its other module-typing pieces stay internal.
   (Spelling the return through a named generic alias was tried and removed:
   declaration emit keeps such an alias unreduced and cannot name imported
-  modules' internal ports — TS2883, measured.) `router` is a plain
+  modules' internal ports — TS2883, measured.) `router` is
   `Provider<HttpRouterPort, RouterError, RouterNeeds>` — a provider on the
   starter's own router port, which is what `HttpRouter(contract)(deps, arm)`
   returns — so a provider of anything else fails at the call, and there is no
   port to read off it: the starter needs `HttpRouterPort`, and the sugar's
   job is to provide it. Covered by the package's own `rpc` fixture, which
   composes `RpcApp` through it. Options `port`/`hostname` pin as for `http()`.
+  **`authenticator`** is what a marked contract needs —
+  `HttpAuthenticator<P>()([deps], { sync })` — and it is a plain optional
+  field: present, it joins `provides`, which is all discharging di's need
+  takes. `Auth` is inferred from it and `Provides` spreads
+  `[Auth] extends [undefined] ? [] : [NonNullable<Auth>]`, so an **omitted**
+  authenticator contributes no element and a marked router's need survives
+  to `start` — di's `UNSATISFIED DEPENDENCIES`, no gate of this package's.
+  What di cannot see is the **principal**: `AuthenticatorPort`'s service type
+  is erased to `unknown`, so any authenticator discharges the need whatever it
+  resolves. That half is checked here instead — `Principal` is inferred from
+  `router`'s own `readonly principal`, and `Auth`'s constraint requires
+  `readonly principal: [Principal] extends [never] ? unknown : Principal` — so
+  a mismatch fails at the `HttpModule(...)` call, while an **unmarked**
+  router (`Principal` is `never`) accepts any authenticator, since a provider
+  nothing needs is di's business and not an error to invent. Both are pinned by
+  `auth.test-d.ts`, on the two different lines they fire at.
 - **`HttpRouterPort`** (`orpc.ts`, exported from the file for the package's
   own tests, **not** from `index.ts`) — the router's port, one id, the
   starter's own: `Port("HttpRouter")` cast to di's `PortClassOf<"HttpRouter",
@@ -40,8 +56,8 @@ Router<Record<never, never>>>`, with the matching `PortInstance` alias. A
 - **`HttpRouter(contract)(deps, { sync })`** (`orpc.ts`) — contract-first
   router provider. `Implementation<C>` is the record type: recursing the
   contract's shape, each `ProcedureContract<I, O, E>` becomes
-  `Parameters<ProcedureImplementer<DefaultInitialContext & object, object, I,
-O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
+  `Parameters<ProcedureImplementer<DefaultInitialContext & object, ContextOf<C>,
+I, O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   procedure's implementer (`import "@unthrown/orpc/extensions/result"` here;
   `@orpc/contract` and `@unthrown/orpc` are peers for it) — so `sync`'s return
   is typed by the contract at the call. At runtime `implement(contract)` is
@@ -71,9 +87,16 @@ PortInstance<…> }`) rather than the class's own type because a class
   second overload of `build`) — for `contract: Record<string, RouterContract>`,
   a record keyed by the contract's own top-level keys, one
   `HttpController` per key, instead of `(deps, { sync })`. `M` is constrained
-  `{ readonly [K in keyof C]: ControllerFor<C[K]> }`, and the `controllers`
-  **parameter** is typed `M & { readonly [K in Exclude<keyof M, keyof C>]:
-never }` — the exactness intersection is on the parameter, not on `M`: a key
+  `{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
+IsMarked<C>>, Identity> }`, and the `controllers`
+  **parameter** is typed `M & { readonly [K in Exclude<keyof M, Exclude<keyof C,
+PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
+  positional arm's `Implementation<C>` carries, so a **root-marked** contract
+  composes here at all (the phantom key is not a controller to supply) and each
+  fragment inherits the root's mark (a controller under it types
+  `context.principal`). Both were missing until `auth.test-d.ts`'s eleventh arm
+  went in; the marked fixtures in `controller.test-d.ts` mark a **key**, which
+  is why neither showed there. The exactness intersection is on the parameter, not on `M`: a key
   `M` has that `C` does not declare types
   as `never` there, so the call fails to compile rather than silently
   dropping the key, without the intersection leaking into `M` and collapsing
@@ -96,7 +119,15 @@ never }` — the exactness intersection is on the parameter, not on `M`: a key
   composed and hands back what it built. The gate names the controller
   deliberately — a fresh `sync` literal over the fragment would pin only that
   a fragment is a valid contract, the weaker half, which says nothing about
-  the controller surviving the lift.
+  the controller surviving the lift. All five are pinned **twice**: once
+  against a plain contract and once against one whose `orders` fragment is
+  `authenticated(...)`, so the marker's phantom key cannot quietly break any of
+  them — the fifth least of all. The same block pins the one direction that
+  must be refused: a controller whose handler reads `opts.context.principal`
+  cannot be mounted under an **unmarked** contract key, where nothing would
+  inject one. The reverse is accepted and correctly so — an unmarked
+  controller under a marked key is a handler that ignores the principal, which
+  is contravariantly fine.
   Covered at runtime by the `rpcSliced` fixture, composing
   `helloController` and `echoesController` over `slicedContract`'s two
   fragments.
@@ -117,7 +148,150 @@ InstanceType<D[number]>> & { readonly port: PortClassOf<Name, Implementation<C>>
   `Config.provider("RelayConfig")(schema)` already uses in this repo. Covered
   by `controller.spec.ts`'s `controllers` fixture (the port and declared deps
   a controller carries) and by every gate in `controller.test-d.ts` above.
-- **`http({ prefix?, port?, hostname? })` →
+- **`@btravstack/contract`'s marker, in the types and at runtime.**
+  `authenticated(node)` brands a contract node `Authenticated<T>` — an
+  intersection with a `unique symbol` key set to `true`, no runtime property
+  and **no principal type** — and `Implementation<C, Identity>` branches on
+  `IsMarked<C>`. A marked **leaf** gets `{ readonly principal: Identity }` in
+  `ProcedureImplementer`'s **second** type parameter (`TInjectedContext`), so
+  the principal arrives on `opts.context.principal`: **oRPC's own context
+  channel**, not a second handler parameter this package invents and not a
+  wrapper around `.result()`. A marked **record** pushes its marker onto each
+  child (`Inherit<T, Marked>`), so a marked fragment protects every procedure
+  beneath it, and the record arm walks `Exclude<keyof C, PrincipalKey>` so the
+  phantom key never becomes a procedure key. An unmarked leaf keeps today's
+  spelling, `object`, exactly — which is what makes the negative gate
+  meaningful, since `DefaultInitialContext` is an empty interface rather than
+  an index signature. `HasMark<C>` (exported from `orpc.ts` **and** from
+  `index.ts`) is **whether** a contract marks anything anywhere in its tree —
+  exactly `true` or exactly `false`, asserted both directions in
+  `auth.test-d.ts` because a `boolean` result would satisfy either. Pinned by
+  `auth.test-d.ts`, mutation-checked. What makes the type true at runtime is
+  `principalMiddleware`, below.
+- **`HttpAuthenticator<P>()([deps], { sync })`, `AuthenticatorPort`,
+  `Unauthenticated`, `AuthenticatorService<P>`** (`auth.ts`) — what an
+  application provides so a marked procedure can name its caller.
+  `AuthenticatorService<P>` is
+  `(headers: IncomingHttpHeaders) => AsyncResult<P, Unauthenticated>` —
+  **headers, not the request**: an authenticator has no business reading a
+  body, and the narrower argument is what keeps it testable without a socket.
+  `AuthenticatorPort` is `Port("HttpAuthenticator")` cast to
+  `PortClassOf<"HttpAuthenticator", AuthenticatorService<unknown>>`, the same
+  spelling and for the same reason as `HttpRouterPort`; its service type is
+  **erased to `unknown`** because the principal's type is carried by the
+  provider instead — `HttpAuthenticator<P>()` returns
+  `Provider<AuthenticatorPort, never, …> & { readonly principal: P }`. The
+  type argument is explicit rather than inferred from `sync`: inference
+  through a returned function's `AsyncResult` is exactly where a `Principal`
+  silently widens to `unknown`. `Unauthenticated` is a `TaggedError` with an
+  **empty payload**: the starter surfaces no reason — a refused caller gets an
+  `UNAUTHORIZED` and oRPC's default message — so a field here would be
+  write-only. An authenticator that wants to record why logs it before
+  returning. Forwarding a reason would put "no such user" versus "bad
+  signature" in a 401 body by default.
+- **`httpAuth<Identity>()` → `{ HttpController, HttpRouter, HttpAuthenticator }`,
+  plus `HttpControllerOf<Identity>` / `HttpRouterOf<Identity>` /
+  `HttpAuthenticatorOf<Identity>`**
+  (`http-auth.ts`) — **the** place a principal type is stated.
+  **The contract says whether a route is protected; this says what the
+  principal is.** `Implementation<C, Identity>` and `ContextOf<C, Identity>`
+  carry it: a **marked** leaf's `opts.context.principal` is `Identity`, an
+  **unmarked** one is still `object`. `Identity = never` is "no factory", and
+  the top-level `HttpController` / `HttpRouter` are `controllerFor<never>()` /
+  `routerFor<never>()` — so a marked fragment reached through them types
+  `principal: never` and **any read of it is a compile error** (measured:
+  TS2339 on a property of `never`). That is the "use the factory" signal, and
+  it is the only thing the top-level form can honestly say now that the
+  contract carries no principal to fall back on. `controllerFor` and
+  `routerFor` are exported from their own files for this factory alone, not
+  from `index.ts`.
+  What it replaced: a principal type named in the contract, which put the
+  server's own view of a caller — a user id, roles — in the artifact a client
+  imports, and left a handler unable to see anything the contract had not
+  published.
+  It is **per application, not per slice**, and that is forced rather than
+  chosen: a handler's parameter types are fixed where the arrow is written, so
+  a composition root cannot retroactively re-type a `sync` callback in another
+  module. The identity must be in scope where the handler is, and the factory
+  is how it gets there with no per-call-site annotation.
+  The three `…Of<Identity>` aliases exist because a file **exporting** what the
+  factory returns cannot infer it: a controller's port expands to a type
+  carrying `@btravstack/contract`'s phantom `unique symbol` (TS2527, measured
+  on `examples/order-api`, and the same reason `HttpController` /
+  `HttpRouter` themselves are annotated `ReturnType<typeof controllerFor<never>>`
+  here). `HttpAuthenticator` is handed back **already applied** — the type
+  argument it exists to state is what the factory just fixed — so it is called
+  `HttpAuthenticator([deps], { sync })`.
+  `HttpModule`'s gate compares the authenticator's principal to the
+  **router's** identity, both of which come from the same `httpAuth` call in an
+  ordinary application. Pinned by `auth.test-d.ts`'s arms 12–16 (the identity
+  on a marked leaf, the top-level form typing `principal: never` on the same
+  fragment, no principal invented on an unmarked one, the keyed compose, and a
+  stray authenticator refused) and at runtime by `auth.spec.ts`'s `rpcAuthed`
+  fixture, whose contract names no identity at all and whose handler reads a
+  `userId` only the factory typed.
+- **`principalMiddleware` and `noAuthenticator`** (`auth.ts`, internal —
+  **not** exported from `index.ts`, like `HttpHandler`) — the one middleware this package installs,
+  and only on a marked leaf. It reads the request off oRPC's **initial
+  context** (`orpc()` now passes `context: { request }` to
+  `RPCHandler.handle`, which is what initial context is for), calls the
+  authenticator with its headers, and either injects
+  `{ context: { principal } }` through `next` or terminates the request. An
+  `Unauthenticated` becomes `throw new ORPCError("UNAUTHORIZED")` — oRPC's
+  middleware protocol has no returned-error arm, which is the one place in
+  this package a `throw` is right, carried by an `unthrown/no-throw` disable
+  naming why. **No message is derived from the refusal**: oRPC serializes
+  `message` to the client, so the caller gets oRPC's default `"Unauthorized"`
+  and the `reason` never leaves the process. Pinned by `auth.spec.ts`'s
+  _"answers 401 without the authenticator's reason"_, mutation-verified. A
+  **defect** is rethrown as its own cause instead, so a bug in the
+  authenticator stays oRPC's `INTERNAL_SERVER_ERROR` collapse rather than
+  being reported as a rejected caller.
+- **The authenticator dependency is conditional, and the two halves must
+  agree — a disagreement is an auth bypass.** `routerOf` walks the
+  **contract** alongside the implementer, carrying an `inherited` flag —
+  `isAuthenticated(node)` answers for one node only, so a marked record's mark
+  is pushed down by the walk exactly as `Inherit<T, P>` pushes it in the types
+  — and a marked leaf becomes
+  `node.use(principalMiddleware(authenticate)).result(fn)`. **`.use` before
+  `.result`, never the reverse**: `.result` returns an `ImplementedProcedure`
+  whose own `.use` has no `.result` left. Three things keep the two halves
+  from parting, each of which was a live bypass before it was fixed:
+  - **The walk is seeded with `isAuthenticated(contract)`, not `false`.** The
+    root node has no `contract[key]` to be read from, so a marked **root** —
+    `HttpRouter(authenticated(contract))` — would otherwise wrap nothing at
+    all while `Implementation<C>`'s record arm typed every leaf with a
+    principal that never arrived. Pinned by `auth.spec.ts`'s
+    `rpcRootMarked` fixture, mutation-verified.
+  - **`hasMarked` enters every object, not only plain records**, cycle-guarded
+    by a `WeakSet` (a schema is free to be recursive). Anything it declines to
+    enter is a mark it can miss and the walk cannot, and missing one is the
+    unsafe direction; over-approximating only ever declares an authenticator
+    nothing uses.
+  - **A mark with no authenticator behind it fails closed**, through
+    `auth.ts`'s `noAuthenticator` — an `AuthenticatorService` that refuses
+    every caller, so the leaf answers `401` instead of serving unprotected.
+    Unreachable while the two halves agree, which is exactly why it is there.
+
+  When `hasMarked(contract)` answers true,
+  `AuthenticatorPort` is appended **last** to the provider's dependency array
+  (so every existing positional service keeps its index; `sync` is called with
+  the leading slice) and both `build` overloads add
+  `HasMark<C> extends true ? AuthenticatorPort : never` to the needs channel
+  plus `readonly identity: Identity` to the result.
+  A marked router whose root provides no authenticator is therefore di's
+  existing `UNSATISFIED DEPENDENCIES` gate — no new gate. Whether the
+  authenticator resolves what the handlers read is the one thing that
+  gate cannot see, and `HttpModule`'s `authenticator` option is where it is
+  checked (see the first bullet). Note
+  `oc.router(...)` **rebuilds** every node, so a marker applied inside a
+  builder chain is lost — on **both** sides at once
+  (`AugmentedContractRouter<T, …>` maps `[K in keyof T]` and answers `never`
+  for the phantom key, so `IsMarked` loses it too), which makes it a
+  dropped protection rather than a bypass. `authenticated(...)` is applied to
+  the finished node, which is what `@btravstack/contract` already documents.
+
+- **`http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **the one way HTTP is answered here: oRPC, over its own
   node adapter**. The
@@ -145,7 +319,44 @@ http()], provides: [orderRouter], exports:
 [HttpRuntime] })` + `runMain(OrderApi)`; a test passes `env: { PORT: "0",
 HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `Serving.info` once bound; `0` lets the OS pick, read back via
-  `runtimeInfo()`.
+  `runtimeInfo()`. **`plugins`** —
+  `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
+  `@orpc/server/node` — forwards straight to `new RPCHandler(service, {
+plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
+  already expresses as handler plugins, so the ordinary use is configuration
+  rather than a middleware slot for application logic. It threads through all three surfaces on the same
+  `...(x === undefined ? {} : { x })` spread every other option here uses —
+  `OrpcOptions.plugins` (`orpc.ts`) → `HttpOptions.plugins` (`http-runtime.ts`)
+  → `HttpModuleOptions.plugins` (`http-module.ts`) — and needs no generic
+  parameter on any of the three, since it is a plain optional field like
+  `prefix`. It is an **honest escape hatch, not a keyhole**: oRPC's
+  `StandardHandlerPlugin.init` transforms handler options **including
+  `StandardHandlerOptions.interceptors`**, so a plugin can wrap execution and
+  an application determined to see a procedure's outcome can get there. What
+  the option buys is that the ordinary path is visible configuration at the
+  composition root rather than a middleware slot for application logic —
+  which is the one thing thesis #3 and the "Not included" bullet below still
+  refuse, and reaching past it is a visible act rather than the default shape.
+  `principalMiddleware` (below) is the one per-request hook this package
+  itself installs, and only on a marked leaf.
+- **`securityHeaders`** — `boolean | Readonly<Record<string, string>>`,
+  default `true`. **Not** routed through `orpc()`: it stays on `HttpOptions`
+  after `prefix` and `plugins` are destructured out of `http()`'s options, so
+  it lands in `socket` — the rest handed to `httpModule` — and is applied by
+  `http-runtime.ts`'s `listen`, on the raw node listener, **before**
+  dispatch. That placement, not an oRPC plugin, is deliberate: a plugin only
+  runs for a request oRPC **matched**, so the runtime's own `404` and `500`
+  would go out bare — the opposite of what helmet-style headers are for.
+  `true` applies the package's small default set
+  (`x-content-type-options: nosniff`, `x-frame-options: DENY`,
+  `referrer-policy: no-referrer`); `false` disables the feature; a record
+  replaces the defaults outright. Resolved once per `listen` call, outside
+  the per-request `createServer` callback, and set as its **first**
+  statement — before `open.add(response)` — so it covers a served response,
+  the runtime's `404`, its `500`, and a drained/retired response alike.
+  `HttpModuleOptions.securityHeaders` (`http-module.ts`) forwards it to
+  `http()` on the same `...(x === undefined ? {} : { x })` spread every
+  other option here uses.
 - **Two gates, both compile-time.** `start`'s phantom rest tuple turns a
   composition exporting no `HttpRuntime` into an arity error (`NO RUNTIME`);
   and because the runtime provider depends on the router port **through di**,
@@ -183,12 +394,20 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   miss a response with a request in flight; that is why retirement is tracked
   per-response rather than left to it.
 - **Not included, deliberately**: any other router or handler (there is no
-  `handler` option and no listener port to provide — one way), middleware,
-  `Result` → HTTP status, HTTPS, HTTP/2 — see the package README's _"What it
-  does not do"_ for why each is a non-goal.
+  `handler` option and no listener port to provide — one way), a middleware
+  slot for application logic, `Result` → HTTP status, HTTPS, HTTP/2 — see the
+  package README's _"What it does not do"_ for why each is a non-goal.
+  `plugins` (above) is an honest escape hatch rather than a keyhole — a plugin
+  can reach `StandardHandlerOptions.interceptors` and therefore a procedure's
+  execution — but the ordinary path is visible configuration at the
+  composition root, and an application middleware acting on the handler's
+  `Result` is what stays refused.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
-  `@btravstack/di`, `unthrown`, `@orpc/server`, `@orpc/contract`,
-  `@unthrown/orpc`. Hono and `@hono/node-server` were peers until the second
+  `@btravstack/di`, `@btravstack/contract`, `unthrown`, `@orpc/server`,
+  `@orpc/contract`, `@unthrown/orpc`. `@btravstack/contract` is a peer for the
+  same dual-copy reason as the rest: its marker is a `unique symbol` and two
+  copies of the package are two different symbols, so a contract marked
+  against one would read as unmarked here. Hono and `@hono/node-server` were peers until the second
   code review of PR #40: Hono routed exactly one pattern (`${prefix}/*`) to
   oRPC's fetch adapter and 404'd the rest, which `@orpc/server/node`'s
   `RPCHandler.handle(req, res, { prefix })` plus the runtime's own `404` do
@@ -214,12 +433,12 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **26 specs, 100% lines/functions.** Every app boots through the `boot`
+- **40 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
   failure (`configured`'s `ConfigInvalid`, `occupied`'s port in use) is the
-  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 17,
+  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 21,
   through `test-fixtures.ts`'s `appOf` — `httpModule({ port: 0, hostname:
 "127.0.0.1" }, Provider(HttpHandler)({ value: handler }))` — so the
   guarantees (`404`/`500` fallbacks, the unit open until `'close'`, the drain,
@@ -229,13 +448,23 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   pinned"_, _"pins what it is given and reads the rest from the environment"_,
   _"fails startup with ConfigInvalid for HttpConfig when PORT is not a port"_,
   through the `configured` fixture, whose `BoundConfig` provider captures what
-  the graph bound). `orpc.spec.ts` carries 7 the starter proper answers
+  the graph bound), and four of them are `securityHeaders`: the defaults on a
+  served response through `serve`, the same defaults on the runtime's own
+  `404` through `rpc` — the path a handler plugin would never reach — their
+  absence when `securityHeaders: false` is pinned, and a **custom record**
+  applied verbatim (the given headers on the response and the defaults gone,
+  since the record replaces them rather than extending them), `serve`'s third
+  argument threading straight into `appOf`. `orpc.spec.ts` carries 8 the starter proper answers
   for, through the `rpc` fixture — `HttpModule("RpcApp")({ router:
 greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   a router provider that declares a `Greeter`, with a typed `RPCLink` client:
   dependencies injected, a nested procedure, a stray implementation key
   dropped, `prefix` honoured, the runtime's 404 outside and under the prefix,
-  and oRPC's `INTERNAL_SERVER_ERROR` collapse. `controller.spec.ts` carries the
+  and oRPC's `INTERNAL_SERVER_ERROR` collapse — plus one through `rpcWithCors`,
+  a `greet`-only router configured with oRPC's own `CORSHandlerPlugin`, proving
+  `plugins` reaches `RPCHandler` rather than being silently accepted and
+  dropped: the plugin, not this package, decided the response's
+  `access-control-allow-origin`. `controller.spec.ts` carries the
   remaining 2, through the `controllers` and `rpcSliced` fixtures: a
   `HttpController` carries the port it was minted under and the deps it
   declared, and `HttpRouter(contract)({...})` serves a router composed from
@@ -243,5 +472,24 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   own fragment of `slicedContract` — with a procedure from each answering
   through one client, proving every controller's slice was mounted under its
   own contract key. A process still serves one router (thesis #1); the keyed
-  form changes how many providers build it, not that fact. `controller.test-d.ts`
-  is the package's own compile-time gate — see Public surface.
+  form changes how many providers build it, not that fact. `auth.spec.ts`
+  carries the last 9, through the `rpcAuthed`, `rpcRootMarked`,
+  `authedRouterDeps` and `controllers` fixtures — every one of them over a
+  router, controllers and authenticator minted by ONE `httpAuth<Identity>()`,
+  since a contract naming no principal leaves the factory as the only way a
+  handler gets a readable one. Four are over
+  `authedContract` — `{ orders: authenticated({ whoami }), health: { ping } }`,
+  one protected fragment and one public one: the handler reading a `userId`
+  only the factory typed, a rejected token answering `UNAUTHORIZED` with the
+  handler never entered, an authenticator's own defect collapsing to
+  `INTERNAL_SERVER_ERROR` rather than a 401, and an unmarked procedure served
+  with no credentials at all. Two are over `rootMarkedContract` —
+  `authenticated({ orders: { whoami } })`, the mark on the **root**, where
+  there is no `contract[key]` to read it from: a rejected token still gets a
+  401 with the handler never entered, and an accepted one still reaches the
+  handler with its principal. Two are composition-time — the authenticator
+  appended **last** in both `build` arms, and nothing appended at all when the
+  contract marks nothing. The ninth is `noAuthenticator` itself, refusing
+  every caller.
+  `controller.test-d.ts` is the package's own compile-time gate — see Public
+  surface.

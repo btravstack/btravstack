@@ -1,8 +1,9 @@
 import { contract, type CustomerView } from "@btravstack/example-order-api-contract";
 import { FindCustomer } from "@btravstack/example-order-application";
 import type { Customer } from "@btravstack/example-order-domain";
-import { HttpController } from "@btravstack/http";
 import { P } from "unthrown";
+
+import { HttpController } from "../../auth.js";
 
 const view = (customer: Customer): CustomerView => ({ id: customer.id, name: customer.name });
 

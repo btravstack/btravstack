@@ -9,7 +9,9 @@ socket, and the router itself is a di-provided service. The contract lives in
 its own package, because a client needs it and needs none of this.
 
 ```
-src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder], { sync }) — where the orders slice's own domain error becomes an ORPCError
+src/auth.ts                           Identity, and the HttpController / HttpRouter / HttpAuthenticator httpAuth<Identity>() mints from it
+src/authenticator.ts                  bearerAuthenticator — headers in, Identity out, on the starter's port
+src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)([PlaceOrder, FindOrder, Logger], { sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
 src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)([FindCustomer], { sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
@@ -93,10 +95,50 @@ root that is a `Module(...)` which also knows about it:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
+
+`authenticator` is owed because the contract marks its `orders` fragment
+`authenticated`: the router provider carries `AuthenticatorPort` as a need, so
+omitting the line is an unmet dependency `start` refuses, and supplying one
+minted on a different identity is a compile error at this call. It sits at
+the root rather than in a slice — who a caller is is one answer per process —
+and it is an ordinary provider, so swapping this example's
+`Bearer <tenantId>:<userId>` stand-in for JWT verification changes nothing
+else.
+
+Where the identity is **stated** is `src/auth.ts`, the whole of it:
+
+```ts
+export type Identity = { readonly tenantId: string; readonly userId: string };
+
+const identity = httpAuth<Identity>();
+
+export const HttpController: HttpControllerOf<Identity> =
+  identity.HttpController;
+export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
+export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
+  identity.HttpAuthenticator;
+```
+
+**The contract says whether a route is protected; `httpAuth<Identity>()` says
+what the principal is.** The contract names no identity type at all, so nothing
+here reaches a client and enriching it — roles, an org tier, an internal id —
+is never a contract change. Both slices import `HttpController` from there
+instead of from `@btravstack/http`, and the orders controller reads
+`context.principal.userId` to log who asked for a placement. Who placed an
+order is a transport-boundary fact, so it is logged there rather than pushed
+through a use case that has no business with it.
+
+It is also the only way to read a principal at all: a marked fragment reached
+through `@btravstack/http`'s own top-level `HttpController` types
+`principal: never`, so every read of it is a compile error. And it is written
+once per application rather than per slice — a handler's parameter types are
+fixed where the arrow is written, so the composition root cannot re-type a
+`sync` callback living in a slice's module.
 
 The root is a list of **slices**. Each one imports the vertical it needs —
 `OrderApplicationModule`, whose repository is an unmet need, and
@@ -163,7 +205,9 @@ and no handler code manages any of it.
 ## The client half
 
 ```ts
-const client = createOrderApiClient("http://127.0.0.1:3000");
+const client = createOrderApiClient("http://127.0.0.1:3000", "/rpc", {
+  authorization: `Bearer ${tenantId}:${userId}`,
+});
 
 const named = (await client.orders.place({ id, quantity })).match({
   ok: () => "placed",
@@ -176,6 +220,14 @@ const named = (await client.orders.place({ id, quantity })).match({
   defect: () => "bug",
 });
 ```
+
+The header is not optional here: `orders` is the marked half of the contract,
+so the same call without it is refused before any procedure runs — as an
+`UNAUTHORIZED` the contract does not declare, which means it is not inferable
+and lands in `defect` rather than `errCases`. `customers` is unmarked and
+answers either way — and names its tenant on the input, which `orders` does
+not: the tenant a marked procedure serves is the token's, so there is nothing
+for the caller to say about it.
 
 The error channel is the raw `ORPCError` union discriminated by `code` — not
 re-wrapped into a second error concept — so the client's match is the mirror of
@@ -248,33 +300,50 @@ this package validates, prints or exits.
 ## Multi-tenant by design, not by framework
 
 The API serves several tenants from one database, and the tenant is declared
-in **its own contract**:
+in **its own contract** — on the unmarked fragment, where the caller is the
+only one who can say which tenant is meant:
 
 ```ts
 export type Tenanted = { readonly tenantId: string };
 
+const customersContract = {
+  find: oc
+    .input(type<Tenanted & { readonly id: string }>())
+    .output(type<CustomerView>())
+    .errors({ NOT_FOUND: { data: type<{ readonly id: string }>() } }),
+};
+
 const ordersContract = {
   place: oc
-    .input(type<Tenanted & { readonly id: string; readonly quantity: number }>())
+    .input(type<{ readonly id: string; readonly quantity: number }>())
     .output(type<OrderView>())
     .errors({ INVALID_QUANTITY: { data: type<OrderRef>() }, CONFLICT: { data: type<OrderRef>() } }),
   …
 };
 ```
 
-The controller hands `input.tenantId` straight to the use case, which hands it
-to the repository, which puts it in the `WHERE`. `@btravstack/http` knows
+The `customers` controller hands `input.tenantId` straight to the use case,
+which hands it to the repository, which puts it in the `WHERE`. The `orders`
+fragment is marked `authenticated`, so its controller takes the tenant from
+`context.principal.tenantId` — this deployment's `Identity`, which the
+contract never names — and its inputs name none: a required field the
+handler ignores is a field that lies, and a caller that could name a tenant it
+is not served is a confused deputy waiting to happen. Either way
+`@btravstack/http` knows
 nothing about tenants and has no hook for them — context is the application's
 to own, and a starter that read a tenant off a header would be deciding a
 system's authentication model on its behalf.
 
-An argument rather than a header, then, and the trade is worth naming. A
-client cannot forget it (the contract refuses), the router cannot invent one,
-and the path from wire to `WHERE` is visible in three files. What it is not is
-"who is asking": a deployment that authenticates its callers would take the
-tenant from the caller's identity and drop it from the contract — a contract
-change, which is exactly the kind of change that should be.
+The contrast between the two fragments is the lesson. Where nothing
+authenticates the caller, the tenant is an **argument**: the client cannot
+forget it (the contract refuses), the router cannot invent one, and the path
+from wire to `WHERE` is visible in three files. Where the caller is
+authenticated, the tenant is **who is asking**, and it comes off the principal
+— which is a contract change, exactly the kind of change that should be one.
+`orders` has made it and `customers` has not, which is why the two controllers
+read the tenant from different places and why only one of the two inputs
+mentions it.
 
-It is typechecked by the gate rather than executed by it:It is typechecked by the gate rather than executed by it: the example packages
+It is typechecked by the gate rather than executed by it: the example packages
 are source-only — no build step, `main` pointing straight at `src/` — so there
 is no compiled entry for `node` to run, and every spec drives `start` directly.

@@ -80,4 +80,16 @@ describe("http, over a router", () => {
     // THEN the client sees oRPC's own collapse, not a reset
     await expect(client.boom()).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
   });
+
+  it("runs a plugin it was handed", async ({ rpcWithCors }) => {
+    // GIVEN an app configured with oRPC's CORS plugin
+    // WHEN a procedure is called from an origin
+    const response = await fetch(`${rpcWithCors.url}/rpc/greet`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://example.test" },
+      body: JSON.stringify({ json: { name: "world" } }),
+    });
+    // THEN the plugin decided the response's CORS header
+    expect(response.headers.get("access-control-allow-origin")).toBe("https://example.test");
+  });
 });

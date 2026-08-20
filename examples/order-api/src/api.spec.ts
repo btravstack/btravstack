@@ -6,7 +6,6 @@ import { it } from "./test-fixtures.js";
 
 describe("order-api", () => {
   it("carries a real oRPC call through to the DI-wired use case", async ({
-    tenant,
     serve,
     clientFor,
     api,
@@ -16,14 +15,13 @@ describe("order-api", () => {
 
     // WHEN a call goes over the wire
     // THEN it reached the use case behind the transport
-    await expect(client.orders.place({ tenantId: tenant, id: "o-1", quantity: 2 })).toBeOkWith({
+    await expect(client.orders.place({ id: "o-1", quantity: 2 })).toBeOkWith({
       id: "o-1",
       quantity: 2,
     });
   });
 
   it("serves every call from the one application scope, so a write outlives its request", async ({
-    tenant,
     serve,
     clientFor,
     api,
@@ -35,8 +33,8 @@ describe("order-api", () => {
     // a second unit — and the same database, because the application scope is
     // opened once by the kernel and only the request scope is forked per call.
     const found = await client.orders
-      .place({ tenantId: tenant, id: "o-1", quantity: 2 })
-      .flatMap(() => client.orders.find({ tenantId: tenant, id: "o-1" }));
+      .place({ id: "o-1", quantity: 2 })
+      .flatMap(() => client.orders.find({ id: "o-1" }));
 
     // THEN the write is visible to the read
     expect(found).toBeOkWith({ id: "o-1", quantity: 2 });
@@ -54,7 +52,6 @@ describe("order-api", () => {
   });
 
   it("turns a domain Err into a typed, inferable CONFLICT — a value, not a thrown 500", async ({
-    tenant,
     serve,
     clientFor,
     api,
@@ -65,8 +62,8 @@ describe("order-api", () => {
     // WHEN the same id is placed again — chained, so the first call's `Result`
     // is consumed and a failure there cannot be mistaken for the conflict
     const conflict = await client.orders
-      .place({ tenantId: tenant, id: "o-1", quantity: 1 })
-      .flatMap(() => client.orders.place({ tenantId: tenant, id: "o-1", quantity: 1 }));
+      .place({ id: "o-1", quantity: 1 })
+      .flatMap(() => client.orders.place({ id: "o-1", quantity: 1 }));
 
     // THEN the `Err` channel, not the defect one: the client got a value back.
     // `constructor` is read through the prototype chain, so the one assertion
@@ -85,7 +82,6 @@ describe("order-api", () => {
   });
 
   it("turns a rejected invariant into a typed, inferable INVALID_QUANTITY", async ({
-    tenant,
     serve,
     clientFor,
     api,
@@ -94,7 +90,7 @@ describe("order-api", () => {
     const client = await clientFor(serve(api));
 
     // WHEN a quantity the domain rejects is placed
-    const invalid = await client.orders.place({ tenantId: tenant, id: "o-2", quantity: 0 });
+    const invalid = await client.orders.place({ id: "o-2", quantity: 0 });
 
     // THEN the second declared code crosses the wire the same way
     expect(invalid).toBeErrWith(
@@ -108,14 +104,13 @@ describe("order-api", () => {
   });
 
   it("lets the client match that error channel exhaustively, by code", async ({
-    tenant,
     serve,
     clientFor,
     api,
   }) => {
     // GIVEN an error the contract declares
     const client = await clientFor(serve(api));
-    const invalid = await client.orders.place({ tenantId: tenant, id: "o-2", quantity: 0 });
+    const invalid = await client.orders.place({ id: "o-2", quantity: 0 });
 
     // WHEN the channel is folded — the mirror of the `mapErrCases` that
     // produced it, with no wildcard to fall back on. Both codes are named and
@@ -133,7 +128,6 @@ describe("order-api", () => {
   });
 
   it("collapses a Defect to INTERNAL_SERVER_ERROR without leaking the cause", async ({
-    tenant,
     serve,
     clientFor,
     unmodelled,
@@ -142,7 +136,7 @@ describe("order-api", () => {
     const client = await clientFor(serve(unmodelled));
 
     // WHEN a call reaches it
-    const result = await client.orders.find({ tenantId: tenant, id: "o-1" });
+    const result = await client.orders.find({ id: "o-1" });
 
     // THEN the raw cause does NOT leak over the wire; oRPC collapses it, and
     // the non-inferable result lands back in the defect channel. `inferable`
@@ -159,7 +153,6 @@ describe("order-api", () => {
   });
 
   it("keeps serving after a defect, because a defect is not a crash", async ({
-    tenant,
     serve,
     clientFor,
     unmodelled,
@@ -172,9 +165,9 @@ describe("order-api", () => {
     // here rather than asserted — it is the subject of the test above; what
     // this one asks is what the process does next.
     const served = await client.orders
-      .find({ tenantId: tenant, id: "o-1" })
+      .find({ id: "o-1" })
       .recoverDefect(() => Ok("defected" as const))
-      .flatMap(() => client.orders.place({ tenantId: tenant, id: "o-1", quantity: 1 }))
+      .flatMap(() => client.orders.place({ id: "o-1", quantity: 1 }))
       .map(() => app.phase());
 
     // THEN the next call was served, by a process still in the serving phase
@@ -182,7 +175,6 @@ describe("order-api", () => {
   });
 
   it("runs each call in its own unit, with its own trace id", async ({
-    tenant,
     serve,
     clientFor,
     recording,
@@ -192,12 +184,12 @@ describe("order-api", () => {
 
     // WHEN two calls are served — chained, so neither `Result` is dropped
     const served = await client.orders
-      .place({ tenantId: tenant, id: "o-1", quantity: 1 })
-      .flatMap(() => client.orders.place({ tenantId: tenant, id: "o-2", quantity: 1 }));
+      .place({ id: "o-1", quantity: 1 })
+      .flatMap(() => client.orders.place({ id: "o-2", quantity: 1 }));
 
-    // THEN two calls, two interactor lines plus two request-scope teardown
-    // lines, carrying two distinct trace ids and never one written outside a
-    // unit — read off the line's own `unit` field, which is what the logger
+    // THEN two calls, each writing a controller line, an interactor line and a
+    // request-scope teardown line, carrying two distinct trace ids and never
+    // one written outside a unit — read off the line's own `unit` field, which is what the logger
     // stamps from `currentUnit()` per call
     const traced = served
       .map(() => recording.lines())
@@ -207,14 +199,14 @@ describe("order-api", () => {
         outOfUnit: lines.filter((line) => line.unit === undefined).length,
       }));
 
-    expect(traced).toBeOkWith({ lines: 4, distinct: 2, outOfUnit: 0 });
+    expect(traced).toBeOkWith({ lines: 6, distinct: 2, outOfUnit: 0 });
   });
 
-  it("lets an in-flight call finish while draining", async ({ tenant, serve, clientFor, gate }) => {
+  it("lets an in-flight call finish while draining", async ({ serve, clientFor, gate }) => {
     // GIVEN a call held open inside the repository
     const app = serve(gate.api);
     const client = await clientFor(app);
-    const inFlight = client.orders.find({ tenantId: tenant, id: "o-1" });
+    const inFlight = client.orders.find({ id: "o-1" });
     await gate.arrived;
 
     // WHEN the drain starts and the call is released only once the phase moved.
@@ -230,7 +222,6 @@ describe("order-api", () => {
   });
 
   it("counts the finished call as completed in the drain report", async ({
-    tenant,
     serve,
     clientFor,
     gate,
@@ -238,7 +229,7 @@ describe("order-api", () => {
     // GIVEN a call held open inside the repository
     const app = serve(gate.api);
     const client = await clientFor(app);
-    const inFlight = client.orders.find({ tenantId: tenant, id: "o-1" });
+    const inFlight = client.orders.find({ id: "o-1" });
     await gate.arrived;
 
     // WHEN the drain starts and the call is released only once the phase moved
@@ -257,7 +248,6 @@ describe("order-api", () => {
   });
 
   it("reports a call still hung at the deadline as abandoned", async ({
-    tenant,
     serve,
     clientFor,
     gate,
@@ -265,7 +255,7 @@ describe("order-api", () => {
     // GIVEN a call held open, and a drain with no time to give it
     const app = serve(gate.api, { drainTimeoutMs: 0 });
     const client = await clientFor(app);
-    const hung = client.orders.find({ tenantId: tenant, id: "o-1" });
+    const hung = client.orders.find({ id: "o-1" });
     await gate.arrived;
 
     // WHEN the drain starts and the call is never released
@@ -283,7 +273,6 @@ describe("order-api", () => {
   });
 
   it("surfaces the socket destroyed under an abandoned call as a defect", async ({
-    tenant,
     serve,
     clientFor,
     gate,
@@ -291,7 +280,7 @@ describe("order-api", () => {
     // GIVEN a call held open, and a drain with no time to give it
     const app = serve(gate.api, { drainTimeoutMs: 0 });
     const client = await clientFor(app);
-    const hung = client.orders.find({ tenantId: tenant, id: "o-1" });
+    const hung = client.orders.find({ id: "o-1" });
     await gate.arrived;
 
     // WHEN the drain starts and the call is never released
@@ -323,6 +312,77 @@ describe("order-api", () => {
     // THEN the app reports itself live and ready, on the endpoint and on the
     // accessor the kernel exposes for it
     expect(probed).toEqual({ livez: 200, readyz: 200, ready: true });
+  });
+
+  it("refuses a call to the marked fragment when the caller presents nothing", async ({
+    serve,
+    clientWith,
+    api,
+  }) => {
+    // GIVEN the real composition root and a caller with no credentials
+    const client = await clientWith(serve(api), undefined);
+
+    // WHEN a procedure of the authenticated fragment is called
+    const refused = await client.orders.place({ id: "o-1", quantity: 1 });
+
+    // THEN it was refused before the use case was reached. `UNAUTHORIZED` is
+    // not a code the contract declares, so oRPC does not mark it inferable and
+    // the client hands it back on the defect channel — the same treatment a
+    // collapsed 500 gets, and the reason a refusal is not something a caller
+    // has to match on
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
+    );
+  });
+
+  it("serves the unmarked fragment to a caller presenting nothing", async ({
+    tenant,
+    serve,
+    clientWith,
+    stubbed,
+  }) => {
+    // GIVEN the same absent credentials, and a customer registered behind the
+    // slice whose fragment carries no marker
+    const client = await clientWith(serve(stubbed), undefined);
+
+    // WHEN a procedure of that fragment is called
+    // THEN it answers: the marker is per-fragment, so protecting `orders` did
+    // not quietly close the rest of the API
+    await expect(client.customers.find({ tenantId: tenant, id: "c-1" })).toBeOkWith({
+      id: "c-1",
+      name: "Ada",
+    });
+  });
+
+  it("serves each caller the tenant its own token names", async ({
+    tenant,
+    serve,
+    clientFor,
+    clientWith,
+    api,
+  }) => {
+    // GIVEN two callers on one app, each holding a token for its own tenant
+    const app = serve(api);
+    const other = `${tenant}-other`;
+    const client = await clientFor(app);
+    const stranger = await clientWith(app, `Bearer ${other}:u-2`);
+
+    // WHEN the first places an order and the second looks that id up
+    const found = await client.orders
+      .place({ id: "o-1", quantity: 2 })
+      .flatMap(() => stranger.orders.find({ id: "o-1" }));
+
+    // THEN the second sees nothing: the tenant a marked handler serves is
+    // `context.principal.tenantId`, and the fragment's inputs name no tenant
+    // for a caller to ask for another one with
+    expect(found).toBeErrWith(
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "NOT_FOUND",
+        data: { id: "o-1" },
+        inferable: true,
+      }),
+    );
   });
 
   it("serves the customers slice alongside the orders slice", async ({
@@ -370,7 +430,6 @@ describe("order-api", () => {
   });
 
   it("goes unready on drain while staying live", async ({
-    tenant,
     serve,
     clientFor,
     probesFor,
@@ -382,7 +441,7 @@ describe("order-api", () => {
     const app = serve(gate.api, { probes: { port: 0 } });
     const probes = await probesFor(app);
     const client = await clientFor(app);
-    const inFlight = client.orders.find({ tenantId: tenant, id: "o-1" });
+    const inFlight = client.orders.find({ id: "o-1" });
     await gate.arrived;
 
     // WHEN the drain starts. The TRANSITION is awaited through `ready()`, which

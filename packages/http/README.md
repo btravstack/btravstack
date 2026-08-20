@@ -146,6 +146,124 @@ can be served alone, its controller unchanged: the lifted root is
 declaring the very provider the modulith composed. See
 [Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
 
+## Protecting a procedure
+
+A contract can say a procedure needs an authenticated caller. The marker is
+`@btravstack/contract`'s, so it lives in the artifact a client holds too — and
+it says **whether**, not who: no identity type is named there, so nothing about
+the server's view of a caller reaches a client.
+
+`httpAuth<Identity>()` is what says **what** the principal is. It is written
+once per application and hands back `HttpController`, `HttpRouter` and
+`HttpAuthenticator` fixed to that identity:
+
+```ts
+// src/auth.ts — the one file that names the identity
+import {
+  httpAuth,
+  type HttpControllerOf,
+  type HttpRouterOf,
+  type HttpAuthenticatorOf,
+} from "@btravstack/http";
+
+export type Identity = { readonly tenantId: string; readonly userId: string };
+
+const identity = httpAuth<Identity>();
+
+export const HttpController: HttpControllerOf<Identity> =
+  identity.HttpController;
+export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
+export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
+  identity.HttpAuthenticator;
+```
+
+The three aliases are annotations, not ceremony: a controller's port expands to
+a type carrying the marker's phantom `unique symbol`, which a consumer's
+`.d.ts` cannot name.
+
+```ts
+import { authenticated } from "@btravstack/contract";
+import { HttpModule, Unauthenticated } from "@btravstack/http";
+import { oc, type } from "@orpc/contract";
+import { ErrAsync, OkAsync, P } from "unthrown";
+
+import { HttpAuthenticator, HttpRouter } from "./auth.js";
+
+const ordersContract = authenticated({
+  find: oc
+    .input(type<{ readonly id: string }>())
+    .output(type<OrderView>())
+    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+});
+
+// An ordinary di provider on the starter's port: `deps` are di's, so a JWT
+// verifier or a user directory is injected the way any provider's are. It
+// takes no type argument — `httpAuth<Identity>()` already fixed one, which is
+// why the authenticator and the controllers cannot disagree.
+const bearerAuthenticator = HttpAuthenticator([], {
+  sync: () => (headers) => {
+    const header = headers.authorization ?? "";
+    const token = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : "";
+    const [tenantId, userId] = token.split(":");
+    // Empty is not absent: `Authorization: :` splits into two defined strings,
+    // and admitting them is admitting an anonymous caller as tenant "".
+    return tenantId === undefined ||
+      tenantId === "" ||
+      userId === undefined ||
+      userId === ""
+      ? ErrAsync(new Unauthenticated())
+      : OkAsync({ tenantId, userId });
+  },
+});
+
+// The principal arrives on oRPC's own context channel, typed by `Identity`.
+const ordersRouter = HttpRouter({ orders: ordersContract })([FindOrder], {
+  sync: (find) => ({
+    orders: {
+      find: ({ context, errors }, input) =>
+        find
+          .execute(context.principal.tenantId, input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            ),
+          ),
+    },
+  }),
+});
+
+const OrdersApi = HttpModule("OrdersApi")({
+  router: ordersRouter,
+  authenticator: bearerAuthenticator,
+  imports: [Application, Persistence],
+});
+```
+
+Every slice imports `HttpController` from `src/auth.ts` instead of from this
+package, and its handlers see `Identity` on `context.principal` with no
+annotation of their own. It is the **only** way to read one: the top-level
+`HttpController` and `HttpRouter` name no identity, so a marked fragment
+reached through them types `principal: never` and every read is a compile
+error — the signal to use the factory. An unmarked procedure still gets no
+principal at all: the contract decides _whether_, the factory decides _what_.
+
+A marked router carries the authenticator port as a **need**, so forgetting
+`authenticator` is an unmet dependency `start` refuses, and supplying one
+minted on a different identity is a compile error at the `HttpModule(...)`
+call — the router's identity against the authenticator's, both from the same
+`httpAuth` call.
+A marked record protects every procedure beneath it. `Unauthenticated` carries
+**nothing**: the starter surfaces no reason — a rejected caller gets an
+`UNAUTHORIZED` and oRPC's default message — so an authenticator that wants to
+record why logs it before returning. See
+[Protect a procedure](https://btravstack.github.io/start/how-to/protect-a-procedure).
+
 ## What it guarantees
 
 Every request produces exactly one completed response, and its unit stays open
@@ -157,6 +275,36 @@ mapped to is oRPC's; a defect inside a procedure is oRPC's own
 nothing. The drain retires busy keep-alive connections; a client's
 `x-request-id` becomes the unit's `traceId`. The rest is on the
 [documentation site](https://btravstack.github.io/start/reference/http).
+
+## What it does not do
+
+- **Any other router or handler.** oRPC through `@orpc/server/node`'s
+  `RPCHandler` is the one way HTTP is answered here; there is no `handler`
+  option and no listener port to provide.
+- **A middleware slot for application logic.** oRPC's own middleware, inside
+  the router's procedures, is where that belongs. The one the package installs
+  itself is `principalMiddleware`, on a marked leaf only. `plugins` is an
+  honest escape hatch rather than a keyhole — an oRPC plugin's `init`
+  transforms handler options **including interceptors**, so an application
+  determined to see a procedure's outcome can get there. What the option buys
+  is that the ordinary path — CORS, body limits, compression, CSRF — is
+  configuration a reader can see at the composition root. An application
+  middleware acting on the handler's `Result` is still what this package
+  refuses, because it is the one that puts a use case's outcome in the
+  transport's hands.
+- **`Result` → HTTP status.** The router's `.result()` triage owns it, in the
+  application.
+- **Rate limiting.** A per-process counter is the wrong unit: an `api`
+  deployment is N pods, so a per-process budget is N independent budgets and
+  none of them is the limit anybody meant. The ingress or gateway is where a
+  request count is counted once — and an application that wants one anyway
+  writes an oRPC plugin and passes it through `plugins`.
+- **Authorization.** "May this caller do this?" usually depends on the
+  resource — the order's owner, its state, the row's tenant — which cannot be
+  answered before the handler has run and fetched it. Authentication, "is
+  there a principal and what is it?", is answerable before dispatch, and is
+  the only half the contract carries.
+- **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.
 
 ## License
 

@@ -36,3 +36,8 @@ docs/superpowers/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 docs/api/*/
+
+# A leftover from Prisma's SQLite era: `prisma migrate` writes a shadow
+# database next to the schema, and this example's was committed by accident.
+# The suites run against the shared PostgreSQL container, so nothing reads it.
+examples/order-infrastructure/.migrate.db

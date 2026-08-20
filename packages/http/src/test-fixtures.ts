@@ -26,19 +26,29 @@ import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
+import { authenticated } from "@btravstack/contract";
 import { currentUnit, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import { oc, type RouterContractClient } from "@orpc/contract";
-import { OkAsync, fromSafePromise } from "unthrown";
+import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
+import { CORSHandlerPlugin } from "@orpc/server/plugins";
+import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
+import { Unauthenticated } from "./auth.js";
 import { HttpController } from "./controller.js";
 import { HttpHandler } from "./handler.js";
+import { httpAuth } from "./http-auth.js";
 import { HttpModule } from "./http-module.js";
-import { HttpConfig, HttpRuntime, httpModule, type HttpInfo } from "./http-runtime.js";
+import {
+  HttpConfig,
+  HttpRuntime,
+  httpModule,
+  type HttpInfo,
+  type HttpOptions,
+} from "./http-runtime.js";
 import { HttpRouter } from "./orpc.js";
 
 type Handler = ServiceOf<HttpHandler>;
@@ -49,10 +59,17 @@ type Handler = ServiceOf<HttpHandler>;
  * (`404`/`500`, the unit open until `'close'`, the drain) are exercised without
  * a router in the way. Loopback and an ephemeral port unless told otherwise.
  */
-const appOf = (handler: Handler, port = 0) =>
+const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securityHeaders"]) =>
   Module("App")({
     imports: [
-      httpModule({ port, hostname: "127.0.0.1" }, Provider(HttpHandler)({ value: handler })),
+      httpModule(
+        {
+          port,
+          hostname: "127.0.0.1",
+          ...(securityHeaders === undefined ? {} : { securityHeaders }),
+        },
+        Provider(HttpHandler)({ value: handler }),
+      ),
     ],
     exports: [HttpRuntime],
   });
@@ -118,6 +135,130 @@ const rpcSlicedAppOf = () =>
   });
 
 /**
+ * What this deployment knows about a caller. The contract names no identity
+ * type at all, so the factory is the only place one is stated — and the only
+ * route by which a handler gets a readable `context.principal`.
+ */
+type Identity = { readonly tenantId: string; readonly userId: string };
+
+const {
+  HttpController: AuthedController,
+  HttpRouter: AuthedRouter,
+  HttpAuthenticator: AuthedAuthenticator,
+} = httpAuth<Identity>();
+
+/** One protected fragment and one public one — the marker's runtime half, end to end. */
+const whoami = oc
+  .input(ocType<{ readonly id: string }>())
+  .output(ocType<{ readonly userId: string }>());
+const ping = oc.output(ocType<{ readonly ok: true }>());
+const authedContract = { orders: authenticated({ whoami }), health: { ping } };
+
+/** Counted so a test can assert the handler was never entered on a refusal. */
+let authedRuns = 0;
+
+const authedOrdersController = AuthedController("AuthedOrders", authedContract.orders)([], {
+  sync: () => ({
+    whoami: ({ context }) => {
+      authedRuns += 1;
+      return OkAsync({ userId: context.principal.userId });
+    },
+  }),
+});
+
+const authedHealthController = AuthedController("AuthedHealth", authedContract.health)([], {
+  sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
+});
+
+const authenticator = AuthedAuthenticator([], {
+  sync: () => (headers) => {
+    if (headers.authorization === "Bearer boom") {
+      return OkAsync().map((): Identity => {
+        // oxlint-disable-next-line unthrown/no-throw -- an authenticator bug IS the subject under test, and a throw inside a combinator is the only way to mint a Defect
+        throw new Error("authenticator bug");
+      });
+    }
+    return headers.authorization === "Bearer good"
+      ? OkAsync({ tenantId: "t-good", userId: "u-good" })
+      : ErrAsync(new Unauthenticated());
+  },
+});
+
+const authedRouter = AuthedRouter(authedContract)({
+  orders: authedOrdersController,
+  health: authedHealthController,
+});
+
+/**
+ * The same marked contract through the positional form, so where the
+ * authenticator lands in `deps` is pinned for both arms of `build`.
+ */
+const authedPositionalRouter = AuthedRouter(authedContract)([Greeter], {
+  sync: (greeter) => ({
+    orders: {
+      whoami: ({ context }) => OkAsync({ userId: greeter.greet(context.principal.userId) }),
+    },
+    health: { ping: () => OkAsync({ ok: true as const }) },
+  }),
+});
+
+/** `HttpModule` over the protected router, with the authenticator the router now needs. */
+const rpcAuthedAppOf = () =>
+  HttpModule("RpcAuthedApp")({
+    router: authedRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    authenticator,
+    provides: [authedOrdersController, authedHealthController],
+  });
+
+/**
+ * The marker on the contract's ROOT, where the walk has no `contract[key]` to
+ * read it from: every leaf inherits it, the same way `Implementation<C>`'s
+ * record arm inherits `IsMarked<C>`.
+ */
+const rootMarkedContract = authenticated({ orders: { whoami } });
+
+let rootMarkedRuns = 0;
+
+const rootMarkedRouter = AuthedRouter(rootMarkedContract)([], {
+  sync: () => ({
+    orders: {
+      whoami: ({ context }) => {
+        rootMarkedRuns += 1;
+        return OkAsync({ userId: context.principal.userId });
+      },
+    },
+  }),
+});
+
+const rpcRootMarkedAppOf = () =>
+  HttpModule("RpcRootMarkedApp")({
+    router: rootMarkedRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    authenticator,
+  });
+
+/** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
+const linkOf = (origin: string, token: string | undefined) =>
+  new RPCLink({
+    origin,
+    url: "/rpc",
+    ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
+  });
+
+/** The marker is erased from the client's view — it is a phantom key, never a procedure. */
+type AuthedClient = RouterContractClient<{
+  readonly orders: { readonly whoami: typeof whoami };
+  readonly health: { readonly ping: typeof ping };
+}>;
+
+type RootMarkedClient = RouterContractClient<{
+  readonly orders: { readonly whoami: typeof whoami };
+}>;
+
+/**
  * The same implementation carrying a key the contract never declared — only
  * reachable past the types (the assertion is the bypass), which is what
  * `routerOf`'s own guard exists for: the stray key is dropped, not defected on.
@@ -137,6 +278,28 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
     hostname: "127.0.0.1",
     ...(prefix === undefined ? {} : { prefix }),
     provides: [Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } })],
+  });
+
+/**
+ * A one-procedure `greet` contract, named for the plugin test's own request
+ * path — `greetingContract`'s `hello` would not match `/rpc/greet` and the
+ * CORS plugin only decorates a MATCHED response.
+ */
+const corsContract = oc.router({
+  greet: oc.input(ocType<{ readonly name: string }>()).output(ocType<string>()),
+});
+
+const corsRouter = HttpRouter(corsContract)([], {
+  sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
+});
+
+/** The same starter shape as `rpcAppOf`, with oRPC's CORS plugin configured. */
+const rpcWithCorsAppOf = () =>
+  HttpModule("RpcWithCorsApp")({
+    router: corsRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    plugins: [new CORSHandlerPlugin({ origin: () => "https://example.test" })],
   });
 
 /** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
@@ -214,6 +377,7 @@ export type HttpFixtures = {
   readonly serve: (
     handler?: Handler,
     unit?: SlowUnit["module"],
+    securityHeaders?: HttpOptions["securityHeaders"],
   ) => Promise<{ readonly app: App; readonly origin: string }>;
   /**
    * An app whose starter binds `HttpConfig` from `env` (plus whatever `options`
@@ -284,8 +448,11 @@ export type HttpFixtures = {
     }>;
     readonly stoppedAccepting: (origin: string) => Promise<void>;
   };
-  /** The controllers the keyed router form composes. */
-  readonly controllers: { readonly controller: typeof helloController };
+  /** The controllers the keyed router form composes, and what the unmarked router they build declares. */
+  readonly controllers: {
+    readonly controller: typeof helloController;
+    readonly unmarkedRouterDeps: readonly string[];
+  };
   /**
    * The starter over a router composed from several controllers, keyed by
    * the contract — the same shape as `rpc`, but built from `slicedRouter`.
@@ -295,14 +462,45 @@ export type HttpFixtures = {
     readonly origin: string;
     readonly client: RouterContractClient<typeof slicedContract>;
   }>;
+  /**
+   * The starter over a contract whose `orders` fragment is `authenticated(...)`,
+   * with an authenticator that accepts exactly one token — router, controllers
+   * and authenticator all minted by one `httpAuth<Identity>()`. Shut down by
+   * the fixture; the handler's run count is reset before the test body.
+   */
+  readonly rpcAuthed: {
+    /** A typed client presenting `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
+    readonly clientWith: (token: string | undefined) => AuthedClient;
+    /** How many times the protected handler has been entered. */
+    readonly handlerRuns: () => number;
+    readonly url: string;
+  };
+  /**
+   * The starter over a contract whose **root** is `authenticated(...)` — the
+   * case no `contract[key]` lookup can see. Shut down by the fixture.
+   */
+  readonly rpcRootMarked: {
+    readonly clientWith: (token: string | undefined) => RootMarkedClient;
+    readonly handlerRuns: () => number;
+  };
+  /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
+  readonly authedRouterDeps: {
+    readonly keyed: readonly string[];
+    readonly positional: readonly string[];
+  };
+  /** The starter over a router with oRPC's CORS plugin configured. Shut down by the fixture. */
+  readonly rpcWithCors: { readonly url: string };
 };
 
 export const it = test.extend<HttpFixtures>({
   boot: bootFixture(),
 
   serve: async ({ boot }, use) => {
-    await use(async (handler = noop, unit) => {
-      const app = boot(appOf(handler), unit === undefined ? {} : { unit });
+    await use(async (handler = noop, unit, securityHeaders) => {
+      const app = boot(
+        appOf(handler, undefined, securityHeaders),
+        unit === undefined ? {} : { unit },
+      );
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { app, origin: `http://127.0.0.1:${info.port}` };
@@ -469,7 +667,10 @@ export const it = test.extend<HttpFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   controllers: async ({}, use) => {
-    await use({ controller: helloController });
+    await use({
+      controller: helloController,
+      unmarkedRouterDeps: slicedRouter.deps.map((dep) => dep.portId),
+    });
   },
 
   rpcSliced: async ({ boot }, use) => {
@@ -483,5 +684,47 @@ export const it = test.extend<HttpFixtures>({
       );
       return { origin, client };
     });
+  },
+
+  rpcAuthed: async ({ boot }, use) => {
+    const app = boot(rpcAuthedAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const origin = `http://127.0.0.1:${info.port}`;
+    authedRuns = 0;
+
+    await use({
+      clientWith: (token) => createORPCClient(linkOf(origin, token)),
+      handlerRuns: () => authedRuns,
+      url: `${origin}/rpc`,
+    });
+  },
+
+  rpcRootMarked: async ({ boot }, use) => {
+    const app = boot(rpcRootMarkedAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const origin = `http://127.0.0.1:${info.port}`;
+    rootMarkedRuns = 0;
+
+    await use({
+      clientWith: (token) => createORPCClient(linkOf(origin, token)),
+      handlerRuns: () => rootMarkedRuns,
+    });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  authedRouterDeps: async ({}, use) => {
+    await use({
+      keyed: authedRouter.deps.map((dep) => dep.portId),
+      positional: authedPositionalRouter.deps.map((dep) => dep.portId),
+    });
+  },
+
+  rpcWithCors: async ({ boot }, use) => {
+    const app = boot(rpcWithCorsAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    await use({ url: `http://127.0.0.1:${info.port}` });
   },
 });

@@ -1,16 +1,13 @@
 {
-  "name": "@btravstack/http",
+  "name": "@btravstack/contract",
   "version": "0.2.0",
-  "description": "The HTTP starter for @btravstack/core: oRPC over node:http, one unit per request, and a drain that actually stops accepting",
+  "description": "Contract-level markers shared by a client and the server that implements it: declare that a procedure requires an authenticated principal, and let the handler's type carry it",
   "keywords": [
-    "graceful-shutdown",
-    "http",
-    "lifecycle",
+    "authentication",
+    "contract",
     "orpc",
-    "runtime",
-    "starter",
-    "typescript",
-    "unthrown"
+    "rpc",
+    "typescript"
   ],
   "homepage": "https://github.com/btravstack/start#readme",
   "bugs": {
@@ -21,7 +18,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/btravstack/start.git",
-    "directory": "packages/http"
+    "directory": "packages/contract"
   },
   "files": [
     "dist"
@@ -52,33 +49,12 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
-    "@btravstack/config": "workspace:*",
-    "@btravstack/contract": "workspace:*",
-    "@btravstack/core": "workspace:*",
-    "@btravstack/di": "workspace:*",
-    "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
-    "@orpc/client": "catalog:",
-    "@orpc/contract": "catalog:",
-    "@orpc/server": "catalog:",
     "@types/node": "catalog:",
-    "@unthrown/orpc": "catalog:",
-    "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
-    "unthrown": "catalog:",
     "vitest": "catalog:"
-  },
-  "peerDependencies": {
-    "@btravstack/config": "workspace:^",
-    "@btravstack/contract": "workspace:^",
-    "@btravstack/core": "workspace:^",
-    "@btravstack/di": "workspace:^",
-    "@orpc/contract": "^2.0.0-beta",
-    "@orpc/server": "^2.0.0-beta",
-    "@unthrown/orpc": "^0.1.0",
-    "unthrown": "^5.0.0"
   },
   "engines": {
     "node": ">=20"

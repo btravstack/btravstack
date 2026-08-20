@@ -25,6 +25,7 @@ const TYPEDOC = join(
 // `@btravstack/docs#build`'s `dependsOn` in the root `turbo.json`, and with the
 // `/api/` sidebar in `.vitepress/config.ts`.
 const packages: readonly string[] = [
+  "contract",
   "di",
   "config",
   "core",

@@ -26,22 +26,31 @@ import type { Implementation } from "./orpc.js";
  * and a consumer that exports the provider cannot emit its declaration (TS4023,
  * measured on `examples/order-api`).
  */
-export const HttpController =
+export const controllerFor =
+  <Identity>() =>
   <const Name extends string, C extends RouterContract>(name: Name, contract: C) =>
   <const D extends readonly AnyPort[]>(
     deps: D,
     options: {
       readonly sync: (
         ...services: { [K in keyof D]: ServiceOf<InstanceType<D[K]>> }
-      ) => Implementation<C>;
+      ) => Implementation<C, Identity>;
     },
-  ): Provider<PortInstance<Name, Implementation<C>>, never, InstanceType<D[number]>> & {
-    readonly port: PortClassOf<Name, Implementation<C>>;
+  ): Provider<PortInstance<Name, Implementation<C, Identity>>, never, InstanceType<D[number]>> & {
+    readonly port: PortClassOf<Name, Implementation<C, Identity>>;
   } => {
     // The parameter is named, not `_`-prefixed, so it reads as `contract` in the
     // published `.d.ts` and in an editor hint; nothing needs its value.
     void contract;
     // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-    const port = class extends Port(name)<Implementation<C>> {};
+    const port = class extends Port(name)<Implementation<C, Identity>> {};
     return Provider(port as never)(deps, options as never) as never;
   };
+
+/**
+ * The controller, with no server-side identity: a handler under a marked
+ * fragment sees `principal: never`, so any read of it is a compile error —
+ * the "use the factory" signal. `httpAuth<Identity>()` mints the form whose
+ * handlers see the application's own principal.
+ */
+export const HttpController: ReturnType<typeof controllerFor<never>> = controllerFor<never>();
