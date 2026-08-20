@@ -115,16 +115,19 @@ di's duplicate-provider defect at build. Returns
 test. The implementation below is the one in
 `examples/order-api/src/slices/orders/controller.ts`, served through the
 positional form — the example composes it as a controller instead (see the
-keyed form), and a fragment is a contract, so the same `sync` reads either way:
+keyed form), and a fragment is a contract, so the same `sync` reads either way.
+`contract.orders` is `authenticated`, so `HttpRouter` here is the application's
+own — `httpAuth<Identity>()`'s, from its `src/auth.ts` — and the tenant comes
+off `context.principal` rather than off the input:
 
 ```ts
 export const ordersRouter = HttpRouter(contract.orders)(
   [PlaceOrder, FindOrder],
   {
     sync: (place, find) => ({
-      place: ({ errors }, input) =>
+      place: ({ errors, context }, input) =>
         place
-          .execute(input.id, input.quantity)
+          .execute(context.principal.tenantId, input.id, input.quantity)
           .map(view)
           .mapErrCases((matcher) =>
             matcher
@@ -141,9 +144,9 @@ export const ordersRouter = HttpRouter(contract.orders)(
                 }),
               ),
           ),
-      find: ({ errors }, input) =>
+      find: ({ errors, context }, input) =>
         find
-          .execute(input.id)
+          .execute(context.principal.tenantId, input.id)
           .map(view)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), (error) =>
