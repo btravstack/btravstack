@@ -845,6 +845,22 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `.toAsync()` survives only where it lifts a `Result` that already exists —
   `examples/order-application`'s `placeOrder(id, quantity).toAsync()` is the one
   such site.
+- **A sequence is `flatTap` or `DoAsync`, never sibling `const`s.** An
+  `AsyncResult` is **eager**: constructing it starts the work. So the readable
+  spelling of a sequence — each step in its own `const`, then chained — is a
+  **race**, and a silent one: it still type-checks and still returns a `Result`,
+  it just runs the steps concurrently. Nothing in the gate catches it, which is
+  the one place this repo's "mistakes are compile errors" thesis does not hold.
+  `flatTap` is the answer where a later step needs only the earlier one's
+  _success_: it runs a failable step, discards its value and passes the original
+  through, so a five-step saga stays flat instead of becoming five levels of
+  indentation. `DoAsync().bind(...)` is the same idea where a later step needs
+  an earlier step's _value_, with an accumulating scope.
+  `examples/order-temporal-worker`'s `fulfillOrder` and `chargeOrder` are the
+  worked examples, and their specs assert the ordering (_"place, reserve, ship,
+  in order"_) so a regression to the racing spelling fails a test rather than
+  shipping. Measured: the sibling spelling logs `start:a start:b end:b end:a`,
+  `flatTap` logs `start:a end:a start:b end:b`.
 - Comment density: **sparse**. No comments in JSON files. Rationale belongs
   here, not inline — except where a comment is guarding a specific line against
   a plausible "simplification" (the `teardownErrors` aliasing, the `ready()`

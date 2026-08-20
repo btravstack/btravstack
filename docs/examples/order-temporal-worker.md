@@ -144,7 +144,11 @@ export const chargeOrder = declareWorkflow({
   implementation: (context, args) =>
     propagateActivityFailure(
       context.activities
-        .authorizePayment({ orderId: args.orderId, amount: args.amount })
+        .authorizePayment({
+          tenantId: args.tenantId,
+          orderId: args.orderId,
+          amount: args.amount,
+        })
         .mapErrCases((matcher) =>
           matcher
             .with({ errorName: "PaymentDeclined" }, (error) =>
@@ -156,9 +160,12 @@ export const chargeOrder = declareWorkflow({
               (error) => error,
             ),
         )
-        .flatMap((authorized) =>
+        .flatTap((authorized) =>
           context.activities
-            .capturePayment({ authorizationId: authorized.authorizationId })
+            .capturePayment({
+              tenantId: args.tenantId,
+              authorizationId: authorized.authorizationId,
+            })
             .flatMapErrCases((matcher) =>
               matcher.with(
                 P.tag(ACTIVITY_ERROR_TAG),
@@ -166,12 +173,12 @@ export const chargeOrder = declareWorkflow({
                 (error) =>
                   context.activities
                     .refundPayment({
+                      tenantId: args.tenantId,
                       authorizationId: authorized.authorizationId,
                     })
                     .flatMap(() => ErrAsync(error)),
               ),
-            )
-            .map(() => authorized),
+            ),
         ),
     ),
 });
@@ -188,9 +195,19 @@ which is exactly when the money needs to go back.
 
 ## One subtlety worth stealing
 
-An `AsyncResult` is **eager** — building a step starts its activity — so every
-later step in `workflows.ts` is constructed inside the `flatMap` of the one
-before it. Hoist them into `const`s and the "sequence" runs as a race.
+An `AsyncResult` is **eager**: building a step starts its activity. So a
+sequence must never construct two steps as siblings — hoist them into `const`s
+and the "sequence" runs as a race, silently, with the types still checking out.
+
+The spelling that avoids it is `flatTap`, which is why `workflows.ts` reads as a
+flat chain rather than a nesting ladder. It runs a failable step, discards its
+value and passes the **original** one through, so each step's error triage and
+compensation sit at one level of indentation instead of accumulating — and the
+next step is a callback, which cannot start before the previous one settles.
+
+`chargeOrder` above shows it at two steps; `fulfillOrder` runs three the same
+way. Where a later step needs an earlier step's _value_ rather than just its
+success, `DoAsync().bind(...)` is the same idea with an accumulating scope.
 
 ## The external services
 
