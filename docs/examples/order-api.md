@@ -151,6 +151,11 @@ the factory, not a fallback.
 to state:
 
 ```ts
+import { Unauthenticated } from "@btravstack/http";
+import { ErrAsync, OkAsync } from "unthrown";
+
+import { HttpAuthenticator } from "./auth.js";
+
 export const bearerAuthenticator = HttpAuthenticator([], {
   sync: () => (headers) => {
     const header = headers.authorization ?? "";

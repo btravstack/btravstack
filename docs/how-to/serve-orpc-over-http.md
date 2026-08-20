@@ -204,11 +204,13 @@ brings the `Logger` the use cases and the request scope write to, bound from
 trace id of the unit `http()` opened around the request. It is exported
 because the per-request `RequestModule` reads it.
 
-Two gates hold at compile time. A root that forgets the starter exports no
-runtime port and `start` fails on arity (`NO RUNTIME`). A root that imports
-`http()` without providing the router carries an unmet need — the starter's
-runtime provider depends on its router port through di — and `start` refuses
-the module.
+Three gates hold at compile time, now that the contract is marked. A root that
+forgets the starter exports no runtime port and `start` fails on arity
+(`NO RUNTIME`). A root that imports `http()` without providing the router
+carries an unmet need — the starter's runtime provider depends on its router
+port through di — and `start` refuses the module. And a root serving a **marked**
+contract without an authenticator carries `AuthenticatorPort` as a second unmet
+need, refused the same way; drop the marker and that third gate goes with it.
 
 ## Step 4 — `main.ts`
 

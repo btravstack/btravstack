@@ -38,6 +38,11 @@ export type OrderRef = z.infer<typeof orderRef>;
 const customerView = z.object({ id: z.string(), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
 
+// The same shape as `orderRef` and deliberately its own schema: sharing that
+// one would type a customer id as "which order it was about".
+const customerRef = z.object({ id: z.string() });
+export type CustomerRef = z.infer<typeof customerRef>;
+
 const ordersContract = {
   place: oc
     .input(z.object({ id: z.string(), quantity: z.number() }))
@@ -56,7 +61,7 @@ const customersContract = {
   find: oc
     .input(z.object({ tenantId: z.string(), id: z.string() }))
     .output(customerView)
-    .errors({ NOT_FOUND: { data: orderRef } }),
+    .errors({ NOT_FOUND: { data: customerRef } }),
 };
 
 export const contract = {
