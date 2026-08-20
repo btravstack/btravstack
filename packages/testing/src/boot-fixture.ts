@@ -14,9 +14,8 @@ import type { Module, Scope } from "@btravstack/di";
  * when the test ends.
  */
 export type Boot = <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env>,
+  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
   options?: Omit<StartOptions<UnitX, UnitNeeds>, "signals">,
-  ...gate: StartGate<X, UnitNeeds>
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 
 /** What every `boot` in the fixture starts with; a call's own options win. */

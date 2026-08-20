@@ -123,15 +123,22 @@ export type RunningApp<E, Info = never> = {
 };
 
 /**
- * The phantom rest tuple `start`, `runMain` and `Boot` all carry: empty —
- * and invisible — when the module exports a runtime and its exports cover
- * that runtime's declared needs, a named error tuple otherwise, so a missing
- * runtime or an unmet need fails to typecheck at the call site. A trailing
- * rest tuple rather than a conditional type on `module` or `options` is
- * deliberate: a conditional on an inference-bearing parameter makes
- * TypeScript defer that parameter's inference and can collapse `X` or `E` to
- * `unknown`. Same shape, and the same reasoning, as di's own UNSATISFIED
- * DEPENDENCIES gate on `Module.scoped`.
+ * The phantom marker `start`, `runMain` and `Boot` all intersect onto their
+ * `module` parameter: `unknown` — and invisible — when the module exports a
+ * runtime and its exports cover that runtime's declared needs, a sentence
+ * otherwise, so a missing runtime or an unmet need fails to typecheck at the
+ * call site.
+ *
+ * It rides the `module` parameter rather than a trailing rest tuple because a
+ * rest tuple fails as an **arity** error, and an arity error never prints a
+ * type: `NO RUNTIME` never reached a reader, and tsc's related info pointed at
+ * the wrong fix ("an argument for 'options' was not provided"). Intersected,
+ * the sentence prints in full as the parameter type the argument did not
+ * match. `X` still infers from `Module<X, …>` alongside the marker — measured,
+ * since a conditional type in an inference-bearing position can otherwise
+ * collapse `X` or `E` to `unknown`, which is what the rest tuple was avoiding
+ * and is why `unknown`, not `{}` or `never`, is the satisfied case: it leaves
+ * the module type untouched.
  *
  * With a `unit` module in play it also checks the fork's own direction: the
  * unit module's needs must be covered by the module's exports, `Scope` or
@@ -143,12 +150,12 @@ export type RunningApp<E, Info = never> = {
  * into a startup defect.
  */
 export type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [never]
-  ? [error: "NO RUNTIME", hint: "the module exports no port declared over RuntimePort"]
+  ? "NO RUNTIME — the module exports no port declared over RuntimePort"
   : [InstanceType<RuntimeNeedsOf<X>>] extends [X]
     ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
-      ? []
-      : [error: "UNSATISFIED UNIT NEEDS", missing: Exclude<UnitNeeds, X | Scope | Env>]
-    : [error: "UNSATISFIED RUNTIME NEEDS", missing: Exclude<InstanceType<RuntimeNeedsOf<X>>, X>];
+      ? unknown
+      : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
+    : "UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export";
 
 // `Module<X, E, Scope | Env>`, not `Module<X, E, never>`: `Needs` sits in
 // covariant position on `Module`, so this accepts a module with no needs at
@@ -156,14 +163,12 @@ export type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] exte
 // the single need `Module.scoped` discharges by opening the scope itself — and
 // one whose configuration providers read `Env`, which the kernel provides. A
 // module with a genuine unmet dependency is rejected here, as di's own gate
-// would reject it. The `gate` rest parameter is a phantom: it never carries a
-// runtime argument.
+// would reject it. The intersected `StartGate` is a phantom: it is `unknown`
+// whenever the gate is satisfied, so no argument ever carries it.
 export const start = <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env>,
+  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
   options: StartOptions<UnitX, UnitNeeds> = {},
-  ...gate: StartGate<X, UnitNeeds>
 ): RunningApp<E, RuntimeInfoOf<X>> => {
-  void gate;
   type Info = RuntimeInfoOf<X>;
   type Needs = RuntimeNeedsOf<X>;
   const clock = options.clock ?? systemClock;
@@ -394,7 +399,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
 
         // `Context<in R>` is contravariant, so an application context whose
         // exports cover the runtime's needs is assignable here. The assertion is
-        // needed only because the `gate` rest parameter proves
+        // needed only because the `StartGate` intersected onto `module` proves
         // `InstanceType<Needs> extends X` at the *call site*, and that proof is
         // not visible to the checker inside this body, where `X` and `Needs` are
         // still unresolved type parameters.

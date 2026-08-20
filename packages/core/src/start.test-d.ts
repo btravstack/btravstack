@@ -46,8 +46,9 @@ const Satisfied = Module("Satisfied")({
 });
 expectTypeOf(start(Satisfied)).toEqualTypeOf<RunningApp<never, { readonly port: number }>>();
 
-// The gate bites: `Unsatisfied` does not export `Clock`, so the phantom rest
-// tuple is non-empty and the one-argument call no longer typechecks.
+// The gate bites: `Unsatisfied` does not export `Clock`, so the marker
+// intersected onto `module` is a sentence the argument cannot satisfy — and
+// the sentence is what tsc prints as the parameter type it did not match.
 const Unsatisfied = Module("Unsatisfied")({
   imports: [AppModule],
   provides: [Provider(NeedsClock)({ value: needsClock })],
@@ -56,16 +57,9 @@ const Unsatisfied = Module("Unsatisfied")({
 // @ts-expect-error -- UNSATISFIED RUNTIME NEEDS: the runtime needs `Clock`, which the module does not export
 start(Unsatisfied);
 
-// Documented, deliberate limit (verified, not assumed): a caller who spells the
-// phantom arguments out by hand does typecheck. That is the same escape hatch
-// di's own UNSATISFIED DEPENDENCIES gate leaves open — it takes a deliberate
-// act, and the gate exists to catch the accident, not to be unforgeable.
-start(Unsatisfied, {}, "UNSATISFIED RUNTIME NEEDS", new Clock());
-
 // The other way the gate bites: a module that exports no runtime port at all.
 // @ts-expect-error -- NO RUNTIME: `AppModule` exports no port declared over `RuntimePort`
 start(AppModule);
-start(AppModule, {}, "NO RUNTIME", "the module exports no port declared over RuntimePort");
 
 // A needs-free runtime works against any module: `InstanceType<never>` is
 // `never`, and `[never] extends [X]` holds for every `X`. `testRuntime` ships
@@ -91,10 +85,6 @@ const ClockyUnit = Module("ClockyUnit")({
 
 // @ts-expect-error -- UNSATISFIED UNIT NEEDS: the unit module reads `Clock`, which the module does not export
 start(Satisfied, { unit: ClockyUnit });
-
-// The same escape hatch as the runtime half, naming the unit error literal —
-// which is also what pins WHICH branch of the gate rejected the call above.
-start(Satisfied, { unit: ClockyUnit }, "UNSATISFIED UNIT NEEDS", new Clock());
 
 // A runtime may NOT draw a need from the unit module's exports: `Span` exists
 // only while a unit is open, and `RuntimeHost.ctx` is the application context
