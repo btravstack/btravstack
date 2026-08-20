@@ -15,16 +15,19 @@ import { OkAsync } from "unthrown";
  * not. What a slice answers when the kernel stops waiting is the slice's own
  * business.
  */
-export const orderAudit = AmqpHandler(orderContract, "orderAudit")([Logger], {
-  sync:
-    (logger) =>
-    ({ payload: { tenantId, id, occurredAt, payload } }) => {
-      logger.info("recording an order change", {
-        tenantId,
-        orderId: id,
-        occurredAt,
-        change: payload === null ? "removed" : "placed",
-      });
-      return OkAsync();
-    },
-});
+export const orderAudit = AmqpHandler(orderContract, "orderAudit")(
+  { logger: Logger },
+  {
+    sync:
+      ({ logger }) =>
+      ({ payload: { tenantId, id, occurredAt, payload } }) => {
+        logger.info("recording an order change", {
+          tenantId,
+          orderId: id,
+          occurredAt,
+          change: payload === null ? "removed" : "placed",
+        });
+        return OkAsync();
+      },
+  },
+);

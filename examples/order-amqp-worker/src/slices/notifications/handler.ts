@@ -24,20 +24,23 @@ import { ErrAsync, OkAsync } from "unthrown";
  * `RetryableError` leaves the message un-acked, so the broker hands it to the
  * next worker.
  */
-export const orderNotifications = AmqpHandler(orderContract, "orderNotifications")([Logger], {
-  sync:
-    (logger) =>
-    ({ payload: { tenantId, id, payload } }) => {
-      if (currentUnit()?.signal.aborted === true) {
-        return ErrAsync(
-          new RetryableError(`the drain deadline passed before order ${id} was notified`),
-        );
-      }
-      logger.info(payload === null ? "order gone — notifying" : "order placed — notifying", {
-        tenantId,
-        orderId: id,
-        ...(payload === null ? {} : { quantity: payload.quantity }),
-      });
-      return OkAsync();
-    },
-});
+export const orderNotifications = AmqpHandler(orderContract, "orderNotifications")(
+  { logger: Logger },
+  {
+    sync:
+      ({ logger }) =>
+      ({ payload: { tenantId, id, payload } }) => {
+        if (currentUnit()?.signal.aborted === true) {
+          return ErrAsync(
+            new RetryableError(`the drain deadline passed before order ${id} was notified`),
+          );
+        }
+        logger.info(payload === null ? "order gone — notifying" : "order placed — notifying", {
+          tenantId,
+          orderId: id,
+          ...(payload === null ? {} : { quantity: payload.quantity }),
+        });
+        return OkAsync();
+      },
+  },
+);
