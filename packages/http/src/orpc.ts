@@ -124,6 +124,16 @@ export const orpc = (options: OrpcOptions = {}) => {
  * fragment is composed as-is rather than re-implemented, and every key of the
  * contract must be covered — a missing or extra key is a compile error.
  */
+/** What every `HttpRouter` arm returns; only the needs channel `N` differs. */
+type Built<Identity, N> = Provider<
+  PortInstance<"HttpRouter", Router<Record<never, never>>>,
+  never,
+  N
+> & {
+  readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
+  readonly identity: Identity;
+};
+
 export const routerFor =
   <Identity>() =>
   <C extends Record<string, RouterContract>>(contract: C) => {
@@ -143,22 +153,13 @@ export const routerFor =
           readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
         }) => Implementation<C, Identity>;
       },
-    ): Provider<
-      PortInstance<"HttpRouter", Router<Record<never, never>>>,
-      never,
+    ): Built<
+      Identity,
       InstanceType<D[keyof D]> | (HasMark<C> extends true ? AuthenticatorPort : never)
-    > & {
-      readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-      readonly identity: Identity;
-    };
-    function build(options: { readonly sync: () => Implementation<C, Identity> }): Provider<
-      PortInstance<"HttpRouter", Router<Record<never, never>>>,
-      never,
-      HasMark<C> extends true ? AuthenticatorPort : never
-    > & {
-      readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-      readonly identity: Identity;
-    };
+    >;
+    function build(options: {
+      readonly sync: () => Implementation<C, Identity>;
+    }): Built<Identity, HasMark<C> extends true ? AuthenticatorPort : never>;
     function build<
       M extends {
         readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<
@@ -170,14 +171,10 @@ export const routerFor =
       controllers: M & {
         readonly [K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>]: never;
       },
-    ): Provider<
-      PortInstance<"HttpRouter", Router<Record<never, never>>>,
-      never,
+    ): Built<
+      Identity,
       InstanceType<M[keyof M]["port"]> | (HasMark<C> extends true ? AuthenticatorPort : never)
-    > & {
-      readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-      readonly identity: Identity;
-    };
+    >;
     function build(depsOrControllers: unknown, options?: unknown): unknown {
       const guarded = hasMarked(contract);
       // The authenticator rides a NAMESPACED key on the deps record, for the
@@ -222,8 +219,14 @@ export const routerFor =
           readonly sync: (s: Record<string, unknown>) => unknown;
         };
         const deps = armOnly === undefined ? (depsOrControllers as Record<string, AnyPort>) : {};
-        const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
-          routerFrom(supplied.sync(own(services)) as Record<string, unknown>, services);
+        const sync = (services: Record<string, unknown>): Router<Record<never, never>> => {
+          const call = supplied.sync as (...args: readonly unknown[]) => unknown;
+          // The arm-only form's `sync` is typed `() => …`, so it is handed
+          // nothing — the same arity guarantee `Provider` makes a no-deps
+          // factory, and the reason this cannot just always pass a record.
+          const built = armOnly === undefined ? call(own(services)) : call();
+          return routerFrom(built as Record<string, unknown>, services);
+        };
         return Provider(HttpRouterPort)(withAuthenticator(deps), { sync } as never);
       }
 

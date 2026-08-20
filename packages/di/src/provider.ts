@@ -12,13 +12,10 @@ type Deps = Readonly<Record<string, AnyPort>>;
  */
 type ServicesOf<D extends Deps> = { readonly [K in keyof D]: ServiceOf<D[K]> };
 
-/**
- * Internal: what the factory arms are spread over. A **one-element tuple**, so
- * `Qualification`'s arms stay variadic (`(...args: Args) => S`) and become
- * `(services: ServicesOf<D>) => S` without a single arm changing — while the
- * no-deps form keeps `readonly []`, and with it a factory of no arguments.
- */
-type ArgsOf<D extends Deps> = readonly [ServicesOf<D>];
+// Spread as a ONE-ELEMENT tuple below, which is what keeps `Qualification`'s
+// arms variadic and unchanged: `(...args: [Services]) => S` IS
+// `(services: Services) => S`, while no deps keeps `readonly []` and a factory
+// of no arguments.
 
 /** Internal: the union of instance types a `deps` record requires. */
 type NeedsOf<D extends Deps> = InstanceType<D[keyof D]>;
@@ -204,19 +201,9 @@ const descriptor = (
   port: AnyPort,
   deps: readonly AnyPort[],
   // `undefined` for the no-deps overload, an array — possibly EMPTY — for the
-  // one that declares a record. The distinction is arity, not key count: a
-  // caller who writes `Provider(P)({}, { sync })` declared a record and the
-  // types hand their factory one, so `keys.length === 0` is the wrong test and
-  // handing that factory nothing is how it read `undefined` instead.
-  //
-  // The starters' own helpers (`HttpController`, `HttpRouter`,
-  // `HttpAuthenticator`) now mirror this arity discrimination, so no CALLER
-  // has to write `{}` any more. That does NOT make this distinction dead:
-  // `Provider(P)({}, arm)` is still a legal, typed call, the helpers still
-  // reach `build` with an empty record of their own (`HttpRouter` passes one
-  // whenever an unguarded router declares no deps), and the two questions are
-  // different anyway — the helpers decide what a caller may omit, this decides
-  // what a factory is handed. Do not delete one because the other exists.
+  // one that declares a record. Arity, not key count: `Provider(P)({}, arm)`
+  // declared a record and its factory is handed one, so `keys.length === 0`
+  // would be the wrong test. See `packages/di/CLAUDE.md`.
   keys: readonly string[] | undefined,
   options: Record<string, unknown>,
 ): Provider<unknown, never, never> => {
@@ -278,7 +265,7 @@ export function Provider<P extends AnyPort, S = ServiceOf<P>>(port: P) {
   // hold: `provider.port`
   // is what another provider lists in its deps or a starter reads the port
   // off. Purely additive — the intersection is still a `Provider<P, E, N>`.
-  function build<const D extends Deps, O extends Qualification<ArgsOf<D>, S>>(
+  function build<const D extends Deps, O extends Qualification<readonly [ServicesOf<D>], S>>(
     deps: D,
     options: O,
   ): Provider<InstanceType<P>, ErrorOf<O>, NeedsOf<D> | ScopeOf<O>> & { readonly port: P };

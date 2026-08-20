@@ -26,6 +26,13 @@ import type { Implementation } from "./orpc.js";
  * and a consumer that exports the provider cannot emit its declaration (TS4023,
  * measured on `examples/order-api`).
  */
+/** What both arms of a minted controller return; `N` is the only thing that differs. */
+type Minted<Name extends string, C extends RouterContract, Identity, N> = Provider<
+  PortInstance<Name, Implementation<C, Identity>>,
+  never,
+  N
+> & { readonly port: PortClassOf<Name, Implementation<C, Identity>> };
+
 export const controllerFor =
   <Identity>() =>
   <const Name extends string, C extends RouterContract>(name: Name, contract: C) => {
@@ -47,20 +54,10 @@ export const controllerFor =
           readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
         }) => Implementation<C, Identity>;
       },
-    ): Provider<
-      PortInstance<Name, Implementation<C, Identity>>,
-      never,
-      InstanceType<D[keyof D]>
-    > & {
-      readonly port: PortClassOf<Name, Implementation<C, Identity>>;
-    };
-    function build(options: { readonly sync: () => Implementation<C, Identity> }): Provider<
-      PortInstance<Name, Implementation<C, Identity>>,
-      never,
-      never
-    > & {
-      readonly port: PortClassOf<Name, Implementation<C, Identity>>;
-    };
+    ): Minted<Name, C, Identity, InstanceType<D[keyof D]>>;
+    function build(options: {
+      readonly sync: () => Implementation<C, Identity>;
+    }): Minted<Name, C, Identity, never>;
     function build(depsOrOptions: unknown, options?: unknown): unknown {
       return options === undefined
         ? Provider(port as never)(depsOrOptions as never)

@@ -33,6 +33,22 @@ describe("HttpController", () => {
     expect(built).toBeOkWith(expect.objectContaining({ sync: expect.anything() }));
   });
 
+  it("hands an arm-only router's sync no arguments", async () => {
+    // GIVEN an arm-only router whose `sync` records how many arguments it got.
+    // Its declared type is `() => Implementation`, and the whole point of the
+    // no-deps arm is that the runtime honours that
+    const { armOnlyRouterRecording } = await import("./test-fixtures.js");
+    const { provider, arity } = armOnlyRouterRecording();
+
+    // WHEN the graph constructs it
+    await provider.construct([]);
+
+    // THEN it was called with none — a record would be ignored by an arrow but
+    // seen by a rest parameter, and it would contradict the arity `Provider`
+    // guarantees a no-deps factory
+    expect(arity()).toBe(0);
+  });
+
   it("serves a router composed from several controllers", async ({ rpcSliced }) => {
     // GIVEN an API whose contract is implemented by two separate controllers
     const { client } = await rpcSliced();

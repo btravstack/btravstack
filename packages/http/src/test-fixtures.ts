@@ -134,6 +134,22 @@ const syncKeyedContract = oc.router({ sync: helloFragment });
 
 export const syncKeyedRouter = HttpRouter(syncKeyedContract)({ sync: helloController });
 
+/**
+ * An arm-only router whose `sync` records its own arity. The arm-only form is
+ * typed `() => Implementation`, so the runtime must hand it nothing; passing a
+ * record would be invisible to an arrow and visible to a rest parameter.
+ */
+export const armOnlyRouterRecording = () => {
+  let seen = -1;
+  const provider = HttpRouter(oc.router({ greetings: helloFragment }))({
+    sync: (...args: readonly unknown[]) => {
+      seen = args.length;
+      return { greetings: { hello: () => OkAsync("hello world") } };
+    },
+  } as never);
+  return { provider, arity: () => seen };
+};
+
 /** The same kind of API as `greetingRouter`, composed from controllers instead of one `sync`. */
 const slicedRouter = HttpRouter(slicedContract)({
   greetings: helloController,
