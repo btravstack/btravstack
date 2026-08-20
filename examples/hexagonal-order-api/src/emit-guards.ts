@@ -115,9 +115,12 @@ export const ObservabilityModule = Module("Observability")({
   provides: [
     MetricsProvider,
     Provider(OrderCache)({ value: { peek: () => undefined } }),
-    Provider(Auditor)([OrderRepository], {
-      sync: (orders) => ({ orders, record: () => Ok(undefined).toAsync() }),
-    }),
+    Provider(Auditor)(
+      { orders: OrderRepository },
+      {
+        sync: ({ orders }) => ({ orders, record: () => Ok(undefined).toAsync() }),
+      },
+    ),
   ],
   exports: [Metrics, OrderCache, Auditor],
 });

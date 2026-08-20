@@ -54,7 +54,7 @@ export class GetOrderInteractor {
   // Parameter-property shorthand (`constructor(private readonly orders: …)`)
   // has no type-erasure-only meaning, so this repo's tsconfig rejects it; the
   // field is declared and assigned explicitly instead.
-  constructor(orders: ServiceOf<OrderRepository>) {
+  constructor({ orders }: { readonly orders: ServiceOf<OrderRepository> }) {
     this.orders = orders;
   }
   execute(id: string): AsyncResult<Order, OrderNotFound> {
@@ -71,12 +71,15 @@ export const ConfigModule = Module("Config")({
     // real one would read `process.env` and let a genuinely unset variable
     // surface as the `ConfigError` below.
     Provider(Env)({ value: { ORDER_API_DATABASE_URL: "postgres://localhost/orders" } }),
-    Provider(AppConfig)([Env], {
-      make: (env) =>
-        env["ORDER_API_DATABASE_URL"] === undefined
-          ? Err(new ConfigError({ reason: "ORDER_API_DATABASE_URL is unset" }))
-          : Ok({ dbUrl: env["ORDER_API_DATABASE_URL"] }),
-    }),
+    Provider(AppConfig)(
+      { env: Env },
+      {
+        make: ({ env }) =>
+          env["ORDER_API_DATABASE_URL"] === undefined
+            ? Err(new ConfigError({ reason: "ORDER_API_DATABASE_URL is unset" }))
+            : Ok({ dbUrl: env["ORDER_API_DATABASE_URL"] }),
+      },
+    ),
   ],
   exports: [AppConfig],
 });
@@ -86,7 +89,11 @@ export const ConfigModule = Module("Config")({
  * exactly once. `config.dbUrl` is read but otherwise unused — a real adapter
  * would pass it straight to whatever client it opens.
  */
-const openPool = (config: ServiceOf<AppConfig>): Result<ServiceOf<Pool>, never> => {
+const openPool = ({
+  config,
+}: {
+  readonly config: ServiceOf<AppConfig>;
+}): Result<ServiceOf<Pool>, never> => {
   void config.dbUrl;
   const seed: readonly Order[] = [
     { id: "o-1", total: 4_200 },
@@ -111,18 +118,24 @@ export const makePersistenceModule = () =>
   Module("Persistence")({
     imports: [ConfigModule],
     provides: [
-      Provider(Pool)([AppConfig], {
-        acquire: openPool,
-        release: (pool) => pool.close(),
-      }),
-      Provider(OrderRepository)([Pool], {
-        sync: (pool) => ({
-          findById: (id) => {
-            const row = pool.findById(id);
-            return (row === undefined ? Err(new OrderNotFound({ id })) : Ok(row)).toAsync();
-          },
-        }),
-      }),
+      Provider(Pool)(
+        { config: AppConfig },
+        {
+          acquire: openPool,
+          release: (pool) => pool.close(),
+        },
+      ),
+      Provider(OrderRepository)(
+        { pool: Pool },
+        {
+          sync: ({ pool }) => ({
+            findById: (id) => {
+              const row = pool.findById(id);
+              return (row === undefined ? Err(new OrderNotFound({ id })) : Ok(row)).toAsync();
+            },
+          }),
+        },
+      ),
     ],
     // `Pool` never appears here — the only port this module makes visible is
     // `OrderRepository`. `Pool` is still genuinely present in the built
@@ -155,6 +168,6 @@ export const InMemoryPersistenceModule = Module("InMemoryPersistence")({
 export const makeAppModule = <E, N>(persistence: Module<OrderRepository, E, N>) =>
   Module("App")({
     imports: [persistence],
-    provides: [Provider(GetOrder)([OrderRepository], { class: GetOrderInteractor })],
+    provides: [Provider(GetOrder)({ orders: OrderRepository }, { class: GetOrderInteractor })],
     exports: [GetOrder],
   });
