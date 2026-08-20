@@ -64,7 +64,7 @@ key)`, both of which cast it to the typed alias), so there is nothing a
   (`amqp-runtime.ts`) — the way to the handlers provider `AmqpModule` takes,
   next to it: the one call fixes `C` and returns di's own `Provider(port)` on
   `AmqpHandlersPort as HandlersPortOf<C>`, so the next call is exactly
-  `Provider(port)(deps, arm)` — any arm, same typing, checked against the
+  `Provider(port)({ name: Dep }, arm)` — any arm, same typing, checked against the
   contract's record before any module sees it — and the provider carries the
   port typed (`provider.port`, di's `& { readonly port: P }`, for a
   hand-declared provider or a type test). No name, no class line.
@@ -96,11 +96,12 @@ K]`, which always names the marker — the missing key `K` itself appears only
   when the array's length matches that marker tuple's own length of 2; a
   single-element array's diagnostic names the marker alone — measured, not
   stylistic. The
-  composed provider's own `deps` are the array of **piece ports**
+  composed provider's own `deps` are the **piece ports**
   (`InstanceType<T[number]["port"]>` in its return type), not what a piece
   closes over: di constructs each piece first, as its own provider, and the
-  composing call's `construct` just reassembles their results into a record
-  keyed by what each piece's port id carries past `HANDLER_PREFIX`. That
+  composing call declares them under the very key each piece's port id carries
+  past `HANDLER_PREFIX` — so the services record IS the handlers record and
+  `construct` hands it straight back. That
   means the pieces themselves still need discharging — typically listed in
   `provides` alongside `handlers`, or exported by a slice module imported in
   — the same as any other unmet need; `AmqpModule` does not do this for you,
@@ -166,8 +167,8 @@ AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>` either way,
 
 - **The handlers port's service is `WorkerInferHandlers<TContract>`** —
   the record `TypedAmqpWorker.create` takes, with **no injected context**.
-  Inside, `Provider(AmqpRuntime)([AmqpConfig, AmqpHandlersPort as
-HandlersPortOf<TContract>], { sync })` — the port rides di, typed for the
+  Inside, `Provider(AmqpRuntime)({ config: AmqpConfig, handlers:
+AmqpHandlersPort as HandlersPortOf<TContract> }, { sync })` — the port rides di, typed for the
   contract, so `sync` reads the record through it and hands it to `create`
   with no cast on the record itself: the former `handlers as
 WorkerInferHandlers<TContract>` is gone, and `AmqpHandlersPort as

@@ -29,26 +29,29 @@ import { ErrAsync, P } from "unthrown";
 // built by di from the use cases it lists — no injected context — on the
 // starter's own handlers port, typed by the contract (a consumer serves one
 // handlers record, so there is nothing to name).
-const orderHandlers = AmqpHandlers(orderContract)([PlaceOrder], {
-  sync: (placeOrder) => ({
-    placeOrder: (message) =>
-      placeOrder
-        .execute(message.payload.orderId, message.payload.quantity)
-        .map(() => undefined)
-        // A modeled domain error is permanent: dead-letter it, no retry.
-        .mapErrCases((matcher) =>
-          matcher.with(
-            P.tag("InvalidQuantity"),
-            P.tag("DuplicateOrder"),
-            (error) => new NonRetryableError(error._tag, error),
+const orderHandlers = AmqpHandlers(orderContract)(
+  { placeOrder: PlaceOrder },
+  {
+    sync: ({ placeOrder }) => ({
+      placeOrder: (message) =>
+        placeOrder
+          .execute(message.payload.orderId, message.payload.quantity)
+          .map(() => undefined)
+          // A modeled domain error is permanent: dead-letter it, no retry.
+          .mapErrCases((matcher) =>
+            matcher.with(
+              P.tag("InvalidQuantity"),
+              P.tag("DuplicateOrder"),
+              (error) => new NonRetryableError(error._tag, error),
+            ),
+          )
+          // Infrastructure failing is not: recover the defect into a retry.
+          .recoverDefect((cause) =>
+            ErrAsync(new RetryableError("placing the order failed", cause)),
           ),
-        )
-        // Infrastructure failing is not: recover the defect into a retry.
-        .recoverDefect((cause) =>
-          ErrAsync(new RetryableError("placing the order failed", cause)),
-        ),
-  }),
-});
+    }),
+  },
+);
 
 const Worker = AmqpModule("Worker")({
   contract: orderContract,

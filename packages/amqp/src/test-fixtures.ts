@@ -92,15 +92,18 @@ const seamOf = () => {
   let greeting = "";
 
   return {
-    handlers: echoHandlers([Greeting], {
-      sync: (g) => ({
-        echo: () => {
-          seen.push(currentUnit());
-          greeting = g.text;
-          return OkAsync(undefined);
-        },
-      }),
-    }),
+    handlers: echoHandlers(
+      { greeting: Greeting },
+      {
+        sync: ({ greeting: g }) => ({
+          echo: () => {
+            seen.push(currentUnit());
+            greeting = g.text;
+            return OkAsync(undefined);
+          },
+        }),
+      },
+    ),
     seen: (): readonly (UnitRecord | undefined)[] => seen,
     greeting: (): string => greeting,
   };
@@ -222,13 +225,18 @@ const slicesOf = () => {
   const ran: string[] = [];
   let greeting = "";
 
-  const left = AmqpHandler(slicedContract, "left")([Greeting], {
-    sync: (g) => () => {
-      greeting = g.text;
-      ran.push("left");
-      return OkAsync(undefined);
+  const left = AmqpHandler(slicedContract, "left")(
+    { greeting: Greeting },
+    {
+      sync:
+        ({ greeting: g }) =>
+        () => {
+          greeting = g.text;
+          ran.push("left");
+          return OkAsync(undefined);
+        },
     },
-  });
+  );
   const right = AmqpHandler(
     slicedContract,
     "right",
