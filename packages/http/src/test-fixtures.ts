@@ -122,6 +122,18 @@ const echoesController = HttpController(
   sync: () => ({ ping: () => OkAsync("pong") }),
 });
 
+/**
+ * A contract whose top-level key is literally `sync` — the one input that could
+ * confuse `HttpRouter`'s runtime discriminator, which tells its arm-only form
+ * from its keyed-controllers form by whether `sync` holds a function. A
+ * contract may name a key anything, so this is the adversarial case: the value
+ * under `sync` here is a CONTROLLER, an object carrying `.port`, and the check
+ * must keep picking the keyed arm.
+ */
+const syncKeyedContract = oc.router({ sync: helloFragment });
+
+export const syncKeyedRouter = HttpRouter(syncKeyedContract)({ sync: helloController });
+
 /** The same kind of API as `greetingRouter`, composed from controllers instead of one `sync`. */
 const slicedRouter = HttpRouter(slicedContract)({
   greetings: helloController,
