@@ -37,25 +37,35 @@ The contract lives in its own package, because a client needs it and needs
 none of the server:
 
 ```ts
-import { oc, type } from "@orpc/contract";
+import { oc } from "@orpc/contract";
+import { z } from "zod";
 
-export type OrderView = { readonly id: string; readonly quantity: number };
-export type OrderRef = { readonly id: string };
+const orderView = z.object({ id: z.string(), quantity: z.number() });
+export type OrderView = z.infer<typeof orderView>;
+
+const orderRef = z.object({ id: z.string() });
+export type OrderRef = z.infer<typeof orderRef>;
 
 export const ordersContract = {
   place: oc
-    .input(type<{ readonly id: string; readonly quantity: number }>())
-    .output(type<OrderView>())
+    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .output(orderView)
     .errors({
-      INVALID_QUANTITY: { data: type<OrderRef>() },
-      CONFLICT: { data: type<OrderRef>() },
+      INVALID_QUANTITY: { data: orderRef },
+      CONFLICT: { data: orderRef },
     }),
   find: oc
-    .input(type<OrderRef>())
-    .output(type<OrderView>())
-    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+    .input(orderRef)
+    .output(orderView)
+    .errors({ NOT_FOUND: { data: orderRef } }),
 };
 ```
+
+The shapes are **schemas**, and the types are inferred from them rather than
+declared beside them: one definition, so what is checked at the boundary and
+what the compiler believes cannot drift. oRPC's `type<T>()` would declare the
+same types and validate nothing — `{ quantity: "abc" }` would reach `place`
+typed `number`.
 
 ## Step 2 — the router, as a provider
 
