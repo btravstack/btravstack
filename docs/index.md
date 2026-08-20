@@ -40,20 +40,25 @@ single router through
 ```ts
 import { runMain } from "@btravstack/core";
 import { HttpModule, HttpRouter } from "@btravstack/http";
-import { oc, type } from "@orpc/contract";
+import { oc } from "@orpc/contract";
 import { P } from "unthrown";
+import { z } from "zod";
 
 import { OrderApplicationModule, PlaceOrder } from "./application.js";
 import { OrderPersistenceModule } from "./persistence.js";
 
 // The contract comes first; a client can take it without the server.
+// Schemas, not oRPC's `type<T>()`: they check what arrives, not just what compiles.
+const orderView = z.object({ id: z.string(), quantity: z.number() });
+const orderRef = z.object({ id: z.string() });
+
 const ordersContract = {
   place: oc
-    .input(type<{ readonly id: string; readonly quantity: number }>())
-    .output(type<{ readonly id: string; readonly quantity: number }>())
+    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .output(orderView)
     .errors({
-      INVALID_QUANTITY: { data: type<{ readonly id: string }>() },
-      CONFLICT: { data: type<{ readonly id: string }>() },
+      INVALID_QUANTITY: { data: orderRef },
+      CONFLICT: { data: orderRef },
     }),
 };
 
