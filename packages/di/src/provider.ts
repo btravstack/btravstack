@@ -2,13 +2,26 @@ import { Ok, type AsyncResult, type Result } from "unthrown";
 
 import type { AnyPort, Scope, ServiceOf } from "./port.js";
 
-/** Internal: the resolved service tuple a `deps` array's factory must accept. */
-type ServicesOf<D extends readonly AnyPort[]> = {
-  readonly [K in keyof D]: ServiceOf<D[K]>;
-};
+/** Internal: a `deps` record — the one shape a provider declares dependencies in. */
+type Deps = Readonly<Record<string, AnyPort>>;
 
-/** Internal: the union of instance types a `deps` array requires. */
-type NeedsOf<D extends readonly AnyPort[]> = InstanceType<D[number]>;
+/**
+ * Internal: the services record a factory receives, keyed exactly as `deps`
+ * was. Homomorphic, so the keys and their optionality survive; each value is
+ * the port's service.
+ */
+type ServicesOf<D extends Deps> = { readonly [K in keyof D]: ServiceOf<D[K]> };
+
+/**
+ * Internal: what the factory arms are spread over. A **one-element tuple**, so
+ * `Qualification`'s arms stay variadic (`(...args: Args) => S`) and become
+ * `(services: ServicesOf<D>) => S` without a single arm changing — while the
+ * no-deps form keeps `readonly []`, and with it a factory of no arguments.
+ */
+type ArgsOf<D extends Deps> = readonly [ServicesOf<D>];
+
+/** Internal: the union of instance types a `deps` record requires. */
+type NeedsOf<D extends Deps> = InstanceType<D[keyof D]>;
 
 type ErrorOfResult<R> =
   R extends Result<unknown, infer E> ? E : R extends AsyncResult<unknown, infer E> ? E : never;
@@ -190,22 +203,31 @@ export type Provider<P, E, N> = {
 const descriptor = (
   port: AnyPort,
   deps: readonly AnyPort[],
+  keys: readonly string[],
   options: Record<string, unknown>,
 ): Provider<unknown, never, never> => {
   // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- see the field comment on `Provider.construct`
   const construct = (services: readonly unknown[]): AsyncResult<unknown, unknown> => {
     if ("value" in options) return Ok(options["value"]).toAsync();
+    // The build pipeline resolves `deps` positionally, so the record the caller
+    // declared is rebuilt here, under the names they wrote. `args` is what every
+    // arm below spreads: one element for a provider with deps, none without —
+    // which is why a no-deps factory still takes no arguments.
+    const args: readonly unknown[] =
+      keys.length === 0
+        ? []
+        : [Object.fromEntries(keys.map((key, index) => [key, services[index]]))];
     if ("sync" in options) {
       const f = options["sync"] as (...a: readonly unknown[]) => unknown;
       return Ok()
         .toAsync()
-        .map(() => f(...services));
+        .map(() => f(...args));
     }
     if ("class" in options) {
       const C = options["class"] as new (...a: readonly unknown[]) => unknown;
       return Ok()
         .toAsync()
-        .map(() => new C(...services));
+        .map(() => new C(...args));
     }
     // Whichever of `make`/`acquire` was supplied — `Qualification`'s
     // exclusivity guarantees at most one — is the fallible path. `acquire` is
@@ -219,7 +241,7 @@ const descriptor = (
     // with no runtime type-sniffing — the same trick demesne (this library's retired predecessor) used in Layer.make.
     return Ok()
       .toAsync()
-      .flatMap(() => f(...services));
+      .flatMap(() => f(...args));
   };
   return {
     port,
@@ -242,7 +264,7 @@ export function Provider<P extends AnyPort, S = ServiceOf<P>>(port: P) {
   // hold: `provider.port`
   // is what another provider lists in its deps or a starter reads the port
   // off. Purely additive — the intersection is still a `Provider<P, E, N>`.
-  function build<const D extends readonly AnyPort[], O extends Qualification<ServicesOf<D>, S>>(
+  function build<const D extends Deps, O extends Qualification<ArgsOf<D>, S>>(
     deps: D,
     options: O,
   ): Provider<InstanceType<P>, ErrorOf<O>, NeedsOf<D> | ScopeOf<O>> & { readonly port: P };
@@ -250,18 +272,30 @@ export function Provider<P extends AnyPort, S = ServiceOf<P>>(port: P) {
     options: O,
   ): Provider<InstanceType<P>, ErrorOf<O>, ScopeOf<O>> & { readonly port: P };
   function build(
-    depsOrOptions: readonly AnyPort[] | Record<string, unknown>,
+    depsOrOptions: Deps | Record<string, unknown>,
     maybeOptions?: Record<string, unknown>,
   ): Provider<unknown, never, never> & { readonly port: P } {
-    // `Array.isArray`'s predicate is `arg is any[]` — a *mutable* array type,
-    // which a `readonly AnyPort[]` in the union is not assignable to, so the
-    // false branch does not narrow away the array member on its own. The cast
-    // is a true narrowing (the runtime check already ruled the array case
-    // out), not a workaround for something unsound.
-    return (
-      Array.isArray(depsOrOptions)
-        ? descriptor(port, depsOrOptions, maybeOptions ?? {})
-        : descriptor(port, [], depsOrOptions as Record<string, unknown>)
+    // ARITY discriminates, not the argument's shape: a `deps` record and an
+    // options object are both non-array objects, so there is nothing to sniff.
+    // Two arguments means the first is `deps`; one means it is the options of a
+    // provider that declares none.
+    if (maybeOptions === undefined) {
+      return descriptor(port, [], [], depsOrOptions as Record<string, unknown>) as Provider<
+        unknown,
+        never,
+        never
+      > & { readonly port: P };
+    }
+    // `Object.entries` fixes the order once, here: `deps` reaches the build
+    // pipeline as the array it resolves positionally, and `keys` is what lets
+    // `construct` put the resolved services back under the names the caller
+    // wrote.
+    const entries = Object.entries(depsOrOptions as Deps);
+    return descriptor(
+      port,
+      entries.map(([, dependency]) => dependency),
+      entries.map(([key]) => key),
+      maybeOptions,
     ) as Provider<unknown, never, never> & { readonly port: P };
   }
   return build;
