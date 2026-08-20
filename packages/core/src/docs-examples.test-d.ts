@@ -113,12 +113,15 @@ class TickSpan extends Port("TickSpan")<{ readonly finish: () => void }> {}
 
 const TickModule = Module("Tick")({
   provides: [
-    Provider(TickSpan)([Greeter], {
-      sync: (greeter) => ({
-        finish: () => process.stderr.write(`${greeter.greet("span")}\n`),
-      }),
-      onStop: (span) => span.finish(),
-    }),
+    Provider(TickSpan)(
+      { greeter: Greeter },
+      {
+        sync: ({ greeter }) => ({
+          finish: () => process.stderr.write(`${greeter.greet("span")}\n`),
+        }),
+        onStop: (span) => span.finish(),
+      },
+    ),
   ],
   exports: [TickSpan],
 });
