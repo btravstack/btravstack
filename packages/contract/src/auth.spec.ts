@@ -38,8 +38,14 @@ describe("authenticated", () => {
     // WHEN a node is marked
     authenticated(fragment);
     // THEN that shared registry is the one holding it — a module-private set
-    // here would read unmarked to a second copy, and serve the route open
-    expect(registry?.has(fragment)).toBe(true);
+    // here would read unmarked to a second copy, and serve the route open.
+    // Projected rather than optional-chained: `registry?.has(...)` reads
+    // `undefined` for a MISSING registry and for one that does not hold the
+    // node alike, and an absent registry is the failure this pins.
+    expect({ registered: registry !== undefined, holds: registry?.has(fragment) }).toEqual({
+      registered: true,
+      holds: true,
+    });
   });
 
   it("keeps two contracts' markers independent", ({ fragment }) => {
