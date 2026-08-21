@@ -164,7 +164,11 @@ config: TemporalConfig, activities: TemporalActivitiesPort as
 ActivitiesPortOf<C> }, { sync })` —
   the port rides di, which is why `ActivitiesInstanceOf<C>` is in the module's
   `Needs` and a root that imports the starter without providing the
-  activities is rejected by `start` for still owing it (the
+  activities is rejected by `start` for still owing it — by assignability
+  against `Env | Scope` on the `module` parameter, not by di's
+  `UNSATISFIED DEPENDENCIES` arity gate, so the diagnostic names the port and
+  ends on `Type '"TemporalActivities"' is not assignable to type '"@di/Scope"'`
+  (the
   `examples/order-temporal-worker` `needs-gate.test-d.ts` pins that; there is
   no `UNSATISFIED RUNTIME NEEDS` arm any more, the runtime needs nothing).
   `TemporalActivitiesPort as ActivitiesPortOf<C>` (here and in

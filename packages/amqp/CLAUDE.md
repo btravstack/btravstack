@@ -92,10 +92,15 @@ Provider<HandlersPortOf<C>>> & Compose<C>` — di's builder first, the composer
   non-covering array, and the diagnostic degrades to `not assignable to
 'Qualification<readonly [], Handlers>'`, naming nothing; last, it reports the
   composing arm's own conditional against `readonly ["UNCOVERED HANDLERS — …",
-K]`, which always names the marker — the missing key `K` itself appears only
-  when the array's length matches that marker tuple's own length of 2; a
-  single-element array's diagnostic names the marker alone — measured, not
-  stylistic. The
+K]`, which always names the marker — printed as the **bare string**, the
+  tuple's element 0, not as the tuple. Measured, not stylistic, and measured
+  again for this: the marker sits at the **tail of the third line** of a
+  `TS2769`, ~360 characters in on a 444-character line, because TypeScript
+  names the source type first and the source is the caller's own piece. The
+  missing key `K` itself appears only when the array's length matches that
+  marker tuple's own length of 2, and then as a **separate** `TS2769` on the
+  trailing element whose target is the bare key (`is not assignable to type
+'"c"'`); a single-element array's diagnostic names the marker alone. The
   composed provider's own `deps` are the **piece ports**
   (`InstanceType<T[number]["port"]>` in its return type), not what a piece
   closes over: di constructs each piece first, as its own provider, and the
@@ -147,10 +152,13 @@ AmqpInfo>>` — the runtime has **no** needs) and the broker on
   **`AmqpConfig`** (`{ url }`, bound from `AMQP_URL`, default
   `amqp://127.0.0.1:5672`), and it **needs** its handlers port, typed for
   `contract`, which the application provides. The composition root imports
-  it, provides the handlers, exports `AmqpRuntime`; di's own gate checks the
-  need where the root is declared, and `start` refuses a module whose needs
-  channel still carries it
-  (`examples/order-amqp-worker/src/needs-gate.test-d.ts` pins that
+  it, provides the handlers, exports `AmqpRuntime`; di's `Needs` channel
+  carries the port, and `start` refuses a module whose needs channel still
+  carries it — by assignability against `Env | Scope` on the `module`
+  parameter, not by di's `UNSATISFIED DEPENDENCIES` arity gate, which is why
+  the diagnostic ends on
+  `Type '"AmqpHandlers"' is not assignable to type '"@di/Scope"'` and names the
+  port (`examples/order-amqp-worker/src/needs-gate.test-d.ts` pins that
   diagnostic, since `start`'s own gate has no `UNSATISFIED RUNTIME NEEDS` arm
   to fire any more).
   `AmqpOptions<TContract>` — `contract: TContract` (`TContract` bounded by
@@ -287,8 +295,10 @@ right])`, pinning that both slices run (_"serves a record composed from one
   composing form's compile-time gates on a contract of its own — a piece typed
   by its own key, an array covering every declared key, an uncovered array
   refused as `@ts-expect-error` (its own single-element case reports only the
-  `"UNCOVERED HANDLERS — …"` marker, not the missing key — see the composing-arm
-  entry above for when the key itself is named), and a piece built for another contract
+  `"UNCOVERED HANDLERS — …"` marker, not the missing key — the comment above
+  that gate says so, since the file's own array is one element long; see the
+  composing-arm entry above for when the key itself is named), and a piece
+  built for another contract
   refused structurally (that contract's own key needs its own message, not a
   reused one, or the two ports are the same type and there is nothing to
   refuse — di's port typing is structural on id and service, not nominal

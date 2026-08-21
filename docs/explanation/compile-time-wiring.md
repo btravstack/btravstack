@@ -109,7 +109,26 @@ declaration and build can drop an entry is variance — the package's one rule:
 `Needs` and `E` sit in covariant (return) position. Assigning
 `Module<X, E, Database>` where `Module<X, E, never>` is expected asks the
 compiler whether `Database` is assignable to `never` — it is not, and the
-laundering fails. The opposite choice would make the same assignment reduce to
+laundering fails:
+
+```
+error TS2322: Type 'Module<OrderRepository, never, Database>' is not assignable to type 'Module<OrderRepository, never, never>'.
+  Type 'Database' is not assignable to type 'never'.
+```
+
+That is as good as this one gets, and it is worth knowing what it does **not**
+promise. The two `Module<…>` types on the first line are the whole diagnostic
+in the general case: the reader diffs them. On some fixtures TypeScript
+elaborates a third line naming the offending member —
+`Property 'url' is missing in type 'ConfigError' but required in type 'PoolError'`
+names `ConfigError` — but that is structural elaboration into whichever
+property happens to differ, so two error types differing only in a `_tag` would
+elaborate onto `_tag` and name nothing actionable, and two structurally
+identical ones would not elaborate at all. Attaching a named wrapper to the
+phantom `_error` field was tried and the re-captured diagnostic came back
+**byte-identical** — TypeScript elaborates straight to the leaf mismatch and
+never prints the wrapper's key. The width here is in the _type arguments_, not
+in a constructor name, so nothing di can spell moves it. The opposite choice would make the same assignment reduce to
 `never extends Database`, trivially true, and an annotation as innocent as a
 helper's return type could silently zero the ledger. The source pins this with
 type-level tests (`*.test-d.ts`), because the guarantee lives entirely in the
