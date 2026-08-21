@@ -162,10 +162,12 @@ type ResolvedExports<X extends readonly unknown[]> =
 
 /**
  * What the module still owes: its providers' dependencies and its imports'
- * declared needs, minus everything visible to it. Exported because a shaped
- * module — a starter's `HttpModule(name)({...})` — re-declares this package's
- * gates over its own augmented tuples, the way it already re-declares
- * `Exportable`.
+ * own needs, minus everything visible to it. This is the `Needs` CHANNEL —
+ * everything outstanding, however it got there — and is deliberately wider
+ * than what `NeedsGate` makes a module declare, which is its own providers'
+ * half alone. Exported because a shaped module — a starter's
+ * `HttpModule(name)({...})` — re-declares this package's gates over its own
+ * augmented tuples, the way it already re-declares `Exportable`.
  */
 export type Unmet<I extends readonly AnyModule[], P extends readonly AnyProvider[]> = Exclude<
   NeedOf<P[number]> | NeedsOfModule<I[number]>,
@@ -173,11 +175,22 @@ export type Unmet<I extends readonly AnyModule[], P extends readonly AnyProvider
 >;
 
 /**
- * The declaration gate. A port this module owes and did not name in `needs` is
- * an error **here**, at the module that owes it, rather than an obligation
- * that travels silently to whoever composes it. `needs` is how a module says
- * "my composition root supplies this" out loud — the explicit stand-in for
- * NestJS's `@Global`, which this package does not have and now does not need.
+ * The declaration gate. A port **this module's own providers** read, and that
+ * nothing here satisfies, is an error unless it is named in `needs` — so a
+ * provider can never silently receive a service from whoever composed the
+ * module. `needs` is how a module says "my composition root supplies this"
+ * out loud, the explicit stand-in for NestJS's `@Global`, which this package
+ * does not have and does not need.
+ *
+ * **An import's own unmet needs are NOT this module's to re-declare**, and
+ * that is the deliberate half. They are already published in the import's
+ * type — `Module<X, E, Env>` says so at the `imports` entry a reader is
+ * looking at — and `start` still refuses a root that has not discharged them,
+ * so nothing is hidden by leaving them out. What re-declaring them bought was
+ * one line per module per hop: measured on this repo, 12 of 22 declarations
+ * were pure propagation, and dropping them leaves exactly the modules that
+ * actually read the port. `Env` is the one that showed it — six declarations
+ * in `order-api`, one of them the feature that reads `DATABASE_URL`.
  *
  * `Scope` is the one exemption, and it is forced rather than chosen: nothing
  * can provide `Scope` — a provider for it is a `WiringDefect` — so it is never
@@ -203,14 +216,14 @@ export type NeedsGate<
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   N extends readonly AnyPort[],
-> = [Unmet<I, P>] extends [InstanceType<N[number]> | Scope]
+> = [Exclude<NeedOf<P[number]>, Available<I, P>>] extends [InstanceType<N[number]> | Scope]
   ? unknown
   : {
-      // Inline, not a named `Undeclared<I, P, N>` alias: an alias prints as
-      // itself, unreduced, and the reader is left reading their own tuples
-      // back. Written out, the message ends on the port (measured, both ways).
+      // Inline, not a named alias: an alias prints as itself, unreduced, and
+      // the reader is left reading their own tuples back. Written out, the
+      // message ends on the port (measured, both ways).
       readonly "UNDECLARED NEEDS — name it in `needs`": Exclude<
-        Unmet<I, P>,
+        Exclude<NeedOf<P[number]>, Available<I, P>>,
         InstanceType<N[number]> | Scope
       >;
     };
