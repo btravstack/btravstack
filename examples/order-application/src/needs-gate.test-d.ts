@@ -42,11 +42,12 @@ const customerRepository = Provider(CustomerRepository)({
 
 const logger = Provider(Logger)({ value: createLogger(() => {}) });
 
-// Negative: nothing provides `OrderRepository`, so the gate becomes a required
-// two-element tuple and the call is an arity error. `Expected 5 arguments, but
-// got 2` is the whole message — an arity error carries no type, so neither the
-// label nor `OrderRepository` is in it; both are in the parameter's type,
-// which an editor shows on hover.
+// Negative: nothing provides `OrderRepository`, so di's rest parameter is a
+// required two-element tuple the call does not pass, and `Expected 5 arguments,
+// but got 2` is the whole message. An arity error carries no type, so neither
+// the label nor the ports are in it; hand-spelling the phantom arguments prints
+// them, ending on `not assignable to parameter of type
+// 'Logger | OrderRepository'`.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
   ctx.get(PlaceOrder).execute("acme", "o-1", 1),

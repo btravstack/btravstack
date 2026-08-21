@@ -60,7 +60,9 @@ the scope **before its own result settles**. The close runs on every path:
 `Module.build` — no scope, no teardown — refuses the graph at compile time:
 `Expected 3 arguments, but got 1`. That arity line is the whole message; the
 `UNSATISFIED DEPENDENCIES` label and `Scope` as the missing piece live in the
-rest parameter's type, which an editor shows on hover.
+rest parameter's type. To get them printed, spell the phantom arguments out by
+hand — a value the tuple cannot accept names each slot in turn, ending on
+`Argument of type 'number' is not assignable to parameter of type 'Scope'`.
 
 ## Under `start`, the process is the scope
 

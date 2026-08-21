@@ -127,8 +127,11 @@ await Module.build(makeAppModule(makePersistenceModule()));
 `Scope` is still in `Needs`, so the call's arity gate rejects it before
 anything runs. The message is the arity line and nothing more — the
 `UNSATISFIED DEPENDENCIES` label and the missing port are in the rest
-parameter's type, which an editor shows on hover. A test that quietly wires the production adapter into a
-scope-less build breaks at compile time, not in CI at midnight. Passing the
+parameter's type, and hand-spelling the phantom arguments is what prints them
+(`Argument of type 'number' is not assignable to parameter of type 'Scope'`,
+once the label is passed through first). A test that quietly wires the
+production adapter into a scope-less build breaks at compile time, not in CI at
+midnight. Passing the
 in-memory module to `Module.scoped` is fine — `Scope` is simply absent from
 its `Needs`, and a scope that releases nothing is harmless.
 

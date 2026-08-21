@@ -39,11 +39,27 @@ more. An arity error never prints a type, so neither the
 `"UNSATISFIED DEPENDENCIES"` label nor the ports in `missing` appear in it.
 With `--pretty`, TypeScript adds related information pointing at the rest
 parameter's declaration in `module.ts` — a reader sees the labels there, but
-sees `N` un-instantiated. **To find out which port is missing, hover the call**:
-the instantiated `missing: N` is in the parameter's type. (Spelling the phantom
-arguments out by hand surfaces it as an ordinary assignability error —
-`Argument of type 'number' is not assignable to parameter of type 'Scope'` —
-which is a diagnostic technique, not an intended call form.)
+sees `N` un-instantiated. **To find out which port is missing, spell the
+phantom arguments out by hand**: the rest parameter is
+`[error: "UNSATISFIED DEPENDENCIES", missing: N]`, so a value neither slot
+accepts turns the arity error into an assignability one, which does print a
+type. The first slot answers first:
+
+```
+error TS2345: Argument of type 'number' is not assignable to parameter of type '"UNSATISFIED DEPENDENCIES"'.
+```
+
+Pass that label through as the first phantom argument and the second slot names
+the port:
+
+```
+error TS2345: Argument of type 'number' is not assignable to parameter of type 'Scope'.
+```
+
+Both measured, on a scratch file since deleted; it is a diagnostic technique,
+not an intended call form. `missing: N` is the same type an editor's language
+service reads, so a hover would be expected to show the same ports — an
+inference from the parameter's type, not something observed here.
 
 `@btravstack/core`'s [`start`](/reference/core/start) answers this differently:
 its gate rides the `module` parameter so its sentence prints. The two are no

@@ -19,7 +19,8 @@ import { findCustomerProvider, findOrderProvider, placeOrderProvider } from "./u
  * vertical's gate now carries that vertical's own repository, so a graph
  * cannot close the orders half with a customers adapter. Carries, not prints —
  * the message is `Expected 5 arguments, but got 2` and nothing else; the
- * repository is in the rest parameter's type, on hover.
+ * repository is in the rest parameter's type, which hand-spelling the phantom
+ * arguments prints.
  *
  * The logger is `@btravstack/observability`'s port, not one this layer
  * declares: a composition root imports `observability()` and the lines this

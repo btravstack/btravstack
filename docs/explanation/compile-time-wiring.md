@@ -87,12 +87,15 @@ That is the whole message. An arity error never prints a type, so neither the
 `"UNSATISFIED DEPENDENCIES"` label nor the ports in `missing` reach it: with
 `--pretty`, TypeScript adds related information pointing at the rest parameter's
 _declaration_ in `module.ts`, where a reader sees the labels but sees `N`
-un-instantiated. The missing ports are in the parameter's type — an editor shows
-them on hover, and spelling the phantom arguments out by hand surfaces them as
-an ordinary assignability error (`Argument of type 'number' is not assignable to
-parameter of type 'Scope'`). The label is a signpost for whoever goes looking,
-not a sentence the compiler hands you. `start`'s gate below is the same idea
-paying differently, and the difference is exactly this.
+un-instantiated. The missing ports are in the parameter's type, and spelling the
+phantom arguments out by hand is what gets them printed: a value the rest tuple
+cannot accept turns the arity error into an assignability one naming each slot
+in turn — the label first, then the port (measured, `Argument of type 'number'
+is not assignable to parameter of type 'Scope'`). An editor's language service
+reads that same type, so a hover would be expected to show them too. The label
+is a signpost for whoever goes looking, not a sentence the compiler hands you.
+`start`'s gate below is the same idea paying differently, and the difference is
+exactly this.
 
 The same trick guards a related mistake at declaration time: an `exports`
 entry must be provided or imported, so a module cannot claim a surface it
@@ -237,8 +240,9 @@ off the signature, the kernel's is one of three fixed sentences.
 
 The types work hard, and it shows at the edges: di's wiring mistakes surface as
 an arity error rather than a friendly sentence, and the kernel's surface as a
-long assignability error whose readable half is its last line. Hovering a large
-module shows real channel unions. The container is also deliberately small — one
-construction family, one module algebra, three entry points, one name per
-concept. Conditional registration DSLs, interceptors and property injection
+long assignability error whose readable half is its last line. A large module's
+channel unions are real types, and a diagnostic that has to print one prints it
+at full width. The container is also deliberately small — one construction
+family, one module algebra, three entry points, one name per concept.
+Conditional registration DSLs, interceptors and property injection
 are not missing features; this is the wrong library for them on purpose.
