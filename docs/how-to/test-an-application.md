@@ -101,7 +101,10 @@ it was built with; boot `tap.module` in place of the module and read
 `tap.services()` afterwards:
 
 ```ts
-it("broadcasts every committed write, end to end", async ({ serve }) => {
+it("broadcasts every committed write, end to end", async ({
+  tenant,
+  serve,
+}) => {
   // GIVEN the real graph, tapped on the writer the spec places orders through
   const tap = tapped(OrderAmqpWorker, [PlaceOrder, OrderRepository, Outbox]);
   await serve(tap.module);
@@ -111,7 +114,7 @@ it("broadcasts every committed write, end to end", async ({ serve }) => {
   // THEN it is the very instance the relay sweeps, so the fact crosses the
   // outbox, the broker and the queue
   await expect(
-    placeOrder.execute("0199a1e0-0000-7000-8000-000000000001", 2),
+    placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000001", 2),
   ).toBeOkWith(
     expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000001" }),
   );
@@ -358,10 +361,10 @@ Reading a tenant back needs nothing at all, because the example application
 names it on its ports rather than reading it from ambient context:
 
 ```ts
-export const it = test.extend<{ tenant: string }>({
+export const it = test.extend<{ tenant: TenantId }>({
   // oxlint-disable-next-line no-empty-pattern -- depends on no other fixture
   tenant: async ({}, use) => {
-    await use(`t-${randomUUID()}`);
+    await use(TenantId(uuidv7()));
   },
 });
 
@@ -386,7 +389,13 @@ it("reads back only its own tenant's order", async ({
 });
 ```
 
-That is the whole fixture. See [Multi-tenancy is the application's, not the
+That is the whole fixture. `TenantId` is `examples/order-domain`'s
+`z.uuidv7().brand("TenantId")`, and `uuidv7()` is
+`@btravstack/internal-test-infra`'s — `crypto.randomUUID()` mints a v4, which
+the schema rejects. The brand is why the fixture's type matters rather than
+being decoration: with two bare `string`s, `repository.find(id, tenant)` would
+have compiled and read another tenant's rows. See [Multi-tenancy is the
+application's, not the
 framework's](/how-to/read-the-ambient-unit#multi-tenancy-is-the-application-s-not-the-framework-s)
 for why the tenant is an argument rather than something the transport reads.
 

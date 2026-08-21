@@ -51,12 +51,13 @@ export const orderHandlers = AmqpHandlers(orderContract)(
   {
     sync: ({ logger }) => ({
       orderNotifications: (message) => {
-        const { id, payload } = message.payload;
+        const { tenantId, id, payload } = message.payload;
         logger.info(
           payload === null
             ? "order gone — notifying"
             : "order placed — notifying",
           {
+            tenantId,
             orderId: id,
             ...(payload === null ? {} : { quantity: payload.quantity }),
           },
@@ -64,8 +65,9 @@ export const orderHandlers = AmqpHandlers(orderContract)(
         return OkAsync();
       },
       orderAudit: (message) => {
-        const { id, occurredAt, payload } = message.payload;
+        const { tenantId, id, occurredAt, payload } = message.payload;
         logger.info("recording an order change", {
+          tenantId,
           orderId: id,
           occurredAt,
           change: payload === null ? "removed" : "placed",
@@ -273,14 +275,29 @@ export const relayConfig = Config.provider("RelayConfig")(
       max: 60_000,
       default: 200,
     }),
+    tenants: Config.string("OUTBOX_TENANTS"),
   }),
 );
 
 export const outboxRelay = Provider(OutboxRelay)(
-  [Outbox, Logger, AmqpConfig, relayConfig.port],
   {
-    acquire: (outbox, logger, { url }, { pollMs }) =>
-      startOutboxRelay(outbox, logger, { url, pollMs }),
+    outbox: Outbox,
+    logger: Logger,
+    broker: AmqpConfig,
+    config: relayConfig.port,
+  },
+  {
+    acquire: ({
+      outbox,
+      logger,
+      broker: { url },
+      config: { pollMs, tenants },
+    }) =>
+      startOutboxRelay(outbox, logger, {
+        url,
+        pollMs,
+        tenants: tenantsOf(tenants),
+      }),
     release: (running) => running.stop().get(),
   },
 );
@@ -289,6 +306,13 @@ export const outboxRelay = Provider(OutboxRelay)(
 It reads `AmqpConfig` — the broker the starter bound — and shares the
 worker's connection lease through `@amqp-contract/core`'s pool. A broker it
 cannot reach is the modeled `BrokerUnreachable`, a startup `Err` and exit `1`.
+
+`OUTBOX_TENANTS` is a comma-separated list with **no default**, and
+`tenantsOf` splits it and claims the `TenantId` brand once — the relay is the
+one caller with no request, delivery or activity behind it, so its tenants are
+deployment configuration rather than something to read off an ambient record.
+The sweep then goes tenant by tenant, so one tenant's backlog cannot starve
+another's.
 
 ## See also
 

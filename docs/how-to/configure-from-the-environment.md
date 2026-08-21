@@ -64,7 +64,7 @@ output — `{ url: string; poolSize: number }` — and hands back the provider
 carrying it as `databaseConfig.port`. **That is the shape for a slice one
 application owns**: nothing else ever needs to name the port, so no class line
 names it twice. `examples/order-amqp-worker/src/outbox-relay.ts` uses exactly
-this for its `OUTBOX_POLL_MS`:
+this:
 
 ```ts
 export const relayConfig = Config.provider("RelayConfig")(
@@ -74,9 +74,15 @@ export const relayConfig = Config.provider("RelayConfig")(
       max: 60_000,
       default: 200,
     }),
+    tenants: Config.string("OUTBOX_TENANTS"),
   }),
 );
 ```
+
+`tenants` has **no default**, and that is the interesting half: the relay
+sweeps outside any unit, so there is no ambient record to read a tenant from,
+and "whatever is in the table" is how one deployment starts broadcasting
+another's facts. A required variable is what makes an operator say whose.
 
 ## A port other packages name
 

@@ -60,12 +60,13 @@ export const orderNotifications = AmqpHandler(
     sync:
       ({ logger }) =>
       (message) => {
-        const { id, payload } = message.payload;
+        const { tenantId, id, payload } = message.payload;
         logger.info(
           payload === null
             ? "order gone — notifying"
             : "order placed — notifying",
           {
+            tenantId,
             orderId: id,
           },
         );

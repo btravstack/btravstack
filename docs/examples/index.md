@@ -32,7 +32,7 @@ depended upon, depending on nothing.
   order-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
        └────────────────┼──────────────────┘
                         ▼
-             order-infrastructure                    ← Prisma, SQLite, P-codes
+             order-infrastructure                    ← Prisma, PostgreSQL, P-codes
                         │  provides OrderRepository
                         ▼
               order-application                     ← use cases, and the ports they declare
@@ -112,8 +112,9 @@ care:
 
 `order-domain`, `order-application`, `order-infrastructure` and the three
 contract packages: an `Entity` with a re-checked invariant and failures as
-values, use cases as providers over ports the caller declares, a Prisma
-repository over in-memory SQLite translating P-codes into the domain's
+values, use cases as providers over ports the caller declares — every one of
+them naming a branded `TenantId` next to the id it acts on — a Prisma
+repository over PostgreSQL translating P-codes into the domain's
 vocabulary, the outbox written in the same transaction as the row, and the
 two kinds of type test that keep the arrows pointing the right way.
 

@@ -224,7 +224,7 @@ export const orderNotifications = AmqpHandler(
     sync:
       ({ logger }) =>
       (message) => {
-        const { id, payload } = message.payload;
+        const { tenantId, id, payload } = message.payload;
         if (currentUnit()?.signal.aborted === true) {
           return ErrAsync(
             new RetryableError(
@@ -237,6 +237,7 @@ export const orderNotifications = AmqpHandler(
             ? "order gone — notifying"
             : "order placed — notifying",
           {
+            tenantId,
             orderId: id,
             ...(payload === null ? {} : { quantity: payload.quantity }),
           },

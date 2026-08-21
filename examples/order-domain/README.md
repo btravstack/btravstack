@@ -171,6 +171,6 @@ fails in both directions, which is what makes it a guard rather than a comment.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-domain test        # 18 specs
+pnpm --filter @btravstack/example-order-domain test        # 21 specs
 pnpm --filter @btravstack/example-order-domain test:types  # the layering guard
 ```

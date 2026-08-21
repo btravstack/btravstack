@@ -215,5 +215,5 @@ query come back as a defect.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-infrastructure test  # 18 specs
+pnpm --filter @btravstack/example-order-infrastructure test  # 22 specs
 ```

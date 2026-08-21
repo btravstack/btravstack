@@ -100,9 +100,9 @@ const view = (order: Order): OrderView => ({
 });
 
 export const ordersRouter = HttpRouter(ordersContract)(
-  [PlaceOrder, FindOrder],
+  { place: PlaceOrder, find: FindOrder },
   {
-    sync: (place, find) => ({
+    sync: ({ place, find }) => ({
       place: ({ errors, context }, input) =>
         place
           .execute(context.principal.tenantId, input.id, input.quantity)

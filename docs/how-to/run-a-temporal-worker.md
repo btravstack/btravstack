@@ -47,18 +47,25 @@ import {
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { TemporalActivities } from "@btravstack/temporal";
 import { P } from "unthrown";
 
 export const orderActivities = TemporalActivities(orderContract)(
-  [PlaceOrder, OrderRepository, StockService, ShippingService, PaymentService],
   {
-    sync: (place, repository, stock, shipping, payments) => ({
+    place: PlaceOrder,
+    repository: OrderRepository,
+    stock: StockService,
+    shipping: ShippingService,
+    payments: PaymentService,
+  },
+  {
+    sync: ({ place, repository, stock, shipping, payments }) => ({
       fulfillOrder: {
         place: (args, { errors }) =>
           place
-            .execute(args.orderId, args.quantity)
+            .execute(TenantId(args.tenantId), args.orderId, args.quantity)
             .map((order) => ({ id: order.id, quantity: order.quantity }))
             .mapErrCases((matcher) =>
               matcher
@@ -91,7 +98,7 @@ export const orderActivities = TemporalActivities(orderContract)(
         releaseStock: (args) => stock.release(args.orderId),
         cancelPlacement: (args) =>
           repository
-            .remove(args.orderId)
+            .remove(TenantId(args.tenantId), args.orderId)
             .recoverErrCases((matcher) =>
               matcher.with(P.tag("OrderNotFound"), () => undefined),
             ),
@@ -118,6 +125,14 @@ The package maps nothing further: `declareActivitiesHandler` already turns a
 declared contract error into a `nonRetryable` `ApplicationFailure` the workflow
 branches on, and leaves anything unmodeled to Temporal's retry policy. Naming
 a failure here is also what tells Temporal to stop retrying it.
+
+`args.tenantId` is the application's own, declared on every workflow and
+activity input by the **contract** — so Temporal persists it in the event
+history and a replay reconstructs it, and the package reads nothing about
+tenancy. `TenantId(…)` claims `examples/order-domain`'s brand at each activity
+that needs one, an activity being its own entry point; it casts rather than
+parses, because the contract already validated the field as a UUIDv7. The
+brand is what stops `execute(args.orderId, args.tenantId)` from compiling.
 `cancelPlacement` absorbs `OrderNotFound` on purpose — a compensation Temporal
 may re-run has to answer the same both times.
 

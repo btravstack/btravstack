@@ -63,7 +63,7 @@ export const orderNotifications = AmqpHandler(
     sync:
       ({ logger }) =>
       (message) => {
-        const { id, payload } = message.payload;
+        const { tenantId, id, payload } = message.payload;
         if (currentUnit()?.signal.aborted === true) {
           return ErrAsync(
             new RetryableError(
@@ -76,6 +76,7 @@ export const orderNotifications = AmqpHandler(
             ? "order gone — notifying"
             : "order placed — notifying",
           {
+            tenantId,
             orderId: id,
             ...(payload === null ? {} : { quantity: payload.quantity }),
           },
@@ -142,13 +143,34 @@ export const relayConfig = Config.provider("RelayConfig")(
       max: 60_000,
       default: 200,
     }),
+    tenants: Config.string("OUTBOX_TENANTS"),
   }),
 );
 ```
 
 `OUTBOX_POLL_MS=0` is rejected — a relay that never sleeps is a busy loop —
 and so is anything above a minute; either is a `ConfigInvalid`, `startFailed`
-and exit `78`. A broker the relay cannot reach is modeled rather than left the
+and exit `78`. `OUTBOX_TENANTS` has **no default**, deliberately: the relay
+runs outside any unit, so it cannot read a tenant off the ambient record the
+way every other adapter does, and "whatever is in the table" is how one
+deployment starts broadcasting another's facts. It is a comma-separated list,
+and `tenantsOf` is the one place this deployment claims the `TenantId` brand
+from configuration rather than from a contract:
+
+```ts
+const tenantsOf = (value: string): readonly TenantId[] =>
+  value
+    .split(",")
+    .map((tenant) => tenant.trim())
+    .filter((tenant) => tenant !== "")
+    .map(TenantId);
+```
+
+Naming the tenants is also how a relay is **sharded** — two deployments, half
+the list each, and neither can starve the other's backlog. The sweep then
+goes tenant by tenant, `outbox.pending(tenantId, BATCH)` at a time.
+
+A broker the relay cannot reach is modeled rather than left the
 defect `TypedAmqpClient.create` reports it as, because an operator can act on
 it:
 
@@ -165,10 +187,24 @@ application scope closes:
 
 ```ts
 export const outboxRelay = Provider(OutboxRelay)(
-  [Outbox, Logger, AmqpConfig, relayConfig.port],
   {
-    acquire: (outbox, logger, { url }, { pollMs }) =>
-      startOutboxRelay(outbox, logger, { url, pollMs }),
+    outbox: Outbox,
+    logger: Logger,
+    broker: AmqpConfig,
+    config: relayConfig.port,
+  },
+  {
+    acquire: ({
+      outbox,
+      logger,
+      broker: { url },
+      config: { pollMs, tenants },
+    }) =>
+      startOutboxRelay(outbox, logger, {
+        url,
+        pollMs,
+        tenants: tenantsOf(tenants),
+      }),
     release: (running) => running.stop().get(),
   },
 );
@@ -254,8 +290,10 @@ independently.
 `amqpConnectionUrl` is this test's own vhost, with `@btravstack/testing`'s
 `boot: bootFixture()` and a `serve` over it that boots the same
 `OrderAmqpWorker` `main.ts` does with
-`env: { AMQP_URL: amqpConnectionUrl, OUTBOX_POLL_MS: "25" }` — the poll tight
-because every spec waits on real broker round trips:
+`env: { AMQP_URL: amqpConnectionUrl, OUTBOX_POLL_MS: "25", OUTBOX_TENANTS:
+tenant }` — the poll tight because every spec waits on real broker round
+trips, and the tenant this test's alone, so the relay sweeps its rows and
+nobody else's:
 
 ```ts
 await use(async (module, options) => {
