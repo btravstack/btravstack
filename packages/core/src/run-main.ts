@@ -120,7 +120,7 @@ export const runMain = async <X, E, UnitX = never, UnitNeeds = never>(
 ): Promise<void> => {
   // The gate above proves the needs at the call site, but that proof is not
   // visible inside a body where `X` is still an unresolved type parameter —
-  // the same reason `bootFixture` discharges the tuple the same way.
+  // the same discharged-signature cast `bootFixture` makes, for the same reason.
   const boot = start as (
     module: Module<X, E, Scope | Env>,
     options: StartOptions<UnitX, UnitNeeds>,
