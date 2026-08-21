@@ -1,4 +1,5 @@
 import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { Env } from "@btravstack/config";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
   OrderApplicationModule,
@@ -63,6 +64,10 @@ export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, or
  * own vhost.
  */
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
+  // The composition root owes the environment and nothing else: `start` is
+  // what provides `Env`, and every other need in this graph has been
+  // discharged by a module in the list below.
+  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [

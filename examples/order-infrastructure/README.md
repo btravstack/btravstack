@@ -168,12 +168,14 @@ const DatabaseModule = Module("Database")({
 });
 
 export const OrderPersistenceModule = Module("OrderPersistence")({
+  needs: [Env],
   imports: [DatabaseModule],
   provides: [orderRepositoryProvider, outboxProvider],
   exports: [OrderRepository, Outbox],
 });
 
 export const CustomerPersistenceModule = Module("CustomerPersistence")({
+  needs: [Env],
   imports: [DatabaseModule],
   provides: [customerRepositoryProvider],
   exports: [CustomerRepository],
@@ -194,6 +196,7 @@ vertical it serves and the graph is closed:
 
 ```ts
 const AppModule = Module("App")({
+  needs: [Env],
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [PlaceOrder, FindOrder],
 });

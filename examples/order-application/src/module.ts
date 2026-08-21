@@ -1,6 +1,13 @@
 import { Module } from "@btravstack/di";
+import { Logger } from "@btravstack/observability";
 
-import { FindCustomer, FindOrder, PlaceOrder } from "./ports.js";
+import {
+  CustomerRepository,
+  FindCustomer,
+  FindOrder,
+  OrderRepository,
+  PlaceOrder,
+} from "./ports.js";
 import { findCustomerProvider, findOrderProvider, placeOrderProvider } from "./use-cases.js";
 
 /**
@@ -10,9 +17,10 @@ import { findCustomerProvider, findOrderProvider, placeOrderProvider } from "./u
  * The layer is a package, the module is a slice of it, and the difference is
  * what a consumer is made to depend on.
  *
- * `OrderRepository` and `Logger` are deliberately absent from `provides`: the
- * interactors depend on them and nothing here satisfies them, so di propagates
- * both as unmet needs. `Module.scoped(OrderApplicationModule, …)` therefore
+ * `OrderRepository` and `Logger` are `needs`, not `provides`: the interactors
+ * depend on them, nothing here satisfies them, and this layer says so out loud
+ * rather than letting a composition root happen to hold them.
+ * `Module.scoped(OrderApplicationModule, …)` therefore
  * does not compile — an importing module must provide the repository and a
  * logger first. That arity error is the layering, enforced by the compiler
  * rather than by convention, and splitting the module sharpened it: each
@@ -29,6 +37,7 @@ import { findCustomerProvider, findOrderProvider, placeOrderProvider } from "./u
  * to the framework, exactly like the repositories belong to this layer.
  */
 export const OrderApplicationModule = Module("OrderApplication")({
+  needs: [OrderRepository, Logger],
   provides: [placeOrderProvider, findOrderProvider],
   exports: [PlaceOrder, FindOrder],
 });
@@ -43,6 +52,7 @@ export const OrderApplicationModule = Module("OrderApplication")({
  * them would be the layer growing an inside.
  */
 export const CustomerApplicationModule = Module("CustomerApplication")({
+  needs: [CustomerRepository],
   provides: [findCustomerProvider],
   exports: [FindCustomer],
 });

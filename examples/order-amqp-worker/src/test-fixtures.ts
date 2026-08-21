@@ -1,7 +1,7 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { AmqpModule, type AmqpInfo, type AmqpRuntime } from "@btravstack/amqp";
-import type { Env } from "@btravstack/config";
+import { Env } from "@btravstack/config";
 import type { RunningApp } from "@btravstack/core";
 import type { Module, Scope } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
@@ -63,6 +63,7 @@ type Serve = <E>(
 const tappedAmqp = () => {
   const lines: Line[] = [];
   const recording = AmqpModule("RecordingAmqpWorker")({
+    needs: [Env],
     contract: orderContract,
     handlers: orderHandlers,
     imports: [

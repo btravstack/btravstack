@@ -20,6 +20,9 @@ export class RequestSpan extends Port("RequestSpan")<{ readonly finish: () => vo
  * own trace id.
  */
 export const RequestModule = Module("Request")({
+  // The fork seam: `Logger` is read out of the application scope this
+  // per-request module is forked from.
+  needs: [Logger],
   provides: [
     Provider(RequestSpan)(
       { logger: Logger },

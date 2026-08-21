@@ -1,4 +1,5 @@
 import { Module } from "@btravstack/di";
+import { Logger } from "@btravstack/observability";
 
 import { BillingModule } from "../../billing.js";
 import { chargeOrder } from "./activities.js";
@@ -13,6 +14,10 @@ import { chargeOrder } from "./activities.js";
  * `TemporalWorkflowActivities` mints the port from the contract key.
  */
 export const BillingSlice = Module("BillingSlice")({
+  // What this slice expects from the root: the logger its stand-in payment
+  // service writes to. `BillingModule` is imported and owes it too, and a
+  // need travels only as far as the module that declares it.
+  needs: [Logger],
   imports: [BillingModule],
   provides: [chargeOrder],
   exports: [chargeOrder],

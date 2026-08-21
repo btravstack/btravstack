@@ -1,3 +1,4 @@
+import { Env } from "@btravstack/config";
 import { start } from "@btravstack/core";
 /**
  * The compile-time half of the transport layer: `start` resolves its runtime
@@ -13,7 +14,13 @@ import { start } from "@btravstack/core";
  * this package's `test:types` script, never executed.
  */
 import { Module } from "@btravstack/di";
-import { HttpAuthenticator, HttpModule, HttpRuntime, http } from "@btravstack/http";
+import {
+  AuthenticatorPort,
+  HttpAuthenticator,
+  HttpModule,
+  HttpRuntime,
+  http,
+} from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 import { OkAsync } from "unthrown";
 
@@ -32,6 +39,7 @@ const _wired = start(OrderApi, options);
 // The same graph without `http(...)`: nothing declared over `RuntimePort` is
 // exported, so there is no runtime for `start` to resolve.
 const RuntimelessApi = Module("RuntimelessApi")({
+  needs: [Env],
   imports: [OrdersSlice, CustomersSlice, observability()],
   // The authenticator is here so this arm fails on the marker ALONE: the contract
   // marks `orders`, so a graph carrying the router without one has an unmet
@@ -47,16 +55,20 @@ const _missingRuntime = start(RuntimelessApi, options);
 
 // The starter imported without its router provided: `http()`'s runtime
 // provider depends on the starter's own router port (the one
-// `HttpRouter(contract)({ name: Dep }, arm)` provides), so the composition carries it
-// as an unmet need — the `Needs` channel, not the kernel's marker, refused by
-// `start`'s `Module<X, E, Scope | Env>` parameter, which names the port.
+// `HttpRouter(contract)({ name: Dep }, arm)` provides), so the composition owes it.
+//
+// Since di's `needs` gate that is refused HERE rather than at `start`, and
+// declaring it is not an escape: `HttpRouterPort` is the starter's own and
+// `@btravstack/http` does not export the value, so an application has nothing
+// to name. Providing the router is the only way out, which is the point.
+// @ts-expect-error — UNDECLARED NEEDS: the starter's router port.
 const RouterlessApi = Module("RouterlessApi")({
+  needs: [Env],
   imports: [OrdersSlice, CustomersSlice, observability(), http()],
   exports: [HttpRuntime, Logger],
 });
 
-// @ts-expect-error — the composition needs the router port and nothing provides it.
-const _missingRouter = start(RouterlessApi, options);
+void RouterlessApi;
 
 // Positive: a `unit` module rides the same gate — `RequestModule` needs
 // `Logger`, which the composition root exports, so the fork the kernel opens
@@ -68,6 +80,7 @@ const _withUnit = start(OrderApi, { ...options, unit: RequestModule });
 // has its runtime and router but does not export `Logger`, so only the unit
 // half of the gate can be what rejects the call.
 const UnloggedApi = Module("UnloggedApi")({
+  needs: [Env],
   imports: [OrdersSlice, CustomersSlice, observability(), http()],
   provides: [orderRouter, bearerAuthenticator],
   exports: [HttpRuntime],
@@ -79,10 +92,11 @@ const _unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
 // The real root minus its authenticator. `contract.orders` is marked
 // `authenticated`, so `HttpRouter` gave the router provider a dependency on
 // the starter's `AuthenticatorPort` and nothing here discharges it. Same
-// mechanism as `_missingRouter` above — the `Needs` channel, refused at
-// `start`, not at `HttpModule(...)`, which is why the module below builds
-// without complaint.
+// `AuthenticatorPort` IS exported, unlike the router port above, so this arm
+// can declare it — and that is what keeps it a `start` negative: declaring
+// moves the obligation to the composition root, it does not discharge it.
 const UnauthenticatedApi = HttpModule("UnauthenticatedApi")({
+  needs: [Env, AuthenticatorPort],
   router: orderRouter,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
@@ -103,6 +117,7 @@ const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()({
 });
 
 const _mismatchedApi = HttpModule("MismatchedApi")({
+  needs: [Env],
   router: orderRouter,
   // @ts-expect-error — the authenticator resolves `{ sub }`, not the router's Identity.
   authenticator: wrongAuthenticator,

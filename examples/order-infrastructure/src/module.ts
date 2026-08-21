@@ -1,3 +1,4 @@
+import { Env } from "@btravstack/config";
 import { Module } from "@btravstack/di";
 import { CustomerRepository, OrderRepository, Outbox } from "@btravstack/example-order-application";
 
@@ -17,9 +18,11 @@ import { outboxProvider } from "./prisma-outbox.js";
  * discharges it. A composition root that forgets the scope does not compile.
  * `DATABASE_URL` is bound here rather than read anywhere: `databaseConfig`
  * is what puts `ConfigInvalid` in this module's error channel, and with it
- * every consumer's.
+ * every consumer's — and `Env`, which nothing in this package provides, is
+ * declared for the same reason every reader of the environment declares it.
  */
 const DatabaseModule = Module("Database")({
+  needs: [Env],
   provides: [databaseConfig, orderDatabaseProvider],
   exports: [OrderDatabase],
 });
@@ -36,6 +39,9 @@ const DatabaseModule = Module("Database")({
  * the connection with the customers vertical did not spend it.
  */
 export const OrderPersistenceModule = Module("OrderPersistence")({
+  // `Env` again: a need travels only as far as the module that declares it,
+  // and importing `DatabaseModule` makes its unmet one this module's to state.
+  needs: [Env],
   imports: [DatabaseModule],
   provides: [orderRepositoryProvider, outboxProvider],
   exports: [OrderRepository, Outbox],
@@ -48,6 +54,9 @@ export const OrderPersistenceModule = Module("OrderPersistence")({
  * database, not two — the diamond that makes splitting the layer free.
  */
 export const CustomerPersistenceModule = Module("CustomerPersistence")({
+  // `Env` again: a need travels only as far as the module that declares it,
+  // and importing `DatabaseModule` makes its unmet one this module's to state.
+  needs: [Env],
   imports: [DatabaseModule],
   provides: [customerRepositoryProvider],
   exports: [CustomerRepository],

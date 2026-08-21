@@ -17,6 +17,7 @@
 // live. The controllers below are typed by that contract, so a marker removed
 // from it still fails here.
 
+import { Env } from "@btravstack/config";
 import { Module } from "@btravstack/di";
 import {
   contract,
@@ -115,12 +116,14 @@ const customersController = HttpController("DocsCustomersController", contract.c
 );
 
 const DocsOrdersSlice = Module("DocsOrdersSlice")({
+  needs: [Env, Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],
 });
 
 const DocsCustomersSlice = Module("DocsCustomersSlice")({
+  needs: [Env],
   imports: [CustomerApplicationModule, CustomerPersistenceModule],
   provides: [customersController],
   exports: [customersController],
@@ -137,6 +140,7 @@ const docsRouter = HttpRouter(contract)({
 });
 
 const _DocsOrderApi = HttpModule("DocsOrderApi")({
+  needs: [Env],
   router: docsRouter,
   authenticator: bearerAuthenticator,
   imports: [DocsOrdersSlice, DocsCustomersSlice, observability()],
@@ -160,6 +164,7 @@ const liftedOrdersRouter = HttpRouter(contract.orders)(
 );
 
 const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
+  needs: [Env],
   router: liftedOrdersRouter,
   authenticator: bearerAuthenticator,
   imports: [DocsOrdersSlice, observability()],
@@ -207,6 +212,7 @@ const depsOrdersRouter = HttpRouter(contract.orders)(
 );
 
 const _DocsDepsApi = HttpModule("DocsDepsApi")({
+  needs: [Env],
   router: depsOrdersRouter,
   authenticator: bearerAuthenticator,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
