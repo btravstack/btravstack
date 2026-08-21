@@ -146,18 +146,18 @@ application never writes `implement`, `os.…`, `declareHandler` or
 `declareActivitiesHandler`, and a typo'd or missing procedure is a compile
 error at the record.
 
-## Why `needs` disappeared
+## Why the starters resolve nothing
 
-The kernel's `Runtime` has a `needs` field, and `start`'s gate checks it
+The kernel's `Runtime` has a `resolves` field, and `start`'s gate checks it
 against the module's exports. **No shipped starter uses it any more.** Each
 takes the application's router / activities / handlers as a port its runtime
 provider _depends on_ through di — `Provider(HttpRuntime)({ config: HttpConfig, handler: HttpHandler }, …)` where
 `HttpHandler` is built from the router port,
-`Provider(AmqpRuntime)({ config: AmqpConfig, handlers: AmqpHandlersPort }, …)` — so their `Needs` is `never` and `RuntimeHost.ctx`
+`Provider(AmqpRuntime)({ config: AmqpConfig, handlers: AmqpHandlersPort }, …)` — so their `Resolves` is `never` and `RuntimeHost.ctx`
 goes unread.
 
 The reason is not tidiness. A port's service type is fixed at declaration, so
-a runtime with application-specific `needs` — "I need whatever this
+a runtime with application-specific `resolves` — "I read whatever this
 application's router port is" — could not ship its port: `HttpRuntime` has to
 be one class in `@btravstack/http`, and its type cannot mention a port only
 the application knows. Making the router a dependency of the runtime's
@@ -165,9 +165,9 @@ provider moves that knowledge to where it exists — the composition root that
 provides the router — and the `Needs` channel checks it there: a root that
 imports `http()` without providing the router carries an unmet need `start`
 refuses, naming the port
-(`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`). The kernel keeps `Runtime.needs`, `RunUnit`'s typed `ctx` and the
-`UNSATISFIED RUNTIME NEEDS` arm as the general contract for a hand-rolled
-runtime; the starters simply do not need them.
+(`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`). The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
+`UNSATISFIED RUNTIME PORTS` arm as the general contract for a hand-rolled
+runtime; the starters simply do not use them.
 
 ## What a starter does not do
 

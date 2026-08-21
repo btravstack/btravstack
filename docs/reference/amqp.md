@@ -274,7 +274,7 @@ A blank value is a `ConfigInvalid` — `startFailed` and exit `78` under
 ## `AmqpRuntime` and `AmqpInfo`
 
 Declared over the kernel's `RuntimePort` with service
-`Runtime<never, AmqpInfo>` — no needs. Its `start` calls
+`Runtime<never, AmqpInfo>` — it resolves nothing. Its `start` calls
 `TypedAmqpWorker.create({ contract, handlers, middleware, urls: [url], … })`.
 `create` reports a connection failure on the **defect** channel with a
 `TechnicalError` cause; the starter recovers that into

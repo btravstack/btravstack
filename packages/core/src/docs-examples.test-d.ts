@@ -55,7 +55,7 @@ const AppModule = Module("App")({
 // sample doesn't need.
 const ticker: Runtime<typeof Greeter> = {
   name: "ticker",
-  needs: [Greeter],
+  resolves: [Greeter],
   start: (host) => {
     const timer = setInterval(() => {
       // Every piece of work goes through `host.run`: that is what makes it
@@ -179,15 +179,15 @@ type ReadmeServing<Info = never> = {
   readonly info?: Info;
 };
 
-type ReadmeRuntime<Needs extends AnyPort = never, Info = never> = {
+type ReadmeRuntime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
-  readonly needs: readonly Needs[];
-  readonly start: (host: RuntimeHost<Needs>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
+  readonly resolves: readonly Resolves[];
+  readonly start: (host: RuntimeHost<Resolves>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
 };
 
-type ReadmeRuntimeHost<Needs extends AnyPort> = {
-  readonly ctx: Context<InstanceType<Needs>>;
-  readonly run: RunUnit<Needs>;
+type ReadmeRuntimeHost<Resolves extends AnyPort> = {
+  readonly ctx: Context<InstanceType<Resolves>>;
+  readonly run: RunUnit<Resolves>;
 };
 
 type ReadmeDrainReport = {
@@ -210,7 +210,7 @@ type HttpInfo = { readonly port: number };
 
 const httpish: Runtime<typeof Greeter, HttpInfo> = {
   name: "httpish",
-  needs: [Greeter],
+  resolves: [Greeter],
   start: () =>
     OkAsync({
       drain: () => OkAsync(),

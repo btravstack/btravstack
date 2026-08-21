@@ -291,7 +291,7 @@ describe("runtimeInfo", () => {
     // `Serving.info`, which is the whole point of the default.
     const silent: Runtime<never> = {
       name: "silent",
-      needs: [],
+      resolves: [],
       start: () => OkAsync({ drain: () => OkAsync(), stop: () => OkAsync() }),
     };
     const app = start(runtimeModule(silent), { signals: false, probes: false });

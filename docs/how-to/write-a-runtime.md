@@ -26,18 +26,18 @@ class Ticker extends RuntimePort<Runtime<typeof Greeter>> {}
 
 `RuntimePort` is `Port("Runtime")` left generic: every runtime port shares one
 id at runtime — a process boots exactly one — while each carries its own
-`Needs` and `Info` in the type. `Runtime<typeof Greeter>` says this runtime
+`Resolves` and `Info` in the type. `Runtime<typeof Greeter>` says this runtime
 resolves `Greeter` from the application context; `start` refuses, at compile
 time, a module that exports the port without exporting `Greeter`.
 
 ## Step 2 — implement `Runtime`
 
 ```ts
-type Runtime<Needs extends AnyPort = never, Info = never> = {
+type Runtime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
-  readonly needs: readonly Needs[];
+  readonly resolves: readonly Resolves[];
   readonly start: (
-    host: RuntimeHost<Needs>,
+    host: RuntimeHost<Resolves>,
   ) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
 };
 ```
@@ -54,7 +54,7 @@ import type { Runtime, Serving } from "@btravstack/core";
 
 const ticker: Runtime<typeof Greeter> = {
   name: "ticker",
-  needs: [Greeter],
+  resolves: [Greeter],
   start: (host) => {
     const timer = setInterval(() => {
       // Every piece of work goes through `host.run`: that is what makes it
@@ -109,7 +109,7 @@ type TcpInfo = { readonly port: number };
 
 const tcpish: Runtime<typeof Greeter, TcpInfo> = {
   name: "tcpish",
-  needs: [Greeter],
+  resolves: [Greeter],
   start: () =>
     fromExecutor<Serving<TcpInfo>, RuntimeStartFailed>((settle) => {
       const server = createServer();
@@ -157,7 +157,7 @@ The composition root is what differs between an `api`, a `worker` and a
 `Ticker` from `exports` and `runMain` refuses the module against
 `"NO RUNTIME — the module exports no port declared over RuntimePort"`; drop
 `Greeter` and it refuses it against
-`"UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export"`.
+`"UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"`.
 Either way the sentence is the error's **last** line; the first names the two
 `Module<…>` types.
 
@@ -229,9 +229,9 @@ per-request acquire leaves the unit open for the process lifetime.
 
 The three shipped runtimes go one step further and take what the application
 supplies — a router, activities, handlers — as a **port their runtime provider
-depends on**, so their `needs` is `never` and `host.ctx` goes unread. Do the
+depends on**, so their `resolves` is `never` and `host.ctx` goes unread. Do the
 same once your runtime has application-specific inputs: a port's service type
-is fixed at declaration, so a runtime with `needs: [OrderRouter]` cannot ship
+is fixed at declaration, so a runtime with `resolves: [OrderRouter]` cannot ship
 its port; a provider that depends on `OrderRouter` can. See
 [Starters](/explanation/starters).
 

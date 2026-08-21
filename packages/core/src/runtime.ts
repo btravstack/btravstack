@@ -35,13 +35,13 @@ export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
  * inside `host.run`. A runtime that subscribes to an event from inside `work`
  * (a response's `'close'`) must first check whether it has already fired.
  */
-// `Context<InstanceType<Needs>>`, not `Context<Needs>`: di parameterises
-// `Context<in R>` by port *instance* types, while a runtime declares its needs
-// as port *classes* (`AnyPort` is `abstract new () => AnyPortInstance`).
-// `InstanceType<never>` is `never`, so a needs-free runtime is unaffected.
-export type RunUnit<Needs extends AnyPort> = <T, E>(
+// `Context<InstanceType<Resolves>>`, not `Context<Resolves>`: di parameterises
+// `Context<in R>` by port *instance* types, while a runtime declares what it
+// resolves as port *classes* (`AnyPort` is `abstract new () => AnyPortInstance`).
+// `InstanceType<never>` is `never`, so a runtime resolving nothing is unaffected.
+export type RunUnit<Resolves extends AnyPort> = <T, E>(
   meta: UnitMeta,
-  work: (ctx: Context<InstanceType<Needs>>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
+  work: (ctx: Context<InstanceType<Resolves>>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
 ) => AsyncResult<T, E>;
 
 /**
@@ -56,14 +56,14 @@ export type RunUnit<Needs extends AnyPort> = <T, E>(
  * unit unless a `traceId` is supplied (see {@link UnitMeta}).
  *
  * `ctx` is the **application** context, and `start`'s gate checks a
- * runtime's `needs` against the application module's exports only — a port a
+ * runtime's `resolves` against the application module's exports only — a port a
  * `StartOptions.unit` module provides exists only while a unit is open, and a
- * runtime naming it as a need is rejected at the call site rather than left
+ * runtime naming it there is rejected at the call site rather than left
  * to `ctx.get(...)` throwing at startup.
  */
-export type RuntimeHost<Needs extends AnyPort> = {
-  readonly ctx: Context<InstanceType<Needs>>;
-  readonly run: RunUnit<Needs>;
+export type RuntimeHost<Resolves extends AnyPort> = {
+  readonly ctx: Context<InstanceType<Resolves>>;
+  readonly run: RunUnit<Resolves>;
 };
 
 /**
@@ -87,10 +87,16 @@ export type Serving<Info = never> = {
   readonly info?: Info;
 };
 
-export type Runtime<Needs extends AnyPort = never, Info = never> = {
+export type Runtime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
-  readonly needs: readonly Needs[];
-  readonly start: (host: RuntimeHost<Needs>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
+  // `resolves`, not `needs`: di's `Module` has a `needs` of its own and the two
+  // are different obligations — a module's is what a composition root supplies
+  // it, this is what the runtime reads back out of the built application
+  // context. The array is never read at run time; it exists so `Resolves` is
+  // inferable from the value, and `start`'s gate checks it against the
+  // module's exports.
+  readonly resolves: readonly Resolves[];
+  readonly start: (host: RuntimeHost<Resolves>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
 };
 
 /**
@@ -105,7 +111,7 @@ export type Runtime<Needs extends AnyPort = never, Info = never> = {
  *
  * Left generic on purpose (`Port("Runtime")` without a fixed service): every
  * runtime port is one id at runtime — a process boots exactly one — while each
- * carries its own `Needs`/`Info` in the type, which is what `start`'s gate and
+ * carries its own `Resolves`/`Info` in the type, which is what `start`'s gate and
  * `RunningApp.runtimeInfo()` read back out of the module's exports.
  */
 export const RuntimePort = Port("Runtime");
@@ -113,9 +119,10 @@ export const RuntimePort = Port("Runtime");
 /** The instance type every runtime port shares — `Extract` this from a module's exports to find its runtime. */
 export type RuntimeInstance = InstanceType<PortClass<"Runtime">>;
 
-/** The `Runtime<Needs, Info>` a module exports, or `never` when it exports none. */
+/** The `Runtime<Resolves, Info>` a module exports, or `never` when it exports none. */
 export type RuntimeOf<X> = ServiceOf<Extract<X, RuntimeInstance>>;
 
-export type RuntimeNeedsOf<X> = RuntimeOf<X> extends Runtime<infer Needs, unknown> ? Needs : never;
+export type RuntimeResolvesOf<X> =
+  RuntimeOf<X> extends Runtime<infer Resolves, unknown> ? Resolves : never;
 
 export type RuntimeInfoOf<X> = RuntimeOf<X> extends Runtime<AnyPort, infer Info> ? Info : never;

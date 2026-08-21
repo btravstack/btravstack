@@ -367,7 +367,7 @@ still the finaliser's to surface as a `teardownError`.
 ## `TemporalRuntime` and `TemporalInfo`
 
 Declared over the kernel's `RuntimePort` with service
-`Runtime<never, TemporalInfo>` — no needs. Its `start` calls
+`Runtime<never, TemporalInfo>` — it resolves nothing. Its `start` calls
 `declareActivitiesHandler` **inside** the qualified chain (a contract it
 cannot satisfy — an undeclared implementation, a declared one missing —
 throws there, and that throw becomes `Err(RuntimeStartFailed({ runtime:

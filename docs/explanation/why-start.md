@@ -25,7 +25,7 @@ holding it.
 
 `di` answers "does this composition hold together?" before the process
 exists: a missing provider, a private port reached across a module boundary, a
-runtime whose needs the root does not export — each is a compile error at the
+runtime whose ports the root does not export — each is a compile error at the
 call site (see [Compile errors, not
 surprises](/explanation/compile-time-wiring)). By the time `start` sees a
 module there is nothing left to discover about it.

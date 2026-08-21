@@ -147,7 +147,7 @@ TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
 ActivitiesInstanceOf<C>>`** — the starter, the same shape as `@btravstack/http`'s
   `http()`. It provides `Runtime<never, TemporalInfo>` on the **`TemporalRuntime`**
   port (a class over core's `RuntimePort`, the package's own now that the
-  runtime has no needs), **`TemporalConfig`** (`{ address, namespace }`) bound
+  runtime resolves nothing), **`TemporalConfig`** (`{ address, namespace }`) bound
   through `Config.provider` from `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`)
   and `TEMPORAL_NAMESPACE` (default `default`) in the kernel's `Env`, and
   **`TemporalConnection`** (a `NativeConnection`) as a **resourceful** provider
@@ -180,7 +180,7 @@ ActivitiesPortOf<C> }, { sync })` —
   ends on `Type '"TemporalActivities"' is not assignable to type '"@di/Scope"'`
   (the
   `examples/order-temporal-worker` `needs-gate.test-d.ts` pins that; there is
-  no `UNSATISFIED RUNTIME NEEDS` arm any more, the runtime needs nothing).
+  no `UNSATISFIED RUNTIME PORTS` arm any more, the runtime resolves nothing).
   `TemporalActivitiesPort as ActivitiesPortOf<C>` (here and in
   `TemporalActivities`) is the only cast the record meets: the port is one
   generic value, the type it carries for `C` is what `sync` reads `impls`

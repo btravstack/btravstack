@@ -7,8 +7,9 @@ import { AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp";
  * parameter. Type-checked by this package's `test:types` script,
  * never executed.
  *
- * There is no UNSATISFIED RUNTIME NEEDS negative any more: the runtime has
- * none. What used to be its needs — the handlers, and what they read — is now
+ * There is no UNSATISFIED RUNTIME PORTS negative any more: the runtime
+ * resolves nothing. What it used to resolve — the handlers, and what they
+ * read — is now
  * the starter's own handlers port, which the starter DEPENDS on, so a
  * composition without a provider for it is the needs channel, not the marker
  * and not di's `UNSATISFIED DEPENDENCIES` arity gate: the module's needs

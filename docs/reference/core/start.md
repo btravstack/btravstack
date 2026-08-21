@@ -87,18 +87,18 @@ type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [
   never,
 ]
   ? "NO RUNTIME — the module exports no port declared over RuntimePort"
-  : [InstanceType<RuntimeNeedsOf<X>>] extends [X]
+  : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
     ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
       ? unknown
       : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
-    : "UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export";
+    : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export";
 ```
 
-| Arm                         | Fires when                                                                                                                                                                     |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `NO RUNTIME`                | `X` contains no port declared over `RuntimePort`. Every starter's module sugar exports one; a hand-rolled root must export its runtime port.                                   |
-| `UNSATISFIED RUNTIME NEEDS` | The runtime's declared `needs` are not all among the module's exports — the **module's alone**, never the unit module's, because `RuntimeHost.ctx` is the application context. |
-| `UNSATISFIED UNIT NEEDS`    | The `unit` module's needs are not covered by the module's exports, `Scope` or `Env` — `Module.forkScope`'s gate, stated where the parent is actually known.                    |
+| Arm                         | Fires when                                                                                                                                                                        |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NO RUNTIME`                | `X` contains no port declared over `RuntimePort`. Every starter's module sugar exports one; a hand-rolled root must export its runtime port.                                      |
+| `UNSATISFIED RUNTIME PORTS` | The runtime's declared `resolves` are not all among the module's exports — the **module's alone**, never the unit module's, because `RuntimeHost.ctx` is the application context. |
+| `UNSATISFIED UNIT NEEDS`    | The `unit` module's needs are not covered by the module's exports, `Scope` or `Env` — `Module.forkScope`'s gate, stated where the parent is actually known.                       |
 
 `runMain`, and `@btravstack/testing`'s `Boot`, carry the same marker.
 
@@ -126,7 +126,7 @@ TypeScript escape. Spelling phantom arguments out by hand went with the tuple.
 
 `RuntimePort` is `Port("Runtime")`, exported **generic** — no fixed service —
 so a runtime package declares its own concrete port over it and every runtime
-port is one id at runtime while each carries its own `Needs`/`Info` in the
+port is one id at runtime while each carries its own `Resolves`/`Info` in the
 type. `RuntimeInfoOf<X>` reads the `Info` back out of a module's exports, which
 is how `RunningApp<E, RuntimeInfoOf<X>>` types `runtimeInfo()`.
 
@@ -139,7 +139,7 @@ type HttpInfo = { readonly port: number };
 
 const httpish: Runtime<never, HttpInfo> = {
   name: "httpish",
-  needs: [],
+  resolves: [],
   start: () =>
     OkAsync({
       drain: () => OkAsync(),

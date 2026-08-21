@@ -123,7 +123,7 @@ export const amqp = <TContract extends AnyAmqpContract>(
         {
           sync: ({ config: bound, handlers }): Runtime<never, AmqpInfo> => ({
             name: "amqp",
-            needs: [],
+            resolves: [],
             start: (host) => createWorker(host, bound, options, handlers),
           }),
         },

@@ -82,7 +82,7 @@ const httpRuntime = (
   securityHeaders: HttpOptions["securityHeaders"],
 ): Runtime<never, HttpInfo> => ({
   name: "http",
-  needs: [],
+  resolves: [],
   start: (host) => listen(host, config, handler, securityHeaders),
 });
 

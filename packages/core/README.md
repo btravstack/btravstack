@@ -56,7 +56,7 @@ const AppModule = Module("App")({
 // sample doesn't need.
 const ticker: Runtime<typeof Greeter> = {
   name: "ticker",
-  needs: [Greeter],
+  resolves: [Greeter],
   start: (host) => {
     const timer = setInterval(() => {
       // Every piece of work goes through `host.run`: that is what makes it

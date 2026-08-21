@@ -33,7 +33,7 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   drives what it finds. The kernel is DI initialisation and lifecycle, nothing
   else. The `module` parameter is intersected with the phantom marker
   `StartGate<X, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime
-  port, `UNSATISFIED RUNTIME NEEDS` when the runtime's declared needs are not
+  port, `UNSATISFIED RUNTIME PORTS` when what the runtime resolves is not
   among the module's exports (the module's alone — a unit-only port exists only
   while a unit is open, and `RuntimeHost.ctx` is the application context),
   `UNSATISFIED UNIT NEEDS` for the fork's own direction — all three at the
@@ -45,22 +45,22 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   service): a runtime package declares its own concrete port over it —
   `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
   — so every runtime is one id at runtime while each carries its own
-  `Needs`/`Info` in the type. `RuntimeOf<X>` / `RuntimeNeedsOf<X>` /
+  `Resolves`/`Info` in the type. `RuntimeOf<X>` / `RuntimeResolvesOf<X>` /
   `RuntimeInfoOf<X>` read those back out of a module's exports (only
   `RuntimeInfoOf` is exported — the other two are the gate's internals);
   `RuntimeInstance` is the shared instance type
   (`InstanceType<PortClass<"Runtime">>`, internal too). Every
   runtime package ships its port and a starter — `HttpRuntime`/`http()`,
   `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
-  has `needs` any more: each takes the application's router / activities /
+  has a `resolves` any more: each takes the application's router / activities /
   handlers as a **port its runtime provider depends on** through di — the
   starter's own fixed port (`HttpRouterPort`, `TemporalActivitiesPort`,
   `AmqpHandlersPort`, one id each; the temporal and amqp ones typed per
   contract at the type level, the same generic-value move `RuntimePort`
   itself makes), which the application provides and never names — so their
-  `Needs` is `never` and `RuntimeHost.ctx` goes unread by every shipped
-  runtime. The kernel keeps `Runtime.needs`, `RunUnit`'s typed `ctx` and the
-  `UNSATISFIED RUNTIME NEEDS` arm as the general contract (`testRuntime` and a
+  `Resolves` is `never` and `RuntimeHost.ctx` goes unread by every shipped
+  runtime. The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
+  `UNSATISFIED RUNTIME PORTS` arm as the general contract (`testRuntime` and a
   hand-rolled runtime still use it), but no starter does. A port's service
   type is fixed at declaration, which is why a runtime with application-specific
   needs could not ship its port — the reason the needs went, not a constraint
@@ -84,7 +84,7 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   built — after an `await` when a unit provider is async — so a runtime that
   subscribes to an event from inside its work must check it has not already
   fired (see contract 3 above). The gate checks
-  both directions at the call site: runtime `needs` may draw on `UnitX`, and
+  both directions at the call site: runtime `resolves` may draw on `UnitX`, and
   `UnitNeeds` must be covered by the module's exports or `Scope`. One caveat:
   `RuntimeHost.ctx` is the **application** context, so a unit-provided port
   exists only inside unit work — resolving one at runtime startup is a
@@ -120,10 +120,10 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   `inFlightAtStart` if in-flight work spawned more, which is honest reporting,
   not a bug), `abandoned` (units still open at the deadline; **the field the
   exit code keys on**).
-- **`Runtime<Needs, Info>` / `RuntimeHost<Needs>` / `RunUnit<Needs>` /
+- **`Runtime<Resolves, Info>` / `RuntimeHost<Resolves>` / `RunUnit<Resolves>` /
   `Serving<Info>`** — the runtime contract (the _service_ behind a runtime
   port). All parameterised by port **classes**
-  (`Needs extends AnyPort`) but handing out `Context<InstanceType<Needs>>`,
+  (`Resolves extends AnyPort`) but handing out `Context<InstanceType<Resolves>>`,
   because di parameterises `Context<in R>` by port **instance** types.
   `Serving.drain(signal)` returns `AsyncResult<void, never>` — **not** a
   `DrainReport`: only the kernel can see the unit registry, so the kernel owns
@@ -347,17 +347,18 @@ Beyond the nine:
 Type-level invariants live in `start.test-d.ts` and are checked by
 `pnpm typecheck`:
 
-- **The module must export a runtime, and that runtime's declared `needs` are
+- **The module must export a runtime, and that runtime's declared `resolves` are
   checked against the module's exports at the `start` call site** (the phantom
   marker `StartGate<X, UnitNeeds>`, intersected onto `module`). A composition
   with no port declared over `RuntimePort` among its exports fails to match
-  `NO RUNTIME — …`; a missing need fails to match `UNSATISFIED RUNTIME NEEDS — …`.
+  `NO RUNTIME — …`; a port the module does not export fails to match
+  `UNSATISFIED RUNTIME PORTS — …`.
   Each arm's sentence is pinned by an `expectTypeOf<StartGate<…>>` in
   `start.test-d.ts` — `@ts-expect-error` accepts any error, so the sentence a
   reader is shown is asserted there or nowhere.
-  `InstanceType<never>` is `never`, so a needs-free runtime works against any
+  `InstanceType<never>` is `never`, so a runtime resolving nothing works against any
   module. `Needs` and `Info` are not type parameters of `start` any more: they
-  are read off `X` (`RuntimeNeedsOf<X>`, `RuntimeInfoOf<X>` — `ServiceOf` of
+  are read off `X` (`RuntimeResolvesOf<X>`, `RuntimeInfoOf<X>` — `ServiceOf` of
   `Extract<X, RuntimeInstance>`, all in `runtime.ts`; only `RuntimeInfoOf` is
   exported from the package, the rest are the gate's internals), which is what
   lets `RunningApp<E, RuntimeInfoOf<X>>` type `runtimeInfo()` from the module
@@ -425,7 +426,7 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
 
 - **The needs check is a phantom marker intersected onto `module`, not a
   trailing rest tuple.**
-  `module: Module<X, E, Scope | Env> & ([InstanceType<RuntimeNeedsOf<X>>] extends [X] ? unknown : "UNSATISFIED RUNTIME NEEDS — …")`
+  `module: Module<X, E, Scope | Env> & ([InstanceType<RuntimeResolvesOf<X>>] extends [X] ? unknown : "UNSATISFIED RUNTIME PORTS — …")`
   (preceded by the `NO RUNTIME` arm on `Extract<X, RuntimeInstance>`) —
   against the module's exports alone, never the `unit` module's: a unit-only
   port exists only while a unit is open, and `RuntimeHost.ctx` is the
@@ -456,9 +457,9 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   subclass it.
 
 - **`Context<in R>`'s contravariance is what makes the check free.** An
-  application context whose exports cover the runtime's needs is assignable to
-  `Context<InstanceType<Needs>>` with no work. The
-  `ctx as unknown as Context<InstanceType<Needs>>` inside `start`'s `use`
+  application context whose exports cover what the runtime resolves is assignable to
+  `Context<InstanceType<Resolves>>` with no work. The
+  `ctx as unknown as Context<InstanceType<Resolves>>` inside `start`'s `use`
   callback is needed only because the gate proves `InstanceType<Needs> extends X`
   at the **call site**, and that proof is not visible to the checker inside a
   body where `X` and `Needs` are still unresolved type parameters.

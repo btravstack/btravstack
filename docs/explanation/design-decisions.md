@@ -27,8 +27,8 @@ with it a runtime constructed outside the graph that reaches back into it.
 
 `start`, `runMain` and `@btravstack/testing`'s `Boot` all intersect
 `StartGate<X, UnitNeeds>` onto their `module` parameter — `unknown`, and
-invisible, when the module exports a runtime whose needs its exports cover; one
-of three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME NEEDS — …`,
+invisible, when the module exports a runtime whose ports its exports cover; one
+of three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …`,
 `UNSATISFIED UNIT NEEDS — …`) otherwise. It rides the parameter so that the
 sentence **prints**: an argument that fails a parameter type makes TypeScript
 name that type, where the trailing rest tuple this used to be failed as an

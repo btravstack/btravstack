@@ -444,7 +444,7 @@ type checker already verifies.
   exactly as `packages/core` would. Three of the four needs-gate files pin
   **`start`'s** gate (`order-api`, `order-temporal-worker`,
   `order-amqp-worker` — its `NO RUNTIME` arm, since no starter's runtime
-  declares a `needs` any more; `order-api`'s also pins the `unit` halves) and
+  resolves anything any more; `order-api`'s also pins the `unit` halves) and
   the **unmet need** on the starter's port (a composition importing `http()` /
   `temporal({ contract, workflows })` / `amqp({ contract })` without providing
   the router / activities / handlers carries the starter's port in `Needs`, and
@@ -462,8 +462,8 @@ type checker already verifies.
   **Four** mechanisms, easy to conflate — and only two print a
   name. Do not call the second "di's `UNSATISFIED DEPENDENCIES` gate": an
   earlier revision of this file did, and it is wrong in both halves. `start`'s
-  `UNSATISFIED RUNTIME NEEDS` arm is pinned only by `packages/core`'s own
-  `start.test-d.ts`, since every shipped runtime declares `needs: []`.
+  `UNSATISFIED RUNTIME PORTS` arm is pinned only by `packages/core`'s own
+  `start.test-d.ts`, since every shipped runtime declares `resolves: []`.
   `examples/` is not the only place the gate is pinned by a **type test**:
   `packages/amqp/src/amqp-runtime.test-d.ts` pins the handlers-port half of
   `amqp`'s own gate, and its sibling `packages/amqp/src/handler.test-d.ts` pins
@@ -782,7 +782,7 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   request scope write to, and `Logger` is in `exports` because `RequestModule`
   reads it out of the application scope. `RequestModule` rides
   `StartOptions.unit` so
-  the per-request fork is the kernel's. There is no `runtime`, `needs`,
+  the per-request fork is the kernel's. There is no `runtime`, `resolves`,
   `handler`, `port` or env-reading to spell anywhere. It is also the **one**
   `main.ts` that is not a single line: it passes
   `onEvent: kernelEvents(createLogger(jsonSink()))` so the kernel's nine events

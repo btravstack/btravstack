@@ -54,7 +54,7 @@ export class UnitSpan extends Port("ObservabilityFixtureUnitSpan")<{ readonly op
  * No shipped runtime sets `UnitMeta.tenantId` — it is there for a
  * multi-tenant deployment to supply — so a hand-rolled one is the only way to
  * prove the logger carries it, and it doubles as the smallest example of a
- * runtime declaring a `need`.
+ * runtime declaring what it `resolves`.
  */
 class TenantRuntime extends RuntimePort<Runtime<typeof Logger>> {}
 
@@ -64,7 +64,7 @@ const tenantRuntimeModule = (tenantId: string) =>
       Provider(TenantRuntime)({
         value: {
           name: "tenant",
-          needs: [Logger],
+          resolves: [Logger],
           start: (host) => {
             void host.run({ kind: "tenanted", id: "unit-1", tenantId }, (ctx) => {
               ctx.get(Logger).info("inside a tenant's unit");
