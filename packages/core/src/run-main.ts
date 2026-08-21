@@ -111,7 +111,7 @@ export const awaitExit = async <E>(
 // top-level `await runMain(...)` in an entry point is the intended shape.
 export const runMain = async <X, E, UnitX = never, UnitNeeds = never>(
   // The same phantom gate `start` carries, for the same reason: it makes the
-  // runtime's declared needs a compile-time check at *this* call site.
+  // runtime's declared `resolves` a compile-time check at *this* call site.
   module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
   options: StartOptions<UnitX, UnitNeeds> = {},
   exit: (code: number) => void = (code) => {

@@ -125,8 +125,8 @@ export type RunningApp<E, Info = never> = {
 /**
  * The phantom marker `start`, `runMain` and `Boot` all intersect onto their
  * `module` parameter: `unknown` — and invisible — when the module exports a
- * runtime and its exports cover that runtime's declared needs, a sentence
- * otherwise, so a missing runtime or an unmet need fails to typecheck at the
+ * runtime and its exports cover what that runtime resolves, a sentence
+ * otherwise, so a missing runtime or an unresolvable port fails to typecheck at the
  * call site.
  *
  * It rides the `module` parameter rather than a trailing rest tuple because a
@@ -143,7 +143,7 @@ export type RunningApp<E, Info = never> = {
  * With a `unit` module in play it also checks the fork's own direction: the
  * unit module's needs must be covered by the module's exports, `Scope` or
  * `Env` — `forkScope`'s gate stated at `start`'s call site, where the parent
- * is actually known. A runtime's needs are checked against the module's
+ * is actually known. What a runtime resolves is checked against the module's
  * exports ONLY, never the unit's: `RuntimeHost.ctx` is the application
  * context, and a runtime that resolved a unit-only port at start would find
  * nothing there — so the gate rejects it rather than letting it type-check
@@ -404,7 +404,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
         runtimeName = runtime.name;
 
         // `Context<in R>` is contravariant, so an application context whose
-        // exports cover the runtime's needs is assignable here. The assertion is
+        // exports cover what the runtime resolves is assignable here. The assertion is
         // needed only because the `StartGate` intersected onto `module` proves
         // `InstanceType<Resolves> extends X` at the *call site*, and that proof is
         // not visible to the checker inside this body, where `X` and `Resolves` are

@@ -54,7 +54,7 @@ export class UnitSpan extends Port("ObservabilityFixtureUnitSpan")<{ readonly op
  * No shipped runtime sets `UnitMeta.tenantId` — it is there for a
  * multi-tenant deployment to supply — so a hand-rolled one is the only way to
  * prove the logger carries it, and it doubles as the smallest example of a
- * runtime declaring a `need`.
+ * runtime declaring what it `resolves`.
  */
 class TenantRuntime extends RuntimePort<Runtime<typeof Logger>> {}
 

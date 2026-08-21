@@ -123,7 +123,7 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
 - **`Runtime<Resolves, Info>` / `RuntimeHost<Resolves>` / `RunUnit<Resolves>` /
   `Serving<Info>`** — the runtime contract (the _service_ behind a runtime
   port). All parameterised by port **classes**
-  (`Needs extends AnyPort`) but handing out `Context<InstanceType<Resolves>>`,
+  (`Resolves extends AnyPort`) but handing out `Context<InstanceType<Resolves>>`,
   because di parameterises `Context<in R>` by port **instance** types.
   `Serving.drain(signal)` returns `AsyncResult<void, never>` — **not** a
   `DrainReport`: only the kernel can see the unit registry, so the kernel owns
@@ -351,7 +351,8 @@ Type-level invariants live in `start.test-d.ts` and are checked by
   checked against the module's exports at the `start` call site** (the phantom
   marker `StartGate<X, UnitNeeds>`, intersected onto `module`). A composition
   with no port declared over `RuntimePort` among its exports fails to match
-  `NO RUNTIME — …`; a missing need fails to match `UNSATISFIED RUNTIME PORTS — …`.
+  `NO RUNTIME — …`; a port the module does not export fails to match
+  `UNSATISFIED RUNTIME PORTS — …`.
   Each arm's sentence is pinned by an `expectTypeOf<StartGate<…>>` in
   `start.test-d.ts` — `@ts-expect-error` accepts any error, so the sentence a
   reader is shown is asserted there or nowhere.

@@ -146,7 +146,7 @@ application never writes `implement`, `os.…`, `declareHandler` or
 `declareActivitiesHandler`, and a typo'd or missing procedure is a compile
 error at the record.
 
-## Why `needs` disappeared
+## Why the starters resolve nothing
 
 The kernel's `Runtime` has a `resolves` field, and `start`'s gate checks it
 against the module's exports. **No shipped starter uses it any more.** Each
@@ -167,7 +167,7 @@ imports `http()` without providing the router carries an unmet need `start`
 refuses, naming the port
 (`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`). The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
 `UNSATISFIED RUNTIME PORTS` arm as the general contract for a hand-rolled
-runtime; the starters simply do not need them.
+runtime; the starters simply do not use them.
 
 ## What a starter does not do
 

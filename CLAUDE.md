@@ -444,7 +444,7 @@ type checker already verifies.
   exactly as `packages/core` would. Three of the four needs-gate files pin
   **`start`'s** gate (`order-api`, `order-temporal-worker`,
   `order-amqp-worker` — its `NO RUNTIME` arm, since no starter's runtime
-  declares a `needs` any more; `order-api`'s also pins the `unit` halves) and
+  resolves anything any more; `order-api`'s also pins the `unit` halves) and
   the **unmet need** on the starter's port (a composition importing `http()` /
   `temporal({ contract, workflows })` / `amqp({ contract })` without providing
   the router / activities / handlers carries the starter's port in `Needs`, and

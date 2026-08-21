@@ -35,7 +35,7 @@ export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
  * inside `host.run`. A runtime that subscribes to an event from inside `work`
  * (a response's `'close'`) must first check whether it has already fired.
  */
-// `Context<InstanceType<Needs>>`, not `Context<Needs>`: di parameterises
+// `Context<InstanceType<Resolves>>`, not `Context<Resolves>`: di parameterises
 // `Context<in R>` by port *instance* types, while a runtime declares what it
 // resolves as port *classes* (`AnyPort` is `abstract new () => AnyPortInstance`).
 // `InstanceType<never>` is `never`, so a runtime resolving nothing is unaffected.
@@ -111,7 +111,7 @@ export type Runtime<Resolves extends AnyPort = never, Info = never> = {
  *
  * Left generic on purpose (`Port("Runtime")` without a fixed service): every
  * runtime port is one id at runtime — a process boots exactly one — while each
- * carries its own `Needs`/`Info` in the type, which is what `start`'s gate and
+ * carries its own `Resolves`/`Info` in the type, which is what `start`'s gate and
  * `RunningApp.runtimeInfo()` read back out of the module's exports.
  */
 export const RuntimePort = Port("Runtime");
@@ -119,7 +119,7 @@ export const RuntimePort = Port("Runtime");
 /** The instance type every runtime port shares — `Extract` this from a module's exports to find its runtime. */
 export type RuntimeInstance = InstanceType<PortClass<"Runtime">>;
 
-/** The `Runtime<Needs, Info>` a module exports, or `never` when it exports none. */
+/** The `Runtime<Resolves, Info>` a module exports, or `never` when it exports none. */
 export type RuntimeOf<X> = ServiceOf<Extract<X, RuntimeInstance>>;
 
 export type RuntimeResolvesOf<X> =

@@ -164,7 +164,7 @@ tag is not unique per attempt (see
 [`@btravstack/amqp`'s README](../packages/amqp/README.md) for why), where a
 queue job id or a task token already is.
 
-## What each runtime needs, and how the gate sees it
+## What each runtime resolves, and how the gate sees it
 
 A runtime is a service the composition root exports, on a port each starter
 ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
@@ -187,8 +187,8 @@ contract key instead, and the starter composes an **array** rather than a
 record — the same exactness (every key covered, two slices claiming one key
 is di's duplicate-provider defect at build) reached a different way. No
 starter
-declares a `needs` any more — all three runtimes are `Runtime<never, Info>`
-— so `start`'s `UNSATISFIED RUNTIME NEEDS` arm is exercised only by the
+runtime resolves anything any more — all three are `Runtime<never, Info>`
+— so `start`'s `UNSATISFIED RUNTIME PORTS` arm is exercised only by the
 kernel's own type test now; what the examples pin is the other two gates.
 
 Pinned in `order-api/src/needs-gate.test-d.ts`,
@@ -319,7 +319,7 @@ a spec swaps the default stdout sink for a recorder — so what a handler said
 comes back as a `Line`, and the assertions read `attributes.orderId` and
 `unit.traceId` as fields.
 
-Where a guarantee is compile-time only — an unmet port, a runtime's `needs` —
+Where a guarantee is compile-time only — an unmet port, a runtime's `resolves` —
 the assertion is a `@ts-expect-error` in a `*.test-d.ts` file, checked by `tsc`
 rather than executed.
 

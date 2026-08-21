@@ -20,24 +20,24 @@ const serving: Serving = {
 };
 
 // A runtime is a service on a port declared over `RuntimePort`; the port
-// carries the runtime's `Needs` and `Info`, and the module exporting it is
+// carries the runtime's `Resolves` and `Info`, and the module exporting it is
 // what `start` reads both back from.
 class NeedsGreeting extends RuntimePort<Runtime<typeof Greeting, { readonly port: number }>> {}
 class NeedsClock extends RuntimePort<Runtime<typeof Clock>> {}
 
 const needsGreeting: Runtime<typeof Greeting, { readonly port: number }> = {
-  name: "needs-greeting",
+  name: "resolves-greeting",
   resolves: [Greeting],
   start: () => OkAsync({ ...serving, info: { port: 8080 } }),
 };
 
 const needsClock: Runtime<typeof Clock> = {
-  name: "needs-clock",
+  name: "resolves-clock",
   resolves: [Clock],
   start: () => OkAsync(serving),
 };
 
-// The gate is satisfied: the module exports the port the runtime needs — and
+// The gate is satisfied: the module exports the port the runtime resolves — and
 // `Info` is read off the module, not passed in.
 const Satisfied = Module("Satisfied")({
   imports: [AppModule],
@@ -54,7 +54,7 @@ const Unsatisfied = Module("Unsatisfied")({
   provides: [Provider(NeedsClock)({ value: needsClock })],
   exports: [Greeting, NeedsClock],
 });
-// @ts-expect-error -- UNSATISFIED RUNTIME NEEDS: the runtime needs `Clock`, which the module does not export
+// @ts-expect-error -- UNSATISFIED RUNTIME PORTS: the runtime resolves `Clock`, which the module does not export
 start(Unsatisfied);
 
 // WHICH arm rejected it, pinned: the directive above accepts ANY error, so the
@@ -70,12 +70,12 @@ expectTypeOf<
   StartGate<Greeting>
 >().toEqualTypeOf<"NO RUNTIME — the module exports no port declared over RuntimePort">();
 
-// A needs-free runtime works against any module: `InstanceType<never>` is
+// A runtime that resolves nothing works against any module: `InstanceType<never>` is
 // `never`, and `[never] extends [X]` holds for every `X`. `testRuntime` ships
 // its own module, so nothing else needs composing.
 expectTypeOf(start(testRuntime().module)).toEqualTypeOf<RunningApp<never, TestRuntimeInfo>>();
 
-// The unit half of the gate, isolated: the runtime's needs are satisfied, so
+// The unit half of the gate, isolated: what the runtime resolves is satisfied, so
 // only the unit module's unmet `Clock` can be what rejects the call.
 class Span extends Port("GateSpan")<{ readonly note: string }> {}
 
@@ -99,7 +99,7 @@ expectTypeOf<
   StartGate<Greeting | NeedsGreeting, Clock>
 >().toEqualTypeOf<"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export">();
 
-// A runtime may NOT draw a need from the unit module's exports: `Span` exists
+// A runtime may NOT resolve a port from the unit module's exports: `Span` exists
 // only while a unit is open, and `RuntimeHost.ctx` is the application context
 // — so a runtime that names it is rejected here rather than left to `ctx.get`
 // throwing at startup.
@@ -120,7 +120,7 @@ const GreetingSpanUnit = Module("GreetingSpanUnit")({
 class NeedsSpan extends RuntimePort<Runtime<typeof Span>> {}
 
 const needsSpan: Runtime<typeof Span> = {
-  name: "needs-span",
+  name: "resolves-span",
   resolves: [Span],
   start: () => OkAsync(serving),
 };
@@ -130,5 +130,5 @@ const SpanApp = Module("SpanApp")({
   provides: [Provider(NeedsSpan)({ value: needsSpan })],
   exports: [Greeting, NeedsSpan],
 });
-// @ts-expect-error -- UNSATISFIED RUNTIME NEEDS: `Span` is a unit-only port, not among `SpanApp`'s exports
+// @ts-expect-error -- UNSATISFIED RUNTIME PORTS: `Span` is a unit-only port, not among `SpanApp`'s exports
 start(SpanApp, { unit: GreetingSpanUnit });

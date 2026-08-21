@@ -22,16 +22,16 @@ type Runtime<Resolves extends AnyPort = never, Info = never> = {
 };
 ```
 
-| Member     | Semantics                                                                                                                                                                                                                                                                                                                          |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`     | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                   |
-| `resolves` | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `needs: []` — what its handlers need is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes. |
-| `start`    | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                             |
+| Member     | Semantics                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                      |
+| `resolves` | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `resolves: []` — what its handlers read is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes. |
+| `start`    | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                                |
 
 `Resolves` is parameterised by port **classes** (`AnyPort`) but hands out
 `Context<InstanceType<Resolves>>`, because di parameterises `Context<in R>` by
-port **instance** types. `InstanceType<never>` is `never`, so a needs-free
-runtime gets a context it can read nothing from.
+port **instance** types. `InstanceType<never>` is `never`, so a runtime that
+resolves nothing gets a context it can read nothing from.
 
 ## `RuntimeHost<Resolves>`
 

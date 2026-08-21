@@ -3,10 +3,10 @@ import { start } from "@btravstack/core";
 /**
  * The compile-time half of the orchestration deployment: `start` resolves its
  * runtime from the `TemporalRuntime` port `TemporalModule` exports, and that
- * runtime needs nothing from the application context — its activities reach
+ * runtime resolves nothing from the application context — its activities reach
  * it as a port the starter depends on through di. So there is no
- * `UNSATISFIED RUNTIME NEEDS` arm to pin here, as there was when the runtime
- * declared five `needs` of its own; what replaces it is the needs channel —
+ * `UNSATISFIED RUNTIME PORTS` arm to pin here, as there was when the runtime
+ * resolved five ports of its own; what replaces it is di's needs channel —
  * refused by `start`'s `Module<X, E, Scope | Env>` parameter, which names the
  * port, and NOT di's `UNSATISFIED DEPENDENCIES` arity gate.
  *
