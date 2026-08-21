@@ -565,8 +565,8 @@ and the diagnostic names the port:
 `Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. It is **not** di's
 `UNSATISFIED DEPENDENCIES` arity gate, which guards `Module.build` and
 `Module.scoped`; conflating the two is easy and the distinction is the point of
-having both pinned here. There is no `UNSATISFIED RUNTIME NEEDS` arm, because
-the shipped runtime declares no needs.
+having both pinned here. There is no `UNSATISFIED RUNTIME PORTS` arm, because
+the shipped runtime resolves nothing.
 
 ```ts
 // @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.

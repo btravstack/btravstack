@@ -10,35 +10,35 @@ description: Runtime, RuntimeHost, RunUnit, Serving, RuntimePort and RuntimeStar
 > [Write a runtime](/how-to/write-a-runtime); for why the kernel maps nothing,
 > see [The kernel maps nothing](/explanation/the-kernel-maps-nothing).
 
-## `Runtime<Needs, Info>`
+## `Runtime<Resolves, Info>`
 
 ```ts
-type Runtime<Needs extends AnyPort = never, Info = never> = {
+type Runtime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
-  readonly needs: readonly Needs[];
+  readonly resolves: readonly Resolves[];
   readonly start: (
-    host: RuntimeHost<Needs>,
+    host: RuntimeHost<Resolves>,
   ) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
 };
 ```
 
-| Member  | Semantics                                                                                                                                                                                                                                                                                                                          |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`  | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                   |
-| `needs` | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `needs: []` — what its handlers need is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes. |
-| `start` | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                             |
+| Member     | Semantics                                                                                                                                                                                                                                                                                                                          |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | Reported on the `serving` event.                                                                                                                                                                                                                                                                                                   |
+| `resolves` | The port **classes** the runtime resolves from `host.ctx`. `start`'s gate checks them against the module's exports at the call site. Every shipped starter declares `needs: []` — what its handlers need is its provider's business, through di — so this is the general contract, used by `testRuntime` and hand-rolled runtimes. |
+| `start`    | Called once, after the graph is built. `Ok(serving)` moves the phase to `serving`; `Err(RuntimeStartFailed)` is a startup failure the kernel reports through `exited`.                                                                                                                                                             |
 
-`Needs` is parameterised by port **classes** (`AnyPort`) but hands out
-`Context<InstanceType<Needs>>`, because di parameterises `Context<in R>` by
+`Resolves` is parameterised by port **classes** (`AnyPort`) but hands out
+`Context<InstanceType<Resolves>>`, because di parameterises `Context<in R>` by
 port **instance** types. `InstanceType<never>` is `never`, so a needs-free
 runtime gets a context it can read nothing from.
 
-## `RuntimeHost<Needs>`
+## `RuntimeHost<Resolves>`
 
 ```ts
-type RuntimeHost<Needs extends AnyPort> = {
-  readonly ctx: Context<InstanceType<Needs>>;
-  readonly run: RunUnit<Needs>;
+type RuntimeHost<Resolves extends AnyPort> = {
+  readonly ctx: Context<InstanceType<Resolves>>;
+  readonly run: RunUnit<Resolves>;
 };
 ```
 
@@ -46,13 +46,13 @@ type RuntimeHost<Needs extends AnyPort> = {
 `StartOptions.unit` module's. `run` is the kernel's unit registry, closed over
 that context.
 
-## `RunUnit<Needs>`
+## `RunUnit<Resolves>`
 
 ```ts
-type RunUnit<Needs extends AnyPort> = <T, E>(
+type RunUnit<Resolves extends AnyPort> = <T, E>(
   meta: UnitMeta,
   work: (
-    ctx: Context<InstanceType<Needs>>,
+    ctx: Context<InstanceType<Resolves>>,
     signal: AbortSignal,
   ) => ReturnType<UnitWork<T, E>>,
 ) => AsyncResult<T, E>;
@@ -98,7 +98,7 @@ class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}
 
 `RuntimePort` is the one port the kernel resolves its runtime from. Left
 generic on purpose: every runtime port is **one id** at runtime — a process
-boots exactly one — while each carries its own `Needs`/`Info` in the type. A
+boots exactly one — while each carries its own `Resolves`/`Info` in the type. A
 runtime package declares its own class over it and ships a module providing it.
 `RuntimeInfoOf<X>` reads the `Info` back out of a module's exports; it is the
 only helper type of that family the package exports.
@@ -214,7 +214,7 @@ class Greeter extends Port("Greeter")<{
 
 const ticker: Runtime<typeof Greeter> = {
   name: "ticker",
-  needs: [Greeter],
+  resolves: [Greeter],
   start: (host) => {
     const timer = setInterval(() => {
       // Every piece of work goes through `host.run`: that is what makes it
@@ -250,4 +250,4 @@ const TickerModule = Module("Ticker")({
 
 A composition root that imports `TickerModule` must also export `Greeter`, or
 `start` refuses the module against
-`"UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export"`.
+`"UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"`.

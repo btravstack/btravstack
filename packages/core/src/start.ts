@@ -23,7 +23,7 @@ import {
   type Runtime,
   type RuntimeInfoOf,
   type RuntimeInstance,
-  type RuntimeNeedsOf,
+  type RuntimeResolvesOf,
   type Serving,
 } from "./runtime.js";
 import { createUnitRegistry } from "./units.js";
@@ -151,11 +151,11 @@ export type RunningApp<E, Info = never> = {
  */
 export type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [never]
   ? "NO RUNTIME — the module exports no port declared over RuntimePort"
-  : [InstanceType<RuntimeNeedsOf<X>>] extends [X]
+  : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
     ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
       ? unknown
       : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
-    : "UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export";
+    : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export";
 
 // `Module<X, E, Scope | Env>`, not `Module<X, E, never>`: `Needs` sits in
 // covariant position on `Module`, so this accepts a module with no needs at
@@ -170,7 +170,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   options: StartOptions<UnitX, UnitNeeds> = {},
 ): RunningApp<E, RuntimeInfoOf<X>> => {
   type Info = RuntimeInfoOf<X>;
-  type Needs = RuntimeNeedsOf<X>;
+  type Resolves = RuntimeResolvesOf<X>;
   const clock = options.clock ?? systemClock;
   const env = options.env ?? process.env;
   const emit = safeSink(options.onEvent ?? stderrSink);
@@ -400,16 +400,16 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
         // where the checker cannot see it.
         const runtime = (ctx as unknown as Context<RuntimeInstance>).get(
           RuntimePort as unknown as abstract new () => RuntimeInstance,
-        ) as Runtime<Needs, Info>;
+        ) as Runtime<Resolves, Info>;
         runtimeName = runtime.name;
 
         // `Context<in R>` is contravariant, so an application context whose
         // exports cover the runtime's needs is assignable here. The assertion is
         // needed only because the `StartGate` intersected onto `module` proves
-        // `InstanceType<Needs> extends X` at the *call site*, and that proof is
-        // not visible to the checker inside this body, where `X` and `Needs` are
+        // `InstanceType<Resolves> extends X` at the *call site*, and that proof is
+        // not visible to the checker inside this body, where `X` and `Resolves` are
         // still unresolved type parameters.
-        const runtimeCtx = ctx as unknown as Context<InstanceType<Needs>>;
+        const runtimeCtx = ctx as unknown as Context<InstanceType<Resolves>>;
 
         // The registry counts and aborts; it knows nothing about contexts. The
         // An ANNOTATION, not an assertion: a future divergence between this
@@ -418,7 +418,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
         // ambient record and the unit is not counted closed until the scope
         // is (`unit-module.spec.ts` guards both halves).
         const unit = options.unit;
-        const run: RunUnit<Needs> = (meta, work) =>
+        const run: RunUnit<Resolves> = (meta, work) =>
           registry.run(meta, (signal) => {
             if (unit === undefined) return work(runtimeCtx, signal);
 
@@ -437,7 +437,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
               unit,
               (forked) =>
                 fromSafePromise(
-                  (async () => await work(forked as Context<InstanceType<Needs>>, signal))(),
+                  (async () => await work(forked as Context<InstanceType<Resolves>>, signal))(),
                 ).flatMap((result) => result),
               { onTeardownError: (port, cause) => emit({ type: "teardownError", port, cause }) },
             ) as ReturnType<typeof work>;

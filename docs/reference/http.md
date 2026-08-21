@@ -533,7 +533,7 @@ under `runMain`. Anything in the graph may depend on `HttpConfig`.
 ## `HttpRuntime` and `HttpInfo`
 
 `HttpRuntime` is declared over the kernel's `RuntimePort` with service
-`Runtime<never, HttpInfo>`: the runtime declares **no needs** — the router is
+`Runtime<never, HttpInfo>`: the runtime **resolves nothing** — the router is
 a port its provider depends on — so `RuntimeHost.ctx` goes unread. Once
 listening it publishes `HttpInfo`, `{ port }`, on `Serving.info`; with `PORT=0`
 that is the only way to learn the port that was actually bound.

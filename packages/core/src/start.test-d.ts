@@ -27,13 +27,13 @@ class NeedsClock extends RuntimePort<Runtime<typeof Clock>> {}
 
 const needsGreeting: Runtime<typeof Greeting, { readonly port: number }> = {
   name: "needs-greeting",
-  needs: [Greeting],
+  resolves: [Greeting],
   start: () => OkAsync({ ...serving, info: { port: 8080 } }),
 };
 
 const needsClock: Runtime<typeof Clock> = {
   name: "needs-clock",
-  needs: [Clock],
+  resolves: [Clock],
   start: () => OkAsync(serving),
 };
 
@@ -61,7 +61,7 @@ start(Unsatisfied);
 // sentence a reader is actually shown is asserted here or nowhere.
 expectTypeOf<
   StartGate<Greeting | NeedsClock>
->().toEqualTypeOf<"UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export">();
+>().toEqualTypeOf<"UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export">();
 
 // The other way the gate bites: a module that exports no runtime port at all.
 // @ts-expect-error -- NO RUNTIME: `AppModule` exports no port declared over `RuntimePort`
@@ -121,7 +121,7 @@ class NeedsSpan extends RuntimePort<Runtime<typeof Span>> {}
 
 const needsSpan: Runtime<typeof Span> = {
   name: "needs-span",
-  needs: [Span],
+  resolves: [Span],
   start: () => OkAsync(serving),
 };
 

@@ -155,8 +155,8 @@ OrderPersistenceModule, observability()], exports: [Logger] })`.
 A unit-provided port exists only while a unit is open, and reaches a runtime
 through `host.run`'s work callback alone. `host.ctx.get(RequestSpan)` at
 runtime startup type-checks against nothing and would be a defect, so the
-gate rejects a runtime whose `needs` name a unit-only port: `UNSATISFIED
-RUNTIME NEEDS` is checked against the module's exports **only**, never the
+gate rejects a runtime whose `resolves` names a unit-only port: `UNSATISFIED
+RUNTIME PORTS` is checked against the module's exports **only**, never the
 unit's. Resolve at start what the application module itself exports.
 :::
 

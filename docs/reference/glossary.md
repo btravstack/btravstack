@@ -58,7 +58,7 @@ every unit. See [Open a per-request scope](/how-to/open-a-per-request-scope).
 **gate** — A phantom type that is inert when a composition is sound and refuses the
 call otherwise. The two shipped here are not the same shape. `start`'s is
 `StartGate`, a marker **intersected onto `module`** — `unknown` when sound, one
-of three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME NEEDS — …`,
+of three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …`,
 `UNSATISFIED UNIT NEEDS — …`) otherwise, and the sentence prints in the error.
 di's on `Module.scoped` is a conditional **rest tuple** labelled
 `UNSATISFIED DEPENDENCIES`, so it fails on arity — `Expected 3 arguments, but
@@ -94,7 +94,7 @@ Kubernetes' eventually-consistent endpoint removal needs. See
 **provider** — `Provider(port)(deps, arm)` — how a port's service is built: `value`,
 `sync`, `make`, `class` or `acquire`/`release`. See [Providers](/reference/di/providers).
 
-**runtime** — The service behind a port declared over `RuntimePort`: `{ name, needs,
+**runtime** — The service behind a port declared over `RuntimePort`: `{ name, resolves,
 start }`, where `start` returns a `Serving`. A process boots exactly one. See
 [The Runtime contract](/reference/core/runtime) and
 [One process, one runtime](/explanation/one-process-one-runtime).

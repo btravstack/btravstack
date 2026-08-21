@@ -158,7 +158,7 @@ K]`, which always names the marker — printed as the **bare string**, the
 - **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>`**
   — the starter, the same shape as `@btravstack/http`'s `http()`. It provides
   the runtime on **`AmqpRuntime`** (`extends RuntimePort<Runtime<never,
-AmqpInfo>>` — the runtime has **no** needs) and the broker on
+AmqpInfo>>` — the runtime resolves **nothing**) and the broker on
   **`AmqpConfig`** (`{ url }`, bound from `AMQP_URL`, default
   `amqp://127.0.0.1:5672`), and it **needs** its handlers port, typed for
   `contract`, which the application provides. The composition root imports
@@ -169,7 +169,7 @@ AmqpInfo>>` — the runtime has **no** needs) and the broker on
   the diagnostic ends on
   `Type '"AmqpHandlers"' is not assignable to type '"@di/Scope"'` and names the
   port (`examples/order-amqp-worker/src/needs-gate.test-d.ts` pins that
-  diagnostic, since `start`'s own gate has no `UNSATISFIED RUNTIME NEEDS` arm
+  diagnostic, since `start`'s own gate has no `UNSATISFIED RUNTIME PORTS` arm
   to fire any more).
   `AmqpOptions<TContract>` — `contract: TContract` (`TContract` bounded by
   `Parameters<typeof TypedAmqpWorker.create>[0]["contract"]`, never imported

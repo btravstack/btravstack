@@ -25,7 +25,7 @@ const runMain: <X, E, UnitX = never, UnitNeeds = never>(
 `Result` into a code. It carries the same phantom marker as `start`, intersected
 onto `module` (see
 [The gate](/reference/core/start#the-gate-startgate-x-unitneeds)), so
-`NO RUNTIME — …`, `UNSATISFIED RUNTIME NEEDS — …` and
+`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …` and
 `UNSATISFIED UNIT NEEDS — …` are printed at this call site too.
 
 | Parameter | Default                                  | Semantics                                                                                                                                                                                                                                                           |

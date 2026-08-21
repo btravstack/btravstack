@@ -149,7 +149,7 @@ the id for whoever wants it.
 
 ## Where to go next
 
-- The starters, and why the runtime's `needs` disappeared once the router,
+- The starters, and why the runtime's `resolves` disappeared once the router,
   activities and handlers became ports: [Starters](/explanation/starters).
 - The record a handler runs inside, and who may read it:
   [Ambient data, injected capabilities](/explanation/ambient-vs-context).

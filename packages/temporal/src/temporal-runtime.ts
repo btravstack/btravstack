@@ -213,7 +213,7 @@ export const temporal = <C extends ContractDefinition>(
             activities: impls,
           }): Runtime<never, TemporalInfo> => ({
             name: "temporal",
-            needs: [],
+            resolves: [],
             start: (host) => createWorker(host, connection, bound, impls, options),
           }),
         },

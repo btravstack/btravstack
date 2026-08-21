@@ -351,7 +351,7 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C>
   them, oRPC's context stays empty), built by `HttpRouter(contract)(deps,
 arm)`. The starter provides
   `Runtime<never, HttpInfo>` on the **`HttpRuntime`** port (a class over
-  core's `RuntimePort`, **no `needs`**), which the composition root imports
+  core's `RuntimePort`, **an empty `resolves`**), which the composition root imports
   next to the application and exports so `start` finds it, and **`HttpConfig`**
   (`{ port, hostname }`) bound through `Config.provider` from `PORT` (default
   `3000`) and `HOST` (default `0.0.0.0` — a pod, not a laptop) in the kernel's
@@ -416,7 +416,7 @@ plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
   `Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. Neither is
   di's `UNSATISFIED DEPENDENCIES` arity gate.
   `examples/order-api/src/needs-gate.test-d.ts` pins both, plus the
-  `StartOptions.unit` halves. There is no `UNSATISFIED RUNTIME NEEDS` case for
+  `StartOptions.unit` halves. There is no `UNSATISFIED RUNTIME PORTS` case for
   this runtime any more: it declares none.
 - **What it decides.** A procedure under `prefix` answers with its output or
   the `ORPCError` the router's `.result()` triage mapped its `Result` to

@@ -186,7 +186,7 @@ same instance.
 `Module.scoped` — so the application scope is opened as the process boots and
 closed on every exit path, with what its finalisers report surfacing as
 `ExitReport.teardownErrors`. It adds a gate of its own on top of di's
-(`NO RUNTIME`, `UNSATISFIED RUNTIME NEEDS`, `UNSATISFIED UNIT NEEDS`), and
+(`NO RUNTIME`, `UNSATISFIED RUNTIME PORTS`, `UNSATISFIED UNIT NEEDS`), and
 `RunningApp` rather than a `Context` is what it hands back: the runtime, not
 the caller, is what reads the built context.
 

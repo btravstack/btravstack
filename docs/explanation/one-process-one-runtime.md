@@ -117,5 +117,5 @@ never does arithmetic on time.
 
 - The three beats the drain runs, and why each is where it is:
   [Draining, in three beats](/explanation/draining-in-three-beats).
-- What a starter is, and why the shipped runtimes have no `needs`:
+- What a starter is, and why the shipped runtimes resolve nothing:
   [Starters](/explanation/starters).

@@ -80,7 +80,7 @@ export const testRuntime = (name = "test"): TestRuntime => {
       provides: [Provider(TestRuntimePort)({ sync: () => runtime })],
       exports: [TestRuntimePort],
     }),
-    needs: [],
+    resolves: [],
     start: (host: RuntimeHost<never>) => {
       run = host.run;
       accepting = true;

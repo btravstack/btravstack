@@ -64,7 +64,7 @@ const tenantRuntimeModule = (tenantId: string) =>
       Provider(TenantRuntime)({
         value: {
           name: "tenant",
-          needs: [Logger],
+          resolves: [Logger],
           start: (host) => {
             void host.run({ kind: "tenanted", id: "unit-1", tenantId }, (ctx) => {
               ctx.get(Logger).info("inside a tenant's unit");
