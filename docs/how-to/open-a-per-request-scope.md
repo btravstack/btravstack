@@ -119,10 +119,12 @@ whose `E` is `never`.
 
 ## The gate has an arm for it
 
-`start`'s phantom rest tuple checks the fork's direction at the call site: the
+`start`'s phantom marker checks the fork's direction at the call site: the
 unit module's needs must be covered by the module's **exports**, `Scope` or
-`Env`. A root that has its runtime and router but does not export `Logger`
-fails on arity with `UNSATISFIED UNIT NEEDS`:
+`Env`. A root that has its runtime and router but does not export `Logger` is
+refused against
+`"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"`,
+the last line of the error:
 
 ```ts
 const UnloggedApi = Module("UnloggedApi")({

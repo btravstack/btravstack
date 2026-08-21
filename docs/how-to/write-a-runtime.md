@@ -154,8 +154,12 @@ await runMain(TickerApp);
 
 The composition root is what differs between an `api`, a `worker` and a
 `consumer` process; the application module is the same in all three. Drop
-`Ticker` from `exports` and `runMain` fails on arity with `NO RUNTIME`; drop
-`Greeter` and it fails with `UNSATISFIED RUNTIME NEEDS`.
+`Ticker` from `exports` and `runMain` refuses the module against
+`"NO RUNTIME — the module exports no port declared over RuntimePort"`; drop
+`Greeter` and it refuses it against
+`"UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export"`.
+Either way the sentence is the error's **last** line; the first names the two
+`Module<…>` types.
 
 ## Honour the three contracts the kernel cannot check
 

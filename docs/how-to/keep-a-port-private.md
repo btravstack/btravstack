@@ -58,8 +58,12 @@ const App = Module("App")({
 
 The second provider does not wire: `Pool` is not among what `App` can see —
 its own provides plus its imports' exports — so the dependency stays unmet,
-and surfaces as `UNSATISFIED DEPENDENCIES` at the entry point (or at
-[`start`](/reference/core/start), which carries the same gate).
+and surfaces as `UNSATISFIED DEPENDENCIES` at the entry point — the arity
+error, `Expected 3 arguments, but got 1`. Under
+[`start`](/reference/core/start) the same mistake is caught differently: the
+kernel's `module` parameter is `Module<X, E, Scope | Env>`, so the leftover
+need fails to assign and the diagnostic **names the port**
+(`Type 'Pool' is not assignable to type 'Env | Scope'`).
 
 And on a built context:
 

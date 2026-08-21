@@ -120,11 +120,14 @@ const built = await Module.build(makeAppModule(InMemoryPersistenceModule));
 The wrong pairing does not compile:
 
 ```ts
-await Module.build(makeAppModule(makePersistenceModule())); // UNSATISFIED DEPENDENCIES
+// error TS2554: Expected 3 arguments, but got 1.
+await Module.build(makeAppModule(makePersistenceModule()));
 ```
 
 `Scope` is still in `Needs`, so the call's arity gate rejects it before
-anything runs. A test that quietly wires the production adapter into a
+anything runs. The message is the arity line and nothing more — the
+`UNSATISFIED DEPENDENCIES` label and the missing port are in the rest
+parameter's type, which an editor shows on hover. A test that quietly wires the production adapter into a
 scope-less build breaks at compile time, not in CI at midnight. Passing the
 in-memory module to `Module.scoped` is fine — `Scope` is simply absent from
 its `Needs`, and a scope that releases nothing is harmless.
