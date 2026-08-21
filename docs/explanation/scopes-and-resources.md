@@ -32,7 +32,8 @@ and
 open a real scope, run construction and your callback inside it, and close it
 before their own result settles — so they exclude `Scope` from the gate.
 `Module.build` opens nothing, so it excludes nothing, and a resourceful graph
-reaching it is an `UNSATISFIED DEPENDENCIES` error at the call site. The leak
+reaching it is refused at the call site by the
+[`UNSATISFIED DEPENDENCIES` gate](/reference/di/entry-points#the-gate). The leak
 is refused before it exists.
 
 Making `Scope` a port — rather than, say, a boolean flag on the module type —

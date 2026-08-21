@@ -12,8 +12,8 @@ types, so `NO RUNTIME` never reached a reader and TypeScript's related info
 pointed at the wrong fix. They ride the module parameter now.
 
 `start`, `runMain` and `bootFixture` no longer take the trailing gate argument.
-No call site passed one — it existed to be omitted — so this is a signature
-change without a migration.
+No production call site passed one; the documented hand-spelled bypass went
+with it, so this is a signature change without a migration.
 
 The same widening reached the composers: `AmqpHandlers`'s/`TemporalActivities`'s
 `UNCOVERED HANDLERS`/`UNCOVERED ACTIVITIES` marker and `HttpRouter`'s
