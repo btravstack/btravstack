@@ -1,15 +1,18 @@
 /**
  * The compile-time half of the broadcast deployment: `start` resolves its
  * runtime from the `AmqpRuntime` port `@btravstack/amqp`'s starter provides
- * and the composition root exports, so a module that exports no runtime is a
- * call-site arity error. Type-checked by this package's `test:types` script,
+ * and the composition root exports, so a module that exports no runtime fails
+ * to match the `NO RUNTIME — …` sentence `start` intersects onto its `module`
+ * parameter. Type-checked by this package's `test:types` script,
  * never executed.
  *
  * There is no UNSATISFIED RUNTIME NEEDS negative any more: the runtime has
  * none. What used to be its needs — the handlers, and what they read — is now
  * the starter's own handlers port, which the starter DEPENDS on, so a
- * composition without a provider for it is di's own gate: the module's needs
- * channel carries that port, and `start` accepts only `Scope | Env` there.
+ * composition without a provider for it is the needs channel, not the marker
+ * and not di's `UNSATISFIED DEPENDENCIES` arity gate: the module's needs
+ * channel carries that port, `start` accepts only `Scope | Env` there, and the
+ * assignability failure names the port.
  *
  * The third negative is about **slices**, and it is the mirror of
  * `order-temporal-worker`'s `FulfillmentlessSlice`. Composing pieces into one
@@ -46,8 +49,8 @@ const RuntimelessAmqp = Module("RuntimelessAmqp")({
   exports: [PlaceOrder, Logger],
 });
 
-// Negative: the gate becomes a required two-element tuple naming the missing
-// runtime, and the call fails on arity.
+// Negative: the marker becomes the `NO RUNTIME — …` sentence, which the module
+// argument cannot satisfy, so the call fails to typecheck against it.
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _noRuntime = start(RuntimelessAmqp, options);
 
@@ -65,7 +68,7 @@ const HandlerlessAmqp = Module("HandlerlessAmqp")({
   exports: [AmqpRuntime, PlaceOrder, Logger],
 });
 
-// Negative, di's gate rather than the kernel's: `start` takes a
+// Negative, the needs channel rather than the kernel's marker: `start` takes a
 // `Module<X, E, Scope | Env>`, and this one still needs the handlers port.
 // @ts-expect-error — the module's needs channel carries the handlers port, which nothing provides.
 const _missingHandlers = start(HandlerlessAmqp, options);

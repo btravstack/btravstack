@@ -23,8 +23,8 @@ contract rather than detecting one that was forgotten.
 `@btravstack/http` resolves the principal through a new `Authenticator` port —
 `HttpAuthenticator<P>()([deps], { sync })`, an ordinary di provider, wired on
 `HttpModule`'s `authenticator` option. A contract that marks nothing needs no
-authenticator; a marked router whose root provides none is di's existing
-`UNSATISFIED DEPENDENCIES` gate, and an authenticator minted on a different
+authenticator; a marked router whose root provides none carries the port as an
+unmet need `start` refuses, and an authenticator minted on a different
 identity than the router is refused at `HttpModule`. A marked procedure whose
 authenticator declines is answered `UNAUTHORIZED` before dispatch, with the
 handler never running and no reason reaching the caller — `Unauthenticated`

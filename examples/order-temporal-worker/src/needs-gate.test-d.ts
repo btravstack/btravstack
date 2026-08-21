@@ -5,7 +5,9 @@ import { start } from "@btravstack/core";
  * runtime needs nothing from the application context — its activities reach
  * it as a port the starter depends on through di. So there is no
  * `UNSATISFIED RUNTIME NEEDS` arm to pin here, as there was when the runtime
- * declared five `needs` of its own; what replaces it is di's gate.
+ * declared five `needs` of its own; what replaces it is the needs channel —
+ * refused by `start`'s `Module<X, E, Scope | Env>` parameter, which names the
+ * port, and NOT di's `UNSATISFIED DEPENDENCIES` arity gate.
  *
  * Two distinct negatives, at two distinct levels. `orderActivities`'s own
  * `deps` are the two pieces' PORTS (`fulfillOrder.port | chargeOrder.port`),
@@ -74,7 +76,7 @@ const ActivitylessTemporal = Module("ActivitylessTemporal")({
   exports: [TemporalRuntime],
 });
 
-// Negative, di's gate rather than the kernel's: `start` takes a
+// Negative, the needs channel rather than the kernel's marker: `start` takes a
 // `Module<X, E, Scope | Env>`, and this one still owes the activities port.
 // @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port, which nothing provides.
 const _missingActivities = start(ActivitylessTemporal, options);
