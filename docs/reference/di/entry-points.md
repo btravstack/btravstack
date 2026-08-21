@@ -25,8 +25,29 @@ parameter: when the module's remaining `Needs` (after the exclusions each entry
 point is entitled to) is `never`, the gate is the empty tuple and the call is
 ordinary; when it is not, two required parameters appear —
 `error: "UNSATISFIED DEPENDENCIES", missing: N` — and the call is an arity
-error naming exactly what is missing. There is no value to supply for the
-phantom arguments; the fix is always to satisfy the need.
+error. There is no value to supply for the phantom arguments; the fix is always
+to satisfy the need.
+
+**What it prints, measured:**
+
+```
+src/scoped.test-d.ts(65,12): error TS2554: Expected 3 arguments, but got 1.
+```
+
+That is the whole message, and it is worth knowing before you go looking for
+more. An arity error never prints a type, so neither the
+`"UNSATISFIED DEPENDENCIES"` label nor the ports in `missing` appear in it.
+With `--pretty`, TypeScript adds related information pointing at the rest
+parameter's declaration in `module.ts` — a reader sees the labels there, but
+sees `N` un-instantiated. **To find out which port is missing, hover the call**:
+the instantiated `missing: N` is in the parameter's type. (Spelling the phantom
+arguments out by hand surfaces it as an ordinary assignability error —
+`Argument of type 'number' is not assignable to parameter of type 'Scope'` —
+which is a diagnostic technique, not an intended call form.)
+
+`@btravstack/core`'s [`start`](/reference/core/start) answers this differently:
+its gate rides the `module` parameter so its sentence prints. The two are no
+longer the same shape.
 
 | Entry point        | Excludes from `Needs` before checking |
 | ------------------ | ------------------------------------- |
@@ -102,7 +123,8 @@ parent's services; `use` receives a `Context<PParent | X>` carrying both.
 
 Under the kernel you rarely call this yourself: `StartOptions.unit` names a
 module the kernel forks around **every unit**, and the same gate is checked at
-`start`'s call site as `UNSATISFIED UNIT NEEDS`. See
+`start`'s call site as
+`"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"`. See
 [Open a per-request scope](/how-to/open-a-per-request-scope).
 
 ## `ScopedOptions`

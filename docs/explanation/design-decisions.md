@@ -23,18 +23,28 @@ else and reads its collaborators the same way — which is what let every
 starter's `needs` go to `never`. It rules out `start(module, { runtime })`, and
 with it a runtime constructed outside the graph that reaches back into it.
 
-## The gate is a phantom rest tuple, and it is bypassable on purpose
+## The gate is a phantom marker on `module`, and it is bypassable on purpose
 
-`start`, `runMain` and `@btravstack/testing`'s `Boot` end in
-`...gate: StartGate<X, UnitNeeds>` — empty when the module exports a runtime
-whose needs its exports cover, a named error tuple (`NO RUNTIME`,
-`UNSATISFIED RUNTIME NEEDS`, `UNSATISFIED UNIT NEEDS`) otherwise. A conditional type on `module` or `options` would make
-TypeScript defer that parameter's inference and can collapse `X` or `E` to
-`unknown`; a trailing rest tuple leaves inference alone. It is the same shape
-as di's `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`. A caller who
-hand-writes the phantom arguments does typecheck — proved in
-`start.test-d.ts`, not assumed. The gate exists to catch the accident, not to
-be unforgeable, and making it unforgeable would cost the inference it protects.
+`start`, `runMain` and `@btravstack/testing`'s `Boot` all intersect
+`StartGate<X, UnitNeeds>` onto their `module` parameter — `unknown`, and
+invisible, when the module exports a runtime whose needs its exports cover; one
+of three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME NEEDS — …`,
+`UNSATISFIED UNIT NEEDS — …`) otherwise. It rides the parameter so that the
+sentence **prints**: an argument that fails a parameter type makes TypeScript
+name that type, where the trailing rest tuple this used to be failed as an
+arity error and named nothing.
+
+The tuple was chosen originally because a conditional type in an
+inference-bearing position can make TypeScript defer that parameter's
+inference and collapse `X` or `E` to `unknown`. Measured, it does not here: `X`
+still infers from the `Module<X, …>` half of the intersection. di's
+`UNSATISFIED DEPENDENCIES` gate on `Module.scoped` is still a rest tuple, so
+the two are **no longer the same shape**.
+
+The gate is still bypassable, by a cast (`start(App as never)`) — the ordinary
+TypeScript escape, not a hatch this gate offers, and nothing asserts it because
+a cast defeats every gate. Hand-writing the phantom arguments went with the
+tuple. The gate exists to catch the accident, not to be unforgeable.
 
 ## `RuntimeStartFailed` is the only error the kernel mints
 

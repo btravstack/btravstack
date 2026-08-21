@@ -249,4 +249,5 @@ const TickerModule = Module("Ticker")({
 ```
 
 A composition root that imports `TickerModule` must also export `Greeter`, or
-`start` fails with `UNSATISFIED RUNTIME NEEDS`.
+`start` refuses the module against
+`"UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export"`.

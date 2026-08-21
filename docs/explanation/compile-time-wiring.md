@@ -1,6 +1,6 @@
 ---
 title: Compile errors, not surprises
-description: How the Needs channel and a conditional rest parameter turn missing dependencies, leaked internals, forgotten scopes and a missing runtime into errors at the call site — and where the compile-time line actually sits.
+description: How the Needs channel, a conditional rest parameter and a phantom marker turn missing dependencies, leaked internals, forgotten scopes and a missing runtime into errors at the call site — what each one actually prints, and where the compile-time line sits.
 ---
 
 # Compile errors, not surprises
@@ -72,11 +72,27 @@ build<X, E, N>(
 
 When `Needs` is `never`, the tuple is empty and `Module.build(mod)` is an
 ordinary call. When it is not, the call is missing two required arguments —
-arguments no value can supply — and the error names both the literal
-`"UNSATISFIED DEPENDENCIES"` and, in `missing`, the actual ports. The gate
-differs per entry point only in what it is entitled to exclude first: `scoped`
-excludes `Scope` (it opens a real scope), `forkScope` excludes `Scope` and the
-parent context's channel (the parent supplies those).
+arguments no value can supply. The gate differs per entry point only in what it
+is entitled to exclude first: `scoped` excludes `Scope` (it opens a real
+scope), `forkScope` excludes `Scope` and the parent context's channel (the
+parent supplies those).
+
+**What it prints, measured:**
+
+```
+src/scoped.test-d.ts(65,12): error TS2554: Expected 3 arguments, but got 1.
+```
+
+That is the whole message. An arity error never prints a type, so neither the
+`"UNSATISFIED DEPENDENCIES"` label nor the ports in `missing` reach it: with
+`--pretty`, TypeScript adds related information pointing at the rest parameter's
+_declaration_ in `module.ts`, where a reader sees the labels but sees `N`
+un-instantiated. The missing ports are in the parameter's type — an editor shows
+them on hover, and spelling the phantom arguments out by hand surfaces them as
+an ordinary assignability error (`Argument of type 'number' is not assignable to
+parameter of type 'Scope'`). The label is a signpost for whoever goes looking,
+not a sentence the compiler hands you. `start`'s gate below is the same idea
+paying differently, and the difference is exactly this.
 
 The same trick guards a related mistake at declaration time: an `exports`
 entry must be provided or imported, so a module cannot claim a surface it
@@ -105,12 +121,14 @@ it breaks.
 `start` accepts a `Module<X, E, Scope | Env>` — covariance is what lets a
 module needing nothing, one owing `Scope` and one reading `Env` all fit — and
 then asks three questions of `X` that di's gate has no reason to ask. They
-arrive as the same shape, a phantom rest tuple named `StartGate<X, UnitNeeds>`
-that `start`, `runMain` and `@btravstack/testing`'s `Boot` all carry:
+arrive as a phantom marker named `StartGate<X, UnitNeeds>`, **intersected onto
+the `module` parameter** — `unknown`, and invisible, when the gate is satisfied;
+a sentence otherwise. `start`, `runMain` and `@btravstack/testing`'s `Boot` all
+carry it:
 
 | Arm                         | Fires when                                                                                                                                                                                                                                                       |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NO RUNTIME`                | The module exports no port declared over `RuntimePort`. A process boots exactly one runtime, and it is a service of the module — a root that forgets `HttpModule`/`http(...)` fails on arity here.                                                               |
+| `NO RUNTIME`                | The module exports no port declared over `RuntimePort`. A process boots exactly one runtime, and it is a service of the module — a root that forgets `HttpModule`/`http(...)` is refused here.                                                                   |
 | `UNSATISFIED RUNTIME NEEDS` | The runtime's declared `needs` are not among the module's exports — the **module's alone**, never the unit module's, because `RuntimeHost.ctx` is the application context and a unit-only port does not exist at startup. No shipped starter declares any today. |
 | `UNSATISFIED UNIT NEEDS`    | With `StartOptions.unit`, the unit module's needs are not covered by the module's exports, `Scope` or `Env` — `forkScope`'s gate, stated at `start`'s call site, where the parent is actually known.                                                             |
 
@@ -120,16 +138,33 @@ const Application = Module("Application")({
   exports: [Greeter],
 });
 
-start(Application); // NO RUNTIME: the module exports no port declared over RuntimePort
+start(Application);
 ```
 
-The gate is a trailing rest tuple rather than a conditional type on `module`
-or `options` for a reason di shares: a conditional on an inference-bearing
-parameter makes TypeScript defer that parameter's inference and can collapse
-`X` or `E` to `unknown`. And like di's, it is **bypassable on purpose** — a
-caller who spells the phantom arguments out by hand does typecheck, which the
-kernel's own type tests assert rather than assume. It takes a deliberate act;
-the gate exists to catch the accident, not to be unforgeable.
+**What it prints, measured:**
+
+```
+error TS2345: Argument of type 'Module<Greeter, never, never>' is not assignable to parameter of type 'Module<Greeter, never, Env | Scope> & "NO RUNTIME — the module exports no port declared over RuntimePort"'.
+  Type 'Module<Greeter, never, never>' is not assignable to type '"NO RUNTIME — the module exports no port declared over RuntimePort"'.
+```
+
+The sentence prints because the marker **rides the `module` parameter**: the
+argument failed to match a parameter type, and a parameter type is something
+TypeScript prints. That is the whole reason for the shape. This gate was a
+trailing rest tuple until it was not, on the grounds that a conditional type in
+an inference-bearing position can defer that parameter's inference and collapse
+`X` or `E` to `unknown` — measured, and it does not here, because `X` still
+infers from the `Module<X, …>` half of the intersection. What the tuple cost was
+the diagnostic: a missing rest argument is an arity error, `NO RUNTIME` never
+reached a reader, and TypeScript's related information pointed at the wrong fix
+("an argument for 'options' was not provided"). di's gate on `Module.scoped` is
+**still** a rest tuple, so the two are no longer the same shape — do not read
+them as parallel.
+
+One thing went with the tuple: the hand-spelled bypass. `start`'s gate is still
+**bypassable on purpose**, but only by a cast (`start(App as never)`), which is
+the ordinary TypeScript escape rather than anything this gate offers. It takes a
+deliberate act; the gate exists to catch the accident, not to be unforgeable.
 
 ## Where the line actually is
 
@@ -160,22 +195,31 @@ escape hatches (`as never`, `any`) that no library survives; the runtime checks
 exist precisely so that even those degrade into a loud pre-construction defect
 rather than silent misbehaviour.
 
-## Why an arity error, of all things
+## Why an arity error — and why the kernel stopped using one
 
-The gate could have been a constraint (`N extends never`) on the module
-parameter. The rest-parameter form was chosen because of what the _error_
-looks like: the constraint form reports a failure on the whole argument, deep
-in a generic instantiation; the arity form reports "expected 3 arguments, got
-1" with a tuple whose labels spell `UNSATISFIED DEPENDENCIES` — or
-`NO RUNTIME` — and whose type names the missing ports, at the call site, in
-the order a reader debugs. When a guarantee's only user interface is a
-compiler diagnostic, the diagnostic is the design.
+di's gate could have been a constraint (`N extends never`) on the module
+parameter. The rest-parameter form was chosen for where it puts the blame: a
+constraint reports a failure on the whole argument, deep in a generic
+instantiation, while the arity form points at the call itself and leaves the
+module type alone. That is a real property, and it is the one di keeps.
+
+What it is not is a message. `Expected 3 arguments, but got 1` is the entire
+diagnostic, and the labels a reader is told to look for live in the rest
+parameter's declaration rather than in the error. The kernel wanted the arm's
+name in the message, so it moved its own gate onto the `module` parameter and
+took the constraint-shaped diagnostic on purpose — the sentence is the last
+thing printed, which is where the eye lands. **When a guarantee's only user
+interface is a compiler diagnostic, the diagnostic is the design**, and this is
+the same principle reaching two different answers because the two gates have
+different things to say: di's `missing: N` is a set of ports a reader can read
+off the signature, the kernel's is one of three fixed sentences.
 
 ## The cost, stated plainly
 
-The types work hard, and it shows at the edges: a wiring mistake surfaces as
-an arity error rather than a friendly sentence, and hovering a large module
-shows real channel unions. The container is also deliberately small — one
+The types work hard, and it shows at the edges: di's wiring mistakes surface as
+an arity error rather than a friendly sentence, and the kernel's surface as a
+long assignability error whose readable half is its last line. Hovering a large
+module shows real channel unions. The container is also deliberately small — one
 construction family, one module algebra, three entry points, one name per
 concept. Conditional registration DSLs, interceptors and property injection
 are not missing features; this is the wrong library for them on purpose.
