@@ -166,6 +166,9 @@ test("a dependency no provider supplies is a defect, before any factory runs", a
   const sibling = vi.fn(() => ({ v: "A" }));
   const dependent = vi.fn(() => ({ v: "C" }));
   const orphan = Module("Orphan")({
+    // Declared, so the module itself is legal — what is missing is anyone to
+    // supply it, which is the runtime path this test is about.
+    needs: [B],
     provides: [
       Provider(A)({ sync: sibling }),
       // `B` is provided by nobody, here or in any import.

@@ -99,8 +99,9 @@ describe("Module algebra", () => {
     void typed;
   });
 
-  test("an unmet requirement stays in Needs", () => {
+  test("a declared requirement stays in Needs", () => {
     const orphan = Module("Orphan")({
+      needs: [Database],
       provides: [OrderRepositoryProvider],
       exports: [OrderRepository],
     });
@@ -118,8 +119,49 @@ describe("Module algebra", () => {
     void needsIsNotNever;
   });
 
+  test("only an import's own exports discharge a need", () => {
+    // The rule the module algebra states about visibility, and the one the
+    // root `CLAUDE.md`'s slices rest on: `Needs` subtracts `Available` —
+    // what this module provides, plus what its imports EXPORT — and nothing
+    // else. `Holder` imports the module that exports `AppConfig` and
+    // re-exports nothing, so `AppConfig` is available inside `Holder` and
+    // nowhere else; a sibling in the same tree still owes it. Pinned because
+    // "a need bubbles up" reads as "a provider sees whatever the tree
+    // happens to hold", and that is not what this is: the flat runtime graph
+    // would resolve `AppConfig` here, and the type channel is what refuses
+    // to.
+    const Holder = Module("Holder")({ imports: [ConfigModule] });
+    const opaque = Module("Opaque")({
+      // Declared, because it genuinely still owes it: `Holder` re-exports
+      // nothing, so importing it discharges nothing either.
+      needs: [AppConfig],
+      imports: [Holder],
+      provides: [DatabaseProvider],
+      exports: [Database],
+    });
+    type OpaqueChannels = ChannelsOf<typeof opaque>;
+    const stillNeedsAppConfig: Equal<OpaqueChannels[2], AppConfig> = true;
+    void stillNeedsAppConfig;
+
+    // The same tree with the one difference that matters: `Holder` passes
+    // the export on, and the need is discharged.
+    const Passthrough = Module("Passthrough")({
+      imports: [ConfigModule],
+      exports: [ConfigModule],
+    });
+    const wired = Module("Wired")({
+      imports: [Passthrough],
+      provides: [DatabaseProvider],
+      exports: [Database],
+    });
+    type WiredChannels = ChannelsOf<typeof wired>;
+    const needsNothing: Equal<WiredChannels[2], never> = true;
+    void needsNothing;
+  });
+
   test("an unmet requirement cannot be laundered to no requirement", () => {
     const orphan = Module("Orphan")({
+      needs: [Database],
       provides: [OrderRepositoryProvider],
       exports: [OrderRepository],
     });
@@ -136,6 +178,35 @@ describe("Module algebra", () => {
     // @ts-expect-error Database is still an unmet requirement
     const typed: Module<OrderRepository, never, never> = orphan;
     void typed;
+  });
+
+  test("an undeclared need is an error at the module that owes it", () => {
+    // The gate #50 added. `OrderRepositoryProvider` needs `Database`, nothing
+    // here provides or imports it, and `needs` does not name it — so this is
+    // an error HERE, rather than an obligation that travels to whoever
+    // composes the module. The diagnostic names the port: the marker is an
+    // object with one required property, not a bare sentence, precisely so
+    // `Database` reaches the message.
+    // @ts-expect-error UNDECLARED NEEDS — name it in `needs`: Database
+    Module("Undeclared")({
+      provides: [OrderRepositoryProvider],
+      exports: [OrderRepository],
+    });
+  });
+
+  test("declaring a need nothing owes is inert", () => {
+    // `needs` says what this module expects from outside; it does not
+    // manufacture an obligation. `ConfigModule` provides everything it uses,
+    // so naming `Database` here changes no channel — the module still owes
+    // nothing, and a composition root is not made to supply it.
+    const overDeclared = Module("OverDeclared")({
+      needs: [Database],
+      provides: [EnvProvider, AppConfigProvider],
+      exports: [AppConfig],
+    });
+    type Channels = ChannelsOf<typeof overDeclared>;
+    const needsIsNever: Equal<Channels[2], never> = true;
+    void needsIsNever;
   });
 
   test("a wider error union cannot be narrowed away", () => {

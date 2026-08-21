@@ -84,6 +84,7 @@ describe("resources", () => {
   test("scoped still gates on a genuinely unmet dependency, not just Scope", () => {
     class Other extends Port("SOther")<{ readonly n: number }> {}
     const needsOther = Module("NeedsOther")({
+      needs: [Other],
       provides: [
         Provider(Pool)(
           { other: Other },

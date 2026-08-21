@@ -51,5 +51,5 @@ export { Module } from "./module.js";
 // through a named generic alias was tried and removed: declaration emit keeps
 // such an alias unreduced and cannot name imported modules' internal ports —
 // TS2883.)
-export type { AnyModule, AnyProvider, Exportable } from "./module.js";
+export type { AnyModule, AnyProvider, Exportable, NeedsGate, Unmet } from "./module.js";
 export type { ScopedOptions } from "./build.js";

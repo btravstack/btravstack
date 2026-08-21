@@ -73,6 +73,10 @@ const Application = Module("Application")({
 await Module.scoped(Application, (ctx) => ctx.get(GetOrder).execute("o-1"));
 ```
 
+A module also declares what it expects from outside — `needs: [Logger]` — and
+one that owes a port and names none does not compile, so a slice never quietly
+absorbs whatever the composition root happens to hold.
+
 The five provider arms — `value`, `sync`, `make` (may fail, with a modeled
 error), `class`, `acquire`/`release` (a resource, released when the scope
 closes) — the private-by-default modules,

@@ -161,6 +161,61 @@ type ResolvedExports<X extends readonly unknown[]> =
   | ExportsOfModule<Extract<X[number], AnyModule>>;
 
 /**
+ * What the module still owes: its providers' dependencies and its imports'
+ * declared needs, minus everything visible to it. Exported because a shaped
+ * module — a starter's `HttpModule(name)({...})` — re-declares this package's
+ * gates over its own augmented tuples, the way it already re-declares
+ * `Exportable`.
+ */
+export type Unmet<I extends readonly AnyModule[], P extends readonly AnyProvider[]> = Exclude<
+  NeedOf<P[number]> | NeedsOfModule<I[number]>,
+  Available<I, P>
+>;
+
+/**
+ * The declaration gate. A port this module owes and did not name in `needs` is
+ * an error **here**, at the module that owes it, rather than an obligation
+ * that travels silently to whoever composes it. `needs` is how a module says
+ * "my composition root supplies this" out loud — the explicit stand-in for
+ * NestJS's `@Global`, which this package does not have and now does not need.
+ *
+ * `Scope` is the one exemption, and it is forced rather than chosen: nothing
+ * can provide `Scope` — a provider for it is a `WiringDefect` — so it is never
+ * something an ancestor supplies. `Module.scoped` and `start` discharge it by
+ * opening one.
+ *
+ * It rides an intersection on the options parameter, the technique
+ * `@btravstack/core`'s `StartGate` uses — `unknown` when satisfied, so the
+ * parameter type is untouched. It is an object with one required property
+ * rather than `StartGate`'s bare string, because that is what makes the
+ * diagnostic name the port (measured):
+ *
+ * ```
+ * Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+ *   '{ provides: [...]; exports: [...]; }' but required in type
+ *   '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.
+ * ```
+ *
+ * A bare string prints the sentence twice and never names `Logger`, which is
+ * the only question the reader actually has. Do not "simplify" it back.
+ */
+export type NeedsGate<
+  I extends readonly AnyModule[],
+  P extends readonly AnyProvider[],
+  N extends readonly AnyPort[],
+> = [Unmet<I, P>] extends [InstanceType<N[number]> | Scope]
+  ? unknown
+  : {
+      // Inline, not a named `Undeclared<I, P, N>` alias: an alias prints as
+      // itself, unreduced, and the reader is left reading their own tuples
+      // back. Written out, the message ends on the port (measured, both ways).
+      readonly "UNDECLARED NEEDS — name it in `needs`": Exclude<
+        Unmet<I, P>,
+        InstanceType<N[number]> | Scope
+      >;
+    };
+
+/**
  * Renamed from the brief's plain exported `Module` function: the "operations
  * namespaced on the constructor" convention (`Module.build`, below) needs a
  * value distinct from this one to `Object.assign` the namespace onto —
@@ -174,11 +229,21 @@ function ModuleDeclaration<const Name extends string>(name: Name) {
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<I, P>[] = [],
-  >(options: {
-    readonly imports?: I;
-    readonly provides?: P;
-    readonly exports?: X;
-  }): Module<
+    const N extends readonly AnyPort[] = [],
+  >(
+    options: {
+      readonly imports?: I;
+      readonly provides?: P;
+      readonly exports?: X;
+      readonly needs?: N;
+    } & NeedsGate<I, P, N>,
+    // Inline, NOT `Unmet<I, P>`: declaration emit keeps a named alias
+    // unreduced, and the unreduced form names the imported modules' internal
+    // ports — TS2883/TS4023 on the first consumer that exports a composition
+    // root (measured: `OrderApi` "cannot be named without a reference to
+    // 'OrderDatabase'"). `Unmet` is the same computation, used only where it
+    // stays inside a parameter type.
+  ): Module<
     ResolvedExports<X>,
     ErrOf<P[number]> | ErrOfModule<I[number]>,
     Exclude<NeedOf<P[number]> | NeedsOfModule<I[number]>, Available<I, P>>
