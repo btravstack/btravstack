@@ -62,12 +62,25 @@ export const ordersController = HttpController("OrdersController", contract.orde
                 errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
               )
               // `BAD_REQUEST`, not `CONFLICT`: a malformed id is the caller's
-              // mistake, and 400 is the only status that says so. The arm is
-              // exhaustiveness rather than a live route — the fragment's own
-              // `z.uuidv7()` refuses such an id before dispatch, which
-              // `api.spec.ts` pins as an *undeclared* `BAD_REQUEST` on the
-              // defect channel. Same code, two paths, told apart by whether the
-              // data matches: oRPC's validation failure carries none.
+              // mistake, and 400 is the only status that says so. The arm costs
+              // nothing — `mapErrCases` is exhaustive, so it is written or the
+              // build fails — and it is not dead code elsewhere: `placeOrder` is
+              // a public export whose own signature takes a bare `string`, so
+              // this fragment's `z.uuidv7()` is one caller's guard rather than
+              // the function's, and the documentation site's generic pages
+              // declare `id: z.string()`, where the arm is live.
+              //
+              // Two paths reach the same code: this one, and oRPC's own
+              // pre-dispatch refusal of an id the schema rejects. What tells
+              // them apart is `inferable`, not the payload — oRPC's refusal
+              // throws `ORPCError("BAD_REQUEST", { data: { issues } })`, so it
+              // carries data too. `inferable` defaults to `false` and is set
+              // only when a handler *returns* an `ORPCError` as its output, and
+              // `isInferableError` is `e instanceof ORPCError && e.inferable`,
+              // which is why `@unthrown/orpc` hands one back on the error
+              // channel and the other on the defect channel. `api.spec.ts` pins
+              // both halves, `inferable: true` here and `inferable: false`
+              // there — a structural mechanism, not a coincidence.
               .with(P.tag("InvalidOrderId"), (error) =>
                 errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
               )

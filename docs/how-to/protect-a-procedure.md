@@ -40,10 +40,17 @@ import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
+const orderRef = z.object({ id: z.string() });
+
 const ordersContract = {
   place: oc
     .input(z.object({ id: z.string(), quantity: z.number() }))
-    .output(z.object({ id: z.string() })),
+    .output(z.object({ id: z.string() }))
+    .errors({
+      INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: orderRef },
+      CONFLICT: { data: orderRef },
+    }),
 };
 
 const customersContract = {
