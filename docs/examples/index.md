@@ -85,6 +85,7 @@ exists to hear it:
 | ---------------------- | ----------------------- | --------------------------------------- |
 | `Ok(order)`            | the procedure's output  | the workflow's output                   |
 | `Err(InvalidQuantity)` | `INVALID_QUANTITY`      | `InvalidQuantity`, **non-retryable**    |
+| `Err(InvalidOrderId)`  | `BAD_REQUEST`           | `InvalidOrderId`, **non-retryable**     |
 | `Err(DuplicateOrder)`  | `CONFLICT`              | `OrderAlreadyPlaced`, **non-retryable** |
 | `Defect`               | `INTERNAL_SERVER_ERROR` | **retried by the platform**, then fails |
 

@@ -55,6 +55,7 @@ export const ordersContract = authenticated({
     .output(orderView)
     .errors({
       INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: orderRef },
       CONFLICT: { data: orderRef },
     }),
   find: oc
@@ -110,6 +111,14 @@ export const ordersRouter = HttpRouter(ordersContract)(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              // A malformed id is the caller's mistake, so 400 — not the
+              // 409 a duplicate gets.
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({
                   message: error.message,
                   data: { id: error.id },
                 }),

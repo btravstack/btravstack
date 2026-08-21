@@ -56,17 +56,20 @@ export class Order extends Entity("Order")(
 export const placeOrder = (
   id: string,
   quantity: number,
-): Result<Order, InvalidQuantity> =>
+): Result<Order, InvalidQuantity | InvalidOrderId> =>
   Order.make({ id, quantity }).mapErrCases((matcher) =>
-    matcher.with(
-      P.tag("InvalidEntity"),
-      () => new InvalidQuantity({ id, quantity }),
+    matcher.with(P.tag("InvalidEntity"), (invalid) =>
+      invalid.issues.some((issue) => Entity.keysOf(issue)[0] === "id")
+        ? new InvalidOrderId({ id })
+        : new InvalidQuantity({ id, quantity }),
     ),
   );
 ```
 
-`InvalidQuantity` is the only failure this layer can _raise_. `OrderNotFound`
-and `DuplicateOrder` are declared here too but raised by whoever owns the
+`InvalidQuantity` and `InvalidOrderId` are the only failures this layer can
+_raise_, and they are told apart by **which field** the entity named — a schema
+issue carries a `path`, an `Entity.invariant` violation carries none.
+`OrderNotFound` and `DuplicateOrder` are declared here too but raised by whoever owns the
 storage: the domain names them so every outer layer speaks about them in the
 same terms, which is what stops a Prisma error code or an HTTP status from
 leaking inwards. `fulfillment.ts` adds `OutOfStock`, `ShippingUnavailable` and
@@ -224,19 +227,24 @@ stops the router compiling:
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-const orderView = z.object({ id: z.string(), quantity: z.number() });
+const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 
-const orderRef = z.object({ id: z.string() });
+const orderRef = z.object({ id: z.uuidv7() });
 export type OrderRef = z.infer<typeof orderRef>;
+
+// The one ref whose `id` is a bare string — the id **as received**, which is
+// exactly the value that is not a UUIDv7.
+const malformedRef = z.object({ id: z.string() });
 
 export const orderContract = {
   orders: {
     place: oc
-      .input(z.object({ id: z.string(), quantity: z.number() }))
+      .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
       .output(orderView)
       .errors({
         INVALID_QUANTITY: { data: orderRef },
+        BAD_REQUEST: { data: malformedRef },
         CONFLICT: { data: orderRef },
       }),
     find: oc

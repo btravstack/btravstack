@@ -3,6 +3,7 @@ import type {
   Customer,
   CustomerNotFound,
   DuplicateOrder,
+  InvalidOrderId,
   InvalidQuantity,
   Order,
   OrderNotFound,
@@ -131,7 +132,7 @@ export class PlaceOrder extends Port("PlaceOrder")<{
     tenantId: string,
     id: string,
     quantity: number,
-  ) => AsyncResult<Order, InvalidQuantity | DuplicateOrder>;
+  ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
 }> {}
 
 export class FindOrder extends Port("FindOrder")<{

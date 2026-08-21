@@ -47,6 +47,17 @@ describe("PlaceOrder", () => {
     });
   });
 
+  it("rejects a malformed id without blaming the quantity", async ({ testModule }) => {
+    // GIVEN an id the domain's `OrderId` format rejects, and a fine quantity
+    // WHEN it is placed
+    const result = await Module.scoped(testModule, (ctx) =>
+      ctx.get(PlaceOrder).execute("acme", "o-1", 2),
+    );
+
+    // THEN the widened channel carries the id's own error to the caller
+    expect(result).toBeErrTagged("InvalidOrderId", { id: "o-1" });
+  });
+
   it("writes a log line carrying the order as fields", async ({ testModule, recorder }) => {
     // GIVEN a successful placement
     // WHEN the sink the graph's logger writes to is read back

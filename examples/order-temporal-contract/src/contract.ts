@@ -14,6 +14,14 @@ const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
 const orderRef = z.object({ id: z.uuidv7() });
 
 /**
+ * What `InvalidOrderId` carries, and the one ref whose `id` is a bare
+ * `string`. It names the id **as received**, which is precisely the value that
+ * is not a UUIDv7 — validating it against `z.uuidv7()` would reject the only
+ * payload this error is ever constructed with.
+ */
+const malformedRef = z.object({ id: z.string() });
+
+/**
  * Every input carries the tenant, and that is not a field the domain gained:
  * it is who the work is being done for. A worker has no request and no
  * delivery to read it off, so a workflow is handed it by its caller and hands
@@ -47,6 +55,7 @@ const place = defineActivity({
   output: orderView,
   errors: {
     InvalidQuantity: { data: orderRef, nonRetryable: true },
+    InvalidOrderId: { data: malformedRef, nonRetryable: true },
     OrderAlreadyPlaced: { data: orderRef, nonRetryable: true },
   },
   activityOptions: {
@@ -125,6 +134,7 @@ const fulfillOrder = defineWorkflow({
   idempotency: "allow-duplicate",
   errors: {
     InvalidQuantity: { data: orderRef, nonRetryable: true },
+    InvalidOrderId: { data: malformedRef, nonRetryable: true },
     OrderAlreadyPlaced: { data: orderRef, nonRetryable: true },
     OutOfStock: { data: orderRef, nonRetryable: true },
     ShippingUnavailable: { data: orderRef, nonRetryable: true },

@@ -4,6 +4,7 @@ import {
   type Customer,
   type CustomerNotFound,
   type DuplicateOrder,
+  type InvalidOrderId,
   type InvalidQuantity,
   type Order,
   type OrderNotFound,
@@ -38,7 +39,7 @@ class PlaceOrderInteractor {
     tenantId: string,
     id: string,
     quantity: number,
-  ): AsyncResult<Order, InvalidQuantity | DuplicateOrder> {
+  ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> {
     this.#logger.info("placing an order", { tenantId, orderId: id, quantity });
     return placeOrder(id, quantity)
       .toAsync()

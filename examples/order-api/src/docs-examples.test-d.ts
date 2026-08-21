@@ -74,6 +74,9 @@ const ordersController = HttpController("DocsOrdersController", contract.orders)
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
               )
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
+              )
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.CONFLICT({ message: error.message, data: { id: error.id } }),
               ),
@@ -182,6 +185,9 @@ const depsOrdersRouter = HttpRouter(contract.orders)(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
+              )
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
               )
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.CONFLICT({ message: error.message, data: { id: error.id } }),

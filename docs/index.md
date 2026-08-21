@@ -63,6 +63,7 @@ const ordersContract = authenticated({
     .output(orderView)
     .errors({
       INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: orderRef },
       CONFLICT: { data: orderRef },
     }),
 });

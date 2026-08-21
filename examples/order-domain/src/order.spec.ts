@@ -3,6 +3,7 @@ import { describe, expect } from "vitest";
 
 import {
   DuplicateOrder,
+  InvalidOrderId,
   InvalidQuantity,
   Order,
   OrderNotFound,
@@ -45,6 +46,28 @@ describe("placeOrder", () => {
       "InvalidQuantity",
       { id: "0199a1e0-0000-7000-8000-000000000001", quantity: -3 },
     );
+  });
+
+  it("names a malformed id rather than blaming the quantity", () => {
+    // GIVEN an id that is not a UUIDv7, and a quantity that is fine
+    const id = "o-1";
+
+    // WHEN it is placed
+    const result = placeOrder(id, 2);
+
+    // THEN the failure names the id, not the field the caller got right
+    expect(result).toBeErrWith(expect.objectContaining({ constructor: InvalidOrderId, id }));
+  });
+
+  it("blames the id when both fields are wrong", () => {
+    // GIVEN an id that is not a UUIDv7 AND a quantity the rules reject
+    const id = "o-1";
+
+    // WHEN it is placed
+    const result = placeOrder(id, 0);
+
+    // THEN the id wins: it is the failure a caller is least likely to spot
+    expect(result).toBeErrWith(expect.objectContaining({ constructor: InvalidOrderId, id }));
   });
 
   it("rejects a quantity that is not a whole number of items", () => {
@@ -177,6 +200,13 @@ describe("domain errors", () => {
     ).toBe(
       "order 0199a1e0-0000-7000-8000-000000000001 asks for 0 items, which is not a positive quantity",
     );
+  });
+
+  it("names the id in an InvalidOrderId message", () => {
+    // GIVEN the error, constructed with its payload
+    // WHEN its message is read
+    // THEN the id it is about is named in it
+    expect(new InvalidOrderId({ id: "o-1" }).message).toBe("order id o-1 is not a UUIDv7");
   });
 
   it("names the order in an OrderNotFound message", () => {

@@ -68,6 +68,7 @@ describe("the fulfillment saga", () => {
           matcher
             .with({ errorName: "OutOfStock" }, (error) => `out-of-stock:${error.data.id}`)
             .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
+            .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
             .with({ errorName: "OrderAlreadyPlaced" }, () => "WRONG ERROR")
             .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
             .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
@@ -108,6 +109,7 @@ describe("the fulfillment saga", () => {
           matcher
             .with({ errorName: "ShippingUnavailable" }, (error) => `no-shipping:${error.data.id}`)
             .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
+            .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
             .with({ errorName: "OrderAlreadyPlaced" }, () => "WRONG ERROR")
             .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
             .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
@@ -159,6 +161,7 @@ describe("the fulfillment saga", () => {
           matcher
             .with({ errorName: "OrderAlreadyPlaced" }, (error) => `conflict:${error.data.id}`)
             .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
+            .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
             .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
             .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
             .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)

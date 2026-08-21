@@ -122,6 +122,7 @@ export const placingHandlers = AmqpHandlers(orderContract)(
           .mapErrCases((matcher) =>
             matcher.with(
               P.tag("InvalidQuantity"),
+              P.tag("InvalidOrderId"),
               P.tag("DuplicateOrder"),
               (error) => new NonRetryableError(error._tag, error),
             ),

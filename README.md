@@ -89,6 +89,7 @@ export const ordersContract = {
     .output(type<{ readonly id: string; readonly quantity: number }>())
     .errors({
       INVALID_QUANTITY: { data: type<{ readonly id: string }>() },
+      BAD_REQUEST: { data: type<{ readonly id: string }>() },
       CONFLICT: { data: type<{ readonly id: string }>() },
     }),
 };
@@ -113,6 +114,14 @@ export const ordersRouter = HttpRouter(ordersContract)(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              // A malformed id is the caller's mistake, so 400 — not the
+              // 409 a duplicate gets.
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({
                   message: error.message,
                   data: { id: error.id },
                 }),

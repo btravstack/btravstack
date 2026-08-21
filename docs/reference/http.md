@@ -137,6 +137,14 @@ export const ordersRouter = HttpRouter(contract.orders)(
                   data: { id: error.id },
                 }),
               )
+              // A malformed id is the caller's mistake, so 400 — not the
+              // 409 a duplicate gets.
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.CONFLICT({
                   message: error.message,

@@ -139,6 +139,9 @@ export const orderActivities = TemporalActivities(orderContract)(
                 .with(P.tag("InvalidQuantity"), (error) =>
                   errors.InvalidQuantity({ id: error.id }),
                 )
+                .with(P.tag("InvalidOrderId"), (error) =>
+                  errors.InvalidOrderId({ id: error.id }),
+                )
                 .with(P.tag("DuplicateOrder"), (error) =>
                   errors.OrderAlreadyPlaced({ id: error.id }),
                 ),
@@ -262,6 +265,9 @@ const orderFulfillment = TemporalWorkflowActivities(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.InvalidQuantity({ id: error.id }),
+              )
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.InvalidOrderId({ id: error.id }),
               )
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.OrderAlreadyPlaced({ id: error.id }),

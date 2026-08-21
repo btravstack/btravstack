@@ -23,6 +23,14 @@ const orderRef = z.object({ id: z.uuidv7() });
 export type OrderRef = z.infer<typeof orderRef>;
 
 /**
+ * What `BAD_REQUEST` carries, and the one ref whose `id` is a bare `string`.
+ * It names the id **as received**, which is precisely the value that is not a
+ * UUIDv7 — validating it against `z.uuidv7()` would reject the only payload
+ * this error is ever constructed with.
+ */
+const malformedRef = z.object({ id: z.string() });
+
+/**
  * An **unauthenticated** input names its tenant, because this API serves
  * several from one database and "which tenant" is then part of what is being
  * asked. It is an argument, not a header the transport reads:
@@ -60,6 +68,7 @@ const ordersContract = {
     .output(orderView)
     .errors({
       INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: malformedRef },
       CONFLICT: { data: orderRef },
     }),
   find: oc

@@ -8,8 +8,8 @@ import { z } from "zod";
  * one where the other belongs is a compile error rather than a bug.
  *
  * `OrderId` is a UUIDv7 — the shape every id in this example carries on the
- * wire and in the database. `placeOrder`'s own TSDoc still describes an
- * unconstrained id; that drift is Task 4's to close.
+ * wire and in the database. That format is what gives `placeOrder` a second
+ * failure to name; see its TSDoc.
  */
 export const OrderId = z.uuidv7().brand("OrderId");
 export const Quantity = z.number().int().brand("Quantity");
@@ -47,6 +47,13 @@ export class InvalidQuantity extends TaggedError("InvalidQuantity")<{
   override message = `order ${this.id} asks for ${this.quantity} items, which is not a positive quantity`;
 }
 
+/** The other rule a caller can break: an id that is not a UUIDv7. */
+export class InvalidOrderId extends TaggedError("InvalidOrderId")<{
+  readonly id: string;
+}> {
+  override message = `order id ${this.id} is not a UUIDv7`;
+}
+
 export class OrderNotFound extends TaggedError("OrderNotFound")<{
   readonly id: string;
 }> {
@@ -62,11 +69,35 @@ export class DuplicateOrder extends TaggedError("DuplicateOrder")<{
 /**
  * Placement, in the layer's own vocabulary. `Order.make` validates, runs the
  * invariants and constructs — returning `Result<Order, InvalidEntity>` — and
- * this names that structural failure `InvalidQuantity`, which is what the outer
- * layers already speak. The translation is total: with an unconstrained
- * `OrderId`, the quantity is the only field a typed caller can get wrong.
+ * this names that structural failure in terms the outer layers already speak.
+ *
+ * **This used to be one error, and the change is `OrderId`'s doing.** While
+ * the id was an unconstrained string, the quantity was the only field a typed
+ * caller could get wrong, so flattening `InvalidEntity` to `InvalidQuantity`
+ * was total and the earlier decision was sound on its own terms. Giving
+ * `OrderId` a UUIDv7 format added a second way to fail, and the flattening
+ * became a mislabelling: `placeOrder("o-1", 2)` answered _"asks for 2 items,
+ * which is not a positive quantity"_ about a quantity the caller got right.
+ * So there are two errors now, discriminated on **which field** the entity
+ * named.
+ *
+ * Which field, not which message — a message is prose, not an API. An issue
+ * from the *schema* carries a `path`; an `Entity.invariant` violation carries
+ * none, which is how the two kinds tell themselves apart. `Entity.keysOf`
+ * reads that path as plain keys, because a Standard Schema path element may
+ * be an object rather than a bare key. Note there are three failure kinds and
+ * only two errors: a fractional quantity fails the schema *with* a path and a
+ * non-positive one fails the invariant *without* one, and both are the same
+ * thing to a caller.
  */
-export const placeOrder = (id: string, quantity: number): Result<Order, InvalidQuantity> =>
+export const placeOrder = (
+  id: string,
+  quantity: number,
+): Result<Order, InvalidQuantity | InvalidOrderId> =>
   Order.make({ id, quantity }).mapErrCases((matcher) =>
-    matcher.with(P.tag("InvalidEntity"), () => new InvalidQuantity({ id, quantity })),
+    matcher.with(P.tag("InvalidEntity"), (invalid) =>
+      invalid.issues.some((issue) => Entity.keysOf(issue)[0] === "id")
+        ? new InvalidOrderId({ id })
+        : new InvalidQuantity({ id, quantity }),
+    ),
   );

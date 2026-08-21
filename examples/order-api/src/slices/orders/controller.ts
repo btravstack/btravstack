@@ -61,6 +61,16 @@ export const ordersController = HttpController("OrdersController", contract.orde
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
               )
+              // `BAD_REQUEST`, not `CONFLICT`: a malformed id is the caller's
+              // mistake, and 400 is the only status that says so. The arm is
+              // exhaustiveness rather than a live route — the fragment's own
+              // `z.uuidv7()` refuses such an id before dispatch, which
+              // `api.spec.ts` pins as an *undeclared* `BAD_REQUEST` on the
+              // defect channel. Same code, two paths, told apart by whether the
+              // data matches: oRPC's validation failure carries none.
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
+              )
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.CONFLICT({ message: error.message, data: { id: error.id } }),
               ),

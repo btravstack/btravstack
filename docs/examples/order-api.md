@@ -26,30 +26,36 @@ import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-const orderView = z.object({ id: z.string(), quantity: z.number() });
+const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 
-const orderRef = z.object({ id: z.string() });
+const orderRef = z.object({ id: z.uuidv7() });
 export type OrderRef = z.infer<typeof orderRef>;
+
+// The one ref whose `id` is a bare string. It names the id **as received**,
+// which is exactly the value that is not a UUIDv7 — validating it against
+// `z.uuidv7()` would reject the only payload `BAD_REQUEST` ever carries.
+const malformedRef = z.object({ id: z.string() });
 
 // The unmarked fragment names its tenant on the input; the marked one does not,
 // because a caller's identity establishes it there.
-const tenanted = z.object({ tenantId: z.string() });
+const tenanted = z.object({ tenantId: z.uuidv7() });
 
-const customerView = z.object({ id: z.string(), name: z.string() });
+const customerView = z.object({ id: z.uuidv7(), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
 
 // Same shape as `orderRef`, deliberately not the same schema: reusing it would
 // type a customer id as "which order it was about".
-const customerRef = z.object({ id: z.string() });
+const customerRef = z.object({ id: z.uuidv7() });
 export type CustomerRef = z.infer<typeof customerRef>;
 
 const ordersContract = {
   place: oc
-    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
     .errors({
       INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: malformedRef },
       CONFLICT: { data: orderRef },
     }),
   find: oc
@@ -60,7 +66,7 @@ const ordersContract = {
 
 const customersContract = {
   find: oc
-    .input(tenanted.extend({ id: z.string() }))
+    .input(tenanted.extend({ id: z.uuidv7() }))
     .output(customerView)
     .errors({ NOT_FOUND: { data: customerRef } }),
 };
@@ -220,6 +226,14 @@ export const ordersController = HttpController(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              // A malformed id is the caller's mistake, so 400 — not the
+              // 409 a duplicate gets.
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({
                   message: error.message,
                   data: { id: error.id },
                 }),
