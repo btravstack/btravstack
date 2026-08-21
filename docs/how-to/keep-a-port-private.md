@@ -62,8 +62,9 @@ and surfaces as `UNSATISFIED DEPENDENCIES` at the entry point — the arity
 error, `Expected 3 arguments, but got 1`. Under
 [`start`](/reference/core/start) the same mistake is caught differently: the
 kernel's `module` parameter is `Module<X, E, Scope | Env>`, so the leftover
-need fails to assign and the diagnostic **names the port**
-(`Type 'Pool' is not assignable to type 'Env | Scope'`).
+need fails to assign and the diagnostic **names the port** — measured on the
+starters' own gates, where the last line is
+`Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`.
 
 And on a built context:
 
