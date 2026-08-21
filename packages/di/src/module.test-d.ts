@@ -118,6 +118,43 @@ describe("Module algebra", () => {
     void needsIsNotNever;
   });
 
+  test("only an import's own exports discharge a need", () => {
+    // The rule the module algebra states about visibility, and the one the
+    // root `CLAUDE.md`'s slices rest on: `Needs` subtracts `Available` —
+    // what this module provides, plus what its imports EXPORT — and nothing
+    // else. `Holder` imports the module that exports `AppConfig` and
+    // re-exports nothing, so `AppConfig` is available inside `Holder` and
+    // nowhere else; a sibling in the same tree still owes it. Pinned because
+    // "a need bubbles up" reads as "a provider sees whatever the tree
+    // happens to hold", and that is not what this is: the flat runtime graph
+    // would resolve `AppConfig` here, and the type channel is what refuses
+    // to.
+    const Holder = Module("Holder")({ imports: [ConfigModule] });
+    const opaque = Module("Opaque")({
+      imports: [Holder],
+      provides: [DatabaseProvider],
+      exports: [Database],
+    });
+    type OpaqueChannels = ChannelsOf<typeof opaque>;
+    const stillNeedsAppConfig: Equal<OpaqueChannels[2], AppConfig> = true;
+    void stillNeedsAppConfig;
+
+    // The same tree with the one difference that matters: `Holder` passes
+    // the export on, and the need is discharged.
+    const Passthrough = Module("Passthrough")({
+      imports: [ConfigModule],
+      exports: [ConfigModule],
+    });
+    const wired = Module("Wired")({
+      imports: [Passthrough],
+      provides: [DatabaseProvider],
+      exports: [Database],
+    });
+    type WiredChannels = ChannelsOf<typeof wired>;
+    const needsNothing: Equal<WiredChannels[2], never> = true;
+    void needsNothing;
+  });
+
   test("an unmet requirement cannot be laundered to no requirement", () => {
     const orphan = Module("Orphan")({
       provides: [OrderRepositoryProvider],
