@@ -97,11 +97,19 @@ PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
   `context.principal`). Both were missing until `auth.test-d.ts`'s eleventh arm
   went in; the marked fixtures in `controller.test-d.ts` mark a **key**, which
   is why neither showed there. The exactness intersection is on the parameter, not on `M`: a key
-  `M` has that `C` does not declare types
-  as `never` there, so the call fails to compile rather than silently
+  `M` has that `C` does not declare types as the sentence
+  `"UNDECLARED KEY — the contract declares no fragment under this key"`
+  there, so the call fails to compile rather than silently
   dropping the key, without the intersection leaking into `M` and collapsing
   the needs channel di orders the controllers by (the failure mode
   `controller.test-d.ts`'s `_ComposedNeedsAreDeclared` check exists to catch).
+  It was a bare `never` until the diagnostics pass: `never` made the
+  intersection **reduce**, so the whole complaint printed as
+  `Type 'Minted<…>' is not assignable to type 'never'` — one short line that
+  named neither the key nor the rule. The sentence does not reduce, so the
+  reader pays one wide intersection line (the shape four other gates in
+  `controller.test-d.ts` already print) and the message **ends** on the rule in
+  English. Measured both ways; the trade was taken deliberately.
   **`HttpRouter` is the one helper in the family with THREE forms and only two
   arguments' worth of arity**, so it is the one place arity alone cannot
   decide. `(deps, arm)` is settled by arity as everywhere else; the two
