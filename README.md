@@ -31,7 +31,8 @@ from its state; a failed finaliser is logged and forgotten; a crash exits `0`.
 `start` gets them right once, as defaults.
 
 - 🧩 **Business code only.** A composition root is a
-  `HttpModule("OrdersApi")({ router, imports, exports })` and a `main.ts` is
+  `HttpModule("OrdersApi")({
+needs: [Env], router, imports, exports })` and a `main.ts` is
   `await runMain(OrdersApi)`. Configuration is bound from the environment
   inside the graph; there is no `process.env`, no `app.listen`, no signal
   handler to write.

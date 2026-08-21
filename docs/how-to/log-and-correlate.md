@@ -28,11 +28,13 @@ happened. The recipe is one import.
    `StartOptions.unit` module, a test.
 
 ```ts
+import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
+  needs: [Env],
   router: orderRouter,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
@@ -249,6 +251,7 @@ values:
 const lines: Line[] = [];
 
 const RecordingApi = HttpModule("RecordingApi")({
+  needs: [Env],
   router: orderRouter,
   imports: [
     OrderApplicationModule,

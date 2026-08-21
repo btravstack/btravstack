@@ -124,7 +124,8 @@ or `implement(...)` is spelled — the starter does that.
 
 ## Step 5 — Compose the application
 
-`HttpModule(name)({...})` is a di `Module(name)({...})` that also takes the
+`HttpModule(name)({
+  needs: [Env],...})` is a di `Module(name)({...})` that also takes the
 router. Under the hood it imports the HTTP starter, provides the router and
 exports `HttpRuntime` — the one port the kernel resolves and drives:
 

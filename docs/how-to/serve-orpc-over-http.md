@@ -30,7 +30,8 @@ the real two-slice deployment this recipe scales into, see
 2. Implement it with `HttpRouter(contract)(deps, { sync })`: a record
    shaped like the contract, each leaf a `Result`-returning function.
 3. Compose with
-   `HttpModule(name)({ router, authenticator, imports, provides, exports })`.
+   `HttpModule(name)({
+  needs: [Env], router, authenticator, imports, provides, exports })`.
 4. `await runMain(OrdersApi)` in `main.ts`.
 
 ## Step 1 — the contract
@@ -171,6 +172,7 @@ authenticator below.
 ## Step 3 — the composition root
 
 ```ts
+import { Env } from "@btravstack/config";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http";
@@ -180,6 +182,7 @@ import { bearerAuthenticator } from "./authenticator.js";
 import { ordersRouter } from "./router.js";
 
 export const OrdersApi = HttpModule("OrdersApi")({
+  needs: [Env],
   router: ordersRouter,
   authenticator: bearerAuthenticator,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
@@ -259,7 +262,8 @@ stream rather than the default JSON on stderr; see
 
 ## Options
 
-`HttpModule(name)({...})` takes `imports`, `provides`, `exports` and:
+`HttpModule(name)({
+  needs: [Env],...})` takes `imports`, `provides`, `exports` and:
 
 | Option          | Default | What it does                                                     |
 | --------------- | ------- | ---------------------------------------------------------------- |

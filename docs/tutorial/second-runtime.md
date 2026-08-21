@@ -142,7 +142,8 @@ errors of its own, so there is nothing else to triage.
 
 ## Step 5 — Compose the second root
 
-`TemporalModule(name)({...})` is `HttpModule`'s twin: a `Module(name)({...})`
+`TemporalModule(name)({
+  needs: [Env],...})` is `HttpModule`'s twin: a `Module(name)({...})`
 that also takes the contract, the activities provider and where the workflow
 code lives, imports the Temporal starter, and exports `TemporalRuntime`:
 

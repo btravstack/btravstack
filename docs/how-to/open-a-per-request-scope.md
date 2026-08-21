@@ -40,6 +40,9 @@ export class RequestSpan extends Port("RequestSpan")<{
 }> {}
 
 export const RequestModule = Module("Request")({
+  // The fork seam, declared: `Logger` comes from the application scope this
+  // per-request module is forked from, never from inside it.
+  needs: [Logger],
   provides: [
     Provider(RequestSpan)(
       { logger: Logger },
@@ -128,6 +131,7 @@ the last line of the error:
 
 ```ts
 const UnloggedApi = Module("UnloggedApi")({
+  needs: [Env],
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,
@@ -145,7 +149,8 @@ const unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
 The port exists in that graph — `observability()` provides it — but exporting
 is what the gate reads, and `UnloggedApi` does not. That is why `OrderApi`
 exports `Logger` next to `HttpRuntime`:
-`HttpModule("OrderApi")({ router: orderRouter, imports: [OrderApplicationModule,
+`HttpModule("OrderApi")({
+  needs: [Env], router: orderRouter, imports: [OrderApplicationModule,
 OrderPersistenceModule, observability()], exports: [Logger] })`.
 
 ::: warning `RuntimeHost.ctx` is the application context

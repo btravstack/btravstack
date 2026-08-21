@@ -119,6 +119,8 @@ export const NotificationsSlice = Module("NotificationsSlice")({
 });
 
 export const BillingSlice = Module("BillingSlice")({
+  // What the slice expects from the root, named rather than absorbed.
+  needs: [Logger],
   imports: [BillingModule],
   provides: [chargeOrder],
   exports: [chargeOrder],
@@ -161,6 +163,7 @@ even though nothing in it names a piece directly —
 
 ```ts
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
+  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [

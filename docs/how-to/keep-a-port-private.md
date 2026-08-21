@@ -57,14 +57,21 @@ const App = Module("App")({
 ```
 
 The second provider does not wire: `Pool` is not among what `App` can see —
-its own provides plus its imports' exports — so the dependency stays unmet,
-and surfaces as `UNSATISFIED DEPENDENCIES` at the entry point — the arity
-error, `Expected 3 arguments, but got 1`. Under
-[`start`](/reference/core/start) the same mistake is caught differently: the
-kernel's `module` parameter is `Module<X, E, Scope | Env>`, so the leftover
-need fails to assign and the diagnostic **names the port** — measured on the
-starters' own gates, where the last line is
-`Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`.
+its own provides plus its imports' exports — so the dependency is unmet, and
+`App` neither provides it nor names it in `needs`. That is refused **at this
+module**, and the diagnostic names the port:
+
+```
+Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+  '{ imports: [...]; provides: [...]; exports: [...]; }' but required in type
+  '{ readonly "UNDECLARED NEEDS — name it in `needs`": Pool; }'.
+```
+
+Naming it in `needs` is not a way round the boundary — it does not make
+`Persistence`'s `Pool` visible; it says _some composition root supplies a
+`Pool`_, and one has to, or nothing can build `App`. The privacy holds either
+way: what `Persistence` exports is still the only thing an importer can reach
+through it.
 
 And on a built context:
 

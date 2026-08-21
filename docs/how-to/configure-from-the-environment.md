@@ -27,7 +27,7 @@ touching `process.env`. The recipe is one provider.
    is a `ConfigInvalid` before anything serves.
 
 ```ts
-import { Config } from "@btravstack/config";
+import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 
 class Database extends Port("Database")<{ readonly query: () => string }> {}
@@ -48,6 +48,8 @@ const databaseConfig = Config.provider("DatabaseConfig")(
 );
 
 export const Persistence = Module("Persistence")({
+  // Every reader of the environment says so: `start` is what provides `Env`.
+  needs: [Env],
   provides: [
     databaseConfig,
     Provider(Database)(

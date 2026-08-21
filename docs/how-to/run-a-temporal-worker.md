@@ -22,7 +22,8 @@ package's. Everything below is lifted from `examples/order-temporal-worker`.
 
 1. Implement the activities with `TemporalActivities(contract)(deps, arm)`
    — a record shaped like the contract, closing over the services `deps` names.
-2. Compose with `TemporalModule(name)({ contract, activities, workflows, imports })`.
+2. Compose with `TemporalModule(name)({
+  needs: [Env], contract, activities, workflows, imports })`.
 3. `await runMain(OrderTemporalWorker)`.
 4. Set `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` in the deployment; keep
    `forceAfter` at or below the kernel's `drainTimeoutMs`.
@@ -215,6 +216,7 @@ environment beats default, per field:
 
 ```ts
 export const Pinned = TemporalModule("OrderTemporalWorkerLocal")({
+  needs: [Env],
   contract: orderContract,
   activities: orderActivities,
   workflows: {

@@ -79,7 +79,8 @@ helper in `@btravstack/config` rather than a local copy in each starter.
 
 ## The module sugar
 
-Each starter ships a composition-root sugar — `HttpModule(name)({ router,
+Each starter ships a composition-root sugar — `HttpModule(name)({
+  needs: [Env], router,
 imports, provides, exports, … })`, `TemporalModule(name)({ contract,
 activities, workflows, … })`, `AmqpModule(name)({ contract, handlers, … })`.
 It is di's own `Module(name)({...})` that also takes the starter's fields:

@@ -24,7 +24,8 @@ kernel's deadline are the package's. Everything below is lifted from
    one plain function per consumer, typed by the contract.
 2. Decide, per handler, what a domain `Err` and a `Defect` become
    (see the three-way split below).
-3. Compose with `AmqpModule(name)({ contract, handlers, imports, provides, exports })`.
+3. Compose with `AmqpModule(name)({
+  needs: [Env], contract, handlers, imports, provides, exports })`.
 4. `await runMain(OrderAmqpWorker)`; set `AMQP_URL` in the deployment.
 
 ## Step 1 — the handlers, as a provider
