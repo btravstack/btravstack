@@ -8,10 +8,10 @@ import { z } from "zod";
  * survive serialization. Temporal persists every activity input and output in
  * an event history, so the transport's shape has to be a real one.
  */
-const orderView = z.object({ id: z.string(), quantity: z.number() });
+const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
 
 /** The payload every declared error carries — which order it was about. */
-const orderRef = z.object({ id: z.string() });
+const orderRef = z.object({ id: z.uuidv7() });
 
 /**
  * Every input carries the tenant, and that is not a field the domain gained:
@@ -26,10 +26,10 @@ const orderRef = z.object({ id: z.string() });
  * tenant along with everything else, which is the whole promise of running
  * this on a durable platform.
  */
-const tenanted = z.object({ tenantId: z.string() });
+const tenanted = z.object({ tenantId: z.uuidv7() });
 
-const orderInput = tenanted.extend({ orderId: z.string(), quantity: z.number() });
-const orderTarget = tenanted.extend({ orderId: z.string() });
+const orderInput = tenanted.extend({ orderId: z.uuidv7(), quantity: z.number() });
+const orderTarget = tenanted.extend({ orderId: z.uuidv7() });
 
 /**
  * The forward steps: three calls into the application layer, one external
@@ -132,7 +132,7 @@ const fulfillOrder = defineWorkflow({
   activities: { place, reserveStock, arrangeShipping, releaseStock, cancelPlacement },
 });
 
-const amountInput = tenanted.extend({ orderId: z.string(), amount: z.number() });
+const amountInput = tenanted.extend({ orderId: z.uuidv7(), amount: z.number() });
 const authorizationTarget = tenanted.extend({ authorizationId: z.string() });
 
 const authorizePayment = defineActivity({

@@ -377,6 +377,22 @@ describe("order-api", () => {
     );
   });
 
+  it("refuses an id that is not a UUIDv7", async ({ serve, clientFor, api }) => {
+    // GIVEN the real composition root and a credentialed caller
+    const app = serve(api);
+    const client = await clientFor(app);
+
+    // WHEN a procedure is called with an id the contract's schema rejects,
+    // past the client's own types
+    const refused = await client.orders.place({ id: "o-1", quantity: 2 } as never);
+
+    // THEN oRPC refused it before dispatch, the same schema-level defense a
+    // malformed quantity gets, now guarding the id's shape too
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", inferable: false }),
+    );
+  });
+
   it("never enters the handler for a malformed input", async ({ serve, clientFor, recording }) => {
     // GIVEN the real graph, recording every line its logger writes
     const client = await clientFor(serve(recording.api));

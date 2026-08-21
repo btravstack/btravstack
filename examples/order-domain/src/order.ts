@@ -7,11 +7,11 @@ import { z } from "zod";
  * nominally distinct from the `string` and `number` they are made of — passing
  * one where the other belongs is a compile error rather than a bug.
  *
- * `OrderId` carries no length rule on purpose. The only caller-reachable way to
- * fail `placeOrder` must be the quantity rule, so that `InvalidQuantity` never
- * has to stand in for a failure it does not name.
+ * `OrderId` is a UUIDv7 — the shape every id in this example carries on the
+ * wire and in the database. `placeOrder`'s own TSDoc still describes an
+ * unconstrained id; that drift is Task 4's to close.
  */
-export const OrderId = z.string().brand("OrderId");
+export const OrderId = z.uuidv7().brand("OrderId");
 export const Quantity = z.number().int().brand("Quantity");
 
 /**

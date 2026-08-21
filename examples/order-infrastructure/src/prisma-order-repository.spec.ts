@@ -125,14 +125,14 @@ describe("tenancy", () => {
     // composite unique key permits and a single-tenant schema would not
     const other = `${tenant}-other`;
     const seen = await repository
-      .save(tenant, anOrder("o-shared", 3))
-      .flatMap(() => repository.save(other, anOrder("o-shared", 7)))
-      .flatMap(() => repository.find(tenant, "o-shared"));
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000501", 3))
+      .flatMap(() => repository.save(other, anOrder("0199a1e0-0000-7000-8000-000000000501", 7)))
+      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000501"));
 
     // WHEN the first tenant reads that id back
     // THEN the read is scoped to the tenant the CALLER named: the first
     // tenant's quantity, never the second's, and never a duplicate at the write
-    expect(seen).toBeOkWith({ id: "o-shared", quantity: 3 });
+    expect(seen).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000501", quantity: 3 });
   });
 
   it("hides another tenant's order entirely, rather than merely reading past it", async ({
@@ -142,12 +142,12 @@ describe("tenancy", () => {
   }) => {
     // GIVEN an order that belongs to somebody else
     const seen = await repository
-      .save(`${tenant}-other`, anOrder("o-theirs", 3))
-      .flatMap(() => repository.find(tenant, "o-theirs"));
+      .save(`${tenant}-other`, anOrder("0199a1e0-0000-7000-8000-000000000502", 3))
+      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000502"));
 
     // WHEN this tenant looks for it
     // THEN it does not exist as far as this tenant is concerned
-    expect(seen).toBeErrTagged("OrderNotFound", { id: "o-theirs" });
+    expect(seen).toBeErrTagged("OrderNotFound", { id: "0199a1e0-0000-7000-8000-000000000502" });
   });
 });
 

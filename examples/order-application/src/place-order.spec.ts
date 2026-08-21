@@ -81,15 +81,15 @@ describe("tenancy", () => {
     const result = await Module.scoped(testModule, (ctx) => {
       const placeOrder = ctx.get(PlaceOrder);
       return placeOrder
-        .execute("acme", "o-shared", 2)
-        .flatMap(() => placeOrder.execute("globex", "o-shared", 7))
-        .flatMap(() => ctx.get(FindOrder).execute("acme", "o-shared"));
+        .execute("acme", "0199a1e0-0000-7000-8000-000000000501", 2)
+        .flatMap(() => placeOrder.execute("globex", "0199a1e0-0000-7000-8000-000000000501", 7))
+        .flatMap(() => ctx.get(FindOrder).execute("acme", "0199a1e0-0000-7000-8000-000000000501"));
     });
 
     // WHEN the first tenant reads that id back
     // THEN it gets its own order: the tenant is an argument the use case
     // carries, so nothing about the wiring can leak one tenant into another
-    expect(result).toBeOkWith({ id: "o-shared", quantity: 2 });
+    expect(result).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000501", quantity: 2 });
   });
 });
 
