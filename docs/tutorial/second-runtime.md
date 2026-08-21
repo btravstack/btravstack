@@ -98,9 +98,9 @@ import { Greeter } from "./greeter.js";
 import { greetingContract } from "./temporal-contract.js";
 
 export const greetingActivities = TemporalActivities(greetingContract)(
-  [Greeter],
+  { greeter: Greeter },
   {
-    sync: (greeter) => ({
+    sync: ({ greeter }) => ({
       greeting: {
         greet: (args) => OkAsync({ message: greeter.greet(args.name) }),
       },

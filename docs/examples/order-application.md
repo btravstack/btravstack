@@ -145,7 +145,7 @@ arm:
 
 ```ts
 export const placeOrderProvider = Provider(PlaceOrder)(
-  [OrderRepository, Logger],
+  { repository: OrderRepository, logger: Logger },
   {
     class: PlaceOrderInteractor,
   },
