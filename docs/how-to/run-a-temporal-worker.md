@@ -22,8 +22,7 @@ package's. Everything below is lifted from `examples/order-temporal-worker`.
 
 1. Implement the activities with `TemporalActivities(contract)(deps, arm)`
    — a record shaped like the contract, closing over the services `deps` names.
-2. Compose with `TemporalModule(name)({
-  needs: [Env], contract, activities, workflows, imports })`.
+2. Compose with `TemporalModule(name)({ contract, activities, workflows, imports, needs })`.
 3. `await runMain(OrderTemporalWorker)`.
 4. Set `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` in the deployment; keep
    `forceAfter` at or below the kernel's `drainTimeoutMs`.
@@ -140,6 +139,7 @@ may re-run has to answer the same both times.
 ## Step 2 — the composition root
 
 ```ts
+import { Env } from "@btravstack/config";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
@@ -152,6 +152,7 @@ import { BillingModule } from "./billing.js";
 import { FulfillmentModule } from "./fulfillment.js";
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
+  needs: [Env],
   contract: orderContract,
   activities: orderActivities,
   workflows: {

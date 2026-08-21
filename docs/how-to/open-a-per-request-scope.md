@@ -149,8 +149,7 @@ const unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
 The port exists in that graph — `observability()` provides it — but exporting
 is what the gate reads, and `UnloggedApi` does not. That is why `OrderApi`
 exports `Logger` next to `HttpRuntime`:
-`HttpModule("OrderApi")({
-  needs: [Env], router: orderRouter, imports: [OrderApplicationModule,
+`HttpModule("OrderApi")({ router: orderRouter, imports: [OrderApplicationModule,
 OrderPersistenceModule, observability()], exports: [Logger] })`.
 
 ::: warning `RuntimeHost.ctx` is the application context

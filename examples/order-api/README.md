@@ -100,6 +100,7 @@ root that is a `Module(...)` which also knows about it:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
+  needs: [Env],
   router: orderRouter,
   authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],

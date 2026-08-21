@@ -30,8 +30,7 @@ the real two-slice deployment this recipe scales into, see
 2. Implement it with `HttpRouter(contract)(deps, { sync })`: a record
    shaped like the contract, each leaf a `Result`-returning function.
 3. Compose with
-   `HttpModule(name)({
-  needs: [Env], router, authenticator, imports, provides, exports })`.
+   `HttpModule(name)({ router, authenticator, imports, provides, exports, needs })`.
 4. `await runMain(OrdersApi)` in `main.ts`.
 
 ## Step 1 — the contract
@@ -262,8 +261,7 @@ stream rather than the default JSON on stderr; see
 
 ## Options
 
-`HttpModule(name)({
-  needs: [Env],...})` takes `imports`, `provides`, `exports` and:
+`HttpModule(name)({...})` takes `imports`, `provides`, `exports`, `needs` and:
 
 | Option          | Default | What it does                                                     |
 | --------------- | ------- | ---------------------------------------------------------------- |
