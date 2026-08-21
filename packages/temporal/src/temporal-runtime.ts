@@ -1,4 +1,4 @@
-import { Config, type ConfigInvalid, type Env } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
   RuntimePort,
   RuntimeStartFailed,
@@ -176,6 +176,10 @@ export const temporal = <C extends ContractDefinition>(
           }),
         );
   return Module("Temporal")({
+    // Both stated: the starter binds its own configuration from the
+    // environment, and the activities are the application's — neither comes
+    // from inside this module, and the composition root supplies both.
+    needs: [Env, activities],
     provides: [
       config,
       Provider(TemporalConnection)(

@@ -1,4 +1,4 @@
-import { Config, type ConfigInvalid, type Env } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import type { EventSink, KernelEvent } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 
@@ -46,6 +46,10 @@ export const observability = (
   options: ObservabilityOptions = {},
 ): Module<Logger | LoggerConfig, ConfigInvalid, Env> =>
   Module("Observability")({
+    // The starter reads `LOG_LEVEL`, so it owes `Env` — which no module here
+    // provides and `start` supplies at the root. Declared, because a need
+    // nothing local satisfies is this module's to state.
+    needs: [Env],
     provides: [
       Config.provider(LoggerConfig)(loggerSchema(options.level)),
       Provider(Logger)(

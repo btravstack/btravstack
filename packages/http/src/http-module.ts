@@ -2,8 +2,10 @@ import type { ConfigInvalid, Env } from "@btravstack/config";
 import {
   Module,
   type AnyModule,
+  type AnyPort,
   type AnyProvider,
   type Exportable,
+  type NeedsGate,
   type Provider,
 } from "@btravstack/di";
 import type { DefaultInitialContext } from "@orpc/server";
@@ -44,6 +46,7 @@ export type HttpModuleOptions<
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>>[],
+  N extends readonly AnyPort[],
 > = {
   /** The application's oRPC router — `HttpRouter(contract)(deps, arm)`, the provider that builds it from the services its procedures call. */
   readonly router: Provider<HttpRouterPort, RouterError, RouterNeeds> & {
@@ -84,7 +87,15 @@ export type HttpModuleOptions<
   readonly provides?: P;
   /** The application's own exports; `HttpRuntime` is added, since `start` resolves it. */
   readonly exports?: X;
-};
+  /**
+   * What this root expects from outside — `Env` at least, since the starter
+   * binds `PORT`/`HOST` from it and `start` is what provides it. Declared
+   * here rather than absorbed: di's own gate is re-stated over the augmented
+   * tuples below, so forgetting one is an error at THIS call, the same as it
+   * would be on a bare `Module(name)`.
+   */
+  readonly needs?: N;
+} & NeedsGate<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>, N>;
 
 /**
  * `Module(name)({...})` for an HTTP deployment: everything a di module takes,
@@ -121,8 +132,9 @@ export const HttpModule =
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>>[] =
       [],
+    const N extends readonly AnyPort[] = [],
   >(
-    options: HttpModuleOptions<RouterError, RouterNeeds, RouterIdentity, Auth, I, P, X>,
+    options: HttpModuleOptions<RouterError, RouterNeeds, RouterIdentity, Auth, I, P, X, N>,
   ) => {
     const { router, authenticator, prefix, port, hostname, plugins, securityHeaders } = options;
     const imports = (options.imports ?? []) as I;
@@ -137,6 +149,14 @@ export const HttpModule =
     });
     // di's own `Module(name)({...})` over the augmented tuples: its return
     // type IS the sugar's — nothing spelled twice.
+    //
+    // The assertion is the gate, not the shape: `NeedsGate` cannot be computed
+    // while the tuples are still type parameters, so it defers and no object
+    // literal satisfies it here. It IS computed at the application's own call,
+    // because the sugar re-declares it on `HttpModuleOptions`. Asserting to a
+    // spelled-out type rather than `as never` is what keeps `I`/`P`/`X`/`N`
+    // inferred — `as never` collapses the return type to
+    // `Module<never, never, never>` (measured).
     return Module(name)({
       imports: [...imports, starter] as Imports<I>,
       provides: [
@@ -145,5 +165,11 @@ export const HttpModule =
         ...provides,
       ] as unknown as Provides<P, RouterError, RouterNeeds, Auth>,
       exports: [HttpRuntime, ...exports] as readonly [typeof HttpRuntime, ...X],
-    });
+      needs: (options.needs ?? []) as N,
+    } as {
+      readonly imports: Imports<I>;
+      readonly provides: Provides<P, RouterError, RouterNeeds, Auth>;
+      readonly exports: readonly [typeof HttpRuntime, ...X];
+      readonly needs: N;
+    } & NeedsGate<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>, N>);
   };

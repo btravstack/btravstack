@@ -21,6 +21,7 @@ this repository has not cut a release yet.
 ## A worked example
 
 ```ts
+import { Env } from "@btravstack/config";
 import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
 import { runMain } from "@btravstack/core";
 import { ErrAsync, P } from "unthrown";
@@ -55,6 +56,7 @@ const orderHandlers = AmqpHandlers(orderContract)(
 );
 
 const Worker = AmqpModule("Worker")({
+  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [AppModule],

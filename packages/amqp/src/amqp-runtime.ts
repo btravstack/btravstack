@@ -1,5 +1,5 @@
 import { TypedAmqpWorker, type WorkerInferHandlers } from "@amqp-contract/worker";
-import { Config, type ConfigInvalid, type Env } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
   RuntimePort,
   RuntimeStartFailed,
@@ -112,6 +112,10 @@ export const amqp = <TContract extends AnyAmqpContract>(
         )
       : Provider(AmqpConfig)({ value: { url: options.url } });
   return Module("Amqp")({
+    // Both stated: the starter binds its own configuration from the
+    // environment, and the handlers are the application's — neither comes
+    // from inside this module, and the composition root supplies both.
+    needs: [Env, AmqpHandlersPort as HandlersPortOf<TContract>],
     provides: [
       config,
       Provider(AmqpRuntime)(

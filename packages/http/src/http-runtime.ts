@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 
-import { Config, type ConfigInvalid, type Env } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
   RuntimePort,
   RuntimeStartFailed,
@@ -116,6 +116,14 @@ export const httpModule = <N>(
           }),
         );
   return Module("Http")({
+    // The starter binds its own configuration from the environment, so it
+    // owes `Env` — supplied at the composition root, never from in here. The
+    // handler's own `N` is owed too, and cannot be spelled in `needs`: it is
+    // still a type parameter here, which is also why the gate defers and the
+    // options carry `as never` below. What the module owes is stated once, in
+    // the return type — `Env | N` — and that is what reaches a composition
+    // root, where the gate does resolve.
+    needs: [Env],
     provides: [
       config,
       handler,
@@ -127,7 +135,7 @@ export const httpModule = <N>(
       ),
     ],
     exports: [HttpRuntime, HttpConfig],
-  }) as unknown as Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
+  } as never) as unknown as Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
 };
 
 /**

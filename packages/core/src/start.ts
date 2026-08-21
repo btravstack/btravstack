@@ -317,7 +317,13 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
           Module("Environment")({ provides: [Provider(Env)({ value: env })], exports: [Env] }),
         ],
     exports: [module],
-  }) as unknown as Module<X, E, Scope>;
+    // `as never` on the options, and the discharged-signature cast on the
+    // result: di's `needs` gate cannot be computed while `X` is still a type
+    // parameter — it defers, and no object literal satisfies a deferred
+    // conditional — which is the same reason `runMain` casts `start` inside
+    // its own body. The gate is discharged here in fact: `Env` is what this
+    // wrapper exists to provide, and `Scope` is what the entry point opens.
+  } as never) as unknown as Module<X, E, Scope>;
 
   // Only a `"signal"` shutdown reason drains. `"runtimeStopped"` (plain
   // `stop()`) and `"uncaught"` go straight to `stopping`, leaving

@@ -3,6 +3,7 @@
  * top-level key of the activities record it names — a workflow's whole
  * activities record, or a contract-global activity.
  */
+import { Env } from "@btravstack/config";
 import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
@@ -64,10 +65,15 @@ const _echoPort: WorkflowActivitiesPortOf<typeof pinContract, "runEcho"> = echo.
 
 // Positive: an array covering every key composes, and `TemporalModule` takes it.
 const composed = TemporalActivities(pinContract)([echo, shout, audit]);
+// The pieces are provided too: composing them into one provider makes the
+// composed provider depend on their PORTS, which a root that names no slice
+// still owes — the `needs` gate says so at this call.
 TemporalModule("Pin")({
   contract: pinContract,
   activities: composed,
+  provides: [echo, shout, audit],
   workflows: { workflowsPath: "./nowhere.js" },
+  needs: [Env],
 });
 
 // Negative: a key the record does not have is refused at the piece's own call.

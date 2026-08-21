@@ -10,7 +10,7 @@
 // specifier is exactly what `package.json`'s `exports` map points at.
 // `@btravstack/testing` is imported by name — it is a separate package.
 
-import { Config, type ConfigInvalid } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import { Module, Port, Provider, type AnyPort, type Context } from "@btravstack/di";
 import { bootFixture, createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testing";
 import type { Boot } from "@btravstack/testing";
@@ -112,6 +112,7 @@ await runMain(TickerApp);
 class TickSpan extends Port("TickSpan")<{ readonly finish: () => void }> {}
 
 const TickModule = Module("Tick")({
+  needs: [Greeter],
   provides: [
     Provider(TickSpan)(
       { greeter: Greeter },
@@ -140,6 +141,7 @@ class Settings extends Port("Settings")<{
 }> {}
 
 const SettingsModule = Module("Settings")({
+  needs: [Env],
   provides: [
     Config.provider(Settings)(
       Config.object({
@@ -151,6 +153,7 @@ const SettingsModule = Module("Settings")({
 });
 
 const ConfiguredApp = Module("ConfiguredApp")({
+  needs: [Env],
   imports: [TickerApp, SettingsModule],
   exports: [Greeter, Ticker, Settings],
 });

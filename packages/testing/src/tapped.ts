@@ -57,7 +57,12 @@ export const tapped = <X, E, N, const P extends readonly AnyPort[]>(
       imports: [module as never],
       provides: [tap],
       exports: [module as never],
-    }) as unknown as Module<X, E, N>,
+      // `as never` on the options: di's `needs` gate cannot be computed while
+      // `X`/`N` are still type parameters, and this wrapper adds no need of
+      // its own — the tap depends only on ports the wrapped module already
+      // holds, and whatever that module owes it still owes, unchanged, through
+      // the cast below.
+    } as never) as unknown as Module<X, E, N>,
     services: () => {
       if (services === undefined) {
         // oxlint-disable-next-line unthrown/no-throw -- a test-only harness: reaching here means the test read the tap before booting the graph, which is a bug in the test rather than a modeled outcome, so it must be loud and not routed into a `Result` a careless assertion could swallow

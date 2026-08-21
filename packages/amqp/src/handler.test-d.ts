@@ -11,6 +11,7 @@ import {
   defineMessage,
   defineQueue,
 } from "@amqp-contract/contract";
+import { Env } from "@btravstack/config";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
 
@@ -41,7 +42,15 @@ const _leftPort: HandlerPortOf<typeof pinContract, "left"> = left.port;
 // Positive: an array covering every declared key composes, and the composed
 // provider is the one `AmqpModule` takes.
 const composed = AmqpHandlers(pinContract)([left, right]);
-AmqpModule("Pin")({ contract: pinContract, handlers: composed });
+// The pieces are provided too: composing them into one provider makes the
+// composed provider depend on their PORTS, which a root that names no slice
+// still owes — the `needs` gate says so at this call.
+AmqpModule("Pin")({
+  contract: pinContract,
+  handlers: composed,
+  provides: [left, right],
+  needs: [Env],
+});
 
 // Negative: a key the contract does not declare is refused at the piece's own
 // call — there is nothing for it to be typed by.

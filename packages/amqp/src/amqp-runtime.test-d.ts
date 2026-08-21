@@ -19,6 +19,7 @@ import {
   defineMessage,
   defineQueue,
 } from "@amqp-contract/contract";
+import { Env } from "@btravstack/config";
 import { start } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { OkAsync } from "unthrown";
@@ -42,8 +43,9 @@ const pinContract = defineContract({
 // consumer/rpc key the contract declares compiles as an ordinary call, and the
 // provider satisfies both the sugar and the primitive.
 const pinHandlers = AmqpHandlers(pinContract)({ value: { echo: () => OkAsync(undefined) } });
-AmqpModule("Pin")({ contract: pinContract, handlers: pinHandlers });
+AmqpModule("Pin")({ contract: pinContract, handlers: pinHandlers, needs: [Env] });
 Module("PinByHand")({
+  needs: [Env],
   imports: [amqp({ contract: pinContract })],
   provides: [pinHandlers],
   exports: [AmqpRuntime],
@@ -77,13 +79,16 @@ AmqpModule("Other")({
 });
 
 // Negative: a hand-declared port of another id is not the starter's — the
-// starter needs ITS port, so a root providing a different one still owes it,
-// and `start` refuses the module (di's gate, at the call site).
+// starter needs ITS port, so a root providing a different one still owes it.
+// Since the `needs` gate that is refused HERE, at the module that owes it,
+// rather than at `start`: the port is undeclared, and declaring it is not the
+// escape either — the module would then have to be handed one.
 class NoHandlers extends Port("NoHandlers")<Record<never, never>> {}
+// @ts-expect-error -- UNDECLARED NEEDS: the starter's handlers port is still owed
 const Unmet = Module("Unmet")({
   imports: [amqp({ contract: pinContract })],
   provides: [Provider(NoHandlers)({ value: {} })],
   exports: [AmqpRuntime],
 });
-// @ts-expect-error -- the starter's handlers port is still owed
+// @ts-expect-error -- and `start` refuses it too, on the needs channel
 start(Unmet, { signals: false, probes: false });

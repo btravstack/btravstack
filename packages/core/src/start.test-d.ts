@@ -80,6 +80,7 @@ expectTypeOf(start(testRuntime().module)).toEqualTypeOf<RunningApp<never, TestRu
 class Span extends Port("GateSpan")<{ readonly note: string }> {}
 
 const ClockyUnit = Module("ClockyUnit")({
+  needs: [Clock],
   provides: [
     Provider(Span)(
       { clock: Clock },
@@ -103,6 +104,7 @@ expectTypeOf<
 // — so a runtime that names it is rejected here rather than left to `ctx.get`
 // throwing at startup.
 const GreetingSpanUnit = Module("GreetingSpanUnit")({
+  needs: [Greeting],
   provides: [
     Provider(Span)(
       { greeting: Greeting },
