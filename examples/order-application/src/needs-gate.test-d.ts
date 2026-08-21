@@ -29,6 +29,7 @@ import {
   OrderRepository,
   PlaceOrder,
 } from "./index.js";
+import { findOrderProvider, placeOrderProvider } from "./use-cases.js";
 
 const orderRepository = Provider(OrderRepository)({
   value: {
@@ -65,44 +66,45 @@ const _unwiredCustomers = Module.scoped(CustomerApplicationModule, (ctx) =>
 
 // Negative, per vertical: the orders repository closes the orders module, and
 // says nothing about the customers one — a graph that wires the wrong
-// vertical's adapter is still rejected. Since di's `needs` gate that is
-// refused HERE, at the module with the gap, rather than at `Module.scoped`:
-// this root neither provides `CustomerRepository` nor declares it.
-// @ts-expect-error — UNDECLARED NEEDS: CustomerRepository.
+// vertical's adapter is still rejected. It is `Module.scoped`'s arity gate,
+// not di's declaration one: `CustomerRepository` is owed by an IMPORT, and an
+// import's needs travel published in its type rather than being re-declared
+// by whoever composes it.
 const MiswiredCustomers = Module("MiswiredCustomers")({
   imports: [CustomerApplicationModule],
   provides: [orderRepository, logger],
   exports: [FindCustomer],
 });
 
-void MiswiredCustomers;
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: no CustomerRepository is provided.
+const _miswired = Module.scoped(MiswiredCustomers, (ctx) =>
+  ctx.get(FindCustomer).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-0000000000c1"),
+);
 
 // Negative, the other port of the orders pair: the repository alone does not
-// close the module, because `PlaceOrder` writes a line — and again the module
-// is where that is said, not the entry point.
-// @ts-expect-error — UNDECLARED NEEDS: Logger.
+// close the module, because `PlaceOrder` writes a line.
 const LoglessOrders = Module("LoglessOrders")({
   imports: [OrderApplicationModule],
   provides: [orderRepository],
   exports: [PlaceOrder, FindOrder],
 });
 
-void LoglessOrders;
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: no Logger is provided.
+const _logless = Module.scoped(LoglessOrders, (ctx) =>
+  ctx.get(FindOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001"),
+);
 
-// Negative, and the distinction the two gates now draw: DECLARING the logger
-// makes the module itself legal — what is left is that nothing supplies it,
-// which is `Module.scoped`'s arity gate and not di's declaration one.
-const DeclaredLogless = Module("DeclaredLogless")({
-  needs: [Logger],
-  imports: [OrderApplicationModule],
-  provides: [orderRepository],
+// Negative, and the OTHER gate — the distinction the two draw. Here the
+// interactors are this module's OWN providers rather than an import's, so
+// `OrderRepository` and `Logger` are its to name, and leaving `needs` out is
+// refused at the declaration instead of at `Module.scoped`.
+// @ts-expect-error — UNDECLARED NEEDS: Logger | OrderRepository.
+const UndeclaredOrders = Module("UndeclaredOrders")({
+  provides: [placeOrderProvider, findOrderProvider],
   exports: [PlaceOrder, FindOrder],
 });
 
-// @ts-expect-error — UNSATISFIED DEPENDENCIES: no Logger is provided.
-const _logless = Module.scoped(DeclaredLogless, (ctx) =>
-  ctx.get(FindOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001"),
-);
+void UndeclaredOrders;
 
 const WiredOrders = Module("WiredOrders")({
   imports: [OrderApplicationModule],

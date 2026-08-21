@@ -22,7 +22,6 @@ has not cut a release yet.
 ## A worked example
 
 ```ts
-import { Env } from "@btravstack/config";
 import { runMain } from "@btravstack/core";
 import { HttpModule, HttpRouter } from "@btravstack/http";
 import { P } from "unthrown";
@@ -83,7 +82,6 @@ const ordersRouter = HttpRouter(ordersContract)(
 // the router on the starter's own port (a process serves one router, so
 // there is nothing to name), exports the runtime port — nothing else to spell.
 const OrdersApi = HttpModule("OrdersApi")({
-  needs: [Env],
   router: ordersRouter,
   imports: [Application, Persistence],
 });
@@ -204,7 +202,6 @@ a type carrying the marker's phantom `unique symbol`, which a consumer's
 `.d.ts` cannot name.
 
 ```ts
-import { Env } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import { HttpModule, Unauthenticated } from "@btravstack/http";
 import { oc, type } from "@orpc/contract";
@@ -265,7 +262,6 @@ const ordersRouter = HttpRouter({ orders: ordersContract })(
 );
 
 const OrdersApi = HttpModule("OrdersApi")({
-  needs: [Env],
   router: ordersRouter,
   authenticator: bearerAuthenticator,
   imports: [Application, Persistence],

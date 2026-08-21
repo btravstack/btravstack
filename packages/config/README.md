@@ -22,7 +22,7 @@ Not yet published: this repository has not cut a release yet.
 ## A slice of the environment, as a port
 
 ```ts
-import { Config } from "@btravstack/config";
+import { Config, Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 
 const databaseConfig = Config.provider("DatabaseConfig")(

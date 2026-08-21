@@ -307,12 +307,15 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C>
     every caller, so the leaf answers `401` instead of serving unprotected.
     Unreachable while the two halves agree, which is exactly why it is there.
 
-  It also takes **`needs`**, forwarded to di's own — what this root expects
-  from outside, which is `[Env]` for every real deployment since the starter
-  binds its configuration from the environment and `start` is what provides
-  it. The sugar **re-declares di's `NeedsGate`** over its augmented tuples, so
-  a root that forgets one is refused at THIS call rather than slipping past
-  into `start`; see `packages/di/CLAUDE.md`'s **Module visibility**.
+  It also takes **`needs`**, forwarded to di's own — what this root's OWN
+  providers expect from outside. The starter's `Env` is not among them: the
+  starter is an import, and an import's needs travel without being restated. A
+  root that provides a config provider of its own does declare it —
+  `examples/order-amqp-worker` says `needs: [Env]` for `relayConfig`. The sugar
+  **re-declares di's `NeedsGate`** over its augmented tuples, so a root whose
+  own provider owes a port it does not name is refused at THIS call rather than
+  slipping past into `start`; see `packages/di/CLAUDE.md`'s **Module
+  visibility**.
 
   When `hasMarked(contract)` answers true,
   `AuthenticatorPort` joins the provider's deps record under the **namespaced**

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { Env } from "@btravstack/config";
+import type { Env } from "@btravstack/config";
 import type { RunningApp, StartOptions } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
@@ -80,7 +80,6 @@ const recorderOf = () => {
  */
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
-    needs: [Env],
     router: orderRouter,
     // The same authenticator as the real root: the contract marks `orders`, so
     // every composition serving that router owes one. Swapping it out is how a
@@ -114,7 +113,6 @@ const recordingApi = () => {
   const recorder = recorderOf();
   return {
     api: HttpModule("RecordingApi")({
-      needs: [Env],
       router: orderRouter,
       authenticator: bearerAuthenticator,
       // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the

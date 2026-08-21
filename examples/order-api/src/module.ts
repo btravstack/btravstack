@@ -1,4 +1,3 @@
-import { Env } from "@btravstack/config";
 import { contract } from "@btravstack/example-order-api-contract";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
@@ -51,10 +50,6 @@ export const orderRouter = HttpRouter(contract)({
  * `start` does, once, for the whole process.
  */
 export const OrderApi = HttpModule("OrderApi")({
-  // The composition root owes the environment and nothing else: `start` is
-  // what provides `Env`, and every other need in this graph has been
-  // discharged by a module in the list below.
-  needs: [Env],
   router: orderRouter,
   authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],

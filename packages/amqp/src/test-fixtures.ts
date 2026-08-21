@@ -8,7 +8,7 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import { Env, type ConfigInvalid } from "@btravstack/config";
+import type { ConfigInvalid } from "@btravstack/config";
 import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
@@ -63,7 +63,6 @@ type EchoProvider = Provider<InstanceType<EchoHandlers>, never, Greeting>;
  */
 const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: number) =>
   AmqpModule("Consuming")({
-    needs: [Env],
     contract: echoContract,
     handlers,
     url,
@@ -316,7 +315,6 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     await use(async (slices) => {
       const app = boot(
         AmqpModule("Sliced")({
-          needs: [Env],
           contract: slicedContract,
           handlers: slices.handlers,
           url: amqpConnectionUrl,

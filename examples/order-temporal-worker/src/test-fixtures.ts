@@ -1,4 +1,4 @@
-import { Env, type ConfigInvalid } from "@btravstack/config";
+import type { ConfigInvalid, Env } from "@btravstack/config";
 import type { RunningApp } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
@@ -87,7 +87,6 @@ type Serve = <E>(
  */
 const rootWith = (fulfillment: typeof FulfillmentModule, sink: Sink) =>
   Module("StubTemporal")({
-    needs: [Env],
     imports: [OrderApplicationModule, OrderPersistenceModule, fulfillment, observability({ sink })],
     exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger],
   });
@@ -239,7 +238,6 @@ export const it = test.extend<TemporalFixtures>({
       // `orderActivities`'s `deps` are the two pieces' PORTS, and nothing
       // discharges them unless something in this tree does.
       const worker = TemporalModule("StubTemporalWorker")({
-        needs: [Env],
         contract,
         activities: orderActivities,
         workflows: { workflowBundle },

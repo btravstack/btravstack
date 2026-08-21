@@ -63,6 +63,8 @@ export type ConfiguredApp = {
 
 const settingsApp = () =>
   Module("ConfigFixtureApp")({
+    // This module provides the config provider itself, so `Env` is its own
+    // provider's need rather than one inherited from an import.
     needs: [Env],
     imports: [testRuntime().module],
     provides: [Config.provider(Settings)(settingsSchema)],

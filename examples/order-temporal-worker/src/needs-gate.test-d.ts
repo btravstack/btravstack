@@ -72,14 +72,10 @@ const _noRuntime = start(RuntimelessTemporal, options);
 // `temporal()` primitive rather than `TemporalModule`, since the sugar cannot
 // leave the activities out — that is what it is for.
 //
-// Negative, and since di's `needs` gate this one no longer waits for `start`:
-// the composed activities port is owed here and undeclared, and declaring it
-// is not an escape either — the port is the starter's own and only its TYPE is
-// exported, so an application has nothing to name. Providing the activities is
-// the only way out, which is the point.
-// @ts-expect-error — UNDECLARED NEEDS: the starter's activities port.
+// The KERNEL's gate rather than di's declaration one: the port is owed by
+// `temporal()`, an IMPORT, and an import's needs travel published in its type
+// rather than being re-declared here.
 const ActivitylessTemporal = Module("ActivitylessTemporal")({
-  needs: [Env],
   imports: [
     temporal({
       contract: orderContract,
@@ -89,16 +85,19 @@ const ActivitylessTemporal = Module("ActivitylessTemporal")({
   exports: [TemporalRuntime],
 });
 
-void ActivitylessTemporal;
+// @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port.
+const _missingActivities = start(ActivitylessTemporal, options);
 
 // The real `fulfillOrder` piece, composed into a slice that forgets
 // `FulfillmentModule`: the piece's own `deps` (`PlaceOrder`,
 // `OrderRepository`, `StockService`, `ShippingService`) are real ports, and
 // only the first two are met here.
+// The slice's OWN provider is what reads them, so this one IS di's declaration
+// gate — the distinction the two negatives above draw.
 // @ts-expect-error — UNDECLARED NEEDS: StockService | ShippingService, which
 // `FulfillmentModule` would have provided.
 const FulfillmentlessSlice = Module("FulfillmentlessSlice")({
-  needs: [Env, Logger],
+  needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [fulfillOrder],
   exports: [fulfillOrder],

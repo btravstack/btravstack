@@ -57,18 +57,16 @@ const _missingRuntime = start(RuntimelessApi, options);
 // provider depends on the starter's own router port (the one
 // `HttpRouter(contract)({ name: Dep }, arm)` provides), so the composition owes it.
 //
-// Since di's `needs` gate that is refused HERE rather than at `start`, and
-// declaring it is not an escape: `HttpRouterPort` is the starter's own and
-// `@btravstack/http` does not export the value, so an application has nothing
-// to name. Providing the router is the only way out, which is the point.
-// @ts-expect-error — UNDECLARED NEEDS: the starter's router port.
+// It is the KERNEL's gate rather than di's declaration one, and the division
+// is the point: the port is owed by `http()`, an IMPORT, and an import's needs
+// travel published in its type rather than being re-declared here.
 const RouterlessApi = Module("RouterlessApi")({
-  needs: [Env],
   imports: [OrdersSlice, CustomersSlice, observability(), http()],
   exports: [HttpRuntime, Logger],
 });
 
-void RouterlessApi;
+// @ts-expect-error — the composition needs the router port and nothing provides it.
+const _missingRouter = start(RouterlessApi, options);
 
 // Positive: a `unit` module rides the same gate — `RequestModule` needs
 // `Logger`, which the composition root exports, so the fork the kernel opens

@@ -21,7 +21,6 @@ repository has not cut a release yet.
 ## A worked example
 
 ```ts
-import { Env } from "@btravstack/config";
 import { runMain } from "@btravstack/core";
 import {
   Logger,
@@ -49,7 +48,6 @@ const placeOrder = Provider(PlaceOrder)(
 // once — `verbose` is a startup failure naming the variable, not a silent
 // fallback to `info`.
 const OrderApi = HttpModule("OrderApi")({
-  needs: [Env],
   router: orderRouter,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],

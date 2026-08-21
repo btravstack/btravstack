@@ -25,7 +25,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 
-import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
+import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import { currentUnit, type RunningApp } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
@@ -61,7 +61,6 @@ type Handler = ServiceOf<HttpHandler>;
  */
 const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securityHeaders"]) =>
   Module("App")({
-    needs: [Env],
     imports: [
       httpModule(
         {
@@ -160,7 +159,6 @@ const slicedRouter = HttpRouter(slicedContract)({
 /** `HttpModule` over the composed router, mirroring `rpcAppOf`. */
 const rpcSlicedAppOf = () =>
   HttpModule("RpcSlicedApp")({
-    needs: [Env],
     router: slicedRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -251,7 +249,6 @@ const authedPositionalRouter = AuthedRouter(authedContract)(
 /** `HttpModule` over the protected router, with the authenticator the router now needs. */
 const rpcAuthedAppOf = () =>
   HttpModule("RpcAuthedApp")({
-    needs: [Env],
     router: authedRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -281,7 +278,6 @@ const rootMarkedRouter = AuthedRouter(rootMarkedContract)({
 
 const rpcRootMarkedAppOf = () =>
   HttpModule("RpcRootMarkedApp")({
-    needs: [Env],
     router: rootMarkedRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -324,7 +320,6 @@ const strayRouter = HttpRouter(greetingContract)(
 /** The starter as an application uses it: `HttpModule` sugar over a router provider. */
 const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
   HttpModule("RpcApp")({
-    needs: [Env],
     router: stray ? strayRouter : greetingRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -348,7 +343,6 @@ const corsRouter = HttpRouter(corsContract)({
 /** The same starter shape as `rpcAppOf`, with oRPC's CORS plugin configured. */
 const rpcWithCorsAppOf = () =>
   HttpModule("RpcWithCorsApp")({
-    needs: [Env],
     router: corsRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -363,7 +357,6 @@ const configuredAppOf = (options: { readonly port?: number; readonly hostname?: 
   let bound: ServiceOf<HttpConfig> | undefined;
   return {
     module: Module("ConfiguredApp")({
-      needs: [Env],
       imports: [httpModule(options, Provider(HttpHandler)({ value: noop }))],
       provides: [
         Provider(BoundConfig)(

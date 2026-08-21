@@ -100,7 +100,6 @@ root that is a `Module(...)` which also knows about it:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
-  needs: [Env],
   router: orderRouter,
   authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
@@ -155,7 +154,7 @@ The root is a list of **slices**. Each one imports the vertical it needs —
 export const OrdersSlice = Module("OrdersSlice")({
   // The environment its persistence reads `DATABASE_URL` from, and the logger
   // its interactors write to — both the root's to supply, both named here.
-  needs: [Env, Logger],
+  needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],
