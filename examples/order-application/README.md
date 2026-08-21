@@ -114,7 +114,7 @@ this.#logger.info("placing an order", { orderId: id, quantity });
 
 The message is a constant and the ids are fields, which is what makes a line
 groupable in the system that receives it — and what lets the spec assert
-`attributes: { orderId: "o-1", quantity: 2 }` rather than match a substring.
+`attributes: { orderId: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 }` rather than match a substring.
 Correlation is not this layer's job either: `@btravstack/observability`'s logger
 reads `currentUnit()` on every call, so each line carries the trace id of
 whatever unit the runtime opened around it. In these specs there is no unit, so

@@ -141,7 +141,7 @@ tenancy concept, and none should, because what establishes a tenant is a
 decision about a specific system. Two things fall out of it. A caller that
 forgot its tenant does not compile, where an ambient one would have failed at
 runtime or read the wrong rows in silence. And a spec needs no machinery:
-`repository.find(tenant, "o-1")` says what it is scoped to at the call, so the
+`repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001")` says what it is scoped to at the call, so the
 only fixture is the tenant string itself.
 
 The generated client is gitignored and minted by turbo's own `generate` task —
