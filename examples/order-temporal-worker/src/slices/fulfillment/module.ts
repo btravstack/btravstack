@@ -1,8 +1,6 @@
-import { Env } from "@btravstack/config";
 import { Module } from "@btravstack/di";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { Logger } from "@btravstack/observability";
 
 import { FulfillmentModule } from "../../fulfillment.js";
 import { fulfillOrder } from "./activities.js";
@@ -17,10 +15,6 @@ import { fulfillOrder } from "./activities.js";
  * `TemporalWorkflowActivities` mints the port from the contract key.
  */
 export const FulfillmentSlice = Module("FulfillmentSlice")({
-  // The environment its persistence reads `DATABASE_URL` from, and the logger
-  // the interactors and the stand-in services write to. Both come from the
-  // root; neither is this slice's to provide.
-  needs: [Env, Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule, FulfillmentModule],
   provides: [fulfillOrder],
   exports: [fulfillOrder],

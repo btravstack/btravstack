@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-import { Env, type ConfigInvalid, type Environment } from "@btravstack/config";
+import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
@@ -364,7 +364,6 @@ export type TemporalFixtures = {
 const compose = (server: Server, boot: Boot, options: BootOptions) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Worker")({
-    needs: [Env],
     contract: { ...echoContract, taskQueue },
     activities: options.activities ?? echoing,
     workflows: options.workflows ?? echoWorkflows,
@@ -454,7 +453,6 @@ export const it = test.extend<TemporalFixtures>({
       const taskQueue = nextTaskQueue();
       const app: App = boot(
         TemporalModule("Sliced")({
-          needs: [Env],
           contract: withTaskQueue(slicedContract, taskQueue),
           activities: slices.activities,
           workflows: echoWorkflows,

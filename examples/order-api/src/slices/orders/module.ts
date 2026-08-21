@@ -1,4 +1,3 @@
-import { Env } from "@btravstack/config";
 import { Module } from "@btravstack/di";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
@@ -26,11 +25,10 @@ import { ordersController } from "./controller.js";
  * `HttpController` mints the port for you, so there is no class to name.
  */
 export const OrdersSlice = Module("OrdersSlice")({
-  // What this slice expects from the root: the environment its persistence
-  // reads `DATABASE_URL` from, and the logger its interactors write to.
-  // Neither is the slice's to provide, and both are now stated here rather
-  // than absorbed from whatever the root happens to hold.
-  needs: [Env, Logger],
+  // The controller writes a line itself, so `Logger` is this slice's own
+  // provider's need. The environment its persistence reads is not: that is
+  // `DatabaseModule`'s, declared there and inherited here.
+  needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],

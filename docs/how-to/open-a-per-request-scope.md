@@ -131,7 +131,6 @@ the last line of the error:
 
 ```ts
 const UnloggedApi = Module("UnloggedApi")({
-  needs: [Env],
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,

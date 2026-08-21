@@ -55,9 +55,10 @@ Persistence (provides Pool, exports OrderRepository)  Needs: Scope   ← Pool ne
 App (imports Persistence)                             Needs: Scope   ← still unpaid
 ```
 
-An unpaid balance may only travel if the module **signed for it**. A module
-that owes a port it neither provides nor imports has to name it in `needs`, and
-one that does not is refused where it is written:
+An unpaid balance run up by a module's **own providers** may only travel if that
+module **signed for it**. A provider reading a port nothing here satisfies has
+to be answered by a `needs` entry, and a module that does not is refused where
+it is written:
 
 ```
 Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
@@ -66,10 +67,10 @@ Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
 ```
 
 That is the first of the checks, and the only one that fires at a module rather
-than at a call that builds one. `Scope` is exempt — nothing can provide it, so
-it is never something an ancestor signs over. Everything else that survives the
-subtraction has been declared on purpose, and travels to whoever composes the
-module.
+than at a call that builds one. It reads a module's own providers alone: a
+balance inherited from an **import** travels without being signed for again,
+because it is already published in that import's type. `Scope` is exempt —
+nothing can provide it, so it is never something an ancestor signs over.
 
 The remaining checks happen at the one place a graph becomes running services.
 

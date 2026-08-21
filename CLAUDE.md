@@ -445,22 +445,21 @@ type checker already verifies.
   **`start`'s** gate (`order-api`, `order-temporal-worker`,
   `order-amqp-worker` — its `NO RUNTIME` arm, since no starter's runtime
   declares a `needs` any more; `order-api`'s also pins the `unit` halves) and
-  the **undeclared need** on the starter's port (a composition importing
-  `http()` / `temporal({ contract, workflows })` / `amqp({ contract })` without
-  providing the router / activities / handlers owes the starter's port, and
-  since #50 that is refused at the **module** rather than at `start` — di's
-  `NeedsGate`, measured: `Property '"UNDECLARED NEEDS — name it in `needs`"' is
-missing … but required in type
-'{ readonly "UNDECLARED NEEDS — name it in `needs`": HttpRouterPort; }'`.
-  Declaring it is not the escape either: each starter exports its port's TYPE
-  only, so an application has nothing to name and providing the router /
-  handlers / activities is the only way past); the fourth,
-  `order-application`'s, pins **di's**
+  the **unmet need** on the starter's port (a composition importing `http()` /
+  `temporal({ contract, workflows })` / `amqp({ contract })` without providing
+  the router / activities / handlers carries the starter's port in `Needs`, and
+  `start`'s `module` parameter takes only `Scope | Env`, so it fails to assign —
+  the starter is an IMPORT, and an import's needs travel without the importer
+  re-declaring them, so di's declaration gate has nothing to say and this stays
+  the kernel's); the fourth, `order-application`'s, pins **di's**
   `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`, which is a rest-tuple
-  **arity** error printing `Expected 5 arguments, but got 2` and nothing else —
-  reached only once the module DECLARES what it owes, since an undeclared one
-  never gets that far.
-  **Four** different mechanisms now, easy to conflate — and only two print a
+  **arity** error printing `Expected 5 arguments, but got 2` and nothing else.
+  A **fourth** mechanism joined them in #50 and is pinned beside the third:
+  di's `NeedsGate`, which fires when a module's OWN provider reads a port
+  nothing local satisfies and `needs` does not name it —
+  `order-temporal-worker`'s `FulfillmentlessSlice`, printing
+  `'{ readonly "UNDECLARED NEEDS — name it in `needs`": StockService | ShippingService; }'`.
+  **Four** mechanisms, easy to conflate — and only two print a
   name. Do not call the second "di's `UNSATISFIED DEPENDENCIES` gate": an
   earlier revision of this file did, and it is wrong in both halves. `start`'s
   `UNSATISFIED RUNTIME NEEDS` arm is pinned only by `packages/core`'s own
@@ -693,13 +692,16 @@ AuditSlice, observability()], … })`),
   Temporal workflow and its activities, an AMQP consumer and its handler — and
   (if it needs one) its own adapter, and ships as an ordinary di `Module` that
   exports only that piece's port — everything else about the slice stays
-  private. It also **declares what it expects from the root**, in `needs`:
-  `AuditSlice` is `needs: [Logger]`, `OrdersSlice` is `needs: [Env, Logger]`,
-  and a slice that owed a port and named none does not compile (#50, di's
-  `NeedsGate` — the full rule is in `packages/di/CLAUDE.md`). That is what
-  makes a slice directory readable on its own: it says which ports come from
-  outside without naming who supplies them, so the slice still composes into
-  any root that answers them. `@btravstack/http`'s
+  private. It also **declares what its own providers expect from the
+  root**, in `needs`: `AuditSlice` is `needs: [Logger]` because its handler
+  reads one, `OrdersSlice` is `needs: [Logger]` because its controller does,
+  and a slice whose provider owed a port and named none does not compile (#50,
+  di's `NeedsGate` — the full rule is in `packages/di/CLAUDE.md`). An
+  **import's** needs are not restated: `OrdersSlice` says nothing about `Env`,
+  because the module that reads `DATABASE_URL` is `DatabaseModule` and it says
+  so there. That is what makes a slice directory readable on its own — which
+  ports come from outside, without naming who supplies them — and what keeps a
+  `needs` list one line per feature instead of one per hop. `@btravstack/http`'s
   `HttpController(name, fragment)({ name: Dep }, { sync })` mints the controller's
   port; the root composes every slice's controller into one router with the
   keyed `HttpRouter(contract)(controllers)` form, exact against the contract

@@ -160,11 +160,22 @@ itself.
 
 ## Module visibility: a need is DECLARED, never absorbed
 
-**Decided in #50: a module states what it expects from outside, and anything
-it owes and did not state is a compile error at that module.** The rule in one
-line: `needs` is the explicit stand-in for NestJS's `@Global` — a composition
-root may supply a port to a module it imports, but only one the module asked
-for by name.
+**Decided in #50: a module states what its OWN providers expect from outside,
+and anything they owe and it did not state is a compile error at that module.**
+`needs` is the explicit stand-in for NestJS's `@Global` — a composition root
+may supply a port to a module it imports, but only one that module asked for by
+name.
+
+**An import's own unmet needs are not the importer's to re-declare**, and that
+half is deliberate. They are already published in the import's type — the
+`imports` entry a reader is looking at says `Module<X, E, Env>` — and `start`
+still refuses a root that has not discharged them, so leaving them out hides
+nothing. Re-declaring them bought one line per module per hop: measured on this
+repo, **12 of 22 declarations were pure propagation**, and dropping them leaves
+exactly the modules that read the port. `Env` is the case that showed it — six
+declarations in `order-api`, one of them the feature that reads
+`DATABASE_URL`. This is the per-feature shape NestJS's
+`ConfigModule.forFeature` has, reached without a global.
 
 ```ts
 export const AuditSlice = Module("AuditSlice")({
@@ -243,10 +254,12 @@ Nothing can provide `Scope` — a provider for it is a `WiringDefect` — so it 
 never something an ancestor supplies; `Module.scoped` and `start` discharge it
 by opening one. A resourceful module therefore declares nothing.
 
-`Env` is **not** exempt, and that is the point rather than an oversight: every
-module that reads the environment says `needs: [Env]`, and the port travels,
-declared at each step, up to the root that `start` hands one to. That chain is
-what a `@Global` would have hidden.
+`Env` is **not** exempt, and exempting it was refused: the module that reads
+the environment says `needs: [Env]` — `DatabaseModule`, `observability()`, each
+starter — and from there it travels through importers without being restated,
+up to the root `start` hands one to. Naming it at the feature is what a
+`@Global` would have hidden; naming it at every hop was what made the first cut
+of this gate noisy.
 
 ### The gate cannot be computed generically — and that is why the casts exist
 
@@ -266,13 +279,17 @@ around `StartGate` one layer down:
    sugar's return type to `Module<never, never, never>` (measured). `start` and
    `tapped` may use `as never`, because both already cast their result.
 
-### What a module cannot declare its way out of
+### Which gate catches what
 
-A starter's own port — `HttpRouterPort`, the AMQP handlers port, the Temporal
-activities port — is exported as a TYPE only, so an application has nothing to
-name in `needs`. Providing the router / handlers / activities is the only way
-past the gate, which is what those gates are for. Three negatives pin it, one
-per starter, and each moved from `start` to the module in this change.
+A starter's port — `HttpRouterPort`, the AMQP handlers port, the Temporal
+activities port — is owed by the **starter**, which an application _imports_.
+So those three are the KERNEL's gate, on the needs channel at `start`, not
+di's declaration one, and the three `needs-gate.test-d.ts` negatives say so.
+The declaration gate catches the other half: a module whose OWN provider reads
+a port nothing here satisfies —
+`examples/order-temporal-worker`'s `FulfillmentlessSlice`, whose `fulfillOrder`
+piece names `StockService` and `ShippingService`. Both are pinned, side by side,
+because conflating them is easy.
 
 ## Binding design rules
 

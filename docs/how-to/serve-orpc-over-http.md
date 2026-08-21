@@ -171,7 +171,6 @@ authenticator below.
 ## Step 3 — the composition root
 
 ```ts
-import { Env } from "@btravstack/config";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http";
@@ -181,7 +180,6 @@ import { bearerAuthenticator } from "./authenticator.js";
 import { ordersRouter } from "./router.js";
 
 export const OrdersApi = HttpModule("OrdersApi")({
-  needs: [Env],
   router: ordersRouter,
   authenticator: bearerAuthenticator,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],

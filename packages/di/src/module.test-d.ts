@@ -194,6 +194,29 @@ describe("Module algebra", () => {
     });
   });
 
+  test("an import's unmet needs travel without being re-declared", () => {
+    // The other half of the gate, and the reason a `needs` list stays one line
+    // per FEATURE rather than one per hop. `Orphan` reads `Database` through
+    // its own provider and declares it; `Importer` only imports `Orphan` and
+    // declares nothing — the obligation still reaches its channel, and `start`
+    // (or `Module.build`) is still what refuses a root that has not discharged
+    // it. Nothing is hidden: `Orphan`'s type says `Database` at the `imports`
+    // entry a reader is looking at.
+    const orphan = Module("Orphan")({
+      needs: [Database],
+      provides: [OrderRepositoryProvider],
+      exports: [OrderRepository],
+    });
+    const importer = Module("Importer")({
+      imports: [orphan],
+      exports: [OrderRepository],
+    });
+
+    type Channels = ChannelsOf<typeof importer>;
+    const stillOwesDatabase: Equal<Channels[2], Database> = true;
+    void stillOwesDatabase;
+  });
+
   test("declaring a need nothing owes is inert", () => {
     // `needs` says what this module expects from outside; it does not
     // manufacture an obligation. `ConfigModule` provides everything it uses,

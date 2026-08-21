@@ -64,9 +64,9 @@ export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, or
  * own vhost.
  */
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
-  // The composition root owes the environment and nothing else: `start` is
-  // what provides `Env`, and every other need in this graph has been
-  // discharged by a module in the list below.
+  // This root provides `relayConfig` itself — `OUTBOX_POLL_MS` /
+  // `OUTBOX_TENANTS` off the environment — so `Env` is its own provider's
+  // need, not one inherited from the slices below.
   needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,

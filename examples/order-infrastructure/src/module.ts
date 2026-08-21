@@ -22,6 +22,9 @@ import { outboxProvider } from "./prisma-outbox.js";
  * declared for the same reason every reader of the environment declares it.
  */
 const DatabaseModule = Module("Database")({
+  // The feature that reads the environment is the one that declares it — and
+  // the only one: importers of this module inherit the obligation without
+  // restating it.
   needs: [Env],
   provides: [databaseConfig, orderDatabaseProvider],
   exports: [OrderDatabase],
@@ -39,9 +42,6 @@ const DatabaseModule = Module("Database")({
  * the connection with the customers vertical did not spend it.
  */
 export const OrderPersistenceModule = Module("OrderPersistence")({
-  // `Env` again: a need travels only as far as the module that declares it,
-  // and importing `DatabaseModule` makes its unmet one this module's to state.
-  needs: [Env],
   imports: [DatabaseModule],
   provides: [orderRepositoryProvider, outboxProvider],
   exports: [OrderRepository, Outbox],
@@ -54,9 +54,6 @@ export const OrderPersistenceModule = Module("OrderPersistence")({
  * database, not two — the diamond that makes splitting the layer free.
  */
 export const CustomerPersistenceModule = Module("CustomerPersistence")({
-  // `Env` again: a need travels only as far as the module that declares it,
-  // and importing `DatabaseModule` makes its unmet one this module's to state.
-  needs: [Env],
   imports: [DatabaseModule],
   provides: [customerRepositoryProvider],
   exports: [CustomerRepository],

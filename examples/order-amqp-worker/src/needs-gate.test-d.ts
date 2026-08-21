@@ -60,14 +60,11 @@ const _noRuntime = start(RuntimelessAmqp, options);
 // primitive rather than `AmqpModule`, since the sugar cannot leave the
 // handlers out — that is what it is for.
 //
-// Negative, and since di's `needs` gate this one no longer waits for `start`:
-// the handlers port is owed here and undeclared, and declaring it is not an
-// escape either — `AmqpHandlersPort` is the starter's own and the package
-// exports only its TYPE, so an application has nothing to name. Providing the
-// handlers is the only way out, which is the point.
-// @ts-expect-error — UNDECLARED NEEDS: the starter's handlers port.
+// The port is owed by the STARTER, which is an import — so di's declaration
+// gate has nothing to say here, and the refusal is the kernel's, on the needs
+// channel. That is the division the two gates draw: a module declares what its
+// OWN providers read, and an import's needs travel published in its type.
 const HandlerlessAmqp = Module("HandlerlessAmqp")({
-  needs: [Env],
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,
@@ -77,7 +74,8 @@ const HandlerlessAmqp = Module("HandlerlessAmqp")({
   exports: [AmqpRuntime, PlaceOrder, Logger],
 });
 
-void HandlerlessAmqp;
+// @ts-expect-error — the module's needs channel carries the handlers port, which nothing provides.
+const _missingHandlers = start(HandlerlessAmqp, options);
 
 // The two real slices, composed into a root that forgets `observability()`.
 // Neither slice imports it — a subscriber owns no vertical, so `Logger` is the
@@ -86,17 +84,15 @@ void HandlerlessAmqp;
 // including it would leave the negative unable to say which of the two leaked.
 // Negative, and the one this file exists to add: a slice does NOT shield the
 // ports its own pieces declare. Composition shields a piece's deps from the
-// root; being inside a slice shields nothing — and each slice now says
+// root; being inside a slice shields nothing — and each slice says
 // `needs: [Logger]` out loud, so what reaches this root is a DECLARED
-// obligation rather than an inferred one. Either way the root has to answer
-// it, and this one does not.
-// @ts-expect-error — UNDECLARED NEEDS: Logger, carried in by both slices.
+// obligation. It is still the root's to answer, and this one does not — the
+// refusal is the kernel's, since `Logger` arrives through an import.
 const LoggerlessAmqp = AmqpModule("LoggerlessAmqp")({
-  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [NotificationsSlice, AuditSlice],
 });
 
-// @ts-expect-error — and the kernel's gate refuses it too: `Logger` is not assignable to `Env | Scope`.
+// @ts-expect-error — UNMET NEED: `Logger` is not assignable to `Env | Scope`.
 const _missingLogger = start(LoggerlessAmqp, options);

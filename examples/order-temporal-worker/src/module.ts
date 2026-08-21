@@ -1,4 +1,3 @@
-import { Env } from "@btravstack/config";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
@@ -52,10 +51,6 @@ export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, 
  * has two arms.
  */
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
-  // The composition root owes the environment and nothing else: `start` is
-  // what provides `Env`, and every other need in this graph has been
-  // discharged by a module in the list below.
-  needs: [Env],
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },

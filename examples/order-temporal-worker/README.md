@@ -82,7 +82,6 @@ export const orderActivities = TemporalActivities(orderContract)([
 ]);
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
-  needs: [Env],
   contract: orderContract,
   activities: orderActivities,
   workflows: {

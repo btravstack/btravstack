@@ -81,10 +81,10 @@ AmqpModule("Other")({
 // Negative: a hand-declared port of another id is not the starter's — the
 // starter needs ITS port, so a root providing a different one still owes it.
 // Since the `needs` gate that is refused HERE, at the module that owes it,
-// rather than at `start`: the port is undeclared, and declaring it is not the
-// escape either — the module would then have to be handed one.
+// and `start` refuses the module. It is the KERNEL's gate rather than di's
+// declaration one: the port is owed by the STARTER, an import, and an
+// import's needs travel without the importer re-declaring them.
 class NoHandlers extends Port("NoHandlers")<Record<never, never>> {}
-// @ts-expect-error -- UNDECLARED NEEDS: the starter's handlers port is still owed
 const Unmet = Module("Unmet")({
   imports: [amqp({ contract: pinContract })],
   provides: [Provider(NoHandlers)({ value: {} })],

@@ -90,7 +90,6 @@ spelled once. From [`examples/order-api`](/examples/order-api):
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
-  needs: [Env],
   router: orderRouter,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],

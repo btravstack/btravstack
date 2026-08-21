@@ -1,4 +1,3 @@
-import { Env } from "@btravstack/config";
 import { RuntimePort, type Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { bootFixture, testRuntime, TestRuntimePort, type Boot } from "@btravstack/testing";
@@ -145,7 +144,6 @@ export const it = test.extend<ObservabilityFixtures>({
     await use(
       (tenantId, options = {}) =>
         Module("TenantApp")({
-          needs: [Env],
           imports: [tenantRuntimeModule(tenantId), observability(options)],
           exports: [Logger, TenantRuntime],
         }) as unknown as Module<Logger | TenantRuntime, never, never>,
@@ -159,7 +157,6 @@ export const it = test.extend<ObservabilityFixtures>({
       return {
         runtime,
         module: Module("ObservabilityApp")({
-          needs: [Env],
           imports: [runtime.module, observability(options)],
           provides: [Provider(Greeting)({ value: { text: "hello" } })],
           exports: [Logger, LoggerConfig, Greeting, TestRuntimePort],

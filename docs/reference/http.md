@@ -74,7 +74,6 @@ The worked composition root, from `examples/order-api/src/module.ts`:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
-  needs: [Env],
   router: orderRouter,
   authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],

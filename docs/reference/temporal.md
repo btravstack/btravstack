@@ -83,7 +83,6 @@ The worked composition root, from
 
 ```ts
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
-  needs: [Env],
   contract: orderContract,
   activities: orderActivities,
   workflows: {

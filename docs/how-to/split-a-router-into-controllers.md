@@ -170,9 +170,11 @@ same privacy di already gives any provider:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  // The environment its persistence reads `DATABASE_URL` from, and the logger
-  // its interactors write to — both the root's to supply, both named here.
-  needs: [Env, Logger],
+  // The controller writes a line itself, so `Logger` is this slice's own
+  // provider's need. The environment its persistence reads `DATABASE_URL` from
+  // is not: that one is `DatabaseModule`'s, declared there and inherited
+  // through the imports below.
+  needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],
@@ -209,7 +211,6 @@ owns:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
-  needs: [Env],
   router: orderRouter,
   authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
@@ -247,7 +248,6 @@ export const ordersRouter = HttpRouter(contract.orders)(
 );
 
 export const OrdersApi = HttpModule("OrdersApi")({
-  needs: [Env],
   router: ordersRouter,
   authenticator: bearerAuthenticator,
   imports: [OrdersSlice, observability()],

@@ -139,7 +139,6 @@ may re-run has to answer the same both times.
 ## Step 2 — the composition root
 
 ```ts
-import { Env } from "@btravstack/config";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
@@ -152,7 +151,6 @@ import { BillingModule } from "./billing.js";
 import { FulfillmentModule } from "./fulfillment.js";
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
-  needs: [Env],
   contract: orderContract,
   activities: orderActivities,
   workflows: {
@@ -217,7 +215,6 @@ environment beats default, per field:
 
 ```ts
 export const Pinned = TemporalModule("OrderTemporalWorkerLocal")({
-  needs: [Env],
   contract: orderContract,
   activities: orderActivities,
   workflows: {

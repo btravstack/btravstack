@@ -21,7 +21,6 @@ this repository has not cut a release yet.
 ## A worked example
 
 ```ts
-import { Env } from "@btravstack/config";
 import { runMain } from "@btravstack/core";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
 import { P } from "unthrown";
@@ -51,7 +50,6 @@ const orderActivities = TemporalActivities(contract)(
 // The composition root: a di module, plus the contract, the activities
 // provider and the workflow source — and nothing else to know.
 const OrderWorker = TemporalModule("OrderWorker")({
-  needs: [Env],
   contract,
   activities: orderActivities,
   workflows: {

@@ -63,6 +63,7 @@ type Serve = <E>(
 const tappedAmqp = () => {
   const lines: Line[] = [];
   const recording = AmqpModule("RecordingAmqpWorker")({
+    // The recording root provides `relayConfig` itself, so `Env` is its own.
     needs: [Env],
     contract: orderContract,
     handlers: orderHandlers,
