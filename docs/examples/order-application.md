@@ -285,12 +285,19 @@ activities or handlers that implement it.
 
 ```ts
 // Negative: nothing provides `OrderRepository`, so the gate becomes a required
-// two-element tuple and the call is an arity error naming the unmet need.
+// two-element tuple and the call is an arity error.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
   ctx.get(PlaceOrder).execute("o-1", 1),
 );
 ```
+
+What that prints is `error TS2554: Expected 5 arguments, but got 2.` and
+nothing else — an arity error carries no type, so neither the
+`UNSATISFIED DEPENDENCIES` label nor `OrderRepository` appears in it. Both are
+in the rest parameter's type, which an editor shows on hover. `start`'s three
+arms are the deliberate contrast: they ride the `module` parameter precisely so
+their sentence prints.
 
 Each vertical's gate is pinned separately, which is the split showing up in
 the type tests: a graph that provides `OrderRepository` still cannot scope

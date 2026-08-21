@@ -37,7 +37,10 @@ pnpm --filter @btravstack/example-hexagonal-order-api typecheck
 propagates through `makeAppModule` to anything built from it. Building that
 graph with `Module.build` is a compile error, not a runtime leak — the
 call's arity gate (the "UNSATISFIED DEPENDENCIES" rest parameter every unmet
-requirement produces) rejects it before anything runs. `src/index.test-d.ts`
+requirement produces) rejects it before anything runs. What it prints is the
+arity line alone, `Expected 3 arguments, but got 1`; the label and `Scope` are
+in the rest parameter's type, which an editor shows on hover, not in the
+message. `src/index.test-d.ts`
 pins that with a `@ts-expect-error` of its own, right next to the privacy
 one. `Module.scoped` is the one entry point that opens a scope and
 discharges `Scope` — used in `src/index.spec.ts` against the production

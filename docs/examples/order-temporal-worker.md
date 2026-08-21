@@ -309,14 +309,21 @@ shutdown to escalate to. See
 
 ## The gate
 
-`needs-gate.test-d.ts` pins `NO RUNTIME` (the graph without the starter fails
-on arity) and di's gate spelled with the `temporal()` primitive, since the
-sugar cannot leave the activities out at all:
+`needs-gate.test-d.ts` pins `NO RUNTIME — …` (the graph without the starter
+fails to match the sentence intersected onto `start`'s `module` parameter) and
+the unmet-need refusal spelled with the `temporal()` primitive, since the sugar
+cannot leave the activities out at all:
 
 ```ts
 // @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port, which nothing provides.
 const _missingActivities = start(ActivitylessTemporal, options);
 ```
+
+That second one is the `Needs` channel, not di's `UNSATISFIED DEPENDENCIES`
+arity gate: `start`'s `module` parameter accepts only `Scope | Env`
+outstanding, so the activities port fails to assign and the diagnostic ends on
+`Type '"TemporalActivities"' is not assignable to type '"@di/Scope"'` — the
+port named, after several lines of the contract expanding.
 
 Dropping one slice's import while still providing the composed activities is
 a different failure — the runtime `WiringDefect` the wiring rule above

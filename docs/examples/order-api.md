@@ -508,9 +508,11 @@ directions of `start`'s own gate and di's, side by side:
 const _missingRuntime = start(RuntimelessApi, options);
 ```
 
-`RuntimelessApi` is the same list of slices without `http(...)`: `start`'s phantom
-rest tuple becomes a required argument naming the absence, and the call fails
-on arity. It provides `bearerAuthenticator` even so, deliberately: the contract
+`RuntimelessApi` is the same list of slices without `http(...)`: `start`'s
+phantom marker becomes the sentence
+`"NO RUNTIME — the module exports no port declared over RuntimePort"`, and the
+module argument fails to match its parameter type — the sentence is the error's
+last line. It provides `bearerAuthenticator` even so, deliberately: the contract
 marks `orders`, so a graph carrying the router without an authenticator has an
 unmet need too, and an arm that could fail either way pins neither gate.
 
@@ -524,12 +526,17 @@ const RouterlessApi = Module("RouterlessApi")({
 const _missingRouter = start(RouterlessApi, options);
 ```
 
-This one is **di's** gate, not the kernel's: `http()`'s runtime provider
-depends on the starter's own router port through di, so a composition that
-imports the starter without providing the router carries an unmet need, and
-`start` — which accepts only `Scope | Env` outstanding — refuses the module.
-There is no `UNSATISFIED RUNTIME NEEDS` arm here, because the shipped runtime
-declares no needs.
+This one is the **`Needs` channel**, not the kernel's marker: `http()`'s runtime
+provider depends on the starter's own router port through di, so a composition
+that imports the starter without providing the router carries an unmet need, and
+`start` — whose `module` parameter accepts only `Scope | Env` outstanding —
+refuses it. What prints is that assignability failure, and it names the port:
+`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`, down to
+`Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. It is **not**
+di's `UNSATISFIED DEPENDENCIES` arity gate, which guards `Module.build` and
+`Module.scoped`; conflating the two is easy and the distinction is the point of
+having both pinned here. There is no `UNSATISFIED RUNTIME NEEDS` arm, because
+the shipped runtime declares no needs.
 
 ```ts
 // @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.

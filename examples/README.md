@@ -192,11 +192,16 @@ kernel's own type test now; what the examples pin is the other two gates.
 Pinned in `order-api/src/needs-gate.test-d.ts`,
 `order-temporal-worker/src/needs-gate.test-d.ts` and
 `order-amqp-worker/src/needs-gate.test-d.ts`: the wired call is an ordinary
-one; a composition that forgets its starter fails on **arity** with
-`NO RUNTIME`; and a composition that imports the starter without providing its
-router / activities / handlers port fails at `start` — di's own
-`UNSATISFIED DEPENDENCIES` gate, since the runtime provider depends on that
-port. `order-api` also pins both halves of the `unit` gate.
+one; a composition that forgets its starter is refused against
+`"NO RUNTIME — the module exports no port declared over RuntimePort"`, the
+sentence `start` intersects onto its `module` parameter; and a composition that
+imports the starter without providing its router / activities / handlers port
+fails at `start` too, but by a different mechanism — the port stays in the
+module's `Needs`, which `start`'s parameter accepts only as `Scope | Env`, so
+the diagnostic names the port. That second one is **not** di's
+`UNSATISFIED DEPENDENCIES` arity gate, which guards `Module.build` and
+`Module.scoped`; `order-application`'s file is where that one is pinned.
+`order-api` also pins both halves of the `unit` gate.
 
 The two **worker** files pin one more, and it is the one worth reading if you
 are about to write a slice: a slice does **not** shield the ports its own
