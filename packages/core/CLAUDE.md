@@ -31,13 +31,16 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   service of that module**, not an option: the module exports a port declared
   over `RuntimePort`, the kernel builds the graph, resolves that port and
   drives what it finds. The kernel is DI initialisation and lifecycle, nothing
-  else. Followed by the phantom `...gate` rest tuple, `StartGate<X,
-UnitNeeds>`: `NO RUNTIME` when the module exports no runtime port,
-  `UNSATISFIED RUNTIME NEEDS` when the runtime's declared needs are not among
-  the module's exports (the module's alone — a unit-only port exists only
+  else. The `module` parameter is intersected with the phantom marker
+  `StartGate<X, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime
+  port, `UNSATISFIED RUNTIME NEEDS` when the runtime's declared needs are not
+  among the module's exports (the module's alone — a unit-only port exists only
   while a unit is open, and `RuntimeHost.ctx` is the application context),
   `UNSATISFIED UNIT NEEDS` for the fork's own direction — all three at the
-  call site, on arity.
+  call site, as an assignability failure that **prints the arm's sentence**.
+  `unknown` is the satisfied arm, and it has to be: intersecting `unknown`
+  leaves the module type untouched, so a good call infers exactly as it
+  would without the marker.
 - **`RuntimePort`** — `Port("Runtime")`, exported **generic** (no fixed
   service): a runtime package declares its own concrete port over it —
   `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`
@@ -346,9 +349,12 @@ Type-level invariants live in `start.test-d.ts` and are checked by
 
 - **The module must export a runtime, and that runtime's declared `needs` are
   checked against the module's exports at the `start` call site** (the phantom
-  rest-tuple gate, `StartGate<X, UnitNeeds>`). A composition with
-  no port declared over `RuntimePort` among its exports fails on arity with
-  `NO RUNTIME`; a missing need fails with `UNSATISFIED RUNTIME NEEDS`.
+  marker `StartGate<X, UnitNeeds>`, intersected onto `module`). A composition
+  with no port declared over `RuntimePort` among its exports fails to match
+  `NO RUNTIME — …`; a missing need fails to match `UNSATISFIED RUNTIME NEEDS — …`.
+  Each arm's sentence is pinned by an `expectTypeOf<StartGate<…>>` in
+  `start.test-d.ts` — `@ts-expect-error` accepts any error, so the sentence a
+  reader is shown is asserted there or nowhere.
   `InstanceType<never>` is `never`, so a needs-free runtime works against any
   module. `Needs` and `Info` are not type parameters of `start` any more: they
   are read off `X` (`RuntimeNeedsOf<X>`, `RuntimeInfoOf<X>` — `ServiceOf` of
@@ -356,11 +362,14 @@ Type-level invariants live in `start.test-d.ts` and are checked by
   exported from the package, the rest are the gate's internals), which is what
   lets `RunningApp<E, RuntimeInfoOf<X>>` type `runtimeInfo()` from the module
   alone.
-- **The gate is bypassable, deliberately.** A caller who spells the phantom
-  arguments out by hand (`start(M, o, "UNSATISFIED RUNTIME NEEDS", new Clock())`)
-  does typecheck — asserted, not assumed. This is the same escape hatch di's own
-  UNSATISFIED DEPENDENCIES gate leaves: it takes a deliberate act, and the gate
-  exists to catch the accident, not to be unforgeable.
+- **The gate is bypassable, deliberately — by a cast.** `start(M as never)`
+  typechecks (verified), which is the ordinary TypeScript escape rather than
+  anything this gate offers: the gate exists to catch the accident, not to be
+  unforgeable. It used to be forgeable a second way — spelling the phantom rest
+  arguments out by hand — and that went with the rest tuple, so **parity with
+  di's UNSATISFIED DEPENDENCIES gate no longer holds**: di's is still a rest
+  tuple and still has the hand-spelled hatch. Nothing asserts the cast, because
+  a cast defeats every gate and asserting it would pin TypeScript, not this.
 
 `docs-examples.test-d.ts` compiles every code sample the two READMEs ship —
 the `@btravstack/testing` ones (`testRuntime`, `createFakeClock`, `bootFixture`)
@@ -414,20 +423,24 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   wrapper) because a third-party Standard Schema may be async — and may throw,
   which the wrapper turns into the defect it is.
 
-- **The needs check is a trailing phantom rest tuple, not a conditional on an
-  inference-bearing parameter.**
-  `...gate: [InstanceType<RuntimeNeedsOf<X>>] extends [X] ? [] : [error: "UNSATISFIED RUNTIME NEEDS", missing: …]`
+- **The needs check is a phantom marker intersected onto `module`, not a
+  trailing rest tuple.**
+  `module: Module<X, E, Scope | Env> & ([InstanceType<RuntimeNeedsOf<X>>] extends [X] ? unknown : "UNSATISFIED RUNTIME NEEDS — …")`
   (preceded by the `NO RUNTIME` arm on `Extract<X, RuntimeInstance>`) —
   against the module's exports alone, never the `unit` module's: a unit-only
   port exists only while a unit is open, and `RuntimeHost.ctx` is the
   application context, so accepting it would type-check into a startup defect
   (`start.test-d.ts`'s `SpanApp` pins the rejection).
-  A conditional type on `module` or `options` would make TypeScript defer that
-  parameter's inference and can collapse `X` or `E` to `unknown` — the same
-  shape, and the same reasoning, as di's own gate on `Module.scoped`, and the
-  same rule unthrown records for `fromPromise`. It **is** bypassable by a caller
-  who hand-writes the phantom arguments (proved in `start.test-d.ts`); that is
-  accepted, exactly as di accepts it.
+  A rest tuple was the earlier spelling, on the grounds that a conditional type
+  in an inference-bearing position can defer that parameter's inference and
+  collapse `X` or `E` to `unknown`. It bought that safety at the cost of the
+  diagnostic: a missing rest argument is an **arity** error, and an arity error
+  never prints a type, so `NO RUNTIME` never reached a reader and tsc's related
+  info pointed at the wrong fix ("an argument for 'options' was not provided").
+  Measured: `X` still infers from `Module<X, …>` with the marker alongside, so
+  the intersection costs nothing the tuple was protecting. di's own gate on
+  `Module.scoped` is **still** a rest tuple, so the two are no longer the same
+  shape — do not describe them as parallel.
 
 - **The runtime is resolved from the built graph, through the one generic
   port.** `RuntimePort` is `Port("Runtime")` left generic (its construct
@@ -451,7 +464,7 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   body where `X` and `Needs` are still unresolved type parameters.
   `@btravstack/testing`'s `bootFixture` has the same problem
   and solves it the same way — by forwarding through a signature with the
-  phantom tuple already discharged.
+  phantom marker already discharged.
 
 - **`finish` skips the drain for every reason but `"signal"` — and aborts the
   registry on exactly those paths.**
@@ -591,7 +604,7 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   `forkScope` call goes through a discharged-signature cast — the same move
   `runMain` and `@btravstack/testing`'s `bootFixture` make on `start` — because
   the fork's gates are
-  proven by `start`'s rest tuple at the call site and invisible in a body
+  proven by `start`'s intersected marker at the call site and invisible in a body
   where `X`, `Needs` and `UnitX` are unresolved. The work's return union is
   normalised by an `async` wrapper exactly as `registry.run` does it.
 

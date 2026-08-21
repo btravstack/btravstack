@@ -110,20 +110,17 @@ export const awaitExit = async <E>(
 // Result world and become a process exit code. It is the boundary, and a
 // top-level `await runMain(...)` in an entry point is the intended shape.
 export const runMain = async <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env>,
+  // The same phantom gate `start` carries, for the same reason: it makes the
+  // runtime's declared needs a compile-time check at *this* call site.
+  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
   options: StartOptions<UnitX, UnitNeeds> = {},
   exit: (code: number) => void = (code) => {
     process.exitCode = code;
   },
-  // The same phantom gate `start` carries, for the same reason: it makes the
-  // runtime's declared needs a compile-time check at *this* call site.
-  ...gate: StartGate<X, UnitNeeds>
 ): Promise<void> => {
-  void gate;
-
   // The gate above proves the needs at the call site, but that proof is not
   // visible inside a body where `X` is still an unresolved type parameter —
-  // the same reason `bootFixture` discharges the tuple the same way.
+  // the same discharged-signature cast `bootFixture` makes, for the same reason.
   const boot = start as (
     module: Module<X, E, Scope | Env>,
     options: StartOptions<UnitX, UnitNeeds>,

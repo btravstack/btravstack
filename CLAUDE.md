@@ -445,12 +445,18 @@ type checker already verifies.
   **`start`'s** gate (`order-api`, `order-temporal-worker`,
   `order-amqp-worker` — its `NO RUNTIME` arm, since no starter's runtime
   declares a `needs` any more; `order-api`'s also pins the `unit` halves) and
-  **di's** need on the starter's port (a composition importing `http()` /
+  the **unmet need** on the starter's port (a composition importing `http()` /
   `temporal({ contract, workflows })` / `amqp({ contract })` without providing
-  the router / activities / handlers carries the starter's port as an unmet
-  need `start` refuses); the fourth,
-  `order-application`'s, pins **di's** `UNSATISFIED DEPENDENCIES` gate on
-  `Module.scoped`. They are different gates and easy to conflate. `start`'s
+  the router / activities / handlers carries the starter's port in `Needs`, and
+  `start`'s `module` parameter takes only `Scope | Env`, so it fails to assign —
+  measured: a `TS2345` ending on
+  `Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`, which names the
+  port); the fourth, `order-application`'s, pins **di's**
+  `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`, which is a rest-tuple
+  **arity** error printing `Expected 5 arguments, but got 2` and nothing else.
+  **Three** different mechanisms, easy to conflate — and only the first prints
+  its name. Do not call the second "di's `UNSATISFIED DEPENDENCIES` gate": an
+  earlier revision of this file did, and it is wrong in both halves. `start`'s
   `UNSATISFIED RUNTIME NEEDS` arm is pinned only by `packages/core`'s own
   `start.test-d.ts`, since every shipped runtime declares `needs: []`.
   `examples/` is not the only place the gate is pinned by a **type test**:
@@ -670,9 +676,13 @@ AuditSlice, observability()], … })`),
   the piece's own port id rather than on a record position — and
   `AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])`
   compose them: every key the contract declares must be covered (an uncovered
-  one is refused at the call, against an `"UNCOVERED HANDLERS"` /
-  `"UNCOVERED ACTIVITIES"` marker that names the missing key too once the
-  array's length matches the marker tuple's own length of 2), and two slices
+  one is refused at the call, against an `"UNCOVERED HANDLERS — …"` /
+  `"UNCOVERED ACTIVITIES — …"` marker — at the **tail of the third line** of a
+  `TS2769`, past three hundred characters of the caller's own contract, which
+  is not shortenable from inside either package because the width is in the
+  type arguments rather than in a name; the missing key is named too once the
+  array's length matches the marker tuple's own length of 2, as a **separate**
+  diagnostic on the trailing element whose target is the bare key), and two slices
   both discharged for one key are di's duplicate-provider defect at build —
   the same exactness the keyed HTTP
   form gets from the shape of the record it composes, reached here through the
@@ -735,9 +745,11 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the
   package's. Two gates keep the composition honest at compile time: a root
-  that forgets `http()` fails on arity (`NO RUNTIME`), and one that imports
-  it without providing `orderRouter` fails di's own gate at `start`, since the
-  starter's runtime provider depends on its router port.
+  that forgets `http()` is refused against
+  `"NO RUNTIME — the module exports no port declared over RuntimePort"`, the
+  sentence intersected onto `start`'s `module` parameter, and one that imports
+  it without providing `orderRouter` leaves `HttpRouterPort` in `Needs`, which
+  the same parameter refuses by assignability — not di's arity gate.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.28` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned

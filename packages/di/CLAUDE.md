@@ -60,7 +60,20 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   close on every path), `Module.forkScope` (per-request scope seeded from a built
   parent `Context`). Unmet dependencies are compile errors via a conditional rest
   parameter — `[N] extends [never] ? [] : [error: "UNSATISFIED DEPENDENCIES",
-missing: N]`. `exports` accepts an available **port class**, a **provider** for
+missing: N]`. What that **prints** is the arity line alone —
+  `error TS2554: Expected 3 arguments, but got 1.` — because an arity error
+  never carries a type: neither the label nor the ports in `missing` reach the
+  message, and `--pretty`'s related information points at the declaration in
+  `module.ts`, where `N` is still un-instantiated. Hand-spelling the phantom
+  arguments is how a reader gets the port printed: a value the rest tuple cannot
+  accept names the label first, then the port itself (measured,
+  `Argument of type 'number' is not assignable to parameter of type 'Scope'`).
+  An editor's language service reads the same instantiated type, so a hover
+  would be expected to show it — inferred, never measured here.
+  `@btravstack/core`'s `start` answers this differently — its marker
+  rides the `module` parameter so its sentence prints — so **the two gates are
+  no longer the same shape**; do not describe them as parallel.
+  `exports` accepts an available **port class**, a **provider** for
   one (normalised to `provider.port` when the module is built, so the stored
   `exports` array stays `readonly (AnyPort | AnyModule)[]`, and yielding the
   identical `Exports` channel either way), or an imported module. The provider

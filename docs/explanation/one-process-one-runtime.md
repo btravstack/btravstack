@@ -29,7 +29,8 @@ class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}
 — so at runtime every one of them has the id `"Runtime"`, while each carries
 its own `Needs` and `Info` in the type. `start` builds the graph, resolves that
 one port, and drives what it finds. A module that exports no port with that id
-fails on arity at the call (`NO RUNTIME`); a module that provides two runtimes
+is refused at the call, against the sentence
+`"NO RUNTIME — the module exports no port declared over RuntimePort"`; a module that provides two runtimes
 is two providers for one port id, which di reports as a wiring defect before
 any factory runs. There is no `runtimes: [...]`
 option, and no surface in the kernel is meant to grow one.

@@ -35,9 +35,11 @@ export const orderRouter = HttpRouter(contract)({
  * dropping this line is an unmet dependency `start` refuses, and supplying one
  * that resolves a different principal is a compile error at this very call.
  * Importing the router
- * and the starter is what closes di's arity gate (a composition without the
- * router provider does not compile — the starter's provider depends on it),
- * and `HttpRuntime`, which the sugar exports, is what closes the kernel's.
+ * and the starter is what empties the needs channel (a composition without the
+ * router provider does not compile — the starter's provider depends on it, so
+ * `HttpRouterPort` survives into `Needs` and `start`'s `module` parameter,
+ * which takes only `Scope | Env`, refuses it by name), and `HttpRuntime`,
+ * which the sugar exports, is what satisfies the kernel's own marker.
  *
  * A constant, not a function: configuration is read inside the graph, from the
  * `Env` port the kernel provides, so nothing has to be passed in from

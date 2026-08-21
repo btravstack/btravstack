@@ -194,9 +194,10 @@ Module("OrdersApi")({
 The authenticator sits at the **root**, not beside the router: who a caller is
 is one answer per process. It is required here because the contract marks the
 fragment — a marked router carries `AuthenticatorPort` as a dependency, so
-omitting the line is di's own `UNSATISFIED DEPENDENCIES` at `start`, and
-supplying one minted on a different identity is a compile error at this very
-call.
+omitting the line leaves it in the module's `Needs` and `start` refuses the
+module (`Type 'AuthenticatorPort' is not assignable to type 'Env | Scope'` —
+the port is named), and supplying one minted on a different identity is a
+compile error at this very call.
 
 [`observability()`](/reference/observability) is the other starter here: it
 brings the `Logger` the use cases and the request scope write to, bound from
@@ -205,10 +206,12 @@ trace id of the unit `http()` opened around the request. It is exported
 because the per-request `RequestModule` reads it.
 
 Three gates hold at compile time, now that the contract is marked. A root that
-forgets the starter exports no runtime port and `start` fails on arity
-(`NO RUNTIME`). A root that imports `http()` without providing the router
+forgets the starter exports no runtime port and `start` refuses it against
+`"NO RUNTIME — the module exports no port declared over RuntimePort"`. A root
+that imports `http()` without providing the router
 carries an unmet need — the starter's runtime provider depends on its router
-port through di — and `start` refuses the module. And a root serving a **marked**
+port through di — and `start` refuses the module, naming the port
+(`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`). And a root serving a **marked**
 contract without an authenticator carries `AuthenticatorPort` as a second unmet
 need, refused the same way; drop the marker and that third gate goes with it.
 

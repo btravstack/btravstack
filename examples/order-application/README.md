@@ -63,7 +63,11 @@ the same reason from the other direction: it is `@btravstack/observability`'s
 port, not this layer's, so there is nothing here to provide and nothing to
 re-export. `Module.scoped(OrderApplicationModule, …)` is therefore a compile
 error — di's gate turns the module's remaining needs into a required argument
-naming them (`src/needs-gate.test-d.ts` pins each vertical's gate separately).
+that carries them (`src/needs-gate.test-d.ts` pins each vertical's gate
+separately). The message itself is only `Expected 5 arguments, but got 2`: an
+arity error prints no type, so the ports are in the rest parameter rather than
+in the line — hand-spelling the phantom arguments is what prints them, ending on
+`not assignable to parameter of type 'Logger | OrderRepository'`.
 The hole is not documentation; it is the type. An infrastructure module fills
 it, and only then does the graph build.
 

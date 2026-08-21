@@ -33,7 +33,12 @@ the same commit, and with `README.md` — the package ships no
   takes. `Auth` is inferred from it and `Provides` spreads
   `[Auth] extends [undefined] ? [] : [NonNullable<Auth>]`, so an **omitted**
   authenticator contributes no element and a marked router's need survives
-  to `start` — di's `UNSATISFIED DEPENDENCIES`, no gate of this package's.
+  to `start`, which refuses it — no gate of this package's, and **not** di's
+  `UNSATISFIED DEPENDENCIES` arity gate either (that one guards
+  `Module.build`/`Module.scoped`): `start`'s `module` parameter takes only
+  `Scope | Env` outstanding, so the leftover need fails to assign and the
+  diagnostic names the port, ending on
+  `Type '"HttpAuthenticator"' is not assignable to type '"@di/Scope"'`.
   What di cannot see is the **principal**: `AuthenticatorPort`'s service type
   is erased to `unknown`, so any authenticator discharges the need whatever it
   resolves. That half is checked here instead — `Principal` is inferred from
@@ -89,19 +94,36 @@ PortInstance<…> }`) rather than the class's own type because a class
   `HttpController` per key, instead of `(deps, { sync })`. `M` is constrained
   `{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
 IsMarked<C>>, Identity> }`, and the `controllers`
-  **parameter** is typed `M & { readonly [K in Exclude<keyof M, Exclude<keyof C,
-PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
+  **parameter** is typed ``M & { readonly [K in Exclude<keyof M, Exclude<keyof C,
+PrincipalKey>>]: `UNDECLARED KEY — the contract declares no fragment under
+${K & string}` }`` — the same `Exclude` and the same `Inherit` the
   deps arm's `Implementation<C>` carries, so a **root-marked** contract
   composes here at all (the phantom key is not a controller to supply) and each
   fragment inherits the root's mark (a controller under it types
   `context.principal`). Both were missing until `auth.test-d.ts`'s eleventh arm
   went in; the marked fixtures in `controller.test-d.ts` mark a **key**, which
   is why neither showed there. The exactness intersection is on the parameter, not on `M`: a key
-  `M` has that `C` does not declare types
-  as `never` there, so the call fails to compile rather than silently
+  `M` has that `C` does not declare types as a sentence **naming that key** —
+  `"UNDECLARED KEY — the contract declares no fragment under billing"` — so the
+  call fails to compile rather than silently
   dropping the key, without the intersection leaking into `M` and collapsing
   the needs channel di orders the controllers by (the failure mode
   `controller.test-d.ts`'s `_ComposedNeedsAreDeclared` check exists to catch).
+  It was a bare `never` until the diagnostics pass: `never` made the
+  intersection **reduce**, so the whole complaint printed as
+  `Type 'Minted<…>' is not assignable to type 'never'` — one short line that
+  named neither the key nor the rule. The sentence does not reduce, so the
+  reader pays one wide intersection line (the shape four other gates in
+  `controller.test-d.ts` already print) and the message **ends** on the rule in
+  English, with the offending key in it. `${K & string}` is what carries the
+  key: the mapped type is keyed by `K`, so the key is in scope at the value
+  position and costs a template literal to reach. The wide-line trade and the
+  named key were both **measured** — all five gates still fire, `tsc` clean, no
+  widening of `M`. A **symbol** key would intersect to `never` and collapse the
+  whole template to `never`, back to the old terse error: that one is
+  **reasoned from `K & string`, not measured**, and it is inert anyway, since a
+  contract's fragment keys are strings and no call of the keyed form can carry
+  a symbol. Do not upgrade it to a measured claim without measuring it.
   **`HttpRouter` is the one helper in the family with THREE forms and only two
   arguments' worth of arity**, so it is the one place arity alone cannot
   decide. `(deps, arm)` is settled by arity as everywhere else; the two
@@ -294,8 +316,9 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C>
   hands the caller's own `sync` the rest — and both `build` overloads add
   `HasMark<C> extends true ? AuthenticatorPort : never` to the needs channel
   plus `readonly identity: Identity` to the result.
-  A marked router whose root provides no authenticator is therefore di's
-  existing `UNSATISFIED DEPENDENCIES` gate — no new gate. Whether the
+  A marked router whose root provides no authenticator is therefore an
+  ordinary unmet need refused at `start` — no new gate, and not di's arity
+  gate (see the `authenticator` bullet for what prints). Whether the
   authenticator resolves what the handlers read is the one thing that
   gate cannot see, and `HttpModule`'s `authenticator` option is where it is
   checked (see the first bullet). Note
@@ -372,12 +395,16 @@ plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
   `HttpModuleOptions.securityHeaders` (`http-module.ts`) forwards it to
   `http()` on the same `...(x === undefined ? {} : { x })` spread every
   other option here uses.
-- **Two gates, both compile-time.** `start`'s phantom rest tuple turns a
-  composition exporting no `HttpRuntime` into an arity error (`NO RUNTIME`);
-  and because the runtime provider depends on the router port **through di**,
+- **Two gates, both compile-time, and they are different mechanisms.**
+  `start`'s phantom marker — intersected onto `module`, not a rest tuple — turns
+  a composition exporting no `HttpRuntime` into a `TS2345` whose last line is
+  `"NO RUNTIME — the module exports no port declared over RuntimePort"`; and
+  because the runtime provider depends on the router port **through di**,
   a composition that imports `http()` without providing the router
-  carries `HttpRouterPort` as an unmet need `start` refuses — di's gate, not
-  the kernel's.
+  carries `HttpRouterPort` as an unmet need `start` refuses on the same
+  parameter's `Module<X, E, Scope | Env>` half, ending on
+  `Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. Neither is
+  di's `UNSATISFIED DEPENDENCIES` arity gate.
   `examples/order-api/src/needs-gate.test-d.ts` pins both, plus the
   `StartOptions.unit` halves. There is no `UNSATISFIED RUNTIME NEEDS` case for
   this runtime any more: it declares none.

@@ -22,7 +22,7 @@ features:
   - title: One process, one runtime
     details: An API, a Temporal worker and an AMQP consumer are three processes booting the same module under a different composition root. The runtime is a service of the module, and a graph holds exactly one.
   - title: Wiring proven at compile time
-    details: A module that forgets a provider, a runtime whose needs are not exported, a root with no runtime — each is an arity error at the call site, before anything runs. That is @btravstack/di, and start builds on it.
+    details: A module that forgets a provider, a runtime whose needs are not exported, a root with no runtime — each is a compile error at the call site, before anything runs. That is @btravstack/di, and start builds on it.
   - title: A drain that survives Kubernetes
     details: SIGTERM flips readiness, waits for endpoint removal to catch up, then stops accepting and gives in-flight work a deadline. Whatever is still open is reported abandoned, not lost silently.
   - title: Nothing throws

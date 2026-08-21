@@ -15,18 +15,18 @@ description: The signature of runMain, the exit-code table (0, 1, 2, 70, 78) wit
 
 ```ts
 const runMain: <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env>,
+  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
   options?: StartOptions<UnitX, UnitNeeds>,
   exit?: (code: number) => void,
-  ...gate: StartGate<X, UnitNeeds>
 ) => Promise<void>;
 ```
 
 `runMain` is `start` composed with the wait for `exited`, then a fold of the
-`Result` into a code. It carries the same phantom gate as `start` (see
-[The gate](/reference/core/start#the-gate-startgate-x-unitneeds)), so `NO RUNTIME`,
-`UNSATISFIED RUNTIME NEEDS` and `UNSATISFIED UNIT NEEDS` fail at this call site
-too.
+`Result` into a code. It carries the same phantom marker as `start`, intersected
+onto `module` (see
+[The gate](/reference/core/start#the-gate-startgate-x-unitneeds)), so
+`NO RUNTIME — …`, `UNSATISFIED RUNTIME NEEDS — …` and
+`UNSATISFIED UNIT NEEDS — …` are printed at this call site too.
 
 | Parameter | Default                                  | Semantics                                                                                                                                                                                                                                                           |
 | --------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

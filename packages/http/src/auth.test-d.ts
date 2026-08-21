@@ -88,9 +88,11 @@ void _none;
 // The composition half: a marked contract needs an authenticator, and the
 // composition root is where the router and the authenticator meet. The two
 // gates below are DIFFERENT gates, and fire at different calls. Whether an
-// authenticator is there at all is di's own `UNSATISFIED DEPENDENCIES` at
-// `start` (7) — the same arm `examples/order-api/src/needs-gate.test-d.ts`
-// pins for the router. Whether it resolves what the handlers read is this
+// authenticator is there at all is an unmet need `start` refuses (7) — its
+// `module` parameter takes only `Scope | Env` outstanding, so the diagnostic
+// names the port; NOT di's `UNSATISFIED DEPENDENCIES` arity gate, which guards
+// `Module.build`/`Module.scoped`. Same mechanism as
+// `examples/order-api/src/needs-gate.test-d.ts` pins for the router. Whether it resolves what the handlers read is this
 // package's own options check at the `HttpModule(...)` call (8), because
 // `AuthenticatorPort`'s service type is erased to `AuthenticatorService<
 // unknown>`: the need cannot carry the identity, so only the options type
@@ -115,11 +117,11 @@ const options = { signals: false, probes: false } as const;
 // 7. A marked router with no authenticator supplied carries the port as an
 //    unmet need — the module builds, `start` refuses it.
 const MissingApi = HttpModule("Missing")({ router: markedRouter });
-// @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides the authenticator port the marked router needs.
+// @ts-expect-error — UNMET NEED: nothing provides the authenticator port the marked router needs.
 const _missing = start(MissingApi, options);
 
 // 8. An authenticator minted on a DIFFERENT identity is refused. Unlike 7,
-//    this one is NOT di's gate and does not wait for `start`: the
+//    this one is not the needs channel and does not wait for `start`: the
 //    authenticator port's service type is erased to `unknown`, so di sees the
 //    need discharged. The two identities meet on `HttpModule`'s own options —
 //    `RouterIdentity` is inferred from the router — which is where it is caught.

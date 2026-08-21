@@ -155,15 +155,25 @@ type Uncovered<C extends ContractDefinition, T extends readonly PieceOf<C>[]> = 
 /**
  * The composing arm. Declared LAST in the intersection below on purpose:
  * TypeScript reports the last overload's failure, so a non-covering array is
- * refused against the `"UNCOVERED ACTIVITIES"` marker rather than degrading
- * to di's `Qualification`, which names nothing. The missing key itself is
- * named in the diagnostic only when the array's length matches the marker
- * tuple's own length (2) — measured.
+ * refused against the `"UNCOVERED ACTIVITIES — …"` marker rather than
+ * degrading to di's `Qualification`, which names nothing. The missing key
+ * itself is named in the diagnostic only when the array's length matches the
+ * marker tuple's own length (2) — measured.
+ *
+ * The marker is a **sentence**, not a bare label, because it is the only part
+ * of this diagnostic a reader can act on and it prints LAST: TypeScript names
+ * the source type first, and the source here is the piece the caller wrote —
+ * di's `Provider<…>` over the contract, several hundred characters wide and
+ * outside this package to name. Widening the literal costs nothing to print
+ * and is what carries the explanation to where the eye lands.
  */
 type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C>[]>(
   pieces: [Uncovered<C, T>] extends [never]
     ? T
-    : readonly ["UNCOVERED ACTIVITIES", Uncovered<C, T>],
+    : readonly [
+        "UNCOVERED ACTIVITIES — the contract declares a workflow this array does not cover",
+        Uncovered<C, T>,
+      ],
 ) => Provider<ActivitiesInstanceOf<C>, never, InstanceType<T[number]["port"]>> & {
   readonly port: ActivitiesPortOf<C>;
 };

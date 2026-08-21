@@ -239,10 +239,15 @@ export const OrderApi = HttpModule("OrderApi")({
 
 Two things are checked here, and they are different gates:
 
-- **Omitting the line** is di's own `UNSATISFIED DEPENDENCIES` at `start`. When
+- **Omitting the line** leaves an unmet need, refused at `start`. When
   the contract marks anything, `HttpRouter` appends `AuthenticatorPort` to the
   router provider's dependencies, so the need is real and unmet — no new gate,
-  and nothing this package invents.
+  and nothing this package invents. What prints is the `Needs` channel failing
+  to assign: `Type 'AuthenticatorPort' is not assignable to type 'Env | Scope'`,
+  down to `Type '"HttpAuthenticator"' is not assignable to type '"@di/Scope"'`.
+  (Not di's `UNSATISFIED DEPENDENCIES` arity gate — that one guards
+  `Module.build`/`Module.scoped`; `start` types the need out on its `module`
+  parameter, which is why the port is named.)
 - **Supplying one minted on a different identity** is a compile error at
   the `HttpModule(...)` call itself. di cannot see it — `AuthenticatorPort`'s
   service type is erased to `unknown`, so any authenticator discharges the need

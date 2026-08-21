@@ -78,7 +78,7 @@ Provider<ActivitiesPortOf<C>>> & Compose<C>` — di's builder first, the
   non-covering array, and the diagnostic degrades to `not assignable to
 'Qualification<readonly [], Activities>'`, naming nothing; last, it reports
   the composing arm's own conditional against `readonly ["UNCOVERED
-ACTIVITIES", K]`, which always names the marker — the missing key `K` itself
+ACTIVITIES — …", K]`, which always names the marker — the missing key `K` itself
   appears only when the array's length matches that marker tuple's own length
   of 2; a single-element array's diagnostic names the marker alone —
   measured, not stylistic. The
@@ -164,7 +164,11 @@ config: TemporalConfig, activities: TemporalActivitiesPort as
 ActivitiesPortOf<C> }, { sync })` —
   the port rides di, which is why `ActivitiesInstanceOf<C>` is in the module's
   `Needs` and a root that imports the starter without providing the
-  activities is rejected by `start` for still owing it (the
+  activities is rejected by `start` for still owing it — by assignability
+  against `Env | Scope` on the `module` parameter, not by di's
+  `UNSATISFIED DEPENDENCIES` arity gate, so the diagnostic names the port and
+  ends on `Type '"TemporalActivities"' is not assignable to type '"@di/Scope"'`
+  (the
   `examples/order-temporal-worker` `needs-gate.test-d.ts` pins that; there is
   no `UNSATISFIED RUNTIME NEEDS` arm any more, the runtime needs nothing).
   `TemporalActivitiesPort as ActivitiesPortOf<C>` (here and in

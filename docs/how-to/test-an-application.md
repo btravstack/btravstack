@@ -111,9 +111,10 @@ it("broadcasts every committed write, end to end", async ({ serve }) => {
 });
 ```
 
-The gate refuses a port the module does not export (`NOT EXPORTED`, at the
-call site), and `services()` throws if read before the graph is built — a
-bug in the test, kept loud rather than answered with an `undefined`.
+A port the module does not export is refused at the call site by the
+[tap gate](/reference/testing#the-tap-gate-an-arity-error), and `services()`
+throws if read before the graph is built — a bug in the test, kept loud
+rather than answered with an `undefined`.
 
 ## Read a running graph's log lines with a sink
 

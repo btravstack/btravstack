@@ -55,10 +55,15 @@ context; a provided-but-unexported port is private to the module. See
 providers, then closed. `StartOptions.unit` is a fork the kernel opens around
 every unit. See [Open a per-request scope](/how-to/open-a-per-request-scope).
 
-**gate** — A phantom rest tuple that is `[]` when a composition is sound and a named
-error tuple otherwise, so a mistake fails on arity at the call site. `start`'s
-is `StartGate` (`NO RUNTIME`, `UNSATISFIED RUNTIME NEEDS`, `UNSATISFIED UNIT
-NEEDS`); di's `Module.scoped` has `UNSATISFIED DEPENDENCIES`. See
+**gate** — A phantom type that is inert when a composition is sound and refuses the
+call otherwise. The two shipped here are not the same shape. `start`'s is
+`StartGate`, a marker **intersected onto `module`** — `unknown` when sound, one
+of three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME NEEDS — …`,
+`UNSATISFIED UNIT NEEDS — …`) otherwise, and the sentence prints in the error.
+di's on `Module.scoped` is a conditional **rest tuple** labelled
+`UNSATISFIED DEPENDENCIES`, so it fails on arity — `Expected 3 arguments, but
+got 1`, which names nothing; the label and the missing ports are in the
+parameter's type, not the message. See
 [start and StartOptions](/reference/core/start) and
 [Compile errors, not surprises](/explanation/compile-time-wiring).
 

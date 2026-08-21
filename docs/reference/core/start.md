@@ -15,9 +15,8 @@ description: The signature of start, every StartOptions field with its default, 
 
 ```ts
 const start: <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env>,
+  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
   options?: StartOptions<UnitX, UnitNeeds>,
-  ...gate: StartGate<X, UnitNeeds>
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 ```
 
@@ -78,29 +77,21 @@ already fired.
 
 ## The gate: `StartGate<X, UnitNeeds>`
 
-The trailing `...gate` rest parameter is a **phantom**: it never carries a
-runtime argument. Its type is `[]` when the module is boot-able and a named
-error tuple otherwise, so a bad composition fails on arity at the call site.
+`StartGate` is a **phantom marker intersected onto the `module` parameter**: no
+argument ever carries it. It is `unknown` — and therefore invisible — when the
+module is boot-able, and one of three sentences otherwise, so a bad composition
+fails to match the parameter type at the call site.
 
 ```ts
 type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [
   never,
 ]
-  ? [
-      error: "NO RUNTIME",
-      hint: "the module exports no port declared over RuntimePort",
-    ]
+  ? "NO RUNTIME — the module exports no port declared over RuntimePort"
   : [InstanceType<RuntimeNeedsOf<X>>] extends [X]
     ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
-      ? []
-      : [
-          error: "UNSATISFIED UNIT NEEDS",
-          missing: Exclude<UnitNeeds, X | Scope | Env>,
-        ]
-    : [
-        error: "UNSATISFIED RUNTIME NEEDS",
-        missing: Exclude<InstanceType<RuntimeNeedsOf<X>>, X>,
-      ];
+      ? unknown
+      : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
+    : "UNSATISFIED RUNTIME NEEDS — the runtime needs a port the module does not export";
 ```
 
 | Arm                         | Fires when                                                                                                                                                                     |
@@ -109,10 +100,27 @@ type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [
 | `UNSATISFIED RUNTIME NEEDS` | The runtime's declared `needs` are not all among the module's exports — the **module's alone**, never the unit module's, because `RuntimeHost.ctx` is the application context. |
 | `UNSATISFIED UNIT NEEDS`    | The `unit` module's needs are not covered by the module's exports, `Scope` or `Env` — `Module.forkScope`'s gate, stated where the parent is actually known.                    |
 
-`runMain`, and `@btravstack/testing`'s `Boot`, carry the same tuple. A rest tuple rather than a
-conditional type on `module` is deliberate: a conditional on an
-inference-bearing parameter makes TypeScript defer that parameter and can
-collapse `X` or `E` to `unknown`.
+`runMain`, and `@btravstack/testing`'s `Boot`, carry the same marker.
+
+**What a failing arm prints, measured** — a root exporting a `Greeter` and no
+runtime port:
+
+```
+error TS2345: Argument of type 'Module<Greeter, never, never>' is not assignable to parameter of type 'Module<Greeter, never, Env | Scope> & "NO RUNTIME — the module exports no port declared over RuntimePort"'.
+  Type 'Module<Greeter, never, never>' is not assignable to type '"NO RUNTIME — the module exports no port declared over RuntimePort"'.
+```
+
+The sentence prints because the marker rides the `module` parameter — an
+argument that fails a parameter type makes TypeScript name that type. This was
+a trailing `...gate` rest tuple until it was not: a rest tuple leaves inference
+alone, but fails as an **arity** error, and an arity error never prints a type,
+so the arm's name never reached a reader. `X` still infers from the
+`Module<X, …>` half of the intersection — measured, and the reason the swap was
+free. Each arm's sentence is asserted by an `expectTypeOf<StartGate<…>>` in
+`start.test-d.ts`, since `@ts-expect-error` accepts any error.
+
+The gate is bypassable by a cast (`start(App as never)`) — the ordinary
+TypeScript escape. Spelling phantom arguments out by hand went with the tuple.
 
 ## Reading the runtime back: `RuntimePort` and `RuntimeInfoOf`
 
@@ -151,8 +159,8 @@ const app = start(HttpishApp, { env: {}, probes: false });
 const info = await app.runtimeInfo(); // Result<HttpInfo | undefined, never>
 ```
 
-Drop `Httpish` from `exports` and the call to `start` fails to compile with
-`NO RUNTIME`.
+Drop `Httpish` from `exports` and the call to `start` fails to compile against
+`"NO RUNTIME — the module exports no port declared over RuntimePort"`.
 
 ## Lifecycle, in order
 

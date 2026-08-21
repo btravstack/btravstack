@@ -5,7 +5,9 @@ import { start } from "@btravstack/core";
  * runtime needs nothing from the application context — its activities reach
  * it as a port the starter depends on through di. So there is no
  * `UNSATISFIED RUNTIME NEEDS` arm to pin here, as there was when the runtime
- * declared five `needs` of its own; what replaces it is di's gate.
+ * declared five `needs` of its own; what replaces it is the needs channel —
+ * refused by `start`'s `Module<X, E, Scope | Env>` parameter, which names the
+ * port, and NOT di's `UNSATISFIED DEPENDENCIES` arity gate.
  *
  * Two distinct negatives, at two distinct levels. `orderActivities`'s own
  * `deps` are the two pieces' PORTS (`fulfillOrder.port | chargeOrder.port`),
@@ -30,6 +32,7 @@ import { Module } from "@btravstack/di";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { observability } from "@btravstack/observability";
 import { TemporalModule, TemporalRuntime, temporal } from "@btravstack/temporal";
 
 import { OrderTemporalWorker, orderActivities } from "./module.js";
@@ -45,15 +48,17 @@ const options = { signals: false, probes: false } as const;
 const _wired = start(OrderTemporalWorker, options);
 
 // The same graph without the starter: nothing declared over `RuntimePort` is
-// exported, so there is nothing for `start` to boot.
+// exported, so there is nothing for `start` to boot. `observability()` is here
+// so this arm fails on the RUNTIME alone — the two slices owe `Logger`
+// otherwise, and a module failing two gates at once elaborates the other one.
 const RuntimelessTemporal = Module("RuntimelessTemporal")({
-  imports: [FulfillmentSlice, BillingSlice],
+  imports: [FulfillmentSlice, BillingSlice, observability()],
   provides: [orderActivities],
   exports: [orderActivities.port],
 });
 
-// Negative: the gate becomes a required two-element tuple naming the absence,
-// and the call fails on arity.
+// Negative: the marker intersected onto `module` becomes a sentence naming the
+// absence, which is what the call fails to match.
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _noRuntime = start(RuntimelessTemporal, options);
 
@@ -71,7 +76,7 @@ const ActivitylessTemporal = Module("ActivitylessTemporal")({
   exports: [TemporalRuntime],
 });
 
-// Negative, di's gate rather than the kernel's: `start` takes a
+// Negative, the needs channel rather than the kernel's marker: `start` takes a
 // `Module<X, E, Scope | Env>`, and this one still owes the activities port.
 // @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port, which nothing provides.
 const _missingActivities = start(ActivitylessTemporal, options);

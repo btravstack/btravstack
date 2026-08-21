@@ -157,8 +157,11 @@ line on stdout, every line carrying the activity attempt's own trace id. The
 starter's runtime provider depends on its activities port through di, so a
 root whose imports do not cover what the provider declared (`FulfillmentModule`
 and `BillingModule` here — `chargeOrder`'s `PaymentService` comes from the
-latter) is refused at `start` — di's gate; a root with no starter fails on
-arity (`NO RUNTIME`). `activities` is typed against the module's own
+latter) is refused at `start` — the `Needs` channel failing to assign against
+`Env | Scope`, which names the port, not di's `UNSATISFIED DEPENDENCIES` arity
+gate; a root with no starter is refused against
+`"NO RUNTIME — the module exports no port declared over RuntimePort"`.
+`activities` is typed against the module's own
 `contract`: a provider built for another contract is refused at the call.
 
 `workflows` is a `WorkflowSource`: `{ workflowsPath }` for a process that lets

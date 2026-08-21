@@ -229,9 +229,9 @@ is refused right there — not at the root, and not at startup.
 The third is caught at the composing call. `AmqpHandlers(contract)([...])`
 and `TemporalActivities(contract)([...])` are exact against every top-level
 key the contract declares: an array missing one is refused, against an
-`"UNCOVERED HANDLERS"` / `"UNCOVERED ACTIVITIES"` marker — readable straight
-off the type error rather than a runtime stack trace, and never a silent
-failure or an `undefined` merged into the record:
+`"UNCOVERED HANDLERS — …"` / `"UNCOVERED ACTIVITIES — …"` marker rather than a
+runtime stack trace, and never a silent failure or an `undefined` merged into
+the record:
 
 ```ts
 // @ts-expect-error -- the "orderAudit" consumer is uncovered
@@ -241,15 +241,27 @@ AmqpHandlers(orderContract)([orderNotifications]);
 TemporalActivities(orderContract)([chargeOrder]);
 ```
 
+**Where the marker actually is.** Both are a `TS2769` —
+`No overload matches this call` — three lines long, and the sentence is at the
+**tail of the third line**, past three hundred characters of type. TypeScript
+names the source type first, and the source is the piece you wrote: di's
+`Provider<…>` over your contract, which expands to the contract literal itself.
+So this one is not readable at a glance; it is readable once you know the
+sentence is the last thing on that line. Nothing either package can spell
+shortens it — measured, the width is the caller's own contract in the type
+arguments, not a name a package could alias — which is why the marker is a
+whole sentence rather than a label: it is the only part of the line a reader
+can act on, and it prints where the eye ends up.
+
 Both arrays above are one element long, so both diagnostics report only the
-marker (`"UNCOVERED HANDLERS"`, `"UNCOVERED ACTIVITIES"`) — the missing key
-itself is not in either message. The key IS named — as
-`readonly ["UNCOVERED HANDLERS", "orderAudit"]` or
-`readonly ["UNCOVERED ACTIVITIES", "fulfillOrder"]` — but only once the array
-under test is as long as the marker tuple itself (2), a two-piece array
-missing one key being the common case. Below that length TypeScript can no
-longer line the array up against the tuple positionally and falls back to
-reporting the marker alone.
+marker — the missing key itself is in neither message. The key **is** named
+once the array under test is as long as the marker tuple itself (2), a
+two-piece array missing one key being the common case: TypeScript then lines
+the array up against the tuple positionally and reports one error per element,
+the trailing one being — measured on this worker's own contract —
+`is not assignable to type '"orderAudit"'`: the bare key, as its own
+diagnostic, not folded into the marker's sentence. Below that length it can no
+longer line them up and falls back to reporting the marker alone.
 
 This is why the composing arm is declared **last** in the intersection both
 packages build it from — di's builder first, the composer last — so

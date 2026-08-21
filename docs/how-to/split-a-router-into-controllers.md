@@ -205,8 +205,11 @@ and none of them owns it; `Logger` is exported because the per-request module
 reads it. The `authenticator` is here for the same kind of reason and a
 stronger one: who a caller is is one answer per process, not a slice's
 question. It is required because a marked fragment made it a dependency of the
-router provider, so omitting it is di's own `UNSATISFIED DEPENDENCIES` at
-`start`. Nothing else about what a slice needs is spelled at the root.
+router provider, so omitting it leaves `AuthenticatorPort` in the root's
+`Needs` and `start` refuses the module — not a gate of this package's, and not
+di's arity gate either, but the plain assignability of the `Needs` channel
+against `Env | Scope`, which names the port. Nothing else about what a slice
+needs is spelled at the root.
 
 This form is **exact**: a key the record above is missing, a key the
 contract does not declare, and a controller wired under the wrong key are all
