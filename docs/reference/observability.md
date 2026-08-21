@@ -251,7 +251,6 @@ application and export `Logger` if anything outside the root reads it —
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
-  needs: [Env],
   router: orderRouter,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],

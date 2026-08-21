@@ -38,7 +38,6 @@ composition root, and one call. The example itself composes that slice and a
 [controllers](/how-to/split-a-router-into-controllers).
 
 ```ts
-import { Env } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
 import { runMain } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http";
@@ -111,7 +110,6 @@ const ordersRouter = HttpRouter(ordersContract)(
 
 // The composition root. The runtime is a service of this module.
 const OrdersApi = HttpModule("OrdersApi")({
-  needs: [Env],
   router: ordersRouter,
   authenticator: bearerAuthenticator,
   imports: [OrderApplicationModule, OrderPersistenceModule],

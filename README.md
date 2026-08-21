@@ -140,12 +140,10 @@ export const ordersRouter = HttpRouter(ordersContract)(
 
 ```ts
 // main.ts — the whole process.
-import { Env } from "@btravstack/config";
 import { runMain } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http";
 
 const OrdersApi = HttpModule("OrdersApi")({
-  needs: [Env],
   router: ordersRouter,
   imports: [OrderApplicationModule, OrderPersistenceModule],
 });

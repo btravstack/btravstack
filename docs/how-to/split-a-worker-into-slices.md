@@ -119,8 +119,6 @@ export const NotificationsSlice = Module("NotificationsSlice")({
 });
 
 export const BillingSlice = Module("BillingSlice")({
-  // What the slice expects from the root, named rather than absorbed.
-  needs: [Logger],
   imports: [BillingModule],
   provides: [chargeOrder],
   exports: [chargeOrder],

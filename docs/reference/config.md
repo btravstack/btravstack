@@ -139,7 +139,7 @@ The port is built with the rest of the graph, so a bad environment is a
 modeled startup `Err` in the module's own error channel, still typed.
 
 ```ts
-import { Config } from "@btravstack/config";
+import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
 
 class Database extends Port("Database")<{ readonly url: string }> {}

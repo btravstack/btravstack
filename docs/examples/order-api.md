@@ -347,7 +347,6 @@ composition root and one fewer import, not a rewrite.
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
-  needs: [Env],
   router: orderRouter,
   authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
@@ -371,7 +370,7 @@ happens to depend on:
 export const OrdersSlice = Module("OrdersSlice")({
   // The environment its persistence reads `DATABASE_URL` from, and the logger
   // its interactors write to — both the root's to supply, both named here.
-  needs: [Env, Logger],
+  needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],
@@ -546,27 +545,22 @@ marks `orders`, so a graph carrying the router without an authenticator has an
 unmet need too, and an arm that could fail either way pins neither gate.
 
 ```ts
-// @ts-expect-error — UNDECLARED NEEDS: the starter's router port.
 const RouterlessApi = Module("RouterlessApi")({
-  needs: [Env],
   imports: [OrdersSlice, CustomersSlice, observability(), http()],
   exports: [HttpRuntime, Logger],
 });
+
+// @ts-expect-error — the composition needs the router port and nothing provides it.
+const _missingRouter = start(RouterlessApi, options);
 ```
 
-This one is di's own **declaration gate**, not the kernel's marker: `http()`'s
-runtime provider depends on the starter's own router port, so a composition
-that imports the starter without providing the router owes it — and owing a
-port it does not name in `needs` is refused at the module, before `start` is
-reached at all. What prints names the port:
-
-```
-'{ readonly "UNDECLARED NEEDS — name it in `needs`": HttpRouterPort; }'
-```
-
-Naming it is not the escape: `@btravstack/http` exports that port's TYPE only,
-so an application has nothing to write there — providing the router is the way
-past, which is what the gate is for. It is **not** di's
+This one is the **`Needs` channel**, not the kernel's marker and not di's
+declaration gate either: the port is owed by `http()`, an **import**, and an
+import's needs travel without the importer re-declaring them. `start` — whose
+`module` parameter accepts only `Scope | Env` outstanding — is what refuses it,
+and the diagnostic names the port:
+`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`, down to
+`Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. It is **not** di's
 `UNSATISFIED DEPENDENCIES` arity gate, which guards `Module.build` and
 `Module.scoped`; conflating the two is easy and the distinction is the point of
 having both pinned here. There is no `UNSATISFIED RUNTIME NEEDS` arm, because
@@ -587,7 +581,6 @@ The last two are the authenticator's, and they are different gates on purpose:
 
 ```ts
 const UnauthenticatedApi = HttpModule("UnauthenticatedApi")({
-  needs: [Env],
   router: orderRouter,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
@@ -609,7 +602,6 @@ const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()({
 });
 
 const _mismatchedApi = HttpModule("MismatchedApi")({
-  needs: [Env],
   router: orderRouter,
   // @ts-expect-error — the authenticator resolves `{ sub }`, not the router's Identity.
   authenticator: wrongAuthenticator,

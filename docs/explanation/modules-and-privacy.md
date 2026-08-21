@@ -62,7 +62,7 @@ needs `@Global`, a way for a cross-cutting module to be visible without being
 imported.
 
 `di` splits that differently. A module may be handed a port by whoever composes
-it — but only one it **asked for by name**:
+it — but only one **its own providers asked for by name**:
 
 ```ts
 export const AuditSlice = Module("AuditSlice")({
@@ -73,25 +73,47 @@ export const AuditSlice = Module("AuditSlice")({
 ```
 
 `needs` does not make `Logger` visible the way an import would, and it does not
-manufacture an obligation for a root that owes nothing. It says: _this module
-depends on a `Logger` it does not build, and something above it has to_. Leave
-it out and the module does not compile at all — the diagnostic names the port —
-so a slice can never quietly absorb whatever the composition root happens to be
-holding.
+manufacture an obligation for a root that owes nothing. It says: _the provider
+in this module depends on a `Logger` it does not build, and something above it
+has to_. Leave it out and the module does not compile at all — the diagnostic
+names the port — so a slice can never quietly absorb whatever the composition
+root happens to be holding.
 
-That is the whole difference from `@Global`. A global module is invisible
-plumbing: a slice benefits from it without mentioning it, and reading
-`slices/audit/` still tells you nothing about where its logger comes from. A
-declared need is the opposite — the slice states the port and stays silent
-about the supplier, which is exactly the pair that lets it be recomposed. The
-same `AuditSlice` drops into a different root, or
-[lifts into a process of its own](/how-to/split-a-router-into-controllers),
+**An import's needs travel on their own.** A module that merely imports
+`AuditSlice` does not restate `Logger`: the obligation is already in
+`AuditSlice`'s type, at the `imports` entry a reader is looking at, and the
+[entry point](/reference/di/entry-points) still refuses a root that has not
+discharged it. Restating it at every level would put one line on every module
+between the reader of a port and the root that supplies it — for `Env`, that
+was six declarations in the order API and only one of them a module that reads
+an environment variable.
+
+So the declaration lands where the feature is:
+
+```ts
+// reads DATABASE_URL — declares it
+const DatabaseModule = Module("Database")({
+  needs: [Env],
+  provides: [databaseConfig, orderDatabaseProvider],
+  exports: [OrderDatabase],
+});
+
+// only imports it — declares nothing
+export const OrderPersistenceModule = Module("OrderPersistence")({
+  imports: [DatabaseModule],
+  provides: [orderRepositoryProvider, outboxProvider],
+  exports: [OrderRepository, Outbox],
+});
+```
+
+That is NestJS's `ConfigModule.forFeature` shape without a global to reach it
+through — and it is the whole difference from `@Global`. A global module is
+invisible plumbing: a slice benefits from it without mentioning it, and reading
+`slices/audit/` still tells you nothing. A declared need is the opposite — the
+slice states the port and stays silent about the supplier, which is exactly the
+pair that lets it be recomposed. The same `AuditSlice` drops into a different
+root, or [lifts into a process of its own](/how-to/split-a-router-into-controllers),
 with no edit: any root that answers `Logger` will do.
-
-The cost is one line per module, and it compounds — `Env` is declared by every
-module that reads the environment, and again by every module that imports one
-of those, up to the root that `start` hands one to. That chain is the thing a
-`@Global` would have hidden, and seeing it is the point.
 
 `Scope` is the one exemption, and it is forced rather than chosen: nothing can
 provide `Scope` — a provider for it is a
