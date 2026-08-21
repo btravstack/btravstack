@@ -30,7 +30,7 @@ import {
   OrderApplicationModule,
   PlaceOrder,
 } from "@btravstack/example-order-application";
-import type { Customer, Order } from "@btravstack/example-order-domain";
+import { TenantId, type Customer, type Order } from "@btravstack/example-order-domain";
 import {
   CustomerPersistenceModule,
   OrderPersistenceModule,
@@ -103,7 +103,7 @@ const customersController = HttpController("DocsCustomersController", contract.c
     sync: ({ find }) => ({
       find: ({ errors }, input) =>
         find
-          .execute(input.tenantId, input.id)
+          .execute(TenantId(input.tenantId), input.id)
           .map(customerViewOf)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("CustomerNotFound"), (error) =>

@@ -59,19 +59,25 @@ argument a caller cannot forget and a reader can see:
 // examples/order-application/src/ports.ts
 export class OrderRepository extends Port("OrderRepository")<{
   readonly save: (
-    tenantId: string,
+    tenantId: TenantId,
     order: Order,
   ) => AsyncResult<Order, DuplicateOrder>;
   readonly find: (
-    tenantId: string,
+    tenantId: TenantId,
     id: string,
   ) => AsyncResult<Order, OrderNotFound>;
   readonly remove: (
-    tenantId: string,
+    tenantId: TenantId,
     id: string,
   ) => AsyncResult<void, OrderNotFound>;
 }> {}
 ```
+
+`TenantId` is a branded `string` the domain owns, and the ids beside it are
+not: a pair need differ in one position to become unswappable, and
+`find(id, tenantId)` used to compile and query the wrong tenant. Each
+transport claims the brand once, where a validated value arrives — the
+authenticator, an activity's input, the relay's own configuration.
 
 Each transport then supplies it from its own contract, which is where a client
 already has to say what it wants:

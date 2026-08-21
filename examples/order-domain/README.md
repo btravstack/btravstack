@@ -120,6 +120,30 @@ conversion happens at the controller where it belongs. Branding is not optional
 either: `@btravstack/entity` takes nominal fields only, so a bare `z.string()`
 name is a compile error at the field map rather than a convention.
 
+## A tenant is not a string
+
+```ts
+export const TenantIdSchema = z.uuidv7().brand("TenantId");
+export type TenantId = z.infer<typeof TenantIdSchema>;
+export const TenantId = (raw: string): TenantId => raw as TenantId;
+```
+
+`src/tenant.ts` is a brand with no entity behind it, and it is here rather than
+in the application layer because it is vocabulary the whole system speaks. This
+deployment is multi-tenant, so every port names its tenant positionally, next
+to an id — `find(tenantId, id)`, `execute(tenantId, id, quantity)` — and two
+`string`s in a fixed order are what the compiler has nothing to say about:
+swapping them compiled, and read another tenant's rows. Branding **one** of the
+pair is enough to make it unswappable, which is why the ids stay `string` here.
+
+The constructor is a **cast, not a parse**. Every value that becomes a
+`TenantId` arrives through a contract that has already validated it as a
+UUIDv7 — an oRPC input, an AMQP envelope, a Temporal activity input — or
+through deployment configuration; parsing again would spend a validation per
+request on a question already answered, and `.parse()` throws, which this
+repository bans. A brand costs nothing at run time and does not survive
+serialization, which is exactly why the boundary is where it is claimed.
+
 `InvalidQuantity` and `InvalidOrderId` are the only failures this layer can
 _raise_ — they are the only ones it can decide. `OrderNotFound` and
 `DuplicateOrder` are declared here too,

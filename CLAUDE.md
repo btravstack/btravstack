@@ -564,6 +564,24 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   `UnitRecord.tenantId` stays what it always was: a field for a **hand-rolled**
   runtime whose author has already answered them, set by no shipped starter.
 
+  **The tenant is branded and the ids beside it are not** (`TenantId` in
+  `examples/order-domain/src/tenant.ts`, a `z.uuidv7().brand("TenantId")`).
+  Two strings in a fixed order are what the compiler has nothing to say about,
+  so `find(id, tenantId)` compiled and queried the wrong tenant; a pair need
+  differ in ONE position to become unswappable, which is why branding every id
+  is a separate question and not this one. The constructor is a **cast, not a
+  parse** — `.parse()` throws, and the value arrived through a contract that
+  already validated it — so each path claims the brand exactly once, where an
+  outside value becomes the application's vocabulary: the API's
+  `bearerAuthenticator` (from there the `Identity` carries it and neither
+  controller casts), the customers controller's `TenantId(input.tenantId)`,
+  each Temporal activity's `TenantId(args.tenantId)`, and the relay's
+  `tenantsOf`, which brands the `OUTBOX_TENANTS` list once at the config
+  boundary. The AMQP handlers cast nothing: neither calls a port that names a
+  tenant, so there is no boundary there to claim. `prisma-outbox.ts` is the
+  one **read-back** — a row becoming an `OrderEvent` — and so the one place
+  the brand is re-applied rather than carried.
+
   Two things fall out of making it an argument, and they are the reason rather
   than the price. A caller that forgets its tenant **does not compile**, where
   an ambient one fails at runtime or silently reads another tenant's rows. And

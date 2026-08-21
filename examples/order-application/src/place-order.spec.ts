@@ -1,4 +1,5 @@
 import { Module } from "@btravstack/di";
+import { TenantId } from "@btravstack/example-order-domain";
 import { describe, expect } from "vitest";
 
 import { FindOrder, PlaceOrder } from "./index.js";
@@ -11,8 +12,10 @@ describe("PlaceOrder", () => {
     const result = await Module.scoped(testModule, (ctx) =>
       ctx
         .get(PlaceOrder)
-        .execute("acme", "0199a1e0-0000-7000-8000-000000000001", 2)
-        .flatMap(() => ctx.get(FindOrder).execute("acme", "0199a1e0-0000-7000-8000-000000000001")),
+        .execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 2)
+        .flatMap(() =>
+          ctx.get(FindOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001"),
+        ),
     );
 
     // THEN the write is visible to the read
@@ -25,8 +28,10 @@ describe("PlaceOrder", () => {
     const result = await Module.scoped(testModule, (ctx) => {
       const placeOrder = ctx.get(PlaceOrder);
       return placeOrder
-        .execute("acme", "0199a1e0-0000-7000-8000-000000000001", 1)
-        .flatMap(() => placeOrder.execute("acme", "0199a1e0-0000-7000-8000-000000000001", 1));
+        .execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 1)
+        .flatMap(() =>
+          placeOrder.execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 1),
+        );
     });
 
     // THEN the repository's own error reaches the caller untranslated
@@ -37,7 +42,7 @@ describe("PlaceOrder", () => {
     // GIVEN a quantity the domain invariant rejects
     // WHEN it is placed
     const result = await Module.scoped(testModule, (ctx) =>
-      ctx.get(PlaceOrder).execute("acme", "0199a1e0-0000-7000-8000-000000000001", 0),
+      ctx.get(PlaceOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 0),
     );
 
     // THEN the domain error short-circuits the use case
@@ -51,7 +56,7 @@ describe("PlaceOrder", () => {
     // GIVEN an id the domain's `OrderId` format rejects, and a fine quantity
     // WHEN it is placed
     const result = await Module.scoped(testModule, (ctx) =>
-      ctx.get(PlaceOrder).execute("acme", "o-1", 2),
+      ctx.get(PlaceOrder).execute(TenantId("acme"), "o-1", 2),
     );
 
     // THEN the widened channel carries the id's own error to the caller
@@ -64,7 +69,7 @@ describe("PlaceOrder", () => {
     const result = await Module.scoped(testModule, (ctx) =>
       ctx
         .get(PlaceOrder)
-        .execute("acme", "0199a1e0-0000-7000-8000-000000000001", 2)
+        .execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 2)
         .map(() => recorder.lines()),
     );
 
@@ -92,9 +97,13 @@ describe("tenancy", () => {
     const result = await Module.scoped(testModule, (ctx) => {
       const placeOrder = ctx.get(PlaceOrder);
       return placeOrder
-        .execute("acme", "0199a1e0-0000-7000-8000-000000000501", 2)
-        .flatMap(() => placeOrder.execute("globex", "0199a1e0-0000-7000-8000-000000000501", 7))
-        .flatMap(() => ctx.get(FindOrder).execute("acme", "0199a1e0-0000-7000-8000-000000000501"));
+        .execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000501", 2)
+        .flatMap(() =>
+          placeOrder.execute(TenantId("globex"), "0199a1e0-0000-7000-8000-000000000501", 7),
+        )
+        .flatMap(() =>
+          ctx.get(FindOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000501"),
+        );
     });
 
     // WHEN the first tenant reads that id back
@@ -109,7 +118,7 @@ describe("FindOrder", () => {
     // GIVEN an empty repository
     // WHEN an unknown id is looked up
     const result = await Module.scoped(testModule, (ctx) =>
-      ctx.get(FindOrder).execute("acme", "missing"),
+      ctx.get(FindOrder).execute(TenantId("acme"), "missing"),
     );
 
     // THEN absence is a modeled error, not an empty success

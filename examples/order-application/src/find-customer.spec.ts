@@ -1,4 +1,5 @@
 import { Module } from "@btravstack/di";
+import { TenantId } from "@btravstack/example-order-domain";
 import { describe, expect } from "vitest";
 
 import { FindCustomer } from "./index.js";
@@ -9,7 +10,7 @@ describe("FindCustomer", () => {
     // GIVEN the application wired over an in-memory repository
     // WHEN a customer it holds is looked up
     const result = await Module.scoped(testModule, (ctx) =>
-      ctx.get(FindCustomer).execute("acme", "0199a1e0-0000-7000-8000-0000000000c1"),
+      ctx.get(FindCustomer).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-0000000000c1"),
     );
 
     // THEN the use case answers with the domain's own entity — converting it
@@ -21,7 +22,7 @@ describe("FindCustomer", () => {
     // GIVEN the same repository
     // WHEN an id nobody registered is looked up
     const result = await Module.scoped(testModule, (ctx) =>
-      ctx.get(FindCustomer).execute("acme", "missing"),
+      ctx.get(FindCustomer).execute(TenantId("acme"), "missing"),
     );
 
     // THEN absence is a modeled error, not an empty success

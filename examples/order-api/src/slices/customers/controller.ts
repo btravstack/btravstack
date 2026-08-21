@@ -1,6 +1,6 @@
 import { contract, type CustomerView } from "@btravstack/example-order-api-contract";
 import { FindCustomer } from "@btravstack/example-order-application";
-import type { Customer } from "@btravstack/example-order-domain";
+import { TenantId, type Customer } from "@btravstack/example-order-domain";
 import { P } from "unthrown";
 
 import { HttpController } from "../../auth.js";
@@ -26,7 +26,7 @@ export const customersController = HttpController("CustomersController", contrac
     sync: ({ find }) => ({
       find: ({ errors }, input) =>
         find
-          .execute(input.tenantId, input.id)
+          .execute(TenantId(input.tenantId), input.id)
           .map(view)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("CustomerNotFound"), (error) =>

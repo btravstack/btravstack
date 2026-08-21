@@ -118,7 +118,7 @@ else.
 Where the identity is **stated** is `src/auth.ts`, the whole of it:
 
 ```ts
-export type Identity = { readonly tenantId: string; readonly userId: string };
+export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
 const identity = httpAuth<Identity>();
 

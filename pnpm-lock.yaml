@@ -327,6 +327,9 @@ importers:
       '@btravstack/example-order-application':
         specifier: workspace:*
         version: link:../order-application
+      '@btravstack/example-order-domain':
+        specifier: workspace:*
+        version: link:../order-domain
       '@btravstack/example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure

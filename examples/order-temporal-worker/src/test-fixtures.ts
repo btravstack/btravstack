@@ -8,7 +8,7 @@ import {
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
-import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domain";
+import { OutOfStock, ShippingUnavailable, TenantId } from "@btravstack/example-order-domain";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
@@ -176,7 +176,7 @@ export type TemporalFixtures = {
    * It rides every workflow's arguments — the contract declares it — which is
    * how it reaches the adapters.
    */
-  readonly tenant: string;
+  readonly tenant: TenantId;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
@@ -205,7 +205,7 @@ export const it = test.extend<TemporalFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tenant: async ({}, use) => {
-    await use(uuidv7());
+    await use(TenantId(uuidv7()));
   },
 
   serve: async ({ server, boot }, use) => {

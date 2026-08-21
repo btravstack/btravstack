@@ -1,3 +1,4 @@
+import { TenantId } from "@btravstack/example-order-domain";
 import { P } from "unthrown";
 import { describe, expect } from "vitest";
 
@@ -132,7 +133,7 @@ describe("the transactional outbox", () => {
   }) => {
     // GIVEN a write committed by somebody else
     const events = await repository
-      .save(`${tenant}-other`, anOrder("0199a1e0-0000-7000-8000-000000000502", 1))
+      .save(TenantId(`${tenant}-other`), anOrder("0199a1e0-0000-7000-8000-000000000502", 1))
       .flatMap(() => outbox.pending(tenant, 10));
 
     // WHEN this tenant's relay sweeps

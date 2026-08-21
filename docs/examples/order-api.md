@@ -118,6 +118,7 @@ src/authenticator.ts    bearerAuthenticator — the provider that resolves an Id
 and the root import come back fixed to it:
 
 ```ts
+import type { TenantId } from "@btravstack/example-order-domain";
 import {
   httpAuth,
   type HttpAuthenticatorOf,
@@ -126,7 +127,7 @@ import {
 } from "@btravstack/http";
 
 export type Identity = {
-  readonly tenantId: string;
+  readonly tenantId: TenantId;
   readonly userId: string;
 };
 
@@ -157,6 +158,7 @@ the factory, not a fallback.
 to state:
 
 ```ts
+import { TenantId } from "@btravstack/example-order-domain";
 import { Unauthenticated } from "@btravstack/http";
 import { ErrAsync, OkAsync } from "unthrown";
 
@@ -174,13 +176,18 @@ export const bearerAuthenticator = HttpAuthenticator({
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+      : OkAsync({ tenantId: TenantId(tenantId), userId });
   },
 });
 ```
 
 `Bearer <tenantId>:<userId>` is a stand-in, not a recommendation — what matters
-is the shape. `[]` because this one needs no service; a JWT verifier, a key set
+is the shape. This is also where a header becomes a **tenant**: `TenantId` is
+the domain's branded string, so the identity carries the brand from here and no
+handler on this path casts anything. The constructor is a cast rather than a
+parse — a brand is a compile-time fiction, and what it buys is that
+`repository.find(tenantId, id)` can no longer be called with its two arguments
+the other way round. `[]` because this one needs no service; a JWT verifier, a key set
 or a user directory would be named there and injected the way any provider's
 dependencies are, so swapping the stand-in for real verification changes
 nothing else in the composition. See
@@ -294,7 +301,10 @@ from `FindCustomer` and mapping `CustomerNotFound` to the fragment's own
 `NOT_FOUND`. Its fragment is **unmarked**, so its context has no `principal`
 at all — reading one there is a compile error — and it takes its tenant from
 `input.tenantId` instead. The contrast is the lesson: where a caller's identity
-establishes the tenant, the input has nothing to say about it. It has its own `view` too, because its use case answers with the
+establishes the tenant, the input has nothing to say about it. That is the one
+`TenantId(input.tenantId)` in the application: the fragment validated the field
+as a UUIDv7, and the brand is claimed once, where the wire's `string` becomes
+the application's vocabulary. It has its own `view` too, because its use case answers with the
 branded `Customer` entity and `CustomerView` is the wire's shape — a slice is
 defined by owning its fragment, its controller and its triage, not by owning a
 private adapter. The throwaway in-memory directory this replaced declared its

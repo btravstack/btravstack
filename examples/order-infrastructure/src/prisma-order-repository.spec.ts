@@ -1,6 +1,7 @@
 import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { OrderRepository } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
 import { fromSafePromise } from "unthrown";
 import { describe, expect, inject, vi } from "vitest";
 
@@ -123,7 +124,7 @@ describe("tenancy", () => {
   }) => {
     // GIVEN the same order id placed by two different tenants — which the
     // composite unique key permits and a single-tenant schema would not
-    const other = `${tenant}-other`;
+    const other = TenantId(`${tenant}-other`);
     const seen = await repository
       .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000501", 3))
       .flatMap(() => repository.save(other, anOrder("0199a1e0-0000-7000-8000-000000000501", 7)))
@@ -142,7 +143,7 @@ describe("tenancy", () => {
   }) => {
     // GIVEN an order that belongs to somebody else
     const seen = await repository
-      .save(`${tenant}-other`, anOrder("0199a1e0-0000-7000-8000-000000000502", 3))
+      .save(TenantId(`${tenant}-other`), anOrder("0199a1e0-0000-7000-8000-000000000502", 3))
       .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000502"));
 
     // WHEN this tenant looks for it

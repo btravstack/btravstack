@@ -4,6 +4,7 @@ import { Config } from "@btravstack/config";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Outbox } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
 import { Logger } from "@btravstack/observability";
 import { ErrAsync, P, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
@@ -30,12 +31,21 @@ export const relayConfig = Config.provider("RelayConfig")(
   }),
 );
 
-/** `"acme, globex"` → `["acme", "globex"]`; blank entries dropped, so a trailing comma is not a tenant named `""`. */
-const tenantsOf = (value: string): readonly string[] =>
+/**
+ * `"acme, globex"` → `["acme", "globex"]`; blank entries dropped, so a trailing
+ * comma is not a tenant named `""`.
+ *
+ * The one place this deployment claims the `TenantId` brand: the relay's
+ * tenants come from configuration rather than from a contract, so this parse
+ * IS the boundary, and every sweep below carries the brand from here without
+ * casting again.
+ */
+const tenantsOf = (value: string): readonly TenantId[] =>
   value
     .split(",")
     .map((tenant) => tenant.trim())
-    .filter((tenant) => tenant !== "");
+    .filter((tenant) => tenant !== "")
+    .map(TenantId);
 
 /** The running relay: nothing resolves it, and nothing needs to — it exists to be started and stopped. */
 export class OutboxRelay extends Port("OutboxRelay")<{
@@ -93,7 +103,7 @@ const startOutboxRelay = (
     url,
     pollMs,
     tenants,
-  }: { readonly url: string; readonly pollMs: number; readonly tenants: readonly string[] },
+  }: { readonly url: string; readonly pollMs: number; readonly tenants: readonly TenantId[] },
 ): AsyncResult<ServiceOf<OutboxRelay>, BrokerUnreachable> =>
   TypedAmqpClient.create({ contract: orderContract, urls: [url] })
     .recoverDefect((cause) => ErrAsync(new BrokerUnreachable({ url, cause })))
@@ -113,7 +123,7 @@ const startOutboxRelay = (
           };
         });
 
-      const sweepTenant = async (tenantId: string): Promise<void> => {
+      const sweepTenant = async (tenantId: TenantId): Promise<void> => {
         await outbox.pending(tenantId, BATCH).match({
           ok: async (events) => {
             const published: number[] = [];

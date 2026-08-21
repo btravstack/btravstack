@@ -105,6 +105,7 @@ handlers provider):
 ```ts
 import { AmqpHandlers } from "@btravstack/amqp";
 import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
+import { TenantId } from "@btravstack/example-order-domain";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
 export const placingHandlers = AmqpHandlers(orderContract)(
@@ -114,7 +115,7 @@ export const placingHandlers = AmqpHandlers(orderContract)(
       orderNotifications: (message) =>
         place
           .execute(
-            message.payload.tenantId,
+            TenantId(message.payload.tenantId),
             message.payload.id,
             message.payload.payload?.quantity ?? 0,
           )

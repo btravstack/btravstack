@@ -1,4 +1,4 @@
-export { Customer, CustomerNotFound } from "./customer.js";
+export { Customer, CustomerId, CustomerNotFound } from "./customer.js";
 export { OutOfStock, PaymentDeclined, ShippingUnavailable } from "./fulfillment.js";
 export {
   DuplicateOrder,
@@ -10,3 +10,4 @@ export {
   Quantity,
   placeOrder,
 } from "./order.js";
+export { TenantId } from "./tenant.js";

@@ -4,7 +4,7 @@ import type {
   Outbox,
   OrderRepository,
 } from "@btravstack/example-order-application";
-import { placeOrder, type Order } from "@btravstack/example-order-domain";
+import { TenantId, placeOrder, type Order } from "@btravstack/example-order-domain";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { inject, test } from "vitest";
 
@@ -36,7 +36,7 @@ export type PersistenceFixtures = {
    * set — which is exactly what makes these specs readable: what a call is
    * scoped to is written at the call.
    */
-  readonly tenant: string;
+  readonly tenant: TenantId;
   readonly repository: ServiceOf<OrderRepository>;
   readonly customers: ServiceOf<CustomerRepository>;
   readonly outbox: ServiceOf<Outbox>;
@@ -63,7 +63,7 @@ export const it = test.extend<PersistenceFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   tenant: async ({}, use) => {
-    await use(uuidv7());
+    await use(TenantId(uuidv7()));
   },
 
   repository: async ({ db }, use) => {

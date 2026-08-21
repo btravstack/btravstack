@@ -15,6 +15,7 @@ import {
   OrderNotFound,
   placeOrder,
   type Order,
+  type TenantId,
 } from "@btravstack/example-order-domain";
 import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
@@ -46,7 +47,7 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
       Provider(OrderRepository)({ value: repository }),
       Provider(CustomerRepository)({
         value: {
-          find: (_tenantId: string, id: string) =>
+          find: (_tenantId: TenantId, id: string) =>
             id === "0199a1e0-0000-7000-8000-0000000000c1"
               ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
               : ErrAsync(new CustomerNotFound({ id })),

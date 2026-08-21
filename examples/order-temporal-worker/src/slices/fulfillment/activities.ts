@@ -4,6 +4,7 @@ import {
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { TemporalWorkflowActivities } from "@btravstack/temporal";
 import { P } from "unthrown";
@@ -52,6 +53,10 @@ import { P } from "unthrown";
  * input because the CONTRACT declares it — `@btravstack/temporal` knows
  * nothing about tenants, and an input is what Temporal persists in the event
  * history, so a replay reconstructs the tenant along with everything else.
+ * `TenantId(args.tenantId)` claims the brand at each activity that needs one —
+ * an activity is its own entry point, so `place` and `cancelPlacement` are two
+ * boundaries rather than one crossed twice — and the contract validated the
+ * field as a UUIDv7 before either was entered.
  *
  * The compensations: `releaseStock`'s port already promises `never`; nothing
  * to triage. `cancelPlacement` absorbs `OrderNotFound` on purpose — undoing a
@@ -69,7 +74,7 @@ export const fulfillOrder = TemporalWorkflowActivities(orderContract, "fulfillOr
     sync: ({ place, repository, stock, shipping }) => ({
       place: (args, { errors }) =>
         place
-          .execute(args.tenantId, args.orderId, args.quantity)
+          .execute(TenantId(args.tenantId), args.orderId, args.quantity)
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher
@@ -96,7 +101,7 @@ export const fulfillOrder = TemporalWorkflowActivities(orderContract, "fulfillOr
       releaseStock: (args) => stock.release(args.orderId),
       cancelPlacement: (args) =>
         repository
-          .remove(args.tenantId, args.orderId)
+          .remove(TenantId(args.tenantId), args.orderId)
           .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
     }),
   },
