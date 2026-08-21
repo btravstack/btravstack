@@ -17,14 +17,14 @@ const scopedCustomers = () =>
 describe("the Prisma CustomerRepository", () => {
   it("reads a stored row back as the domain's entity", async ({ tenant, customers, aCustomer }) => {
     // GIVEN a customer in this test's own tenant
-    await aCustomer("c-1", "Ada");
+    await aCustomer("0199a1e0-0000-7000-8000-0000000000c1", "Ada");
 
     // WHEN it is read back
-    const found = await customers.find(tenant, "c-1");
+    const found = await customers.find(tenant, "0199a1e0-0000-7000-8000-0000000000c1");
 
     // THEN what leaves the adapter is the entity, not the row and not the wire
     // shape — the conversion to `CustomerView` happens two layers out
-    expect(found).toBeOkWith({ id: "c-1", name: "Ada" });
+    expect(found).toBeOkWith({ id: "0199a1e0-0000-7000-8000-0000000000c1", name: "Ada" });
   });
 
   it("returns the domain's CustomerNotFound for an unknown id", async ({ tenant, customers }) => {

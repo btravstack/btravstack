@@ -52,17 +52,21 @@ import { OrderPersistenceModule } from "./persistence.js";
 
 // The contract comes first; a client can take it without the server.
 // Schemas, not oRPC's `type<T>()`: they check what arrives, not just what compiles.
-const orderView = z.object({ id: z.string(), quantity: z.number() });
-const orderRef = z.object({ id: z.string() });
+const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
+const orderRef = z.object({ id: z.uuidv7() });
+// `BAD_REQUEST` names the id **as received**, which is the one value that is
+// not a UUIDv7: `orderRef` would reject the only payload it ever carries.
+const malformedRef = z.object({ id: z.string() });
 
 // `authenticated` marks the fragment. It names no tenant on the input: a
 // caller does not get to pick the tenant it is served.
 const ordersContract = authenticated({
   place: oc
-    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
     .errors({
       INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: malformedRef },
       CONFLICT: { data: orderRef },
     }),
 });
@@ -81,6 +85,14 @@ const ordersRouter = HttpRouter(ordersContract)(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              // A malformed id is the caller's mistake, so 400 — not the
+              // 409 a duplicate gets.
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({
                   message: error.message,
                   data: { id: error.id },
                 }),

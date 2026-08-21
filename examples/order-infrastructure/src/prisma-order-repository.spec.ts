@@ -1,6 +1,7 @@
 import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { OrderRepository } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
 import { fromSafePromise } from "unthrown";
 import { describe, expect, inject, vi } from "vitest";
 
@@ -37,8 +38,10 @@ describe("the Prisma OrderRepository", () => {
     // GIVEN this test's own tenant
     // WHEN an order is saved under it
     // THEN the write answers with the entity itself
-    await expect(repository.save(tenant, anOrder("o-1", 3))).toBeOkWith({
-      id: "o-1",
+    await expect(
+      repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3)),
+    ).toBeOkWith({
+      id: "0199a1e0-0000-7000-8000-000000000001",
       quantity: 3,
     });
   });
@@ -48,11 +51,11 @@ describe("the Prisma OrderRepository", () => {
     // WHEN it is read back — chained, so the write's own `Result` is consumed
     // and a failed write cannot be mistaken for a failed read
     const roundTripped = await repository
-      .save(tenant, anOrder("o-1", 3))
-      .flatMap(() => repository.find(tenant, "o-1"));
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
+      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"));
 
     // THEN the round trip is lossless
-    expect(roundTripped).toBeOkWith({ id: "o-1", quantity: 3 });
+    expect(roundTripped).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 3 });
   });
 
   it("deletes the one row the unique key names", async ({ tenant, repository, anOrder }) => {
@@ -60,13 +63,15 @@ describe("the Prisma OrderRepository", () => {
     // WHEN it is removed and then looked for — chained, so a failed removal
     // cannot be mistaken for a successful one
     const afterRemoval = await repository
-      .save(tenant, anOrder("o-1", 3))
-      .flatMap(() => repository.remove(tenant, "o-1"))
-      .flatMap(() => repository.find(tenant, "o-1"));
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
+      .flatMap(() => repository.remove(tenant, "0199a1e0-0000-7000-8000-000000000001"))
+      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"));
 
     // THEN it is gone: `(tenantId, orderId)` carries the UNIQUE index, so this
     // is a single-row `delete`, not a batch whose count has to be interpreted
-    expect(afterRemoval).toBeErrTagged("OrderNotFound", { id: "o-1" });
+    expect(afterRemoval).toBeErrTagged("OrderNotFound", {
+      id: "0199a1e0-0000-7000-8000-000000000001",
+    });
   });
 
   it("answers OrderNotFound when there is nothing to remove", async ({ tenant, repository }) => {
@@ -88,15 +93,17 @@ describe("the Prisma OrderRepository", () => {
     // GIVEN an order already stored in this tenant
     // WHEN the same id is saved again, in the same tenant
     const duplicate = await repository
-      .save(tenant, anOrder("o-1", 1))
-      .flatMap(() => repository.save(tenant, anOrder("o-1", 2)));
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
+      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 2)));
 
     // THEN the load-bearing assertion: the UNIQUE index on
     // `Order(tenantId, orderId)` raises a real P2002, `@unthrown/prisma` hands
     // it over as `UniqueConstraintViolation`, and what leaves the adapter is
     // the application's own `DuplicateOrder` — a single `_tag`, so asserting
     // it is also the assertion that the infrastructure tag did not escape.
-    expect(duplicate).toBeErrTagged("DuplicateOrder", { id: "o-1" });
+    expect(duplicate).toBeErrTagged("DuplicateOrder", {
+      id: "0199a1e0-0000-7000-8000-000000000001",
+    });
   });
 
   it("returns the domain's OrderNotFound for an unknown id", async ({ tenant, repository }) => {
@@ -117,16 +124,16 @@ describe("tenancy", () => {
   }) => {
     // GIVEN the same order id placed by two different tenants — which the
     // composite unique key permits and a single-tenant schema would not
-    const other = `${tenant}-other`;
+    const other = TenantId(`${tenant}-other`);
     const seen = await repository
-      .save(tenant, anOrder("o-shared", 3))
-      .flatMap(() => repository.save(other, anOrder("o-shared", 7)))
-      .flatMap(() => repository.find(tenant, "o-shared"));
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000501", 3))
+      .flatMap(() => repository.save(other, anOrder("0199a1e0-0000-7000-8000-000000000501", 7)))
+      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000501"));
 
     // WHEN the first tenant reads that id back
     // THEN the read is scoped to the tenant the CALLER named: the first
     // tenant's quantity, never the second's, and never a duplicate at the write
-    expect(seen).toBeOkWith({ id: "o-shared", quantity: 3 });
+    expect(seen).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000501", quantity: 3 });
   });
 
   it("hides another tenant's order entirely, rather than merely reading past it", async ({
@@ -136,12 +143,12 @@ describe("tenancy", () => {
   }) => {
     // GIVEN an order that belongs to somebody else
     const seen = await repository
-      .save(`${tenant}-other`, anOrder("o-theirs", 3))
-      .flatMap(() => repository.find(tenant, "o-theirs"));
+      .save(TenantId(`${tenant}-other`), anOrder("0199a1e0-0000-7000-8000-000000000502", 3))
+      .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000502"));
 
     // WHEN this tenant looks for it
     // THEN it does not exist as far as this tenant is concerned
-    expect(seen).toBeErrTagged("OrderNotFound", { id: "o-theirs" });
+    expect(seen).toBeErrTagged("OrderNotFound", { id: "0199a1e0-0000-7000-8000-000000000502" });
   });
 });
 
@@ -175,12 +182,12 @@ describe("OrderPersistenceModule", () => {
     const result = await Module.scoped(scopedPersistence(), (ctx) => {
       const repository = ctx.get(OrderRepository);
       return repository
-        .save(tenant, anOrder("o-1", 5))
-        .flatMap(() => repository.find(tenant, "o-1"));
+        .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 5))
+        .flatMap(() => repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"));
     });
 
     // THEN the port resolves to a working repository
-    expect(result).toBeOkWith({ id: "o-1", quantity: 5 });
+    expect(result).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 5 });
   });
 
   it("ends the connection pool when the scope closes", async ({ db, tenant, anOrder }) => {
@@ -200,7 +207,7 @@ describe("OrderPersistenceModule", () => {
     await Module.scoped(scopedPersistence(applicationName), (ctx) =>
       ctx
         .get(OrderRepository)
-        .save(tenant, anOrder("o-1", 1))
+        .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
         .flatMap(() => fromSafePromise(backends().then((n) => (duringScope = n)))),
     );
     // Synchronising, not asserting: PostgreSQL retires a backend a moment

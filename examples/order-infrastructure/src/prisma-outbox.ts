@@ -1,5 +1,6 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
 import { Outbox } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
 import { P } from "unthrown";
 
 import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
@@ -34,8 +35,11 @@ export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
           id: row.id,
           // Echoed back rather than assumed from the query: the relay puts it
           // on the event it publishes, which is how the tenant crosses the
-          // broker to a subscriber in another process.
-          tenantId: row.tenantId,
+          // broker to a subscriber in another process. The one read-back in
+          // the system, so the one place the brand is re-applied: the column
+          // is a `string`, and every value in it was written by a call that
+          // named a `TenantId`.
+          tenantId: TenantId(row.tenantId),
           // The column is a `string`; the port's `kind` is the union of the
           // kinds this application emits, and `save`/`remove` are the only
           // writers. A row carrying anything else was not written by this

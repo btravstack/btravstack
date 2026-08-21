@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { ConfigInvalid, Env } from "@btravstack/config";
 import type { RunningApp } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
@@ -10,10 +8,11 @@ import {
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
-import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domain";
+import { OutOfStock, ShippingUnavailable, TenantId } from "@btravstack/example-order-domain";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
+import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
@@ -173,11 +172,11 @@ export type TemporalFixtures = {
   /**
    * This test's tenant, and nobody else's. The database is shared by every
    * workspace's run — one migration for the whole gate rather than one per
-   * test — so a UUID here is what keeps one test's `o-1` from being another's.
+   * test — so a UUID here is what keeps one test's `0199a1e0-0000-7000-8000-000000000001` from being another's.
    * It rides every workflow's arguments — the contract declares it — which is
    * how it reaches the adapters.
    */
-  readonly tenant: string;
+  readonly tenant: TenantId;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
@@ -206,7 +205,7 @@ export const it = test.extend<TemporalFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tenant: async ({}, use) => {
-    await use(`t-${randomUUID()}`);
+    await use(TenantId(uuidv7()));
   },
 
   serve: async ({ server, boot }, use) => {

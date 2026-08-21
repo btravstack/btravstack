@@ -35,7 +35,7 @@ layer it is built on, and errors as values. Nothing here can reach a framework.
 ## The entity
 
 ```ts
-export const OrderId = z.string().brand("OrderId");
+export const OrderId = z.uuidv7().brand("OrderId");
 export const Quantity = z.number().int().brand("Quantity");
 
 export class Order extends Entity("Order")(
@@ -78,11 +78,12 @@ Nothing throws: `Order.make` and `update` both return an `unthrown` `Result`.
 export const placeOrder = (
   id: string,
   quantity: number,
-): Result<Order, InvalidQuantity> =>
+): Result<Order, InvalidQuantity | InvalidOrderId> =>
   Order.make({ id, quantity }).mapErrCases((matcher) =>
-    matcher.with(
-      P.tag("InvalidEntity"),
-      () => new InvalidQuantity({ id, quantity }),
+    matcher.with(P.tag("InvalidEntity"), (invalid) =>
+      invalid.issues.some((issue) => Entity.keysOf(issue)[0] === "id")
+        ? new InvalidOrderId({ id })
+        : new InvalidQuantity({ id, quantity }),
     ),
   );
 ```
@@ -90,8 +91,18 @@ export const placeOrder = (
 `Order.make` validates, runs the invariants and constructs, reporting a
 structural failure as `InvalidEntity` with the issues attached. `placeOrder`
 names that failure in the layer's own vocabulary, which is what the outer layers
-already speak. The translation is total: `OrderId` carries no rule of its own,
-so for a typed caller the quantity is the only field that can be wrong.
+already speak.
+
+**This used to be one error, and `OrderId` is what changed it.** While the id
+was an unconstrained string the translation was total — the quantity was the
+only field a typed caller could get wrong — so collapsing `InvalidEntity` to
+`InvalidQuantity` was sound on its own terms. Giving `OrderId` a UUIDv7 format
+added a second way to fail, and the collapse became a mislabelling:
+`placeOrder("o-1", 2)` answered _"asks for 2 items, which is not a positive
+quantity"_ about a quantity the caller got right. The two are told apart by
+**which field** the entity named, never by the message text: a schema issue
+carries a `path`, an `Entity.invariant` violation carries none, and
+`Entity.keysOf` reads that path as plain keys.
 
 ## The other entity earns its place differently
 
@@ -109,8 +120,33 @@ conversion happens at the controller where it belongs. Branding is not optional
 either: `@btravstack/entity` takes nominal fields only, so a bare `z.string()`
 name is a compile error at the field map rather than a convention.
 
-`InvalidQuantity` is the only failure this layer can _raise_ — it is the only
-one it can decide. `OrderNotFound` and `DuplicateOrder` are declared here too,
+## A tenant is not a string
+
+```ts
+export const TenantIdSchema = z.uuidv7().brand("TenantId");
+export type TenantId = z.infer<typeof TenantIdSchema>;
+export const TenantId = (raw: string): TenantId => raw as TenantId;
+```
+
+`src/tenant.ts` is a brand with no entity behind it, and it is here rather than
+in the application layer because it is vocabulary the whole system speaks. This
+deployment is multi-tenant, so every port names its tenant positionally, next
+to an id — `find(tenantId, id)`, `execute(tenantId, id, quantity)` — and two
+`string`s in a fixed order are what the compiler has nothing to say about:
+swapping them compiled, and read another tenant's rows. Branding **one** of the
+pair is enough to make it unswappable, which is why the ids stay `string` here.
+
+The constructor is a **cast, not a parse**. Every value that becomes a
+`TenantId` arrives through a contract that has already validated it as a
+UUIDv7 — an oRPC input, an AMQP envelope, a Temporal activity input — or
+through deployment configuration; parsing again would spend a validation per
+request on a question already answered, and `.parse()` throws, which this
+repository bans. A brand costs nothing at run time and does not survive
+serialization, which is exactly why the boundary is where it is claimed.
+
+`InvalidQuantity` and `InvalidOrderId` are the only failures this layer can
+_raise_ — they are the only ones it can decide. `OrderNotFound` and
+`DuplicateOrder` are declared here too,
 but raised by whoever owns the storage: the domain names them so that every
 outer layer speaks about them in the same terms, which is what stops a Prisma
 error code or an HTTP status from leaking inwards.
@@ -135,6 +171,6 @@ fails in both directions, which is what makes it a guard rather than a comment.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-domain test        # 18 specs
+pnpm --filter @btravstack/example-order-domain test        # 21 specs
 pnpm --filter @btravstack/example-order-domain test:types  # the layering guard
 ```

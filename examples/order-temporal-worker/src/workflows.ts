@@ -64,6 +64,9 @@ export const fulfillOrder = declareWorkflow({
             .with({ errorName: "InvalidQuantity" }, (error) =>
               context.errors.InvalidQuantity({ id: error.data.id }),
             )
+            .with({ errorName: "InvalidOrderId" }, (error) =>
+              context.errors.InvalidOrderId({ id: error.data.id }),
+            )
             .with({ errorName: "OrderAlreadyPlaced" }, (error) =>
               context.errors.OrderAlreadyPlaced({ id: error.data.id }),
             )

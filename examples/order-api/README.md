@@ -65,6 +65,11 @@ place
           data: { id: error.id },
         }),
       )
+      // A malformed id is the caller's mistake, so 400 — not the 409 a
+      // duplicate gets.
+      .with(P.tag("InvalidOrderId"), (error) =>
+        errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
+      )
       .with(P.tag("DuplicateOrder"), (error) =>
         errors.CONFLICT({ message: error.message, data: { id: error.id } }),
       ),
@@ -113,7 +118,7 @@ else.
 Where the identity is **stated** is `src/auth.ts`, the whole of it:
 
 ```ts
-export type Identity = { readonly tenantId: string; readonly userId: string };
+export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
 const identity = httpAuth<Identity>();
 
@@ -214,6 +219,7 @@ const named = (await client.orders.place({ id, quantity })).match({
   errCases: (matcher) =>
     matcher.with(
       { code: "INVALID_QUANTITY" },
+      { code: "BAD_REQUEST" },
       { code: "CONFLICT" },
       (error) => error.code,
     ),
@@ -317,7 +323,11 @@ const ordersContract = {
   place: oc
     .input(type<{ readonly id: string; readonly quantity: number }>())
     .output(type<OrderView>())
-    .errors({ INVALID_QUANTITY: { data: type<OrderRef>() }, CONFLICT: { data: type<OrderRef>() } }),
+    .errors({
+      INVALID_QUANTITY: { data: type<OrderRef>() },
+      BAD_REQUEST: { data: type<{ readonly id: string }>() },
+      CONFLICT: { data: type<OrderRef>() },
+    }),
   …
 };
 ```

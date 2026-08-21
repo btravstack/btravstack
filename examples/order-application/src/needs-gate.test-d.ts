@@ -13,6 +13,7 @@ import {
   CustomerNotFound,
   DuplicateOrder,
   OrderNotFound,
+  TenantId,
   type Order,
 } from "@btravstack/example-order-domain";
 import { Logger, createLogger } from "@btravstack/observability";
@@ -30,14 +31,14 @@ import {
 
 const orderRepository = Provider(OrderRepository)({
   value: {
-    save: (_tenantId: string, order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
-    find: (_tenantId: string, id: string) => ErrAsync(new OrderNotFound({ id })),
-    remove: (_tenantId: string, id: string) => ErrAsync(new OrderNotFound({ id })),
+    save: (_tenantId: TenantId, order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
+    find: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id })),
+    remove: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id })),
   },
 });
 
 const customerRepository = Provider(CustomerRepository)({
-  value: { find: (_tenantId: string, id: string) => ErrAsync(new CustomerNotFound({ id })) },
+  value: { find: (_tenantId: TenantId, id: string) => ErrAsync(new CustomerNotFound({ id })) },
 });
 
 const logger = Provider(Logger)({ value: createLogger(() => {}) });
@@ -50,7 +51,7 @@ const logger = Provider(Logger)({ value: createLogger(() => {}) });
 // 'Logger | OrderRepository'`.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
-  ctx.get(PlaceOrder).execute("acme", "o-1", 1),
+  ctx.get(PlaceOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 1),
 );
 
 // Negative, the same gate on the sibling module and a different port: the
@@ -58,7 +59,7 @@ const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
 // logger, which only `PlaceOrder` writes to.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no CustomerRepository is provided.
 const _unwiredCustomers = Module.scoped(CustomerApplicationModule, (ctx) =>
-  ctx.get(FindCustomer).execute("acme", "c-1"),
+  ctx.get(FindCustomer).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-0000000000c1"),
 );
 
 // Negative, per vertical: the orders repository closes the orders module, and
@@ -72,7 +73,7 @@ const MiswiredCustomers = Module("MiswiredCustomers")({
 
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no CustomerRepository is provided.
 const _miswired = Module.scoped(MiswiredCustomers, (ctx) =>
-  ctx.get(FindCustomer).execute("acme", "c-1"),
+  ctx.get(FindCustomer).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-0000000000c1"),
 );
 
 // Negative, the other port of the orders pair: the repository alone does not
@@ -84,7 +85,9 @@ const LoglessOrders = Module("LoglessOrders")({
 });
 
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no Logger is provided.
-const _logless = Module.scoped(LoglessOrders, (ctx) => ctx.get(FindOrder).execute("acme", "o-1"));
+const _logless = Module.scoped(LoglessOrders, (ctx) =>
+  ctx.get(FindOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001"),
+);
 
 const WiredOrders = Module("WiredOrders")({
   imports: [OrderApplicationModule],
@@ -100,7 +103,9 @@ const WiredOrders = Module("WiredOrders")({
 
 // Positive: the repository and a logger discharge every need the orders
 // vertical has, and this is an ordinary two-argument call.
-const _wiredOrders = Module.scoped(WiredOrders, (ctx) => ctx.get(FindOrder).execute("acme", "o-1"));
+const _wiredOrders = Module.scoped(WiredOrders, (ctx) =>
+  ctx.get(FindOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001"),
+);
 
 const WiredCustomers = Module("WiredCustomers")({
   imports: [CustomerApplicationModule],
@@ -111,5 +116,5 @@ const WiredCustomers = Module("WiredCustomers")({
 // Positive, and one provider shorter than the orders half: what a vertical
 // owes is now its own.
 const _wiredCustomers = Module.scoped(WiredCustomers, (ctx) =>
-  ctx.get(FindCustomer).execute("acme", "c-1"),
+  ctx.get(FindCustomer).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-0000000000c1"),
 );

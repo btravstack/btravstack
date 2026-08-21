@@ -59,19 +59,25 @@ argument a caller cannot forget and a reader can see:
 // examples/order-application/src/ports.ts
 export class OrderRepository extends Port("OrderRepository")<{
   readonly save: (
-    tenantId: string,
+    tenantId: TenantId,
     order: Order,
   ) => AsyncResult<Order, DuplicateOrder>;
   readonly find: (
-    tenantId: string,
+    tenantId: TenantId,
     id: string,
   ) => AsyncResult<Order, OrderNotFound>;
   readonly remove: (
-    tenantId: string,
+    tenantId: TenantId,
     id: string,
   ) => AsyncResult<void, OrderNotFound>;
 }> {}
 ```
+
+`TenantId` is a branded `string` the domain owns, and the ids beside it are
+not: a pair need differ in one position to become unswappable, and
+`find(id, tenantId)` used to compile and query the wrong tenant. Each
+transport claims the brand once, where a validated value arrives — the
+authenticator, an activity's input, the relay's own configuration.
 
 Each transport then supplies it from its own contract, which is where a client
 already has to say what it wants:
@@ -85,7 +91,7 @@ already has to say what it wants:
 Two consequences are the point rather than the price. A use case that forgot
 its tenant **does not compile**, where an ambient one would have failed at
 runtime or, worse, silently read the wrong tenant's rows. And a test needs no
-machinery at all: `repository.find(tenant, "o-1")` says what it is scoped to
+machinery at all: `repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001")` says what it is scoped to
 at the call, with no fixture that "enters" a tenant and no store to set.
 
 The relay in `order-amqp-worker` is the case that shows why ambient would not
@@ -132,7 +138,7 @@ logger.info("placing an order", { orderId: id, quantity });
 
 ```json
 {
-  "orderId": "o-1",
+  "orderId": "0199a1e0-0000-7000-8000-000000000001",
   "quantity": 2,
   "time": "2026-08-16T09:41:02.113Z",
   "level": "info",
@@ -218,7 +224,7 @@ export const orderNotifications = AmqpHandler(
     sync:
       ({ logger }) =>
       (message) => {
-        const { id, payload } = message.payload;
+        const { tenantId, id, payload } = message.payload;
         if (currentUnit()?.signal.aborted === true) {
           return ErrAsync(
             new RetryableError(
@@ -231,6 +237,7 @@ export const orderNotifications = AmqpHandler(
             ? "order gone — notifying"
             : "order placed — notifying",
           {
+            tenantId,
             orderId: id,
             ...(payload === null ? {} : { quantity: payload.quantity }),
           },

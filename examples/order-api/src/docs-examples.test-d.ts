@@ -30,7 +30,7 @@ import {
   OrderApplicationModule,
   PlaceOrder,
 } from "@btravstack/example-order-application";
-import type { Customer, Order } from "@btravstack/example-order-domain";
+import { TenantId, type Customer, type Order } from "@btravstack/example-order-domain";
 import {
   CustomerPersistenceModule,
   OrderPersistenceModule,
@@ -74,6 +74,9 @@ const ordersController = HttpController("DocsOrdersController", contract.orders)
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
               )
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
+              )
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.CONFLICT({ message: error.message, data: { id: error.id } }),
               ),
@@ -100,7 +103,7 @@ const customersController = HttpController("DocsCustomersController", contract.c
     sync: ({ find }) => ({
       find: ({ errors }, input) =>
         find
-          .execute(input.tenantId, input.id)
+          .execute(TenantId(input.tenantId), input.id)
           .map(customerViewOf)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("CustomerNotFound"), (error) =>
@@ -182,6 +185,9 @@ const depsOrdersRouter = HttpRouter(contract.orders)(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
+              )
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
               )
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.CONFLICT({ message: error.message, data: { id: error.id } }),

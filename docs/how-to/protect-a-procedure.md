@@ -40,15 +40,26 @@ import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
+const orderRef = z.object({ id: z.uuidv7() });
+
+// `BAD_REQUEST` names the id **as received**, which is the one value that is
+// not a UUIDv7: `orderRef` would reject the only payload it ever carries.
+const malformedRef = z.object({ id: z.string() });
+
 const ordersContract = {
   place: oc
-    .input(z.object({ id: z.string(), quantity: z.number() }))
-    .output(z.object({ id: z.string() })),
+    .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
+    .output(z.object({ id: z.uuidv7() }))
+    .errors({
+      INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: malformedRef },
+      CONFLICT: { data: orderRef },
+    }),
 };
 
 const customersContract = {
   find: oc
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.uuidv7() }))
     .output(z.object({ name: z.string() })),
 };
 
@@ -75,6 +86,7 @@ application, which hands back `HttpController`, `HttpRouter` and
 
 ```ts
 // src/auth.ts
+import type { TenantId } from "@btravstack/example-order-domain";
 import {
   httpAuth,
   type HttpAuthenticatorOf,
@@ -83,7 +95,7 @@ import {
 } from "@btravstack/http";
 
 /** What this deployment knows about a caller. The contract names none. */
-export type Identity = { readonly tenantId: string; readonly userId: string };
+export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
 const identity = httpAuth<Identity>();
 
@@ -108,6 +120,7 @@ has no business reading a body, and the narrower argument is what keeps it
 testable without a socket.
 
 ```ts
+import { TenantId } from "@btravstack/example-order-domain";
 import { Unauthenticated } from "@btravstack/http";
 import { ErrAsync, OkAsync } from "unthrown";
 
@@ -125,7 +138,7 @@ export const bearerAuthenticator = HttpAuthenticator({
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+      : OkAsync({ tenantId: TenantId(tenantId), userId });
   },
 });
 ```
@@ -188,6 +201,14 @@ export const ordersController = HttpController(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              // A malformed id is the caller's mistake, so 400 — not the
+              // 409 a duplicate gets.
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({
                   message: error.message,
                   data: { id: error.id },
                 }),

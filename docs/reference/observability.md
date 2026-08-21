@@ -205,7 +205,7 @@ kernel's `stderrSink` writes its events in.
 
 ```json
 {
-  "orderId": "o-1",
+  "orderId": "0199a1e0-0000-7000-8000-000000000001",
   "quantity": 2,
   "time": "2026-08-16T09:41:02.113Z",
   "level": "info",

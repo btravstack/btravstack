@@ -43,18 +43,23 @@ import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-const orderView = z.object({ id: z.string(), quantity: z.number() });
+const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 
-const orderRef = z.object({ id: z.string() });
+const orderRef = z.object({ id: z.uuidv7() });
 export type OrderRef = z.infer<typeof orderRef>;
+
+// `BAD_REQUEST` names the id **as received**, which is the one value that is
+// not a UUIDv7: `orderRef` would reject the only payload it ever carries.
+const malformedRef = z.object({ id: z.string() });
 
 export const ordersContract = authenticated({
   place: oc
-    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
     .errors({
       INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: malformedRef },
       CONFLICT: { data: orderRef },
     }),
   find: oc
@@ -99,9 +104,9 @@ const view = (order: Order): OrderView => ({
 });
 
 export const ordersRouter = HttpRouter(ordersContract)(
-  [PlaceOrder, FindOrder],
+  { place: PlaceOrder, find: FindOrder },
   {
-    sync: (place, find) => ({
+    sync: ({ place, find }) => ({
       place: ({ errors, context }, input) =>
         place
           .execute(context.principal.tenantId, input.id, input.quantity)
@@ -110,6 +115,14 @@ export const ordersRouter = HttpRouter(ordersContract)(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              // A malformed id is the caller's mistake, so 400 — not the
+              // 409 a duplicate gets.
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({
                   message: error.message,
                   data: { id: error.id },
                 }),

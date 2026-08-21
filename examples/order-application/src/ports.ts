@@ -3,12 +3,14 @@ import type {
   Customer,
   CustomerNotFound,
   DuplicateOrder,
+  InvalidOrderId,
   InvalidQuantity,
   Order,
   OrderNotFound,
   OutOfStock,
   PaymentDeclined,
   ShippingUnavailable,
+  TenantId,
 } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
 
@@ -34,9 +36,9 @@ import type { AsyncResult } from "unthrown";
  * tombstone).
  */
 export class OrderRepository extends Port("OrderRepository")<{
-  readonly save: (tenantId: string, order: Order) => AsyncResult<Order, DuplicateOrder>;
-  readonly find: (tenantId: string, id: string) => AsyncResult<Order, OrderNotFound>;
-  readonly remove: (tenantId: string, id: string) => AsyncResult<void, OrderNotFound>;
+  readonly save: (tenantId: TenantId, order: Order) => AsyncResult<Order, DuplicateOrder>;
+  readonly find: (tenantId: TenantId, id: string) => AsyncResult<Order, OrderNotFound>;
+  readonly remove: (tenantId: TenantId, id: string) => AsyncResult<void, OrderNotFound>;
 }> {}
 
 /**
@@ -48,7 +50,7 @@ export class OrderRepository extends Port("OrderRepository")<{
  * layer to redesign.
  */
 export class CustomerRepository extends Port("CustomerRepository")<{
-  readonly find: (tenantId: string, id: string) => AsyncResult<Customer, CustomerNotFound>;
+  readonly find: (tenantId: TenantId, id: string) => AsyncResult<Customer, CustomerNotFound>;
 }> {}
 
 /**
@@ -67,7 +69,7 @@ export class CustomerRepository extends Port("CustomerRepository")<{
  */
 export type OrderEvent = {
   readonly id: number;
-  readonly tenantId: string;
+  readonly tenantId: TenantId;
   readonly kind: "order";
   readonly subjectId: string;
   readonly occurredAt: Date;
@@ -90,7 +92,10 @@ export type OrderEvent = {
  * names one row.
  */
 export class Outbox extends Port("Outbox")<{
-  readonly pending: (tenantId: string, limit: number) => AsyncResult<readonly OrderEvent[], never>;
+  readonly pending: (
+    tenantId: TenantId,
+    limit: number,
+  ) => AsyncResult<readonly OrderEvent[], never>;
   readonly markPublished: (ids: readonly number[]) => AsyncResult<void, never>;
 }> {}
 
@@ -128,16 +133,16 @@ export class PaymentService extends Port("PaymentService")<{
 
 export class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (
-    tenantId: string,
+    tenantId: TenantId,
     id: string,
     quantity: number,
-  ) => AsyncResult<Order, InvalidQuantity | DuplicateOrder>;
+  ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
 }> {}
 
 export class FindOrder extends Port("FindOrder")<{
-  readonly execute: (tenantId: string, id: string) => AsyncResult<Order, OrderNotFound>;
+  readonly execute: (tenantId: TenantId, id: string) => AsyncResult<Order, OrderNotFound>;
 }> {}
 
 export class FindCustomer extends Port("FindCustomer")<{
-  readonly execute: (tenantId: string, id: string) => AsyncResult<Customer, CustomerNotFound>;
+  readonly execute: (tenantId: TenantId, id: string) => AsyncResult<Customer, CustomerNotFound>;
 }> {}

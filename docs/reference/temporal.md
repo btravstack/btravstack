@@ -132,12 +132,15 @@ export const orderActivities = TemporalActivities(orderContract)(
       fulfillOrder: {
         place: (args, { errors }) =>
           place
-            .execute(args.orderId, args.quantity)
+            .execute(TenantId(args.tenantId), args.orderId, args.quantity)
             .map((order) => ({ id: order.id, quantity: order.quantity }))
             .mapErrCases((matcher) =>
               matcher
                 .with(P.tag("InvalidQuantity"), (error) =>
                   errors.InvalidQuantity({ id: error.id }),
+                )
+                .with(P.tag("InvalidOrderId"), (error) =>
+                  errors.InvalidOrderId({ id: error.id }),
                 )
                 .with(P.tag("DuplicateOrder"), (error) =>
                   errors.OrderAlreadyPlaced({ id: error.id }),
@@ -162,7 +165,7 @@ export const orderActivities = TemporalActivities(orderContract)(
         releaseStock: (args) => stock.release(args.orderId),
         cancelPlacement: (args) =>
           repository
-            .remove(args.orderId)
+            .remove(TenantId(args.tenantId), args.orderId)
             .recoverErrCases((matcher) =>
               matcher.with(P.tag("OrderNotFound"), () => undefined),
             ),
@@ -188,6 +191,15 @@ export const orderActivities = TemporalActivities(orderContract)(
 One record, one `sync`, both sagas' services in its `deps` — which is exactly
 the shape that stops scaling once a worker owns enough workflows, and why the
 composing form below exists.
+
+`args.tenantId` is the application's, not the package's: it is a field the
+**contract** declares on every workflow and activity input, which is what
+makes it survive a replay — Temporal persists an activity's input in the
+event history. `@btravstack/temporal` reads nothing about tenancy.
+`TenantId(…)` is `examples/order-domain`'s brand claimed at the boundary the
+activity is, so a use case cannot be handed an order id where a tenant goes;
+the contract validated the field as a UUIDv7 before the activity was entered,
+so the constructor casts rather than parses.
 
 A hand-written `Provider(orderActivities.port)(…)` targets the same port; a
 port declared under any other id leaves the starter's need unmet, and `start`
@@ -256,12 +268,15 @@ const orderFulfillment = TemporalWorkflowActivities(
     sync: ({ place, repository, stock, shipping }) => ({
       place: (args, { errors }) =>
         place
-          .execute(args.orderId, args.quantity)
+          .execute(TenantId(args.tenantId), args.orderId, args.quantity)
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.InvalidQuantity({ id: error.id }),
+              )
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.InvalidOrderId({ id: error.id }),
               )
               .with(P.tag("DuplicateOrder"), (error) =>
                 errors.OrderAlreadyPlaced({ id: error.id }),

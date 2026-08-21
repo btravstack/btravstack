@@ -96,8 +96,8 @@ const openPool = ({
 }): Result<ServiceOf<Pool>, never> => {
   void config.dbUrl;
   const seed: readonly Order[] = [
-    { id: "o-1", total: 4_200 },
-    { id: "o-2", total: 1_500 },
+    { id: "0199a1e0-0000-7000-8000-000000000001", total: 4_200 },
+    { id: "0199a1e0-0000-7000-8000-000000000002", total: 1_500 },
   ];
   let closed = false;
   return Ok({

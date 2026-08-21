@@ -69,13 +69,14 @@ break.
 
 ## Entry points
 
-| Import                                       | What it is                                                              |
-| -------------------------------------------- | ----------------------------------------------------------------------- |
-| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys |
-| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s         |
-| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal`, `postgresUrl`   |
-| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                      |
-| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                   |
+| Import                                       | What it is                                                                         |
+| -------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys            |
+| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                    |
+| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal`, `postgresUrl`              |
+| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                 |
+| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                              |
+| `@btravstack/internal-test-infra/uuid`       | `uuidv7()`, a real UUIDv7 for the tenant fixtures — `crypto.randomUUID()` mints v4 |
 
 The two setup modules are drop-in replacements for
 `@amqp-contract/testing/global-setup` and

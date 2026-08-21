@@ -36,9 +36,9 @@ const parked = defineExchange("orders-dlx", { type: "direct" });
  */
 const orderChanged = defineMessage(
   z.object({
-    tenantId: z.string(),
+    tenantId: z.uuidv7(),
     kind: z.literal("order"),
-    id: z.string(),
+    id: z.uuidv7(),
     occurredAt: z.string(),
     payload: z.object({ quantity: z.number() }).nullable(),
   }),

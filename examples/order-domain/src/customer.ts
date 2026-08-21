@@ -8,7 +8,7 @@ import { z } from "zod";
  * name is a compile error at the field map rather than a convention held by
  * review.
  */
-export const CustomerId = z.string().brand("CustomerId");
+export const CustomerId = z.uuidv7().brand("CustomerId");
 export const CustomerName = z.string().brand("CustomerName");
 
 /**

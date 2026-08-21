@@ -4,9 +4,11 @@ import {
   type Customer,
   type CustomerNotFound,
   type DuplicateOrder,
+  type InvalidOrderId,
   type InvalidQuantity,
   type Order,
   type OrderNotFound,
+  type TenantId,
 } from "@btravstack/example-order-domain";
 import { Logger } from "@btravstack/observability";
 import type { AsyncResult } from "unthrown";
@@ -35,10 +37,10 @@ class PlaceOrderInteractor {
   }
 
   execute(
-    tenantId: string,
+    tenantId: TenantId,
     id: string,
     quantity: number,
-  ): AsyncResult<Order, InvalidQuantity | DuplicateOrder> {
+  ): AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder> {
     this.#logger.info("placing an order", { tenantId, orderId: id, quantity });
     return placeOrder(id, quantity)
       .toAsync()
@@ -53,7 +55,7 @@ class FindOrderInteractor {
     this.#repository = repository;
   }
 
-  execute(tenantId: string, id: string): AsyncResult<Order, OrderNotFound> {
+  execute(tenantId: TenantId, id: string): AsyncResult<Order, OrderNotFound> {
     return this.#repository.find(tenantId, id);
   }
 }
@@ -65,7 +67,7 @@ class FindCustomerInteractor {
     this.#repository = repository;
   }
 
-  execute(tenantId: string, id: string): AsyncResult<Customer, CustomerNotFound> {
+  execute(tenantId: TenantId, id: string): AsyncResult<Customer, CustomerNotFound> {
     return this.#repository.find(tenantId, id);
   }
 }

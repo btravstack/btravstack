@@ -551,9 +551,11 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   **The tenancy is the APPLICATION's, and the framework has no concept of
   one.** Every port names its tenant — `OrderRepository.find(tenantId, id)`,
   `PlaceOrder.execute(tenantId, id, quantity)` — and each transport supplies it
-  from its own **contract**: an input field on every `order-api` procedure, a
-  field on the AMQP envelope, a field on every Temporal workflow and activity
-  input. No starter reads a tenant off anything.
+  from its own **contract**: an input field on `order-api`'s **unmarked**
+  `customers` procedures — the marked `orders` half names none, because an
+  authenticated caller's own principal establishes it — a field on the AMQP
+  envelope, and a field on every Temporal workflow and activity input. No
+  starter reads a tenant off anything.
 
   That line was drawn deliberately, and an earlier revision of this file
   described the opposite. A tenant is _context_, and what establishes it — a
@@ -564,12 +566,46 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   `UnitRecord.tenantId` stays what it always was: a field for a **hand-rolled**
   runtime whose author has already answered them, set by no shipped starter.
 
+  **The tenant is branded and the ids beside it are not** (`TenantId` in
+  `examples/order-domain/src/tenant.ts`, a `z.uuidv7().brand("TenantId")`).
+  Two strings in a fixed order are what the compiler has nothing to say about,
+  so `find(id, tenantId)` compiled and queried the wrong tenant; a pair need
+  differ in ONE position to become unswappable, which is why branding every id
+  is a separate question and not this one. The constructor is a **cast, not a
+  parse** — `.parse()` throws, and the value arrived through a contract that
+  already validated it — so each path claims the brand exactly once, where an
+  outside value becomes the application's vocabulary: the API's
+  `bearerAuthenticator` (from there the `Identity` carries it and neither
+  controller casts), the customers controller's `TenantId(input.tenantId)`,
+  each Temporal activity's `TenantId(args.tenantId)`, and the relay's
+  `tenantsOf`, which brands the `OUTBOX_TENANTS` list once at the config
+  boundary. The AMQP handlers cast nothing: neither calls a port that names a
+  tenant, so there is no boundary there to claim. `prisma-outbox.ts` is the
+  one **read-back** — a row becoming an `OrderEvent` — and so the one place
+  the brand is re-applied rather than carried.
+
+  **Every id beside it is a UUIDv7**, declared once on the entity
+  (`OrderId`, `CustomerId`) and again on each contract's own schema, so a
+  malformed id is refused at the transport before a use case sees it. That
+  format is what gave `placeOrder` a **second** way to fail: while the id was
+  an unconstrained string the quantity was the only field a typed caller could
+  get wrong, so collapsing `Order.make`'s `InvalidEntity` to `InvalidQuantity`
+  was sound; with a format it became a mislabelling, and `InvalidOrderId` is
+  the arm that fixes it. The two are told apart by **which field** the entity
+  named — `Entity.keysOf` over the issue's path — never by the message text,
+  and each transport now carries a third arm for it: `BAD_REQUEST` over HTTP,
+  a `nonRetryable` `InvalidOrderId` on Temporal, a `NonRetryableError` on the
+  queue.
+
   Two things fall out of making it an argument, and they are the reason rather
   than the price. A caller that forgets its tenant **does not compile**, where
-  an ambient one fails at runtime or silently reads another tenant's rows. And
+  an ambient one fails at runtime or silently reads another tenant's rows —
+  and because the tenant is branded and the id beside it is not, neither does
+  a caller that **swaps** them, which is the failure issue #81 named:
+  `find(id, tenantId)` type-checked and queried the wrong tenant. And
   a test needs no machinery at all — no fixture that "enters" a tenant, no
   store to set — which is why the persistence specs read
-  `repository.find(tenant, "o-1")`.
+  `repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001")`.
 
   `Outbox.pending(tenantId, limit)` is the case that shows ambient could not
   have covered this anyway: the relay reading it is a background sweep with no
@@ -1090,7 +1126,7 @@ And a seventh, about the infrastructure a suite runs against:
    runs at the same instant.
 
    The tenant needs no machinery to reach a spec, because the application's
-   ports name it: `repository.find(tenant, "o-1")` says what a call is scoped
+   ports name it: `repository.find(tenant, id)` says what a call is scoped
    to at the call. That is a consequence of the design choice below, not a
    coincidence — an ambient tenant would have needed a fixture to establish
    one, and the kernel exports no way to open a unit.
@@ -1139,8 +1175,15 @@ And a seventh, about the infrastructure a suite runs against:
   `src/auth.ts`, and a stub would have accepted every broken call — passing an
   order id where a tenant goes was exactly the drift. It covers both
   controllers, the keyed router, the `HttpModule` root with its authenticator,
-  the lifted single-slice root and the positional form the three
-  router-shaped pages share. It does **not** cover the pages' own contract
+  the lifted single-slice root and the bare `HttpRouter(contract)(deps, arm)`
+  form the three router-shaped pages share — `docs/index.md`,
+  `docs/reference/http.md` and `docs/how-to/serve-orpc-over-http.md`, none of
+  which puts a controller in between. Every deps record it compiles is
+  **keyed**, di's one shape since `feat(di)!: a provider declares its
+dependencies by name`; a positional array is refused as
+  `not assignable to parameter of type 'Readonly<Record<string, AnyPort>>'`,
+  which is what several pages outside this gate still carry (measured).
+  It does **not** cover the pages' own contract
   declarations: `zod` and `@btravstack/contract` are
   `examples/order-api-contract`'s dependencies, not `examples/order-api`'s, so
   a fragment is compiled where it lives — though a marker removed from it

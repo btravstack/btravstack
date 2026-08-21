@@ -132,12 +132,13 @@ export const orderHandlers = AmqpHandlers(orderContract)(
   {
     sync: ({ logger }) => ({
       orderNotifications: (message) => {
-        const { id, payload } = message.payload;
+        const { tenantId, id, payload } = message.payload;
         logger.info(
           payload === null
             ? "order gone — notifying"
             : "order placed — notifying",
           {
+            tenantId,
             orderId: id,
             ...(payload === null ? {} : { quantity: payload.quantity }),
           },
@@ -145,8 +146,9 @@ export const orderHandlers = AmqpHandlers(orderContract)(
         return OkAsync();
       },
       orderAudit: (message) => {
-        const { id, occurredAt, payload } = message.payload;
+        const { tenantId, id, occurredAt, payload } = message.payload;
         logger.info("recording an order change", {
+          tenantId,
           orderId: id,
           occurredAt,
           change: payload === null ? "removed" : "placed",

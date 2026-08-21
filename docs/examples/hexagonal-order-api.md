@@ -130,11 +130,14 @@ with no scope required.
 ```ts
 const outcome = await Module.scoped(
   makeAppModule(makePersistenceModule()),
-  (ctx) => ctx.get(GetOrder).execute("o-1"),
+  (ctx) => ctx.get(GetOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
   options,
 );
 
-expect(outcome).toBeOkWith({ id: "o-1", total: 4_200 });
+expect(outcome).toBeOkWith({
+  id: "0199a1e0-0000-7000-8000-000000000001",
+  total: 4_200,
+});
 ```
 
 ## What the type-level test pins

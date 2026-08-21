@@ -45,39 +45,48 @@ a unit carries that unit's ids.
 
 ## Log from a use case
 
-`Logger` is an ordinary port, so it arrives the ordinary way — in the
-dependency array, never from a global or an ambient read:
+`Logger` is an ordinary port, so it arrives the ordinary way — named in the
+provider's `deps` record, never from a global or an ambient read:
 
 ```ts
 class PlaceOrderInteractor {
   readonly #repository: ServiceOf<OrderRepository>;
   readonly #logger: ServiceOf<Logger>;
 
-  constructor(
-    repository: ServiceOf<OrderRepository>,
-    logger: ServiceOf<Logger>,
-  ) {
+  constructor({
+    repository,
+    logger,
+  }: {
+    readonly repository: ServiceOf<OrderRepository>;
+    readonly logger: ServiceOf<Logger>;
+  }) {
     this.#repository = repository;
     this.#logger = logger;
   }
 
-  execute(id: string, quantity: number) {
-    this.#logger.info("placing an order", { orderId: id, quantity });
+  execute(tenantId: TenantId, id: string, quantity: number) {
+    this.#logger.info("placing an order", { tenantId, orderId: id, quantity });
     return placeOrder(id, quantity)
       .toAsync()
-      .flatMap((order) => this.#repository.save(order));
+      .flatMap((order) => this.#repository.save(tenantId, order));
   }
 }
 
 export const placeOrderProvider = Provider(PlaceOrder)(
-  [OrderRepository, Logger],
+  { repository: OrderRepository, logger: Logger },
   { class: PlaceOrderInteractor },
 );
 ```
 
+The tenant is an **argument**, not something read back out of the ambient
+record — `TenantId` is `examples/order-domain`'s brand, and a use case that
+forgot it, or swapped it with the id beside it, does not compile. It is a
+field on the line for the same reason `orderId` is: a fact worth grouping by,
+written down where the call is.
+
 **The message is a constant and the ids are fields.** That is what makes a
 line groupable in the system that receives it: `message: "placing an order"`
-finds every placement, `orderId: "o-1"` finds one. A rendered sentence —
+finds every placement, `orderId: "0199a1e0-0000-7000-8000-000000000001"` finds one. A rendered sentence —
 `` `placing order ${id}` `` — is neither.
 
 Attributes are flat scalars (`string | number | boolean | undefined`), and a
@@ -111,7 +120,8 @@ call, so one application-scope logger is correct for every request:
 
 ```json
 {
-  "orderId": "o-1",
+  "tenantId": "0199a1e0-0000-7000-8000-0000000000ff",
+  "orderId": "0199a1e0-0000-7000-8000-000000000001",
   "quantity": 2,
   "time": "2026-08-16T09:41:02.113Z",
   "level": "info",

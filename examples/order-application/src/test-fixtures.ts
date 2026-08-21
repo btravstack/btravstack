@@ -6,6 +6,7 @@ import {
   DuplicateOrder,
   OrderNotFound,
   type Order,
+  type TenantId,
 } from "@btravstack/example-order-domain";
 import { observability, type Line, type Sink } from "@btravstack/observability";
 import { ErrAsync, OkAsync } from "unthrown";
@@ -37,19 +38,19 @@ const stubRepository = Provider(OrderRepository)({
     // is: a stub that ignored the tenant would let these specs pass against a
     // repository that leaks between tenants.
     const rows = new Map<string, Order>();
-    const key = (tenantId: string, id: string): string => `${tenantId}/${id}`;
+    const key = (tenantId: TenantId, id: string): string => `${tenantId}/${id}`;
     return {
-      save: (tenantId: string, order: Order) => {
+      save: (tenantId: TenantId, order: Order) => {
         if (rows.has(key(tenantId, order.id)))
           return ErrAsync(new DuplicateOrder({ id: order.id }));
         rows.set(key(tenantId, order.id), order);
         return OkAsync(order);
       },
-      find: (tenantId: string, id: string) => {
+      find: (tenantId: TenantId, id: string) => {
         const row = rows.get(key(tenantId, id));
         return row === undefined ? ErrAsync(new OrderNotFound({ id })) : OkAsync(row);
       },
-      remove: (tenantId: string, id: string) =>
+      remove: (tenantId: TenantId, id: string) =>
         rows.delete(key(tenantId, id)) ? OkAsync() : ErrAsync(new OrderNotFound({ id })),
     };
   },
@@ -58,9 +59,14 @@ const stubRepository = Provider(OrderRepository)({
 /** One customer on hand, so the read side has something to answer with. */
 const stubCustomerRepository = Provider(CustomerRepository)({
   sync: () => {
-    const rows = new Map([["acme/c-1", Customer.make({ id: "c-1", name: "Ada" }).getOrThrow()]]);
+    const rows = new Map([
+      [
+        "acme/0199a1e0-0000-7000-8000-0000000000c1",
+        Customer.make({ id: "0199a1e0-0000-7000-8000-0000000000c1", name: "Ada" }).getOrThrow(),
+      ],
+    ]);
     return {
-      find: (tenantId: string, id: string) => {
+      find: (tenantId: TenantId, id: string) => {
         const row = rows.get(`${tenantId}/${id}`);
         return row === undefined ? ErrAsync(new CustomerNotFound({ id })) : OkAsync(row);
       },

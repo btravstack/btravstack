@@ -23,6 +23,7 @@
     "@btravstack/di": "workspace:*",
     "@btravstack/example-order-amqp-contract": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
+    "@btravstack/example-order-domain": "workspace:*",
     "@btravstack/example-order-infrastructure": "workspace:*",
     "@btravstack/observability": "workspace:*",
     "@opentelemetry/api": "catalog:",

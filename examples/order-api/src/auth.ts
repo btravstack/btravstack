@@ -1,3 +1,4 @@
+import type { TenantId } from "@btravstack/example-order-domain";
 import {
   httpAuth,
   type HttpAuthenticatorOf,
@@ -15,8 +16,14 @@ import {
  * below sees `Identity` with no annotation at its own call site, and
  * `HttpModule`'s gate compares the router's identity against the
  * authenticator's, both of which come from the one call here.
+ *
+ * `tenantId` is the domain's `TenantId` rather than a `string`, so the value
+ * the authenticator resolved is already the one every port in the application
+ * asks for: a handler passes `context.principal.tenantId` straight to a use
+ * case, and the brand travels with it instead of being re-claimed at each
+ * call.
  */
-export type Identity = { readonly tenantId: string; readonly userId: string };
+export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
 /**
  * The three the factory mints, together — imported by the slices instead of

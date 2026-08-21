@@ -31,22 +31,26 @@ describe("the broadcast deployment", () => {
     const { placeOrder } = tapped.services();
 
     // WHEN an order is placed — one ordinary write, no publish in sight
-    await expect(placeOrder.execute(tenant, "o-1", 2)).toBeOkWith(
-      expect.objectContaining({ id: "o-1" }),
+    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000001", 2)).toBeOkWith(
+      expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000001" }),
     );
 
     // THEN the fact crosses the outbox, the broker and the queue, and the
     // consumer reacts — the write-side never spoke AMQP
     await expect
       .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
-      .toContainEqual({ message: "order placed — notifying", orderId: "o-1", quantity: 2 });
+      .toContainEqual({
+        message: "order placed — notifying",
+        orderId: "0199a1e0-0000-7000-8000-000000000001",
+        quantity: 2,
+      });
   });
 
   it("marks relayed events published, exactly once each", async ({ tenant, serve, tapped }) => {
     // GIVEN a served app and a committed write
     await serve(tapped.module);
     const { placeOrder, outbox } = tapped.services();
-    await expect(placeOrder.execute(tenant, "o-2", 1)).toBeOk();
+    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000002", 1)).toBeOk();
     const pending = async (): Promise<readonly OrderEvent[]> =>
       (await outbox.pending(tenant, 10)).get();
 
@@ -62,7 +66,13 @@ describe("the broadcast deployment", () => {
     // claim and what a re-published event would break
     expect({ pending: await pending(), notified: notifications(tapped.lines()) }).toEqual({
       pending: [],
-      notified: [{ message: "order placed — notifying", orderId: "o-2", quantity: 1 }],
+      notified: [
+        {
+          message: "order placed — notifying",
+          orderId: "0199a1e0-0000-7000-8000-000000000002",
+          quantity: 1,
+        },
+      ],
     });
   });
 
@@ -72,16 +82,24 @@ describe("the broadcast deployment", () => {
     const { placeOrder } = tapped.services();
 
     // WHEN two writes commit in order
-    await expect(placeOrder.execute(tenant, "o-3", 1)).toBeOk();
-    await expect(placeOrder.execute(tenant, "o-4", 1)).toBeOk();
+    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000003", 1)).toBeOk();
+    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000004", 1)).toBeOk();
 
     // THEN the notifications arrive in the same order: the relay publishes by
     // outbox id, the queue preserves it, the consumer is sequential
     await expect
       .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
       .toEqual([
-        { message: "order placed — notifying", orderId: "o-3", quantity: 1 },
-        { message: "order placed — notifying", orderId: "o-4", quantity: 1 },
+        {
+          message: "order placed — notifying",
+          orderId: "0199a1e0-0000-7000-8000-000000000003",
+          quantity: 1,
+        },
+        {
+          message: "order placed — notifying",
+          orderId: "0199a1e0-0000-7000-8000-000000000004",
+          quantity: 1,
+        },
       ]);
   });
 
@@ -93,10 +111,10 @@ describe("the broadcast deployment", () => {
     // GIVEN a served app and a placed order
     await serve(tapped.module);
     const { placeOrder, repository } = tapped.services();
-    await expect(placeOrder.execute(tenant, "o-6", 2)).toBeOk();
+    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000006", 2)).toBeOk();
 
     // WHEN the order is cancelled — the write path the saga's compensation uses
-    await expect(repository.remove(tenant, "o-6")).toBeOk();
+    await expect(repository.remove(tenant, "0199a1e0-0000-7000-8000-000000000006")).toBeOk();
 
     // THEN the subscriber hears both words about the subject, in order: what
     // it was, then that it is gone. Without the tombstone a reader keeping its
@@ -104,8 +122,12 @@ describe("the broadcast deployment", () => {
     await expect
       .poll(() => notifications(tapped.lines()), { timeout: 5_000 })
       .toEqual([
-        { message: "order placed — notifying", orderId: "o-6", quantity: 2 },
-        { message: "order gone — notifying", orderId: "o-6" },
+        {
+          message: "order placed — notifying",
+          orderId: "0199a1e0-0000-7000-8000-000000000006",
+          quantity: 2,
+        },
+        { message: "order gone — notifying", orderId: "0199a1e0-0000-7000-8000-000000000006" },
       ]);
   });
 
@@ -122,7 +144,9 @@ describe("the broadcast deployment", () => {
     const waitForMessages = await initConsumer("orders", "order.changed");
 
     // WHEN an order is placed
-    await expect(tapped.services().placeOrder.execute(tenant, "o-5", 4)).toBeOk();
+    await expect(
+      tapped.services().placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000005", 4),
+    ).toBeOk();
 
     // THEN the foreign queue receives the same fact the notifier does — the
     // publisher addressed an exchange, never a consumer
@@ -130,7 +154,7 @@ describe("the broadcast deployment", () => {
     expect(JSON.parse(String(message?.content))).toEqual({
       tenantId: tenant,
       kind: "order",
-      id: "o-5",
+      id: "0199a1e0-0000-7000-8000-000000000005",
       occurredAt: expect.any(String),
       payload: { quantity: 4 },
     });
@@ -143,7 +167,7 @@ describe("the broadcast deployment", () => {
     const { placeOrder } = tapped.services();
 
     // WHEN one order is placed, so the relay publishes exactly one event
-    await expect(placeOrder.execute(tenant, "o-7", 2)).toBeOk();
+    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000007", 2)).toBeOk();
 
     // THEN both subscribers logged it — a broadcast, not a work queue. The
     // writer's own line is named rather than filtered out by "has no kernel

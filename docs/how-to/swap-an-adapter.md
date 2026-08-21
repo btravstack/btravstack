@@ -110,7 +110,7 @@ makes the next step work.
 // Module.scoped — which opens a scope and guarantees its close — accepts it.
 const result = await Module.scoped(
   makeAppModule(makePersistenceModule()),
-  (ctx) => ctx.get(GetOrder).execute("o-1"),
+  (ctx) => ctx.get(GetOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
 );
 
 // Tests: nothing resourceful, Needs is never, Module.build accepts it.
@@ -141,8 +141,13 @@ its `Needs`, and a scope that releases nothing is harmless.
 it("returns the order", async () => {
   const result = await Module.build(
     makeAppModule(InMemoryPersistenceModule),
-  ).flatMap((ctx) => ctx.get(GetOrder).execute("o-1"));
-  expect(result).toBeOkWith({ id: "o-1", total: 99 });
+  ).flatMap((ctx) =>
+    ctx.get(GetOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
+  );
+  expect(result).toBeOkWith({
+    id: "0199a1e0-0000-7000-8000-000000000001",
+    total: 99,
+  });
 });
 ```
 

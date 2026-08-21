@@ -15,12 +15,20 @@ import { z } from "zod";
  * One definition means the checked shape and the compiled shape cannot drift,
  * which is what `order-temporal-contract` and `order-amqp-contract` already do.
  */
-const orderView = z.object({ id: z.string(), quantity: z.number() });
+const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 
 /** The payload every declared error carries — which order it was about. */
-const orderRef = z.object({ id: z.string() });
+const orderRef = z.object({ id: z.uuidv7() });
 export type OrderRef = z.infer<typeof orderRef>;
+
+/**
+ * What `BAD_REQUEST` carries, and the one ref whose `id` is a bare `string`.
+ * It names the id **as received**, which is precisely the value that is not a
+ * UUIDv7 — validating it against `z.uuidv7()` would reject the only payload
+ * this error is ever constructed with.
+ */
+const malformedRef = z.object({ id: z.string() });
 
 /**
  * An **unauthenticated** input names its tenant, because this API serves
@@ -37,11 +45,11 @@ export type OrderRef = z.infer<typeof orderRef>;
  * contrast is the lesson — where a caller's identity establishes the tenant,
  * the input has nothing to say about it.
  */
-const tenanted = z.object({ tenantId: z.string() });
+const tenanted = z.object({ tenantId: z.uuidv7() });
 export type Tenanted = z.infer<typeof tenanted>;
 
 /** What a customer looks like on the wire. */
-const customerView = z.object({ id: z.string(), name: z.string() });
+const customerView = z.object({ id: z.uuidv7(), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
 
 /**
@@ -50,16 +58,17 @@ export type CustomerView = z.infer<typeof customerView>;
  * a customer id as "which order it was about", and the exported type would lie
  * to a client about which entity it names.
  */
-const customerRef = z.object({ id: z.string() });
+const customerRef = z.object({ id: z.uuidv7() });
 export type CustomerRef = z.infer<typeof customerRef>;
 
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
 const ordersContract = {
   place: oc
-    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
     .errors({
       INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: malformedRef },
       CONFLICT: { data: orderRef },
     }),
   find: oc
@@ -71,7 +80,7 @@ const ordersContract = {
 /** The customers slice's own fragment. Reached as `contract.customers`; a fragment is a contract in its own right, so the slice can be served alone. */
 const customersContract = {
   find: oc
-    .input(tenanted.extend({ id: z.string() }))
+    .input(tenanted.extend({ id: z.uuidv7() }))
     .output(customerView)
     .errors({ NOT_FOUND: { data: customerRef } }),
 };

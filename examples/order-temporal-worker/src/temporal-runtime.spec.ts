@@ -18,9 +18,9 @@ describe("the fulfillment saga", () => {
     await expect(
       client.executeWorkflow("fulfillOrder", {
         workflowId: "wf-fulfill-1",
-        args: { tenantId: tenant, orderId: "o-1", quantity: 2 },
+        args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 },
       }),
-    ).toBeOkWith({ id: "o-1", quantity: 2 });
+    ).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 });
 
     // AND the journey ran in the declared order, each step a log line whose
     // order id is a field rather than a word — the trace id every line also
@@ -28,14 +28,21 @@ describe("the fulfillment saga", () => {
     expect(
       fulfilling.lines().map((line) => ({ message: line.message, ...line.attributes })),
     ).toEqual([
-      { message: "placing an order", tenantId: tenant, orderId: "o-1", quantity: 2 },
-      { message: "reserved stock", orderId: "o-1", quantity: 2 },
-      { message: "arranged shipping", orderId: "o-1" },
+      {
+        message: "placing an order",
+        tenantId: tenant,
+        orderId: "0199a1e0-0000-7000-8000-000000000001",
+        quantity: 2,
+      },
+      { message: "reserved stock", orderId: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 },
+      { message: "arranged shipping", orderId: "0199a1e0-0000-7000-8000-000000000001" },
     ]);
 
     // AND the placement is durably there
-    await expect(fulfilling.services().repository.find(tenant, "o-1")).toBeOkWith(
-      expect.objectContaining({ id: "o-1", quantity: 2 }),
+    await expect(
+      fulfilling.services().repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"),
+    ).toBeOkWith(
+      expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 }),
     );
   });
 
@@ -51,7 +58,7 @@ describe("the fulfillment saga", () => {
     const outcome = await client
       .executeWorkflow("fulfillOrder", {
         workflowId: "wf-oos-1",
-        args: { tenantId: tenant, orderId: "o-2", quantity: 5 },
+        args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000002", quantity: 5 },
       })
       .match({
         ok: () => "WRONGLY FULFILLED",
@@ -61,22 +68,22 @@ describe("the fulfillment saga", () => {
           matcher
             .with({ errorName: "OutOfStock" }, (error) => `out-of-stock:${error.data.id}`)
             .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
+            .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
             .with({ errorName: "OrderAlreadyPlaced" }, () => "WRONG ERROR")
             .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
             .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
             .with(...tagPatterns(WORKFLOW_RESULT_ERROR_TAGS), (error) => `result:${error._tag}`),
         defect: () => "DEFECT",
       });
-    expect(outcome).toBe("out-of-stock:o-2");
+    expect(outcome).toBe("out-of-stock:0199a1e0-0000-7000-8000-000000000002");
 
     // AND the placement the saga made before the refusal is gone — the
     // compensation ran, and the database agrees with the answer
-    await expect(outOfStock.services().repository.find(tenant, "o-2")).toBeErrTagged(
-      "OrderNotFound",
-      {
-        id: "o-2",
-      },
-    );
+    await expect(
+      outOfStock.services().repository.find(tenant, "0199a1e0-0000-7000-8000-000000000002"),
+    ).toBeErrTagged("OrderNotFound", {
+      id: "0199a1e0-0000-7000-8000-000000000002",
+    });
   });
 
   it("compensates a shipping refusal in reverse order: release, then cancel", async ({
@@ -92,7 +99,7 @@ describe("the fulfillment saga", () => {
     const outcome = await client
       .executeWorkflow("fulfillOrder", {
         workflowId: "wf-ship-1",
-        args: { tenantId: tenant, orderId: "o-3", quantity: 1 },
+        args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000003", quantity: 1 },
       })
       .match({
         ok: () => "WRONGLY FULFILLED",
@@ -102,25 +109,25 @@ describe("the fulfillment saga", () => {
           matcher
             .with({ errorName: "ShippingUnavailable" }, (error) => `no-shipping:${error.data.id}`)
             .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
+            .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
             .with({ errorName: "OrderAlreadyPlaced" }, () => "WRONG ERROR")
             .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
             .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
             .with(...tagPatterns(WORKFLOW_RESULT_ERROR_TAGS), (error) => `result:${error._tag}`),
         defect: () => "DEFECT",
       });
-    expect(outcome).toBe("no-shipping:o-3");
+    expect(outcome).toBe("no-shipping:0199a1e0-0000-7000-8000-000000000003");
 
     // THEN the reservation was released — the walk-back reached the earlier
     // step, not just the placement
-    expect(noShipping.released()).toEqual(["o-3"]);
+    expect(noShipping.released()).toEqual(["0199a1e0-0000-7000-8000-000000000003"]);
 
     // AND the placement is gone too
-    await expect(noShipping.services().repository.find(tenant, "o-3")).toBeErrTagged(
-      "OrderNotFound",
-      {
-        id: "o-3",
-      },
-    );
+    await expect(
+      noShipping.services().repository.find(tenant, "0199a1e0-0000-7000-8000-000000000003"),
+    ).toBeErrTagged("OrderNotFound", {
+      id: "0199a1e0-0000-7000-8000-000000000003",
+    });
   });
 
   it("hands the client the OrderAlreadyPlaced the API answers CONFLICT for, as a typed contract error", async ({
@@ -137,12 +144,12 @@ describe("the fulfillment saga", () => {
     const outcome = await client
       .executeWorkflow("fulfillOrder", {
         workflowId: "wf-dup-1",
-        args: { tenantId: tenant, orderId: "o-4", quantity: 2 },
+        args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000004", quantity: 2 },
       })
       .flatMap(() =>
         client.executeWorkflow("fulfillOrder", {
           workflowId: "wf-dup-2",
-          args: { tenantId: tenant, orderId: "o-4", quantity: 2 },
+          args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-000000000004", quantity: 2 },
         }),
       )
       .match({
@@ -154,6 +161,7 @@ describe("the fulfillment saga", () => {
           matcher
             .with({ errorName: "OrderAlreadyPlaced" }, (error) => `conflict:${error.data.id}`)
             .with({ errorName: "InvalidQuantity" }, () => "WRONG ERROR")
+            .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
             .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
             .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
             .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
@@ -161,7 +169,7 @@ describe("the fulfillment saga", () => {
         defect: () => "DEFECT",
       });
 
-    expect(outcome).toBe("conflict:o-4");
+    expect(outcome).toBe("conflict:0199a1e0-0000-7000-8000-000000000004");
   });
 });
 
@@ -174,10 +182,12 @@ describe("the billing saga", () => {
     // WHEN the workflow the SECOND slice owns is executed
     const charged = client.executeWorkflow("chargeOrder", {
       workflowId: "wf-charge-1",
-      args: { tenantId: tenant, orderId: "order-1", amount: 42 },
+      args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-00000000a001", amount: 42 },
     });
 
     // THEN its own slice answered, so every piece was mounted under its key
-    await expect(charged).toBeOkWith({ authorizationId: "auth-order-1" });
+    await expect(charged).toBeOkWith({
+      authorizationId: "auth-0199a1e0-0000-7000-8000-00000000a001",
+    });
   });
 });

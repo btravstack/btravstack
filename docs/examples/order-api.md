@@ -26,30 +26,36 @@ import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-const orderView = z.object({ id: z.string(), quantity: z.number() });
+const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 
-const orderRef = z.object({ id: z.string() });
+const orderRef = z.object({ id: z.uuidv7() });
 export type OrderRef = z.infer<typeof orderRef>;
+
+// The one ref whose `id` is a bare string. It names the id **as received**,
+// which is exactly the value that is not a UUIDv7 — validating it against
+// `z.uuidv7()` would reject the only payload `BAD_REQUEST` ever carries.
+const malformedRef = z.object({ id: z.string() });
 
 // The unmarked fragment names its tenant on the input; the marked one does not,
 // because a caller's identity establishes it there.
-const tenanted = z.object({ tenantId: z.string() });
+const tenanted = z.object({ tenantId: z.uuidv7() });
 
-const customerView = z.object({ id: z.string(), name: z.string() });
+const customerView = z.object({ id: z.uuidv7(), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
 
 // Same shape as `orderRef`, deliberately not the same schema: reusing it would
 // type a customer id as "which order it was about".
-const customerRef = z.object({ id: z.string() });
+const customerRef = z.object({ id: z.uuidv7() });
 export type CustomerRef = z.infer<typeof customerRef>;
 
 const ordersContract = {
   place: oc
-    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
     .errors({
       INVALID_QUANTITY: { data: orderRef },
+      BAD_REQUEST: { data: malformedRef },
       CONFLICT: { data: orderRef },
     }),
   find: oc
@@ -60,7 +66,7 @@ const ordersContract = {
 
 const customersContract = {
   find: oc
-    .input(tenanted.extend({ id: z.string() }))
+    .input(tenanted.extend({ id: z.uuidv7() }))
     .output(customerView)
     .errors({ NOT_FOUND: { data: customerRef } }),
 };
@@ -112,6 +118,7 @@ src/authenticator.ts    bearerAuthenticator — the provider that resolves an Id
 and the root import come back fixed to it:
 
 ```ts
+import type { TenantId } from "@btravstack/example-order-domain";
 import {
   httpAuth,
   type HttpAuthenticatorOf,
@@ -120,7 +127,7 @@ import {
 } from "@btravstack/http";
 
 export type Identity = {
-  readonly tenantId: string;
+  readonly tenantId: TenantId;
   readonly userId: string;
 };
 
@@ -151,6 +158,7 @@ the factory, not a fallback.
 to state:
 
 ```ts
+import { TenantId } from "@btravstack/example-order-domain";
 import { Unauthenticated } from "@btravstack/http";
 import { ErrAsync, OkAsync } from "unthrown";
 
@@ -168,13 +176,18 @@ export const bearerAuthenticator = HttpAuthenticator({
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+      : OkAsync({ tenantId: TenantId(tenantId), userId });
   },
 });
 ```
 
 `Bearer <tenantId>:<userId>` is a stand-in, not a recommendation — what matters
-is the shape. `[]` because this one needs no service; a JWT verifier, a key set
+is the shape. This is also where a header becomes a **tenant**: `TenantId` is
+the domain's branded string, so the identity carries the brand from here and no
+handler on this path casts anything. The constructor is a cast rather than a
+parse — a brand is a compile-time fiction, and what it buys is that
+`repository.find(tenantId, id)` can no longer be called with its two arguments
+the other way round. `[]` because this one needs no service; a JWT verifier, a key set
 or a user directory would be named there and injected the way any provider's
 dependencies are, so swapping the stand-in for real verification changes
 nothing else in the composition. See
@@ -220,6 +233,14 @@ export const ordersController = HttpController(
             matcher
               .with(P.tag("InvalidQuantity"), (error) =>
                 errors.INVALID_QUANTITY({
+                  message: error.message,
+                  data: { id: error.id },
+                }),
+              )
+              // A malformed id is the caller's mistake, so 400 — not the
+              // 409 a duplicate gets.
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.BAD_REQUEST({
                   message: error.message,
                   data: { id: error.id },
                 }),
@@ -280,7 +301,10 @@ from `FindCustomer` and mapping `CustomerNotFound` to the fragment's own
 `NOT_FOUND`. Its fragment is **unmarked**, so its context has no `principal`
 at all — reading one there is a compile error — and it takes its tenant from
 `input.tenantId` instead. The contrast is the lesson: where a caller's identity
-establishes the tenant, the input has nothing to say about it. It has its own `view` too, because its use case answers with the
+establishes the tenant, the input has nothing to say about it. That is the one
+`TenantId(input.tenantId)` in the application: the fragment validated the field
+as a UUIDv7, and the brand is claimed once, where the wire's `string` becomes
+the application's vocabulary. It has its own `view` too, because its use case answers with the
 branded `Customer` entity and `CustomerView` is the wire's shape — a slice is
 defined by owning its fragment, its controller and its triage, not by owning a
 private adapter. The throwaway in-memory directory this replaced declared its
@@ -480,7 +504,7 @@ expect(conflict).toBeErrWith(
   expect.objectContaining({
     constructor: ORPCError,
     code: "CONFLICT",
-    data: { id: "o-1" },
+    data: { id: "0199a1e0-0000-7000-8000-000000000001" },
     inferable: true,
   }),
 );

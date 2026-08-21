@@ -99,8 +99,9 @@ const testModuleWith = (sink: Sink) =>
   });
 ```
 
-Seven specs cover placement, persistence, the duplicate path, the domain rule,
-the log line and both arms of the customer lookup — with no Prisma, no HTTP and
+Nine specs cover placement, persistence, the duplicate path, the domain rule,
+the malformed id, the tenant boundary, the log line and both arms of the
+customer lookup — with no Prisma, no HTTP and
 no kernel booted. `observability()`
 binds its level from the `Env` port `start` normally provides, so a kernel-free
 spec provides an empty one itself; the `sink` is the seam a spec reads lines
@@ -109,12 +110,13 @@ back through.
 ## Logging is attributes, not sentences
 
 ```ts
-this.#logger.info("placing an order", { orderId: id, quantity });
+this.#logger.info("placing an order", { tenantId, orderId: id, quantity });
 ```
 
 The message is a constant and the ids are fields, which is what makes a line
 groupable in the system that receives it — and what lets the spec assert
-`attributes: { orderId: "o-1", quantity: 2 }` rather than match a substring.
+`attributes: { tenantId: "acme", orderId: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 }`
+rather than match a substring.
 Correlation is not this layer's job either: `@btravstack/observability`'s logger
 reads `currentUnit()` on every call, so each line carries the trace id of
 whatever unit the runtime opened around it. In these specs there is no unit, so
@@ -127,6 +129,6 @@ server or a worker.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-application test        # 7 specs
+pnpm --filter @btravstack/example-order-application test        # 9 specs
 pnpm --filter @btravstack/example-order-application test:types  # the needs gate
 ```

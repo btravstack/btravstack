@@ -133,15 +133,22 @@ The tenancy is **explicit**: every port names its tenant, so an adapter is
 handed one rather than finding one.
 
 ```ts
-readonly find: (tenantId: string, id: string) => AsyncResult<Order, OrderNotFound>;
+readonly find: (tenantId: TenantId, id: string) => AsyncResult<Order, OrderNotFound>;
 ```
+
+And it is **branded**: `TenantId` is the domain's own string, the id beside it
+is not, so the pair cannot be swapped — `find(id, tenantId)` used to compile
+and read another tenant's rows. Nothing in this layer casts: the adapters take
+inferred parameters and inherit the brand from the port. The one exception is
+`prisma-outbox.ts`, where a row becomes an `OrderEvent` — the only read-back in
+the system, and so the only place the brand is re-applied.
 
 That is the application's design, not the framework's — no starter has a
 tenancy concept, and none should, because what establishes a tenant is a
 decision about a specific system. Two things fall out of it. A caller that
 forgot its tenant does not compile, where an ambient one would have failed at
 runtime or read the wrong rows in silence. And a spec needs no machinery:
-`repository.find(tenant, "o-1")` says what it is scoped to at the call, so the
+`repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001")` says what it is scoped to at the call, so the
 only fixture is the tenant string itself.
 
 The generated client is gitignored and minted by turbo's own `generate` task —
@@ -208,5 +215,5 @@ query come back as a defect.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-infrastructure test  # 18 specs
+pnpm --filter @btravstack/example-order-infrastructure test  # 22 specs
 ```
