@@ -46,8 +46,9 @@ vocabulary — is declared by the caller that needs it, not by the database that
 happens to satisfy it. `OrderApplicationModule` therefore leaves that need
 **unmet**, which is not documentation but a type:
 `Module.scoped(OrderApplicationModule, …)` does not compile until an outer
-module provides one. There is one such module per vertical, so the gate names
-the repository that vertical actually uses.
+module provides one. There is one such module per vertical, so each gate
+carries the repository that vertical actually uses — carries, not prints: di's
+gate is an arity error, and the port is in the parameter's type.
 
 ## The contract tier, which depends on nothing and is depended upon
 
