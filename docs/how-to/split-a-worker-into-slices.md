@@ -258,10 +258,10 @@ marker — the missing key itself is in neither message. The key **is** named
 once the array under test is as long as the marker tuple itself (2), a
 two-piece array missing one key being the common case: TypeScript then lines
 the array up against the tuple positionally and reports one error per element,
-the trailing one being `is not assignable to type '"orderAudit"'` — the bare
-key, as its own diagnostic, not folded into the marker's sentence. Below that
-length it can no longer line them up and falls back to reporting the marker
-alone.
+the trailing one being — measured on this worker's own contract —
+`is not assignable to type '"orderAudit"'`: the bare key, as its own
+diagnostic, not folded into the marker's sentence. Below that length it can no
+longer line them up and falls back to reporting the marker alone.
 
 This is why the composing arm is declared **last** in the intersection both
 packages build it from — di's builder first, the composer last — so
