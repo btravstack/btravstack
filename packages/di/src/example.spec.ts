@@ -1,7 +1,15 @@
 import { Err, Ok, TaggedError, type AsyncResult } from "unthrown";
 import { expect, test } from "vitest";
 
-import { Module, Port, Provider, type ScopedOptions, type ServiceOf } from "./index.js";
+import {
+  Module,
+  Port,
+  Provider,
+  type NeedsGate,
+  type Scope,
+  type ScopedOptions,
+  type ServiceOf,
+} from "./index.js";
 
 /**
  * A worked hexagonal example: ports named by the application (`OrderRepository`,
@@ -116,12 +124,30 @@ const InMemoryPersistenceModule = Module("InMemoryPersistence")({
  * only the entry point used to build it (`Module.build` vs `Module.scoped`)
  * differs, and that difference is forced by the type system, not a choice.
  */
-const makeAppModule = <E, N>(persistence: Module<OrderRepository, E, N>) =>
-  Module("App")({
+// `N extends Scope`, not a free `N`: the two adapters differ in whether their
+// provider is resourceful, and nothing else. A persistence module that owed a
+// real port would be this module's to declare, and a seam generic over that
+// cannot name what it would have to declare.
+const makeAppModule = <E, N extends Scope>(persistence: Module<OrderRepository, E, N>) => {
+  type Imports = readonly [Module<OrderRepository, E, N>];
+  type Provides = readonly [ReturnType<typeof getOrderProvider>];
+  const getOrderProvider = () =>
+    Provider(GetOrder)({ orders: OrderRepository }, { class: GetOrderInteractor });
+  // The discharged-signature cast `runMain` makes around `start`'s gate, for
+  // the same reason: `NeedsGate` cannot be computed while `I` is still a type
+  // parameter, so it defers and no object literal satisfies it. The gate is
+  // this seam's caller's to pass — here the imported module's needs are
+  // `Scope` at most, which the gate exempts anyway.
+  return Module("App")({
     imports: [persistence],
-    provides: [Provider(GetOrder)({ orders: OrderRepository }, { class: GetOrderInteractor })],
+    provides: [getOrderProvider()],
     exports: [GetOrder],
-  });
+  } as {
+    readonly imports: Imports;
+    readonly provides: Provides;
+    readonly exports: readonly [typeof GetOrder];
+  } & NeedsGate<Imports, Provides, []>);
+};
 
 test("the production graph resolves a use case through its ports, and releases what it acquired", async () => {
   const released: string[] = [];

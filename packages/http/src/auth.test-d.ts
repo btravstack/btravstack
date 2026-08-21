@@ -1,6 +1,7 @@
 // The type half of the auth marker: a marked contract node types its handler's
 // principal on oRPC's own context channel, and an unmarked one does not. Each
 // `@ts-expect-error` is an assertion: if one stops erroring, the gate is gone.
+import { Env } from "@btravstack/config";
 import { authenticated, type Authenticated } from "@btravstack/contract";
 import { start } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -114,10 +115,13 @@ const other = httpAuth<{ readonly sub: string }>().HttpAuthenticator({
 
 const options = { signals: false, probes: false } as const;
 
-// 7. A marked router with no authenticator supplied carries the port as an
-//    unmet need — the module builds, `start` refuses it.
-const MissingApi = HttpModule("Missing")({ router: markedRouter });
-// @ts-expect-error — UNMET NEED: nothing provides the authenticator port the marked router needs.
+// 7. A marked router with no authenticator supplied owes the port, and since
+//    di's `needs` gate that is refused HERE rather than at `start` — the
+//    module is where the omission is, and naming it in `needs` would only move
+//    the obligation to a root that still has to discharge it.
+// @ts-expect-error — UNDECLARED NEEDS: the authenticator port the marked router needs.
+const MissingApi = HttpModule("Missing")({ needs: [Env], router: markedRouter });
+// @ts-expect-error — and the kernel's own gate still refuses it, on the needs channel.
 const _missing = start(MissingApi, options);
 
 // 8. An authenticator minted on a DIFFERENT identity is refused. Unlike 7,
@@ -125,11 +129,19 @@ const _missing = start(MissingApi, options);
 //    authenticator port's service type is erased to `unknown`, so di sees the
 //    need discharged. The two identities meet on `HttpModule`'s own options —
 //    `RouterIdentity` is inferred from the router — which is where it is caught.
-// @ts-expect-error — the authenticator's identity is not the router's.
-const MismatchedApi = HttpModule("Mismatched")({ router: markedRouter, authenticator: other });
+const MismatchedApi = HttpModule("Mismatched")({
+  needs: [Env],
+  router: markedRouter,
+  // @ts-expect-error — the authenticator's identity is not the router's.
+  authenticator: other,
+});
 
 // 9. The matching pair compiles.
-const WiredApi = HttpModule("Wired")({ router: markedRouter, authenticator: matching });
+const WiredApi = HttpModule("Wired")({
+  needs: [Env],
+  router: markedRouter,
+  authenticator: matching,
+});
 const _wired = start(WiredApi, options);
 
 // 10. An unmarked router with an authenticator supplied is not this package's
@@ -138,7 +150,7 @@ const publicRouter = IdentityRouter({ health: contract.health })({
   sync: () => ({ health: { ping: () => OkAsync({ ok: true as const }) } }),
 });
 const _public = start(
-  HttpModule("Public")({ router: publicRouter, authenticator: matching }),
+  HttpModule("Public")({ needs: [Env], router: publicRouter, authenticator: matching }),
   options,
 );
 
@@ -163,8 +175,12 @@ const rootOrders = IdentityController(
 });
 const rootMarkedContract = authenticated({ orders: { whoami: oc } });
 const _rootKeyed = HttpModule("RootKeyed")({
+  needs: [Env],
   router: IdentityRouter(rootMarkedContract)({ orders: rootOrders }),
   authenticator: matching,
+  // The controller is provided too: the keyed router depends on its PORT, and
+  // a root that names no slice still owes it.
+  provides: [rootOrders],
 });
 
 void _rootKeyed;
@@ -213,6 +229,7 @@ const scopedHealth = IdentityController(
   sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
 });
 const _scoped = HttpModule("Scoped")({
+  needs: [Env],
   router: IdentityRouter({ orders: contract.orders, health: contract.health })({
     orders: scopedOrders,
     health: scopedHealth,
@@ -227,6 +244,7 @@ const strayAuthenticator = HttpAuthenticator<{ readonly sub: string }>()({
   sync: () => () => OkAsync({ sub: "s" }),
 });
 const _strayScoped = HttpModule("StrayScoped")({
+  needs: [Env],
   router: IdentityRouter({ orders: contract.orders, health: contract.health })({
     orders: scopedOrders,
     health: scopedHealth,
@@ -258,11 +276,13 @@ const verifiedAuthenticator = IdentityAuthenticator(
 );
 
 const _verified = HttpModule("Verified")({
+  needs: [Env],
   router: IdentityRouter({ orders: contract.orders, health: contract.health })({
     orders: scopedOrders,
     health: scopedHealth,
   }),
   authenticator: verifiedAuthenticator,
+  provides: [scopedOrders, scopedHealth],
   imports: [
     Module("Verifying")({
       provides: [Provider(Verifier)({ value: () => undefined })],
@@ -280,6 +300,7 @@ const verifiedStray = HttpAuthenticator<{ readonly sub: string }>()(
   },
 );
 const _verifiedStray = HttpModule("VerifiedStray")({
+  needs: [Env],
   router: IdentityRouter({ orders: contract.orders, health: contract.health })({
     orders: scopedOrders,
     health: scopedHealth,

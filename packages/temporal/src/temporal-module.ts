@@ -3,8 +3,10 @@ import {
   Module,
   Provider,
   type AnyModule,
+  type AnyPort,
   type AnyProvider,
   type Exportable,
+  type NeedsGate,
   type Scope,
 } from "@btravstack/di";
 import type { ContractDefinition } from "@temporal-contract/contract";
@@ -55,6 +57,7 @@ export type TemporalModuleOptions<
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<Imports<I, C>, Provides<P, C, ActivitiesError, ActivitiesNeeds>>[],
+  N extends readonly AnyPort[],
 > = {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
@@ -73,7 +76,14 @@ export type TemporalModuleOptions<
   readonly provides?: P;
   /** The application's own exports; `TemporalRuntime` is added, since `start` resolves it. */
   readonly exports?: X;
-};
+  /**
+   * What this root expects from outside — `Env` at least, since the starter
+   * binds `TEMPORAL_*` from it and `start` is what provides it. di's own gate
+   * is re-stated over the augmented tuples below, so forgetting one is an
+   * error at THIS call, the same as it would be on a bare `Module(name)`.
+   */
+  readonly needs?: N;
+} & NeedsGate<Imports<I, C>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>;
 
 /**
  * `Module(name)({...})` for a Temporal worker deployment: everything a di
@@ -109,8 +119,9 @@ export const TemporalModule =
       Imports<I, C>,
       Provides<P, C, ActivitiesError, ActivitiesNeeds>
     >[] = [],
+    const N extends readonly AnyPort[] = [],
   >(
-    options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, I, P, X>,
+    options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, I, P, X, N>,
   ) => {
     const { contract, activities, workflows, address, namespace, gracePeriod, forceAfter } =
       options;
@@ -127,11 +138,24 @@ export const TemporalModule =
     });
     // di's own `Module(name)({...})` over the augmented tuples: its return
     // type IS the sugar's — nothing spelled twice.
+    //
+    // The assertion is the gate, not the shape: `NeedsGate` cannot be computed
+    // while the tuples are still type parameters, so it defers and no object
+    // literal satisfies it here. It IS computed at the application's own call,
+    // because the sugar re-declares it on its options type. Asserting to a
+    // spelled-out type rather than `as never` is what keeps the tuples
+    // inferred — `as never` collapses the return to `Module<never, never, never>`.
     return Module(name)({
       imports: [...imports, starter] as Imports<I, C>,
       provides: [activities, ...provides] as Provides<P, C, ActivitiesError, ActivitiesNeeds>,
       exports: [TemporalRuntime, ...exports] as readonly [typeof TemporalRuntime, ...X],
-    });
+      needs: (options.needs ?? []) as N,
+    } as {
+      readonly imports: Imports<I, C>;
+      readonly provides: Provides<P, C, ActivitiesError, ActivitiesNeeds>;
+      readonly exports: readonly [typeof TemporalRuntime, ...X];
+      readonly needs: N;
+    } & NeedsGate<Imports<I, C>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>);
   };
 
 /** One piece of the activities record — what `TemporalWorkflowActivities(contract, key)(…)` returns. */

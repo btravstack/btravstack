@@ -28,7 +28,7 @@ nothing about the server's view of a caller reaches a client.
    the authenticator it hands back — headers in,
    `AsyncResult<Identity, Unauthenticated>` out.
 3. Read `opts.context.principal` in the handlers of the marked procedures.
-4. Pass the provider as `HttpModule(name)({ router, authenticator })`.
+4. Pass the provider as `HttpModule(name)({ router, authenticator, needs })`.
 
 ## Step 1 — mark the contract
 
@@ -251,6 +251,7 @@ answer per process.
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
+  needs: [Env],
   router: orderRouter,
   authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],

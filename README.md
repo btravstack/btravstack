@@ -31,7 +31,7 @@ from its state; a failed finaliser is logged and forgotten; a crash exits `0`.
 `start` gets them right once, as defaults.
 
 - 🧩 **Business code only.** A composition root is a
-  `HttpModule("OrdersApi")({ router, imports, exports })` and a `main.ts` is
+  `HttpModule("OrdersApi")({ router, imports, exports, needs })` and a `main.ts` is
   `await runMain(OrdersApi)`. Configuration is bound from the environment
   inside the graph; there is no `process.env`, no `app.listen`, no signal
   handler to write.
@@ -140,10 +140,12 @@ export const ordersRouter = HttpRouter(ordersContract)(
 
 ```ts
 // main.ts — the whole process.
+import { Env } from "@btravstack/config";
 import { runMain } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http";
 
 const OrdersApi = HttpModule("OrdersApi")({
+  needs: [Env],
   router: ordersRouter,
   imports: [OrderApplicationModule, OrderPersistenceModule],
 });

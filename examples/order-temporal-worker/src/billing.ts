@@ -14,6 +14,7 @@ import { OkAsync } from "unthrown";
  * the specs supply the refusing provider, which is where compensation runs.
  */
 export const BillingModule = Module("Billing")({
+  needs: [Logger],
   provides: [
     Provider(PaymentService)(
       { logger: Logger },

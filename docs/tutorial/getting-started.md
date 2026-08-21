@@ -130,12 +130,14 @@ exports `HttpRuntime` — the one port the kernel resolves and drives:
 
 ```ts
 // app.ts
+import { Env } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http";
 
 import { GreetingModule } from "./greeter.js";
 import { greetingRouter } from "./router.js";
 
 export const App = HttpModule("App")({
+  needs: [Env],
   router: greetingRouter,
   imports: [GreetingModule],
 });

@@ -55,8 +55,23 @@ Persistence (provides Pool, exports OrderRepository)  Needs: Scope   ← Pool ne
 App (imports Persistence)                             Needs: Scope   ← still unpaid
 ```
 
-Nothing checks anything yet — declaration is free. The check happens at the
-one place a graph becomes running services.
+An unpaid balance may only travel if the module **signed for it**. A module
+that owes a port it neither provides nor imports has to name it in `needs`, and
+one that does not is refused where it is written:
+
+```
+Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+  '{ provides: [...]; exports: [...]; }' but required in type
+  '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.
+```
+
+That is the first of the checks, and the only one that fires at a module rather
+than at a call that builds one. `Scope` is exempt — nothing can provide it, so
+it is never something an ancestor signs over. Everything else that survives the
+subtraction has been declared on purpose, and travels to whoever composes the
+module.
+
+The remaining checks happen at the one place a graph becomes running services.
 
 ## The gate: an arity error
 

@@ -20,7 +20,7 @@ description: The Temporal worker starter — TemporalModule, TemporalActivities,
 
 | Export                           | Kind  | What it is                                                                                                                                                                                                                                                            |
 | -------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })` — a di `Module(name)({...})` that also takes the activities provider                                                      |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                              |
 | `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                       |
 | `TemporalActivities`             | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `({ name: Dep }, arm)`, or `([pieces])` to compose one provider per workflow                                           |
 | `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                            |
@@ -83,6 +83,7 @@ The worked composition root, from
 
 ```ts
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
+  needs: [Env],
   contract: orderContract,
   activities: orderActivities,
   workflows: {

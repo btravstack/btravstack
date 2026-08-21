@@ -24,7 +24,7 @@ kernel's deadline are the package's. Everything below is lifted from
    one plain function per consumer, typed by the contract.
 2. Decide, per handler, what a domain `Err` and a `Defect` become
    (see the three-way split below).
-3. Compose with `AmqpModule(name)({ contract, handlers, imports, provides, exports })`.
+3. Compose with `AmqpModule(name)({ contract, handlers, imports, provides, exports, needs })`.
 4. `await runMain(OrderAmqpWorker)`; set `AMQP_URL` in the deployment.
 
 ## Step 1 — the handlers, as a provider
@@ -150,6 +150,7 @@ retries), not the same number Temporal's `maximumAttempts: 3` names.
 ## Step 3 — the composition root
 
 ```ts
+import { Env } from "@btravstack/config";
 import { AmqpModule } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
@@ -165,6 +166,7 @@ import { orderHandlers } from "./handlers.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
 
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
+  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],

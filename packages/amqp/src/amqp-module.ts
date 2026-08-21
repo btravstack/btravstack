@@ -2,8 +2,10 @@ import type { ConfigInvalid, Env } from "@btravstack/config";
 import {
   Module,
   type AnyModule,
+  type AnyPort,
   type AnyProvider,
   type Exportable,
+  type NeedsGate,
   type Provider,
 } from "@btravstack/di";
 
@@ -46,6 +48,7 @@ export type AmqpModuleOptions<
     Imports<I, TContract>,
     Provides<P, TContract, HandlersError, HandlersNeeds>
   >[],
+  N extends readonly AnyPort[],
 > = {
   readonly contract: TContract;
   /** The application's handlers — `AmqpHandlers(contract)(deps, arm)`, one per `consumers` / `rpcs` key of THIS contract, as the provider that builds them from the services they call. */
@@ -60,7 +63,14 @@ export type AmqpModuleOptions<
   readonly provides?: P;
   /** The application's own exports; `AmqpRuntime` is added, since `start` resolves it. */
   readonly exports?: X;
-};
+  /**
+   * What this root expects from outside — `Env` at least, since the starter
+   * binds its connection from it and `start` is what provides it. di's own
+   * gate is re-stated over the augmented tuples below, so forgetting one is
+   * an error at THIS call, the same as it would be on a bare `Module(name)`.
+   */
+  readonly needs?: N;
+} & NeedsGate<Imports<I, TContract>, Provides<P, TContract, HandlersError, HandlersNeeds>, N>;
 
 /**
  * `Module(name)({...})` for an AMQP deployment: everything a di module takes,
@@ -95,8 +105,9 @@ export const AmqpModule =
       Imports<I, TContract>,
       Provides<P, TContract, HandlersError, HandlersNeeds>
     >[] = [],
+    const N extends readonly AnyPort[] = [],
   >(
-    options: AmqpModuleOptions<TContract, HandlersError, HandlersNeeds, I, P, X>,
+    options: AmqpModuleOptions<TContract, HandlersError, HandlersNeeds, I, P, X, N>,
   ) => {
     const { contract, handlers, url, connectionOptions, defaultConsumerOptions, connectTimeoutMs } =
       options;
@@ -112,9 +123,21 @@ export const AmqpModule =
     });
     // di's own `Module(name)({...})` over the augmented tuples: its return
     // type IS the sugar's — nothing spelled twice.
+    // The assertion is the gate, not the shape: `NeedsGate` cannot be computed
+    // while the tuples are still type parameters, so it defers and no object
+    // literal satisfies it here. It IS computed at the application's own call,
+    // because the sugar re-declares it on its options type. Asserting to a
+    // spelled-out type rather than `as never` is what keeps the tuples
+    // inferred — `as never` collapses the return to `Module<never, never, never>`.
     return Module(name)({
       imports: [...imports, starter] as Imports<I, TContract>,
       provides: [handlers, ...provides] as Provides<P, TContract, HandlersError, HandlersNeeds>,
       exports: [AmqpRuntime, ...exports] as readonly [typeof AmqpRuntime, ...X],
-    });
+      needs: (options.needs ?? []) as N,
+    } as {
+      readonly imports: Imports<I, TContract>;
+      readonly provides: Provides<P, TContract, HandlersError, HandlersNeeds>;
+      readonly exports: readonly [typeof AmqpRuntime, ...X];
+      readonly needs: N;
+    } & NeedsGate<Imports<I, TContract>, Provides<P, TContract, HandlersError, HandlersNeeds>, N>);
   };

@@ -156,6 +156,7 @@ const databaseConfig = Config.provider("DatabaseConfig")(
 );
 
 const Persistence = Module("Persistence")({
+  needs: [Env],
   provides: [
     databaseConfig,
     Provider(Database)(

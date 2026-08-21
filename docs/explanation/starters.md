@@ -80,7 +80,7 @@ helper in `@btravstack/config` rather than a local copy in each starter.
 ## The module sugar
 
 Each starter ships a composition-root sugar — `HttpModule(name)({ router,
-imports, provides, exports, … })`, `TemporalModule(name)({ contract,
+imports, provides, exports, needs, … })`, `TemporalModule(name)({ contract,
 activities, workflows, … })`, `AmqpModule(name)({ contract, handlers, … })`.
 It is di's own `Module(name)({...})` that also takes the starter's fields:
 it appends the starter to `imports`, prepends the router / activities /
@@ -90,6 +90,7 @@ spelled once. From [`examples/order-api`](/examples/order-api):
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
+  needs: [Env],
   router: orderRouter,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],

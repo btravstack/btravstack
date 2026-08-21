@@ -9,7 +9,7 @@ with the code in the same commit, and with `README.md` — the package ships no
 ## Public surface
 
 - **`TemporalModule(name)({ contract, activities, workflows, address?,
-namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports? })`** —
+namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })`** —
   THE way an application writes its worker root; `temporal-module.ts`, the
   same shape as `@btravstack/http`'s `HttpModule`. `activities` is the
   **provider** of the starter's activities port for THIS contract — a plain
@@ -68,6 +68,13 @@ ActivitiesPortOf<C>`, so the next call is di's `(deps, arm)` unchanged and
   `examples/order-temporal-worker/src/slices/fulfillment/activities.ts` and
   `examples/order-temporal-worker/src/slices/billing/activities.ts` are the
   worked examples (no port class, no name, anywhere).
+
+  It also takes **`needs`**, forwarded to di's own — what this root expects
+  from outside, which is `[Env]` for every real deployment since the starter
+  binds its configuration from the environment and `start` is what provides
+  it. The sugar **re-declares di's `NeedsGate`** over its augmented tuples, so
+  a root that forgets one is refused at THIS call rather than slipping past
+  into `start`; see `packages/di/CLAUDE.md`'s **Module visibility**.
 
   A third call composes **pieces** instead of a record:
   `TemporalActivities(contract)([piece, piece, ...])`, one piece per

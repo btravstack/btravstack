@@ -1,3 +1,4 @@
+import { Env } from "@btravstack/config";
 import { Module } from "@btravstack/di";
 import { CustomerApplicationModule } from "@btravstack/example-order-application";
 import { CustomerPersistenceModule } from "@btravstack/example-order-infrastructure";
@@ -15,6 +16,9 @@ import { customersController } from "./controller.js";
  * modules: one provider reference, so one database.
  */
 export const CustomersSlice = Module("CustomersSlice")({
+  // Shorter than the orders slice's by one: `FindCustomer` writes no line, so
+  // this slice owes the environment and not the logger.
+  needs: [Env],
   imports: [CustomerApplicationModule, CustomerPersistenceModule],
   provides: [customersController],
   exports: [customersController],

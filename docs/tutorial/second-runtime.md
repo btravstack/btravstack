@@ -148,6 +148,7 @@ code lives, imports the Temporal starter, and exports `TemporalRuntime`:
 
 ```ts
 // worker.ts
+import { Env } from "@btravstack/config";
 import { TemporalModule } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
@@ -156,6 +157,7 @@ import { GreetingModule } from "./greeter.js";
 import { greetingContract } from "./temporal-contract.js";
 
 export const Worker = TemporalModule("Worker")({
+  needs: [Env],
   contract: greetingContract,
   activities: greetingActivities,
   workflows: {

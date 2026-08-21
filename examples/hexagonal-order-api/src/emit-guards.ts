@@ -112,6 +112,7 @@ export class OrderCache extends Port("OrderCache")<{
 export const MetricsProvider = Provider(Metrics)({ value: { count: () => {} } });
 
 export const ObservabilityModule = Module("Observability")({
+  needs: [OrderRepository],
   provides: [
     MetricsProvider,
     Provider(OrderCache)({ value: { peek: () => undefined } }),

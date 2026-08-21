@@ -87,6 +87,7 @@ export const orderActivities = TemporalActivities(orderContract)([
 ]);
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
+  needs: [Env],
   contract: orderContract,
   activities: orderActivities,
   workflows: {
@@ -261,6 +262,7 @@ billing is never swapped:
 
 ```ts
 const worker = TemporalModule("StubTemporalWorker")({
+  needs: [Env],
   contract,
   activities: orderActivities,
   workflows: { workflowBundle },

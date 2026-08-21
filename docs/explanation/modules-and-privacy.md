@@ -53,6 +53,51 @@ This is privacy in exactly the sense TypeScript itself uses everywhere else:
 `internal` API are all names withheld rather than bytes hidden. `di` extends
 the convention to wiring.
 
+## A need is declared, never absorbed
+
+The same computation answers a question NestJS answers differently. There, a
+provider sees only what its own module declares or imports, and a need nothing
+local satisfies is an error where it is written — which is why NestJS also
+needs `@Global`, a way for a cross-cutting module to be visible without being
+imported.
+
+`di` splits that differently. A module may be handed a port by whoever composes
+it — but only one it **asked for by name**:
+
+```ts
+export const AuditSlice = Module("AuditSlice")({
+  needs: [Logger],
+  provides: [orderAudit],
+  exports: [orderAudit],
+});
+```
+
+`needs` does not make `Logger` visible the way an import would, and it does not
+manufacture an obligation for a root that owes nothing. It says: _this module
+depends on a `Logger` it does not build, and something above it has to_. Leave
+it out and the module does not compile at all — the diagnostic names the port —
+so a slice can never quietly absorb whatever the composition root happens to be
+holding.
+
+That is the whole difference from `@Global`. A global module is invisible
+plumbing: a slice benefits from it without mentioning it, and reading
+`slices/audit/` still tells you nothing about where its logger comes from. A
+declared need is the opposite — the slice states the port and stays silent
+about the supplier, which is exactly the pair that lets it be recomposed. The
+same `AuditSlice` drops into a different root, or
+[lifts into a process of its own](/how-to/split-a-router-into-controllers),
+with no edit: any root that answers `Logger` will do.
+
+The cost is one line per module, and it compounds — `Env` is declared by every
+module that reads the environment, and again by every module that imports one
+of those, up to the root that `start` hands one to. That chain is the thing a
+`@Global` would have hidden, and seeing it is the point.
+
+`Scope` is the one exemption, and it is forced rather than chosen: nothing can
+provide `Scope` — a provider for it is a
+[wiring defect](/reference/di/wiring-defects) — so it is never something an
+ancestor supplies. `Module.scoped` and `start` discharge it by opening one.
+
 ## What it does not defend against
 
 A determined caller can cast — `ctx as any`, a hand-rolled object with the

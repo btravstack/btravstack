@@ -8,7 +8,7 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports? })`**
+- **`HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
   `http({ prefix?, port?, hostname? })` to `imports`, prepends the provider to
@@ -306,6 +306,13 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C>
     `auth.ts`'s `noAuthenticator` — an `AuthenticatorService` that refuses
     every caller, so the leaf answers `401` instead of serving unprotected.
     Unreachable while the two halves agree, which is exactly why it is there.
+
+  It also takes **`needs`**, forwarded to di's own — what this root expects
+  from outside, which is `[Env]` for every real deployment since the starter
+  binds its configuration from the environment and `start` is what provides
+  it. The sugar **re-declares di's `NeedsGate`** over its augmented tuples, so
+  a root that forgets one is refused at THIS call rather than slipping past
+  into `start`; see `packages/di/CLAUDE.md`'s **Module visibility**.
 
   When `hasMarked(contract)` answers true,
   `AuthenticatorPort` joins the provider's deps record under the **namespaced**

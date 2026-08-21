@@ -138,6 +138,7 @@ string. Compose the root's own shape with a recording sink, and boot that:
 const lines: Line[] = [];
 
 const recordingApi = HttpModule("RecordingApi")({
+  needs: [Env],
   router: orderRouter,
   // The same authenticator as the real root: the contract marks `orders`, so
   // every composition serving that router owes one.
@@ -307,6 +308,7 @@ const recordingApi = () => {
   const recorder = recorderOf();
   return {
     api: HttpModule("RecordingApi")({
+      needs: [Env],
       router: orderRouter,
       authenticator: bearerAuthenticator,
       imports: [

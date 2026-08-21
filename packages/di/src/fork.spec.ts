@@ -18,6 +18,9 @@ test("a fork releases only its own resources and leaves the parent up", async ()
     exports: [Pool],
   });
   const request = Module("Request")({
+    // The fork seam, stated: `Pool` comes from the parent scope this request
+    // module is forked from, never from inside it.
+    needs: [Pool],
     provides: [
       Provider(Txn)(
         { pool: Pool },

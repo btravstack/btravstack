@@ -1,4 +1,5 @@
 import { Module } from "@btravstack/di";
+import { Logger } from "@btravstack/observability";
 
 import { orderAudit } from "./handler.js";
 
@@ -14,6 +15,10 @@ import { orderAudit } from "./handler.js";
  * mints the port from the contract key, so there is nothing to name.
  */
 export const AuditSlice = Module("AuditSlice")({
+  // The one thing this slice expects from outside, named here rather than
+  // absorbed from whatever the root happens to hold — and `slices/audit/` now
+  // says where its `Logger` comes from: not from in here.
+  needs: [Logger],
   provides: [orderAudit],
   exports: [orderAudit],
 });

@@ -1,4 +1,4 @@
-import { Config, type ConfigInvalid, type Environment } from "@btravstack/config";
+import { Config, Env, type ConfigInvalid, type Environment } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
 import {
   bootFixture,
@@ -63,6 +63,7 @@ export type ConfiguredApp = {
 
 const settingsApp = () =>
   Module("ConfigFixtureApp")({
+    needs: [Env],
     imports: [testRuntime().module],
     provides: [Config.provider(Settings)(settingsSchema)],
     exports: [TestRuntimePort, Settings],
@@ -164,6 +165,9 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
     });
 
     const UnitModule = Module("UnitFixtureUnit")({
+      // The fork seam: `Parent` comes from the application scope this unit
+      // module is forked from, never from inside it.
+      needs: [Parent],
       provides: [
         Provider(Span)(
           { parent: Parent },

@@ -29,6 +29,7 @@ import { OkAsync, fromSafePromise } from "unthrown";
  * — it fires on `shutdownGraceTime` — so the two are honoured together.
  */
 export const FulfillmentModule = Module("Fulfillment")({
+  needs: [Logger],
   provides: [
     Provider(StockService)(
       { logger: Logger },

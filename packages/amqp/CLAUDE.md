@@ -8,7 +8,7 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports? })`**
+- **`AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports?, needs? })`**
   (`amqp-module.ts`) — THE way an application declares an AMQP deployment:
   `Module(name)({...})` plus the contract and the handlers **provider**. It
   appends `amqp({ contract, … })` to `imports`,
@@ -82,6 +82,13 @@ key)`, both of which cast it to the typed alias), so there is nothing a
   built for another contract is refused by `AmqpModule`; and that a
   hand-declared port of another id leaves the starter's need unmet, so
   `start` refuses the module.
+
+  It also takes **`needs`**, forwarded to di's own — what this root expects
+  from outside, which is `[Env]` for every real deployment since the starter
+  binds its configuration from the environment and `start` is what provides
+  it. The sugar **re-declares di's `NeedsGate`** over its augmented tuples, so
+  a root that forgets one is refused at THIS call rather than slipping past
+  into `start`; see `packages/di/CLAUDE.md`'s **Module visibility**.
 
   A third call composes **pieces** instead of a record:
   `AmqpHandlers(contract)([piece, piece, ...])`, one piece per

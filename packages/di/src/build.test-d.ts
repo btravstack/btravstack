@@ -78,6 +78,9 @@ describe("Module.build", () => {
 
   test("a module with unmet needs does not compile", () => {
     const mod = Module("Incomplete")({
+      // Declared, so the module itself is legal; what it is missing is a
+      // composition root that supplies `Cfg`, which is what this test is about.
+      needs: [Cfg],
       provides: [
         Provider(Repo)({ config: Cfg }, { sync: ({ config }) => ({ find: () => config.url }) }),
       ],

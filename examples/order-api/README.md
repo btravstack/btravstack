@@ -17,7 +17,8 @@ src/slices/customers/controller.ts    HttpController("CustomersController", cont
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts                         an AsyncResult client for the same contract
-src/module.ts                         OrderApi — the composition root: orderRouter = HttpRouter(contract)({ orders, customers }), then HttpModule("OrderApi")({ router: orderRouter, … })
+src/module.ts                         OrderApi — the composition root: orderRouter = HttpRouter(contract)({ orders, customers }), then HttpModule("OrderApi")({
+  needs: [Env], router: orderRouter, … })
 src/main.ts                           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
 src/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
 ```
@@ -99,6 +100,7 @@ root that is a `Module(...)` which also knows about it:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
+  needs: [Env],
   router: orderRouter,
   authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
@@ -151,6 +153,9 @@ The root is a list of **slices**. Each one imports the vertical it needs —
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
+  // The environment its persistence reads `DATABASE_URL` from, and the logger
+  // its interactors write to — both the root's to supply, both named here.
+  needs: [Env, Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
   exports: [ordersController],

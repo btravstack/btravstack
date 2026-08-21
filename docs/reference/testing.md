@@ -161,6 +161,7 @@ outbox it reads back, on a root composed to record what its logger wrote:
 ```ts
 const lines: Line[] = [];
 const recording = AmqpModule("RecordingAmqpWorker")({
+  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [

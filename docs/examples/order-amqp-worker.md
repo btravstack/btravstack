@@ -230,6 +230,7 @@ the runtime's `stop`). `drain` stays the consumer's alone — draining means
 
 ```ts
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
+  needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
   imports: [
@@ -344,7 +345,9 @@ spelled with the `amqp()` primitive — the sugar cannot leave the handlers out,
 which is what it is for:
 
 ```ts
+// @ts-expect-error — UNDECLARED NEEDS: the starter's handlers port.
 const HandlerlessAmqp = Module("HandlerlessAmqp")({
+  needs: [Env],
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,
@@ -353,21 +356,24 @@ const HandlerlessAmqp = Module("HandlerlessAmqp")({
   ],
   exports: [AmqpRuntime, PlaceOrder, Logger],
 });
-
-// @ts-expect-error — the module's needs channel carries the handlers port, which nothing provides.
-const _missingHandlers = start(HandlerlessAmqp, options);
 ```
 
 Two different diagnostics, worth telling apart. The first is `start`'s marker:
 the module argument fails to match
 `Module<…> & "NO RUNTIME — the module exports no port declared over RuntimePort"`,
-and the sentence is the last line. The second is the `Needs` channel: the
-handlers port is left outstanding and `start`'s `module` parameter takes only
-`Scope | Env`, so what prints is
-`Type 'HandlersInstanceOf<…>' is not assignable to type 'Env | Scope'` — wide,
-because the contract expands, but ending on
-`Type '"AmqpHandlers"' is not assignable to type '"@di/Scope"'`, which names the
-port. Neither is di's `UNSATISFIED DEPENDENCIES` arity gate.
+and the sentence is the last line. The second is di's own
+[declaration gate](/explanation/modules-and-privacy): the handlers port is owed
+here and not named in `needs`, so the module never gets as far as `start`, and
+what prints ends on
+
+```
+'{ readonly "UNDECLARED NEEDS — name it in `needs`": HandlersInstanceOf<…>; }'
+```
+
+Declaring it is not the escape: `@btravstack/amqp` exports its handlers port's
+TYPE only, so an application has nothing to name — providing the handlers is
+the only way past, which is what the gate is for. Neither diagnostic is di's
+`UNSATISFIED DEPENDENCIES` arity gate.
 
 ## Where to go next
 

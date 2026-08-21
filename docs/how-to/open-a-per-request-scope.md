@@ -40,6 +40,9 @@ export class RequestSpan extends Port("RequestSpan")<{
 }> {}
 
 export const RequestModule = Module("Request")({
+  // The fork seam, declared: `Logger` comes from the application scope this
+  // per-request module is forked from, never from inside it.
+  needs: [Logger],
   provides: [
     Provider(RequestSpan)(
       { logger: Logger },
@@ -128,6 +131,7 @@ the last line of the error:
 
 ```ts
 const UnloggedApi = Module("UnloggedApi")({
+  needs: [Env],
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,

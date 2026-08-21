@@ -30,7 +30,10 @@ const Persistence = Module("YPersistence")({
   exports: [OrderRepository],
 });
 
-const makeAppModule = <E, N>(persistence: Module<OrderRepository, E, N>) =>
+// `Needs = never`, not a generic `N`: importing a module that still owes
+// something would make those needs this module's to declare, and a factory
+// cannot name ports it has not been told about.
+const makeAppModule = <E>(persistence: Module<OrderRepository, E, never>) =>
   Module("YApp")({
     imports: [persistence],
     provides: [

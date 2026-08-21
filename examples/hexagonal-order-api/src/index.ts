@@ -7,7 +7,7 @@
  * walk-through with commentary, and `src/index.spec.ts` for both graphs built
  * and exercised end to end.
  */
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Module, Port, Provider, type NeedsGate, type Scope, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, TaggedError, type AsyncResult, type Result } from "unthrown";
 
 export class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
@@ -165,9 +165,23 @@ export const InMemoryPersistenceModule = Module("InMemoryPersistence")({
  * graph, `Module.scoped` for the resourceful one — differs, and the type
  * system forces the right one at the call site (see `src/index.test-d.ts`).
  */
-export const makeAppModule = <E, N>(persistence: Module<OrderRepository, E, N>) =>
-  Module("App")({
+export const makeAppModule = <E, N extends Scope>(persistence: Module<OrderRepository, E, N>) => {
+  type Imports = readonly [Module<OrderRepository, E, N>];
+  type Provides = readonly [ReturnType<typeof getOrder>];
+  const getOrder = () =>
+    Provider(GetOrder)({ orders: OrderRepository }, { class: GetOrderInteractor });
+  // The discharged-signature cast `runMain` makes around `start`'s gate, for
+  // the same reason: di's `needs` gate cannot be computed while `E` is still a
+  // type parameter, so it defers. Nothing is being waved through — an adapter
+  // that owed a real port would be this module's to declare, which is why the
+  // parameter admits `Scope` and nothing else.
+  return Module("App")({
     imports: [persistence],
-    provides: [Provider(GetOrder)({ orders: OrderRepository }, { class: GetOrderInteractor })],
+    provides: [getOrder()],
     exports: [GetOrder],
-  });
+  } as {
+    readonly imports: Imports;
+    readonly provides: Provides;
+    readonly exports: readonly [typeof GetOrder];
+  } & NeedsGate<Imports, Provides, []>);
+};

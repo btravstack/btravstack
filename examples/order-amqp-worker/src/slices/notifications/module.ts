@@ -1,4 +1,5 @@
 import { Module } from "@btravstack/di";
+import { Logger } from "@btravstack/observability";
 
 import { orderNotifications } from "./handler.js";
 
@@ -17,6 +18,7 @@ import { orderNotifications } from "./handler.js";
  * name.
  */
 export const NotificationsSlice = Module("NotificationsSlice")({
+  needs: [Logger],
   provides: [orderNotifications],
   exports: [orderNotifications],
 });

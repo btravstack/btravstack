@@ -51,7 +51,8 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   thing it declines to ship), so this is its price, not a bug to route around.
   Do not reintroduce a positional arm to recover it.
 
-- **`module.ts`** — the `Module<Exports, E, Needs>` algebra. Three phantom
+- **`module.ts`** — the `Module<Exports, E, Needs>` algebra. Four option
+  tuples — `imports`, `provides`, `exports`, `needs` — and three phantom
   channels with a deliberate variance rule: capability channels (`_exports`) are
   contravariant ("you may forget what you have"), obligation channels (`_error`,
   `_needs`) are covariant ("you may not forget what you owe"). Entry points hang
@@ -73,6 +74,10 @@ missing: N]`. What that **prints** is the arity line alone —
   `@btravstack/core`'s `start` answers this differently — its marker
   rides the `module` parameter so its sentence prints — so **the two gates are
   no longer the same shape**; do not describe them as parallel.
+  `needs` is the fourth tuple and the subject of **Module visibility** below:
+  what this module expects a composition root to supply, named. Anything it
+  owes and did not name is refused at the `Module(name)({...})` call by
+  `NeedsGate`, which rides an intersection on the options parameter.
   `exports` accepts an available **port class**, a **provider** for
   one (normalised to `provider.port` when the module is built, so the stored
   `exports` array stays `readonly (AnyPort | AnyModule)[]`, and yielding the
@@ -109,8 +114,8 @@ missing: N]`. What that **prints** is the arity line alone —
   spelling, and naming the instance type forges nothing (the brand keys stay
   private). `Provider(port)({ name: Dep }, arm)`'s return type is `Provider<P, E, N> &
 { readonly port: typeof port }` — the provider carries its port class typed,
-  so `provider.port` is what a dependent lists in its deps; purely additive. `AnyModule`, `AnyProvider` and
-  `Exportable` are exported so a package offering a **shaped module** (a
+  so `provider.port` is what a dependent lists in its deps; purely additive. `AnyModule`, `AnyProvider`,
+  `Exportable`, **`NeedsGate` and `Unmet`** are exported so a package offering a **shaped module** (a
   starter's `HttpModule(name)({ router, imports, provides, exports })` sugar,
   which appends its own import and export to what the application wrote) can
   constrain its `imports`/`provides`/`exports` the way `Module(name)` does and
@@ -152,6 +157,122 @@ the declaration-emit guard above; `plugin-registry` and `request-scope` did not,
 because `fork.spec.ts` already pins what the second asserted (and `order-api`
 forks a real per-request scope besides); the first went with `Port.many`
 itself.
+
+## Module visibility: a need is DECLARED, never absorbed
+
+**Decided in #50: a module states what it expects from outside, and anything
+it owes and did not state is a compile error at that module.** The rule in one
+line: `needs` is the explicit stand-in for NestJS's `@Global` — a composition
+root may supply a port to a module it imports, but only one the module asked
+for by name.
+
+```ts
+export const AuditSlice = Module("AuditSlice")({
+  needs: [Logger],
+  provides: [orderAudit],
+  exports: [orderAudit],
+});
+```
+
+### What it replaced, and why the first answer was wrong
+
+The model before this was "a need bubbles up until some ancestor discharges
+it". A first pass at #50 measured the SIBLING case — a module that imports
+`observability()` and re-exports nothing does not discharge another module's
+`Logger` — and concluded from it that di already had NestJS's visibility rule.
+That is false in the direction the issue was actually about. Measured, both
+ways:
+
+```ts
+const Slice = Module("Slice")({
+  provides: [RepositoryProvider],
+  exports: [OrderRepository],
+});
+const Root = Module("Root")({
+  imports: [Slice],
+  provides: [DatabaseProvider],
+  exports: [OrderRepository],
+});
+const rootNeedsNothing: Equal<Channels<typeof Root>[2], never> = true; // compiled
+```
+
+```
+✓ a slice's provider receives the ROOT's service, importing nothing
+```
+
+So a slice genuinely did see providers from the root, and `slices/audit/` said
+nothing about where its `Logger` came from. Both halves are gone: the module
+names the port, and a root that offers one nobody asked for is offering it to
+nobody.
+
+### How it is spelled
+
+`ModuleDeclaration` takes a fourth tuple, `needs: N`, and intersects
+`NeedsGate<I, P, N>` onto the options parameter — `unknown` when satisfied, so
+the parameter type is untouched; an object with one required property when
+not. **The property, rather than `StartGate`'s bare string, is what makes the
+diagnostic name the port** (measured, both ways):
+
+```
+Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+  '{ provides: [...]; exports: [...]; }' but required in type
+  '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.
+```
+
+Two details in that type are load-bearing and both were measured after they
+broke something:
+
+- **The failure branch inlines its `Exclude`** rather than naming an
+  `Undeclared<I, P, N>` alias. An alias prints as itself, unreduced, and the
+  reader gets their own tuples back instead of the port.
+- **The RETURN type inlines the same computation too**, for a different
+  reason: declaration emit keeps a named alias unreduced, and the unreduced
+  form names the imported modules' internal ports — TS2883/TS4023 on the first
+  consumer that exports a composition root (`OrderApi` "cannot be named
+  without a reference to 'OrderDatabase'"). `Unmet<I, P>` is exported for the
+  starters' sugars and used only inside parameter types.
+
+The channel itself is unchanged: `Needs` is still what the module genuinely
+owes, computed, not what it declared. Declaring a port nothing owes is inert —
+it does not manufacture an obligation for a root to discharge
+(`module.test-d.ts`, _"declaring a need nothing owes is inert"_).
+
+### `Scope` is the one exemption, and it is forced
+
+Nothing can provide `Scope` — a provider for it is a `WiringDefect` — so it is
+never something an ancestor supplies; `Module.scoped` and `start` discharge it
+by opening one. A resourceful module therefore declares nothing.
+
+`Env` is **not** exempt, and that is the point rather than an oversight: every
+module that reads the environment says `needs: [Env]`, and the port travels,
+declared at each step, up to the root that `start` hands one to. That chain is
+what a `@Global` would have hidden.
+
+### The gate cannot be computed generically — and that is why the casts exist
+
+`Unmet<I, P>` over a generic tuple `I` is a deferred conditional, and no object
+literal satisfies one. So a **generic wrapper around `Module(name)`** — the
+three starter sugars, `start`'s `Env` wrapper, `@btravstack/testing`'s
+`tapped`, a factory like `makeAppModule` — cannot satisfy the gate at its own
+definition site. The pattern, which is `runMain`'s discharged-signature cast
+around `StartGate` one layer down:
+
+1. **Re-declare the gate on the wrapper's own options**, over its augmented
+   tuples, exactly as the sugars already re-declare `Exportable`. This is what
+   makes the gate fire at the application's call — without it a root written
+   with `HttpModule` would skip the check entirely.
+2. **Assert past it at the inner call**, to a spelled-out object type
+   intersected with the same `NeedsGate`. Not `as never`: that collapses the
+   sugar's return type to `Module<never, never, never>` (measured). `start` and
+   `tapped` may use `as never`, because both already cast their result.
+
+### What a module cannot declare its way out of
+
+A starter's own port — `HttpRouterPort`, the AMQP handlers port, the Temporal
+activities port — is exported as a TYPE only, so an application has nothing to
+name in `needs`. Providing the router / handlers / activities is the only way
+past the gate, which is what those gates are for. Three negatives pin it, one
+per starter, and each moved from `start` to the module in this change.
 
 ## Binding design rules
 

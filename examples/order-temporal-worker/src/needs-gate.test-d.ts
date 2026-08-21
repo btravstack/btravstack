@@ -1,3 +1,4 @@
+import { Env } from "@btravstack/config";
 import { start } from "@btravstack/core";
 /**
  * The compile-time half of the orchestration deployment: `start` resolves its
@@ -29,10 +30,14 @@ import { start } from "@btravstack/core";
  * Type-checked by this package's `test:types` script, never executed.
  */
 import { Module } from "@btravstack/di";
-import { OrderApplicationModule } from "@btravstack/example-order-application";
+import {
+  OrderApplicationModule,
+  ShippingService,
+  StockService,
+} from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
-import { observability } from "@btravstack/observability";
+import { Logger, observability } from "@btravstack/observability";
 import { TemporalModule, TemporalRuntime, temporal } from "@btravstack/temporal";
 
 import { OrderTemporalWorker, orderActivities } from "./module.js";
@@ -52,6 +57,7 @@ const _wired = start(OrderTemporalWorker, options);
 // so this arm fails on the RUNTIME alone — the two slices owe `Logger`
 // otherwise, and a module failing two gates at once elaborates the other one.
 const RuntimelessTemporal = Module("RuntimelessTemporal")({
+  needs: [Env],
   imports: [FulfillmentSlice, BillingSlice, observability()],
   provides: [orderActivities],
   exports: [orderActivities.port],
@@ -62,11 +68,18 @@ const RuntimelessTemporal = Module("RuntimelessTemporal")({
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _noRuntime = start(RuntimelessTemporal, options);
 
-// The starter without the activities it depends on at all: nothing provides
-// the composed activities port, so it stays in the module's needs channel.
-// Spelled with the `temporal()` primitive rather than `TemporalModule`, since
-// the sugar cannot leave the activities out — that is what it is for.
+// The starter without the activities it depends on at all. Spelled with the
+// `temporal()` primitive rather than `TemporalModule`, since the sugar cannot
+// leave the activities out — that is what it is for.
+//
+// Negative, and since di's `needs` gate this one no longer waits for `start`:
+// the composed activities port is owed here and undeclared, and declaring it
+// is not an escape either — the port is the starter's own and only its TYPE is
+// exported, so an application has nothing to name. Providing the activities is
+// the only way out, which is the point.
+// @ts-expect-error — UNDECLARED NEEDS: the starter's activities port.
 const ActivitylessTemporal = Module("ActivitylessTemporal")({
+  needs: [Env],
   imports: [
     temporal({
       contract: orderContract,
@@ -76,26 +89,39 @@ const ActivitylessTemporal = Module("ActivitylessTemporal")({
   exports: [TemporalRuntime],
 });
 
-// Negative, the needs channel rather than the kernel's marker: `start` takes a
-// `Module<X, E, Scope | Env>`, and this one still owes the activities port.
-// @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port, which nothing provides.
-const _missingActivities = start(ActivitylessTemporal, options);
+void ActivitylessTemporal;
 
 // The real `fulfillOrder` piece, composed into a slice that forgets
 // `FulfillmentModule`: the piece's own `deps` (`PlaceOrder`,
 // `OrderRepository`, `StockService`, `ShippingService`) are real ports, and
 // only the first two are met here.
+// @ts-expect-error — UNDECLARED NEEDS: StockService | ShippingService, which
+// `FulfillmentModule` would have provided.
 const FulfillmentlessSlice = Module("FulfillmentlessSlice")({
+  needs: [Env, Logger],
+  imports: [OrderApplicationModule, OrderPersistenceModule],
+  provides: [fulfillOrder],
+  exports: [fulfillOrder],
+});
+
+void FulfillmentlessSlice;
+
+// The same slice with every port it owes declared. Legal at the module now —
+// which is the whole distinction the two gates draw: declaring moves the
+// obligation to whoever composes it, it does not discharge it.
+const DeclaredFulfillmentless = Module("DeclaredFulfillmentless")({
+  needs: [Env, Logger, StockService, ShippingService],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [fulfillOrder],
   exports: [fulfillOrder],
 });
 
 const FulfillmentlessTemporal = TemporalModule("FulfillmentlessTemporal")({
+  needs: [Env, Logger, StockService, ShippingService],
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: "./workflows.js" },
-  imports: [FulfillmentlessSlice, BillingSlice],
+  imports: [DeclaredFulfillmentless, BillingSlice],
 });
 
 // Negative: `start` accepts a module whose outstanding needs are `Scope` and
