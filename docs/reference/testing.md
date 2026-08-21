@@ -126,19 +126,17 @@ when every port is exported and two required parameters
 It is the fourth gate mechanism in this repo, and the only one a **test**
 meets rather than a composing application.
 
-So what it prints is an arity error, measured on a one-port tap of a module
-that does not export that port:
+What it prints, measured on a one-port tap of a module that does not export
+that port:
 
 ```
 src/__scratch.ts(15,1): error TS2554: Expected 4 arguments, but got 2.
 ```
 
-That is the whole message. An arity error never prints a type, so neither the
-`"NOT EXPORTED"` label nor the port in `missing` appears in it — the fix is
-always to export the port, or to tap one the module already exports. **To find
-out which port is unexported, spell the phantom arguments out by hand**, the
-same technique di's gate documents; the slots answer one at a time, the first
-one first:
+Reading that message, and finding the missing port by hand-spelling the
+phantom arguments, is the same technique [di's own
+gate](/reference/di/entry-points#the-gate) documents. The slots answer one at
+a time, the first one first:
 
 ```
 error TS2345: Argument of type '0' is not assignable to parameter of type '"NOT EXPORTED"'.
@@ -150,9 +148,6 @@ the port:
 ```
 error TS2345: Argument of type 'number' is not assignable to parameter of type 'Secret'.
 ```
-
-All three measured, on a scratch file since deleted; it is a diagnostic
-technique, not an intended call form.
 
 The tap provider is not exported and nothing resolves it; di builds every
 provider in a graph, exported or not, which is what makes the capture work.
