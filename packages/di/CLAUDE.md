@@ -153,6 +153,63 @@ because `fork.spec.ts` already pins what the second asserted (and `order-api`
 forks a real per-request scope besides); the first went with `Port.many`
 itself.
 
+## Module visibility: a need is an obligation, not a lookup
+
+**Decided in #50: keep the model, and stop calling it "needs bubble up."** That
+phrase reads as _a provider sees whatever the tree happens to hold_, and the
+measured behaviour is the opposite.
+
+A module's `Needs` is
+`Exclude<its providers' deps | its imports' unmet needs, Available>`, and
+`Available` is **what the module provides plus what its imports EXPORT** —
+nothing else (`module.ts`'s `ModuleDeclaration`). So the satisfaction rule is
+already NestJS's: a sibling that imports `observability()` and re-exports
+nothing does **not** discharge another module's `Logger`. Measured, against
+`examples/order-amqp-worker`:
+
+```
+error TS2345: Argument of type 'Module<AmqpRuntime, ConfigInvalid, Env | Logger>'
+  is not assignable to parameter of type 'Module<AmqpRuntime, ConfigInvalid, Env | Scope>'.
+```
+
+`module.test-d.ts`'s _"only an import's own exports discharge a need"_ pins both
+arms — the opaque holder that leaves the need standing, and the one difference
+that discharges it, `exports: [ConfigModule]`.
+
+The one real divergence from NestJS is what happens to a need nothing local
+satisfies. NestJS makes it an error where it is written; di makes it a **typed
+obligation** carried in the third channel until an ancestor discharges it, gated
+at `Module.build` / `Module.scoped` / `start`. `AuditSlice` declaring `[Logger]`
+and importing nothing is that channel working, not a hole: nothing can run the
+slice until a root imports something that exports `Logger`, which
+`examples/order-amqp-worker/src/needs-gate.test-d.ts`'s `LoggerlessAmqp` pins.
+
+Three consequences, and they are why import-visibility was refused rather than
+merely not adopted:
+
+- **There is no `@Global`, and none is needed.** NestJS needs one because an
+  unsatisfied need is an error at the module, so a cross-cutting provider has to
+  be visible everywhere. Here the obligation travels to the composition root,
+  which is the one place `observability()` is imported anyway.
+- **Recomposability is what the model buys.** A slice that named its logger's
+  supplier would carry that supplier when lifted into a process of its own — the
+  do-not-break property in the root `CLAUDE.md`. Naming the port and not the
+  supplier is what makes a slice a piece rather than a program.
+- **Substitution stays recomposition, so #63 is unblocked rather than forced.**
+  The alternative was tried and measured in #50: `imports: [observability()]` on
+  each slice is `[di] two providers registered for port "LoggerConfig"` — the
+  helper mints fresh providers per call and `flatten` dedupes by **reference** —
+  and hoisting one shared const instead closes `test-fixtures.ts`'s `tappedAmqp`
+  seam, whose whole job is layering `observability({ sink })` over a graph that
+  does not already provide `Logger`. Import-visibility needs `overrideProvider`
+  to stay testable; this model does not.
+
+**Visibility is a compile-time rule only.** `build.ts`'s `flatten` erases module
+boundaries — one flat `Set` of providers, every dep resolved against all of it —
+which is what makes a diamond one instance. The type channel is what refuses the
+sibling above; the runtime graph would have resolved it. Do not describe the
+runtime as scoped.
+
 ## Binding design rules
 
 - **Comments in `src/` are regression guards, not decoration.** Many record

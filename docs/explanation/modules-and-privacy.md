@@ -53,6 +53,33 @@ This is privacy in exactly the sense TypeScript itself uses everywhere else:
 `internal` API are all names withheld rather than bytes hidden. `di` extends
 the convention to wiring.
 
+## An unmet need is an obligation, not an error
+
+The same computation answers a question NestJS answers differently. There, a
+provider sees only what its own module declares or imports, and a need nothing
+local satisfies is an error where it is written — which is why NestJS also needs
+`@Global`, a way for a cross-cutting module to be visible without being
+imported.
+
+`di` has the first half and not the second. What a module can see is still its
+own provides plus its imports' exports — a sibling that imports
+`observability()` and re-exports nothing does **not** satisfy your `Logger` — but
+a need nothing local satisfies is not an error. It stays in the module's `Needs`
+channel and travels to whoever composes the module, and the
+[entry point](/reference/di/entry-points) is where it has to be gone.
+
+That is what lets a slice declare `Logger` in a provider's `deps` and import
+nothing at all. The slice is not seeing the tree; it is stating a requirement
+its composition root has to discharge, and until one does, nothing can run it.
+It is also why there is no `@Global` to look for: the obligation already arrives
+at the root, which is the one place a cross-cutting module is imported anyway.
+
+The cost is that a slice directory does not say where its `Logger` comes from —
+the composition root does. What it buys is that the same slice composes into a
+different root, or [lifts into a process of its
+own](/how-to/split-a-router-into-controllers), without carrying along a supplier
+it never needed to name.
+
 ## What it does not defend against
 
 A determined caller can cast — `ctx as any`, a hand-rolled object with the
