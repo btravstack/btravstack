@@ -37,16 +37,17 @@ const bootFixture: (
 ) => (ctx: object, use: (boot: Boot) => Promise<void>) => Promise<void>;
 
 type Boot = <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env>,
+  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
   options?: Omit<StartOptions<UnitX, UnitNeeds>, "signals">,
-  ...gate: StartGate<X, UnitNeeds>
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 
 type BootDefaults = Omit<StartOptions, "signals" | "unit">;
 ```
 
 A `test.extend` fixture that hands the test a `Boot` — `start`, with the
-same signature and the same phantom gate, minus `signals` — and **stops every
+same signature and the same
+[phantom marker on `module`](/reference/core/start#the-gate-startgate-x-unitneeds),
+minus `signals` — and **stops every
 application it started once the test is over**, on every exit path, a
 failing assertion included. Wire it once, in the fixture module every spec
 imports:
@@ -109,11 +110,49 @@ the running graph writes through — not a fresh one — has nothing to `ctx.get
 it with. `tapped` composes one more provider around `module`, depending on
 `ports`, and remembers what it was built with.
 
-| Member       | Semantics                                                                                                                                                                                                                                                                                   |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `module`     | A `Module<X, E, N>` exporting **exactly what `module` exports** — the kernel still finds the runtime, the gate still sees the same `X`. Boot this one instead of `module`.                                                                                                                  |
-| `services()` | The service instances behind `ports`, in order, as a tuple typed by `ServicesOf<P>` (`const [repository] = tap.services()`). **Throws** before the graph has been built: reading a tap nobody booted is a bug in the test, not a modeled outcome, so it is loud rather than an `undefined`. |
-| `...gate`    | Phantom, at the call site: `NOT EXPORTED` names any port `module` does not export. An application-scope service is the only thing there is to tap; a unit-scoped port exists only while a unit is open.                                                                                     |
+| Member       | Semantics                                                                                                                                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `module`     | A `Module<X, E, N>` exporting **exactly what `module` exports** — the kernel still finds the runtime, the gate still sees the same `X`. Boot this one instead of `module`.                                                                                                                             |
+| `services()` | The service instances behind `ports`, in order, as a tuple typed by `ServicesOf<P>` (`const [repository] = tap.services()`). **Throws** before the graph has been built: reading a tap nobody booted is a bug in the test, not a modeled outcome, so it is loud rather than an `undefined`.            |
+| `...gate`    | A conditional rest tuple, phantom, refusing at the call site any port `module` does not export — as an **arity error**; see [what it prints](#the-tap-gate-an-arity-error) below. An application-scope service is the only thing there is to tap; a unit-scoped port exists only while a unit is open. |
+
+### The tap gate: an arity error
+
+`tapped` keeps the mechanism [di's own entry points
+use](/reference/di/entry-points#the-gate) — a conditional rest parameter, empty
+when every port is exported and two required parameters
+(`error: "NOT EXPORTED", missing: …`) when one is not — rather than the marker
+[`start` intersects onto its `module`](/reference/core/start#the-gate-startgate-x-unitneeds).
+It is the fourth gate mechanism in this repo, and the only one a **test**
+meets rather than a composing application.
+
+So what it prints is an arity error, measured on a one-port tap of a module
+that does not export that port:
+
+```
+src/__scratch.ts(15,1): error TS2554: Expected 4 arguments, but got 2.
+```
+
+That is the whole message. An arity error never prints a type, so neither the
+`"NOT EXPORTED"` label nor the port in `missing` appears in it — the fix is
+always to export the port, or to tap one the module already exports. **To find
+out which port is unexported, spell the phantom arguments out by hand**, the
+same technique di's gate documents; the slots answer one at a time, the first
+one first:
+
+```
+error TS2345: Argument of type '0' is not assignable to parameter of type '"NOT EXPORTED"'.
+```
+
+Pass that label through as the first phantom argument and the second slot names
+the port:
+
+```
+error TS2345: Argument of type 'number' is not assignable to parameter of type 'Secret'.
+```
+
+All three measured, on a scratch file since deleted; it is a diagnostic
+technique, not an intended call form.
 
 The tap provider is not exported and nothing resolves it; di builds every
 provider in a graph, exported or not, which is what makes the capture work.

@@ -249,9 +249,13 @@ are not missing features; this is the wrong library for them on purpose.
 
 ## The record
 
-Three gate mechanisms live in this repo, not two — and before this branch,
-thirteen places across the documentation and the examples named one as
-another. This table is the index. Where the full diagnostic is already
+Three gate mechanisms live in this repo that a composing application meets,
+not two — and before this branch, thirteen places across the documentation and
+the examples named one as another. A **fourth** lives in the test harness:
+`@btravstack/testing`'s `tapped` keeps di's conditional rest tuple, so a port
+the module does not export is an arity error there too, and
+[the testing reference measures it](/reference/testing#the-tap-gate-an-arity-error).
+This table is the index of the three. Where the full diagnostic is already
 told above, the row points back rather than repeating it; where it is not,
 the row carries the measured target — the type each diagnostic's last line
 ends on, which is the payload of the whole message.
@@ -267,8 +271,11 @@ ends on, which is the payload of the whole message.
 | http's keyed router — `UNDECLARED KEY`                                   | `HttpRouter(contract)(controllers)` with a key the contract does not declare          | ends on `'never'`                                                                             | ends on `'"UNDECLARED KEY — the contract declares no fragment under billing"'` — the key is named too, straight from the mapped type's own `K`                                                                                                                                                      |
 
 No gate's behaviour moved: the same 82 `@ts-expect-error` directives fire
-after this branch as before it — none added, removed, or moved to a
-different line. What changed is which of these target strings a reader sees.
+after this branch as before it — none added or removed, and none now guards a
+different call. (Four in `packages/core/src/start.test-d.ts` shifted line —
+56→57, 66→67, 92→95, 129→131 — because the hand-spelled bypass calls below them
+became `expectTypeOf` assertions; each still sits above the call it always
+guarded.) What changed is which of these target strings a reader sees.
 The row that did **not** change and is still the best diagnostic in the
 repo — the unmet need at `start` — is the one this branch's own documentation
 most often mislabelled as di's gate; naming it correctly here is the closing
