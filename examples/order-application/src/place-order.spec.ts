@@ -11,12 +11,12 @@ describe("PlaceOrder", () => {
     const result = await Module.scoped(testModule, (ctx) =>
       ctx
         .get(PlaceOrder)
-        .execute("acme", "o-1", 2)
-        .flatMap(() => ctx.get(FindOrder).execute("acme", "o-1")),
+        .execute("acme", "0199a1e0-0000-7000-8000-000000000001", 2)
+        .flatMap(() => ctx.get(FindOrder).execute("acme", "0199a1e0-0000-7000-8000-000000000001")),
     );
 
     // THEN the write is visible to the read
-    expect(result).toBeOkWith({ id: "o-1", quantity: 2 });
+    expect(result).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 });
   });
 
   it("surfaces the repository's DuplicateOrder unchanged", async ({ testModule }) => {
@@ -25,23 +25,26 @@ describe("PlaceOrder", () => {
     const result = await Module.scoped(testModule, (ctx) => {
       const placeOrder = ctx.get(PlaceOrder);
       return placeOrder
-        .execute("acme", "o-1", 1)
-        .flatMap(() => placeOrder.execute("acme", "o-1", 1));
+        .execute("acme", "0199a1e0-0000-7000-8000-000000000001", 1)
+        .flatMap(() => placeOrder.execute("acme", "0199a1e0-0000-7000-8000-000000000001", 1));
     });
 
     // THEN the repository's own error reaches the caller untranslated
-    expect(result).toBeErrTagged("DuplicateOrder", { id: "o-1" });
+    expect(result).toBeErrTagged("DuplicateOrder", { id: "0199a1e0-0000-7000-8000-000000000001" });
   });
 
   it("rejects a non-positive quantity without reaching the repository", async ({ testModule }) => {
     // GIVEN a quantity the domain invariant rejects
     // WHEN it is placed
     const result = await Module.scoped(testModule, (ctx) =>
-      ctx.get(PlaceOrder).execute("acme", "o-1", 0),
+      ctx.get(PlaceOrder).execute("acme", "0199a1e0-0000-7000-8000-000000000001", 0),
     );
 
     // THEN the domain error short-circuits the use case
-    expect(result).toBeErrTagged("InvalidQuantity", { id: "o-1", quantity: 0 });
+    expect(result).toBeErrTagged("InvalidQuantity", {
+      id: "0199a1e0-0000-7000-8000-000000000001",
+      quantity: 0,
+    });
   });
 
   it("writes a log line carrying the order as fields", async ({ testModule, recorder }) => {
@@ -50,7 +53,7 @@ describe("PlaceOrder", () => {
     const result = await Module.scoped(testModule, (ctx) =>
       ctx
         .get(PlaceOrder)
-        .execute("acme", "o-1", 2)
+        .execute("acme", "0199a1e0-0000-7000-8000-000000000001", 2)
         .map(() => recorder.lines()),
     );
 
@@ -60,7 +63,11 @@ describe("PlaceOrder", () => {
       expect.objectContaining({
         level: "info",
         message: "placing an order",
-        attributes: { tenantId: "acme", orderId: "o-1", quantity: 2 },
+        attributes: {
+          tenantId: "acme",
+          orderId: "0199a1e0-0000-7000-8000-000000000001",
+          quantity: 2,
+        },
         unit: undefined,
       }),
     ]);

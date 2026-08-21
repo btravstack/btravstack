@@ -47,7 +47,7 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
       Provider(CustomerRepository)({
         value: {
           find: (_tenantId: string, id: string) =>
-            id === "c-1"
+            id === "0199a1e0-0000-7000-8000-0000000000c1"
               ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
               : ErrAsync(new CustomerNotFound({ id })),
         },
@@ -129,7 +129,7 @@ const recordingApi = () => {
 
 /**
  * The stub root at rest: nothing hangs, nothing blows up, and the customer
- * `c-1` is registered. What the customers slice's success path needs, which
+ * `0199a1e0-0000-7000-8000-0000000000c1` is registered. What the customers slice's success path needs, which
  * the real root cannot give it — its database is born empty inside the graph
  * and no procedure registers anyone.
  */
@@ -199,7 +199,7 @@ export type ApiFixtures = {
   /**
    * This test's tenant, and nobody else's. The database is shared by every
    * workspace's run — one migration for the whole gate rather than one per
-   * test — so a UUID here is what keeps one spec's `o-1` from being another's.
+   * test — so a UUID here is what keeps one spec's `0199a1e0-0000-7000-8000-000000000001` from being another's.
    * Every call names it, because the contract does.
    */
   readonly tenant: string;

@@ -9,12 +9,12 @@ describe("FindCustomer", () => {
     // GIVEN the application wired over an in-memory repository
     // WHEN a customer it holds is looked up
     const result = await Module.scoped(testModule, (ctx) =>
-      ctx.get(FindCustomer).execute("acme", "c-1"),
+      ctx.get(FindCustomer).execute("acme", "0199a1e0-0000-7000-8000-0000000000c1"),
     );
 
     // THEN the use case answers with the domain's own entity — converting it
     // for a transport is the controller's job, one layer out
-    expect(result).toBeOkWith({ id: "c-1", name: "Ada" });
+    expect(result).toBeOkWith({ id: "0199a1e0-0000-7000-8000-0000000000c1", name: "Ada" });
   });
 
   it("returns CustomerNotFound for an unknown id", async ({ testModule }) => {

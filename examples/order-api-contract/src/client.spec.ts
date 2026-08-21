@@ -12,8 +12,10 @@ describe("contract", () => {
 
     // WHEN a procedure the contract declares is called
     // THEN the contract's own output shape comes back as a value
-    await expect(client.orders.place({ id: "o-1", quantity: 2 })).toBeOkWith({
-      id: "o-1",
+    await expect(
+      client.orders.place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 }),
+    ).toBeOkWith({
+      id: "0199a1e0-0000-7000-8000-000000000001",
       quantity: 2,
     });
   });
@@ -22,7 +24,7 @@ describe("contract", () => {
     // GIVEN the same client, and an order the stub does not hold
 
     // WHEN it is looked up
-    const missing = await client.orders.find({ id: "o-404" });
+    const missing = await client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000404" });
 
     // THEN the code and payload the contract declares arrive on the error
     // channel, inferable — the half of contract-first design a client is
@@ -31,7 +33,7 @@ describe("contract", () => {
       expect.objectContaining({
         constructor: ORPCError,
         code: "NOT_FOUND",
-        data: { id: "o-404" },
+        data: { id: "0199a1e0-0000-7000-8000-000000000404" },
         inferable: true,
       }),
     );

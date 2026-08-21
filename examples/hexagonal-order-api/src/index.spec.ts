@@ -23,11 +23,11 @@ test("the production graph resolves a use case through its ports, and releases w
 
   const outcome = await Module.scoped(
     makeAppModule(makePersistenceModule()),
-    (ctx) => ctx.get(GetOrder).execute("o-1"),
+    (ctx) => ctx.get(GetOrder).execute("0199a1e0-0000-7000-8000-000000000001"),
     options,
   );
 
-  expect(outcome).toBeOkWith({ id: "o-1", total: 4_200 });
+  expect(outcome).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", total: 4_200 });
   // No teardown failures — proof the pool's `release` actually ran cleanly,
   // not just that the graph type-checked.
   expect(teardownErrors).toEqual([]);

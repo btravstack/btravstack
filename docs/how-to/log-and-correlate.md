@@ -77,7 +77,7 @@ export const placeOrderProvider = Provider(PlaceOrder)(
 
 **The message is a constant and the ids are fields.** That is what makes a
 line groupable in the system that receives it: `message: "placing an order"`
-finds every placement, `orderId: "o-1"` finds one. A rendered sentence —
+finds every placement, `orderId: "0199a1e0-0000-7000-8000-000000000001"` finds one. A rendered sentence —
 `` `placing order ${id}` `` — is neither.
 
 Attributes are flat scalars (`string | number | boolean | undefined`), and a
@@ -111,7 +111,7 @@ call, so one application-scope logger is correct for every request:
 
 ```json
 {
-  "orderId": "o-1",
+  "orderId": "0199a1e0-0000-7000-8000-000000000001",
   "quantity": 2,
   "time": "2026-08-16T09:41:02.113Z",
   "level": "info",

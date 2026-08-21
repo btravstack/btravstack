@@ -58,7 +58,12 @@ const stubRepository = Provider(OrderRepository)({
 /** One customer on hand, so the read side has something to answer with. */
 const stubCustomerRepository = Provider(CustomerRepository)({
   sync: () => {
-    const rows = new Map([["acme/c-1", Customer.make({ id: "c-1", name: "Ada" }).getOrThrow()]]);
+    const rows = new Map([
+      [
+        "acme/0199a1e0-0000-7000-8000-0000000000c1",
+        Customer.make({ id: "0199a1e0-0000-7000-8000-0000000000c1", name: "Ada" }).getOrThrow(),
+      ],
+    ]);
     return {
       find: (tenantId: string, id: string) => {
         const row = rows.get(`${tenantId}/${id}`);

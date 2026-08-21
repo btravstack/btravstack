@@ -290,7 +290,7 @@ event too:
 const [message] = await waitForMessages({ count: 1, timeoutMs: 5_000 });
 expect(JSON.parse(String(message?.content))).toEqual({
   kind: "order",
-  id: "o-5",
+  id: "0199a1e0-0000-7000-8000-000000000005",
   occurredAt: expect.any(String),
   payload: { quantity: 4 },
 });

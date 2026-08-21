@@ -18,35 +18,50 @@ describe("placeOrder", () => {
     // THEN it is the entity itself, carrying what was asked for. `constructor`
     // is read through the prototype chain, so the class `toBeInstanceOf` used
     // to check on its own is pinned inside the one assertion.
-    expect(placed).toEqual(expect.objectContaining({ constructor: Order, id: "o-1", quantity: 2 }));
+    expect(placed).toEqual(
+      expect.objectContaining({
+        constructor: Order,
+        id: "0199a1e0-0000-7000-8000-000000000001",
+        quantity: 2,
+      }),
+    );
   });
 
   it("reports a zero quantity as a value, never a throw", () => {
     // GIVEN a quantity the invariant rejects
     // WHEN it is placed
     // THEN the failure comes back in the error channel
-    expect(placeOrder("o-1", 0)).toBeErrTagged("InvalidQuantity", { id: "o-1", quantity: 0 });
+    expect(placeOrder("0199a1e0-0000-7000-8000-000000000001", 0)).toBeErrTagged("InvalidQuantity", {
+      id: "0199a1e0-0000-7000-8000-000000000001",
+      quantity: 0,
+    });
   });
 
   it("reports a negative quantity as a value, never a throw", () => {
     // GIVEN a quantity the invariant rejects
     // WHEN it is placed
     // THEN the failure comes back in the error channel
-    expect(placeOrder("o-1", -3)).toBeErrTagged("InvalidQuantity", { id: "o-1", quantity: -3 });
+    expect(placeOrder("0199a1e0-0000-7000-8000-000000000001", -3)).toBeErrTagged(
+      "InvalidQuantity",
+      { id: "0199a1e0-0000-7000-8000-000000000001", quantity: -3 },
+    );
   });
 
   it("rejects a quantity that is not a whole number of items", () => {
     // GIVEN a fractional quantity
     // WHEN it is placed
     // THEN it fails the same rule as a non-positive one
-    expect(placeOrder("o-1", 2.5)).toBeErrTagged("InvalidQuantity", { id: "o-1", quantity: 2.5 });
+    expect(placeOrder("0199a1e0-0000-7000-8000-000000000001", 2.5)).toBeErrTagged(
+      "InvalidQuantity",
+      { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2.5 },
+    );
   });
 });
 
 describe("Order", () => {
   it("carries the failing rule in the entity's own issues", () => {
     // GIVEN a construction the invariant rejects
-    const rejected = Order.make({ id: "o-1", quantity: 0 });
+    const rejected = Order.make({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 0 });
 
     // WHEN its error channel is folded
     const message = rejected.match({
@@ -57,7 +72,9 @@ describe("Order", () => {
     });
 
     // THEN the rule that failed is named in the entity's own issues
-    expect(message).toBe("order o-1 asks for 0 items, which is not a positive quantity");
+    expect(message).toBe(
+      "order 0199a1e0-0000-7000-8000-000000000001 asks for 0 items, which is not a positive quantity",
+    );
   });
 
   it("is non-writable at runtime, not merely readonly in the type", ({ placed }) => {
@@ -90,7 +107,11 @@ describe("Order", () => {
 
     // THEN the change landed on an entity of the same class
     expect(raised).toBeOkWith(
-      expect.objectContaining({ constructor: Order, id: "o-1", quantity: 5 }),
+      expect.objectContaining({
+        constructor: Order,
+        id: "0199a1e0-0000-7000-8000-000000000001",
+        quantity: 5,
+      }),
     );
   });
 
@@ -102,7 +123,10 @@ describe("Order", () => {
     // THEN the original still reads as it was placed — the `map` keeps the
     // update's own outcome in the same assertion, so a failed update cannot
     // pass as an untouched original
-    expect(raised.map(() => placed.toJSON())).toBeOkWith({ id: "o-1", quantity: 2 });
+    expect(raised.map(() => placed.toJSON())).toBeOkWith({
+      id: "0199a1e0-0000-7000-8000-000000000001",
+      quantity: 2,
+    });
   });
 
   it("re-runs the invariant on the patch", ({ placed }) => {
@@ -114,7 +138,7 @@ describe("Order", () => {
 
   it("refuses to patch the immutable id, even when it is smuggled past the type", ({ placed }) => {
     // GIVEN a patch aimed at the immutable id
-    const rejected = placed.update({ id: "o-2" } as never);
+    const rejected = placed.update({ id: "0199a1e0-0000-7000-8000-000000000002" } as never);
 
     // WHEN its error channel is folded
     const message = rejected.match({
@@ -137,7 +161,7 @@ describe("Order", () => {
     // beside the values, so a non-enumerable extra could not slip past a
     // value-only comparison
     expect({ stored, keys: Reflect.ownKeys(stored) }).toEqual({
-      stored: { id: "o-1", quantity: 2 },
+      stored: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 },
       keys: ["id", "quantity"],
     });
   });
@@ -148,8 +172,10 @@ describe("domain errors", () => {
     // GIVEN the error, constructed with its payload
     // WHEN its message is read
     // THEN the order it is about is named in it
-    expect(new InvalidQuantity({ id: "o-1", quantity: 0 }).message).toBe(
-      "order o-1 asks for 0 items, which is not a positive quantity",
+    expect(
+      new InvalidQuantity({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 0 }).message,
+    ).toBe(
+      "order 0199a1e0-0000-7000-8000-000000000001 asks for 0 items, which is not a positive quantity",
     );
   });
 
@@ -157,13 +183,17 @@ describe("domain errors", () => {
     // GIVEN the error, constructed with its payload
     // WHEN its message is read
     // THEN the order it is about is named in it
-    expect(new OrderNotFound({ id: "o-2" }).message).toBe("no order with id o-2");
+    expect(new OrderNotFound({ id: "0199a1e0-0000-7000-8000-000000000002" }).message).toBe(
+      "no order with id 0199a1e0-0000-7000-8000-000000000002",
+    );
   });
 
   it("names the order in a DuplicateOrder message", () => {
     // GIVEN the error, constructed with its payload
     // WHEN its message is read
     // THEN the order it is about is named in it
-    expect(new DuplicateOrder({ id: "o-3" }).message).toBe("order o-3 already exists");
+    expect(new DuplicateOrder({ id: "0199a1e0-0000-7000-8000-000000000003" }).message).toBe(
+      "order 0199a1e0-0000-7000-8000-000000000003 already exists",
+    );
   });
 });

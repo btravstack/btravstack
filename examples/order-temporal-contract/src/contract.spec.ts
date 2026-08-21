@@ -9,9 +9,11 @@ describe("orderContract", () => {
 
     // WHEN a caller checks the payload it is about to start a workflow with
     // THEN it is accepted, in the shape Temporal will persist in the history
-    expect(validate({ tenantId: "acme", orderId: "o-1", quantity: 2 })).toBeOkWith({
+    expect(
+      validate({ tenantId: "acme", orderId: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 }),
+    ).toBeOkWith({
       tenantId: "acme",
-      orderId: "o-1",
+      orderId: "0199a1e0-0000-7000-8000-000000000001",
       quantity: 2,
     });
   });
@@ -22,9 +24,13 @@ describe("orderContract", () => {
     // WHEN the quantity arrives as a string, the way an untyped caller sends it
     // THEN the issues come back as a value, naming the field — the contract is
     // executable, not documentation, and a client can run it
-    expect(validate({ tenantId: "acme", orderId: "o-1", quantity: "2" })).toBeErrWith([
-      expect.objectContaining({ path: ["quantity"] }),
-    ]);
+    expect(
+      validate({
+        tenantId: "acme",
+        orderId: "0199a1e0-0000-7000-8000-000000000001",
+        quantity: "2",
+      }),
+    ).toBeErrWith([expect.objectContaining({ path: ["quantity"] })]);
   });
 
   it("validates the second workflow's input too — a different vertical, on the same queue", ({
@@ -34,9 +40,15 @@ describe("orderContract", () => {
 
     // WHEN a caller checks the payload it is about to start `chargeOrder` with
     // THEN it is accepted, proving the contract holds more than one workflow
-    expect(validateCharge({ tenantId: "acme", orderId: "o-1", amount: 42 })).toBeOkWith({
+    expect(
+      validateCharge({
+        tenantId: "acme",
+        orderId: "0199a1e0-0000-7000-8000-000000000001",
+        amount: 42,
+      }),
+    ).toBeOkWith({
       tenantId: "acme",
-      orderId: "o-1",
+      orderId: "0199a1e0-0000-7000-8000-000000000001",
       amount: 42,
     });
   });

@@ -61,8 +61,13 @@ describe("order-api", () => {
 
     // WHEN a call goes over the wire
     // THEN it reached the use case behind the transport
-    await expect(client.orders.place({ id: "o-1", quantity: 2 })).toBeOkWith({
-      id: "o-1",
+    await expect(
+      client.orders.place({
+        id: "0199a1e0-0000-7000-8000-000000000001",
+        quantity: 2,
+      }),
+    ).toBeOkWith({
+      id: "0199a1e0-0000-7000-8000-000000000001",
       quantity: 2,
     });
   });
@@ -105,8 +110,10 @@ it("broadcasts every committed write, end to end", async ({ serve }) => {
   // WHEN an order is placed — one ordinary write, no publish in sight
   // THEN it is the very instance the relay sweeps, so the fact crosses the
   // outbox, the broker and the queue
-  await expect(placeOrder.execute("o-1", 2)).toBeOkWith(
-    expect.objectContaining({ id: "o-1" }),
+  await expect(
+    placeOrder.execute("0199a1e0-0000-7000-8000-000000000001", 2),
+  ).toBeOkWith(
+    expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000001" }),
   );
 });
 ```
@@ -151,8 +158,13 @@ it("runs each call in its own unit, with its own trace id", async ({
 
   // WHEN two calls are served — chained, so neither `Result` is dropped
   const served = await client.orders
-    .place({ id: "o-1", quantity: 1 })
-    .flatMap(() => client.orders.place({ id: "o-2", quantity: 1 }));
+    .place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 })
+    .flatMap(() =>
+      client.orders.place({
+        id: "0199a1e0-0000-7000-8000-000000000002",
+        quantity: 1,
+      }),
+    );
 
   // THEN four lines, two distinct trace ids, none written outside a unit
   const traced = served.map(() => ({
@@ -361,11 +373,16 @@ it("reads back only its own tenant's order", async ({
   // GIVEN an order saved under this test's tenant
   // WHEN it is read back
   const found = await repository
-    .save(tenant, anOrder("o-1", 3))
-    .flatMap(() => repository.find(tenant, "o-1"));
+    .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
+    .flatMap(() =>
+      repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001"),
+    );
 
   // THEN the round trip is lossless, and scoped
-  expect(found).toBeOkWith({ id: "o-1", quantity: 3 });
+  expect(found).toBeOkWith({
+    id: "0199a1e0-0000-7000-8000-000000000001",
+    quantity: 3,
+  });
 });
 ```
 

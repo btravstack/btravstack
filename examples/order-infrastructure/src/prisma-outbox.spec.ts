@@ -13,7 +13,7 @@ describe("the transactional outbox", () => {
     // GIVEN a tenant with nothing in it
     // WHEN an order is saved
     const events = await repository
-      .save(tenant, anOrder("o-1", 3))
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
       .flatMap(() => outbox.pending(tenant, 10));
 
     // THEN the fact of the write is already in the outbox — no second call,
@@ -23,7 +23,7 @@ describe("the transactional outbox", () => {
       expect.objectContaining({
         tenantId: tenant,
         kind: "order",
-        subjectId: "o-1",
+        subjectId: "0199a1e0-0000-7000-8000-000000000001",
         payload: { quantity: 3 },
       }),
     ]);
@@ -39,15 +39,18 @@ describe("the transactional outbox", () => {
     // WHEN the same id is saved again — a real UNIQUE violation, and the
     // transaction it happened in rolls back
     const events = await repository
-      .save(tenant, anOrder("o-1", 1))
-      .flatMap(() => repository.save(tenant, anOrder("o-1", 2)))
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
+      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 2)))
       .recoverErrCases((matcher) => matcher.with(P.tag("DuplicateOrder"), () => undefined))
       .flatMap(() => outbox.pending(tenant, 10));
 
     // THEN only the first placement's event exists — the duplicate's outbox
     // row rolled back with its order row
     expect(events).toBeOkWith([
-      expect.objectContaining({ subjectId: "o-1", payload: { quantity: 1 } }),
+      expect.objectContaining({
+        subjectId: "0199a1e0-0000-7000-8000-000000000001",
+        payload: { quantity: 1 },
+      }),
     ]);
   });
 
@@ -60,8 +63,8 @@ describe("the transactional outbox", () => {
     // GIVEN two placed orders and their pending events
     const pending = (
       await repository
-        .save(tenant, anOrder("o-1", 1))
-        .flatMap(() => repository.save(tenant, anOrder("o-2", 2)))
+        .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 1))
+        .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000002", 2)))
         .flatMap(() => outbox.pending(tenant, 10))
     ).getOrThrow();
 
@@ -72,7 +75,9 @@ describe("the transactional outbox", () => {
     const rest = await outbox.markPublished([first.id]).flatMap(() => outbox.pending(tenant, 10));
 
     // THEN only the second remains pending
-    expect(rest).toBeOkWith([expect.objectContaining({ subjectId: "o-2" })]);
+    expect(rest).toBeOkWith([
+      expect.objectContaining({ subjectId: "0199a1e0-0000-7000-8000-000000000002" }),
+    ]);
   });
 
   it("appends a tombstone when the order is removed", async ({
@@ -84,16 +89,19 @@ describe("the transactional outbox", () => {
     // GIVEN a placed order
     // WHEN it is removed
     const events = await repository
-      .save(tenant, anOrder("o-1", 3))
-      .flatMap(() => repository.remove(tenant, "o-1"))
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000001", 3))
+      .flatMap(() => repository.remove(tenant, "0199a1e0-0000-7000-8000-000000000001"))
       .flatMap(() => outbox.pending(tenant, 10));
 
     // THEN the log carries both words about the subject, in order: what it
     // was, then that it is gone. A null payload IS the deletion — a reader
     // that keeps its own copy drops it here, and needs no second event type
     expect(events).toBeOkWith([
-      expect.objectContaining({ subjectId: "o-1", payload: { quantity: 3 } }),
-      expect.objectContaining({ subjectId: "o-1", payload: null }),
+      expect.objectContaining({
+        subjectId: "0199a1e0-0000-7000-8000-000000000001",
+        payload: { quantity: 3 },
+      }),
+      expect.objectContaining({ subjectId: "0199a1e0-0000-7000-8000-000000000001", payload: null }),
     ]);
   });
 

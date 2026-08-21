@@ -172,7 +172,7 @@ export type TemporalFixtures = {
   /**
    * This test's tenant, and nobody else's. The database is shared by every
    * workspace's run — one migration for the whole gate rather than one per
-   * test — so a UUID here is what keeps one test's `o-1` from being another's.
+   * test — so a UUID here is what keeps one test's `0199a1e0-0000-7000-8000-000000000001` from being another's.
    * It rides every workflow's arguments — the contract declares it — which is
    * how it reaches the adapters.
    */

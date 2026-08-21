@@ -15,8 +15,10 @@ describe("order-api", () => {
 
     // WHEN a call goes over the wire
     // THEN it reached the use case behind the transport
-    await expect(client.orders.place({ id: "o-1", quantity: 2 })).toBeOkWith({
-      id: "o-1",
+    await expect(
+      client.orders.place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 }),
+    ).toBeOkWith({
+      id: "0199a1e0-0000-7000-8000-000000000001",
       quantity: 2,
     });
   });
@@ -33,11 +35,11 @@ describe("order-api", () => {
     // a second unit — and the same database, because the application scope is
     // opened once by the kernel and only the request scope is forked per call.
     const found = await client.orders
-      .place({ id: "o-1", quantity: 2 })
-      .flatMap(() => client.orders.find({ id: "o-1" }));
+      .place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 })
+      .flatMap(() => client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" }));
 
     // THEN the write is visible to the read
-    expect(found).toBeOkWith({ id: "o-1", quantity: 2 });
+    expect(found).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 });
   });
 
   it("publishes the bound port on Serving.info", async ({ serve, api }) => {
@@ -62,8 +64,10 @@ describe("order-api", () => {
     // WHEN the same id is placed again — chained, so the first call's `Result`
     // is consumed and a failure there cannot be mistaken for the conflict
     const conflict = await client.orders
-      .place({ id: "o-1", quantity: 1 })
-      .flatMap(() => client.orders.place({ id: "o-1", quantity: 1 }));
+      .place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 })
+      .flatMap(() =>
+        client.orders.place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 }),
+      );
 
     // THEN the `Err` channel, not the defect one: the client got a value back.
     // `constructor` is read through the prototype chain, so the one assertion
@@ -75,7 +79,7 @@ describe("order-api", () => {
       expect.objectContaining({
         constructor: ORPCError,
         code: "CONFLICT",
-        data: { id: "o-1" },
+        data: { id: "0199a1e0-0000-7000-8000-000000000001" },
         inferable: true,
       }),
     );
@@ -90,14 +94,17 @@ describe("order-api", () => {
     const client = await clientFor(serve(api));
 
     // WHEN a quantity the domain rejects is placed
-    const invalid = await client.orders.place({ id: "o-2", quantity: 0 });
+    const invalid = await client.orders.place({
+      id: "0199a1e0-0000-7000-8000-000000000002",
+      quantity: 0,
+    });
 
     // THEN the second declared code crosses the wire the same way
     expect(invalid).toBeErrWith(
       expect.objectContaining({
         constructor: ORPCError,
         code: "INVALID_QUANTITY",
-        data: { id: "o-2" },
+        data: { id: "0199a1e0-0000-7000-8000-000000000002" },
         inferable: true,
       }),
     );
@@ -110,7 +117,10 @@ describe("order-api", () => {
   }) => {
     // GIVEN an error the contract declares
     const client = await clientFor(serve(api));
-    const invalid = await client.orders.place({ id: "o-2", quantity: 0 });
+    const invalid = await client.orders.place({
+      id: "0199a1e0-0000-7000-8000-000000000002",
+      quantity: 0,
+    });
 
     // WHEN the channel is folded — the mirror of the `mapErrCases` that
     // produced it, with no wildcard to fall back on. Both codes are named and
@@ -136,7 +146,7 @@ describe("order-api", () => {
     const client = await clientFor(serve(unmodelled));
 
     // WHEN a call reaches it
-    const result = await client.orders.find({ id: "o-1" });
+    const result = await client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
 
     // THEN the raw cause does NOT leak over the wire; oRPC collapses it, and
     // the non-inferable result lands back in the defect channel. `inferable`
@@ -165,9 +175,11 @@ describe("order-api", () => {
     // here rather than asserted — it is the subject of the test above; what
     // this one asks is what the process does next.
     const served = await client.orders
-      .find({ id: "o-1" })
+      .find({ id: "0199a1e0-0000-7000-8000-000000000001" })
       .recoverDefect(() => Ok("defected" as const))
-      .flatMap(() => client.orders.place({ id: "o-1", quantity: 1 }))
+      .flatMap(() =>
+        client.orders.place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 }),
+      )
       .map(() => app.phase());
 
     // THEN the next call was served, by a process still in the serving phase
@@ -184,8 +196,10 @@ describe("order-api", () => {
 
     // WHEN two calls are served — chained, so neither `Result` is dropped
     const served = await client.orders
-      .place({ id: "o-1", quantity: 1 })
-      .flatMap(() => client.orders.place({ id: "o-2", quantity: 1 }));
+      .place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 })
+      .flatMap(() =>
+        client.orders.place({ id: "0199a1e0-0000-7000-8000-000000000002", quantity: 1 }),
+      );
 
     // THEN two calls, each writing a controller line, an interactor line and a
     // request-scope teardown line, carrying two distinct trace ids and never
@@ -206,7 +220,7 @@ describe("order-api", () => {
     // GIVEN a call held open inside the repository
     const app = serve(gate.api);
     const client = await clientFor(app);
-    const inFlight = client.orders.find({ id: "o-1" });
+    const inFlight = client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
     await gate.arrived;
 
     // WHEN the drain starts and the call is released only once the phase moved.
@@ -218,7 +232,7 @@ describe("order-api", () => {
     gate.release();
 
     // THEN the call ran to completion
-    await expect(inFlight).toBeOkWith({ id: "o-1", quantity: 1 });
+    await expect(inFlight).toBeOkWith({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 });
   });
 
   it("counts the finished call as completed in the drain report", async ({
@@ -229,7 +243,7 @@ describe("order-api", () => {
     // GIVEN a call held open inside the repository
     const app = serve(gate.api);
     const client = await clientFor(app);
-    const inFlight = client.orders.find({ id: "o-1" });
+    const inFlight = client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
     await gate.arrived;
 
     // WHEN the drain starts and the call is released only once the phase moved
@@ -255,7 +269,7 @@ describe("order-api", () => {
     // GIVEN a call held open, and a drain with no time to give it
     const app = serve(gate.api, { drainTimeoutMs: 0 });
     const client = await clientFor(app);
-    const hung = client.orders.find({ id: "o-1" });
+    const hung = client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
     await gate.arrived;
 
     // WHEN the drain starts and the call is never released
@@ -280,7 +294,7 @@ describe("order-api", () => {
     // GIVEN a call held open, and a drain with no time to give it
     const app = serve(gate.api, { drainTimeoutMs: 0 });
     const client = await clientFor(app);
-    const hung = client.orders.find({ id: "o-1" });
+    const hung = client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
     await gate.arrived;
 
     // WHEN the drain starts and the call is never released
@@ -323,7 +337,10 @@ describe("order-api", () => {
     const client = await clientWith(serve(api), undefined);
 
     // WHEN a procedure of the authenticated fragment is called
-    const refused = await client.orders.place({ id: "o-1", quantity: 1 });
+    const refused = await client.orders.place({
+      id: "0199a1e0-0000-7000-8000-000000000001",
+      quantity: 1,
+    });
 
     // THEN it was refused before the use case was reached. `UNAUTHORIZED` is
     // not a code the contract declares, so oRPC does not mark it inferable and
@@ -346,7 +363,10 @@ describe("order-api", () => {
 
     // WHEN a procedure is called with an input the contract's schema rejects,
     // past the client's own types
-    const refused = await client.orders.place({ id: "o-1", quantity: "abc" } as never);
+    const refused = await client.orders.place({
+      id: "0199a1e0-0000-7000-8000-000000000001",
+      quantity: "abc",
+    } as never);
 
     // THEN oRPC refused it before dispatch. This is the property `type<T>()`
     // did not have: it validates nothing, so `"abc"` reached the use case
@@ -386,8 +406,10 @@ describe("order-api", () => {
     // WHEN a procedure of that fragment is called
     // THEN it answers: the marker is per-fragment, so protecting `orders` did
     // not quietly close the rest of the API
-    await expect(client.customers.find({ tenantId: tenant, id: "c-1" })).toBeOkWith({
-      id: "c-1",
+    await expect(
+      client.customers.find({ tenantId: tenant, id: "0199a1e0-0000-7000-8000-0000000000c1" }),
+    ).toBeOkWith({
+      id: "0199a1e0-0000-7000-8000-0000000000c1",
       name: "Ada",
     });
   });
@@ -407,8 +429,8 @@ describe("order-api", () => {
 
     // WHEN the first places an order and the second looks that id up
     const found = await client.orders
-      .place({ id: "o-1", quantity: 2 })
-      .flatMap(() => stranger.orders.find({ id: "o-1" }));
+      .place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 })
+      .flatMap(() => stranger.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" }));
 
     // THEN the second sees nothing: the tenant a marked handler serves is
     // `context.principal.tenantId`, and the fragment's inputs name no tenant
@@ -417,7 +439,7 @@ describe("order-api", () => {
       expect.objectContaining({
         constructor: ORPCError,
         code: "NOT_FOUND",
-        data: { id: "o-1" },
+        data: { id: "0199a1e0-0000-7000-8000-000000000001" },
         inferable: true,
       }),
     );
@@ -436,8 +458,10 @@ describe("order-api", () => {
     // WHEN a procedure from the second slice is called
     // THEN it answers with the contract's shape — the branded `Customer` the
     // use case returned, converted by that controller's own `view`
-    await expect(client.customers.find({ tenantId: tenant, id: "c-1" })).toBeOkWith({
-      id: "c-1",
+    await expect(
+      client.customers.find({ tenantId: tenant, id: "0199a1e0-0000-7000-8000-0000000000c1" }),
+    ).toBeOkWith({
+      id: "0199a1e0-0000-7000-8000-0000000000c1",
       name: "Ada",
     });
   });
@@ -452,7 +476,10 @@ describe("order-api", () => {
     const client = await clientFor(serve(api));
 
     // WHEN a customer nobody registered is looked up
-    const missing = await client.customers.find({ tenantId: tenant, id: "c-404" });
+    const missing = await client.customers.find({
+      tenantId: tenant,
+      id: "0199a1e0-0000-7000-8000-00000000c404",
+    });
 
     // THEN the domain's `CustomerNotFound` crossed the second slice's own
     // triage the way `OrderNotFound` crosses the first's — a typed, inferable
@@ -461,7 +488,7 @@ describe("order-api", () => {
       expect.objectContaining({
         constructor: ORPCError,
         code: "NOT_FOUND",
-        data: { id: "c-404" },
+        data: { id: "0199a1e0-0000-7000-8000-00000000c404" },
         inferable: true,
       }),
     );
@@ -479,7 +506,7 @@ describe("order-api", () => {
     const app = serve(gate.api, { probes: { port: 0 } });
     const probes = await probesFor(app);
     const client = await clientFor(app);
-    const inFlight = client.orders.find({ id: "o-1" });
+    const inFlight = client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
     await gate.arrived;
 
     // WHEN the drain starts. The TRANSITION is awaited through `ready()`, which

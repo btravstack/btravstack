@@ -10,7 +10,11 @@ describe("Customer", () => {
     // THEN it is the entity itself. `constructor` is read through the prototype
     // chain, so the class is pinned inside the one assertion
     expect(customer).toEqual(
-      expect.objectContaining({ constructor: Customer, id: "c-1", name: "Ada" }),
+      expect.objectContaining({
+        constructor: Customer,
+        id: "0199a1e0-0000-7000-8000-0000000000c1",
+        name: "Ada",
+      }),
     );
   });
 
@@ -20,7 +24,9 @@ describe("Customer", () => {
     // GIVEN a patch aimed at the immutable id
     // WHEN it is applied
     // THEN identity is settled at registration, and the entity says so as a value
-    expect(customer.update({ id: "c-2" } as never)).toBeErrTagged("InvalidEntity");
+    expect(customer.update({ id: "0199a1e0-0000-7000-8000-0000000000c2" } as never)).toBeErrTagged(
+      "InvalidEntity",
+    );
   });
 });
 
@@ -29,6 +35,8 @@ describe("domain errors", () => {
     // GIVEN the error, constructed with its payload
     // WHEN its message is read
     // THEN the customer it is about is named in it
-    expect(new CustomerNotFound({ id: "c-9" }).message).toBe("no customer with id c-9");
+    expect(new CustomerNotFound({ id: "0199a1e0-0000-7000-8000-0000000000c9" }).message).toBe(
+      "no customer with id 0199a1e0-0000-7000-8000-0000000000c9",
+    );
   });
 });

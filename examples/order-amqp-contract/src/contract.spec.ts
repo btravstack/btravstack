@@ -36,7 +36,7 @@ describe("orderContract", () => {
     const event = {
       tenantId: "acme",
       kind: "order",
-      id: "o-1",
+      id: "0199a1e0-0000-7000-8000-000000000001",
       occurredAt: "2026-08-13T22:00:00.000Z",
       payload: { quantity: 2 },
     };
@@ -53,7 +53,7 @@ describe("orderContract", () => {
     const tombstone = {
       tenantId: "acme",
       kind: "order",
-      id: "o-1",
+      id: "0199a1e0-0000-7000-8000-000000000001",
       occurredAt: "2026-08-13T22:00:00.000Z",
       payload: null,
     };
@@ -74,7 +74,7 @@ describe("orderContract", () => {
       validate({
         tenantId: "acme",
         kind: "order",
-        id: "o-1",
+        id: "0199a1e0-0000-7000-8000-000000000001",
         occurredAt: "2026-08-13T22:00:00.000Z",
         payload: { quantity: "two" },
       }),

@@ -288,7 +288,7 @@ activities or handlers that implement it.
 // required two-element tuple the call does not pass.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
-  ctx.get(PlaceOrder).execute("o-1", 1),
+  ctx.get(PlaceOrder).execute("0199a1e0-0000-7000-8000-000000000001", 1),
 );
 ```
 

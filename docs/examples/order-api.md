@@ -480,7 +480,7 @@ expect(conflict).toBeErrWith(
   expect.objectContaining({
     constructor: ORPCError,
     code: "CONFLICT",
-    data: { id: "o-1" },
+    data: { id: "0199a1e0-0000-7000-8000-000000000001" },
     inferable: true,
   }),
 );

@@ -288,9 +288,11 @@ proving every piece was mounted under its own key:
 const { client } = await serve(fulfilling.module);
 const charged = client.executeWorkflow("chargeOrder", {
   workflowId: "wf-charge-1",
-  args: { orderId: "order-1", amount: 42 },
+  args: { orderId: "0199a1e0-0000-7000-8000-00000000a001", amount: 42 },
 });
-await expect(charged).toBeOkWith({ authorizationId: "auth-order-1" });
+await expect(charged).toBeOkWith({
+  authorizationId: "auth-0199a1e0-0000-7000-8000-00000000a001",
+});
 ```
 
 ## The drain, honouring the kernel's deadline
