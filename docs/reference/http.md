@@ -339,6 +339,8 @@ returning. Forwarding a reason would put "no such user" versus "bad signature"
 in a 401 body by default.
 
 ```ts
+import { TenantId } from "@btravstack/example-order-domain";
+
 export const bearerAuthenticator = HttpAuthenticator({
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
@@ -351,7 +353,7 @@ export const bearerAuthenticator = HttpAuthenticator({
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+      : OkAsync({ tenantId: TenantId(tenantId), userId });
   },
 });
 ```
@@ -365,8 +367,10 @@ thing that gives a marked handler a readable `context.principal`. It states the
 identity once and hands back the three pieces fixed to it:
 
 ```ts
+import type { TenantId } from "@btravstack/example-order-domain";
+
 // src/auth.ts — one per application
-export type Identity = { readonly tenantId: string; readonly userId: string };
+export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
 const identity = httpAuth<Identity>();
 

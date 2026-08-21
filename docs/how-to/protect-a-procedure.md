@@ -82,6 +82,7 @@ application, which hands back `HttpController`, `HttpRouter` and
 
 ```ts
 // src/auth.ts
+import type { TenantId } from "@btravstack/example-order-domain";
 import {
   httpAuth,
   type HttpAuthenticatorOf,
@@ -90,7 +91,7 @@ import {
 } from "@btravstack/http";
 
 /** What this deployment knows about a caller. The contract names none. */
-export type Identity = { readonly tenantId: string; readonly userId: string };
+export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
 const identity = httpAuth<Identity>();
 
@@ -115,6 +116,7 @@ has no business reading a body, and the narrower argument is what keeps it
 testable without a socket.
 
 ```ts
+import { TenantId } from "@btravstack/example-order-domain";
 import { Unauthenticated } from "@btravstack/http";
 import { ErrAsync, OkAsync } from "unthrown";
 
@@ -132,7 +134,7 @@ export const bearerAuthenticator = HttpAuthenticator({
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+      : OkAsync({ tenantId: TenantId(tenantId), userId });
   },
 });
 ```
