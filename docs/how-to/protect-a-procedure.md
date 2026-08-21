@@ -40,22 +40,26 @@ import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-const orderRef = z.object({ id: z.string() });
+const orderRef = z.object({ id: z.uuidv7() });
+
+// `BAD_REQUEST` names the id **as received**, which is the one value that is
+// not a UUIDv7: `orderRef` would reject the only payload it ever carries.
+const malformedRef = z.object({ id: z.string() });
 
 const ordersContract = {
   place: oc
-    .input(z.object({ id: z.string(), quantity: z.number() }))
-    .output(z.object({ id: z.string() }))
+    .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
+    .output(z.object({ id: z.uuidv7() }))
     .errors({
       INVALID_QUANTITY: { data: orderRef },
-      BAD_REQUEST: { data: orderRef },
+      BAD_REQUEST: { data: malformedRef },
       CONFLICT: { data: orderRef },
     }),
 };
 
 const customersContract = {
   find: oc
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.uuidv7() }))
     .output(z.object({ name: z.string() })),
 };
 

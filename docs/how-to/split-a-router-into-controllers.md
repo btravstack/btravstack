@@ -29,27 +29,31 @@ import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-const orderView = z.object({ id: z.string(), quantity: z.number() });
+const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 
-const orderRef = z.object({ id: z.string() });
+const orderRef = z.object({ id: z.uuidv7() });
 export type OrderRef = z.infer<typeof orderRef>;
 
-const customerView = z.object({ id: z.string(), name: z.string() });
+// `BAD_REQUEST` names the id **as received**, which is the one value that is
+// not a UUIDv7: `orderRef` would reject the only payload it ever carries.
+const malformedRef = z.object({ id: z.string() });
+
+const customerView = z.object({ id: z.uuidv7(), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
 
 // The same shape as `orderRef` and deliberately its own schema: sharing that
 // one would type a customer id as "which order it was about".
-const customerRef = z.object({ id: z.string() });
+const customerRef = z.object({ id: z.uuidv7() });
 export type CustomerRef = z.infer<typeof customerRef>;
 
 const ordersContract = {
   place: oc
-    .input(z.object({ id: z.string(), quantity: z.number() }))
+    .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
     .errors({
       INVALID_QUANTITY: { data: orderRef },
-      BAD_REQUEST: { data: orderRef },
+      BAD_REQUEST: { data: malformedRef },
       CONFLICT: { data: orderRef },
     }),
   find: oc
@@ -60,7 +64,7 @@ const ordersContract = {
 
 const customersContract = {
   find: oc
-    .input(z.object({ tenantId: z.string(), id: z.string() }))
+    .input(z.object({ tenantId: z.uuidv7(), id: z.uuidv7() }))
     .output(customerView)
     .errors({ NOT_FOUND: { data: customerRef } }),
 };
