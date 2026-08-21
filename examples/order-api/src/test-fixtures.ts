@@ -210,8 +210,8 @@ export type ApiFixtures = {
    * through `boot`: its shutdown is the fixture's, on every exit path.
    *
    * The module's `X` is pinned to the two ports every composition here
-   * exports rather than left generic: `start`'s gate is a phantom rest
-   * parameter proven at the call site, and no proof is available inside a
+   * exports rather than left generic: `start`'s gate is a marker intersected
+   * onto `module`, proven at the call site, and no proof is available inside a
    * helper generic in the module's own exports. `HttpRuntime` is what `start`
    * resolves, and `Logger` is for the gate's OTHER half — `RequestModule`,
    * passed as `StartOptions.unit`, reads it out of the parent.

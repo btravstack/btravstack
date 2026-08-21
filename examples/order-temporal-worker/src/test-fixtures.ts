@@ -57,8 +57,8 @@ type Deployment<E> = {
 
 /**
  * `X` is pinned to the four ports the activities provider depends on, plus
- * `Logger` — rather than left generic: `start`'s gate is a phantom rest
- * parameter proven at the call site, and no proof is available inside a
+ * `Logger` — rather than left generic: `start`'s gate is a marker intersected
+ * onto `module`, proven at the call site, and no proof is available inside a
  * helper generic in the module's own exports. `Logger` has to be in the union
  * because `serve` composes `BillingModule` beside `module` (see below), and
  * `BillingModule`'s own need for it is invisible past this type unless it is
