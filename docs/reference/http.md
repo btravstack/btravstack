@@ -181,11 +181,30 @@ Each value is what [`HttpController`](#httpcontrollername-fragment)
 returns. The call is **exact**: `M` is constrained to
 `{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
 IsMarked<C>>, Identity> }`, and the `controllers`
-**parameter** itself is typed `M & { readonly [K in Exclude<keyof M,
-Exclude<keyof C, PrincipalKey>>]: never }` — the exactness intersection sits on
-the parameter, not on `M`, so a key `C` does not declare is typed `never` there
-without collapsing `M` (and with it the needs channel di orders the controllers
-by) to `never` too. The `Exclude`/`Inherit` pair is the same one
+**parameter** itself is typed:
+
+```ts
+M & {
+  readonly [K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>]:
+    `UNDECLARED KEY — the contract declares no fragment under ${K & string}`;
+};
+```
+
+The exactness intersection sits on the parameter, not on `M`, so a key `C` does
+not declare is refused there without collapsing `M` (and with it the needs
+channel di orders the controllers by) to `never` too. Because the mapped type is
+keyed by `K`, the sentence **names the offending key**, and it is the last line
+of the error:
+
+```
+error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Type 'Minted<"GateOrders", { place: ContractBuilder<object>; }, never, never>' is not assignable to type 'Provider<PortInstance<"GateOrders", { readonly place: ResultHandler<DefaultInitialContext & object, unknown, unknown, AnyORPCError, object>; }>, never, never> & { ...; } & "UNDECLARED KEY — the contract declares no fragment under billing"'.
+      Type 'Minted<"GateOrders", { place: ContractBuilder<object>; }, never, never>' is not assignable to type '"UNDECLARED KEY — the contract declares no fragment under billing"'.
+```
+
+Read the **last** line: the ones above it name the type you passed. The
+`Exclude`/`Inherit` pair is the same one
 [`Implementation<C>`](#authentication) carries: a contract marked at its
 **root** composes through this form too, and each fragment inherits that mark,
 so a controller under it types `context.principal`.
@@ -375,9 +394,14 @@ When the contract marks anything, `HttpRouter` adds `AuthenticatorPort` to the
 router provider's deps record under a **namespaced** key
 (`"@btravstack/http/authenticator"`, so it cannot collide with one you wrote),
 strips it back out before your own `sync` sees the record, and adds it to the
-provider's needs channel. Which makes a marked router with no authenticator behind it di's
-existing `UNSATISFIED DEPENDENCIES` gate at `start`, not a gate this package
-invented.
+provider's needs channel. Which makes a marked router with no authenticator
+behind it an ordinary unmet need at `start`, not a gate this package invented.
+What prints is `start`'s `module` parameter refusing the leftover need —
+`Type 'AuthenticatorPort' is not assignable to type 'Env | Scope'`, down to
+`Type '"HttpAuthenticator"' is not assignable to type '"@di/Scope"'` — so the
+port is named. (Not di's `UNSATISFIED DEPENDENCIES` arity gate: that one guards
+`Module.build`/`Module.scoped`, and `start` types the need out on its parameter
+instead.)
 
 What di cannot see is the **identity**: `AuthenticatorPort`'s service type is
 erased to `unknown`, so any authenticator discharges that need. So

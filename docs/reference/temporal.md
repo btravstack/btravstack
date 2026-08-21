@@ -202,10 +202,15 @@ record IS the activities record. Every top-level key the contract's
 activities record declares must be covered: an array missing one is refused
 at the call, against an
 `"UNCOVERED ACTIVITIES — the contract declares a workflow this array does not cover"`
-marker (`readonly ["UNCOVERED ACTIVITIES — …", ...]`) — the missing key itself is named
-too once the array's length matches that marker tuple's own length of 2; a
-single-element array's diagnostic names the marker alone; a piece built for
-another contract is refused too, structurally, since its port's service is
+marker. The diagnostic is a three-line `TS2769` and the sentence is at the
+**tail of the third line**, past three hundred characters of the caller's own
+contract type — measured, and not shortenable from inside this package. The
+missing key itself is named too once the array's length matches that marker
+tuple's own length of 2: TypeScript then matches the array against the tuple
+positionally and reports the trailing element separately, as
+`is not assignable to type '"fulfillOrder"'` — the bare key, not the marker
+tuple. A single-element array's diagnostic names the marker alone; a piece
+built for another contract is refused too, structurally, since its port's service is
 that contract's activities for the key. `Uncovered` checks coverage, not
 injectivity, so two pieces claiming the same key still type-check together;
 di's duplicate-provider defect at build catches it only once **both** end up

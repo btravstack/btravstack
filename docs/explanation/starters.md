@@ -162,9 +162,10 @@ application's router port is" — could not ship its port: `HttpRuntime` has to
 be one class in `@btravstack/http`, and its type cannot mention a port only
 the application knows. Making the router a dependency of the runtime's
 provider moves that knowledge to where it exists — the composition root that
-provides the router — and di's own gate checks it there: a root that imports
-`http()` without providing the router carries an unmet need `start`
-refuses. The kernel keeps `Runtime.needs`, `RunUnit`'s typed `ctx` and the
+provides the router — and the `Needs` channel checks it there: a root that
+imports `http()` without providing the router carries an unmet need `start`
+refuses, naming the port
+(`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`). The kernel keeps `Runtime.needs`, `RunUnit`'s typed `ctx` and the
 `UNSATISFIED RUNTIME NEEDS` arm as the general contract for a hand-rolled
 runtime; the starters simply do not need them.
 
