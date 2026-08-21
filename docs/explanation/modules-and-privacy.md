@@ -72,10 +72,11 @@ export const AuditSlice = Module("AuditSlice")({
 });
 ```
 
-`needs` does not make `Logger` visible the way an import would, and it does not
-manufacture an obligation for a root that owes nothing. It says: _the provider
-in this module depends on a `Logger` it does not build, and something above it
-has to_. Leave it out and the module does not compile at all — the diagnostic
+The provider may depend on that `Logger` and will be handed whatever an ancestor
+supplies. What `needs` does **not** do is provide the port here: it stays
+outside what the module can see, so it cannot be exported, and it manufactures
+no obligation for a root that owes nothing. It says: _the provider in this
+module depends on a `Logger` it does not build, and something above it has to_. Leave it out and the module does not compile at all — the diagnostic
 names the port — so a slice can never quietly absorb whatever the composition
 root happens to be holding.
 

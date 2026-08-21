@@ -368,8 +368,10 @@ happens to depend on:
 
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
-  // The environment its persistence reads `DATABASE_URL` from, and the logger
-  // its interactors write to — both the root's to supply, both named here.
+  // The controller writes a line itself, so `Logger` is this slice's own
+  // provider's need. The environment its persistence reads `DATABASE_URL` from
+  // is not: that one is `DatabaseModule`'s, declared there and inherited
+  // through the imports below.
   needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],

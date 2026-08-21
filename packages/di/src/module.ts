@@ -178,7 +178,11 @@ export type Unmet<I extends readonly AnyModule[], P extends readonly AnyProvider
  * The declaration gate. A port **this module's own providers** read, and that
  * nothing here satisfies, is an error unless it is named in `needs` — so a
  * provider can never silently receive a service from whoever composed the
- * module. `needs` is how a module says "my composition root supplies this"
+ * module. Named, it may: the provider is handed whatever an ancestor supplies.
+ * What naming does not do is make the port `Available` here, so a declared
+ * need is still not exportable.
+ *
+ * `needs` is how a module says "my composition root supplies this"
  * out loud, the explicit stand-in for NestJS's `@Global`, which this package
  * does not have and does not need.
  *
