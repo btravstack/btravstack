@@ -10,9 +10,11 @@
     "./lock": "./src/lock.ts",
     "./namespace": "./src/namespace.ts",
     "./rabbitmq": "./src/rabbitmq.ts",
-    "./temporal": "./src/temporal.ts"
+    "./temporal": "./src/temporal.ts",
+    "./uuid": "./src/uuid.ts"
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -23,7 +25,9 @@
   "devDependencies": {
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }

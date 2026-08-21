@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 
 import type { Env } from "@btravstack/config";
 import type { RunningApp, StartOptions } from "@btravstack/core";
@@ -18,6 +17,7 @@ import {
   type Order,
 } from "@btravstack/example-order-domain";
 import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
+import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
@@ -272,7 +272,7 @@ export const it = test.extend<ApiFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tenant: async ({}, use) => {
-    await use(`t-${randomUUID()}`);
+    await use(uuidv7());
   },
 
   serve: async ({ boot }, use) => {

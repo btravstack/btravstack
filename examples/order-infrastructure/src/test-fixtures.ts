@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { ServiceOf } from "@btravstack/di";
 import type {
   CustomerRepository,
@@ -7,6 +5,7 @@ import type {
   OrderRepository,
 } from "@btravstack/example-order-application";
 import { placeOrder, type Order } from "@btravstack/example-order-domain";
+import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { inject, test } from "vitest";
 
 import {
@@ -64,7 +63,7 @@ export const it = test.extend<PersistenceFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- see above
   tenant: async ({}, use) => {
-    await use(`t-${randomUUID()}`);
+    await use(uuidv7());
   },
 
   repository: async ({ db }, use) => {

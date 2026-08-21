@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import { AmqpModule, type AmqpInfo, type AmqpRuntime } from "@btravstack/amqp";
@@ -14,6 +12,7 @@ import {
   PlaceOrder,
 } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { observability, type Line } from "@btravstack/observability";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { inject, type TestAPI } from "vitest";
@@ -116,7 +115,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tenant: async ({}, use) => {
-    await use(`t-${randomUUID()}`);
+    await use(uuidv7());
   },
 
   serve: async ({ amqpConnectionUrl, tenant, boot }, use) => {

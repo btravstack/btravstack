@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { ConfigInvalid, Env } from "@btravstack/config";
 import type { RunningApp } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
@@ -14,6 +12,7 @@ import { OutOfStock, ShippingUnavailable } from "@btravstack/example-order-domai
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
+import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
@@ -206,7 +205,7 @@ export const it = test.extend<TemporalFixtures>({
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
   tenant: async ({}, use) => {
-    await use(`t-${randomUUID()}`);
+    await use(uuidv7());
   },
 
   serve: async ({ server, boot }, use) => {
