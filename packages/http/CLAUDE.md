@@ -89,17 +89,18 @@ PortInstance<…> }`) rather than the class's own type because a class
   `HttpController` per key, instead of `(deps, { sync })`. `M` is constrained
   `{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
 IsMarked<C>>, Identity> }`, and the `controllers`
-  **parameter** is typed `M & { readonly [K in Exclude<keyof M, Exclude<keyof C,
-PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
+  **parameter** is typed ``M & { readonly [K in Exclude<keyof M, Exclude<keyof C,
+PrincipalKey>>]: `UNDECLARED KEY — the contract declares no fragment under
+${K & string}` }`` — the same `Exclude` and the same `Inherit` the
   deps arm's `Implementation<C>` carries, so a **root-marked** contract
   composes here at all (the phantom key is not a controller to supply) and each
   fragment inherits the root's mark (a controller under it types
   `context.principal`). Both were missing until `auth.test-d.ts`'s eleventh arm
   went in; the marked fixtures in `controller.test-d.ts` mark a **key**, which
   is why neither showed there. The exactness intersection is on the parameter, not on `M`: a key
-  `M` has that `C` does not declare types as the sentence
-  `"UNDECLARED KEY — the contract declares no fragment under this key"`
-  there, so the call fails to compile rather than silently
+  `M` has that `C` does not declare types as a sentence **naming that key** —
+  `"UNDECLARED KEY — the contract declares no fragment under billing"` — so the
+  call fails to compile rather than silently
   dropping the key, without the intersection leaking into `M` and collapsing
   the needs channel di orders the controllers by (the failure mode
   `controller.test-d.ts`'s `_ComposedNeedsAreDeclared` check exists to catch).
@@ -109,7 +110,12 @@ PrincipalKey>>]: never }` — the same `Exclude` and the same `Inherit` the
   named neither the key nor the rule. The sentence does not reduce, so the
   reader pays one wide intersection line (the shape four other gates in
   `controller.test-d.ts` already print) and the message **ends** on the rule in
-  English. Measured both ways; the trade was taken deliberately.
+  English, with the offending key in it. `${K & string}` is what carries the
+  key: the mapped type is keyed by `K`, so the key is in scope at the value
+  position and costs a template literal to reach. A **symbol** key intersects
+  to `never` and the whole template collapses to `never`, which is the old
+  behaviour — still a compile error, just the old terse one. Measured every
+  way; the trade was taken deliberately.
   **`HttpRouter` is the one helper in the family with THREE forms and only two
   arguments' worth of arity**, so it is the one place arity alone cannot
   decide. `(deps, arm)` is settled by arity as everywhere else; the two

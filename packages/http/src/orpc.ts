@@ -171,7 +171,7 @@ export const routerFor =
       controllers: M & {
         readonly [
           K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>
-        ]: "UNDECLARED KEY — the contract declares no fragment under this key";
+        ]: `UNDECLARED KEY — the contract declares no fragment under ${K & string}`;
       },
     ): Built<
       Identity,
