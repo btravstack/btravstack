@@ -7,6 +7,7 @@ import { start } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { oc } from "@orpc/contract";
 import { ErrAsync, OkAsync } from "unthrown";
+import { expectTypeOf } from "vitest";
 
 import { HttpAuthenticator, Unauthenticated } from "./auth.js";
 import { HttpController } from "./controller.js";
@@ -313,3 +314,29 @@ void _scoped;
 void _strayScoped;
 void _verified;
 void _verifiedStray;
+
+// A scheme granting no scopes returns the identity bare — unchanged from what
+// applications write today, which is the point.
+const plain = HttpAuthenticator<{ readonly userId: string }>()({
+  sync: () => () => OkAsync({ userId: "u-1" }),
+});
+
+// A scheme with a scope vocabulary reports what the credential granted.
+const scoped = HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  sync: () => () => OkAsync({ identity: { userId: "u-1" }, scopes: ["orders:export"] }),
+});
+
+// Negative: a scoped scheme may not return a bare identity.
+HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  // @ts-expect-error -- a scoped scheme must report its granted scopes
+  sync: () => () => OkAsync({ userId: "u-1" }),
+});
+
+// Negative: a scope outside the declared vocabulary is refused.
+HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  // @ts-expect-error -- "orders:delete" is not in this scheme's vocabulary
+  sync: () => () => OkAsync({ identity: { userId: "u-1" }, scopes: ["orders:delete"] }),
+});
+
+expectTypeOf(plain.principal).toEqualTypeOf<{ readonly userId: string }>();
+expectTypeOf(scoped.scope).toEqualTypeOf<"orders:export">();

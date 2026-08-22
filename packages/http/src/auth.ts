@@ -1,15 +1,8 @@
 import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 
-import {
-  Port,
-  Provider,
-  type AnyPort,
-  type PortClassOf,
-  type PortInstance,
-  type ServiceOf,
-} from "@btravstack/di";
+import { Port, type AnyPort, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { ORPCError } from "@orpc/server";
-import { ErrAsync, TaggedError, type AsyncResult } from "unthrown";
+import { TaggedError, type AsyncResult } from "unthrown";
 
 /**
  * A caller was refused. Carries nothing: the starter surfaces no reason — a
@@ -20,45 +13,88 @@ import { ErrAsync, TaggedError, type AsyncResult } from "unthrown";
 export class Unauthenticated extends TaggedError("Unauthenticated") {}
 
 /**
- * What an application provides so a marked procedure can name its caller.
+ * What an authenticator hands back. A scheme with no scope vocabulary returns
+ * the identity bare — byte-for-byte what applications write today — and one
+ * with a vocabulary reports what the credential actually granted, so the
+ * starter can compare it against what the endpoint declared.
+ */
+export type Granted<P, Scope extends string> = [Scope] extends [never]
+  ? P
+  : { readonly identity: P; readonly scopes: readonly Scope[] };
+
+/**
  * Headers, not the request: an authenticator has no business reading a body,
  * and the narrower argument is what keeps it testable without a socket.
  */
-export type AuthenticatorService<P> = (
+export type AuthenticatorService<P, Scope extends string = never> = (
   headers: IncomingHttpHeaders,
-) => AsyncResult<P, Unauthenticated>;
+) => AsyncResult<Granted<P, Scope>, Unauthenticated>;
+
+const ports = new Map<string, unknown>();
 
 /**
- * The authenticator's port — one id, the starter's own, like `HttpRouterPort`.
- * The service type is erased to `unknown` because di identifies a port by id;
- * the principal's type is carried by the provider `HttpAuthenticator` returns
- * and checked where the router and the authenticator meet.
+ * One port per scheme, its id carrying the scheme name — the move
+ * `AmqpHandler(contract, key)` makes. The service type is erased because di
+ * identifies a port by id; the principal and scope types ride the provider
+ * `HttpAuthenticator` returns, and `defineHttp` reads the registry off them.
+ *
+ * The id is a LITERAL type, so `PortInstance<"HttpAuthenticator:user", …>` and
+ * `PortInstance<"HttpAuthenticator:service", …>` are different types: a
+ * contract naming a scheme the registry has no authenticator for leaves that
+ * scheme's port unmet, which is di's own diagnostic naming the port rather than
+ * a gate this package writes.
  */
-export const AuthenticatorPort = Port("HttpAuthenticator") as PortClassOf<
-  "HttpAuthenticator",
-  AuthenticatorService<unknown>
->;
-export type AuthenticatorPort = PortInstance<"HttpAuthenticator", AuthenticatorService<unknown>>;
+export const authenticatorPort = <const S extends string>(
+  scheme: S,
+): PortClassOf<`HttpAuthenticator:${S}`, AuthenticatorService<unknown, string>> => {
+  const id = `HttpAuthenticator:${scheme}` as const;
+  // Memoised: `defineHttp` asks for a scheme's port when it binds the
+  // authenticator and `routerFor` asks again for every scheme its contract
+  // names, and two `Port(id)` calls under one id are di's duplicate-id warning.
+  const existing = ports.get(id);
+  if (existing !== undefined) return existing as never;
+  // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
+  const minted = class extends Port(id)<AuthenticatorService<unknown, string>> {};
+  ports.set(id, minted);
+  return minted as never;
+};
 
 /**
- * The authenticator as a provider, with its principal type stated at the call:
+ * What `HttpAuthenticator` hands back: a description `defineHttp` binds to a
+ * port once the scheme name is known, carrying its principal and scope types
+ * so the registry can be inferred rather than declared.
+ */
+export type Authenticator<P, Scope extends string, N> = {
+  readonly deps: unknown;
+  readonly options: unknown;
+  readonly principal: P;
+  readonly scope: Scope;
+  readonly needs: N;
+};
+
+/**
+ * The authenticator for one scheme, with its principal type — and the scopes it
+ * can grant — stated at the call:
  *
  * ```ts
- * export const jwtAuthenticator = HttpAuthenticator<Principal>()({ verify: JwtVerifier }, {
- *   sync: ({ verify }) => (headers) => verify(headers.authorization),
- * });
+ * export const userAuth = HttpAuthenticator<Identity, "orders:export">()(
+ *   { verify: JwtVerifier },
+ *   { sync: ({ verify }) => (headers) => verify(headers.authorization) },
+ * );
  *
  * // An authenticator that reads nothing but the headers declares no deps:
- * export const bearerAuthenticator = HttpAuthenticator<Principal>()({
- *   sync: () => (headers) => principalOf(headers.authorization),
+ * export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+ *   sync: () => (headers) => apiKey(headers["x-api-key"]),
  * });
  * ```
  *
- * The type argument is explicit rather than inferred from `sync`: inference
- * through a returned function's `AsyncResult` is exactly where a `Principal`
- * silently widens to `unknown`, and the whole point is that it cannot.
+ * The type arguments are explicit rather than inferred from `sync`: inference
+ * through a returned function's `AsyncResult` is exactly where a principal
+ * silently widens to `unknown`, and the whole point is that it cannot. The
+ * scheme NAME is not stated here — it is the key this authenticator sits under
+ * in `defineHttp({ authenticators })`, so it is written once.
  */
-export const HttpAuthenticator = <P>() => {
+export const HttpAuthenticator = <P, Scope extends string = never>() => {
   // Two arms, discriminated by ARITY, mirroring `Provider(port)`'s own — an
   // authenticator that reads only the request's headers declares no
   // dependencies, which is the common shape rather than an edge case.
@@ -67,29 +103,19 @@ export const HttpAuthenticator = <P>() => {
     options: {
       readonly sync: (services: {
         readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-      }) => AuthenticatorService<P>;
+      }) => AuthenticatorService<P, Scope>;
     },
-  ): Provider<AuthenticatorPort, never, InstanceType<D[keyof D]>> & { readonly principal: P };
+  ): Authenticator<P, Scope, InstanceType<D[keyof D]>>;
   function build(options: {
-    readonly sync: () => AuthenticatorService<P>;
-  }): Provider<AuthenticatorPort, never, never> & { readonly principal: P };
+    readonly sync: () => AuthenticatorService<P, Scope>;
+  }): Authenticator<P, Scope, never>;
   function build(depsOrOptions: unknown, options?: unknown): unknown {
-    return options === undefined
-      ? Provider(AuthenticatorPort)(depsOrOptions as never)
-      : Provider(AuthenticatorPort)(depsOrOptions as never, options as never);
+    // The port is minted by `defineHttp`, which is the only place the scheme
+    // NAME exists; this description is bound onto it there.
+    return { deps: depsOrOptions, options };
   }
   return build;
 };
-
-/**
- * Unreachable today, and kept anyway. `routerOf` falls back to this when a
- * marked leaf has no authenticator behind it — which `HasMark<C>` and
- * `hasMarked` agreeing makes impossible, since a mark anywhere requires one.
- * It is two lines of insurance on a seam that has already failed twice, and it
- * fails **closed**: every caller refused, never a leaf served unprotected.
- * `auth.spec.ts` exercises it directly, because no router can reach it.
- */
-export const noAuthenticator: AuthenticatorService<never> = () => ErrAsync(new Unauthenticated());
 
 /**
  * The one middleware this package installs, and only on a marked leaf. It reads
