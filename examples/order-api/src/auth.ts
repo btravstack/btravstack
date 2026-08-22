@@ -36,12 +36,15 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
-    const [tenantId, userId, scopes = ""] = token.split(":");
+    const [tenantId, userId, ...rest] = token.split(":");
+    // Rejoined rather than taken as one field: a scope name contains the
+    // delimiter itself, so `orders:export` cannot survive a plain third field.
+    const granted = rest.join(":");
     return tenantId === undefined || tenantId === "" || userId === undefined || userId === ""
       ? ErrAsync(new Unauthenticated())
       : OkAsync({
           identity: { tenantId: TenantId(tenantId), userId },
-          scopes: scopes
+          scopes: granted
             .split(",")
             .filter((scope): scope is "orders:export" => scope === "orders:export"),
         });

@@ -367,8 +367,24 @@ describe("order-api", () => {
 
     // WHEN the export is called — `user` is the requirement declared first, and
     // this caller presents nothing it accepts
-    // THEN the walk fell through to the second requirement and served the call
-    await expect(client.orders.export()).toBeOkWith({ csv: "" });
+    // THEN the walk fell through to the second requirement, and the service
+    // arm of the handler is what answered
+    await expect(client.orders.export()).toBeOkWith({ csv: "service,reporting" });
+  });
+
+  it("serves the export to a user token that carries the scope", async ({
+    serve,
+    tenant,
+    clientWith,
+    api,
+  }) => {
+    // GIVEN a caller whose token grants `orders:export`
+    const client = await clientWith(serve(api), `Bearer ${tenant}:u-1:orders:export`);
+
+    // WHEN the export is called
+    // THEN the first requirement was satisfied outright — a granted scope is
+    // matched against what the endpoint declared, and the user arm answered
+    await expect(client.orders.export()).toBeOkWith({ csv: "user,u-1" });
   });
 
   it("refuses a user token that grants no scope with FORBIDDEN, not UNAUTHORIZED", async ({

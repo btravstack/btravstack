@@ -106,17 +106,18 @@ export const ordersController = api.HttpController("OrdersController", contract.
               errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
             ),
           ),
-      // A stand-in body: what this procedure is here for is the principal. A
-      // missing arm leaves a path returning nothing, which the handler's own
-      // return type refuses — so the switch is exhaustive or the build fails.
+      // A stand-in body naming the arm that produced it, so a spec pins which
+      // scheme served the call. A missing arm leaves a path returning nothing,
+      // which the handler's own return type refuses — so the switch is
+      // exhaustive or the build fails.
       export: ({ context }) => {
         switch (context.principal.scheme) {
           case "user":
             logger.info("order export requested", { userId: context.principal.identity.userId });
-            return OkAsync({ csv: "" });
+            return OkAsync({ csv: `user,${context.principal.identity.userId}` });
           case "service":
             logger.info("order export requested", { appId: context.principal.identity.appId });
-            return OkAsync({ csv: "" });
+            return OkAsync({ csv: `service,${context.principal.identity.appId}` });
         }
       },
     }),
