@@ -10,6 +10,7 @@ import {
   Port,
   Provider,
   type AnyPort,
+  type AnyProvider,
   type PortClassOf,
   type PortInstance,
   type ServiceOf,
@@ -128,17 +129,23 @@ export const orpc = (options: OrpcOptions = {}) => {
  * contract must be covered — a missing or extra key is a compile error.
  */
 /** What every `HttpRouter` arm returns; only the needs channel `N` differs. */
-type Built<Schemes, N> = Provider<
+type Built<Auth, N> = Provider<
   PortInstance<"HttpRouter", Router<Record<never, never>>>,
   never,
   N
 > & {
   readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-  readonly identity: Schemes;
+  /**
+   * The scheme authenticators `defineHttp` bound, carried here so `HttpModule`
+   * can put them in `provides` off the one option an application already
+   * passes. It rides the router because the router is what needs them: they
+   * are the providers that discharge its scheme ports.
+   */
+  readonly authenticators: readonly Auth[];
 };
 
 export const routerFor =
-  <Schemes>() =>
+  <Schemes, Auth extends AnyProvider = never>(authenticators: readonly Auth[]) =>
   <C extends Record<string, RouterContract>>(contract: C) => {
     // The implementer is walked untyped: `Implementation<C>` above is the
     // whole check — a key the contract does not declare is a compile error
@@ -156,13 +163,10 @@ export const routerFor =
           readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
         }) => Implementation<C, Schemes>;
       },
-    ): Built<
-      Schemes,
-      InstanceType<D[keyof D]> | (HasMark<C> extends true ? AuthenticatorPort : never)
-    >;
+    ): Built<Auth, InstanceType<D[keyof D]> | SchemePortsOf<C>>;
     function build(options: {
       readonly sync: () => Implementation<C, Schemes>;
-    }): Built<Schemes, HasMark<C> extends true ? AuthenticatorPort : never>;
+    }): Built<Auth, SchemePortsOf<C>>;
     function build<
       M extends {
         readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<
@@ -176,10 +180,7 @@ export const routerFor =
           K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>
         ]: `UNDECLARED KEY — the contract declares no fragment under ${K & string}`;
       },
-    ): Built<
-      Schemes,
-      InstanceType<M[keyof M]["port"]> | (HasMark<C> extends true ? AuthenticatorPort : never)
-    >;
+    ): Built<Auth, InstanceType<M[keyof M]["port"]> | SchemePortsOf<C>>;
     function build(depsOrControllers: unknown, options?: unknown): unknown {
       const guarded = hasMarked(contract);
       // The authenticator rides a NAMESPACED key on the deps record, for the
@@ -254,14 +255,6 @@ export const routerFor =
     return build;
   };
 
-/**
- * The router, with no server-side identity: a handler under a marked key sees
- * `principal: never`, so any read of it is a compile error. That is the
- * "use the factory" signal — `httpAuth<Identity>()` is what mints the form
- * whose handlers see the application's own principal.
- */
-export const HttpRouter: ReturnType<typeof routerFor<never>> = routerFor<never>();
-
 // Namespaced so it cannot collide with a key the caller wrote; see `build`.
 const AUTHENTICATOR = "@btravstack/http/authenticator";
 
@@ -334,10 +327,39 @@ type Inherit<T, R extends Requirements> = [R] extends [never]
     : Authenticated<T, R>;
 
 /**
+ * Every requirement the contract carries, anywhere in its tree — the same walk
+ * as `HasMark<C>`, keeping what it found instead of answering yes. Over-, never
+ * under-approximating: a requirement a nearer mark shadows still contributes
+ * its scheme, which costs a dep nothing uses rather than a missing one.
+ */
+type AllRequirementsOf<C> =
+  | RequirementsOf<C>
+  | (C extends ProcedureContract<infer _I, infer _O, infer _E>
+      ? never
+      : {
+          readonly [K in Exclude<keyof C, PrincipalKey>]: AllRequirementsOf<C[K]>;
+        }[Exclude<keyof C, PrincipalKey>]);
+
+/** Distributes `SchemesOf` over the union of requirement tuples the walk collected. */
+type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
+
+/**
+ * One port instance per scheme the contract names, as the router's needs
+ * channel. The naked `S` distributes, so two schemes are two distinct port
+ * types — a scheme with no authenticator behind it is di's own unmet need
+ * naming `HttpAuthenticator:<scheme>`, not a gate this package writes. The
+ * runtime side is `schemesOf` below; these two must agree.
+ */
+type SchemePortsOf<C> =
+  SchemesIn<AllRequirementsOf<C>> extends infer S extends string
+    ? S extends string
+      ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown, string>>
+      : never
+    : never;
+
+/**
  * Whether the contract marks anything, anywhere — a yes/no, not a type, since
- * the contract names no principal. It is what makes the authenticator
- * dependency conditional on both `build` overloads, and the type side of the
- * `hasMarked` walk below; these two must agree.
+ * the contract names no principal.
  */
 export type HasMark<C> =
   IsMarked<C> extends true
