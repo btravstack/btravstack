@@ -14,17 +14,9 @@ import { start } from "@btravstack/core";
  * this package's `test:types` script, never executed.
  */
 import { Module } from "@btravstack/di";
-import {
-  AuthenticatorPort,
-  HttpAuthenticator,
-  HttpModule,
-  HttpRuntime,
-  http,
-} from "@btravstack/http";
+import { HttpRuntime, http } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
-import { OkAsync } from "unthrown";
 
-import { bearerAuthenticator } from "./authenticator.js";
 import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
 import { CustomersSlice } from "./slices/customers/module.js";
@@ -41,10 +33,11 @@ const _wired = start(OrderApi, options);
 const RuntimelessApi = Module("RuntimelessApi")({
   needs: [Env],
   imports: [OrdersSlice, CustomersSlice, observability()],
-  // The authenticator is here so this arm fails on the marker ALONE: the contract
-  // marks `orders`, so a graph carrying the router without one has an unmet
-  // need too, and an arm that could fail either way pins neither gate.
-  provides: [orderRouter, bearerAuthenticator],
+  // The scheme authenticators are here so this arm fails on the marker ALONE:
+  // the contract marks `orders`, so a graph carrying the router without them
+  // has an unmet need too, and an arm that could fail either way pins neither
+  // gate. `HttpModule` is what spreads them for a root that uses the sugar.
+  provides: [orderRouter, ...orderRouter.authenticators],
   exports: [Logger],
 });
 
@@ -80,45 +73,9 @@ const _withUnit = start(OrderApi, { ...options, unit: RequestModule });
 const UnloggedApi = Module("UnloggedApi")({
   needs: [Env],
   imports: [OrdersSlice, CustomersSlice, observability(), http()],
-  provides: [orderRouter, bearerAuthenticator],
+  provides: [orderRouter, ...orderRouter.authenticators],
   exports: [HttpRuntime],
 });
 
 // @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.
 const _unitUnmet = start(UnloggedApi, { ...options, unit: RequestModule });
-
-// The real root minus its authenticator. `contract.orders` is marked
-// `authenticated`, so `HttpRouter` gave the router provider a dependency on
-// the starter's `AuthenticatorPort` and nothing here discharges it. Same
-// `AuthenticatorPort` IS exported, unlike the router port above, so this arm
-// can declare it — and that is what keeps it a `start` negative: declaring
-// moves the obligation to the composition root, it does not discharge it.
-const UnauthenticatedApi = HttpModule("UnauthenticatedApi")({
-  needs: [Env, AuthenticatorPort],
-  router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
-});
-
-// @ts-expect-error — the composition needs the authenticator port and nothing provides it.
-const _missingAuthenticator = start(UnauthenticatedApi, options);
-
-// The OTHER authenticator gate, and a different one: whether the authenticator
-// resolves what the handlers read. `AuthenticatorPort`'s service type is
-// erased to `unknown`, so the needs channel sees it discharged and would let this
-// through — `HttpModuleOptions` compares the ROUTER's identity against the
-// authenticator's itself, at the `HttpModule(...)` call, which is why this
-// directive sits on the option and not on a `start` below it. The contract
-// declares no principal to compare against; `./auth.ts` is what declares one.
-const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()({
-  sync: () => () => OkAsync({ sub: "s-1" }),
-});
-
-const _mismatchedApi = HttpModule("MismatchedApi")({
-  needs: [Env],
-  router: orderRouter,
-  // @ts-expect-error — the authenticator resolves `{ sub }`, not the router's Identity.
-  authenticator: wrongAuthenticator,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
-});

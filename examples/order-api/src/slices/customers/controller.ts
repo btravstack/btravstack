@@ -3,7 +3,7 @@ import { FindCustomer } from "@btravstack/example-order-application";
 import { TenantId, type Customer } from "@btravstack/example-order-domain";
 import { P } from "unthrown";
 
-import { HttpController } from "../../auth.js";
+import { api } from "../../auth.js";
 
 const view = (customer: Customer): CustomerView => ({ id: customer.id, name: customer.name });
 
@@ -20,7 +20,7 @@ const view = (customer: Customer): CustomerView => ({ id: customer.id, name: cus
  * shape. A slice is defined by owning its fragment, its controller and its
  * triage, not by owning a private adapter.
  */
-export const customersController = HttpController("CustomersController", contract.customers)(
+export const customersController = api.HttpController("CustomersController", contract.customers)(
   { find: FindCustomer },
   {
     sync: ({ find }) => ({

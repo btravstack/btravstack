@@ -38,10 +38,9 @@ import {
 } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
-import { P } from "unthrown";
+import { OkAsync, P } from "unthrown";
 
-import { HttpController, HttpRouter } from "./auth.js";
-import { bearerAuthenticator } from "./authenticator.js";
+import { api } from "./auth.js";
 
 const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quantity });
 
@@ -55,13 +54,14 @@ const customerViewOf = (customer: Customer): CustomerView => ({
 // "The slices" — docs/examples/order-api.md; "The kernel maps nothing"'s
 // `place` fragment — docs/explanation/the-kernel-maps-nothing.md.
 //
-// `HttpController` is `./auth.ts`'s, not `@btravstack/http`'s: reached through
-// the package's own, a marked fragment types `principal: never` and every read
-// below is a compile error. That substitution is half of what these pages
-// were getting wrong, so it is pinned by the import rather than asserted.
+// The controllers are `./auth.ts`'s `api`, the one `defineHttp` call this
+// application makes: reached through anything else, a marked fragment types
+// `principal: never` and every read below is a compile error. That
+// substitution is half of what these pages were getting wrong, so it is
+// pinned by the import rather than asserted.
 // ---------------------------------------------------------------------------
 
-const ordersController = HttpController("DocsOrdersController", contract.orders)(
+const ordersController = api.HttpController("DocsOrdersController", contract.orders)(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -92,13 +92,21 @@ const ordersController = HttpController("DocsOrdersController", contract.orders)
               errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
             ),
           ),
+      export: ({ context }) => {
+        switch (context.principal.scheme) {
+          case "user":
+            return OkAsync({ csv: context.principal.identity.userId });
+          case "service":
+            return OkAsync({ csv: context.principal.identity.appId });
+        }
+      },
     }),
   },
 );
 
 // The unmarked half, and the contrast every page draws: no `principal` on the
 // context at all, the tenant off the input instead.
-const customersController = HttpController("DocsCustomersController", contract.customers)(
+const customersController = api.HttpController("DocsCustomersController", contract.customers)(
   { find: FindCustomer },
   {
     sync: ({ find }) => ({
@@ -134,7 +142,7 @@ const DocsCustomersSlice = Module("DocsCustomersSlice")({
 // "The router" and "The composition root" — docs/examples/order-api.md.
 // ---------------------------------------------------------------------------
 
-const docsRouter = HttpRouter(contract)({
+const docsRouter = api.HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
 });
@@ -142,7 +150,6 @@ const docsRouter = HttpRouter(contract)({
 const _DocsOrderApi = HttpModule("DocsOrderApi")({
   needs: [Env],
   router: docsRouter,
-  authenticator: bearerAuthenticator,
   imports: [DocsOrdersSlice, DocsCustomersSlice, observability()],
   exports: [Logger],
 });
@@ -154,11 +161,11 @@ const _DocsOrderApi = HttpModule("DocsOrderApi")({
 //
 // The do-not-break property: the slice, its module and its controller are the
 // very ones composed above — a new composition root and one fewer import, not
-// a rewrite. The lifted fragment carries its marker, so the lifted root needs
-// the same authenticator.
+// a rewrite. The lifted fragment carries its marker, so the lifted root owes
+// the same schemes — which the router brings with it, from the same `api`.
 // ---------------------------------------------------------------------------
 
-const liftedOrdersRouter = HttpRouter(contract.orders)(
+const liftedOrdersRouter = api.HttpRouter(contract.orders)(
   { implementation: ordersController.port },
   { sync: ({ implementation }) => implementation },
 );
@@ -166,7 +173,6 @@ const liftedOrdersRouter = HttpRouter(contract.orders)(
 const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
   needs: [Env],
   router: liftedOrdersRouter,
-  authenticator: bearerAuthenticator,
   imports: [DocsOrdersSlice, observability()],
 });
 
@@ -178,7 +184,7 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
 // controller all reduce to this call.
 // ---------------------------------------------------------------------------
 
-const depsOrdersRouter = HttpRouter(contract.orders)(
+const depsOrdersRouter = api.HttpRouter(contract.orders)(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -207,6 +213,14 @@ const depsOrdersRouter = HttpRouter(contract.orders)(
               errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
             ),
           ),
+      export: ({ context }) => {
+        switch (context.principal.scheme) {
+          case "user":
+            return OkAsync({ csv: context.principal.identity.userId });
+          case "service":
+            return OkAsync({ csv: context.principal.identity.appId });
+        }
+      },
     }),
   },
 );
@@ -214,7 +228,6 @@ const depsOrdersRouter = HttpRouter(contract.orders)(
 const _DocsDepsApi = HttpModule("DocsDepsApi")({
   needs: [Env],
   router: depsOrdersRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });

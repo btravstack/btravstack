@@ -1,21 +1,16 @@
-import type { TenantId } from "@btravstack/example-order-domain";
-import {
-  httpAuth,
-  type HttpAuthenticatorOf,
-  type HttpControllerOf,
-  type HttpRouterOf,
-} from "@btravstack/http";
+import { TenantId } from "@btravstack/example-order-domain";
+import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http";
+import { ErrAsync, OkAsync } from "unthrown";
 
 /**
- * What this deployment knows about a caller — and the one place it is stated.
+ * What this deployment knows about a caller under the `user` scheme — and the
+ * one place it is stated.
  *
- * **The contract says whether a route is protected; this says what the
- * principal is.** `@btravstack/example-order-api-contract` names no identity
- * type at all, so none of this reaches a client and enriching it — roles, an
- * org tier, an internal id — is never a contract change. A handler minted
- * below sees `Identity` with no annotation at its own call site, and
- * `HttpModule`'s gate compares the router's identity against the
- * authenticator's, both of which come from the one call here.
+ * **The contract says whether a route is protected and under which schemes;
+ * this says what each scheme resolves to.**
+ * `@btravstack/example-order-api-contract` names no identity type at all, so
+ * none of this reaches a client and enriching it — roles, an org tier, an
+ * internal id — is never a contract change.
  *
  * `tenantId` is the domain's `TenantId` rather than a `string`, so the value
  * the authenticator resolved is already the one every port in the application
@@ -25,24 +20,52 @@ import {
  */
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
-/**
- * The three the factory mints, together — imported by the slices instead of
- * `@btravstack/http`'s own. Written once per application, because a handler's
- * parameter types are fixed where the arrow is written: the composition root
- * cannot re-type a `sync` callback that lives in a slice's module.
- *
- * The authenticator and the controllers cannot disagree about the identity,
- * since both come from this call — and there is no other way to read a
- * principal: a marked fragment reached through `@btravstack/http`'s own
- * top-level `HttpController` types `principal: never`.
- *
- * Each is annotated rather than left to inference: a controller's port expands
- * to a type carrying `@btravstack/contract`'s phantom `unique symbol`, which
- * this file cannot name in its own declaration emit (TS2527). The aliases the
- * starter exports are what it names instead.
- */
-const identity = httpAuth<Identity>();
+/** What the `service` scheme resolves to: a machine caller, with no tenant of its own. */
+export type ServiceIdentity = { readonly appId: string };
 
-export const HttpController: HttpControllerOf<Identity> = identity.HttpController;
-export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
-export const HttpAuthenticator: HttpAuthenticatorOf<Identity> = identity.HttpAuthenticator;
+/**
+ * A stand-in, not a recommendation: `Bearer <tenantId>:<userId>:<scopes>`. It
+ * is also where a header becomes a **tenant**, and therefore the one place
+ * this path claims the `TenantId` brand: from here on the identity carries it,
+ * and no controller casts anything.
+ *
+ * The scope vocabulary is declared at the call, so the granted list is checked
+ * against it here rather than compared as strings at the endpoint.
+ */
+export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
+  sync: () => (headers) => {
+    const header = headers.authorization ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+    const [tenantId, userId, scopes = ""] = token.split(":");
+    return tenantId === undefined || tenantId === "" || userId === undefined || userId === ""
+      ? ErrAsync(new Unauthenticated())
+      : OkAsync({
+          identity: { tenantId: TenantId(tenantId), userId },
+          scopes: scopes
+            .split(",")
+            .filter((scope): scope is "orders:export" => scope === "orders:export"),
+        });
+  },
+});
+
+/** The second scheme: an API key, no scopes, no tenant — what a reporting job presents. */
+export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  sync: () => (headers) => {
+    const key = headers["x-api-key"];
+    return typeof key === "string" && key !== ""
+      ? OkAsync({ appId: key })
+      : ErrAsync(new Unauthenticated());
+  },
+});
+
+/**
+ * The one door: every HTTP entity this application mints comes from here, and
+ * declaring a scheme and implementing it are the same act — so there is no
+ * registry to keep in step with the contract and no authenticator for a root
+ * to list.
+ *
+ * Held whole rather than destructured: each binding of a destructured member
+ * expands to a type mentioning `@btravstack/contract`'s inaccessible
+ * `unique symbol`, which this file could not emit (TS2527).
+ */
+export const api = defineHttp({ authenticators: { user: userAuth, service: serviceAuth } });

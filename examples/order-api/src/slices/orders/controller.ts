@@ -2,9 +2,9 @@ import { contract, type OrderView } from "@btravstack/example-order-api-contract
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
 import { Logger } from "@btravstack/observability";
-import { P } from "unthrown";
+import { OkAsync, P } from "unthrown";
 
-import { HttpController } from "../../auth.js";
+import { api } from "../../auth.js";
 
 const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quantity });
 
@@ -28,12 +28,20 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  *
  * The tenant comes off `context.principal`, the value this application's own
  * authenticator resolved from the request's headers — `contract.orders` is
- * marked `authenticated`, so the principal is typed here and a handler that
- * misreads it does not compile. `HttpController` is `../../auth.ts`'s, minted
- * by `httpAuth<Identity>()`, which is why the principal has a readable type at
- * all: the contract says only that the route is protected, and the factory is
- * what puts this deployment's own identity in scope where the handler is
- * written. Who placed an order is a transport-boundary fact, so it is logged
+ * marked `authenticated({ user: [] })`, so the principal is typed here and a
+ * handler that misreads it does not compile. `HttpController` is
+ * `../../auth.ts`'s `api`, minted by `defineHttp({ authenticators })`, which is
+ * why the principal has a readable type at all: the contract says only which
+ * schemes protect the route, and that call is what says what each one
+ * resolves to.
+ *
+ * `export` is where the two halves separate: it names a second scheme, so its
+ * principal is a discriminated union the handler has to narrow, and the
+ * compiler checks that every scheme the contract named is answered for. The
+ * other two name one scheme and keep reading `context.principal.tenantId`
+ * bare, which is the property the whole design rests on.
+ *
+ * Who placed an order is a transport-boundary fact, so it is logged
  * here rather than pushed through a use case that has no business with it. The fragment's inputs name **no** tenant: a
  * caller does not get to name the tenant it is served, and a required field
  * these handlers ignore would be a lie in the contract. The unmarked
@@ -47,7 +55,7 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * `Provider(port)` on a port it mints for this controller, so this is a
  * provider like any other in the graph.
  */
-export const ordersController = HttpController("OrdersController", contract.orders)(
+export const ordersController = api.HttpController("OrdersController", contract.orders)(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -98,6 +106,19 @@ export const ordersController = HttpController("OrdersController", contract.orde
               errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
             ),
           ),
+      // A stand-in body: what this procedure is here for is the principal. A
+      // missing arm leaves a path returning nothing, which the handler's own
+      // return type refuses — so the switch is exhaustive or the build fails.
+      export: ({ context }) => {
+        switch (context.principal.scheme) {
+          case "user":
+            logger.info("order export requested", { userId: context.principal.identity.userId });
+            return OkAsync({ csv: "" });
+          case "service":
+            logger.info("order export requested", { appId: context.principal.identity.appId });
+            return OkAsync({ csv: "" });
+        }
+      },
     }),
   },
 );

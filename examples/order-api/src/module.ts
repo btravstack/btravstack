@@ -2,8 +2,7 @@ import { contract } from "@btravstack/example-order-api-contract";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
-import { HttpRouter } from "./auth.js";
-import { bearerAuthenticator } from "./authenticator.js";
+import { api } from "./auth.js";
 import { customersController } from "./slices/customers/controller.js";
 import { CustomersSlice } from "./slices/customers/module.js";
 import { ordersController } from "./slices/orders/controller.js";
@@ -14,7 +13,7 @@ import { OrdersSlice } from "./slices/orders/module.js";
  * contract's own top-level keys, so a key the contract does not declare is a
  * compile error and a declared key with no controller is too.
  */
-export const orderRouter = HttpRouter(contract)({
+export const orderRouter = api.HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
 });
@@ -28,12 +27,11 @@ export const orderRouter = HttpRouter(contract)({
  *
  * What is left here is what no slice owns: `observability()`, whose `Logger`
  * every layer writes to and which is exported because the per-request
- * `RequestModule` reads it out of the application scope, and the
- * `authenticator` — one per process, because who a caller is is not a slice's
- * question. It is required here and nowhere else because the contract marks
- * `orders`: the router provider carries `AuthenticatorPort` as a need, so
- * dropping this line is an unmet dependency `start` refuses, and supplying one
- * that resolves a different principal is a compile error at this very call.
+ * `RequestModule` reads it out of the application scope. The two
+ * authenticators are **not** listed: they ride the router, which is what needs
+ * them, and `HttpModule` puts them in `provides` itself — a scheme the
+ * contract names with no authenticator behind it is di's own unmet need on
+ * `HttpAuthenticator:<scheme>`, not a line this file could forget.
  * Importing the router
  * and the starter is what empties the needs channel (a composition without the
  * router provider does not compile — the starter's provider depends on it, so
@@ -51,7 +49,6 @@ export const orderRouter = HttpRouter(contract)({
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
