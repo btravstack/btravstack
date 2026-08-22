@@ -62,7 +62,7 @@ const customerRef = z.object({ id: z.uuidv7() });
 export type CustomerRef = z.infer<typeof customerRef>;
 
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
-const ordersContract = {
+const ordersContract = authenticated({ user: [] })({
   place: oc
     .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
@@ -75,7 +75,14 @@ const ordersContract = {
     .input(orderRef)
     .output(orderView)
     .errors({ NOT_FOUND: { data: orderRef } }),
-};
+
+  // Overrides the group default for itself: a service token may export too,
+  // and a user token needs the scope.
+  export: authenticated(
+    { user: ["orders:export"] },
+    { service: [] },
+  )(oc.output(z.object({ csv: z.string() }))),
+});
 
 /** The customers slice's own fragment. Reached as `contract.customers`; a fragment is a contract in its own right, so the slice can be served alone. */
 const customersContract = {
@@ -99,10 +106,14 @@ const customersContract = {
  * controller. Adding a domain error without adding a code here stops that
  * file compiling.
  *
- * `orders` is `authenticated(...)`, `customers` is not: the marker is a
- * type-level fact about the fragment, so a client reads which half of this API
- * needs credentials off the contract itself, and a server that serves the
- * marked half without an authenticator does not compile.
+ * `orders` is `authenticated({ user: [] })(...)`, `customers` is not: the
+ * marker is a type-level fact about the fragment, so a client reads which
+ * half of this API needs credentials off the contract itself, and a server
+ * that serves the marked half without an authenticator does not compile.
+ * `orders.export` overrides that group default for itself — a user token
+ * needs the `orders:export` scope, or a `service` token needs none — which is
+ * how the marker exercises a per-procedure override, a scope and a second
+ * scheme all at once.
  *
  * **The contract says WHETHER a route is protected, and nothing about who the
  * caller is.** No principal type is named here, so nothing about what this
@@ -110,7 +121,4 @@ const customersContract = {
  * client, and enriching it is never a contract change. What the principal
  * actually is, is `examples/order-api`'s `httpAuth<Identity>()` to say.
  */
-export const contract = {
-  orders: authenticated(ordersContract),
-  customers: customersContract,
-};
+export const contract = { orders: ordersContract, customers: customersContract };
