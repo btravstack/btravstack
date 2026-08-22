@@ -119,6 +119,7 @@ import {
   HttpAuthenticator,
   Unauthenticated,
   defineHttp,
+  granted,
 } from "@btravstack/http";
 import { ErrAsync, OkAsync } from "unthrown";
 
@@ -137,20 +138,22 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
     const [tenantId, userId, ...rest] = token.split(":");
     // Rejoined rather than taken as one field: a scope name contains the
     // delimiter itself, so `orders:export` cannot survive a plain third field.
-    const granted = rest.join(":");
+    const claimed = rest.join(":");
     return tenantId === undefined ||
       tenantId === "" ||
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({
-          identity: { tenantId: TenantId(tenantId), userId },
-          scopes: granted
-            .split(",")
-            .filter(
-              (scope): scope is "orders:export" => scope === "orders:export",
-            ),
-        });
+      : OkAsync(
+          granted(
+            { tenantId: TenantId(tenantId), userId },
+            claimed
+              .split(",")
+              .filter(
+                (scope): scope is "orders:export" => scope === "orders:export",
+              ),
+          ),
+        );
   },
 });
 
@@ -169,9 +172,14 @@ export const api = defineHttp({
 });
 ```
 
-A scheme **with** a scope vocabulary answers `{ identity, scopes }`, so the
-granted list is checked against the declared vocabulary here rather than
-compared as loose strings at the endpoint. A scheme **without** one answers the
+A scheme **with** a scope vocabulary answers `granted(identity, scopes)` — the
+helper is mandatory, not advisory, because it stamps a symbol the middleware
+tests for. A hand-built `{ identity, scopes }` does not type-check, and the
+reason it may not is worth knowing: the `Scope` type parameter is erased at run
+time, so deciding bare-from-scoped structurally would misread any identity that
+happens to carry a `scopes` claim of its own. The granted list is checked
+against the declared vocabulary here rather than compared as loose strings at
+the endpoint. A scheme **without** one answers the
 identity bare — which is exactly what a handler under a single unscoped scheme
 then reads.
 

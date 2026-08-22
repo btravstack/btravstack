@@ -36,9 +36,9 @@ import {
   CustomerPersistenceModule,
   OrderPersistenceModule,
 } from "@btravstack/example-order-infrastructure";
-import { HttpModule } from "@btravstack/http";
+import { HttpAuthenticator, HttpModule, Unauthenticated, granted } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
-import { OkAsync, P } from "unthrown";
+import { ErrAsync, OkAsync, P } from "unthrown";
 
 import { api } from "./auth.js";
 
@@ -239,4 +239,37 @@ const _DocsDepsApi = HttpModule("DocsDepsApi")({
   router: depsOrdersRouter,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
+});
+
+// ---------------------------------------------------------------------------
+// "Declare the schemes" — docs/how-to/protect-a-procedure.md, and "One file
+// per application" — docs/examples/order-api.md.
+//
+// The authenticator half of those pages was ungated until it drifted: both
+// showed a scoped scheme answering a hand-built `{ identity, scopes }`, which
+// does not type-check — and, cast past, is read as a BARE identity, so every
+// caller on a scoped route is refused forever. Pinned here so the next reader
+// of those pages is reading something that compiles.
+// ---------------------------------------------------------------------------
+
+const _docsUserAuth = HttpAuthenticator<
+  { readonly tenantId: TenantId; readonly userId: string },
+  "orders:export"
+>()({
+  sync: () => (headers) => {
+    const header = headers.authorization ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+    const [tenantId, userId, ...rest] = token.split(":");
+    const claimed = rest.join(":");
+    return tenantId === undefined || tenantId === "" || userId === undefined || userId === ""
+      ? ErrAsync(new Unauthenticated())
+      : OkAsync(
+          granted(
+            { tenantId: TenantId(tenantId), userId },
+            claimed
+              .split(",")
+              .filter((scope): scope is "orders:export" => scope === "orders:export"),
+          ),
+        );
+  },
 });
