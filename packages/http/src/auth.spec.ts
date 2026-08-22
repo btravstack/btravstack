@@ -168,6 +168,63 @@ describe("a leaf naming several requirements", () => {
     );
   });
 
+  it("admits a caller whose credential grants the scope the requirement names", async ({
+    headers,
+  }) => {
+    // GIVEN an endpoint requiring a scope this credential does grant
+    const middleware = principalMiddleware([{ user: ["orders:export"] }], {
+      user: () =>
+        OkAsync({ identity: { userId: "u-1" }, scopes: ["orders:read", "orders:export"] }),
+    });
+
+    // WHEN a request arrives
+    const injected = middleware({
+      context: { request: { headers } as never },
+      next: (o) => Promise.resolve(o.context.principal),
+    });
+
+    // THEN the identity is injected, bare — the leaf names one scheme, and the
+    // scopes are checked rather than handed to the handler
+    await expect(injected).resolves.toEqual({ userId: "u-1" });
+  });
+
+  it("refuses with FORBIDDEN when the scheme grants no scopes at all", async ({ headers }) => {
+    // GIVEN a requirement naming a scope against a scheme declared with no
+    // vocabulary, which answers the identity BARE
+    const middleware = principalMiddleware([{ user: ["orders:export"] }], {
+      user: () => OkAsync({ userId: "u-1" }),
+    });
+
+    // WHEN a request arrives
+    const refused = middleware({
+      context: { request: { headers } as never },
+      next: () => Promise.resolve(undefined),
+    }).catch((error: unknown) => error);
+
+    // THEN a credential reporting no scopes covers none of them — skipping the
+    // comparison for a bare answer admitted the caller outright
+    await expect(refused).resolves.toEqual(expect.objectContaining({ code: "FORBIDDEN" }));
+  });
+
+  it("tags the principal when ONE requirement names two schemes", async ({ headers }) => {
+    // GIVEN a single requirement naming two schemes — what `SchemesOf` unions,
+    // and so what the handler was typed against
+    const middleware = principalMiddleware([{ user: [], service: [] }], {
+      user: () => ErrAsync(new Unauthenticated()),
+      service: () => OkAsync({ appId: "a-1" }),
+    });
+
+    // WHEN a request arrives
+    const injected = middleware({
+      context: { request: { headers } as never },
+      next: (o) => Promise.resolve(o.context.principal),
+    });
+
+    // THEN it is tagged: counting requirements rather than schemes would inject
+    // bare here, and `principal.scheme` would read `undefined`
+    await expect(injected).resolves.toEqual({ scheme: "service", identity: { appId: "a-1" } });
+  });
+
   it("refuses with FORBIDDEN when the credential is valid but under-scoped", async ({
     headers,
   }) => {

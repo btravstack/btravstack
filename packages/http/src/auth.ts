@@ -137,10 +137,13 @@ export const principalMiddleware =
       readonly context: { readonly principal: unknown };
     }) => Promise<unknown>;
   }): Promise<unknown> => {
-    // Tagged only when the leaf names more than one scheme: the single-scheme
-    // form is what applications already write, and paying a wrapper for it
-    // would make the common case worse to serve the rare one.
-    const tagged = requirements.length > 1;
+    // Tagged when the leaf names more than one SCHEME, not more than one
+    // requirement. One requirement may name several schemes, and counting
+    // requirements disagreed with `SchemesOf`, which unions the scheme names
+    // across all of them: the handler typed `Tagged` while this injected bare,
+    // so `principal.scheme` read `undefined` with no type error to catch it.
+    const tagged =
+      new Set(requirements.flatMap((requirement) => Object.keys(requirement))).size > 1;
     let underScoped = false;
     for (const requirement of requirements) {
       for (const [scheme, required] of Object.entries(requirement)) {
@@ -165,7 +168,13 @@ export const principalMiddleware =
           typeof granted === "object" && granted !== null && "scopes" in granted
             ? (granted as { readonly identity: unknown; readonly scopes: readonly string[] })
             : undefined;
-        if (scoped !== undefined && !required.every((scope) => scoped.scopes.includes(scope))) {
+        // A requirement that names scopes is NOT satisfied by a credential
+        // reporting none. A scheme declared without a vocabulary answers bare,
+        // and skipping the comparison for it admitted the caller outright —
+        // the one place in this package where the failure direction matters.
+        // An empty `required` still passes trivially.
+        const scopesGranted = scoped?.scopes ?? [];
+        if (!required.every((scope) => scopesGranted.includes(scope))) {
           underScoped = true;
           continue;
         }
