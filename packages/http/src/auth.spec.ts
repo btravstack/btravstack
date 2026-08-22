@@ -1,7 +1,7 @@
 import { ErrAsync, OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
-import { Unauthenticated, principalMiddleware } from "./auth.js";
+import { Unauthenticated, granted, principalMiddleware } from "./auth.js";
 import { it } from "./test-fixtures.js";
 
 describe("an authenticated procedure", () => {
@@ -173,8 +173,7 @@ describe("a leaf naming several requirements", () => {
   }) => {
     // GIVEN an endpoint requiring a scope this credential does grant
     const middleware = principalMiddleware([{ user: ["orders:export"] }], {
-      user: () =>
-        OkAsync({ identity: { userId: "u-1" }, scopes: ["orders:read", "orders:export"] }),
+      user: () => OkAsync(granted({ userId: "u-1" }, ["orders:read", "orders:export"])),
     });
 
     // WHEN a request arrives
@@ -186,6 +185,28 @@ describe("a leaf naming several requirements", () => {
     // THEN the identity is injected, bare — the leaf names one scheme, and the
     // scopes are checked rather than handed to the handler
     await expect(injected).resolves.toEqual({ userId: "u-1" });
+  });
+
+  it("injects a bare identity carrying a `scopes` field whole", async ({ headers }) => {
+    // GIVEN a scheme declared with NO vocabulary whose identity happens to
+    // carry claims-shaped scopes — the ordinary JWT shape
+    const middleware = principalMiddleware([{ user: [] }], {
+      user: () => OkAsync({ userId: "u-1", tenantId: "t-1", scopes: ["a"] }),
+    });
+
+    // WHEN a request arrives
+    const injected = middleware({
+      context: { request: { headers } as never },
+      next: (o) => Promise.resolve(o.context.principal),
+    });
+
+    // THEN the whole identity reached the handler: reading the arm structurally
+    // took this for the scoped answer and injected its absent `identity`
+    await expect(injected).resolves.toEqual({
+      userId: "u-1",
+      tenantId: "t-1",
+      scopes: ["a"],
+    });
   });
 
   it("refuses with FORBIDDEN when the scheme grants no scopes at all", async ({ headers }) => {
@@ -230,7 +251,7 @@ describe("a leaf naming several requirements", () => {
   }) => {
     // GIVEN an endpoint requiring a scope the credential does not grant
     const middleware = principalMiddleware([{ user: ["orders:export"] }], {
-      user: () => OkAsync({ identity: { userId: "u-1" }, scopes: ["orders:read"] }),
+      user: () => OkAsync(granted({ userId: "u-1" }, ["orders:read"])),
     });
 
     // WHEN a request arrives

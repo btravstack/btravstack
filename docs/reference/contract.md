@@ -34,7 +34,7 @@ the server's view of a caller reaches a client.
 | --------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `authenticated`       | value | `<const R extends Requirements>(...requirements: R) => <T extends object>(node: T) => Authenticated<T, R>` — curried; marks a node with the requirements it names |
 | `isAuthenticated`     | value | `(node: object) => Requirements \| undefined` — what **this exact node** requires, or `undefined` when nobody marked it                                           |
-| `Requirement`         | type  | `Readonly<Record<string, readonly string[]>>` — one security scheme's name mapped to the scopes it must grant                                                     |
+| `Requirement`         | type  | `Readonly<Record<string, readonly string[]>>` — one security scheme's name mapped to the scopes it must grant; a second key is refused at the mark                |
 | `Requirements`        | type  | `readonly Requirement[]` — ORed, tried in declaration order                                                                                                       |
 | `Authenticated<T, R>` | type  | `T & { readonly [PrincipalKey]: R }` — `T`'s own keys plus one phantom key holding the exact requirements, for the type checker only                              |
 | `PrincipalKey`        | type  | `typeof PRINCIPAL`, the marker's key — exported so a consumer's mapped type can `Exclude<keyof C, PrincipalKey>` and land on the contract's own keys              |
@@ -81,10 +81,15 @@ Three rules, and they are OpenAPI's own:
 
 - **Requirements are ORed**, tried in the order given: the first one a caller
   satisfies wins.
-- **A requirement names one scheme.** AND-within-a-requirement is deliberately
+- **A requirement names one scheme**, and a second key is a **compile error**
+  rather than a documented caveat. AND-within-a-requirement is deliberately
   not modelled — requiring two credentials at once would put a record rather
-  than a single identity on the handler. A composite scheme models it where it
-  is genuinely needed.
+  than a single identity on the handler — and the discrepancy runs the wrong
+  way: OpenAPI reads `{ user: [], mtls: [] }` as AND while the starter walks
+  the entries and takes the first that satisfies, which is OR, so a
+  requirement copied out of an OpenAPI document would silently admit a caller
+  presenting either. A composite scheme models it where it is genuinely
+  needed.
 - **Nearest mark wins.** A marked record is a default; a marked procedure
   beneath it replaces that default for itself rather than adding to it.
 

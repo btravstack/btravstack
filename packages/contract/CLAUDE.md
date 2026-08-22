@@ -19,7 +19,7 @@ identity, transport-agnostic by construction.
 ## Public surface
 
 - **`authenticated(...requirements)(node)`** (`auth.ts`) — curried:
-  `<const R extends Requirements>(...requirements: R) => <T extends object>(node: T) =>
+  `<const R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> }>(...requirements: R) => <T extends object>(node: T) =>
 Authenticated<T, R>`. Call it with one or more `Requirement`s to get back a
   function that marks a node with them, in the order given. Apply it to a
   record of procedures (the **default** for every procedure beneath it) or to
@@ -27,10 +27,20 @@ Authenticated<T, R>`. Call it with one or more `Requirement`s to get back a
   mark wins).
 - **`Requirement`** — `Readonly<Record<string, readonly string[]>>`, e.g.
   `{ user: ["orders:export"] }`: one security scheme's name mapped to the
-  scopes it must grant. Names exactly one scheme deliberately —
+  scopes it must grant. It is the **carrier** — what a marked node holds and
+  `isAuthenticated` reads back — so it says nothing about arity; the
+  module-private `OneScheme<Q>` in `authenticated`'s own constraint is what
+  refuses a second key where one is written. Exactly one scheme deliberately:
   AND-within-a-requirement is not modelled, because that would put a record
   rather than a single identity on the handler, and a handler wants to know
-  which scheme authenticated the caller, not juggle several at once.
+  which scheme authenticated the caller, not juggle several at once. **The
+  constraint is not documentation, because the discrepancy silently WEAKENS
+  the rule**: OpenAPI reads `{ user: [], mtls: [] }` as AND, and
+  `@btravstack/http` walks the entries taking the first that satisfies, which
+  is OR — so a requirement copied out of an OpenAPI document would have
+  admitted a caller presenting either. `OneScheme` is
+  `SeveralKeys<keyof Q> extends false ? Q : never`, over the standard
+  distribute-then-compare-back union test; pinned by `auth.test-d.ts`.
 - **`Requirements`** — `readonly Requirement[]`. Several requirements on one
   mark are **ORed**, tried in declaration order: the first the caller
   satisfies wins.

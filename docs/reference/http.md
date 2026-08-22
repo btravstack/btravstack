@@ -28,7 +28,9 @@ description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpContro
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                               |
 | `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                    |
 | `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                    |
-| `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, `{ identity, scopes }` when it has one                                                                                                               |
+| `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                 |
+| `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                  |
+| `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                          |
 | `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                          |
 | `authenticatorPort`    | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                            |
 | `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                  |
@@ -384,9 +386,20 @@ it is the key the authenticator sits under in `defineHttp({ authenticators })`
 — written once.
 
 ```ts
+type Grant<P, Scope extends string> = {
+  readonly identity: P;
+  readonly scopes: readonly Scope[];
+  readonly [GRANT]: true; // a module-private symbol; `granted()` is what stamps it
+};
+
 type Granted<P, Scope extends string> = [Scope] extends [never]
   ? P
-  : { readonly identity: P; readonly scopes: readonly Scope[] };
+  : Grant<P, Scope>;
+
+const granted: <P, const Scope extends string = never>(
+  identity: P,
+  scopes: readonly Scope[],
+) => Grant<P, Scope>;
 
 type AuthenticatorService<P, Scope extends string = never> = (
   headers: IncomingHttpHeaders,
@@ -402,12 +415,18 @@ inferred from `sync` — inference through a returned function's `AsyncResult` i
 where a principal silently widens to `unknown`.
 
 A scheme with **no scope vocabulary** returns the identity bare. One **with**
-a vocabulary reports what the credential actually granted, checked against the
-declared vocabulary at the authenticator rather than compared as loose strings
-at the endpoint:
+a vocabulary reports what the credential actually granted through
+**`granted(identity, scopes)`**, checked against the declared vocabulary at the
+authenticator rather than compared as loose strings at the endpoint. The helper
+is **mandatory, not advisory**: the type parameter is erased at runtime, so the
+brand it stamps is the only sound way the starter can tell the scoped answer
+from an identity that merely happens to carry a `scopes` field — an ordinary
+JWT-claims shape, which a structural test read as the scoped answer and handed
+the handler `undefined`.
 
 ```ts
 import { TenantId } from "@btravstack/example-order-domain";
+import { granted } from "@btravstack/http";
 
 export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
   sync: () => (headers) => {
@@ -418,20 +437,22 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
     const [tenantId, userId, ...rest] = token.split(":");
     // Rejoined rather than taken as one field: a scope name contains the
     // delimiter itself, so `orders:export` cannot survive a plain third field.
-    const granted = rest.join(":");
+    const claimed = rest.join(":");
     return tenantId === undefined ||
       tenantId === "" ||
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({
-          identity: { tenantId: TenantId(tenantId), userId },
-          scopes: granted
-            .split(",")
-            .filter(
-              (scope): scope is "orders:export" => scope === "orders:export",
-            ),
-        });
+      : OkAsync(
+          granted(
+            { tenantId: TenantId(tenantId), userId },
+            claimed
+              .split(",")
+              .filter(
+                (scope): scope is "orders:export" => scope === "orders:export",
+              ),
+          ),
+        );
   },
 });
 

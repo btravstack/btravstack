@@ -11,8 +11,11 @@ to — in one call.
 of a boolean. `authenticated` is now **curried**:
 `authenticated(...requirements)(node)`, where a `Requirement` is
 `Readonly<Record<string, readonly string[]>>` — a scheme name mapped to the
-scopes it must grant. Several requirements are **ORed**, tried in declaration
-order. Applied to a record it is the default for every procedure beneath it;
+scopes it must grant, and **exactly one scheme**: a second key does not
+compile, because OpenAPI reads two keys in one requirement as AND while this
+starter walks them as OR, so a requirement copied out of an OpenAPI document
+would silently execute a weaker rule than the one it states. Several
+requirements are **ORed**, tried in declaration order. Applied to a record it is the default for every procedure beneath it;
 applied to a procedure it **replaces** that default for itself — nearest mark
 wins, which is OpenAPI's rule. `isAuthenticated(node)` answers
 `Requirements | undefined` rather than a boolean, `Authenticated<T, R>` and the
@@ -48,12 +51,18 @@ cannot compile.
 
 **Scopes are declared in the contract and enforced before dispatch.**
 `HttpAuthenticator<P, Scope>()` states a scheme's scope vocabulary, so a
-credential reports what it actually granted (`Granted<P, Scope>` is `P` bare
-when there is no vocabulary) and the starter compares it against what the
-endpoint declared: a valid credential lacking a required scope is **`403`**,
+credential reports what it actually granted through the new
+**`granted(identity, scopes)`** (`Granted<P, Scope>` is `P` bare when there is
+no vocabulary, and the branded `Grant<P, Scope>` when there is one) and the
+starter compares it against what the endpoint declared: a valid credential lacking a required scope is **`403`**,
 no valid credential at all is **`401`**, and neither carries a message. A
 `Defect` from an authenticator short-circuits rather than falling through to
-the next scheme — a broken verifier must not promote every caller.
+the next scheme — a broken verifier must not promote every caller. `granted()`
+is **mandatory rather than advisory**: the type parameter is erased at
+runtime, so the module-private symbol it stamps is the only sound way the
+starter can tell a scoped answer from an identity that merely carries a
+`scopes` field — the ordinary JWT-claims shape, which a structural test read
+as the scoped answer and handed the handler `undefined`.
 
 A router now declares **one di dependency per scheme its contract names**, on a
 port whose id carries the scheme name (`HttpAuthenticator:user`), so a missing

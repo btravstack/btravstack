@@ -231,7 +231,8 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C,
 - **`HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })` — or `({ sync })`, the
   common shape, since an authenticator reading only headers declares no
   dependencies — plus `authenticatorPort(scheme)`,
-  `Unauthenticated`, `Granted<P, Scope>`, `AuthenticatorService<P, Scope>`**
+  `Unauthenticated`, `granted(identity, scopes)`, `Grant<P, Scope>`,
+  `Granted<P, Scope>`, `AuthenticatorService<P, Scope>`**
   (`auth.ts`) — how one **security scheme** is implemented.
   `AuthenticatorService<P, Scope>` is
   `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` —
@@ -239,9 +240,21 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C,
   body, and the narrower argument is what keeps it testable without a socket.
   `Granted<P, Scope>` is `P` when `Scope` is `never` — a scheme with no scope
   vocabulary returns the identity bare, byte-for-byte what applications wrote
-  before — and `{ identity: P; scopes: readonly Scope[] }` when it has one, so
+  before — and `Grant<P, Scope>` when it has one, so
   the granted list is checked against the declared vocabulary at the
   authenticator rather than compared as loose strings at the endpoint.
+  **`Grant` is BRANDED with a module-private `unique symbol` and `granted()`
+  is the only thing that mints one**, which makes the helper mandatory rather
+  than advisory: a hand-built `{ identity, scopes }` does not type-check as the
+  scoped answer. The type parameter is erased at runtime, so a structural test
+  is the alternative and is unsound — `"scopes" in answer` reads a
+  claims-shaped BARE identity (`{ userId, tenantId, scopes }`, the ordinary JWT
+  case) as the scoped one, injects its absent `identity`, and hands every
+  handler on that route `undefined`. `Symbol.for` rather than `Symbol()`: two
+  copies of this package would otherwise read each other's grants as bare.
+  `Scope` is not inferred from the vocabulary on `granted` itself — an empty
+  grant would collapse it to `never` and take the return type back to the bare
+  arm — so the array states it and the assignment checks it.
   `authenticatorPort(scheme)` mints
   ``Port(`HttpAuthenticator:${scheme}`)<AuthenticatorService<unknown>>`` — the
   move `AmqpHandler(contract, key)` makes, with the scheme name on the port

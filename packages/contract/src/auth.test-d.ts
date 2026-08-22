@@ -1,5 +1,6 @@
 import { describe, test } from "vitest";
 
+import { authenticated } from "./auth.js";
 import type { Authenticated, IsMarked, PrincipalKey, RequirementsOf } from "./auth.js";
 
 type Fragment = { readonly place: { readonly kind: "procedure" } };
@@ -63,5 +64,23 @@ describe("Authenticated carries the contract's own keys plus the phantom one", (
     const none = null as unknown as RequirementsOf<Fragment>;
     const isNever: never = none;
     void isNever;
+  });
+});
+
+describe("a requirement names exactly one scheme", () => {
+  test("one scheme is marked, and so is a second requirement beside it", () => {
+    const node = { place: { kind: "procedure" } } as const;
+    const marked = authenticated({ user: ["orders:export"] }, { service: [] })(node);
+    const requirements: readonly [
+      { readonly user: readonly ["orders:export"] },
+      { readonly service: readonly [] },
+    ] = null as unknown as RequirementsOf<typeof marked>;
+    void requirements;
+  });
+
+  test("two schemes in ONE requirement are refused", () => {
+    const node = { place: { kind: "procedure" } } as const;
+    // @ts-expect-error — OpenAPI reads this as AND; `@btravstack/http` would run it as OR
+    void authenticated({ user: [], service: [] })(node);
   });
 });

@@ -1,5 +1,5 @@
-export { HttpAuthenticator, Unauthenticated, authenticatorPort } from "./auth.js";
-export type { Authenticator, AuthenticatorService, Granted } from "./auth.js";
+export { HttpAuthenticator, Unauthenticated, authenticatorPort, granted } from "./auth.js";
+export type { Authenticator, AuthenticatorService, Grant, Granted } from "./auth.js";
 export { defineHttp } from "./define-http.js";
 export type { Authenticators, Http, SchemesFrom } from "./define-http.js";
 export { HttpModule } from "./http-module.js";

@@ -10,7 +10,7 @@ import { oc } from "@orpc/contract";
 import { ErrAsync, OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
-import { HttpAuthenticator, Unauthenticated } from "./auth.js";
+import { HttpAuthenticator, Unauthenticated, granted } from "./auth.js";
 import { defineHttp } from "./define-http.js";
 import { HttpModule } from "./http-module.js";
 import type { HasMark, Implementation } from "./orpc.js";
@@ -222,9 +222,17 @@ const plain = HttpAuthenticator<{ readonly userId: string }>()({
   sync: () => () => OkAsync({ userId: "u-1" }),
 });
 
-// A scheme with a scope vocabulary reports what the credential granted.
+// A scheme with a scope vocabulary reports what the credential granted, through
+// `granted()` — which is the only thing that mints the brand the middleware
+// reads, so this is mandatory rather than advisory.
 const scoped = HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
-  sync: () => () => OkAsync({ identity: { userId: "u-1" }, scopes: ["orders:export"] }),
+  sync: () => () => OkAsync(granted({ userId: "u-1" }, ["orders:export"])),
+});
+
+// A grant of nothing is still a grant: the vocabulary types the array, so an
+// empty one does not collapse `Scope` back to the bare arm.
+HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  sync: () => () => OkAsync(granted({ userId: "u-1" }, [])),
 });
 
 // Negative: a scoped scheme may not return a bare identity.
@@ -233,10 +241,18 @@ HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
   sync: () => () => OkAsync({ userId: "u-1" }),
 });
 
+// Negative: nor a hand-built record. The brand is unforgeable from outside this
+// package, so `{ identity, scopes }` is not the scoped answer — which is what
+// stops a bare identity carrying `scopes` from being mistaken for one.
+HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  // @ts-expect-error -- the scoped answer comes from `granted()`
+  sync: () => () => OkAsync({ identity: { userId: "u-1" }, scopes: ["orders:export"] }),
+});
+
 // Negative: a scope outside the declared vocabulary is refused.
 HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
   // @ts-expect-error -- "orders:delete" is not in this scheme's vocabulary
-  sync: () => () => OkAsync({ identity: { userId: "u-1" }, scopes: ["orders:delete"] }),
+  sync: () => () => OkAsync(granted({ userId: "u-1" }, ["orders:delete"])),
 });
 
 expectTypeOf(plain.principal).toEqualTypeOf<{ readonly userId: string }>();

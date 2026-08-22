@@ -13,8 +13,26 @@ declare const PRINCIPAL: unique symbol;
  * A requirement names ONE scheme — this package does not model OpenAPI's
  * AND-within-a-requirement, which would put a record rather than an identity
  * on the handler. See the design spec.
+ *
+ * This type is the CARRIER — what a marked node holds and `isAuthenticated`
+ * reads back — so it says nothing about arity. `OneScheme` below is what
+ * refuses a second key where one is written.
  */
 export type Requirement = Readonly<Record<string, readonly string[]>>;
+
+// Distributes over the key union, then asks whether the whole union is
+// assignable back into the member being visited: `false` for one key, `true`
+// for several. The standard union test; do not "simplify" it to `K extends U`.
+type SeveralKeys<K, U = K> = K extends U ? ([U] extends [K] ? false : true) : never;
+
+/**
+ * A requirement naming two schemes is OpenAPI's AND — both credentials must be
+ * presented — and nothing here models it: `@btravstack/http` walks the entries
+ * and takes the first that satisfies, which is OR, so a two-key requirement
+ * copied out of an OpenAPI document would silently execute as a WEAKER rule
+ * than the one it states. Refused at the mark instead.
+ */
+type OneScheme<Q> = SeveralKeys<keyof Q> extends false ? Q : never;
 
 /** Requirements are ORed, in order: the first one a caller satisfies wins. */
 export type Requirements = readonly Requirement[];
@@ -61,7 +79,9 @@ const marked = (store[KEY] ??= new WeakMap<object, Requirements>());
  * inside one. See `packages/contract/CLAUDE.md`.
  */
 export const authenticated =
-  <const R extends Requirements>(...requirements: R) =>
+  <const R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> }>(
+    ...requirements: R
+  ) =>
   <T extends object>(node: T): Authenticated<T, R> => {
     marked.set(node, requirements);
     return node as Authenticated<T, R>;

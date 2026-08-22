@@ -189,6 +189,7 @@ import {
   HttpAuthenticator,
   Unauthenticated,
   defineHttp,
+  granted,
 } from "@btravstack/http";
 import { ErrAsync, OkAsync } from "unthrown";
 
@@ -214,15 +215,20 @@ const userAuth = HttpAuthenticator<Identity, "orders:export">()({
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({
-          identity: { tenantId, userId },
-          scopes: rest
-            .join(":")
-            .split(",")
-            .filter(
-              (scope): scope is "orders:export" => scope === "orders:export",
-            ),
-        });
+      : OkAsync(
+          // `granted()` is mandatory, not advisory: the brand it stamps is the
+          // only sound way the starter tells a scoped answer from an identity
+          // that merely carries a `scopes` field.
+          granted(
+            { tenantId, userId },
+            rest
+              .join(":")
+              .split(",")
+              .filter(
+                (scope): scope is "orders:export" => scope === "orders:export",
+              ),
+          ),
+        );
   },
 });
 

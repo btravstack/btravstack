@@ -13,15 +13,49 @@ import { TaggedError, type AsyncResult } from "unthrown";
  */
 export class Unauthenticated extends TaggedError("Unauthenticated") {}
 
+// Module-private, so the mark cannot be applied by accident: `Grant` is the
+// only shape carrying it and `granted` the only thing that mints one. The type
+// parameter is erased at runtime, so structure is all the middleware has to go
+// on — and `{ userId, tenantId, scopes }` is an ordinary JWT-claims identity, a
+// BARE answer that a `"scopes" in granted` test read as the scoped one and
+// destroyed. `Symbol.for` rather than `Symbol()`: two copies of this package
+// would otherwise read each other's grants as bare.
+const GRANT: unique symbol = Symbol.for("@btravstack/http/grant") as never;
+
+/**
+ * The scoped answer, and the reason `granted()` is mandatory rather than
+ * advisory: the brand is what tells it from an identity that merely happens to
+ * carry a `scopes` field.
+ */
+export type Grant<P, Scope extends string> = {
+  readonly identity: P;
+  readonly scopes: readonly Scope[];
+  readonly [GRANT]: true;
+};
+
 /**
  * What an authenticator hands back. A scheme with no scope vocabulary returns
  * the identity bare — byte-for-byte what applications write today — and one
  * with a vocabulary reports what the credential actually granted, so the
  * starter can compare it against what the endpoint declared.
  */
-export type Granted<P, Scope extends string> = [Scope] extends [never]
-  ? P
-  : { readonly identity: P; readonly scopes: readonly Scope[] };
+export type Granted<P, Scope extends string> = [Scope] extends [never] ? P : Grant<P, Scope>;
+
+/**
+ * What a scoped scheme answers with:
+ *
+ * ```ts
+ * OkAsync(granted({ userId }, ["orders:export"]));
+ * ```
+ *
+ * `Scope` is not inferred from the vocabulary — an empty grant would collapse
+ * it to `never` and take the return type back to the bare arm — so the array is
+ * what states it, checked against the vocabulary by the assignment.
+ */
+export const granted = <P, const Scope extends string = never>(
+  identity: P,
+  scopes: readonly Scope[],
+): Grant<P, Scope> => ({ identity, scopes, [GRANT]: true });
 
 /**
  * Headers, not the request: an authenticator has no business reading a body,
@@ -160,13 +194,14 @@ export const principalMiddleware =
           throw resolved.cause;
         }
         if (resolved.isErr()) continue;
-        // `Granted` is erased to `unknown` on the port, because a scheme with a
-        // vocabulary answers `{ identity, scopes }` and one without answers the
-        // identity bare — so which it is has to be read back structurally.
-        const granted = resolved.value;
+        // `Granted` is erased to `unknown` on the port, so which arm answered
+        // has to be read back at runtime. The BRAND is what says so — a
+        // structural `"scopes" in answer` test misreads a claims-shaped bare
+        // identity as the scoped answer and hands the handler `undefined`.
+        const answer = resolved.value;
         const scoped =
-          typeof granted === "object" && granted !== null && "scopes" in granted
-            ? (granted as { readonly identity: unknown; readonly scopes: readonly string[] })
+          typeof answer === "object" && answer !== null && GRANT in answer
+            ? (answer as Grant<unknown, string>)
             : undefined;
         // A requirement that names scopes is NOT satisfied by a credential
         // reporting none. A scheme declared without a vocabulary answers bare,
@@ -178,7 +213,7 @@ export const principalMiddleware =
           underScoped = true;
           continue;
         }
-        const identity = scoped === undefined ? granted : scoped.identity;
+        const identity = scoped === undefined ? answer : scoped.identity;
         return await options.next({
           context: { principal: tagged ? { scheme, identity } : identity },
         });

@@ -86,10 +86,13 @@ Four rules, and they are OpenAPI's own:
   adds a scope the credential has to carry.
 - **Requirements are ORed**, tried in the order given: the first one a caller
   satisfies wins. `authenticated({ user: [...] }, { service: [] })` means either.
-- **A requirement names one scheme.** AND-within-a-requirement is deliberately
-  not modelled — requiring two credentials at once would put a record rather
-  than a single identity on the handler. Where two really are needed, a
-  composite scheme models it.
+- **A requirement names one scheme**, and `authenticated({ user: [], mtls: [] })`
+  does not compile. AND-within-a-requirement is deliberately not modelled —
+  requiring two credentials at once would put a record rather than a single
+  identity on the handler — and it is refused rather than documented because
+  the discrepancy weakens the rule: OpenAPI reads two keys as AND, this
+  starter would run them as OR. Where two really are needed, a composite
+  scheme models it.
 - **Nearest mark wins.** A marked record is the default for every procedure
   beneath it; a marked procedure **replaces** that default for itself rather
   than adding to it.

@@ -1,5 +1,5 @@
 import { TenantId } from "@btravstack/example-order-domain";
-import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http";
+import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http";
 import { ErrAsync, OkAsync } from "unthrown";
 
 /**
@@ -39,15 +39,17 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
     const [tenantId, userId, ...rest] = token.split(":");
     // Rejoined rather than taken as one field: a scope name contains the
     // delimiter itself, so `orders:export` cannot survive a plain third field.
-    const granted = rest.join(":");
+    const claimed = rest.join(":");
     return tenantId === undefined || tenantId === "" || userId === undefined || userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({
-          identity: { tenantId: TenantId(tenantId), userId },
-          scopes: granted
-            .split(",")
-            .filter((scope): scope is "orders:export" => scope === "orders:export"),
-        });
+      : OkAsync(
+          granted(
+            { tenantId: TenantId(tenantId), userId },
+            claimed
+              .split(",")
+              .filter((scope): scope is "orders:export" => scope === "orders:export"),
+          ),
+        );
   },
 });
 
