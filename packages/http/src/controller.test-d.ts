@@ -2,12 +2,13 @@
 // `@ts-expect-error` is an assertion: if one stops erroring, the gate is gone.
 import { authenticated } from "@btravstack/contract";
 import { Provider } from "@btravstack/di";
-import { oc } from "@orpc/contract";
+import { oc, type as ocType } from "@orpc/contract";
 import { OkAsync } from "unthrown";
+import { expectTypeOf } from "vitest";
 
 import { HttpController } from "./controller.js";
 import { httpAuth } from "./http-auth.js";
-import { HttpRouter } from "./orpc.js";
+import { HttpRouter, type Implementation } from "./orpc.js";
 
 const contract = { orders: { place: oc }, users: { find: oc } };
 
@@ -140,3 +141,31 @@ void IdentityRouter(markedContract.orders)(
 void IdentityRouter(markedContract)({ orders: markedOrders, users: markedUsers });
 // @ts-expect-error — `markedOrders` needs a principal the unmarked contract declares nowhere
 void IdentityRouter(contract)({ orders: markedOrders, users: markedUsers });
+
+// The inheritance half: a record's requirements are the default for every
+// procedure beneath it, and a procedure's own REPLACE that default rather than
+// adding to it. `Schemes` is the registry `defineHttp` infers; here it is
+// written out so `Implementation` can be probed on its own.
+type TwoSchemes = {
+  readonly user: { readonly userId: string };
+  readonly service: { readonly appId: string };
+};
+
+const grouped = authenticated({ user: [] })({
+  place: oc.input(ocType<{ readonly id: string }>()).output(ocType<{ readonly id: string }>()),
+  export: authenticated(
+    { user: [] },
+    { service: [] },
+  )(oc.output(ocType<{ readonly csv: string }>())),
+});
+
+// A procedure under a marked record inherits that record's requirement.
+type PlaceContext = Parameters<Implementation<typeof grouped, TwoSchemes>["place"]>[0]["context"];
+expectTypeOf<PlaceContext["principal"]>().toEqualTypeOf<{ readonly userId: string }>();
+
+// A procedure with its own mark replaces the default rather than adding to it.
+type ExportContext = Parameters<Implementation<typeof grouped, TwoSchemes>["export"]>[0]["context"];
+expectTypeOf<ExportContext["principal"]>().toEqualTypeOf<
+  | { readonly scheme: "user"; readonly identity: { readonly userId: string } }
+  | { readonly scheme: "service"; readonly identity: { readonly appId: string } }
+>();

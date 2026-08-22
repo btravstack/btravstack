@@ -3,6 +3,8 @@ import {
   type Authenticated,
   type IsMarked,
   type PrincipalKey,
+  type Requirements,
+  type RequirementsOf,
 } from "@btravstack/contract";
 import {
   Port,
@@ -29,6 +31,7 @@ import {
   type AuthenticatorService,
 } from "./auth.js";
 import { HttpHandler } from "./handler.js";
+import type { Principal, SchemesOf } from "./principal.js";
 
 export type OrpcOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
@@ -125,17 +128,17 @@ export const orpc = (options: OrpcOptions = {}) => {
  * contract must be covered — a missing or extra key is a compile error.
  */
 /** What every `HttpRouter` arm returns; only the needs channel `N` differs. */
-type Built<Identity, N> = Provider<
+type Built<Schemes, N> = Provider<
   PortInstance<"HttpRouter", Router<Record<never, never>>>,
   never,
   N
 > & {
   readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-  readonly identity: Identity;
+  readonly identity: Schemes;
 };
 
 export const routerFor =
-  <Identity>() =>
+  <Schemes>() =>
   <C extends Record<string, RouterContract>>(contract: C) => {
     // The implementer is walked untyped: `Implementation<C>` above is the
     // whole check — a key the contract does not declare is a compile error
@@ -151,20 +154,20 @@ export const routerFor =
       options: {
         readonly sync: (services: {
           readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-        }) => Implementation<C, Identity>;
+        }) => Implementation<C, Schemes>;
       },
     ): Built<
-      Identity,
+      Schemes,
       InstanceType<D[keyof D]> | (HasMark<C> extends true ? AuthenticatorPort : never)
     >;
     function build(options: {
-      readonly sync: () => Implementation<C, Identity>;
-    }): Built<Identity, HasMark<C> extends true ? AuthenticatorPort : never>;
+      readonly sync: () => Implementation<C, Schemes>;
+    }): Built<Schemes, HasMark<C> extends true ? AuthenticatorPort : never>;
     function build<
       M extends {
         readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<
-          Inherit<C[K], IsMarked<C>>,
-          Identity
+          Inherit<C[K], RequirementsOf<C>>,
+          Schemes
         >;
       },
     >(
@@ -174,7 +177,7 @@ export const routerFor =
         ]: `UNDECLARED KEY — the contract declares no fragment under ${K & string}`;
       },
     ): Built<
-      Identity,
+      Schemes,
       InstanceType<M[keyof M]["port"]> | (HasMark<C> extends true ? AuthenticatorPort : never)
     >;
     function build(depsOrControllers: unknown, options?: unknown): unknown {
@@ -263,8 +266,8 @@ export const HttpRouter: ReturnType<typeof routerFor<never>> = routerFor<never>(
 const AUTHENTICATOR = "@btravstack/http/authenticator";
 
 /** A controller for one fragment — what `HttpController` returns, as the keyed form consumes it. */
-type ControllerFor<Fragment extends RouterContract, Identity = never> = {
-  readonly port: PortClassOf<string, Implementation<Fragment, Identity>>;
+type ControllerFor<Fragment extends RouterContract, Schemes = never> = {
+  readonly port: PortClassOf<string, Implementation<Fragment, Schemes>>;
 };
 
 /**
@@ -274,12 +277,16 @@ type ControllerFor<Fragment extends RouterContract, Identity = never> = {
  * the input is the contract's parsed input, the output its declared output
  * and the `errors` helpers its declared error map.
  */
-export type Implementation<C extends RouterContract, Identity = never> =
+export type Implementation<
+  C extends RouterContract,
+  Schemes = never,
+  R extends Requirements = never,
+> =
   C extends ProcedureContract<infer I, infer O, infer E>
     ? Parameters<
         ProcedureImplementer<
           DefaultInitialContext & object,
-          ContextOf<C, Identity>,
+          ContextOf<C, R, Schemes>,
           I,
           O,
           E
@@ -287,32 +294,44 @@ export type Implementation<C extends RouterContract, Identity = never> =
       >[0]
     : {
         readonly [K in Exclude<keyof C, PrincipalKey>]: C[K] extends RouterContract
-          ? Implementation<Inherit<C[K], IsMarked<C>>, Identity>
+          ? Implementation<C[K], Schemes, Effective<C, R>>
           : never;
       };
 
 /**
- * What a leaf's handler gets on `opts.context`: the principal when the leaf is
- * marked, and `object` — today's spelling, unchanged — when it is not. It rides
- * oRPC's own context channel, injected into `ProcedureImplementer`'s second
- * type parameter, so this package adds no second handler parameter and wraps no
- * `.result()` handler.
- *
- * The contract says only **whether** a leaf is protected; `Identity` — from
- * `httpAuth<Identity>()` — says **what** the principal is. The top-level
- * `HttpRouter` / `HttpController` pass `never`, so a marked leaf reached
- * without the factory types `principal: never` and any read of it is a compile
- * error: the "use the factory" signal, rather than a principal invented from a
- * type the contract no longer carries.
+ * The requirements actually in force at a node: its own, or the inherited ones.
+ * Nearest mark wins, which is OpenAPI's own rule.
  */
-type ContextOf<C, Identity> = IsMarked<C> extends true ? { readonly principal: Identity } : object;
+type Effective<C, R extends Requirements> = IsMarked<C> extends true ? RequirementsOf<C> : R;
 
 /**
- * Pushes a record's marker onto each of its children, so a marked fragment
- * protects every procedure beneath it. The runtime walk in `routerOf` carries
- * the same fact as an argument; these two must agree.
+ * What a leaf's handler gets on `opts.context`: the principal its effective
+ * requirements name, and `object` — today's spelling, unchanged — when it has
+ * none. It rides oRPC's own context channel, injected into
+ * `ProcedureImplementer`'s second type parameter, so this package adds no
+ * second handler parameter and wraps no `.result()` handler.
+ *
+ * The contract says **which schemes** protect a leaf; `Schemes` — the registry
+ * `defineHttp` infers from its authenticators — says what each one resolves to.
+ * A leaf reached without the factory sees `Schemes = never`, so `principal` is
+ * `never` and any read of it is a compile error — the "use the factory" signal,
+ * rather than a principal invented from a contract that names none.
  */
-type Inherit<T, Marked extends boolean> = Marked extends true ? Authenticated<T> : T;
+type ContextOf<C, R extends Requirements, Schemes> = [Effective<C, R>] extends [never]
+  ? object
+  : { readonly principal: Principal<SchemesOf<Effective<C, R>>, Schemes> };
+
+/**
+ * Pushes a record's requirements onto a child that carries none, so a marked
+ * fragment protects every procedure beneath it. Nearest mark wins: a node with
+ * its own requirements is left alone. This is the type side of `routerOf`'s
+ * `inherited` argument; the two must agree.
+ */
+type Inherit<T, R extends Requirements> = [R] extends [never]
+  ? T
+  : IsMarked<T> extends true
+    ? T
+    : Authenticated<T, R>;
 
 /**
  * Whether the contract marks anything, anywhere — a yes/no, not a type, since
