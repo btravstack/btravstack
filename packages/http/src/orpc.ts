@@ -25,12 +25,7 @@ import {
 import { RPCHandler, type NodeHttpHandlerPlugin } from "@orpc/server/node";
 import "@unthrown/orpc/extensions/result";
 
-import {
-  AuthenticatorPort,
-  noAuthenticator,
-  principalMiddleware,
-  type AuthenticatorService,
-} from "./auth.js";
+import { authenticatorPort, principalMiddleware, type AuthenticatorService } from "./auth.js";
 import { HttpHandler } from "./handler.js";
 import type { Principal, SchemesOf } from "./principal.js";
 
@@ -182,17 +177,21 @@ export const routerFor =
       },
     ): Built<Auth, InstanceType<M[keyof M]["port"]> | SchemePortsOf<C>>;
     function build(depsOrControllers: unknown, options?: unknown): unknown {
-      const guarded = hasMarked(contract);
-      // The authenticator rides a NAMESPACED key on the deps record, for the
+      const schemes = schemesOf(contract);
+      // Each scheme's port rides a NAMESPACED key on the deps record, for the
       // same reason `tapped`'s port id is namespaced: the other keys are the
-      // caller's own names, and this one must not be able to collide with a
-      // dependency somebody called `authenticator`.
-      const own = (services: Record<string, unknown>): Record<string, unknown> => {
-        const { [AUTHENTICATOR]: _authenticator, ...rest } = services;
-        return rest;
-      };
-      const withAuthenticator = (deps: Record<string, AnyPort>): Record<string, AnyPort> =>
-        guarded ? { ...deps, [AUTHENTICATOR]: AuthenticatorPort } : deps;
+      // caller's own names, and these must not be able to collide with a
+      // dependency somebody called `user`.
+      const own = (services: Record<string, unknown>): Record<string, unknown> =>
+        Object.fromEntries(
+          Object.entries(services).filter(([key]) => !key.startsWith(AUTHENTICATOR)),
+        );
+      const withSchemes = (deps: Record<string, AnyPort>): Record<string, AnyPort> => ({
+        ...deps,
+        ...Object.fromEntries(
+          schemes.map((scheme) => [`${AUTHENTICATOR}${scheme}`, authenticatorPort(scheme)]),
+        ),
+      });
       const routerFrom = (
         implementation: Record<string, unknown>,
         services: Record<string, unknown>,
@@ -203,7 +202,12 @@ export const routerFor =
             implementation,
             contract,
             isAuthenticated(contract),
-            guarded ? (services[AUTHENTICATOR] as AuthenticatorService<unknown>) : undefined,
+            Object.fromEntries(
+              schemes.map((scheme) => [
+                scheme,
+                services[`${AUTHENTICATOR}${scheme}`] as AuthenticatorService<unknown, string>,
+              ]),
+            ),
           ),
         );
 
@@ -233,7 +237,9 @@ export const routerFor =
           const built = armOnly === undefined ? call(own(services)) : call();
           return routerFrom(built as Record<string, unknown>, services);
         };
-        return Provider(HttpRouterPort)(withAuthenticator(deps), { sync } as never);
+        return Object.assign(Provider(HttpRouterPort)(withSchemes(deps), { sync } as never), {
+          authenticators,
+        });
       }
 
       // The controllers record is keyed by contract key, and so is the services
@@ -242,13 +248,16 @@ export const routerFor =
       const controllers = depsOrControllers as Record<string, { readonly port: AnyPort }>;
       const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
         routerFrom(own(services), services);
-      return Provider(HttpRouterPort)(
-        withAuthenticator(
-          Object.fromEntries(
-            Object.entries(controllers).map(([key, controller]) => [key, controller.port]),
+      return Object.assign(
+        Provider(HttpRouterPort)(
+          withSchemes(
+            Object.fromEntries(
+              Object.entries(controllers).map(([key, controller]) => [key, controller.port]),
+            ),
           ),
+          { sync } as never,
         ),
-        { sync } as never,
+        { authenticators },
       );
     }
 
@@ -256,7 +265,8 @@ export const routerFor =
   };
 
 // Namespaced so it cannot collide with a key the caller wrote; see `build`.
-const AUTHENTICATOR = "@btravstack/http/authenticator";
+// The trailing colon is part of the prefix: the scheme name follows it.
+const AUTHENTICATOR = "@btravstack/http/authenticator:";
 
 /** A controller for one fragment — what `HttpController` returns, as the keyed form consumes it. */
 type ControllerFor<Fragment extends RouterContract, Schemes = never> = {
@@ -373,38 +383,46 @@ export type HasMark<C> =
         : false;
 
 /**
- * Whether the contract marks anything, anywhere. Walked once, at composition,
- * because it is what makes the authenticator dependency conditional: a router
- * with no marked leaf declares no such need, so an application with no
- * protected route provides nothing. The type side of the same condition is
- * `HasMark<C>` on both `build` overloads; these two must agree.
+ * Every scheme the contract names, anywhere. Walked once, at composition,
+ * because it is what the router's dependencies are: one port per scheme, so an
+ * application with no protected route declares nothing. The type side is
+ * `SchemePortsOf<C>` above; these two must agree.
  */
-const hasMarked = (node: unknown, seen: WeakSet<object> = new WeakSet()): boolean => {
-  if (typeof node !== "object" || node === null || seen.has(node)) return false;
-  // Every object, not only a plain record: `routerOf` reaches a mark through
-  // whatever `contract[key]` holds, so anything this walk declines to enter is
-  // a mark it can miss and the walk cannot — and missing one is the unsafe
-  // direction. `seen` is what makes entering everything terminate, since a
-  // schema is free to be recursive.
-  seen.add(node);
-  if (isAuthenticated(node)) return true;
-  return Object.values(node as Record<string, unknown>).some((child) => hasMarked(child, seen));
+const schemesOf = (contract: unknown): readonly string[] => {
+  const found = new Set<string>();
+  const walk = (node: unknown, seen: WeakSet<object>): void => {
+    if (typeof node !== "object" || node === null || seen.has(node)) return;
+    // Every object, not only a plain record: `routerOf` reaches a mark through
+    // whatever `contract[key]` holds, so anything this walk declines to enter is
+    // a mark it can miss and the walk cannot — and missing one is the unsafe
+    // direction. `seen` is what makes entering everything terminate, since a
+    // schema is free to be recursive.
+    seen.add(node);
+    for (const requirement of isAuthenticated(node) ?? [])
+      for (const scheme of Object.keys(requirement)) found.add(scheme);
+    // No early return on a mark: a procedure inside a marked record may name a
+    // scheme of its own, and that scheme still needs a port.
+    for (const child of Object.values(node as Record<string, unknown>)) walk(child, seen);
+  };
+  walk(contract, new WeakSet());
+  return [...found];
 };
 
 // Walks the implementation record next to the implementer and the contract: a
 // function is a procedure and becomes `implementer.result(fn)`, anything else
 // is a nested router. The types above are the whole check; the walk trusts
 // them, and drops a key the implementer has no node for rather than defecting
-// on it. `inherited` carries a marked record's mark down to its procedures —
-// `isAuthenticated` answers for one node only — the same way `Inherit<T, P>`
-// carries it in the types. `.use` must come BEFORE `.result`: `.result`
-// returns an `ImplementedProcedure`, whose own `.use` has no `.result` left.
+// on it. `inherited` carries a marked record's requirements down to its
+// procedures — `isAuthenticated` answers for one node only — the same way
+// `Inherit<T, R>` carries them in the types. `.use` must come BEFORE `.result`:
+// `.result` returns an `ImplementedProcedure`, whose own `.use` has no
+// `.result` left.
 const routerOf = (
   implementer: Record<string, unknown>,
   implementation: Record<string, unknown>,
   contract: Record<string, unknown>,
-  inherited: boolean,
-  authenticate: AuthenticatorService<unknown> | undefined,
+  inherited: Requirements | undefined,
+  authenticators: Readonly<Record<string, AuthenticatorService<unknown, string>>>,
 ): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(implementation).flatMap(([key, value]) => {
@@ -418,14 +436,14 @@ const routerOf = (
         | undefined;
       if (node === undefined) return [];
       const child = contract[key];
-      const marked =
-        inherited || (typeof child === "object" && child !== null && isAuthenticated(child));
+      // Nearest mark wins: this node's own requirements, or the enclosing
+      // record's when it declares none.
+      const declared =
+        typeof child === "object" && child !== null ? isAuthenticated(child) : undefined;
+      const effective = declared ?? inherited;
       if (typeof value === "function") {
-        // Fail closed: a mark with no authenticator behind it refuses every
-        // caller rather than serving the leaf unprotected.
-        const target = marked
-          ? node.use(principalMiddleware(authenticate ?? noAuthenticator))
-          : node;
+        const target =
+          effective === undefined ? node : node.use(principalMiddleware(effective, authenticators));
         return [[key, target.result(value)]];
       }
       return [
@@ -435,8 +453,8 @@ const routerOf = (
             node,
             value as Record<string, unknown>,
             (child ?? {}) as Record<string, unknown>,
-            marked,
-            authenticate,
+            effective,
+            authenticators,
           ),
         ],
       ];

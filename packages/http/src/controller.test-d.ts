@@ -1,24 +1,31 @@
-// The five compile gates the keyed router form exists to provide. Each
-// `@ts-expect-error` is an assertion: if one stops erroring, the gate is gone.
+// The five compile gates the keyed router form exists to provide, the
+// inheritance rule the contract's requirements follow, and the scheme ports a
+// router declares from them. Each `@ts-expect-error` is an assertion: if one
+// stops erroring, the gate is gone.
 import { authenticated } from "@btravstack/contract";
-import { Provider } from "@btravstack/di";
+import type { PortInstance, Provider } from "@btravstack/di";
 import { oc, type as ocType } from "@orpc/contract";
 import { OkAsync } from "unthrown";
 import { expectTypeOf } from "vitest";
 
-import { HttpController } from "./controller.js";
-import { httpAuth } from "./http-auth.js";
-import { HttpRouter, type Implementation } from "./orpc.js";
+import { HttpAuthenticator, type AuthenticatorService } from "./auth.js";
+import { defineHttp } from "./define-http.js";
+import type { Implementation } from "./orpc.js";
+
+type Expect<T extends true> = T;
+
+/** A public API: no authenticators, so nothing types a principal anywhere. */
+const publicApi = defineHttp();
 
 const contract = { orders: { place: oc }, users: { find: oc } };
 
-const orders = HttpController(
+const orders = publicApi.HttpController(
   "GateOrders",
   contract.orders,
 )({
   sync: () => ({ place: () => OkAsync("placed") }),
 });
-const users = HttpController(
+const users = publicApi.HttpController(
   "GateUsers",
   contract.users,
 )({
@@ -27,18 +34,18 @@ const users = HttpController(
 
 // 1. Every contract key must be covered.
 // @ts-expect-error — `users` is missing from the record
-void HttpRouter(contract)({ orders });
+void publicApi.HttpRouter(contract)({ orders });
 
 // 2. A key the contract does not declare is rejected.
 // @ts-expect-error — `billing` is not in the contract
-void HttpRouter(contract)({ orders, users, billing: orders });
+void publicApi.HttpRouter(contract)({ orders, users, billing: orders });
 
 // 3. A controller wired under the wrong key is rejected.
 // @ts-expect-error — `users`'s fragment is not `orders`'s
-void HttpRouter(contract)({ orders: users, users: orders });
+void publicApi.HttpRouter(contract)({ orders: users, users: orders });
 
 // 4. A procedure the fragment does not declare is rejected inside the controller.
-void HttpController(
+void publicApi.HttpController(
   "GateTypo",
   contract.orders,
 )({
@@ -52,7 +59,7 @@ void HttpController(
 //    that controller built. Strictly stronger than re-implementing the fragment
 //    with a fresh `sync`, which would prove nothing about the controller. The
 //    spec marks this "do not break"; this is what would catch breaking it.
-void HttpRouter(contract.orders)(
+void publicApi.HttpRouter(contract.orders)(
   { implementation: orders.port },
   { sync: ({ implementation }) => implementation },
 );
@@ -62,8 +69,8 @@ void HttpRouter(contract.orders)(
 // helper in the family with three forms and two arguments' worth of arity, so
 // these two one-argument calls are told apart by whether `sync` holds a
 // function (orpc.ts). Break that and one of these two lines stops compiling.
-const composed = HttpRouter(contract)({ orders, users });
-void HttpRouter(contract)({
+const composed = publicApi.HttpRouter(contract)({ orders, users });
+void publicApi.HttpRouter(contract)({
   sync: () => ({
     orders: { place: () => OkAsync("placed") },
     users: { find: () => OkAsync("f") },
@@ -75,27 +82,36 @@ void HttpRouter(contract)({
 // pollutes the inferred `M`, this collapses to `never` and di stops ordering
 // the controllers before the router, silently.
 type NeedsOf<T> = T extends Provider<infer _P, infer _E, infer N> ? N : never;
-type Expect<T extends true> = T;
 type _ComposedNeedsAreDeclared = Expect<[NeedsOf<typeof composed>] extends [never] ? false : true>;
 
 // All five again, against a contract whose `orders` fragment is MARKED. The
 // marker is a phantom key on the fragment, so every gate above has to survive
 // it — the fifth especially: a marked slice must still lift out of the composed
 // router with its controller unchanged. The contract names no principal, so the
-// controllers here come from `httpAuth<Identity>()`, which is what types one.
-const markedContract = { orders: authenticated(contract.orders), users: contract.users };
+// controllers here come from `defineHttp`, which is what types one.
+const api = defineHttp({
+  authenticators: {
+    user: HttpAuthenticator<{ readonly userId: string }>()({
+      sync: () => () => OkAsync({ userId: "u-1" }),
+    }),
+    service: HttpAuthenticator<{ readonly appId: string }>()({
+      sync: () => () => OkAsync({ appId: "a-1" }),
+    }),
+  },
+});
 
-const { HttpController: IdentityController, HttpRouter: IdentityRouter } = httpAuth<{
-  readonly userId: string;
-}>();
+const markedContract = {
+  orders: authenticated({ user: [] })(contract.orders),
+  users: contract.users,
+};
 
-const markedOrders = IdentityController(
+const markedOrders = api.HttpController(
   "GateMarkedOrders",
   markedContract.orders,
 )({
   sync: () => ({ place: (opts) => OkAsync(opts.context.principal.userId) }),
 });
-const markedUsers = IdentityController(
+const markedUsers = api.HttpController(
   "GateMarkedUsers",
   markedContract.users,
 )({
@@ -104,10 +120,10 @@ const markedUsers = IdentityController(
 
 // 1. Every contract key must be covered.
 // @ts-expect-error — `users` is missing from the record
-void IdentityRouter(markedContract)({ orders: markedOrders });
+void api.HttpRouter(markedContract)({ orders: markedOrders });
 
 // 2. A key the contract does not declare is rejected.
-void IdentityRouter(markedContract)({
+void api.HttpRouter(markedContract)({
   orders: markedOrders,
   users: markedUsers,
   // @ts-expect-error — `billing` is not in the contract
@@ -116,10 +132,10 @@ void IdentityRouter(markedContract)({
 
 // 3. A controller wired under the wrong key is rejected.
 // @ts-expect-error — `users`'s fragment is not the marked `orders`'s
-void IdentityRouter(markedContract)({ orders: markedUsers, users: markedOrders });
+void api.HttpRouter(markedContract)({ orders: markedUsers, users: markedOrders });
 
 // 4. A procedure the fragment does not declare is rejected inside the controller.
-void IdentityController(
+void api.HttpController(
   "GateMarkedTypo",
   markedContract.orders,
 )({
@@ -128,7 +144,7 @@ void IdentityController(
 });
 
 // 5. The do-not-break lift, for a marked fragment.
-void IdentityRouter(markedContract.orders)(
+void api.HttpRouter(markedContract.orders)(
   { implementation: markedOrders.port },
   { sync: ({ implementation }) => implementation },
 );
@@ -138,14 +154,16 @@ void IdentityRouter(markedContract.orders)(
 // under an unmarked contract key, where nothing would inject one. (The reverse
 // — an unmarked controller under a marked key — is accepted, and correctly so:
 // a handler that ignores `opts.context.principal` is contravariantly fine.)
-void IdentityRouter(markedContract)({ orders: markedOrders, users: markedUsers });
+const markedComposed = api.HttpRouter(markedContract)({
+  orders: markedOrders,
+  users: markedUsers,
+});
 // @ts-expect-error — `markedOrders` needs a principal the unmarked contract declares nowhere
-void IdentityRouter(contract)({ orders: markedOrders, users: markedUsers });
+void api.HttpRouter(contract)({ orders: markedOrders, users: markedUsers });
 
 // The inheritance half: a record's requirements are the default for every
 // procedure beneath it, and a procedure's own REPLACE that default rather than
-// adding to it. `Schemes` is the registry `defineHttp` infers; here it is
-// written out so `Implementation` can be probed on its own.
+// adding to it.
 type TwoSchemes = {
   readonly user: { readonly userId: string };
   readonly service: { readonly appId: string };
@@ -169,3 +187,41 @@ expectTypeOf<ExportContext["principal"]>().toEqualTypeOf<
   | { readonly scheme: "user"; readonly identity: { readonly userId: string } }
   | { readonly scheme: "service"; readonly identity: { readonly appId: string } }
 >();
+
+// The router depends on one port per scheme the contract names — so a missing
+// authenticator is di's own unmet-need error naming the port, not a gate this
+// package writes.
+const twoSchemeRouter = api.HttpRouter(grouped)({
+  sync: () => ({ place: () => OkAsync({ id: "o-1" }), export: () => OkAsync({ csv: "" }) }),
+});
+
+type SchemePort<S extends string> = S extends string
+  ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown, string>>
+  : never;
+
+// BOTH directions. A one-way check passes on a collapsed `never`, which is how
+// a broken scheme walk would slip through — the same hole that hid a broken
+// `SchemesOf` in `principal.test-d.ts`.
+type _TwoSchemeNeeds = Expect<
+  [Extract<NeedsOf<typeof twoSchemeRouter>, SchemePort<string>>] extends [
+    SchemePort<"user" | "service">,
+  ]
+    ? [SchemePort<"user" | "service">] extends [NeedsOf<typeof twoSchemeRouter>]
+      ? true
+      : false
+    : false
+>;
+
+// One mark, one scheme, one port — never the whole registry.
+type _OneSchemeNeeds = Expect<
+  [Extract<NeedsOf<typeof markedComposed>, SchemePort<string>>] extends [SchemePort<"user">]
+    ? [SchemePort<"user">] extends [NeedsOf<typeof markedComposed>]
+      ? true
+      : false
+    : false
+>;
+
+// An all-public contract declares none at all.
+type _NoSchemeNeeds = Expect<
+  [Extract<NeedsOf<typeof composed>, SchemePort<string>>] extends [never] ? true : false
+>;
