@@ -87,10 +87,11 @@ export const orpc = (options: OrpcOptions = {}) => {
 };
 
 /**
- * The router as a provider, **from the contract**:
+ * The router as a provider, **from the contract** — minted by `defineHttp`, so
+ * its handlers are typed by the scheme registry that call inferred:
  *
  * ```ts
- * const orderRouter = HttpRouter(orderContract)({ place: PlaceOrder, find: FindOrder }, {
+ * const orderRouter = api.HttpRouter(orderContract)({ place: PlaceOrder, find: FindOrder }, {
  *   sync: ({ place, find }) => ({
  *     orders: {
  *       place: ({ errors }, input) => place.execute(input.id, input.quantity).map(view).mapErrCases(…),
@@ -118,7 +119,7 @@ export const orpc = (options: OrpcOptions = {}) => {
  *
  * The second call also takes a **keyed record of controllers** instead of
  * `(deps, { sync })` — one argument rather than two, which is what tells the
- * two apart, exactly as `Provider(port)(…)` discriminates its own: `HttpRouter(contract)({ orders: ordersController, users:
+ * two apart, exactly as `Provider(port)(…)` discriminates its own: `api.HttpRouter(contract)({ orders: ordersController, users:
  * usersController })`, one `HttpController` per top-level contract key. Each
  * fragment is composed as-is rather than re-implemented, and every key of the
  * contract must be covered — a missing or extra key is a compile error.
@@ -205,7 +206,7 @@ export const routerFor =
             Object.fromEntries(
               schemes.map((scheme) => [
                 scheme,
-                services[`${AUTHENTICATOR}${scheme}`] as AuthenticatorService<unknown, string>,
+                services[`${AUTHENTICATOR}${scheme}`] as AuthenticatorService<unknown>,
               ]),
             ),
           ),
@@ -363,7 +364,7 @@ type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
 type SchemePortsOf<C> =
   SchemesIn<AllRequirementsOf<C>> extends infer S extends string
     ? S extends string
-      ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown, string>>
+      ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>>
       : never
     : never;
 
@@ -422,7 +423,7 @@ const routerOf = (
   implementation: Record<string, unknown>,
   contract: Record<string, unknown>,
   inherited: Requirements | undefined,
-  authenticators: Readonly<Record<string, AuthenticatorService<unknown, string>>>,
+  authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
 ): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(implementation).flatMap(([key, value]) => {

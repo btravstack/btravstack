@@ -18,7 +18,7 @@ export type SchemesFrom<A extends Authenticators> = { readonly [K in keyof A]: A
  */
 type SchemeProviders<A extends Authenticators> = {
   readonly [K in keyof A]: Provider<
-    PortInstance<`HttpAuthenticator:${K & string}`, AuthenticatorService<unknown, string>>,
+    PortInstance<`HttpAuthenticator:${K & string}`, AuthenticatorService<unknown>>,
     never,
     A[K]["needs"]
   >;

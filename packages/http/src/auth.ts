@@ -35,9 +35,11 @@ const ports = new Map<string, unknown>();
 
 /**
  * One port per scheme, its id carrying the scheme name — the move
- * `AmqpHandler(contract, key)` makes. The service type is erased because di
- * identifies a port by id; the principal and scope types ride the provider
- * `HttpAuthenticator` returns, and `defineHttp` reads the registry off them.
+ * `AmqpHandler(contract, key)` makes. The service type is erased to
+ * `AuthenticatorService<unknown>` — `Granted<unknown, never>` is `unknown`, so
+ * it admits the bare and the scoped answer alike — because di identifies a port
+ * by id; the principal and scope types ride the description `HttpAuthenticator`
+ * returns, and `defineHttp` reads the registry off them.
  *
  * The id is a LITERAL type, so `PortInstance<"HttpAuthenticator:user", …>` and
  * `PortInstance<"HttpAuthenticator:service", …>` are different types: a
@@ -47,7 +49,7 @@ const ports = new Map<string, unknown>();
  */
 export const authenticatorPort = <const S extends string>(
   scheme: S,
-): PortClassOf<`HttpAuthenticator:${S}`, AuthenticatorService<unknown, string>> => {
+): PortClassOf<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>> => {
   const id = `HttpAuthenticator:${scheme}` as const;
   // Memoised: `defineHttp` asks for a scheme's port when it binds the
   // authenticator and `routerFor` asks again for every scheme its contract
@@ -55,7 +57,7 @@ export const authenticatorPort = <const S extends string>(
   const existing = ports.get(id);
   if (existing !== undefined) return existing as never;
   // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-  const minted = class extends Port(id)<AuthenticatorService<unknown, string>> {};
+  const minted = class extends Port(id)<AuthenticatorService<unknown>> {};
   ports.set(id, minted);
   return minted as never;
 };
@@ -127,7 +129,7 @@ export const HttpAuthenticator = <P, Scope extends string = never>() => {
 export const principalMiddleware =
   (
     requirements: Requirements,
-    authenticators: Readonly<Record<string, AuthenticatorService<unknown, string>>>,
+    authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
   ) =>
   async (options: {
     readonly context: { readonly request: IncomingMessage };
@@ -145,7 +147,7 @@ export const principalMiddleware =
         // Asserted, not guarded: the router declares one dep per scheme its
         // contract names, so every scheme a requirement names is a key here and
         // di refuses the graph long before a request lands.
-        const authenticate = authenticators[scheme] as AuthenticatorService<unknown, string>;
+        const authenticate = authenticators[scheme] as AuthenticatorService<unknown>;
         const resolved = await authenticate(options.context.request.headers);
         if (resolved.isDefect()) {
           // A defect is a bug in the authenticator, not a refusal. Falling
@@ -155,10 +157,10 @@ export const principalMiddleware =
           throw resolved.cause;
         }
         if (resolved.isErr()) continue;
-        // The port's service type is erased, which spells the scoped form for
-        // every scheme; one with no vocabulary answers bare, so this is read
-        // back structurally rather than trusted.
-        const granted: unknown = resolved.value;
+        // `Granted` is erased to `unknown` on the port, because a scheme with a
+        // vocabulary answers `{ identity, scopes }` and one without answers the
+        // identity bare — so which it is has to be read back structurally.
+        const granted = resolved.value;
         const scoped =
           typeof granted === "object" && granted !== null && "scopes" in granted
             ? (granted as { readonly identity: unknown; readonly scopes: readonly string[] })

@@ -11,7 +11,6 @@ import {
 import type { DefaultInitialContext } from "@orpc/server";
 import type { NodeHttpHandlerPlugin } from "@orpc/server/node";
 
-import type { AuthenticatorPort } from "./auth.js";
 import { HttpRuntime, http, type HttpConfig } from "./http-runtime.js";
 import type { HttpRouterPort } from "./orpc.js";
 
@@ -22,50 +21,38 @@ type HttpStarter = Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRou
 type Imports<I extends readonly AnyModule[]> = readonly [...I, HttpStarter];
 
 /**
- * The router provider, the authenticator when there is one, and the
- * application's own — the tuple `Module(name)` is handed. `Auth` is inferred
- * from the option, so an omitted authenticator contributes no element and the
- * marked router's need for one stays unmet: di's gate, at `start`.
+ * The router provider, the scheme authenticators `defineHttp` bound, and the
+ * application's own — what `Module(name)` is handed. A union-element array
+ * rather than a tuple: `Auth` is one type per scheme, so it arrives as a union
+ * and a tuple takes one rest element, not two. di reads `P[number]` throughout,
+ * so nothing downstream wants the arity — and the authenticators' own needs
+ * (a `JwtVerifier`, a key set) reach `NeedsGate` because they are here.
  */
 type Provides<
   P extends readonly AnyProvider[],
   RouterError,
   RouterNeeds,
-  Auth extends AnyProvider | undefined,
-> = readonly [
-  Provider<HttpRouterPort, RouterError, RouterNeeds>,
-  ...([Auth] extends [undefined] ? [] : [NonNullable<Auth>]),
-  ...P,
-];
+  Auth extends AnyProvider,
+> = readonly (Provider<HttpRouterPort, RouterError, RouterNeeds> | Auth | P[number])[];
 
 export type HttpModuleOptions<
   RouterError,
   RouterNeeds,
-  RouterIdentity,
-  Auth extends AnyProvider | undefined,
+  Auth extends AnyProvider,
   I extends readonly AnyModule[],
   P extends readonly AnyProvider[],
   X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>>[],
   N extends readonly AnyPort[],
 > = {
-  /** The application's oRPC router — `HttpRouter(contract)(deps, arm)`, the provider that builds it from the services its procedures call. */
-  readonly router: Provider<HttpRouterPort, RouterError, RouterNeeds> & {
-    readonly identity: RouterIdentity;
-  };
   /**
-   * Resolves the principal a marked procedure's handler receives —
-   * `HttpAuthenticator<Identity>()({ name: Dep }, { sync })`. Required exactly when
-   * the router's contract marks something: a marked router declares
-   * `AuthenticatorPort` as a need, and di refuses a graph that does not
-   * discharge it. Whether it resolves what the handlers actually read is the
-   * one thing that need cannot say — the port's service type is erased — so
-   * `RouterIdentity`, read off `router`, is what checks it here: the
-   * authenticator must resolve **at least** the identity the router was minted
-   * with, so a router from `httpAuth<A>()` refuses an authenticator from
-   * `httpAuth<B>()`. A router minted by the top-level `HttpRouter` carries no
-   * identity (`never`), and there is then nothing to compare.
+   * The application's oRPC router — `api.HttpRouter(contract)(deps, arm)`, the
+   * provider that builds it from the services its procedures call. It carries
+   * the scheme authenticators `defineHttp` bound, which is how they reach
+   * `provides` without an application ever listing them.
    */
-  readonly authenticator?: Auth;
+  readonly router: Provider<HttpRouterPort, RouterError, RouterNeeds> & {
+    readonly authenticators: readonly Auth[];
+  };
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
   readonly prefix?: `/${string}`;
   /** Pins for a test — otherwise `PORT`/`HOST` from the environment. */
@@ -122,21 +109,16 @@ export const HttpModule =
   <
     RouterError,
     RouterNeeds,
-    RouterIdentity,
-    const Auth extends
-      | (Provider<AuthenticatorPort, never, unknown> & {
-          readonly principal: [RouterIdentity] extends [never] ? unknown : RouterIdentity;
-        })
-      | undefined = undefined,
+    Auth extends AnyProvider = never,
     const I extends readonly AnyModule[] = [],
     const P extends readonly AnyProvider[] = [],
     const X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>>[] =
       [],
     const N extends readonly AnyPort[] = [],
   >(
-    options: HttpModuleOptions<RouterError, RouterNeeds, RouterIdentity, Auth, I, P, X, N>,
+    options: HttpModuleOptions<RouterError, RouterNeeds, Auth, I, P, X, N>,
   ) => {
-    const { router, authenticator, prefix, port, hostname, plugins, securityHeaders } = options;
+    const { router, prefix, port, hostname, plugins, securityHeaders } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
@@ -159,11 +141,12 @@ export const HttpModule =
     // `Module<never, never, never>` (measured).
     return Module(name)({
       imports: [...imports, starter] as Imports<I>,
-      provides: [
-        router,
-        ...(authenticator === undefined ? [] : [authenticator]),
-        ...provides,
-      ] as unknown as Provides<P, RouterError, RouterNeeds, Auth>,
+      provides: [router, ...router.authenticators, ...provides] as unknown as Provides<
+        P,
+        RouterError,
+        RouterNeeds,
+        Auth
+      >,
       exports: [HttpRuntime, ...exports] as readonly [typeof HttpRuntime, ...X],
       needs: (options.needs ?? []) as N,
     } as {

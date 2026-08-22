@@ -196,7 +196,7 @@ const twoSchemeRouter = api.HttpRouter(grouped)({
 });
 
 type SchemePort<S extends string> = S extends string
-  ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown, string>>
+  ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>>
   : never;
 
 // BOTH directions. A one-way check passes on a collapsed `never`, which is how

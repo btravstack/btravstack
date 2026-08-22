@@ -5,12 +5,12 @@ import { Unauthenticated, principalMiddleware } from "./auth.js";
 import { it } from "./test-fixtures.js";
 
 describe("an authenticated procedure", () => {
-  it("hands the handler the identity its factory typed", async ({ rpcAuthed }) => {
+  it("hands the handler the identity its scheme resolves", async ({ rpcAuthed }) => {
     // GIVEN a client presenting a token the authenticator accepts
     const client = rpcAuthed.clientWith("good");
 
     // WHEN a marked procedure reads a field the contract declares nowhere —
-    // the contract names no identity type, so `httpAuth<Identity>()` is the
+    // the contract names no identity type, so `defineHttp`'s registry is the
     // only thing that could have typed it
     await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-good" });
   });
@@ -65,6 +65,20 @@ describe("an authenticated procedure", () => {
   });
 });
 
+describe("an authenticator with dependencies of its own", () => {
+  it("is built from the services it declared, and names the caller with them", async ({
+    rpcVerified,
+  }) => {
+    // GIVEN a client presenting a token only the injected table knows
+    const client = await rpcVerified("keyed");
+
+    // WHEN a marked procedure is called
+    // THEN the authenticator resolved it through the dependency di gave it —
+    // `defineHttp` bound the deps arm, and the need reached the graph
+    await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-keyed" });
+  });
+});
+
 describe("a contract marked at its root", () => {
   it("protects every leaf beneath it", async ({ rpcRootMarked }) => {
     // GIVEN a client presenting a token the authenticator rejects
@@ -93,19 +107,20 @@ describe("a contract marked at its root", () => {
 });
 
 describe("a router over a marked contract", () => {
-  it("adds the authenticator to the dependencies the caller already declared", ({
+  it("declares the scheme's own port alongside the dependencies the caller wrote", ({
     authedRouterDeps,
   }) => {
     // GIVEN the same marked contract composed through both arms of HttpRouter
     // WHEN each provider's declared dependencies are read
-    // THEN the authenticator joins both, alongside — never in place of — the caller's own
+    // THEN the scheme's port joins both, named for the scheme and alongside —
+    // never in place of — the caller's own
     expect(authedRouterDeps).toEqual({
-      keyed: ["AuthedOrders", "AuthedHealth", "HttpAuthenticator"],
-      fromDeps: ["Greeter", "HttpAuthenticator"],
+      keyed: ["AuthedOrders", "AuthedHealth", "HttpAuthenticator:user"],
+      fromDeps: ["Greeter", "HttpAuthenticator:user"],
     });
   });
 
-  it("declares no authenticator when the contract marks nothing", ({ controllers }) => {
+  it("declares no scheme port when the contract marks nothing", ({ controllers }) => {
     // GIVEN a router composed from a controller over an unmarked contract
     // WHEN its declared dependencies are read
     // THEN nothing was appended — an application with no protected route provides nothing
