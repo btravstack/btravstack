@@ -1,4 +1,4 @@
-import type { Server } from "node:http";
+import type { IncomingHttpHeaders, Server } from "node:http";
 
 import { vi } from "vitest";
 
@@ -540,6 +540,8 @@ export type HttpFixtures = {
   };
   /** The starter over a router with oRPC's CORS plugin configured. Shut down by the fixture. */
   readonly rpcWithCors: { readonly url: string };
+  /** A bare request's headers — the one argument an authenticator is handed. */
+  readonly headers: IncomingHttpHeaders;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -769,6 +771,11 @@ export const it = test.extend<HttpFixtures>({
       keyed: authedRouter.deps.map((dep) => dep.portId),
       fromDeps: authedPositionalRouter.deps.map((dep) => dep.portId),
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  headers: async ({}, use) => {
+    await use({});
   },
 
   rpcWithCors: async ({ boot }, use) => {

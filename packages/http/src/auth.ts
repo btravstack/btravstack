@@ -1,5 +1,6 @@
 import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 
+import type { Requirements } from "@btravstack/contract";
 import { Port, type AnyPort, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { ORPCError } from "@orpc/server";
 import { TaggedError, type AsyncResult } from "unthrown";
@@ -118,31 +119,63 @@ export const HttpAuthenticator = <P, Scope extends string = never>() => {
 };
 
 /**
- * The one middleware this package installs, and only on a marked leaf. It reads
- * the request from oRPC's initial context — which is what initial context is
- * for — and either injects the principal or refuses.
+ * The one middleware this package installs, and only on a leaf whose
+ * requirements say so. It reads the request from oRPC's initial context — which
+ * is what initial context is for — and tries the requirements in the order the
+ * contract declared them, taking the first a caller satisfies.
  */
 export const principalMiddleware =
-  (authenticate: AuthenticatorService<unknown>) =>
+  (
+    requirements: Requirements,
+    authenticators: Readonly<Record<string, AuthenticatorService<unknown, string>>>,
+  ) =>
   async (options: {
     readonly context: { readonly request: IncomingMessage };
     readonly next: (injected: {
       readonly context: { readonly principal: unknown };
     }) => Promise<unknown>;
   }): Promise<unknown> => {
-    const resolved = await authenticate(options.context.request.headers);
-    if (resolved.isErr()) {
-      // No message: oRPC serializes `message` to the client, and a refusal
-      // has nothing a caller is entitled to.
-      // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm to use instead
-      throw new ORPCError("UNAUTHORIZED");
+    // Tagged only when the leaf names more than one scheme: the single-scheme
+    // form is what applications already write, and paying a wrapper for it
+    // would make the common case worse to serve the rare one.
+    const tagged = requirements.length > 1;
+    let underScoped = false;
+    for (const requirement of requirements) {
+      for (const [scheme, required] of Object.entries(requirement)) {
+        // Asserted, not guarded: the router declares one dep per scheme its
+        // contract names, so every scheme a requirement names is a key here and
+        // di refuses the graph long before a request lands.
+        const authenticate = authenticators[scheme] as AuthenticatorService<unknown, string>;
+        const resolved = await authenticate(options.context.request.headers);
+        if (resolved.isDefect()) {
+          // A defect is a bug in the authenticator, not a refusal. Falling
+          // through would let a broken verifier silently promote every caller
+          // to the next scheme.
+          // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to oRPC, whose middleware protocol has no returned-error arm
+          throw resolved.cause;
+        }
+        if (resolved.isErr()) continue;
+        // The port's service type is erased, which spells the scoped form for
+        // every scheme; one with no vocabulary answers bare, so this is read
+        // back structurally rather than trusted.
+        const granted: unknown = resolved.value;
+        const scoped =
+          typeof granted === "object" && granted !== null && "scopes" in granted
+            ? (granted as { readonly identity: unknown; readonly scopes: readonly string[] })
+            : undefined;
+        if (scoped !== undefined && !required.every((scope) => scoped.scopes.includes(scope))) {
+          underScoped = true;
+          continue;
+        }
+        const identity = scoped === undefined ? granted : scoped.identity;
+        return await options.next({
+          context: { principal: tagged ? { scheme, identity } : identity },
+        });
+      }
     }
-    if (resolved.isDefect()) {
-      // A defect is a bug in the authenticator, not a refusal. Its own cause
-      // goes up unchanged so oRPC's INTERNAL_SERVER_ERROR collapse answers it —
-      // folding it into the 401 above would report a bug as a rejected caller.
-      // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to oRPC, whose middleware protocol has no returned-error arm
-      throw resolved.cause;
-    }
-    return options.next({ context: { principal: resolved.value } });
+    // No message: oRPC serializes `message` to the client, and a refusal has
+    // nothing a caller is entitled to. A credential that was valid but
+    // under-scoped is a 403, never the 401 an anonymous caller gets.
+    // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm to use instead
+    throw new ORPCError(underScoped ? "FORBIDDEN" : "UNAUTHORIZED");
   };
