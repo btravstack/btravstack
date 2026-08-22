@@ -1,7 +1,10 @@
 import type { Requirements } from "@btravstack/contract";
 
-/** Every scheme any of a leaf's requirements names. */
-export type SchemesOf<R extends Requirements> = keyof R[number] & string;
+// Mapped over the tuple, then indexed — NOT `keyof R[number]`, which is the
+// INTERSECTION of each requirement's keys and so collapses to `never` the
+// moment two requirements name different schemes. That is the multi-scheme
+// case this type exists for, and it failed silently (measured).
+export type SchemesOf<R extends Requirements> = { [I in keyof R]: keyof R[I] & string }[number];
 
 // Distributes over `T`, then asks whether the whole union is assignable back
 // into the one member being visited — false for a single member, true for a

@@ -58,10 +58,16 @@ describe("Principal", () => {
   });
 
   test("SchemesOf flattens requirements to their scheme names", () => {
-    const names = null as unknown as SchemesOf<
+    type Names = SchemesOf<
       [{ readonly user: readonly ["orders:export"] }, { readonly service: readonly [] }]
     >;
-    const asUnion: "user" | "service" = names;
-    void asUnion;
+    // Both directions. A one-way assignment out of `Names` passes even when
+    // `SchemesOf` collapses to `never`, since `never` is assignable to
+    // anything — which is how the first cut of this test missed a broken
+    // `SchemesOf` entirely. The assignment INTO `Names` is the half that bites.
+    const widen: "user" | "service" = null as unknown as Names;
+    const narrow: Names = null as unknown as "user" | "service";
+    void widen;
+    void narrow;
   });
 });
