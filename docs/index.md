@@ -46,8 +46,7 @@ import { P } from "unthrown";
 import { z } from "zod";
 
 import { OrderApplicationModule, PlaceOrder } from "./application.js";
-import { HttpRouter } from "./auth.js";
-import { bearerAuthenticator } from "./authenticator.js";
+import { api } from "./auth.js";
 import { OrderPersistenceModule } from "./persistence.js";
 
 // The contract comes first; a client can take it without the server.
@@ -58,9 +57,10 @@ const orderRef = z.object({ id: z.uuidv7() });
 // not a UUIDv7: `orderRef` would reject the only payload it ever carries.
 const malformedRef = z.object({ id: z.string() });
 
-// `authenticated` marks the fragment. It names no tenant on the input: a
-// caller does not get to pick the tenant it is served.
-const ordersContract = authenticated({
+// `authenticated` marks the fragment with an OpenAPI security requirement —
+// the `user` scheme, no scopes. It names no tenant on the input: a caller does
+// not get to pick the tenant it is served.
+const ordersContract = authenticated({ user: [] })({
   place: oc
     .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
@@ -73,7 +73,7 @@ const ordersContract = authenticated({
 
 // The router is a provider: it declares the use case its procedure calls.
 // Every domain error is named here — the one place a Result becomes HTTP.
-const ordersRouter = HttpRouter(ordersContract)(
+const ordersRouter = api.HttpRouter(ordersContract)(
   { place: PlaceOrder },
   {
     sync: ({ place }) => ({
@@ -111,7 +111,6 @@ const ordersRouter = HttpRouter(ordersContract)(
 // The composition root. The runtime is a service of this module.
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrderApplicationModule, OrderPersistenceModule],
 });
 
@@ -126,11 +125,14 @@ builds the graph, resolves that port and drives what it finds. `PORT` and
 configuration provider — nothing in `main.ts` touches `process.env`, and a
 malformed value is a `startFailed` event and exit code `78`.
 
-**The contract says _whether_ a route is protected; the application says _what_
-the principal is.** `authenticated` is the fact a client reads off the
-contract; `httpAuth<Identity>()` in `auth.ts` is what mints the `HttpRouter`
-above, so `context.principal` is typed where the handler is written; and the
-authenticator resolves it once per request, at the root. See
+**The contract says _which schemes_ protect a route; the application says
+_what each one is_.** `authenticated({ user: [] })` is the fact a client reads
+off the contract; `defineHttp({ authenticators })` in `auth.ts` is what mints
+the `api.HttpRouter` above, so `context.principal` is typed where the handler
+is written. The authenticators ride the router, so the root lists none — and a
+scheme with nobody behind it is an unmet dependency naming the port. A required
+**scope** the credential lacks is a `403`, distinct from the `401` a caller
+with no valid credential gets. See
 [Protect a procedure](/how-to/protect-a-procedure).
 
 **SIGTERM drains in three beats.** Readiness flips false; the kernel waits for
@@ -156,7 +158,7 @@ lines in [Packages and install](/reference/packages).
   pino behind a subpath, and the kernel's own events as lines in the same
   stream. Traces and metrics are not here yet.
 - **`@btravstack/http`** — the HTTP starter: an oRPC contract served over
-  `node:http`, one unit per request, `HttpRouter` and `HttpModule`.
+  `node:http`, one unit per request, `defineHttp` and `HttpModule`.
 - **`@btravstack/temporal`** — the Temporal worker starter: one unit per
   activity attempt, `TemporalActivities` and `TemporalModule`.
 - **`@btravstack/amqp`** — the AMQP consumer starter: one unit per message,

@@ -58,7 +58,10 @@ const customerViewOf = (customer: Customer): CustomerView => ({
 // application makes: reached through anything else, a marked fragment types
 // `principal: never` and every read below is a compile error. That
 // substitution is half of what these pages were getting wrong, so it is
-// pinned by the import rather than asserted.
+// pinned by the import rather than asserted. `place` and `find` read the
+// identity bare — one scheme — while `export` narrows a tagged union, which is
+// the contrast every page draws and the reason its bodies match the real
+// controller's byte for byte.
 // ---------------------------------------------------------------------------
 
 const ordersController = api.HttpController("DocsOrdersController", contract.orders)(
@@ -95,9 +98,15 @@ const ordersController = api.HttpController("DocsOrdersController", contract.ord
       export: ({ context }) => {
         switch (context.principal.scheme) {
           case "user":
-            return OkAsync({ csv: context.principal.identity.userId });
+            logger.info("order export requested", {
+              userId: context.principal.identity.userId,
+            });
+            return OkAsync({ csv: `user,${context.principal.identity.userId}` });
           case "service":
-            return OkAsync({ csv: context.principal.identity.appId });
+            logger.info("order export requested", {
+              appId: context.principal.identity.appId,
+            });
+            return OkAsync({ csv: `service,${context.principal.identity.appId}` });
         }
       },
     }),
@@ -216,9 +225,9 @@ const depsOrdersRouter = api.HttpRouter(contract.orders)(
       export: ({ context }) => {
         switch (context.principal.scheme) {
           case "user":
-            return OkAsync({ csv: context.principal.identity.userId });
+            return OkAsync({ csv: `user,${context.principal.identity.userId}` });
           case "service":
-            return OkAsync({ csv: context.principal.identity.appId });
+            return OkAsync({ csv: `service,${context.principal.identity.appId}` });
         }
       },
     }),

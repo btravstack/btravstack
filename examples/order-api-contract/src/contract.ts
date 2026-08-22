@@ -115,10 +115,11 @@ const customersContract = {
  * how the marker exercises a per-procedure override, a scope and a second
  * scheme all at once.
  *
- * **The contract says WHETHER a route is protected, and nothing about who the
+ * **The contract says WHICH SCHEMES protect a route, and nothing about who the
  * caller is.** No principal type is named here, so nothing about what this
  * deployment knows about a caller — a user id, roles, an org tier — reaches a
- * client, and enriching it is never a contract change. What the principal
- * actually is, is `examples/order-api`'s `httpAuth<Identity>()` to say.
+ * client, and enriching it is never a contract change. What each scheme
+ * resolves to is `examples/order-api`'s `defineHttp({ authenticators })` to
+ * say.
  */
 export const contract = { orders: ordersContract, customers: customersContract };

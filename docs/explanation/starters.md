@@ -112,7 +112,9 @@ What the application supplies to a starter — a router, an activities record,
 a handlers record — is a **service on a port**, and each starter ships one
 call that returns di's own provider builder on that port:
 
-- `HttpRouter(contract)(deps, { sync })`
+- `api.HttpRouter(contract)(deps, { sync })` — `api` being the application's
+  one `defineHttp(...)` binding, which is also what types a protected
+  procedure's principal
 - `TemporalActivities(contract)(deps, arm)`
 - `AmqpHandlers(contract)(deps, arm)`
 

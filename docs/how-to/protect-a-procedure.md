@@ -1,34 +1,35 @@
 ---
 title: Protect a procedure
-description: Mark a contract fragment or a procedure with authenticated(), write the Authenticator that resolves a principal from the request headers, and hand it to HttpModule.
+description: Mark a contract fragment or a procedure with authenticated(), declare the security schemes and scopes it accepts, implement each scheme with HttpAuthenticator, and read the principal in the handler.
 ---
 
 # Protect a procedure
 
-> **How-to.** Declare in the contract that a procedure needs an authenticated
-> caller, resolve that caller once per request, and read it in the handler. For
+> **How-to.** Declare in the contract which security schemes a procedure
+> accepts and which scopes each must grant, resolve the caller once per
+> request, and read it in the handler. For
 > the marker's surface, see [`@btravstack/contract`](/reference/contract); for
 > the starter's, [`@btravstack/http`](/reference/http); for the worked
 > deployment, [Order API (HTTP)](/examples/order-api).
 
-Three moves, in this order: **mark** the contract, **write** the
-`Authenticator`, **pass** it to `HttpModule`. The marker is what makes the
-other two type-checked — the router provider grows a dependency on the
-authenticator port, and the marked procedures' handlers grow a
-`context.principal` typed with the identity the application stated.
+Three moves, in this order: **mark** the contract, **implement** each scheme,
+**mint** the router and controllers from the one call that knows both. The
+marker is what makes the rest type-checked — the router provider grows one
+dependency per scheme its contract names, and the protected procedures'
+handlers grow a `context.principal` typed by the schemes that reach them.
 
-**The contract says _whether_ a route is protected; `httpAuth<Identity>()` says
-_what_ the principal is.** No identity type is named in the contract at all, so
-nothing about the server's view of a caller reaches a client.
+**The contract says _which schemes_ protect a route and _which scopes_ each
+must grant; `defineHttp({ authenticators })` says _what each scheme resolves
+to_.** No identity type is named in the contract at all, so nothing about the
+server's view of a caller reaches a client.
 
 ## Recipe
 
-1. Mark the contract with `authenticated`.
-2. State the server's own identity once with `httpAuth<Identity>()`, and write
-   the authenticator it hands back — headers in,
-   `AsyncResult<Identity, Unauthenticated>` out.
-3. Read `opts.context.principal` in the handlers of the marked procedures.
-4. Pass the provider as `HttpModule(name)({ router, authenticator, needs })`.
+1. Mark the contract with `authenticated(...requirements)`.
+2. Implement each scheme with `HttpAuthenticator<P, Scope>()`, and declare them
+   all in one `defineHttp({ authenticators })` call.
+3. Read `opts.context.principal` in the handlers of the protected procedures.
+4. Compose the root — there is no authenticator to pass.
 
 ## Step 1 — mark the contract
 
@@ -46,7 +47,9 @@ const orderRef = z.object({ id: z.uuidv7() });
 // not a UUIDv7: `orderRef` would reject the only payload it ever carries.
 const malformedRef = z.object({ id: z.string() });
 
-const ordersContract = {
+// The group default: every procedure beneath it needs the `user` scheme, with
+// no particular scope.
+const ordersContract = authenticated({ user: [] })({
   place: oc
     .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(z.object({ id: z.uuidv7() }))
@@ -55,7 +58,14 @@ const ordersContract = {
       BAD_REQUEST: { data: malformedRef },
       CONFLICT: { data: orderRef },
     }),
-};
+
+  // Replaces the default for itself: a `user` token granting `orders:export`,
+  // OR a `service` key with no scopes at all.
+  export: authenticated(
+    { user: ["orders:export"] },
+    { service: [] },
+  )(oc.output(z.object({ csv: z.string() }))),
+});
 
 const customersContract = {
   find: oc
@@ -64,108 +74,138 @@ const customersContract = {
 };
 
 export const contract = {
-  orders: authenticated(ordersContract), // every procedure beneath it
+  orders: ordersContract,
   customers: customersContract, // public
 };
 ```
 
-A marked **record** protects every procedure beneath it; a marked **procedure**
-protects itself, so `{ find, quote: authenticated(quoteProcedure) }` is a
-fragment with one of each. Apply `authenticated` to a **finished** node — the
+Four rules, and they are OpenAPI's own:
+
+- **A requirement is a scheme name mapped to the scopes it must grant.**
+  `{ user: [] }` says "present the `user` scheme"; `{ user: ["orders:export"] }`
+  adds a scope the credential has to carry.
+- **Requirements are ORed**, tried in the order given: the first one a caller
+  satisfies wins. `authenticated({ user: [...] }, { service: [] })` means either.
+- **A requirement names one scheme.** AND-within-a-requirement is deliberately
+  not modelled — requiring two credentials at once would put a record rather
+  than a single identity on the handler. Where two really are needed, a
+  composite scheme models it.
+- **Nearest mark wins.** A marked record is the default for every procedure
+  beneath it; a marked procedure **replaces** that default for itself rather
+  than adding to it.
+
+Apply `authenticated(...)` to a **finished** node — the
 last call in a builder chain, or a whole record of finished nodes. Applied
 mid-chain it is silently dropped, because `oc.router(...)` rebuilds every node.
 
 The contract stops here. It names no principal, so there is nothing in it to
 keep minimal and nothing in it to leak.
 
-## Step 2 — state the identity, and write the authenticator
+## Step 2 — implement each scheme, and declare them together
 
-`httpAuth<Identity>()` is where the principal's type is stated — one file per
-application, which hands back `HttpController`, `HttpRouter` and
-`HttpAuthenticator` all fixed to that identity:
-
-```ts
-// src/auth.ts
-import type { TenantId } from "@btravstack/example-order-domain";
-import {
-  httpAuth,
-  type HttpAuthenticatorOf,
-  type HttpControllerOf,
-  type HttpRouterOf,
-} from "@btravstack/http";
-
-/** What this deployment knows about a caller. The contract names none. */
-export type Identity = { readonly tenantId: TenantId; readonly userId: string };
-
-const identity = httpAuth<Identity>();
-
-export const HttpController: HttpControllerOf<Identity> =
-  identity.HttpController;
-export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
-export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
-  identity.HttpAuthenticator;
-```
-
-Written once per application, because a handler's parameter types are fixed
-where the arrow is written: a composition root cannot re-type a `sync` callback
-that lives in a slice's module, so the identity has to be in scope where the
-handler is. The three aliases are annotations rather than ceremony — a
-controller's port expands to a type carrying the marker's phantom
-`unique symbol`, which the file's own `.d.ts` cannot name.
-
-`HttpAuthenticator({ name: Dep }, { sync })` is then an ordinary di provider on the
-starter's `AuthenticatorPort`, with no type argument left to state. It resolves
-the identity from the request's **headers** — not the request: an authenticator
+`HttpAuthenticator<P, Scope>()` implements **one** scheme. It resolves a
+credential from the request's **headers** — not the request: an authenticator
 has no business reading a body, and the narrower argument is what keeps it
-testable without a socket.
+testable without a socket. The scheme's **name** is not stated here; it is the
+key the authenticator sits under in `defineHttp`, so it is written once.
 
 ```ts
+// src/auth.ts — one file per application
 import { TenantId } from "@btravstack/example-order-domain";
-import { Unauthenticated } from "@btravstack/http";
+import {
+  HttpAuthenticator,
+  Unauthenticated,
+  defineHttp,
+} from "@btravstack/http";
 import { ErrAsync, OkAsync } from "unthrown";
 
-import { HttpAuthenticator } from "./auth.js";
+/** What the `user` scheme resolves to. The contract names none of this. */
+export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
-export const bearerAuthenticator = HttpAuthenticator({
+/** What the `service` scheme resolves to: a machine caller, no tenant. */
+export type ServiceIdentity = { readonly appId: string };
+
+export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
       ? header.slice("Bearer ".length)
       : "";
-    const [tenantId, userId] = token.split(":");
+    const [tenantId, userId, ...rest] = token.split(":");
+    // Rejoined rather than taken as one field: a scope name contains the
+    // delimiter itself, so `orders:export` cannot survive a plain third field.
+    const granted = rest.join(":");
     return tenantId === undefined ||
       tenantId === "" ||
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId: TenantId(tenantId), userId });
+      : OkAsync({
+          identity: { tenantId: TenantId(tenantId), userId },
+          scopes: granted
+            .split(",")
+            .filter(
+              (scope): scope is "orders:export" => scope === "orders:export",
+            ),
+        });
   },
 });
+
+export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  sync: () => (headers) => {
+    const key = headers["x-api-key"];
+    return typeof key === "string" && key !== ""
+      ? OkAsync({ appId: key })
+      : ErrAsync(new Unauthenticated());
+  },
+});
+
+/** The one door: declaring a scheme and implementing it are the same act. */
+export const api = defineHttp({
+  authenticators: { user: userAuth, service: serviceAuth },
+});
 ```
+
+A scheme **with** a scope vocabulary answers `{ identity, scopes }`, so the
+granted list is checked against the declared vocabulary here rather than
+compared as loose strings at the endpoint. A scheme **without** one answers the
+identity bare — which is exactly what a handler under a single unscoped scheme
+then reads.
+
+::: warning Hold `api` whole — never destructure it
+`const { HttpController } = defineHttp(...)` is **TS2527**: each binding of a
+destructured member expands to a type mentioning `@btravstack/contract`'s
+inaccessible `unique symbol`, which the file cannot emit. Held whole, the
+inferred type collapses to `Http<A>`, which is nameable — which is why the file
+above writes **no type annotation at all**.
+:::
+
+Written once per application, because a handler's parameter types are fixed
+where the arrow is written: a composition root cannot re-type a `sync` callback
+that lives in a slice's module, so the registry has to be in scope where the
+handler is.
 
 Enriching what a deployment knows about its callers — roles, an org tier, an
 internal id — is a change to this file alone: not a contract change, and none
 of it reaches a client.
 
-The factory is also the **only** way a handler gets a readable principal.
-`@btravstack/http`'s own top-level `HttpController` and `HttpRouter` name no
-identity, so a marked fragment reached through them types `principal: never`
-and every read of it is a compile error — the signal to use the factory, not a
-fallback. Neither form invents one: an unmarked procedure's context still has
-no `principal` at all.
+`api` is also the **only** way a handler gets a readable principal. A marked
+fragment reached through anything else types `principal: never` and every read
+of it is a compile error — the signal to use the factory, not a fallback.
+Neither form invents one: an unmarked procedure's context still has no
+`principal` at all.
 
-`Bearer <tenantId>:<userId>` is a stand-in, not a recommendation — what
-matters is the shape. `[]` because this one needs no service; a JWT verifier, a
-key set or a user directory is named there and injected the way any provider's
-dependencies are, so swapping the stand-in for real verification changes
-nothing else in the composition.
+`Bearer <tenantId>:<userId>:<scopes>` is a stand-in, not a recommendation —
+what matters is the shape. Neither authenticator here needs a service; a JWT
+verifier, a key set or a user directory is named in a `deps` record and
+injected the way any provider's dependencies are, so swapping the stand-in for
+real verification changes nothing else in the composition — and that
+dependency travels with the authenticator into the graph, so a root that
+satisfies none is refused at the `HttpModule(...)` call.
 
-The identity is **stated**, never inferred from `sync`: inference through a
-returned function's `AsyncResult` is exactly where a principal silently widens
-to `unknown`, and stating it once is what makes a mismatch a compile error at
-step 4 instead of an `unknown` reaching a handler. It also means the
-authenticator and the controllers cannot disagree — both come from the same
-`httpAuth` call.
+Both type arguments are **stated**, never inferred from `sync`: inference
+through a returned function's `AsyncResult` is exactly where a principal
+silently widens to `unknown`.
 
 `Unauthenticated` carries **nothing**: the starter surfaces no reason — a
 rejected caller gets an `UNAUTHORIZED` and oRPC's default message — so a payload
@@ -174,22 +214,29 @@ returning, which is one more argument for naming a logger in `deps`.
 
 ## Step 3 — read the principal
 
-A marked procedure's handler receives the principal on **oRPC's own context
-channel**, `opts.context.principal`. No second parameter, no wrapper.
-`HttpController` is imported from the application's own `auth.ts`, so
-`context.principal` is the `Identity` — `userId` and `tenantId` both, neither
-of which the contract names:
+A protected procedure's handler receives the principal on **oRPC's own context
+channel**, `opts.context.principal`. No second parameter, no wrapper. The
+controller is minted from the application's own `api`, so the principal has a
+readable type — and its **shape follows the requirements**:
+
+| The leaf's requirements name | `context.principal`                           |
+| ---------------------------- | --------------------------------------------- |
+| one scheme                   | that scheme's identity, **bare**              |
+| several schemes              | `{ scheme, identity }`, a discriminated union |
+| none (unmarked)              | absent — reading it is a compile error        |
 
 ```ts
-import { HttpController } from "../../auth.js";
+import { api } from "../../auth.js";
 
-export const ordersController = HttpController(
+export const ordersController = api.HttpController(
   "OrdersController",
   contract.orders,
 )(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
+      // One scheme, so the identity arrives bare — byte-for-byte what a
+      // handler wrote before named schemes existed.
       place: ({ errors, context }, input) => {
         logger.info("order placement requested", {
           userId: context.principal.userId,
@@ -233,6 +280,21 @@ export const ordersController = HttpController(
               }),
             ),
           ),
+      // Two schemes, so the principal is a discriminated union. A missing arm
+      // leaves a path returning nothing, which the handler's own return type
+      // refuses — the switch is exhaustive or the build fails.
+      export: ({ context }) => {
+        switch (context.principal.scheme) {
+          case "user":
+            return OkAsync({
+              csv: `user,${context.principal.identity.userId}`,
+            });
+          case "service":
+            return OkAsync({
+              csv: `service,${context.principal.identity.appId}`,
+            });
+        }
+      },
     }),
   },
 );
@@ -244,65 +306,71 @@ cannot be mounted under an unmarked contract key, where nothing would inject
 one. The reverse is fine: an unmarked controller under a marked key is a
 handler that ignores its caller's identity.
 
-## Step 4 — pass it to `HttpModule`
+## Step 4 — compose the root
 
-The authenticator sits at the **root**, not in a slice: who a caller is is one
-answer per process.
+There is **no authenticator to pass**. The authenticators ride the router —
+which is what needs them — and `HttpModule` puts them in `provides` itself:
 
 ```ts
+export const orderRouter = api.HttpRouter(contract)({
+  orders: ordersController,
+  customers: customersController,
+});
+
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
 
-Two things are checked here, and they are different gates:
+What is still checked, and it is di's own gate rather than one this package
+invented: `HttpRouter` declares **one dependency per scheme its contract
+names**, so a scheme with no authenticator behind it is an unmet need refused
+at `start`, and the diagnostic names the port —
 
-- **Omitting the line** leaves an unmet need, refused at `start`. When
-  the contract marks anything, `HttpRouter` appends `AuthenticatorPort` to the
-  router provider's dependencies, so the need is real and unmet — no new gate,
-  and nothing this package invents. What prints is the `Needs` channel failing
-  to assign: `Type 'AuthenticatorPort' is not assignable to type 'Env | Scope'`,
-  down to `Type '"HttpAuthenticator"' is not assignable to type '"@di/Scope"'`.
-  (Not di's `UNSATISFIED DEPENDENCIES` arity gate — that one guards
-  `Module.build`/`Module.scoped`; `start` types the need out on its `module`
-  parameter, which is why the port is named.)
-- **Supplying one minted on a different identity** is a compile error at
-  the `HttpModule(...)` call itself. di cannot see it — `AuthenticatorPort`'s
-  service type is erased to `unknown`, so any authenticator discharges the need
-  — so `HttpModule` compares the **router's** identity against the
-  **authenticator's**, both of which came from the same `httpAuth` call in an
-  application that has one. The direction is
-  `AuthIdentity extends RouterIdentity`: the authenticator must resolve at
-  least what the handlers read, so a subtype discharges it.
+```
+Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'
+```
 
-A router minted by the package's own top-level `HttpRouter` carries no identity
-and accepts any authenticator, including none: a provider nothing needs is di's
-business and not an error to invent.
+(Not di's `UNSATISFIED DEPENDENCIES` arity gate — that one guards
+`Module.build`/`Module.scoped`; `start` types the need out on its `module`
+parameter, which is why the port is named.)
+
+There is nothing left for a second gate to check. The registry that types the
+handlers and the providers that discharge those ports come from the **same**
+`defineHttp` call, so they cannot disagree. And an authenticator's own
+dependencies reach `NeedsGate` because they are in `provides`, so a root that
+imports nothing satisfying a `JwtVerifier` is refused at the `HttpModule(...)`
+call itself.
 
 ## What a rejected caller gets
 
-| Situation                                      | Answer                                                |
-| ---------------------------------------------- | ----------------------------------------------------- |
-| the authenticator returns `Unauthenticated`    | `401 UNAUTHORIZED`, the handler never entered         |
-| the authenticator defects                      | oRPC's `INTERNAL_SERVER_ERROR` collapse — not a `401` |
-| a marked route with no authenticator behind it | `401` — the starter's fail-closed fallback            |
-| an unmarked procedure, no credentials          | served                                                |
+Requirements are tried in the order the contract declared them, and the first
+a caller satisfies wins.
 
-A defect is a bug in the authenticator, not a rejected caller, and reporting it
-as one would tell an operator the opposite of what happened. The third row is
-unreachable while the types and the runtime walk agree — which is exactly why
-it is there.
+| Situation                                                       | Answer                                                |
+| --------------------------------------------------------------- | ----------------------------------------------------- |
+| no requirement accepted the caller                              | `401 UNAUTHORIZED`, the handler never entered         |
+| a credential was valid but lacked a scope the requirement named | `403 FORBIDDEN`, the handler never entered            |
+| an authenticator defects                                        | oRPC's `INTERNAL_SERVER_ERROR` collapse — not a `401` |
+| an unmarked procedure, no credentials                           | served                                                |
 
-On the client, `UNAUTHORIZED` is an error the contract does **not** declare, so
-it is not inferable: it lands in `defect`, not in `errCases`. A client for a
-marked fragment sends its credentials up front:
+Neither refusal carries a message: oRPC serializes `message` to the client, and
+a refusal has nothing a caller is entitled to. A requirement naming scopes is
+**not** satisfied by a credential reporting none — a scheme declared without a
+vocabulary answers bare, and admitting it there would admit the caller
+outright. A defect is a bug in the authenticator, not a rejected caller: it
+stops the walk rather than promoting the caller to the next scheme, and
+reporting it as a `401` would tell an operator the opposite of what happened.
+
+On the client, `UNAUTHORIZED` and `FORBIDDEN` are errors the contract does
+**not** declare, so they are not inferable: they land in `defect`, not in
+`errCases`. A client for a protected fragment sends its credentials up front:
 
 ```ts
 const client = createOrderApiClient("http://127.0.0.1:3000", "/rpc", {
-  authorization: `Bearer ${tenantId}:${userId}`,
+  authorization: `Bearer ${tenantId}:${userId}:orders:export`,
 });
 ```
 
@@ -311,7 +379,7 @@ const client = createOrderApiClient("http://127.0.0.1:3000", "/rpc", {
 **An unmarked procedure is public, and nothing fails if the marker is
 forgotten.** There is no deny-by-default: a new procedure added to an unmarked
 record is served to anyone, no compile error, no startup failure, no warning.
-What the contract buys is that a protected route is _visible_ — one word in the
+What the contract buys is that a protected route is _visible_ — one call in the
 artifact both sides read, in the diff, in the generated types, and in the
 handler's own signature.
 
@@ -321,18 +389,20 @@ and today that is something an application writes, not something this package
 offers.
 
 Two further non-goals worth stating plainly: the marker does not
-**authenticate** (that is your `Authenticator`, and what a token means is
-yours), and it does not model **authorization** — it says who a caller is, and
-nothing about what they may do. Per-procedure permissions belong in the
-handler, where the use case is.
+**authenticate** (that is your authenticator, and what a token means is
+yours), and it does not model **resource-dependent authorization**. A **scope**
+is the exception, and admitted on the same test authentication passes: it is a
+property of the credential, answerable before dispatch. "Is this caller the
+order's owner?" is not, and belongs in the handler, where the use case is.
 
 ## See also
 
 - [`@btravstack/contract`](/reference/contract) — `authenticated`,
-  `Authenticated`, `PrincipalKey`, `IsMarked`, `isAuthenticated`.
-- [`@btravstack/http`](/reference/http) — `HttpAuthenticator`,
-  `AuthenticatorPort`, `Unauthenticated`, and the request table.
+  `Requirement`, `Requirements`, `Authenticated`, `PrincipalKey`, `IsMarked`,
+  `RequirementsOf`, `isAuthenticated`.
+- [`@btravstack/http`](/reference/http) — `defineHttp`, `HttpAuthenticator`,
+  `Granted`, `Principal`, `Unauthenticated`, and the request table.
 - [Split a router into controllers](/how-to/split-a-router-into-controllers) —
   where the handler in step 3 lives once an API has slices.
 - [Order API (HTTP)](/examples/order-api) — one marked fragment, one public
-  one, end to end.
+  one, and a procedure that overrides its group's default, end to end.

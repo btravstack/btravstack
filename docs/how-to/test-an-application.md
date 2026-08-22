@@ -137,11 +137,10 @@ string. Compose the root's own shape with a recording sink, and boot that:
 ```ts
 const lines: Line[] = [];
 
+// The same router as the real root, so the same authenticators come with it:
+// they ride the router and `HttpModule` puts them in `provides` itself.
 const recordingApi = HttpModule("RecordingApi")({
   router: orderRouter,
-  // The same authenticator as the real root: the contract marks `orders`, so
-  // every composition serving that router owes one.
-  authenticator: bearerAuthenticator,
   imports: [
     OrdersSlice,
     CustomersSlice,
@@ -309,7 +308,6 @@ const recordingApi = () => {
     api: HttpModule("RecordingApi")({
       needs: [Env],
       router: orderRouter,
-      authenticator: bearerAuthenticator,
       imports: [
         OrdersSlice,
         CustomersSlice,

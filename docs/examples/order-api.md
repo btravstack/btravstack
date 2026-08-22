@@ -1,6 +1,6 @@
 ---
 title: Order API example
-description: The HTTP deployment — two slices, orders and customers, one marked authenticated and one public, each its own contract fragment, HttpController and full vertical down to Prisma, an auth.ts stating what a principal is and an authenticator resolving it, composed by the keyed HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the five compile-time gates pinned by needs-gate.test-d.ts.
+description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, HttpController and full vertical down to Prisma, an auth.ts declaring two schemes and a scope through defineHttp, composed by the keyed HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
 ---
 
 # Order API (HTTP)
@@ -49,7 +49,8 @@ export type CustomerView = z.infer<typeof customerView>;
 const customerRef = z.object({ id: z.uuidv7() });
 export type CustomerRef = z.infer<typeof customerRef>;
 
-const ordersContract = {
+// The group default: every procedure beneath needs the `user` scheme.
+const ordersContract = authenticated({ user: [] })({
   place: oc
     .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
@@ -62,7 +63,14 @@ const ordersContract = {
     .input(orderRef)
     .output(orderView)
     .errors({ NOT_FOUND: { data: orderRef } }),
-};
+
+  // Overrides the group default for itself: a service token may export too,
+  // and a user token needs the scope.
+  export: authenticated(
+    { user: ["orders:export"] },
+    { service: [] },
+  )(oc.output(z.object({ csv: z.string() }))),
+});
 
 const customersContract = {
   find: oc
@@ -72,7 +80,7 @@ const customersContract = {
 };
 
 export const contract = {
-  orders: authenticated(ordersContract),
+  orders: ordersContract,
   customers: customersContract,
 };
 ```
@@ -91,10 +99,16 @@ The two fragments are module-private; `contract` and the view types are the
 package's exports, and every consumer reaches a fragment through it —
 `contract.orders`, `contract.customers`.
 
-[`authenticated`](/reference/contract) on `orders` is a type-level fact about
-the fragment, so a client reads which half of this API needs credentials off
+[`authenticated({ user: [] })`](/reference/contract) on `orders` is a
+type-level fact about
+the fragment, so a client reads which half of this API needs credentials — and
+under which scheme — off
 the contract itself, and a server that serves the marked half without an
-authenticator does not compile. It is also why the two fragments' inputs
+authenticator for that scheme does not compile. `orders.export` overrides that
+group default for itself, which is how one contract exercises a per-procedure
+override, a **scope** and a **second scheme** all at once: a `user` token
+granting `orders:export`, **or** a `service` key needing no scope. It is also
+why the two fragments' inputs
 differ: `customers.find` names its `tenantId`, because "which tenant" is part
 of what an anonymous caller is asking; `orders.place` and `orders.find` name
 none, because the caller's own identity establishes it, and a required field
@@ -107,90 +121,109 @@ enriching it is never a contract change.
 
 ## What a caller is, and the one file that says so
 
-Two files, both at the root of `src/`, and neither belongs to a slice:
+One file, at the root of `src/`, belonging to no slice:
 
 ```
-src/auth.ts             httpAuth<Identity>() — states the principal, mints HttpController/HttpRouter/HttpAuthenticator on it
-src/authenticator.ts    bearerAuthenticator — the provider that resolves an Identity from the request's headers
+src/auth.ts             the two schemes, and the one defineHttp call that declares them
 ```
 
-`auth.ts` is where `Identity` is stated, once, and the three pieces the slices
-and the root import come back fixed to it:
+`auth.ts` is where each scheme's identity is stated and its authenticator
+written, and where the one `defineHttp` call the application makes lives:
 
 ```ts
-import type { TenantId } from "@btravstack/example-order-domain";
+import { TenantId } from "@btravstack/example-order-domain";
 import {
-  httpAuth,
-  type HttpAuthenticatorOf,
-  type HttpControllerOf,
-  type HttpRouterOf,
+  HttpAuthenticator,
+  Unauthenticated,
+  defineHttp,
 } from "@btravstack/http";
+import { ErrAsync, OkAsync } from "unthrown";
 
+/** What this deployment knows about a caller under the `user` scheme. */
 export type Identity = {
   readonly tenantId: TenantId;
   readonly userId: string;
 };
 
-const identity = httpAuth<Identity>();
+/** What the `service` scheme resolves to: a machine caller, no tenant. */
+export type ServiceIdentity = { readonly appId: string };
 
-export const HttpController: HttpControllerOf<Identity> =
-  identity.HttpController;
-export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
-export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
-  identity.HttpAuthenticator;
-```
-
-Once per application rather than once per slice, because a handler's parameter
-types are fixed **where the arrow is written**: the composition root cannot
-re-type a `sync` callback that lives inside `slices/orders/`, so the identity
-has to be in scope there. That is also what makes the authenticator and the
-controllers unable to disagree — both come from this one call. The three
-`…Of<Identity>` aliases are annotations rather than ceremony: a controller's
-port expands to a type carrying the marker's phantom `unique symbol`, which
-this file cannot name in its own declaration emit.
-
-It is the **only** way a handler gets a readable principal. A marked fragment
-reached through `@btravstack/http`'s own top-level `HttpController` types
-`principal: never`, so every read of it is a compile error — the signal to use
-the factory, not a fallback.
-
-`authenticator.ts` is then an ordinary di provider, with no type argument left
-to state:
-
-```ts
-import { TenantId } from "@btravstack/example-order-domain";
-import { Unauthenticated } from "@btravstack/http";
-import { ErrAsync, OkAsync } from "unthrown";
-
-import { HttpAuthenticator } from "./auth.js";
-
-export const bearerAuthenticator = HttpAuthenticator({
+export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
       ? header.slice("Bearer ".length)
       : "";
-    const [tenantId, userId] = token.split(":");
+    const [tenantId, userId, ...rest] = token.split(":");
+    // Rejoined rather than taken as one field: a scope name contains the
+    // delimiter itself, so `orders:export` cannot survive a plain third field.
+    const granted = rest.join(":");
     return tenantId === undefined ||
       tenantId === "" ||
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId: TenantId(tenantId), userId });
+      : OkAsync({
+          identity: { tenantId: TenantId(tenantId), userId },
+          scopes: granted
+            .split(",")
+            .filter(
+              (scope): scope is "orders:export" => scope === "orders:export",
+            ),
+        });
   },
+});
+
+/** The second scheme: an API key, no scopes — what a reporting job presents. */
+export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  sync: () => (headers) => {
+    const key = headers["x-api-key"];
+    return typeof key === "string" && key !== ""
+      ? OkAsync({ appId: key })
+      : ErrAsync(new Unauthenticated());
+  },
+});
+
+export const api = defineHttp({
+  authenticators: { user: userAuth, service: serviceAuth },
 });
 ```
 
-`Bearer <tenantId>:<userId>` is a stand-in, not a recommendation — what matters
-is the shape. This is also where a header becomes a **tenant**: `TenantId` is
+Once per application rather than once per slice, because a handler's parameter
+types are fixed **where the arrow is written**: the composition root cannot
+re-type a `sync` callback that lives inside `slices/orders/`, so the registry
+has to be in scope there. Declaring a scheme and implementing it are the
+**same act**, which is why there is no registry to keep in step with the
+contract and no authenticator for the root to list.
+
+::: warning Held whole — never destructured
+`const { HttpController } = defineHttp(...)` is **TS2527**: each binding of a
+destructured member expands to a type mentioning the marker's inaccessible
+`unique symbol`, which this file could not emit. Held whole, the inferred type
+collapses to `Http<A>`, which is nameable — which is why this file, unlike the
+one it replaced, carries **no type annotation at all**.
+:::
+
+It is the **only** way a handler gets a readable principal. A marked fragment
+reached through any other `defineHttp` call types
+`principal: never`, so every read of it is a compile error — the signal to use
+the factory, not a fallback.
+
+`Bearer <tenantId>:<userId>:<scopes>` is a stand-in, not a recommendation —
+what matters is the shape. This is also where a header becomes a **tenant**:
+`TenantId` is
 the domain's branded string, so the identity carries the brand from here and no
 handler on this path casts anything. The constructor is a cast rather than a
 parse — a brand is a compile-time fiction, and what it buys is that
 `repository.find(tenantId, id)` can no longer be called with its two arguments
-the other way round. `[]` because this one needs no service; a JWT verifier, a key set
-or a user directory would be named there and injected the way any provider's
-dependencies are, so swapping the stand-in for real verification changes
-nothing else in the composition. See
+the other way round. The scope **vocabulary** is declared at the call
+(`HttpAuthenticator<Identity, "orders:export">()`), so the granted list is
+checked against it here rather than compared as loose strings at the endpoint.
+Neither authenticator needs a service; a JWT verifier, a key set
+or a user directory would be named in a `deps` record and injected the way any
+provider's
+dependencies are, and that need would travel with the authenticator into the
+graph — so a root satisfying none is refused at the `HttpModule(...)` call. See
 [Protect a procedure](/how-to/protect-a-procedure) for the recipe in full.
 
 ## The slices: a controller and a module each
@@ -202,9 +235,9 @@ use cases in [`order-application`](/examples/order-application), and the
 entities and Prisma adapters behind it.
 
 ```
-src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
+src/slices/orders/controller.ts       api.HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
 src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
-src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync })
+src/slices/customers/controller.ts    api.HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 ```
 
@@ -213,9 +246,9 @@ this slice where a domain error becomes something else — `slices/customers/con
 below does the same for its own slice:
 
 ```ts
-import { HttpController } from "../../auth.js";
+import { api } from "../../auth.js";
 
-export const ordersController = HttpController(
+export const ordersController = api.HttpController(
   "OrdersController",
   contract.orders,
 )(
@@ -265,6 +298,27 @@ export const ordersController = HttpController(
               }),
             ),
           ),
+      // Two schemes, so the principal is a discriminated union — and the
+      // switch is exhaustive or the build fails. The body names the arm that
+      // produced it, so a spec can pin which scheme served the call.
+      export: ({ context }) => {
+        switch (context.principal.scheme) {
+          case "user":
+            logger.info("order export requested", {
+              userId: context.principal.identity.userId,
+            });
+            return OkAsync({
+              csv: `user,${context.principal.identity.userId}`,
+            });
+          case "service":
+            logger.info("order export requested", {
+              appId: context.principal.identity.appId,
+            });
+            return OkAsync({
+              csv: `service,${context.principal.identity.appId}`,
+            });
+        }
+      },
     }),
   },
 );
@@ -286,10 +340,17 @@ place that has to decide what a client sees. A `Defect` is never named: it
 was never modeled, and collapsing it to a 500 is the correct treatment rather
 than a fallback.
 
-The tenant comes off `context.principal` — the value `bearerAuthenticator`
+The tenant comes off `context.principal` — the value the `user` scheme's
+authenticator
 resolved from this request's headers — and it is the only thing on oRPC's
-context channel. `HttpController` is `auth.ts`'s, which is why `principal` has
-a readable type here at all with no annotation at this call site. The starter
+context channel. `HttpController` comes off `auth.ts`'s `api`, which is why
+`principal` has
+a readable type here at all with no annotation at this call site. `place` and
+`find` name **one** scheme, so they read the identity bare — byte-for-byte what
+this file held before named schemes existed; `export` names two, so its
+principal is tagged and the compiler checks that every scheme the contract
+named is answered for. That contrast is the whole design: the common case pays
+nothing. The starter
 knows nothing about tenancy either way: it resolved a principal this
 application defined, and what the fields on it mean is the application's
 business. Who placed an order is a transport-boundary fact, so it is logged
@@ -312,22 +373,24 @@ port over `CustomerView` itself, which pointed the dependency arrow outwards.
 
 ## The router: composed from controllers, keyed by the contract
 
-`module.ts`'s `orderRouter` is `HttpRouter(contract)`'s **keyed** form —
+`module.ts`'s `orderRouter` is `api.HttpRouter(contract)`'s **keyed** form —
 a record of controllers, one per top-level contract key, instead of one
 `sync`:
 
 ```ts
-import { HttpRouter } from "./auth.js";
+import { api } from "./auth.js";
 
-export const orderRouter = HttpRouter(contract)({
+export const orderRouter = api.HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
 });
 ```
 
-`HttpRouter` is `auth.ts`'s here too: the marker on `contract.orders` rides
-through the keyed form, so the router carries the identity its controllers were
-minted with, and the root below checks the authenticator against it.
+`HttpRouter` comes off the same `api` as the controllers: the marks on
+`contract.orders` ride
+through the keyed form, so the router declares **one dependency per scheme the
+contract names** — `HttpAuthenticator:user` and `HttpAuthenticator:service` —
+and carries the providers that discharge them, from that same call.
 
 This form is exact: a slice missing from the record, a key the contract does
 not declare, and a controller wired under the wrong key are all compile
@@ -337,7 +400,7 @@ the recipe, and `packages/http/src/controller.test-d.ts` for the five gates
 that pin these errors and the lift below. Because a fragment is itself a valid
 contract, `ordersController` serves `contract.orders` alone unchanged: the
 lifted root is
-`HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
+`api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
 over `OrdersSlice`, so extracting a slice out of this modulith is a new
 composition root and one fewer import, not a rewrite.
 
@@ -348,18 +411,19 @@ composition root and one fewer import, not a rewrite.
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
 
-The `authenticator` is here and nowhere else, because who a caller is is one
-answer per process rather than a slice's question — and it is _required_ here
-because the contract marks `orders`: `HttpRouter` gave the router provider a
-dependency on the starter's `AuthenticatorPort`, so dropping the line is an
-unmet need `start` refuses, and supplying one that resolves a different
-principal is a compile error at this very call.
+The two authenticators are **not** listed, and that is the point: who a caller
+is is one answer per process rather than a slice's question, so they were
+declared once in `auth.ts`, and they ride the router — which is what needs
+them. `HttpModule` puts them in `provides` itself, so a scheme cannot be
+forgotten here and cannot be wired to the wrong router. What is still checked
+is di's own gate: a scheme the contract names with no authenticator behind it
+leaves `HttpAuthenticator:<scheme>` in the root's needs, which `start` refuses,
+naming the port.
 
 Each slice imports its own vertical — `OrderApplicationModule`, whose
 repository is an unmet need, and `OrderPersistenceModule`, which provides it —
@@ -528,7 +592,7 @@ the same client and the same running root — a `CustomerView` on the way out of
 a stub-backed root, a typed `NOT_FOUND` out of the real one — proving the keyed
 router actually mounted both controllers rather than one.
 
-## Five gates, pinned at compile time
+## Three gates, pinned at compile time
 
 `needs-gate.test-d.ts` is type-checked, never executed. It pins the two
 directions of `start`'s own gate and di's, side by side:
@@ -542,9 +606,11 @@ const _missingRuntime = start(RuntimelessApi, options);
 phantom marker becomes the sentence
 `"NO RUNTIME — the module exports no port declared over RuntimePort"`, and the
 module argument fails to match its parameter type — the sentence is the error's
-last line. It provides `bearerAuthenticator` even so, deliberately: the contract
-marks `orders`, so a graph carrying the router without an authenticator has an
-unmet need too, and an arm that could fail either way pins neither gate.
+last line. It provides `orderRouter` **and `...orderRouter.authenticators`**
+even so, deliberately: the contract
+marks `orders`, so a graph carrying the router without them has an
+unmet need too, and an arm that could fail either way pins neither gate. That
+spread is exactly what `HttpModule` does for a root that uses the sugar.
 
 ```ts
 const RouterlessApi = Module("RouterlessApi")({
@@ -579,46 +645,18 @@ and `UnloggedApi` — runtime and router present, `observability()` imported so
 the port exists in the graph, `Logger` simply not exported — is
 rejected by the unit arm alone.
 
-The last two are the authenticator's, and they are different gates on purpose:
-
-```ts
-const UnauthenticatedApi = HttpModule("UnauthenticatedApi")({
-  router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
-});
-
-// @ts-expect-error — the composition needs the authenticator port and nothing provides it.
-const _missingAuthenticator = start(UnauthenticatedApi, options);
-```
-
-That is **di's** gate again, at `start` and not at `HttpModule(...)` — which is
-why the module above builds without complaint. The other one cannot be di's at
-all: `AuthenticatorPort`'s service type is erased to `unknown`, so any
-authenticator discharges the need. `HttpModule` compares the router's identity
-against the authenticator's itself, at the option:
-
-```ts
-const wrongAuthenticator = HttpAuthenticator<{ readonly sub: string }>()({
-  sync: () => () => OkAsync({ sub: "s-1" }),
-});
-
-const _mismatchedApi = HttpModule("MismatchedApi")({
-  router: orderRouter,
-  // @ts-expect-error — the authenticator resolves `{ sub }`, not the router's Identity.
-  authenticator: wrongAuthenticator,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
-});
-```
-
-The directive sits on the option rather than on a `start` below it, because
-that is where the failure is. The contract declares no principal to compare
-against; `auth.ts` is what declares one.
+**What is no longer here, and why.** This file used to carry two more arms
+about the authenticator — a root that forgot to pass one, and a root that
+passed one resolving the wrong identity. Neither is reachable any more. The
+authenticators come from the same `defineHttp` call that types the handlers and
+ride the router into `provides`, so there is nothing to forget and no pair to
+compare — a scheme with nobody behind it is di's own unmet need on
+`HttpAuthenticator:<scheme>`, which the router-port arm above already pins the
+shape of.
 
 ## Where to go next
 
 - The same `DuplicateOrder`, orchestrated: [Order Temporal worker](/examples/order-temporal-worker).
-- The marker, `auth.ts` and the authenticator as a recipe: [Protect a procedure](/how-to/protect-a-procedure).
+- The marker, `auth.ts`, scopes and the 401/403 split as a recipe: [Protect a procedure](/how-to/protect-a-procedure).
 - The package behind the transport: [`@btravstack/http`](/reference/http).
 - Why the kernel appears in none of this: [The kernel maps nothing](/explanation/the-kernel-maps-nothing).

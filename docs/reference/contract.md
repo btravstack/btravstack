@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/contract"
-description: The contract-level auth marker — authenticated(), Authenticated, PrincipalKey, IsMarked and isAuthenticated — what it puts on a contract node, and what it deliberately does not.
+description: The contract-level auth marker — authenticated(), Requirement, Requirements, Authenticated, PrincipalKey, IsMarked, RequirementsOf and isAuthenticated — what it puts on a contract node, and what it deliberately does not.
 ---
 
 # @btravstack/contract
@@ -14,47 +14,61 @@ description: The contract-level auth marker — authenticated(), Authenticated, 
 > [API reference](/api/contract/).
 
 A marker a contract puts on a node — a record of procedures, or a single
-procedure — to say _"this requires an authenticated caller"_, readable by
-both the client that imports the contract and the server that implements it.
-Nothing here talks to oRPC, HTTP, AMQP or Temporal: it is a plain marker over
-`WeakSet` identity, transport-agnostic by construction.
+procedure — to say _"this requires a caller satisfying one of these security
+requirements"_, readable by both the client that imports the contract and the
+server that implements it. A requirement is OpenAPI's own shape: a security
+scheme's name, mapped to the scopes it must grant. Nothing here talks to oRPC,
+HTTP, AMQP or Temporal: it is a plain marker over `WeakMap` identity,
+transport-agnostic by construction.
 
-**The contract says _whether_ a route is protected; the application's
-`httpAuth<Identity>()` says _what_ the principal is.** No identity type is
-named here at all, so nothing about the server's view of a caller reaches a
-client.
+**The contract says _which schemes_ protect a route and _which scopes_ each
+must grant; the application's `defineHttp({ authenticators })` says _what each
+scheme resolves to_.** No identity type is named here at all, so nothing about
+the server's view of a caller reaches a client.
 
 ## Exports
 
 `packages/contract/src/index.ts` exports exactly this:
 
-| Export             | Kind  | What it is                                                                                                                                           |
-| ------------------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `authenticated`    | value | `<T extends object>(node: T) => Authenticated<T>` — marks a contract node as requiring an authenticated caller                                       |
-| `isAuthenticated`  | value | `(node: object) => boolean` — whether **this exact node** was marked                                                                                 |
-| `Authenticated<T>` | type  | `T & { readonly [PrincipalKey]: true }` — `T`'s own keys plus one phantom key that exists only for the type checker                                  |
-| `PrincipalKey`     | type  | `typeof PRINCIPAL`, the marker's key — exported so a consumer's mapped type can `Exclude<keyof C, PrincipalKey>` and land on the contract's own keys |
-| `IsMarked<T>`      | type  | `T extends { readonly [PrincipalKey]: true } ? true : false` — whether **this exact node** carries the marker, as a yes/no rather than a type        |
+| Export                | Kind  | What it is                                                                                                                                                        |
+| --------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `authenticated`       | value | `<const R extends Requirements>(...requirements: R) => <T extends object>(node: T) => Authenticated<T, R>` — curried; marks a node with the requirements it names |
+| `isAuthenticated`     | value | `(node: object) => Requirements \| undefined` — what **this exact node** requires, or `undefined` when nobody marked it                                           |
+| `Requirement`         | type  | `Readonly<Record<string, readonly string[]>>` — one security scheme's name mapped to the scopes it must grant                                                     |
+| `Requirements`        | type  | `readonly Requirement[]` — ORed, tried in declaration order                                                                                                       |
+| `Authenticated<T, R>` | type  | `T & { readonly [PrincipalKey]: R }` — `T`'s own keys plus one phantom key holding the exact requirements, for the type checker only                              |
+| `PrincipalKey`        | type  | `typeof PRINCIPAL`, the marker's key — exported so a consumer's mapped type can `Exclude<keyof C, PrincipalKey>` and land on the contract's own keys              |
+| `IsMarked<T>`         | type  | `T extends { readonly [PrincipalKey]: Requirements } ? true : false` — whether **this exact node** carries the marker, as a yes/no rather than a type             |
+| `RequirementsOf<T>`   | type  | the exact `Requirements` **this exact node** was marked with, `never` when it is unmarked                                                                         |
 
-## `authenticated(node)`
+## `authenticated(...requirements)(node)`
 
-One export, no factory and no type parameter. Apply it to a record of
-procedures (which protects every procedure beneath it) or to a single
-procedure (which protects itself):
+**Curried.** The first call takes one or more `Requirement`s — a scheme name
+mapped to the scopes it must grant — and returns the function that marks a
+node. Apply that to a record of procedures (the **default** for every procedure
+beneath it) or to a single procedure (which **replaces** that default for
+itself):
 
 ```ts
 import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-const ordersContract = {
+const ordersContract = authenticated({ user: [] })({
   place: oc
     .input(z.object({ id: z.string(), quantity: z.number() }))
     .output(z.object({ id: z.string() })),
-};
+
+  // Its own mark replaces the group default: a `user` token granting the
+  // `orders:export` scope, or a `service` token needing no scope at all.
+  export: authenticated(
+    { user: ["orders:export"] },
+    { service: [] },
+  )(oc.output(z.object({ csv: z.string() }))),
+});
 
 export const contract = {
-  orders: authenticated(ordersContract),
+  orders: ordersContract,
   customers: {
     find: oc
       .input(z.object({ id: z.string() }))
@@ -63,57 +77,75 @@ export const contract = {
 };
 ```
 
-There is nothing to state twice, and nothing about identity to keep in step
-between two contracts: the marker carries no principal, so `orders` above says
-only that a caller must be authenticated.
+Three rules, and they are OpenAPI's own:
 
-## `IsMarked` and `isAuthenticated`
+- **Requirements are ORed**, tried in the order given: the first one a caller
+  satisfies wins.
+- **A requirement names one scheme.** AND-within-a-requirement is deliberately
+  not modelled — requiring two credentials at once would put a record rather
+  than a single identity on the handler. A composite scheme models it where it
+  is genuinely needed.
+- **Nearest mark wins.** A marked record is a default; a marked procedure
+  beneath it replaces that default for itself rather than adding to it.
 
-`IsMarked` answers the question at the type level; `isAuthenticated` answers
-the same question at runtime, for one node:
+Nothing about identity is stated here, and nothing has to be kept in step
+between two contracts: `{ user: [] }` says a caller must present the `user`
+scheme, not who a `user` is.
+
+## `IsMarked`, `RequirementsOf` and `isAuthenticated`
+
+`IsMarked` answers yes/no at the type level, `RequirementsOf` reads the exact
+requirements back, and `isAuthenticated` answers the same question at runtime,
+for one node:
 
 ```ts
 import {
   authenticated,
   isAuthenticated,
   type IsMarked,
+  type Requirements,
+  type RequirementsOf,
 } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
-const quote = authenticated(
+const quote = authenticated({ user: ["quotes:read"] })(
   oc
     .input(z.object({ id: z.string() }))
     .output(z.object({ total: z.number() })),
 );
 
 export type QuoteIsMarked = IsMarked<typeof quote>; // true
-export const isProtected: boolean = isAuthenticated(quote); // true
+export type QuoteNeeds = RequirementsOf<typeof quote>; // [{ user: ["quotes:read"] }]
+export const required: Requirements | undefined = isAuthenticated(quote);
 ```
 
-`isAuthenticated` answers for **one node only**. Ancestry — a marked parent
-implying a marked child — is the caller's to carry: this package tracks nodes,
-not trees. `@btravstack/http`'s router walk carries an `inherited` flag for
-exactly that, mirroring what the types do when a marked record pushes its
-marker onto each child.
+`isAuthenticated` answers for **one node only**, and answers `undefined` — not
+an empty array — when nobody marked it, so "public" cannot be confused with
+"protected by nothing satisfiable". Ancestry — a marked parent implying a
+marked child — is the caller's to carry: this package tracks nodes, not trees.
+`@btravstack/http`'s router walk carries the inherited requirements for exactly
+that, mirroring what the types do when a marked record pushes its requirements
+onto each child that declares none of its own.
 
-## The contract says whether; the application says what
+## The contract says which schemes; the application says what each one is
 
 Nothing here names an identity type, so there is nothing in the contract to
-keep minimal and nothing in it to leak. What a principal actually **is** is
-stated once, server-side, by `@btravstack/http`'s
-[`httpAuth<Identity>()`](/reference/http) — and a handler minted from that
-factory sees it with no annotation of its own.
+keep minimal and nothing in it to leak. What each scheme resolves to is stated
+once, server-side, by `@btravstack/http`'s
+[`defineHttp({ authenticators })`](/reference/http) — and a handler minted from
+that call sees it with no annotation of its own.
 
 Two things follow. Enriching what a deployment knows about its callers —
 roles, an org tier, an internal id — is never a contract change and reaches no
-client. And the gate pairing a router with an authenticator compares the
-**router's** identity against the **authenticator's**, both of which come from
-the same `httpAuth` call, rather than either against the contract.
+client. And there is no identity pair left to compare: declaring a scheme and
+implementing it are the same act, so a scheme the contract names with no
+authenticator behind it is di's own unmet need on `HttpAuthenticator:<scheme>`,
+not a gate either package writes.
 
-A marked fragment reached through the top-level `HttpController` — no factory —
-types `principal: never`, so every read of it is a compile error. That is the
-signal to use the factory, not a fallback.
+A marked fragment reached through anything but a `defineHttp` call types
+`principal: never`, so every read of it is a compile error. That is the signal
+to use the factory, not a fallback.
 
 ## Three load-bearing properties
 
@@ -123,14 +155,16 @@ the server that implements it, and what would let an AMQP or Temporal contract
 reuse the same marker: it has no opinion about which transport reads it.
 
 **The combinator returns the node unchanged and sets no property on it.**
-`authenticated(node) === node`, with nothing added — `PRINCIPAL` is `declare`d
+`authenticated(...requirements)(node) === node`, with nothing added —
+`PRINCIPAL` is `declare`d
 and never assigned, so it exists only in the type system. There is no key for
 oRPC's `implement()` to walk as a procedure and nothing for its builders to
-strip; the mark lives in a `WeakSet` keyed by identity, shared across copies of
+strip; the mark lives in a `WeakMap` keyed by identity, mapping each node to
+the requirements it was marked with, shared across copies of
 this package (see the warning below).
 
 **Applied after a builder chain is finished, never inside one.**
-`authenticated` wraps a finished node — the last call in a chain, or a whole
+`authenticated(...requirements)` wraps a finished node — the last call in a chain, or a whole
 record of finished nodes. Applied mid-chain it is lost, because
 `oc.router(...)` rebuilds every node: lost on **both** sides at once, the type
 and the runtime mark together, which makes it a dropped protection rather than
@@ -144,9 +178,17 @@ a bypass. No oRPC builder has to know the marker exists.
   [Protect a procedure](/how-to/protect-a-procedure).
 - **It does not authenticate, and it does not name a principal.** Turning a
   request into a principal is `@btravstack/http`'s `HttpAuthenticator`, what
-  that principal's type is, is `httpAuth<Identity>()`, and what a token means
-  is the application's.
-- **It does not model authorization.** Who a caller is, not what they may do.
+  each scheme resolves to is `defineHttp({ authenticators })`, and what a token
+  means is the application's.
+- **It does not check a scope either.** It declares one; comparing a
+  credential's granted scopes against it — and answering `403` rather than
+  `401` — is the starter's.
+- **It does not model resource-dependent authorization.** A scope is a property
+  of the credential and is answerable before dispatch, which is why it is here.
+  "Is this caller the order's owner?" is not, and stays in the handler.
+- **It carries no OpenAPI document metadata.** A scheme's own definition —
+  `type: http`, `bearerFormat`, an OAuth flow — belongs beside the contract,
+  not in the marker.
 
 ## Peer dependencies
 
@@ -157,18 +199,18 @@ that is the whole install. Node `>=20`.
 `PrincipalKey` is a `unique symbol`, so two copies of this package mint two
 different brands: a contract marked against one does not type as marked in the
 other. The **runtime** registry does not split that way — it hangs off
-`globalThis` under `Symbol.for("@btravstack/contract/marked")`, so every copy
-reads and writes one `WeakSet`.
+`globalThis` under `Symbol.for("@btravstack/contract/requirements")`, so every
+copy reads and writes one `WeakMap`.
 
-That asymmetry is deliberate. A module-private set would make a second copy
-silent: `isAuthenticated` false everywhere, no authenticator required, and a
-marked route **served open**. Sharing the registry makes the two halves fail
+That asymmetry is deliberate. A module-private map would make a second copy
+silent: `isAuthenticated` `undefined` everywhere, no scheme dependency
+declared, and a marked route **served open**. Sharing the registry makes the two halves fail
 together, and the type half fails loudly. `@btravstack/http` peers on this
 package so an application holds a single copy in the first place.
 
 `PRINCIPAL` is also never exported as a value, and must stay that way: a
 nameable brand could be written onto a contract node by hand without the
-matching `WeakSet` entry — typed as protected, unmarked at runtime, so no
+matching `WeakMap` entry — typed as protected, unmarked at runtime, so no
 authenticator is demanded and a handler reads a principal nothing injected.
 See
 [Peer dependencies](/explanation/peer-dependencies).
@@ -178,8 +220,8 @@ See
 
 - [Protect a procedure](/how-to/protect-a-procedure) — mark, authenticate,
   compose.
-- [`@btravstack/http`](/reference/http) — `HttpAuthenticator`,
-  `AuthenticatorPort`, `Unauthenticated`, and what a marked leaf's handler
-  receives.
+- [`@btravstack/http`](/reference/http) — `defineHttp`, `HttpAuthenticator`,
+  `Unauthenticated`, and what a marked leaf's handler receives.
 - [Order API (HTTP)](/examples/order-api) — a contract with one marked
-  fragment and one public one.
+  fragment, one public one, and a procedure that overrides its group's
+  default.

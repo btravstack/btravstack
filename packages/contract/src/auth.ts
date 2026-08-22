@@ -73,3 +73,8 @@ export const authenticated =
  * the tree and passes the nearest mark down.
  */
 export const isAuthenticated = (node: object): Requirements | undefined => marked.get(node);
+
+// ponytail: opt-in by construction — an unmarked node is public, and forgetting
+// the marker fails nothing. Deny-by-default is three lines away: mark the root
+// with the deployment's default requirements and add `public(node)` that
+// deletes it from the map.

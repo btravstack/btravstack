@@ -11,8 +11,8 @@
 [API Reference](https://btravstack.github.io/start/api/http/)
 
 ```sh
-pnpm add @btravstack/http @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @orpc/server @orpc/contract @unthrown/orpc
+pnpm add @btravstack/http @btravstack/core @btravstack/config @btravstack/di \
+  @btravstack/contract unthrown @orpc/server @orpc/contract @unthrown/orpc
 ```
 
 All of those are peer dependencies — install every one, so the application
@@ -23,13 +23,18 @@ has not cut a release yet.
 
 ```ts
 import { runMain } from "@btravstack/core";
-import { HttpModule, HttpRouter } from "@btravstack/http";
+import { HttpModule, defineHttp } from "@btravstack/http";
 import { P } from "unthrown";
+
+// One call mints every marker-typed entity this application uses. A public
+// API declares no security scheme, so it takes no argument. Hold the result
+// as ONE binding — never destructure it (see "Protecting a procedure").
+const api = defineHttp();
 
 // Contract-first: the record is shaped like the contract, each leaf a plain
 // Result-returning function typed by it. The use cases arrive under the names
 // the deps record gave them — di injects them; oRPC's context stays empty.
-const ordersRouter = HttpRouter(ordersContract)(
+const ordersRouter = api.HttpRouter(ordersContract)(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -97,15 +102,15 @@ port back from `app.runtimeInfo()`.
 
 ## Splitting a large API into slices
 
-`HttpRouter(contract)(deps, { sync })` is right for a small API; a large one
-splits into **controllers**, one per slice of the contract, composed at the
+`api.HttpRouter(contract)(deps, { sync })` is right for a small API; a large
+one splits into **controllers**, one per slice of the contract, composed at the
 root by a keyed call instead:
 
 ```ts
-const ordersController = HttpController("OrdersController", ordersContract)(
-  [PlaceOrder, FindOrder],
+const ordersController = api.HttpController("OrdersController", ordersContract)(
+  { place: PlaceOrder, find: FindOrder },
   {
-    sync: (place, find) => ({
+    sync: ({ place, find }) => ({
       place: ({ errors }, input) =>
         place
           .execute(input.id, input.quantity)
@@ -149,84 +154,59 @@ const ordersController = HttpController("OrdersController", ordersContract)(
   },
 );
 
-const orderRouter = HttpRouter(orderContract)({
+const orderRouter = api.HttpRouter(orderContract)({
   orders: ordersController,
   customers: customersController,
 });
 ```
 
-`HttpController(name, fragment)({ name: Dep }, { sync })` — or just
+`api.HttpController(name, fragment)({ name: Dep }, { sync })` — or just
 `({ sync })` when the slice calls nothing — is the same two-call shape
-as `HttpRouter`, aimed at one fragment: it mints a port under `name` and
+as `api.HttpRouter`, aimed at one fragment: it mints a port under `name` and
 returns the provider carrying it on `.port`. The keyed form is **exact** — a
 missing slice, an undeclared key and a controller under the wrong key are all
 compile errors — and because a fragment is itself a valid contract, a slice
 can be served alone, its controller unchanged: the lifted root is
-`HttpRouter(ordersContract)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
+`api.HttpRouter(ordersContract)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
 declaring the very provider the modulith composed. See
 [Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
 
 ## Protecting a procedure
 
-A contract can say a procedure needs an authenticated caller. The marker is
-`@btravstack/contract`'s, so it lives in the artifact a client holds too — and
-it says **whether**, not who: no identity type is named there, so nothing about
+A contract says which **security schemes** a procedure accepts and which scopes
+each must grant. The marker is `@btravstack/contract`'s, so it lives in the
+artifact a client holds too — and it names no identity type, so nothing about
 the server's view of a caller reaches a client.
 
-`httpAuth<Identity>()` is what says **what** the principal is. It is written
-once per application and hands back `HttpController`, `HttpRouter` and
-`HttpAuthenticator` fixed to that identity:
+`defineHttp({ authenticators })` is what says **what each scheme resolves to**.
+Declaring a scheme and implementing it are the same act, so there is no
+registry to keep in step with the contract and nothing for a composition root
+to forget:
 
 ```ts
-// src/auth.ts — the one file that names the identity
+// src/auth.ts — the one file that names this deployment's identities
 import {
-  httpAuth,
-  type HttpControllerOf,
-  type HttpRouterOf,
-  type HttpAuthenticatorOf,
+  HttpAuthenticator,
+  Unauthenticated,
+  defineHttp,
 } from "@btravstack/http";
+import { ErrAsync, OkAsync } from "unthrown";
 
 export type Identity = { readonly tenantId: string; readonly userId: string };
+export type ServiceIdentity = { readonly appId: string };
 
-const identity = httpAuth<Identity>();
-
-export const HttpController: HttpControllerOf<Identity> =
-  identity.HttpController;
-export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
-export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
-  identity.HttpAuthenticator;
-```
-
-The three aliases are annotations, not ceremony: a controller's port expands to
-a type carrying the marker's phantom `unique symbol`, which a consumer's
-`.d.ts` cannot name.
-
-```ts
-import { authenticated } from "@btravstack/contract";
-import { HttpModule, Unauthenticated } from "@btravstack/http";
-import { oc, type } from "@orpc/contract";
-import { ErrAsync, OkAsync, P } from "unthrown";
-
-import { HttpAuthenticator, HttpRouter } from "./auth.js";
-
-const ordersContract = authenticated({
-  find: oc
-    .input(type<{ readonly id: string }>())
-    .output(type<OrderView>())
-    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
-});
-
-// An ordinary di provider on the starter's port: `deps` are di's, so a JWT
-// verifier or a user directory is injected the way any provider's are. It
-// takes no type argument — `httpAuth<Identity>()` already fixed one, which is
-// why the authenticator and the controllers cannot disagree.
-const bearerAuthenticator = HttpAuthenticator({
+// An ordinary di provider description: `deps` are di's, so a JWT verifier or a
+// user directory is injected the way any provider's are — an authenticator
+// reading only headers declares none. The scope vocabulary is the second type
+// argument, so the granted list is checked here rather than compared as loose
+// strings at the endpoint.
+const userAuth = HttpAuthenticator<Identity, "orders:export">()({
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
       ? header.slice("Bearer ".length)
       : "";
-    const [tenantId, userId] = token.split(":");
+    const [tenantId, userId, ...rest] = token.split(":");
     // Empty is not absent: `Authorization: :` splits into two defined strings,
     // and admitting them is admitting an anonymous caller as tenant "".
     return tenantId === undefined ||
@@ -234,16 +214,65 @@ const bearerAuthenticator = HttpAuthenticator({
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId, userId });
+      : OkAsync({
+          identity: { tenantId, userId },
+          scopes: rest
+            .join(":")
+            .split(",")
+            .filter(
+              (scope): scope is "orders:export" => scope === "orders:export",
+            ),
+        });
   },
 });
 
-// The principal arrives on oRPC's own context channel, typed by `Identity`.
-const ordersRouter = HttpRouter({ orders: ordersContract })(
+const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  sync: () => (headers) => {
+    const key = headers["x-api-key"];
+    return typeof key === "string" && key !== ""
+      ? OkAsync({ appId: key })
+      : ErrAsync(new Unauthenticated());
+  },
+});
+
+// The scheme NAMES are the keys here, written once. Held whole and never
+// destructured: each destructured member expands to a type mentioning the
+// marker's inaccessible `unique symbol` (TS2527), while held whole it collapses
+// to `Http<A>` — which is why this file writes no type annotation at all.
+export const api = defineHttp({
+  authenticators: { user: userAuth, service: serviceAuth },
+});
+```
+
+```ts
+import { authenticated } from "@btravstack/contract";
+import { HttpModule } from "@btravstack/http";
+import { oc, type } from "@orpc/contract";
+import { OkAsync, P } from "unthrown";
+
+import { api } from "./auth.js";
+
+const ordersContract = authenticated({ user: [] })({
+  find: oc
+    .input(type<{ readonly id: string }>())
+    .output(type<OrderView>())
+    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+
+  // Overrides the group default for itself — nearest mark wins. Requirements
+  // are ORed in declaration order: a `user` token granting `orders:export`, or
+  // a `service` key with no scopes at all.
+  export: authenticated(
+    { user: ["orders:export"] },
+    { service: [] },
+  )(oc.output(type<{ readonly csv: string }>())),
+});
+
+const ordersRouter = api.HttpRouter({ orders: ordersContract })(
   { find: FindOrder },
   {
     sync: ({ find }) => ({
       orders: {
+        // One scheme, so the principal is the identity BARE.
         find: ({ context, errors }, input) =>
           find
             .execute(context.principal.tenantId, input.id)
@@ -256,35 +285,54 @@ const ordersRouter = HttpRouter({ orders: ordersContract })(
                 }),
               ),
             ),
+        // Two schemes, so it is a discriminated union — and the switch is
+        // exhaustive or the build fails.
+        export: ({ context }) => {
+          switch (context.principal.scheme) {
+            case "user":
+              return OkAsync({
+                csv: `user,${context.principal.identity.userId}`,
+              });
+            case "service":
+              return OkAsync({
+                csv: `service,${context.principal.identity.appId}`,
+              });
+          }
+        },
       },
     }),
   },
 );
 
+// No authenticator to list: they ride the router, which is what needs them,
+// and `HttpModule` puts them in `provides` itself.
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  authenticator: bearerAuthenticator,
   imports: [Application, Persistence],
 });
 ```
 
-Every slice imports `HttpController` from `src/auth.ts` instead of from this
-package, and its handlers see `Identity` on `context.principal` with no
-annotation of their own. It is the **only** way to read one: the top-level
-`HttpController` and `HttpRouter` name no identity, so a marked fragment
-reached through them types `principal: never` and every read is a compile
-error — the signal to use the factory. An unmarked procedure still gets no
-principal at all: the contract decides _whether_, the factory decides _what_.
+Every slice mints its controller from that one `api`, and its handlers see the
+right principal on `context.principal` with no annotation of their own. It is
+the **only** way to read one: a marked fragment reached through anything else
+types `principal: never` and every read is a compile error — the signal to use
+the factory. An unmarked procedure still gets no principal at all: the contract
+decides _which schemes_, the factory decides _what each one is_.
 
-A marked router carries the authenticator port as a **need**, so forgetting
-`authenticator` is an unmet dependency `start` refuses, and supplying one
-minted on a different identity is a compile error at the `HttpModule(...)`
-call — the router's identity against the authenticator's, both from the same
-`httpAuth` call.
-A marked record protects every procedure beneath it. `Unauthenticated` carries
-**nothing**: the starter surfaces no reason — a rejected caller gets an
-`UNAUTHORIZED` and oRPC's default message — so an authenticator that wants to
-record why logs it before returning. See
+A router declares **one dependency per scheme its contract names**, so a scheme
+with no authenticator behind it is an ordinary unmet need `start` refuses,
+naming the port (`HttpAuthenticator:user`). There is no identity pair left to
+compare: the registry that types the handlers and the providers that discharge
+those ports come from the same call.
+
+Before dispatch, the requirements are tried in the order the contract declared
+them and the first a caller satisfies wins. A caller no requirement accepts
+gets **`401`**; a caller whose credential was valid but lacked a required scope
+gets **`403`**. Neither carries a message — oRPC serializes `message` to the
+client, and a refusal has nothing a caller is entitled to, so an authenticator
+that wants to record why logs it before returning `Unauthenticated`. A
+**defect** from an authenticator is a bug, not a refusal: it stops the walk
+rather than promoting the caller to the next scheme. See
 [Protect a procedure](https://btravstack.github.io/start/how-to/protect-a-procedure).
 
 ## What it guarantees
@@ -306,7 +354,7 @@ nothing. The drain retires busy keep-alive connections; a client's
   option and no listener port to provide.
 - **A middleware slot for application logic.** oRPC's own middleware, inside
   the router's procedures, is where that belongs. The one the package installs
-  itself is `principalMiddleware`, on a marked leaf only. `plugins` is an
+  itself is `principalMiddleware`, on a leaf whose requirements say so. `plugins` is an
   honest escape hatch rather than a keyhole — an oRPC plugin's `init`
   transforms handler options **including interceptors**, so an application
   determined to see a procedure's outcome can get there. What the option buys
@@ -322,11 +370,19 @@ nothing. The drain retires busy keep-alive connections; a client's
   none of them is the limit anybody meant. The ingress or gateway is where a
   request count is counted once — and an application that wants one anyway
   writes an oRPC plugin and passes it through `plugins`.
-- **Authorization.** "May this caller do this?" usually depends on the
-  resource — the order's owner, its state, the row's tenant — which cannot be
-  answered before the handler has run and fetched it. Authentication, "is
-  there a principal and what is it?", is answerable before dispatch, and is
-  the only half the contract carries.
+- **Resource-dependent authorization.** "May this caller do this?" usually
+  depends on the resource — the order's owner, its state, the row's tenant —
+  which cannot be answered before the handler has run and fetched it. A
+  **scope** is the exception, and on the same test: it is a property of the
+  credential, answerable before dispatch, so the contract declares it and this
+  package enforces it. Anything the handler has to fetch first stays the
+  handler's.
+- **AND within one requirement.** A requirement names one scheme. Requiring two
+  credentials at once would put a record rather than an identity on the
+  handler; a composite scheme models it where it is genuinely needed.
+- **OpenAPI document metadata.** The schemes' own definitions — `type: http`,
+  `bearerFormat`, an OAuth flow — belong beside the contract, not in this
+  factory.
 - **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.
 
 ## License

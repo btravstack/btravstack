@@ -54,19 +54,21 @@ extends Requirements } ? R : never`. What this exact node's mark requires, at
   nothing satisfiable". Ancestry (a marked parent implying a marked child) is
   the caller's to carry; the package tracks nodes, not trees.
 
-## The contract says whether; the application says what
+## The contract says which schemes; the application says what each one is
 
-**The contract names no identity type at all.** A marked node says a caller
-must be authenticated and stops there; `@btravstack/http`'s
-`httpAuth<Identity>()` is what says what a principal is, server-side, and a
-handler minted from it sees that type. So nothing about the server's own view
-of a caller — roles, an org tier, an internal id — reaches a client, and
-enriching it is never a contract change and never a client-visible field.
+**The contract names no identity type at all.** A marked node names the
+schemes a caller may present and the scopes each must grant, and stops there;
+`@btravstack/http`'s `defineHttp({ authenticators })` is what says what each
+scheme resolves to, server-side, and a handler minted from that call sees
+those types. So nothing about the server's own view of a caller — roles, an
+org tier, an internal id — reaches a client, and enriching it is never a
+contract change and never a client-visible field.
 
-There is therefore nothing here to keep minimal and nothing here to leak. The
-gate that used to compare a contract's principal against an authenticator's
-now compares the **router's** identity against the authenticator's, inside
-`@btravstack/http`, where both come from the same `httpAuth` call.
+There is therefore nothing here to keep minimal and nothing here to leak.
+There is also no identity comparison left to make: declaring a scheme and
+implementing it are the same act in `defineHttp`, so a scheme the contract
+names with no authenticator behind it is di's own unmet need on
+`HttpAuthenticator:<scheme>`, not a gate either package writes.
 
 ## Three load-bearing properties
 
@@ -88,8 +90,8 @@ Identity is exactly why a consumer takes this package as a **peer** rather
 than an ordinary dependency — `@btravstack/http` and
 `examples/order-api-contract` both do. Two copies in one install would each
 hold their own registry, a contract marked by one would read unmarked to the
-other, `HttpRouter` would declare no authenticator need and the protected
-route would be served **open**. So the registry is copy-proof: it hangs off
+other, `HttpRouter` would declare no scheme dependency at all and the
+protected route would be served **open**. So the registry is copy-proof: it hangs off
 `globalThis` under `Symbol.for("@btravstack/contract/requirements")`, and
 every copy shares the one `WeakMap`. The key changed from the earlier
 `.../marked` — it named a `WeakSet` of marked nodes; naming it `requirements`
@@ -110,9 +112,11 @@ protected while the registry stays empty: `HasMark<C>` answers `true` and
 `routerOf` installs no middleware, and the leaf serves unauthenticated. It
 takes a double cast to reach, which is the whole of the protection. Exporting
 the symbol would remove even that, which is why the TS2527 wart a consumer
-hits when re-exporting an inferred controller type is worth paying — the
-aliases `@btravstack/http` exports (`HttpControllerOf<Identity>` and friends)
-are how it is paid.
+hits when re-exporting an inferred controller type is worth paying —
+`@btravstack/http` pays it by handing back **one** nameable object,
+`Http<A>`, from `defineHttp`: held whole rather than destructured, the
+inferred type never mentions this symbol and an application writes no
+annotation at all.
 
 **Applied after a builder chain is finished, never inside one.** `authenticated`
 wraps a finished contract node — the last call in a chain, or a whole record
