@@ -137,7 +137,7 @@ const UnloggedApi = Module("UnloggedApi")({
     observability(),
     http(),
   ],
-  provides: [orderRouter],
+  provides: [orderRouter, ...orderRouter.authenticators],
   exports: [HttpRuntime],
 });
 

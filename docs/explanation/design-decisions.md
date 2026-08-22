@@ -133,7 +133,7 @@ router" option: oRPC is the one way, and the listener port is internal.
 
 ## The starter sugars name nothing
 
-`HttpRouter(contract)(deps, arm)`, `TemporalActivities(contract)(deps, arm)`
+`api.HttpRouter(contract)(deps, arm)`, `TemporalActivities(contract)(deps, arm)`
 and `AmqpHandlers(contract)(deps, arm)` take no port name: each returns di's
 `Provider(port)` on a port the starter owns and declares once —
 `Port("HttpRouter")`, `Port("TemporalActivities")`, `Port("AmqpHandlers")` —

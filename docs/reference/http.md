@@ -89,7 +89,7 @@ export const OrderApi = HttpModule("OrderApi")({
 ```
 
 That is exactly the module
-`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(), http()], provides: [orderRouter, userAuth, serviceAuth], exports: [HttpRuntime, Logger] })`
+`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(), http()], provides: [orderRouter, ...orderRouter.authenticators], exports: [HttpRuntime, Logger] })`
 would have declared. **There is no `authenticator` option**: the
 authenticators ride the router — which is what needs them — and the sugar
 spreads them into `provides` itself, so an application never lists one and

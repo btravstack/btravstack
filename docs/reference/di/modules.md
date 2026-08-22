@@ -44,7 +44,7 @@ All four lists are optional and default to empty.
 Exporting a provider means exactly what exporting its port class means — same
 `Exports` channel, same gates — and it is the only spelling available when the
 port was minted inside a helper (`Config.provider("RelayConfig")(schema)`,
-`HttpController(name, fragment)`), where there is no class to name:
+`api.HttpController(name, fragment)`), where there is no class to name:
 
 ```ts
 exports: [Logger, ordersController], // a port class and a provider, together

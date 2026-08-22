@@ -205,7 +205,7 @@ Module("OrdersApi")({
     observability(),
     http(),
   ],
-  provides: [ordersRouter, userAuth],
+  provides: [ordersRouter, ...ordersRouter.authenticators],
   exports: [HttpRuntime, Logger],
 });
 ```
