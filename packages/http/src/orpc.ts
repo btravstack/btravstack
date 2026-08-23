@@ -141,8 +141,10 @@ type Built<Auth, N> = Provider<
 };
 
 export const routerFor =
-  <Schemes, Auth extends AnyProvider = never>(authenticators: readonly Auth[]) =>
-  <C extends Record<string, RouterContract>>(contract: C) => {
+  <Schemes, Auth extends AnyProvider = never, Vocab = Record<never, never>>(
+    authenticators: readonly Auth[],
+  ) =>
+  <C extends Record<string, RouterContract>>(contract: C & ScopeGate<C, Vocab>) => {
     // The implementer is walked untyped: `Implementation<C>` above is the
     // whole check — a key the contract does not declare is a compile error
     // there, and `routerOf` skips one anyway rather than reading `.result` off
@@ -353,6 +355,61 @@ type AllRequirementsOf<C> =
 
 /** Distributes `SchemesOf` over the union of requirement tuples the walk collected. */
 type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
+
+/**
+ * Every scope string the contract names for scheme `K`, across every
+ * requirement the walk collected. A requirement that names no scopes
+ * contributes `never`, so the common case reaches the gate below with nothing
+ * to check and costs it nothing.
+ */
+type ScopesIn<R, K extends string> = R extends Requirements
+  ? {
+      // `K extends keyof R[I]` first, and not `R[I][K & keyof R[I]]`: indexing a
+      // requirement that does not name `K` gives `never`, and inferring `S`
+      // from `never` falls back to its CONSTRAINT — `string` — so every scope
+      // looked grantable the moment two requirements named different schemes
+      // (measured).
+      [I in keyof R]: K extends keyof R[I]
+        ? R[I][K] extends readonly (infer S extends string)[]
+          ? S
+          : never
+        : never;
+    }[number]
+  : never;
+
+/**
+ * A scope the contract names that its scheme's authenticator cannot grant —
+ * a typo, or a scope asked of a scheme declared with no vocabulary at all
+ * (`Scope = never`, so everything is ungrantable).
+ */
+type Ungrantable<C, Vocab> = {
+  [K in SchemesIn<AllRequirementsOf<C>>]: Exclude<
+    ScopesIn<AllRequirementsOf<C>, K>,
+    K extends keyof Vocab ? Vocab[K] : never
+  >;
+}[SchemesIn<AllRequirementsOf<C>>];
+
+/**
+ * The scope half of what `routerFor` checks, and the sibling of the scheme-name
+ * check di already performs by leaving an unknown scheme's port unmet. Nothing
+ * ties a contract's scope STRINGS to a scheme's vocabulary otherwise: the route
+ * compiles, passes every gate command, and then refuses every caller with a
+ * permanent 403 and no diagnostic anywhere (#90).
+ *
+ * It rides an intersection on the `contract` parameter — `unknown` when
+ * satisfied, so the parameter type is untouched — and its failure branch is an
+ * object with one required property, because that is what makes the diagnostic
+ * name the offending scope rather than restate the contract (the same shape
+ * di's `NeedsGate` uses, and for the same measured reason).
+ */
+type ScopeGate<C, Vocab> = [Ungrantable<C, Vocab>] extends [never]
+  ? unknown
+  : {
+      readonly "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it": Ungrantable<
+        C,
+        Vocab
+      >;
+    };
 
 /**
  * One port instance per scheme the contract names, as the router's needs

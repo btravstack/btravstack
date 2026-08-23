@@ -366,6 +366,31 @@ InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C,
   `noAuthenticator` — the fail-closed stand-in the single-scheme design needed
   — is gone: there is no "marked but unwired" state left for it to cover.
 
+- **A contract may name a scope only if the scheme's authenticator can grant
+  it.** `routerFor` intersects `ScopeGate<C, Vocab>` onto its `contract`
+  parameter — `unknown` when satisfied, an object with one required property
+  when not, which is what makes the diagnostic end on the offending scope
+  (measured: `… "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant
+it": "order:export"`). `VocabFrom<A>` reads the vocabulary off the same
+  authenticators `SchemesFrom<A>` reads the principals off — two projections
+  because they answer different questions at different call sites: the
+  principal types the handler, the vocabulary checks the contract.
+
+  Two cases it catches, and both used to be silent (#90): a typo, and a scope
+  asked of a scheme declared with no vocabulary at all — `Scope = never`, so
+  everything is ungrantable. Both compiled, passed all six gate commands, and
+  then refused every caller on that route with a permanent 403 and no
+  diagnostic anywhere. It is the sibling of the scheme-NAME check, which di
+  performs already by leaving an unknown scheme's port unmet.
+
+  A requirement naming no scopes contributes `never` and costs nothing, which
+  is the common case. One shape inside is load-bearing: `ScopesIn` asks
+  `K extends keyof R[I]` **before** indexing, because indexing a requirement
+  that does not name `K` gives `never`, and inferring the element type from
+  `never` falls back to its constraint — `string` — so every scope looked
+  grantable the moment two requirements named different schemes. Measured; do
+  not "simplify" it back to `R[I][K & keyof R[I]]`.
+
 - **The scheme dependencies are read off the contract, and the two halves must
   agree — a disagreement is an auth bypass.** `routerOf` walks the
   **contract** alongside the implementer, carrying an `inherited` requirements
