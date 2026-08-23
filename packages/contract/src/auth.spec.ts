@@ -41,7 +41,7 @@ describe("authenticated", () => {
 
   it("registers the mark where a second copy of this package would find it", ({ fragment }) => {
     // GIVEN the registry as any other copy of this package would reach it
-    const registry = (globalThis as Record<symbol, Map<object, unknown> | undefined>)[
+    const registry = (globalThis as Record<symbol, WeakMap<object, unknown> | undefined>)[
       Symbol.for("@btravstack/contract/requirements")
     ];
     // WHEN a node is marked
