@@ -82,8 +82,9 @@ export type AuthenticatorService<P, Scope extends string = never> = (
  * Exported for the consumer `defineHttp` does not cover: a test composition
  * substituting ONE scheme's authenticator provides its own on this port —
  * `Provider(authenticatorPort("user"))({ value: stub })` — instead of minting
- * a second registry. No in-repo example does; the examples are scenarios, not
- * the library's one user.
+ * a second registry. `test-fixtures.ts`'s `rpcSubstitutedAppOf` is that story
+ * exercised: the stub composition serves a caller the real token table would
+ * refuse, and never builds the verifier at all.
  */
 export const authenticatorPort = <const S extends string>(
   scheme: S,

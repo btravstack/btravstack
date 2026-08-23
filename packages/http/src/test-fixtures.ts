@@ -37,13 +37,14 @@ import { CORSHandlerPlugin } from "@orpc/server/plugins";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
-import { HttpAuthenticator, Unauthenticated } from "./auth.js";
+import { HttpAuthenticator, Unauthenticated, authenticatorPort } from "./auth.js";
 import { defineHttp } from "./define-http.js";
 import { HttpHandler } from "./handler.js";
 import { HttpModule } from "./http-module.js";
 import {
   HttpConfig,
   HttpRuntime,
+  http,
   httpModule,
   type HttpInfo,
   type HttpOptions,
@@ -329,6 +330,27 @@ const rpcVerifiedAppOf = () =>
     ],
   });
 
+/**
+ * The substitution seam `authenticatorPort` exists for: a hand-rolled
+ * composition provides its OWN authenticator on the scheme's port and never
+ * spreads `router.authenticators` — recomposition, this repo's stated way to
+ * swap an adapter, not a second `defineHttp` registry and not a provider
+ * layered over one (di refuses two providers for one port). The real,
+ * `TokenTable`-backed authenticator is not in this graph at all, which is the
+ * point: the stub composition never builds the verifier.
+ */
+const rpcSubstitutedAppOf = () =>
+  Module("RpcSubstitutedApp")({
+    imports: [http({ port: 0, hostname: "127.0.0.1" })],
+    provides: [
+      verifiedRouter,
+      Provider(authenticatorPort("user"))({
+        value: () => OkAsync({ userId: "u-stub" }),
+      }),
+    ],
+    exports: [HttpRuntime],
+  });
+
 /** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
 const linkOf = (origin: string, token: string | undefined) =>
   new RPCLink({
@@ -589,6 +611,8 @@ export type HttpFixtures = {
    * through `Provider(port)(deps, arm)`. Shut down by the fixture.
    */
   readonly rpcVerified: (token: string) => RootMarkedClient;
+  /** The same router with the `user` scheme's authenticator substituted on its port. Shut down by the fixture. */
+  readonly rpcSubstituted: (token: string) => RootMarkedClient;
   /** The starter over a router with oRPC's CORS plugin configured. Shut down by the fixture. */
   readonly rpcWithCors: { readonly url: string };
   /** A bare request's headers — the one argument an authenticator is handed. */
@@ -826,6 +850,14 @@ export const it = test.extend<HttpFixtures>({
 
   rpcVerified: async ({ boot }, use) => {
     const app = boot(rpcVerifiedAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const origin = `http://127.0.0.1:${info.port}`;
+    await use((token) => createORPCClient(linkOf(origin, token)));
+  },
+
+  rpcSubstituted: async ({ boot }, use) => {
+    const app = boot(rpcSubstitutedAppOf());
     const info = (await app.runtimeInfo()).get();
     assert.ok(info !== undefined, "the runtime published no Serving.info");
     const origin = `http://127.0.0.1:${info.port}`;
