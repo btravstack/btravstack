@@ -11,6 +11,13 @@ export type Authenticators = Readonly<Record<string, Authenticator<unknown, stri
 export type SchemesFrom<A extends Authenticators> = { readonly [K in keyof A]: A[K]["principal"] };
 
 /**
+ * What each scheme can grant, read off the same authenticators. Separate from
+ * `SchemesFrom` because they answer different questions at different call
+ * sites: the principal types the handler, the vocabulary checks the contract.
+ */
+export type VocabFrom<A extends Authenticators> = { readonly [K in keyof A]: A[K]["scope"] };
+
+/**
  * One di provider per scheme, on the port whose id carries that scheme's name,
  * and carrying that authenticator's own dependencies in its needs channel — so
  * an authenticator that reads a `JwtVerifier` still owes it where `HttpModule`
@@ -33,7 +40,9 @@ type SchemeProviders<A extends Authenticators> = {
  */
 export type Http<A extends Authenticators> = {
   readonly HttpController: ReturnType<typeof controllerFor<SchemesFrom<A>>>;
-  readonly HttpRouter: ReturnType<typeof routerFor<SchemesFrom<A>, SchemeProviders<A>>>;
+  readonly HttpRouter: ReturnType<
+    typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>
+  >;
   readonly authenticators: A;
 };
 
@@ -65,7 +74,7 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
   );
   return {
     HttpController: controllerFor<SchemesFrom<A>>(),
-    HttpRouter: routerFor<SchemesFrom<A>, SchemeProviders<A>>(providers as never),
+    HttpRouter: routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>(providers as never),
     authenticators: declared as A,
   };
 };

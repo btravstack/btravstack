@@ -257,3 +257,53 @@ HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
 
 expectTypeOf(plain.principal).toEqualTypeOf<{ readonly userId: string }>();
 expectTypeOf(scoped.scope).toEqualTypeOf<"orders:export">();
+
+// ---------------------------------------------------------------------------
+// The scope-vocabulary gate (#90). A contract may name a scope only if the
+// scheme's own authenticator can grant it — otherwise the route compiles, passes
+// every gate command, and then 403s every caller forever with no diagnostic.
+// ---------------------------------------------------------------------------
+
+const scopedApi = defineHttp({
+  authenticators: {
+    user: HttpAuthenticator<Identity, "orders:export">()({
+      sync: () => () => OkAsync(granted({ userId: "u", tenantId: "t" }, ["orders:export"])),
+    }),
+    // No vocabulary at all: this scheme can grant nothing.
+    service: HttpAuthenticator<ServiceIdentity>()({
+      sync: () => () => OkAsync({ appId: "a" }),
+    }),
+  },
+});
+
+// Positive: the declared vocabulary is accepted.
+void scopedApi.HttpRouter(authenticated({ user: ["orders:export"] })({ csv: oc }))({
+  sync: () => ({ csv: () => OkAsync(undefined) }),
+});
+
+// Positive, and the case that must stay free: no scopes named at all.
+void scopedApi.HttpRouter(authenticated({ user: [] })({ csv: oc }))({
+  sync: () => ({ csv: () => OkAsync(undefined) }),
+});
+
+// Negative: a typo. `"order:export"` is not in the vocabulary.
+void scopedApi.HttpRouter(
+  // @ts-expect-error — UNGRANTABLE SCOPE: "order:export" is not one `user` can grant
+  authenticated({ user: ["order:export"] })({ csv: oc }),
+)({ sync: () => ({ csv: () => OkAsync(undefined) }) });
+
+// Negative: a scope named for a scheme whose authenticator declares no vocabulary.
+void scopedApi.HttpRouter(
+  // @ts-expect-error — UNGRANTABLE SCOPE: `service` grants nothing
+  authenticated({ service: ["reports:read"] })({ csv: oc }),
+)({ sync: () => ({ csv: () => OkAsync(undefined) }) });
+
+// A misspelled SCHEME naming scopes is not this gate's to report. The router
+// mint accepts it — di refuses the composition, naming the port it cannot
+// discharge, which is the diagnostic that says what is actually wrong.
+const misspelledScheme = scopedApi.HttpRouter(
+  authenticated({ usre: ["orders:export"] })({ csv: oc }),
+)({ sync: () => ({ csv: () => OkAsync(undefined) }) });
+
+// @ts-expect-error — UNDECLARED NEEDS: nothing discharges `HttpAuthenticator:usre`
+void HttpModule("Misspelled")({ needs: [Env], router: misspelledScheme });
