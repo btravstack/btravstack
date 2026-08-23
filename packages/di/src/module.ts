@@ -161,20 +161,6 @@ type ResolvedExports<X extends readonly unknown[]> =
   | ExportsOfModule<Extract<X[number], AnyModule>>;
 
 /**
- * What the module still owes: its providers' dependencies and its imports'
- * own needs, minus everything visible to it. This is the `Needs` CHANNEL —
- * everything outstanding, however it got there — and is deliberately wider
- * than what `NeedsGate` makes a module declare, which is its own providers'
- * half alone. Exported because a shaped module — a starter's
- * `HttpModule(name)({...})` — re-declares this package's gates over its own
- * augmented tuples, the way it already re-declares `Exportable`.
- */
-export type Unmet<I extends readonly AnyModule[], P extends readonly AnyProvider[]> = Exclude<
-  NeedOf<P[number]> | NeedsOfModule<I[number]>,
-  Available<I, P>
->;
-
-/**
  * The declaration gate. A port **this module's own providers** read, and that
  * nothing here satisfies, is an error unless it is named in `needs` — so a
  * provider can never silently receive a service from whoever composed the
@@ -254,12 +240,12 @@ function ModuleDeclaration<const Name extends string>(name: Name) {
       readonly exports?: X;
       readonly needs?: N;
     } & NeedsGate<I, P, N>,
-    // Inline, NOT `Unmet<I, P>`: declaration emit keeps a named alias
+    // Inline, never a named alias: declaration emit keeps an alias here
     // unreduced, and the unreduced form names the imported modules' internal
     // ports — TS2883/TS4023 on the first consumer that exports a composition
     // root (measured: `OrderApi` "cannot be named without a reference to
-    // 'OrderDatabase'"). `Unmet` is the same computation, used only where it
-    // stays inside a parameter type.
+    // 'OrderDatabase'"). The same wall is why no `Unmet` helper is exported:
+    // a shaped module cannot use one either, and the in-repo sugars inline.
   ): Module<
     ResolvedExports<X>,
     ErrOf<P[number]> | ErrOfModule<I[number]>,

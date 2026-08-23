@@ -65,8 +65,6 @@ export type AuthenticatorService<P, Scope extends string = never> = (
   headers: IncomingHttpHeaders,
 ) => AsyncResult<Granted<P, Scope>, Unauthenticated>;
 
-const ports = new Map<string, unknown>();
-
 /**
  * One port per scheme, its id carrying the scheme name — the move
  * `AmqpHandler(contract, key)` makes. The service type is erased to
@@ -80,20 +78,25 @@ const ports = new Map<string, unknown>();
  * contract naming a scheme the registry has no authenticator for leaves that
  * scheme's port unmet, which is di's own diagnostic naming the port rather than
  * a gate this package writes.
+ *
+ * Exported for the consumer `defineHttp` does not cover: a test composition
+ * substituting ONE scheme's authenticator provides its own on this port —
+ * `Provider(authenticatorPort("user"))({ value: stub })` — instead of minting
+ * a second registry. No in-repo example does; the examples are scenarios, not
+ * the library's one user.
  */
 export const authenticatorPort = <const S extends string>(
   scheme: S,
 ): PortClassOf<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>> => {
-  const id = `HttpAuthenticator:${scheme}` as const;
-  // Memoised: `defineHttp` asks for a scheme's port when it binds the
-  // authenticator and `routerFor` asks again for every scheme its contract
-  // names, and two `Port(id)` calls under one id are di's duplicate-id warning.
-  const existing = ports.get(id);
-  if (existing !== undefined) return existing as never;
+  // Not memoised: di identifies a port by its `portId` string and the instance
+  // type is branded by the id literal, so two classes minted under one id are
+  // the same type and the same lookup — `defineHttp` binding and `routerFor`
+  // depending resolve to one provider either way (measured: the suite passes
+  // with a fresh class per call).
   // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-  const minted = class extends Port(id)<AuthenticatorService<unknown>> {};
-  ports.set(id, minted);
-  return minted as never;
+  return class extends Port(`HttpAuthenticator:${scheme}`)<
+    AuthenticatorService<unknown>
+  > {} as never;
 };
 
 /**

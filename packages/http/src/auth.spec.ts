@@ -70,7 +70,7 @@ describe("an authenticator with dependencies of its own", () => {
     rpcVerified,
   }) => {
     // GIVEN a client presenting a token only the injected table knows
-    const client = await rpcVerified("keyed");
+    const client = rpcVerified("keyed");
 
     // WHEN a marked procedure is called
     // THEN the authenticator resolved it through the dependency di gave it —

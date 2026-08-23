@@ -115,7 +115,7 @@ missing: N]`. What that **prints** is the arity line alone —
   private). `Provider(port)({ name: Dep }, arm)`'s return type is `Provider<P, E, N> &
 { readonly port: typeof port }` — the provider carries its port class typed,
   so `provider.port` is what a dependent lists in its deps; purely additive. `AnyModule`, `AnyProvider`,
-  `Exportable`, **`NeedsGate` and `Unmet`** are exported so a package offering a **shaped module** (a
+  `Exportable` and **`NeedsGate`** are exported so a package offering a **shaped module** (a
   starter's `HttpModule(name)({ router, imports, provides, exports })` sugar,
   which appends its own import and export to what the application wrote) can
   constrain its `imports`/`provides`/`exports` the way `Module(name)` does and
@@ -240,8 +240,10 @@ broke something:
   reason: declaration emit keeps a named alias unreduced, and the unreduced
   form names the imported modules' internal ports — TS2883/TS4023 on the first
   consumer that exports a composition root (`OrderApi` "cannot be named
-  without a reference to 'OrderDatabase'"). `Unmet<I, P>` is exported for the
-  starters' sugars and used only inside parameter types.
+  without a reference to 'OrderDatabase'"). The same wall is why there is no
+  exported `Unmet` helper: a shaped module could not name it in a return type
+  either, so the computation is inlined wherever it appears — there was such an
+  export once, and its documented purpose was impossible to serve.
 
 The channel itself is unchanged: `Needs` is still what the module genuinely
 owes, computed, not what it declared. Declaring a port nothing owes is inert —
@@ -263,7 +265,7 @@ of this gate noisy.
 
 ### The gate cannot be computed generically — and that is why the casts exist
 
-`Unmet<I, P>` over a generic tuple `I` is a deferred conditional, and no object
+The unmet-needs computation over a generic tuple `I` is a deferred conditional, and no object
 literal satisfies one. So a **generic wrapper around `Module(name)`** — the
 three starter sugars, `start`'s `Env` wrapper, `@btravstack/testing`'s
 `tapped`, a factory like `makeAppModule` — cannot satisfy the gate at its own

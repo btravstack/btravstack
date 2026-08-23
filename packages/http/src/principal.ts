@@ -18,8 +18,8 @@ export type IsUnion<T, U = T> = [T] extends [never]
     : never;
 
 /** One arm per scheme, tagged by its name so a handler can switch on it. */
-export type Tagged<S extends string, Schemes> = S extends S
-  ? { readonly scheme: S; readonly identity: S extends keyof Schemes ? Schemes[S] : never }
+export type Tagged<S extends keyof Schemes & string, Schemes> = S extends S
+  ? { readonly scheme: S; readonly identity: Schemes[S] }
   : never;
 
 /**
@@ -29,8 +29,8 @@ export type Tagged<S extends string, Schemes> = S extends S
  */
 export type Principal<S extends string, Schemes> = [S] extends [never]
   ? never
-  : IsUnion<S> extends true
-    ? Tagged<S, Schemes>
-    : S extends keyof Schemes
-      ? Schemes[S]
-      : never;
+  : [S] extends [keyof Schemes]
+    ? IsUnion<S> extends true
+      ? Tagged<S & keyof Schemes, Schemes>
+      : Schemes[S & keyof Schemes]
+    : never;

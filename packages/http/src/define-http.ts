@@ -43,6 +43,13 @@ export type Http<A extends Authenticators> = {
   readonly HttpRouter: ReturnType<
     typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>
   >;
+  /**
+   * The declarations as given, kept for a consumer this repo does not contain:
+   * a hand-rolled composition or a custom sugar reads the registry off these
+   * the way `defineHttp` itself does. No in-repo example will — `HttpModule`
+   * carries the bound providers on the router — and that is not evidence
+   * against the field: the examples are scenarios, not the library's one user.
+   */
   readonly authenticators: A;
 };
 
@@ -66,9 +73,7 @@ export type Http<A extends Authenticators> = {
 export const defineHttp = <const A extends Authenticators = Record<never, never>>(options?: {
   readonly authenticators: A;
 }): Http<A> => {
-  const declared = (options?.authenticators ?? {}) as Readonly<
-    Record<string, Authenticator<unknown, string, unknown>>
-  >;
+  const declared: Authenticators = options?.authenticators ?? {};
   const providers = Object.entries(declared).map(([scheme, authenticator]) =>
     bind(scheme, authenticator),
   );

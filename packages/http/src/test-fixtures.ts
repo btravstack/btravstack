@@ -588,7 +588,7 @@ export type HttpFixtures = {
    * dependency, resolved by an imported module — the form `defineHttp` binds
    * through `Provider(port)(deps, arm)`. Shut down by the fixture.
    */
-  readonly rpcVerified: (token: string) => Promise<RootMarkedClient>;
+  readonly rpcVerified: (token: string) => RootMarkedClient;
   /** The starter over a router with oRPC's CORS plugin configured. Shut down by the fixture. */
   readonly rpcWithCors: { readonly url: string };
   /** A bare request's headers — the one argument an authenticator is handed. */
@@ -829,7 +829,7 @@ export const it = test.extend<HttpFixtures>({
     const info = (await app.runtimeInfo()).get();
     assert.ok(info !== undefined, "the runtime published no Serving.info");
     const origin = `http://127.0.0.1:${info.port}`;
-    await use((token) => Promise.resolve(createORPCClient(linkOf(origin, token))));
+    await use((token) => createORPCClient(linkOf(origin, token)));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
