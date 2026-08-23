@@ -383,10 +383,15 @@ type ScopesIn<R, K extends string> = R extends Requirements
  * (`Scope = never`, so everything is ungrantable).
  */
 type Ungrantable<C, Vocab> = {
-  [K in SchemesIn<AllRequirementsOf<C>>]: Exclude<
-    ScopesIn<AllRequirementsOf<C>, K>,
-    K extends keyof Vocab ? Vocab[K] : never
-  >;
+  // A scheme the registry does not know is NOT this gate's to report: it is
+  // already di's, which leaves `HttpAuthenticator:<scheme>` unmet and names the
+  // port. Treating an unknown scheme as a `never` vocabulary made every scope it
+  // named ungrantable, so a misspelled SCHEME surfaced as a scope complaint —
+  // the wrong diagnostic, and earlier than the right one, since this gate sits
+  // on the router mint and the unmet port on the composition root.
+  [K in SchemesIn<AllRequirementsOf<C>>]: K extends keyof Vocab
+    ? Exclude<ScopesIn<AllRequirementsOf<C>, K>, Vocab[K]>
+    : never;
 }[SchemesIn<AllRequirementsOf<C>>];
 
 /**

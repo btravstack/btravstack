@@ -381,7 +381,14 @@ it": "order:export"`). `VocabFrom<A>` reads the vocabulary off the same
   everything is ungrantable. Both compiled, passed all six gate commands, and
   then refused every caller on that route with a permanent 403 and no
   diagnostic anywhere. It is the sibling of the scheme-NAME check, which di
-  performs already by leaving an unknown scheme's port unmet.
+  performs already by leaving an unknown scheme's port unmet — and the two do
+  NOT overlap: a scheme the registry does not know is skipped by this gate
+  entirely, so a misspelled scheme naming scopes reports the port it cannot
+  discharge (`PortInstance<"HttpAuthenticator:usre", …>`) rather than a scope
+  complaint. Treating an unknown scheme as an empty vocabulary made every scope
+  it named ungrantable, which was the wrong diagnostic AND the earlier one,
+  since this gate sits on the router mint and the unmet port on the composition
+  root.
 
   A requirement naming no scopes contributes `never` and costs nothing, which
   is the common case. One shape inside is load-bearing: `ScopesIn` asks

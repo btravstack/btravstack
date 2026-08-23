@@ -297,3 +297,13 @@ void scopedApi.HttpRouter(
   // @ts-expect-error — UNGRANTABLE SCOPE: `service` grants nothing
   authenticated({ service: ["reports:read"] })({ csv: oc }),
 )({ sync: () => ({ csv: () => OkAsync(undefined) }) });
+
+// A misspelled SCHEME naming scopes is not this gate's to report. The router
+// mint accepts it — di refuses the composition, naming the port it cannot
+// discharge, which is the diagnostic that says what is actually wrong.
+const misspelledScheme = scopedApi.HttpRouter(
+  authenticated({ usre: ["orders:export"] })({ csv: oc }),
+)({ sync: () => ({ csv: () => OkAsync(undefined) }) });
+
+// @ts-expect-error — UNDECLARED NEEDS: nothing discharges `HttpAuthenticator:usre`
+void HttpModule("Misspelled")({ needs: [Env], router: misspelledScheme });
