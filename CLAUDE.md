@@ -399,6 +399,14 @@ transport's hands.
   "is there a principal, and what is it?" — is answerable before dispatch, and
   is the only half the contract carries.
 
+  A **scope** is the exception that proves the rule, and it is admitted on the
+  same test: it is a property of the credential, answerable before dispatch,
+  which is exactly why authentication is in the contract already. What stays
+  out is resource-dependent authorization — the order's owner, the row's tenant
+  — which a scope was never going to answer. `@btravstack/http` checks a
+  credential's granted scopes against the endpoint's declared ones and answers
+  `403`, distinct from the `401` a caller with no valid credential gets.
+
 ## Public surface
 
 Each package's surface is stated **once**, in that package's own `CLAUDE.md`,
@@ -474,24 +482,30 @@ type checker already verifies.
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http/src/controller.test-d.ts`
   pins the
   five compile-time gates the keyed `HttpRouter(contract)(controllers)` form
-  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 40 specs, across
+  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 50 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
   `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the
   starter proper through `HttpModule`, the keyed router form through the
-  `rpcSliced` fixture, and the contract marker's runtime half — the
-  authenticator port and the one middleware it installs — through
-  `rpcAuthed`. **The contract says WHETHER a route is protected; the
-  application's `httpAuth<Identity>()` says WHAT the principal is.**
-  `@btravstack/contract` names no identity type at all — `authenticated` is one
-  export with no factory and no type parameter — so nothing about a server's
-  view of a caller reaches a client, and a marked fragment reached through the
-  top-level `HttpController` types `principal: never`, which makes every read a
+  `rpcSliced` fixture, and the contract marker's runtime half — the per-scheme
+  authenticator ports and the one middleware they install — through
+  `rpcAuthed`. **The contract says WHICH SCHEMES protect a route, and which
+  scopes each must grant; the application's `defineHttp({ authenticators })`
+  says WHAT each scheme resolves to.**
+  `@btravstack/contract` names no identity type at all — `authenticated` takes
+  OpenAPI requirements and no type parameter — so nothing about a server's
+  view of a caller reaches a client, and a marked fragment reached through
+  anything but that one call types `principal: never`, which makes every read a
   compile error and is the signal to use the factory.
-  `examples/order-api/src/auth.ts` is the one file per application that names an
-  identity, and `HttpModule`'s gate pairs the **router's** identity with the
-  **authenticator's** — both from that one call — since there is no
-  contract-side principal left to compare against.
+  `examples/order-api/src/auth.ts` is the one file per application that names
+  its identities, and there is no identity comparison left to make: declaring a
+  scheme and implementing it are the same act, so a scheme the contract names
+  with no authenticator behind it is di's own unmet need on
+  `HttpAuthenticator:<scheme>`. The one call's result is held as **one
+  binding and never destructured** — each destructured member expands to a type
+  mentioning `@btravstack/contract`'s inaccessible `unique symbol` (TS2527),
+  while held whole it collapses to the nameable `Http<A>`, which is why the
+  application writes no type annotation at all.
 - **The whole gate runs on THREE containers, shared, and `internal/test-infra`
   owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine` and
   one `temporalio/auto-setup:1.29.1`, started once per machine and reused by
@@ -702,13 +716,14 @@ AuditSlice, observability()], … })`),
   so there. That is what makes a slice directory readable on its own — which
   ports come from outside, without naming who supplies them — and what keeps a
   `needs` list one line per feature instead of one per hop. `@btravstack/http`'s
-  `HttpController(name, fragment)({ name: Dep }, { sync })` mints the controller's
-  port; the root composes every slice's controller into one router with the
-  keyed `HttpRouter(contract)(controllers)` form, exact against the contract
+  `api.HttpController(name, fragment)({ name: Dep }, { sync })` mints the controller's
+  port — `api` being the application's one `defineHttp(...)` binding; the root
+  composes every slice's controller into one router with the
+  keyed `api.HttpRouter(contract)(controllers)` form, exact against the contract
   (see `packages/http/CLAUDE.md`). **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
   controller changing at all: the lifted root is
-  `HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
+  `api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
   declaring the very provider the modulith composed and handing back what it
   built — a new composition root and one fewer import,
   not a rewrite of the slice. That exact call is `controller.test-d.ts`'s fifth
@@ -762,7 +777,7 @@ AuditSlice, observability()], … })`),
   visits 16 provider slots and di keeps 15, one `OrderDatabase` among them
   (the same walk over the pre-split modules visited 22 for the same 15, and
   the difference is the over-inclusion the split removed). The root composes them —
-  `orderRouter = HttpRouter(contract)({ orders: ordersController,
+  `orderRouter = api.HttpRouter(contract)({ orders: ordersController,
 customers: customersController })`, the keyed form — and
   **`HttpModule("OrderApi")({ router: orderRouter, imports: [OrdersSlice,
 CustomersSlice, observability()], exports: [Logger] })`** is the whole
@@ -771,6 +786,8 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `HttpRouterPort` and
   exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` and `DATABASE_URL` come from the
   environment inside the graph, and the router is mounted under `/rpc`. The
+  two authenticators are **not** in that list: they ride the router, which is
+  what needs them, and `HttpModule` puts them in `provides` itself. The
   **unmarked** `customers` fragment declares `tenantId` on its input, so a
   procedure hands it to the use case and the use case to the repository; the
   **marked** `orders` fragment declares none and its handlers read
@@ -1188,8 +1205,9 @@ And a seventh, about the infrastructure a suite runs against:
   `FindCustomer` against the real `contract` through the application's own
   `src/auth.ts`, and a stub would have accepted every broken call — passing an
   order id where a tenant goes was exactly the drift. It covers both
-  controllers, the keyed router, the `HttpModule` root with its authenticator,
-  the lifted single-slice root and the bare `HttpRouter(contract)(deps, arm)`
+  controllers, the keyed router, the `HttpModule` root whose authenticators
+  ride the router,
+  the lifted single-slice root and the bare `api.HttpRouter(contract)(deps, arm)`
   form the three router-shaped pages share — `docs/index.md`,
   `docs/reference/http.md` and `docs/how-to/serve-orpc-over-http.md`, none of
   which puts a controller in between. Every deps record it compiles is

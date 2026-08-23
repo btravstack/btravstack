@@ -94,19 +94,25 @@ service without the server's code — which is why it is its own file.
 ## Step 4 — Implement the contract as a router
 
 The router is a provider like any other: it declares the services its
-procedures call, and di builds it from them. `HttpRouter(contract)` types the
-implementation from the contract — a typo'd key or a wrong output is a compile
-error here:
+procedures call, and di builds it from them. Every HTTP entity comes from
+**one** `defineHttp` call — the door where an application declares its
+security schemes; this service is public, so it takes no argument. Then
+`api.HttpRouter(contract)` types the implementation from the contract — a
+typo'd key or a wrong output is a compile error here:
 
 ```ts
 // router.ts
-import { HttpRouter } from "@btravstack/http";
+import { defineHttp } from "@btravstack/http";
 import { OkAsync } from "unthrown";
 
 import { contract } from "./contract.js";
 import { Greeter } from "./greeter.js";
 
-export const greetingRouter = HttpRouter(contract)(
+// Held whole and never destructured: each destructured member expands to a
+// type mentioning an inaccessible `unique symbol` (TS2527).
+const api = defineHttp();
+
+export const greetingRouter = api.HttpRouter(contract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({

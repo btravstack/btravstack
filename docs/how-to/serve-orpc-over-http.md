@@ -25,13 +25,15 @@ the real two-slice deployment this recipe scales into, see
 ## Recipe
 
 1. Declare the contract with `@orpc/contract` — inputs, outputs and the
-   `.errors({...})` a client may branch on, marked `authenticated` where a
-   caller must be known.
-2. Implement it with `HttpRouter(contract)(deps, { sync })`: a record
-   shaped like the contract, each leaf a `Result`-returning function.
-3. Compose with
-   `HttpModule(name)({ router, authenticator, imports, provides, exports, needs })`.
-4. `await runMain(OrdersApi)` in `main.ts`.
+   `.errors({...})` a client may branch on, marked
+   `authenticated(...requirements)` where a caller must be known.
+2. Declare this deployment's security schemes once with
+   `defineHttp({ authenticators })`.
+3. Implement the contract with `api.HttpRouter(contract)(deps, { sync })`: a
+   record shaped like the contract, each leaf a `Result`-returning function.
+4. Compose with
+   `HttpModule(name)({ router, imports, provides, exports, needs })`.
+5. `await runMain(OrdersApi)` in `main.ts`.
 
 ## Step 1 — the contract
 
@@ -53,7 +55,7 @@ export type OrderRef = z.infer<typeof orderRef>;
 // not a UUIDv7: `orderRef` would reject the only payload it ever carries.
 const malformedRef = z.object({ id: z.string() });
 
-export const ordersContract = authenticated({
+export const ordersContract = authenticated({ user: [] })({
   place: oc
     .input(z.object({ id: z.uuidv7(), quantity: z.number() }))
     .output(orderView)
@@ -75,16 +77,20 @@ what the compiler believes cannot drift. oRPC's `type<T>()` would declare the
 same types and validate nothing — `{ quantity: "abc" }` would reach `place`
 typed `number`.
 
-[`authenticated`](/reference/contract) marks the whole record, so every
-procedure under it needs a known caller — and neither input names a tenant,
-because the caller's own identity is what establishes it. Drop the marker and
+[`authenticated({ user: [] })`](/reference/contract) marks the whole record
+with one OpenAPI security requirement — the `user` scheme, no particular scope
+— so every procedure under it needs a caller presenting it, and neither input
+names a tenant, because the caller's own identity is what establishes it.
+Several requirements are ORed and a procedure may replace the group default
+with its own; see
+[Protect a procedure](/how-to/protect-a-procedure). Drop the marker and
 this is a public API; the rest of the page is unchanged either way, except that
-the handlers then have no `context.principal` to read and the root needs no
-authenticator.
+the handlers then have no `context.principal` to read and the router declares
+no scheme dependency.
 
 ## Step 2 — the router, as a provider
 
-`HttpRouter(ordersContract)` is di's own `Provider(port)` on the starter's
+`api.HttpRouter(ordersContract)` is di's own `Provider(port)` on the starter's
 router port — there is no name to give, a process serves one router — so the
 call declares the use cases the procedures call and closes over them. **The `mapErrCases` in each procedure is
 the one place a domain error becomes an HTTP answer** — every case named, no
@@ -96,14 +102,14 @@ import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
 import { P } from "unthrown";
 
-import { HttpRouter } from "./auth.js";
+import { api } from "./auth.js";
 
 const view = (order: Order): OrderView => ({
   id: order.id,
   quantity: order.quantity,
 });
 
-export const ordersRouter = HttpRouter(ordersContract)(
+export const ordersRouter = api.HttpRouter(ordersContract)(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -156,17 +162,18 @@ Each leaf is the `.result()` handler `@unthrown/orpc` gives an implementer:
 (the client sees `code: "CONFLICT"` as a value), and a `Defect` rethrows onto
 oRPC's own path, where it collapses to `INTERNAL_SERVER_ERROR`. `implement`,
 `os.…`, `.result(...)` and `os.router(...)` are what the call does for you.
-oRPC's context carries **one** thing, and only under a marked procedure: the
-`principal` the authenticator resolved. Everything else a procedure needs, the
-provider declared.
+oRPC's context carries **one** thing, and only under a protected procedure: the
+`principal` the scheme's authenticator resolved. Everything else a procedure
+needs, the provider declared. These two procedures name **one** scheme, so the
+principal is that scheme's identity bare; a procedure naming several would get
+a discriminated union its handler has to narrow.
 
-`HttpRouter` is imported from the application's own `auth.ts` — the file where
-`httpAuth<Identity>()` states what this deployment knows about a caller — which
-is what gives `context.principal` a readable type here. The package's own
-top-level `HttpRouter` names no identity and types it `never`, so every read is
+`api` is the application's own `auth.ts` binding — the file where
+`defineHttp({ authenticators })` states what each scheme resolves to — which
+is what gives `context.principal` a readable type here. A marked fragment
+reached through anything else types it `never`, so every read is
 a compile error: the signal to use the factory, not a fallback. See
-[Protect a procedure](/how-to/protect-a-procedure) for that file and the
-authenticator below.
+[Protect a procedure](/how-to/protect-a-procedure) for that file.
 
 ## Step 3 — the composition root
 
@@ -176,19 +183,18 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
-import { bearerAuthenticator } from "./authenticator.js";
 import { ordersRouter } from "./router.js";
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
   exports: [Logger],
 });
 ```
 
 `HttpModule` is `Module(name)({...})` plus `router`: it imports the starter
-(`http()`), provides the router and the authenticator, and exports
+(`http()`), provides the router **and the scheme authenticators the router
+carries**, and exports
 `HttpRuntime`, and returns exactly the module the hand-written form would:
 
 ```ts
@@ -199,18 +205,17 @@ Module("OrdersApi")({
     observability(),
     http(),
   ],
-  provides: [ordersRouter, bearerAuthenticator],
+  provides: [ordersRouter, ...ordersRouter.authenticators],
   exports: [HttpRuntime, Logger],
 });
 ```
 
-The authenticator sits at the **root**, not beside the router: who a caller is
-is one answer per process. It is required here because the contract marks the
-fragment — a marked router carries `AuthenticatorPort` as a dependency, so
-omitting the line leaves it in the module's `Needs` and `start` refuses the
-module (`Type 'AuthenticatorPort' is not assignable to type 'Env | Scope'` —
-the port is named), and supplying one minted on a different identity is a
-compile error at this very call.
+There is **no authenticator to list**: it rides the router, which is what needs
+it, so a scheme cannot be forgotten and cannot be wired to the wrong router.
+What the compiler still checks is di's own gate — the router declares one
+dependency per scheme its contract names, so a scheme with nobody behind it is
+an unmet need `start` refuses, naming the port
+(`Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'`).
 
 [`observability()`](/reference/observability) is the other starter here: it
 brings the `Logger` the use cases and the request scope write to, bound from
@@ -225,7 +230,8 @@ that imports `http()` without providing the router
 carries an unmet need — the starter's runtime provider depends on its router
 port through di — and `start` refuses the module, naming the port
 (`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`). And a root serving a **marked**
-contract without an authenticator carries `AuthenticatorPort` as a second unmet
+contract whose `defineHttp` declared no authenticator for one of its schemes
+carries that scheme's port as a second unmet
 need, refused the same way; drop the marker and that third gate goes with it.
 
 ## Step 4 — `main.ts`
@@ -261,13 +267,15 @@ stream rather than the default JSON on stderr; see
 
 `HttpModule(name)({...})` takes `imports`, `provides`, `exports`, `needs` and:
 
-| Option          | Default | What it does                                                     |
-| --------------- | ------- | ---------------------------------------------------------------- |
-| `router`        | —       | the router **provider** `HttpRouter` returned; required          |
-| `authenticator` | —       | resolves the principal; required when the contract marks a route |
-| `prefix`        | `/rpc`  | where the RPC endpoint is mounted                                |
-| `port`          | `PORT`  | pins the port instead of reading the variable                    |
-| `hostname`      | `HOST`  | pins the host instead of reading the variable                    |
+| Option     | Default | What it does                                                |
+| ---------- | ------- | ----------------------------------------------------------- |
+| `router`   | —       | the router **provider** `api.HttpRouter` returned; required |
+| `prefix`   | `/rpc`  | where the RPC endpoint is mounted                           |
+| `port`     | `PORT`  | pins the port instead of reading the variable               |
+| `hostname` | `HOST`  | pins the host instead of reading the variable               |
+
+There is no `authenticator` option: the scheme authenticators ride the router
+and the sugar puts them in `provides` itself.
 
 `http({ prefix?, port?, hostname? })` takes the last three; the router is not
 an option but the module's need, provided by the root. Pinning is per field —
@@ -325,7 +333,8 @@ under the request already carries it — see
 
 - [`@btravstack/http`](/reference/http) — options, `HttpConfig`, `HttpInfo`, the guarantee.
 - [Protect a procedure](/how-to/protect-a-procedure) — the marker, `auth.ts`
-  and the authenticator this page uses, in full.
+  and the authenticators this page uses, in full, plus scopes and the 401/403
+  split.
 - [Order API (HTTP)](/examples/order-api) — the real deployment this recipe
   scales into, two slices composed through controllers, client half included.
 - [Open a per-request scope](/how-to/open-a-per-request-scope) — the `RequestModule` in `main.ts`.

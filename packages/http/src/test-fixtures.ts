@@ -1,4 +1,4 @@
-import type { Server } from "node:http";
+import type { IncomingHttpHeaders, Server } from "node:http";
 
 import { vi } from "vitest";
 
@@ -37,10 +37,9 @@ import { CORSHandlerPlugin } from "@orpc/server/plugins";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
-import { Unauthenticated } from "./auth.js";
-import { HttpController } from "./controller.js";
+import { HttpAuthenticator, Unauthenticated } from "./auth.js";
+import { defineHttp } from "./define-http.js";
 import { HttpHandler } from "./handler.js";
-import { httpAuth } from "./http-auth.js";
 import { HttpModule } from "./http-module.js";
 import {
   HttpConfig,
@@ -49,9 +48,11 @@ import {
   type HttpInfo,
   type HttpOptions,
 } from "./http-runtime.js";
-import { HttpRouter } from "./orpc.js";
 
 type Handler = ServiceOf<HttpHandler>;
+
+/** Everything the unmarked fixtures below mint: no authenticators, no schemes. */
+const publicApi = defineHttp();
 
 /**
  * The transport under test with a bare listener where `http()` would put the
@@ -92,7 +93,7 @@ const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
 });
 
 /** The router as a service, built from the greeter it declares — contract-first, on the starter's own router port. */
-const greetingRouter = HttpRouter(greetingContract)(
+const greetingRouter = publicApi.HttpRouter(greetingContract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => greetingImplementation(greeter),
@@ -100,7 +101,7 @@ const greetingRouter = HttpRouter(greetingContract)(
 );
 
 /** Two controllers over the same contract's two halves — what the keyed router composes. */
-export const helloController = HttpController("HelloController", helloFragment)(
+export const helloController = publicApi.HttpController("HelloController", helloFragment)(
   { greeter: Greeter },
   { sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet("world")) }) },
 );
@@ -115,7 +116,7 @@ export const helloController = HttpController("HelloController", helloFragment)(
 const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
 
 /** The other half of `slicedContract`, alongside the reused `helloController`. */
-const echoesController = HttpController(
+const echoesController = publicApi.HttpController(
   "EchoesController",
   nestedFragment,
 )({
@@ -132,7 +133,7 @@ const echoesController = HttpController(
  */
 const syncKeyedContract = oc.router({ sync: helloFragment });
 
-export const syncKeyedRouter = HttpRouter(syncKeyedContract)({ sync: helloController });
+export const syncKeyedRouter = publicApi.HttpRouter(syncKeyedContract)({ sync: helloController });
 
 /**
  * An arm-only router whose `sync` records its own arity. The arm-only form is
@@ -141,7 +142,7 @@ export const syncKeyedRouter = HttpRouter(syncKeyedContract)({ sync: helloContro
  */
 export const armOnlyRouterRecording = () => {
   let seen = -1;
-  const provider = HttpRouter(oc.router({ greetings: helloFragment }))({
+  const provider = publicApi.HttpRouter(oc.router({ greetings: helloFragment }))({
     sync: (...args: readonly unknown[]) => {
       seen = args.length;
       return { greetings: { hello: () => OkAsync("hello world") } };
@@ -151,7 +152,7 @@ export const armOnlyRouterRecording = () => {
 };
 
 /** The same kind of API as `greetingRouter`, composed from controllers instead of one `sync`. */
-const slicedRouter = HttpRouter(slicedContract)({
+const slicedRouter = publicApi.HttpRouter(slicedContract)({
   greetings: helloController,
   echoes: echoesController,
 });
@@ -171,47 +172,12 @@ const rpcSlicedAppOf = () =>
 
 /**
  * What this deployment knows about a caller. The contract names no identity
- * type at all, so the factory is the only place one is stated — and the only
+ * type at all, so `defineHttp` is the only place one is stated — and the only
  * route by which a handler gets a readable `context.principal`.
  */
 type Identity = { readonly tenantId: string; readonly userId: string };
 
-const {
-  HttpController: AuthedController,
-  HttpRouter: AuthedRouter,
-  HttpAuthenticator: AuthedAuthenticator,
-} = httpAuth<Identity>();
-
-/** One protected fragment and one public one — the marker's runtime half, end to end. */
-const whoami = oc
-  .input(ocType<{ readonly id: string }>())
-  .output(ocType<{ readonly userId: string }>());
-const ping = oc.output(ocType<{ readonly ok: true }>());
-const authedContract = { orders: authenticated({ whoami }), health: { ping } };
-
-/** Counted so a test can assert the handler was never entered on a refusal. */
-let authedRuns = 0;
-
-const authedOrdersController = AuthedController(
-  "AuthedOrders",
-  authedContract.orders,
-)({
-  sync: () => ({
-    whoami: ({ context }) => {
-      authedRuns += 1;
-      return OkAsync({ userId: context.principal.userId });
-    },
-  }),
-});
-
-const authedHealthController = AuthedController(
-  "AuthedHealth",
-  authedContract.health,
-)({
-  sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
-});
-
-const authenticator = AuthedAuthenticator({
+const userAuthenticator = HttpAuthenticator<Identity>()({
   sync: () => (headers) => {
     if (headers.authorization === "Bearer boom") {
       return OkAsync().map((): Identity => {
@@ -225,16 +191,48 @@ const authenticator = AuthedAuthenticator({
   },
 });
 
-const authedRouter = AuthedRouter(authedContract)({
+/** One scheme, `user` — the registry every marked fixture below is typed by. */
+const api = defineHttp({ authenticators: { user: userAuthenticator } });
+
+/** One protected fragment and one public one — the marker's runtime half, end to end. */
+const whoami = oc
+  .input(ocType<{ readonly id: string }>())
+  .output(ocType<{ readonly userId: string }>());
+const ping = oc.output(ocType<{ readonly ok: true }>());
+const authedContract = { orders: authenticated({ user: [] })({ whoami }), health: { ping } };
+
+/** Counted so a test can assert the handler was never entered on a refusal. */
+let authedRuns = 0;
+
+const authedOrdersController = api.HttpController(
+  "AuthedOrders",
+  authedContract.orders,
+)({
+  sync: () => ({
+    whoami: ({ context }) => {
+      authedRuns += 1;
+      return OkAsync({ userId: context.principal.userId });
+    },
+  }),
+});
+
+const authedHealthController = api.HttpController(
+  "AuthedHealth",
+  authedContract.health,
+)({
+  sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
+});
+
+const authedRouter = api.HttpRouter(authedContract)({
   orders: authedOrdersController,
   health: authedHealthController,
 });
 
 /**
- * The same marked contract through the deps form, so the authenticator's own
- * key on the deps record is pinned for both arms of `build`.
+ * The same marked contract through the deps form, so the scheme's own key on
+ * the deps record is pinned for both arms of `build`.
  */
-const authedPositionalRouter = AuthedRouter(authedContract)(
+const authedPositionalRouter = api.HttpRouter(authedContract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({
@@ -246,26 +244,25 @@ const authedPositionalRouter = AuthedRouter(authedContract)(
   },
 );
 
-/** `HttpModule` over the protected router, with the authenticator the router now needs. */
+/** `HttpModule` over the protected router; the authenticator rides in with it. */
 const rpcAuthedAppOf = () =>
   HttpModule("RpcAuthedApp")({
     router: authedRouter,
     port: 0,
     hostname: "127.0.0.1",
-    authenticator,
     provides: [authedOrdersController, authedHealthController],
   });
 
 /**
  * The marker on the contract's ROOT, where the walk has no `contract[key]` to
  * read it from: every leaf inherits it, the same way `Implementation<C>`'s
- * record arm inherits `IsMarked<C>`.
+ * record arm inherits the enclosing requirements.
  */
-const rootMarkedContract = authenticated({ orders: { whoami } });
+const rootMarkedContract = authenticated({ user: [] })({ orders: { whoami } });
 
 let rootMarkedRuns = 0;
 
-const rootMarkedRouter = AuthedRouter(rootMarkedContract)({
+const rootMarkedRouter = api.HttpRouter(rootMarkedContract)({
   sync: () => ({
     orders: {
       whoami: ({ context }) => {
@@ -281,7 +278,55 @@ const rpcRootMarkedAppOf = () =>
     router: rootMarkedRouter,
     port: 0,
     hostname: "127.0.0.1",
-    authenticator,
+  });
+
+/**
+ * The other arm of `HttpAuthenticator`: one that DECLARES a dependency — a JWT
+ * verifier, a key set, a token table — which is the form every adopter writes
+ * and the one `defineHttp` binds through `Provider(port)(deps, arm)`.
+ */
+class TokenTable extends Port("TokenTable")<(token: string) => Identity | undefined> {}
+
+const verifying = defineHttp({
+  authenticators: {
+    user: HttpAuthenticator<Identity>()(
+      { tokens: TokenTable },
+      {
+        sync:
+          ({ tokens }) =>
+          (headers) => {
+            const claimed = tokens(headers.authorization ?? "");
+            return claimed === undefined ? ErrAsync(new Unauthenticated()) : OkAsync(claimed);
+          },
+      },
+    ),
+  },
+});
+
+const verifiedRouter = verifying.HttpRouter({
+  orders: authenticated({ user: [] })({ whoami }),
+})({
+  sync: () => ({
+    orders: { whoami: ({ context }) => OkAsync({ userId: context.principal.userId }) },
+  }),
+});
+
+const rpcVerifiedAppOf = () =>
+  HttpModule("RpcVerifiedApp")({
+    router: verifiedRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    imports: [
+      Module("Tokens")({
+        provides: [
+          Provider(TokenTable)({
+            value: (token) =>
+              token === "Bearer keyed" ? { tenantId: "t-keyed", userId: "u-keyed" } : undefined,
+          }),
+        ],
+        exports: [TokenTable],
+      }),
+    ],
   });
 
 /** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
@@ -307,7 +352,7 @@ type RootMarkedClient = RouterContractClient<{
  * reachable past the types (the assertion is the bypass), which is what
  * `routerOf`'s own guard exists for: the stray key is dropped, not defected on.
  */
-const strayRouter = HttpRouter(greetingContract)(
+const strayRouter = publicApi.HttpRouter(greetingContract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) =>
@@ -336,7 +381,7 @@ const corsContract = oc.router({
   greet: oc.input(ocType<{ readonly name: string }>()).output(ocType<string>()),
 });
 
-const corsRouter = HttpRouter(corsContract)({
+const corsRouter = publicApi.HttpRouter(corsContract)({
   sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
 });
 
@@ -515,7 +560,7 @@ export type HttpFixtures = {
   /**
    * The starter over a contract whose `orders` fragment is `authenticated(...)`,
    * with an authenticator that accepts exactly one token — router, controllers
-   * and authenticator all minted by one `httpAuth<Identity>()`. Shut down by
+   * and authenticator all minted by one `defineHttp(...)`. Shut down by
    * the fixture; the handler's run count is reset before the test body.
    */
   readonly rpcAuthed: {
@@ -538,8 +583,16 @@ export type HttpFixtures = {
     readonly keyed: readonly string[];
     readonly fromDeps: readonly string[];
   };
+  /**
+   * The starter over a router whose scheme's authenticator DECLARES a
+   * dependency, resolved by an imported module — the form `defineHttp` binds
+   * through `Provider(port)(deps, arm)`. Shut down by the fixture.
+   */
+  readonly rpcVerified: (token: string) => Promise<RootMarkedClient>;
   /** The starter over a router with oRPC's CORS plugin configured. Shut down by the fixture. */
   readonly rpcWithCors: { readonly url: string };
+  /** A bare request's headers — the one argument an authenticator is handed. */
+  readonly headers: IncomingHttpHeaders;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -769,6 +822,19 @@ export const it = test.extend<HttpFixtures>({
       keyed: authedRouter.deps.map((dep) => dep.portId),
       fromDeps: authedPositionalRouter.deps.map((dep) => dep.portId),
     });
+  },
+
+  rpcVerified: async ({ boot }, use) => {
+    const app = boot(rpcVerifiedAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const origin = `http://127.0.0.1:${info.port}`;
+    await use((token) => Promise.resolve(createORPCClient(linkOf(origin, token))));
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  headers: async ({}, use) => {
+    await use({});
   },
 
   rpcWithCors: async ({ boot }, use) => {

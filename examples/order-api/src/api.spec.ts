@@ -357,6 +357,55 @@ describe("order-api", () => {
     );
   });
 
+  it("serves the export to a service token, on the requirement the walk reaches second", async ({
+    serve,
+    serviceClientFor,
+    api,
+  }) => {
+    // GIVEN the real composition root and a caller holding only an API key
+    const client = await serviceClientFor(serve(api));
+
+    // WHEN the export is called — `user` is the requirement declared first, and
+    // this caller presents nothing it accepts
+    // THEN the walk fell through to the second requirement, and the service
+    // arm of the handler is what answered
+    await expect(client.orders.export()).toBeOkWith({ csv: "service,reporting" });
+  });
+
+  it("serves the export to a user token that carries the scope", async ({
+    serve,
+    tenant,
+    clientWith,
+    api,
+  }) => {
+    // GIVEN a caller whose token grants `orders:export`
+    const client = await clientWith(serve(api), `Bearer ${tenant}:u-1:orders:export`);
+
+    // WHEN the export is called
+    // THEN the first requirement was satisfied outright — a granted scope is
+    // matched against what the endpoint declared, and the user arm answered
+    await expect(client.orders.export()).toBeOkWith({ csv: "user,u-1" });
+  });
+
+  it("refuses a user token that grants no scope with FORBIDDEN, not UNAUTHORIZED", async ({
+    serve,
+    clientFor,
+    api,
+  }) => {
+    // GIVEN a caller whose token is valid but names no scope
+    const client = await clientFor(serve(api));
+
+    // WHEN the export, which asks a user token for `orders:export`, is called
+    const refused = await client.orders.export();
+
+    // THEN authenticated-but-under-scoped is a 403: the credential was good, so
+    // this is not the 401 an anonymous caller gets, and no scheme in the
+    // requirement list rescued it
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ constructor: ORPCError, code: "FORBIDDEN", inferable: false }),
+    );
+  });
+
   it("refuses a malformed input before the use case is reached", async ({
     serve,
     clientFor,

@@ -17,7 +17,7 @@ import { z } from "zod";
  * Deployment configuration the operator wrote — `OUTBOX_TENANTS` — is
  * trusted rather than validated at all: nothing upstream of it checks the
  * shape. The HTTP-marked path is a third case, and neither of the above: its
- * stand-in `bearerAuthenticator` checks only that the token's tenant segment
+ * stand-in `userAuth` checks only that the token's tenant segment
  * is non-empty before casting, so this boundary *vouches* for the value
  * rather than validating it — a real deployment swaps it for verification
  * that does. A brand is a compile-time fiction: nothing is asked of a caller

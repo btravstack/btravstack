@@ -38,7 +38,7 @@ harness, the observability starter and the three transport starters on top of
   `Attributes`, `Line`, `Sink`, `ObservabilityOptions`. The
   `@btravstack/observability/pino` subpath carries `pinoSink` alone, so `pino`
   stays an optional peer.
-- **[`@btravstack/http`](/api/http/)** — `HttpModule`, `HttpRouter`, `http`,
+- **[`@btravstack/http`](/api/http/)** — `HttpModule`, `defineHttp`, `http`,
   the ports `HttpRuntime` and `HttpConfig`, and the types `HttpModuleOptions`,
   `HttpOptions`, `HttpInfo`.
 - **[`@btravstack/temporal`](/api/temporal/)** — `TemporalModule`,
@@ -68,7 +68,7 @@ because operations hang off the values by convention —
 import { Module, Port, Provider } from "@btravstack/di";
 import { Config, Env } from "@btravstack/config";
 import { runMain, start } from "@btravstack/core";
-import { HttpModule, HttpRouter } from "@btravstack/http";
+import { HttpModule, defineHttp } from "@btravstack/http";
 ```
 
 `Scope` is a **type-only** export of `di`, and `PortClass`,

@@ -3,11 +3,14 @@ import {
   type Authenticated,
   type IsMarked,
   type PrincipalKey,
+  type Requirements,
+  type RequirementsOf,
 } from "@btravstack/contract";
 import {
   Port,
   Provider,
   type AnyPort,
+  type AnyProvider,
   type PortClassOf,
   type PortInstance,
   type ServiceOf,
@@ -22,13 +25,9 @@ import {
 import { RPCHandler, type NodeHttpHandlerPlugin } from "@orpc/server/node";
 import "@unthrown/orpc/extensions/result";
 
-import {
-  AuthenticatorPort,
-  noAuthenticator,
-  principalMiddleware,
-  type AuthenticatorService,
-} from "./auth.js";
+import { authenticatorPort, principalMiddleware, type AuthenticatorService } from "./auth.js";
 import { HttpHandler } from "./handler.js";
+import type { Principal, SchemesOf } from "./principal.js";
 
 export type OrpcOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
@@ -88,10 +87,11 @@ export const orpc = (options: OrpcOptions = {}) => {
 };
 
 /**
- * The router as a provider, **from the contract**:
+ * The router as a provider, **from the contract** — minted by `defineHttp`, so
+ * its handlers are typed by the scheme registry that call inferred:
  *
  * ```ts
- * const orderRouter = HttpRouter(orderContract)({ place: PlaceOrder, find: FindOrder }, {
+ * const orderRouter = api.HttpRouter(orderContract)({ place: PlaceOrder, find: FindOrder }, {
  *   sync: ({ place, find }) => ({
  *     orders: {
  *       place: ({ errors }, input) => place.execute(input.id, input.quantity).map(view).mapErrCases(…),
@@ -119,23 +119,29 @@ export const orpc = (options: OrpcOptions = {}) => {
  *
  * The second call also takes a **keyed record of controllers** instead of
  * `(deps, { sync })` — one argument rather than two, which is what tells the
- * two apart, exactly as `Provider(port)(…)` discriminates its own: `HttpRouter(contract)({ orders: ordersController, users:
+ * two apart, exactly as `Provider(port)(…)` discriminates its own: `api.HttpRouter(contract)({ orders: ordersController, users:
  * usersController })`, one `HttpController` per top-level contract key. Each
  * fragment is composed as-is rather than re-implemented, and every key of the
  * contract must be covered — a missing or extra key is a compile error.
  */
 /** What every `HttpRouter` arm returns; only the needs channel `N` differs. */
-type Built<Identity, N> = Provider<
+type Built<Auth, N> = Provider<
   PortInstance<"HttpRouter", Router<Record<never, never>>>,
   never,
   N
 > & {
   readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
-  readonly identity: Identity;
+  /**
+   * The scheme authenticators `defineHttp` bound, carried here so `HttpModule`
+   * can put them in `provides` off the one option an application already
+   * passes. It rides the router because the router is what needs them: they
+   * are the providers that discharge its scheme ports.
+   */
+  readonly authenticators: readonly Auth[];
 };
 
 export const routerFor =
-  <Identity>() =>
+  <Schemes, Auth extends AnyProvider = never>(authenticators: readonly Auth[]) =>
   <C extends Record<string, RouterContract>>(contract: C) => {
     // The implementer is walked untyped: `Implementation<C>` above is the
     // whole check — a key the contract does not declare is a compile error
@@ -151,20 +157,17 @@ export const routerFor =
       options: {
         readonly sync: (services: {
           readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-        }) => Implementation<C, Identity>;
+        }) => Implementation<C, Schemes>;
       },
-    ): Built<
-      Identity,
-      InstanceType<D[keyof D]> | (HasMark<C> extends true ? AuthenticatorPort : never)
-    >;
+    ): Built<Auth, InstanceType<D[keyof D]> | SchemePortsOf<C>>;
     function build(options: {
-      readonly sync: () => Implementation<C, Identity>;
-    }): Built<Identity, HasMark<C> extends true ? AuthenticatorPort : never>;
+      readonly sync: () => Implementation<C, Schemes>;
+    }): Built<Auth, SchemePortsOf<C>>;
     function build<
       M extends {
         readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<
-          Inherit<C[K], IsMarked<C>>,
-          Identity
+          Inherit<C[K], RequirementsOf<C>>,
+          Schemes
         >;
       },
     >(
@@ -173,22 +176,23 @@ export const routerFor =
           K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>
         ]: `UNDECLARED KEY — the contract declares no fragment under ${K & string}`;
       },
-    ): Built<
-      Identity,
-      InstanceType<M[keyof M]["port"]> | (HasMark<C> extends true ? AuthenticatorPort : never)
-    >;
+    ): Built<Auth, InstanceType<M[keyof M]["port"]> | SchemePortsOf<C>>;
     function build(depsOrControllers: unknown, options?: unknown): unknown {
-      const guarded = hasMarked(contract);
-      // The authenticator rides a NAMESPACED key on the deps record, for the
+      const schemes = schemesOf(contract);
+      // Each scheme's port rides a NAMESPACED key on the deps record, for the
       // same reason `tapped`'s port id is namespaced: the other keys are the
-      // caller's own names, and this one must not be able to collide with a
-      // dependency somebody called `authenticator`.
-      const own = (services: Record<string, unknown>): Record<string, unknown> => {
-        const { [AUTHENTICATOR]: _authenticator, ...rest } = services;
-        return rest;
-      };
-      const withAuthenticator = (deps: Record<string, AnyPort>): Record<string, AnyPort> =>
-        guarded ? { ...deps, [AUTHENTICATOR]: AuthenticatorPort } : deps;
+      // caller's own names, and these must not be able to collide with a
+      // dependency somebody called `user`.
+      const own = (services: Record<string, unknown>): Record<string, unknown> =>
+        Object.fromEntries(
+          Object.entries(services).filter(([key]) => !key.startsWith(AUTHENTICATOR)),
+        );
+      const withSchemes = (deps: Record<string, AnyPort>): Record<string, AnyPort> => ({
+        ...deps,
+        ...Object.fromEntries(
+          schemes.map((scheme) => [`${AUTHENTICATOR}${scheme}`, authenticatorPort(scheme)]),
+        ),
+      });
       const routerFrom = (
         implementation: Record<string, unknown>,
         services: Record<string, unknown>,
@@ -199,7 +203,12 @@ export const routerFor =
             implementation,
             contract,
             isAuthenticated(contract),
-            guarded ? (services[AUTHENTICATOR] as AuthenticatorService<unknown>) : undefined,
+            Object.fromEntries(
+              schemes.map((scheme) => [
+                scheme,
+                services[`${AUTHENTICATOR}${scheme}`] as AuthenticatorService<unknown>,
+              ]),
+            ),
           ),
         );
 
@@ -229,7 +238,9 @@ export const routerFor =
           const built = armOnly === undefined ? call(own(services)) : call();
           return routerFrom(built as Record<string, unknown>, services);
         };
-        return Provider(HttpRouterPort)(withAuthenticator(deps), { sync } as never);
+        return Object.assign(Provider(HttpRouterPort)(withSchemes(deps), { sync } as never), {
+          authenticators,
+        });
       }
 
       // The controllers record is keyed by contract key, and so is the services
@@ -238,33 +249,29 @@ export const routerFor =
       const controllers = depsOrControllers as Record<string, { readonly port: AnyPort }>;
       const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
         routerFrom(own(services), services);
-      return Provider(HttpRouterPort)(
-        withAuthenticator(
-          Object.fromEntries(
-            Object.entries(controllers).map(([key, controller]) => [key, controller.port]),
+      return Object.assign(
+        Provider(HttpRouterPort)(
+          withSchemes(
+            Object.fromEntries(
+              Object.entries(controllers).map(([key, controller]) => [key, controller.port]),
+            ),
           ),
+          { sync } as never,
         ),
-        { sync } as never,
+        { authenticators },
       );
     }
 
     return build;
   };
 
-/**
- * The router, with no server-side identity: a handler under a marked key sees
- * `principal: never`, so any read of it is a compile error. That is the
- * "use the factory" signal — `httpAuth<Identity>()` is what mints the form
- * whose handlers see the application's own principal.
- */
-export const HttpRouter: ReturnType<typeof routerFor<never>> = routerFor<never>();
-
 // Namespaced so it cannot collide with a key the caller wrote; see `build`.
-const AUTHENTICATOR = "@btravstack/http/authenticator";
+// The trailing colon is part of the prefix: the scheme name follows it.
+const AUTHENTICATOR = "@btravstack/http/authenticator:";
 
 /** A controller for one fragment — what `HttpController` returns, as the keyed form consumes it. */
-type ControllerFor<Fragment extends RouterContract, Identity = never> = {
-  readonly port: PortClassOf<string, Implementation<Fragment, Identity>>;
+type ControllerFor<Fragment extends RouterContract, Schemes = never> = {
+  readonly port: PortClassOf<string, Implementation<Fragment, Schemes>>;
 };
 
 /**
@@ -274,12 +281,16 @@ type ControllerFor<Fragment extends RouterContract, Identity = never> = {
  * the input is the contract's parsed input, the output its declared output
  * and the `errors` helpers its declared error map.
  */
-export type Implementation<C extends RouterContract, Identity = never> =
+export type Implementation<
+  C extends RouterContract,
+  Schemes = never,
+  R extends Requirements = never,
+> =
   C extends ProcedureContract<infer I, infer O, infer E>
     ? Parameters<
         ProcedureImplementer<
           DefaultInitialContext & object,
-          ContextOf<C, Identity>,
+          ContextOf<C, R, Schemes>,
           I,
           O,
           E
@@ -287,38 +298,79 @@ export type Implementation<C extends RouterContract, Identity = never> =
       >[0]
     : {
         readonly [K in Exclude<keyof C, PrincipalKey>]: C[K] extends RouterContract
-          ? Implementation<Inherit<C[K], IsMarked<C>>, Identity>
+          ? Implementation<C[K], Schemes, Effective<C, R>>
           : never;
       };
 
 /**
- * What a leaf's handler gets on `opts.context`: the principal when the leaf is
- * marked, and `object` — today's spelling, unchanged — when it is not. It rides
- * oRPC's own context channel, injected into `ProcedureImplementer`'s second
- * type parameter, so this package adds no second handler parameter and wraps no
- * `.result()` handler.
- *
- * The contract says only **whether** a leaf is protected; `Identity` — from
- * `httpAuth<Identity>()` — says **what** the principal is. The top-level
- * `HttpRouter` / `HttpController` pass `never`, so a marked leaf reached
- * without the factory types `principal: never` and any read of it is a compile
- * error: the "use the factory" signal, rather than a principal invented from a
- * type the contract no longer carries.
+ * The requirements actually in force at a node: its own, or the inherited ones.
+ * Nearest mark wins, which is OpenAPI's own rule.
  */
-type ContextOf<C, Identity> = IsMarked<C> extends true ? { readonly principal: Identity } : object;
+type Effective<C, R extends Requirements> = IsMarked<C> extends true ? RequirementsOf<C> : R;
 
 /**
- * Pushes a record's marker onto each of its children, so a marked fragment
- * protects every procedure beneath it. The runtime walk in `routerOf` carries
- * the same fact as an argument; these two must agree.
+ * What a leaf's handler gets on `opts.context`: the principal its effective
+ * requirements name, and `object` — today's spelling, unchanged — when it has
+ * none. It rides oRPC's own context channel, injected into
+ * `ProcedureImplementer`'s second type parameter, so this package adds no
+ * second handler parameter and wraps no `.result()` handler.
+ *
+ * The contract says **which schemes** protect a leaf; `Schemes` — the registry
+ * `defineHttp` infers from its authenticators — says what each one resolves to.
+ * A leaf reached without the factory sees `Schemes = never`, so `principal` is
+ * `never` and any read of it is a compile error — the "use the factory" signal,
+ * rather than a principal invented from a contract that names none.
  */
-type Inherit<T, Marked extends boolean> = Marked extends true ? Authenticated<T> : T;
+type ContextOf<C, R extends Requirements, Schemes> = [Effective<C, R>] extends [never]
+  ? object
+  : { readonly principal: Principal<SchemesOf<Effective<C, R>>, Schemes> };
+
+/**
+ * Pushes a record's requirements onto a child that carries none, so a marked
+ * fragment protects every procedure beneath it. Nearest mark wins: a node with
+ * its own requirements is left alone. This is the type side of `routerOf`'s
+ * `inherited` argument; the two must agree.
+ */
+type Inherit<T, R extends Requirements> = [R] extends [never]
+  ? T
+  : IsMarked<T> extends true
+    ? T
+    : Authenticated<T, R>;
+
+/**
+ * Every requirement the contract carries, anywhere in its tree — the same walk
+ * as `HasMark<C>`, keeping what it found instead of answering yes. Over-, never
+ * under-approximating: a requirement a nearer mark shadows still contributes
+ * its scheme, which costs a dep nothing uses rather than a missing one.
+ */
+type AllRequirementsOf<C> =
+  | RequirementsOf<C>
+  | (C extends ProcedureContract<infer _I, infer _O, infer _E>
+      ? never
+      : {
+          readonly [K in Exclude<keyof C, PrincipalKey>]: AllRequirementsOf<C[K]>;
+        }[Exclude<keyof C, PrincipalKey>]);
+
+/** Distributes `SchemesOf` over the union of requirement tuples the walk collected. */
+type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
+
+/**
+ * One port instance per scheme the contract names, as the router's needs
+ * channel. The naked `S` distributes, so two schemes are two distinct port
+ * types — a scheme with no authenticator behind it is di's own unmet need
+ * naming `HttpAuthenticator:<scheme>`, not a gate this package writes. The
+ * runtime side is `schemesOf` below; these two must agree.
+ */
+type SchemePortsOf<C> =
+  SchemesIn<AllRequirementsOf<C>> extends infer S extends string
+    ? S extends string
+      ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>>
+      : never
+    : never;
 
 /**
  * Whether the contract marks anything, anywhere — a yes/no, not a type, since
- * the contract names no principal. It is what makes the authenticator
- * dependency conditional on both `build` overloads, and the type side of the
- * `hasMarked` walk below; these two must agree.
+ * the contract names no principal.
  */
 export type HasMark<C> =
   IsMarked<C> extends true
@@ -332,38 +384,46 @@ export type HasMark<C> =
         : false;
 
 /**
- * Whether the contract marks anything, anywhere. Walked once, at composition,
- * because it is what makes the authenticator dependency conditional: a router
- * with no marked leaf declares no such need, so an application with no
- * protected route provides nothing. The type side of the same condition is
- * `HasMark<C>` on both `build` overloads; these two must agree.
+ * Every scheme the contract names, anywhere. Walked once, at composition,
+ * because it is what the router's dependencies are: one port per scheme, so an
+ * application with no protected route declares nothing. The type side is
+ * `SchemePortsOf<C>` above; these two must agree.
  */
-const hasMarked = (node: unknown, seen: WeakSet<object> = new WeakSet()): boolean => {
-  if (typeof node !== "object" || node === null || seen.has(node)) return false;
-  // Every object, not only a plain record: `routerOf` reaches a mark through
-  // whatever `contract[key]` holds, so anything this walk declines to enter is
-  // a mark it can miss and the walk cannot — and missing one is the unsafe
-  // direction. `seen` is what makes entering everything terminate, since a
-  // schema is free to be recursive.
-  seen.add(node);
-  if (isAuthenticated(node)) return true;
-  return Object.values(node as Record<string, unknown>).some((child) => hasMarked(child, seen));
+const schemesOf = (contract: unknown): readonly string[] => {
+  const found = new Set<string>();
+  const walk = (node: unknown, seen: WeakSet<object>): void => {
+    if (typeof node !== "object" || node === null || seen.has(node)) return;
+    // Every object, not only a plain record: `routerOf` reaches a mark through
+    // whatever `contract[key]` holds, so anything this walk declines to enter is
+    // a mark it can miss and the walk cannot — and missing one is the unsafe
+    // direction. `seen` is what makes entering everything terminate, since a
+    // schema is free to be recursive.
+    seen.add(node);
+    for (const requirement of isAuthenticated(node) ?? [])
+      for (const scheme of Object.keys(requirement)) found.add(scheme);
+    // No early return on a mark: a procedure inside a marked record may name a
+    // scheme of its own, and that scheme still needs a port.
+    for (const child of Object.values(node as Record<string, unknown>)) walk(child, seen);
+  };
+  walk(contract, new WeakSet());
+  return [...found];
 };
 
 // Walks the implementation record next to the implementer and the contract: a
 // function is a procedure and becomes `implementer.result(fn)`, anything else
 // is a nested router. The types above are the whole check; the walk trusts
 // them, and drops a key the implementer has no node for rather than defecting
-// on it. `inherited` carries a marked record's mark down to its procedures —
-// `isAuthenticated` answers for one node only — the same way `Inherit<T, P>`
-// carries it in the types. `.use` must come BEFORE `.result`: `.result`
-// returns an `ImplementedProcedure`, whose own `.use` has no `.result` left.
+// on it. `inherited` carries a marked record's requirements down to its
+// procedures — `isAuthenticated` answers for one node only — the same way
+// `Inherit<T, R>` carries them in the types. `.use` must come BEFORE `.result`:
+// `.result` returns an `ImplementedProcedure`, whose own `.use` has no
+// `.result` left.
 const routerOf = (
   implementer: Record<string, unknown>,
   implementation: Record<string, unknown>,
   contract: Record<string, unknown>,
-  inherited: boolean,
-  authenticate: AuthenticatorService<unknown> | undefined,
+  inherited: Requirements | undefined,
+  authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
 ): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(implementation).flatMap(([key, value]) => {
@@ -377,14 +437,14 @@ const routerOf = (
         | undefined;
       if (node === undefined) return [];
       const child = contract[key];
-      const marked =
-        inherited || (typeof child === "object" && child !== null && isAuthenticated(child));
+      // Nearest mark wins: this node's own requirements, or the enclosing
+      // record's when it declares none.
+      const declared =
+        typeof child === "object" && child !== null ? isAuthenticated(child) : undefined;
+      const effective = declared ?? inherited;
       if (typeof value === "function") {
-        // Fail closed: a mark with no authenticator behind it refuses every
-        // caller rather than serving the leaf unprotected.
-        const target = marked
-          ? node.use(principalMiddleware(authenticate ?? noAuthenticator))
-          : node;
+        const target =
+          effective === undefined ? node : node.use(principalMiddleware(effective, authenticators));
         return [[key, target.result(value)]];
       }
       return [
@@ -394,8 +454,8 @@ const routerOf = (
             node,
             value as Record<string, unknown>,
             (child ?? {}) as Record<string, unknown>,
-            marked,
-            authenticate,
+            effective,
+            authenticators,
           ),
         ],
       ];

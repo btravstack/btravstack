@@ -9,15 +9,14 @@ socket, and the router itself is a di-provided service. The contract lives in
 its own package, because a client needs it and needs none of this.
 
 ```
-src/auth.ts                           Identity, and the HttpController / HttpRouter / HttpAuthenticator httpAuth<Identity>() mints from it
-src/authenticator.ts                  bearerAuthenticator — headers in, Identity out, on the starter's port
-src/slices/orders/controller.ts       HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync }) — where the orders slice's own domain error becomes an ORPCError
+src/auth.ts                           the two schemes (user, service), their authenticators, and the one api = defineHttp({ authenticators }) call
+src/slices/orders/controller.ts       api.HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
-src/slices/customers/controller.ts    HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync }) — same shape, for the customers slice's own domain error
+src/slices/customers/controller.ts    api.HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts                         an AsyncResult client for the same contract
-src/module.ts                         OrderApi — the composition root: orderRouter = HttpRouter(contract)({ orders, customers }), then HttpModule("OrderApi")({
+src/module.ts                         OrderApi — the composition root: orderRouter = api.HttpRouter(contract)({ orders, customers }), then HttpModule("OrderApi")({
   needs: [Env], router: orderRouter, … })
 src/main.ts                           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
 src/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
@@ -49,7 +48,7 @@ root, and [`order-amqp-worker`](../order-amqp-worker) by never folding it at a
 consumer at all — its writes broadcast facts instead.
 
 Each procedure is a plain `Result`-returning function — `@unthrown/orpc`'s
-`.result(...)` handler, which `HttpController` attaches for you inside each
+`.result(...)` handler, which `api.HttpController` attaches for you inside each
 slice's controller — and that is what performs the elimination; the
 `mapErrCases` inside it is the triage point — the boundary where the
 application's vocabulary stops:
@@ -89,9 +88,9 @@ Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
 `/rpc` all live in [`@btravstack/http`](../../packages/http) —
 see its README for the guarantee it makes and the one way it answers HTTP.
-What this example writes is two slices, each an `HttpController(name, fragment)({ name: Dep }, { sync })`
+What this example writes is two slices, each an `api.HttpController(name, fragment)({ name: Dep }, { sync })`
 over its own contract fragment, and a root router composed by the **keyed**
-`HttpRouter(contract)({ orders: ordersController, customers:
+`api.HttpRouter(contract)({ orders: ordersController, customers:
 customersController })` — contract-first, exact (a missing slice, a stray
 key or a controller under the wrong key are all compile errors at that call)
 — each procedure a plain `Result`-returning function typed by the fragment,
@@ -101,46 +100,57 @@ root that is a `Module(...)` which also knows about it:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
 
-`authenticator` is owed because the contract marks its `orders` fragment
-`authenticated`: the router provider carries `AuthenticatorPort` as a need, so
-omitting the line is an unmet dependency `start` refuses, and supplying one
-minted on a different identity is a compile error at this call. It sits at
-the root rather than in a slice — who a caller is is one answer per process —
-and it is an ordinary provider, so swapping this example's
-`Bearer <tenantId>:<userId>` stand-in for JWT verification changes nothing
-else.
+There is **no authenticator to list**. The contract marks its `orders`
+fragment, so the router declares one dependency per scheme that fragment names
+— `HttpAuthenticator:user` and `HttpAuthenticator:service` — and carries the
+providers that discharge them, which `HttpModule` puts in `provides` itself. A
+scheme with nobody behind it is an unmet dependency `start` refuses, naming the
+port. Both are ordinary providers, so swapping this example's
+`Bearer <tenantId>:<userId>:<scopes>` stand-in for JWT verification changes
+nothing else — and an authenticator that declared a `JwtVerifier` would carry
+that need into the graph, refused at this very call if nothing satisfied it.
 
-Where the identity is **stated** is `src/auth.ts`, the whole of it:
+Where the schemes are **declared** is `src/auth.ts`:
 
 ```ts
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
+export type ServiceIdentity = { readonly appId: string };
 
-const identity = httpAuth<Identity>();
+export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
+  sync: () => (headers) => …,
+});
 
-export const HttpController: HttpControllerOf<Identity> =
-  identity.HttpController;
-export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
-export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
-  identity.HttpAuthenticator;
+export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  sync: () => (headers) => …,
+});
+
+export const api = defineHttp({
+  authenticators: { user: userAuth, service: serviceAuth },
+});
 ```
 
-**The contract says whether a route is protected; `httpAuth<Identity>()` says
-what the principal is.** The contract names no identity type at all, so nothing
+**The contract says which schemes protect a route and which scopes each must
+grant; `defineHttp({ authenticators })` says what each one resolves to.** The
+contract names no identity type at all, so nothing
 here reaches a client and enriching it — roles, an org tier, an internal id —
-is never a contract change. Both slices import `HttpController` from there
-instead of from `@btravstack/http`, and the orders controller reads
+is never a contract change. Both slices mint their controller from that one
+`api`, and the orders controller reads
 `context.principal.userId` to log who asked for a placement. Who placed an
 order is a transport-boundary fact, so it is logged there rather than pushed
 through a use case that has no business with it.
 
-It is also the only way to read a principal at all: a marked fragment reached
-through `@btravstack/http`'s own top-level `HttpController` types
+`api` is held as **one binding and never destructured**: each destructured
+member expands to a type mentioning the marker's inaccessible `unique symbol`
+(TS2527), while held whole it collapses to the nameable `Http<A>` — which is
+why this file carries no type annotation at all.
+
+It is also the only way to read a principal: a marked fragment reached
+through any other `defineHttp` call types
 `principal: never`, so every read of it is a compile error. And it is written
 once per application rather than per slice — a handler's parameter types are
 fixed where the arrow is written, so the composition root cannot re-type a
@@ -174,7 +184,7 @@ graph builds one database (measured on this composition — a naive walk visits
 16 provider slots and di keeps 15, where the same walk over the pre-split
 modules visited 22 for the same 15).
 `exports` takes the provider itself, not `ordersController.port`:
-`HttpController` minted that port, so there is no class to spell back off it.
+`api.HttpController` minted that port, so there is no class to spell back off it.
 
 `HttpModule` is sugar over the same primitives: it imports the starter
 (`http()` — the whole surface), provides the
@@ -217,7 +227,7 @@ and no handler code manages any of it.
 
 ```ts
 const client = createOrderApiClient("http://127.0.0.1:3000", "/rpc", {
-  authorization: `Bearer ${tenantId}:${userId}`,
+  authorization: `Bearer ${tenantId}:${userId}:orders:export`,
 });
 
 const named = (await client.orders.place({ id, quantity })).match({
@@ -236,7 +246,12 @@ const named = (await client.orders.place({ id, quantity })).match({
 The header is not optional here: `orders` is the marked half of the contract,
 so the same call without it is refused before any procedure runs — as an
 `UNAUTHORIZED` the contract does not declare, which means it is not inferable
-and lands in `defect` rather than `errCases`. `customers` is unmarked and
+and lands in `defect` rather than `errCases`. A caller whose token is valid but
+lacks a scope the procedure named gets a `FORBIDDEN` instead, on the same
+channel — which is why the token above carries `orders:export`, the scope
+`orders.export` requires of a `user`; a caller presenting the `service` scheme
+(`x-api-key`) reaches that one procedure with no scope at all. `customers` is
+unmarked and
 answers either way — and names its tenant on the input, which `orders` does
 not: the tenant a marked procedure serves is the token's, so there is nothing
 for the caller to say about it.
@@ -248,7 +263,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-api test  # 17 api specs
+pnpm --filter @btravstack/example-order-api test  # 26 api specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON
@@ -325,7 +340,7 @@ const customersContract = {
     .errors({ NOT_FOUND: { data: type<{ readonly id: string }>() } }),
 };
 
-const ordersContract = {
+const ordersContract = authenticated({ user: [] })({
   place: oc
     .input(type<{ readonly id: string; readonly quantity: number }>())
     .output(type<OrderView>())
@@ -335,12 +350,12 @@ const ordersContract = {
       CONFLICT: { data: type<OrderRef>() },
     }),
   …
-};
+});
 ```
 
 The `customers` controller hands `input.tenantId` straight to the use case,
 which hands it to the repository, which puts it in the `WHERE`. The `orders`
-fragment is marked `authenticated`, so its controller takes the tenant from
+fragment is marked `authenticated({ user: [] })`, so its controller takes the tenant from
 `context.principal.tenantId` — this deployment's `Identity`, which the
 contract never names — and its inputs name none: a required field the
 handler ignores is a field that lies, and a caller that could name a tenant it

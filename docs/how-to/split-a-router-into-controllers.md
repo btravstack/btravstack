@@ -8,13 +8,13 @@ description: Give each slice of a large API its own contract fragment and contro
 > **How-to.** For an API that has outgrown one `sync`. For the shape of a
 > single-slice router, see [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http).
 
-`HttpRouter(contract)(deps, { sync })` puts every procedure's implementation in
+`api.HttpRouter(contract)(deps, { sync })` puts every procedure's implementation in
 one function. That is right for a small API and wrong for a large one: a
 fifty-procedure contract would mean fifty injected services in one `sync`, one
 slice's typo failing the whole router's type-check, and no way to serve one
 slice without the rest. A **controller** is the fix: an ordinary di provider
 over one fragment of the contract, minted its own port, composed by the root
-through a keyed `HttpRouter(contract)(controllers)` call. Everything below is
+through a keyed `api.HttpRouter(contract)(controllers)` call. Everything below is
 lifted from `examples/order-api`, which serves an `orders` slice and a
 `customers` slice this way.
 
@@ -70,7 +70,7 @@ const customersContract = {
 };
 
 export const contract = {
-  orders: authenticated(ordersContract),
+  orders: authenticated({ user: [] })(ordersContract),
   customers: customersContract,
 };
 ```
@@ -83,7 +83,7 @@ slice, and inferring the view type from it keeps the checked shape and the
 compiled one from drifting apart.
 
 The two fragments differ in one more way, and it is worth reading as part of
-the split: `orders` is [`authenticated`](/reference/contract) and names no
+the split: `orders` is [`authenticated({ user: [] })`](/reference/contract) and names no
 tenant on its inputs, because a caller's own identity establishes it; the
 unmarked `customers` names one, because "which tenant" is then part of what is
 being asked. A marker is per fragment, so slicing a contract is also where a
@@ -91,7 +91,8 @@ public half and a protected one stop being one undifferentiated surface.
 
 ## Step 2 — a controller per slice
 
-`HttpController(name, fragment)({ name: Dep }, { sync })` is `HttpRouter`'s own
+`api.HttpController(name, fragment)({ name: Dep }, { sync })` is
+`api.HttpRouter`'s own
 shape, aimed at one fragment: the first call fixes the fragment's type and
 mints a port under `name`; the second is di's
 `Provider(port)({ name: Dep }, { sync })`,
@@ -99,9 +100,9 @@ so `sync`'s return is typed by the fragment at the call — a typo'd or missing
 procedure is a compile error inside the controller itself, not at the root:
 
 ```ts
-import { HttpController } from "../../auth.js";
+import { api } from "../../auth.js";
 
-export const ordersController = HttpController(
+export const ordersController = api.HttpController(
   "OrdersController",
   contract.orders,
 )(
@@ -152,17 +153,19 @@ export const ordersController = HttpController(
 );
 ```
 
-`HttpController` comes from the application's own `auth.ts`, not from
-`@btravstack/http`: the marker on the fragment says the route is protected, and
-`httpAuth<Identity>()` in that one file is what says what a principal is, so
-`context.principal` has a readable type here. Reached through the package's own
-top-level `HttpController` it would be `never`, and every read a compile error.
+`HttpController` comes off the application's own `api` in `auth.ts`, not from
+`@btravstack/http` — there is no top-level one: the marker on the fragment says
+which schemes protect the route, and
+`defineHttp({ authenticators })` in that one file is what says what each scheme
+resolves to, so
+`context.principal` has a readable type here. Reached through any other
+`defineHttp` call it would be `never`, and every read a compile error.
 The unmarked `customers` controller is unaffected either way — its context has
 no `principal` at all. See [Protect a procedure](/how-to/protect-a-procedure).
 
 The controller does no oRPC work of its own — it stores a plain record, and
-`HttpRouter` wraps each leaf in `.result(...)` when it composes the router.
-`HttpController` mints the port and carries it back on `.port`, which the
+`api.HttpRouter` wraps each leaf in `.result(...)` when it composes the router.
+`api.HttpController` mints the port and carries it back on `.port`, which the
 keyed form reads to order this controller's construction before the router's —
 there is nothing to name by hand. A slice ships its controller as a module
 that **imports the vertical it needs** and exports only that controller, the
@@ -195,12 +198,12 @@ is built.
 
 ## Step 3 — the keyed root
 
-`HttpRouter(contract)(controllers)` — a record keyed by the contract's own
+`api.HttpRouter(contract)(controllers)` — a record keyed by the contract's own
 top-level keys, one `HttpController` per key — replaces the
 `(deps, { sync })` call at the root, and is told apart from it by **arity**:
 
 ```ts
-export const orderRouter = HttpRouter(contract)({
+export const orderRouter = api.HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
 });
@@ -212,7 +215,6 @@ owns:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
@@ -220,10 +222,12 @@ export const OrderApi = HttpModule("OrderApi")({
 
 `observability()` is here because every slice's layers write to its `Logger`
 and none of them owns it; `Logger` is exported because the per-request module
-reads it. The `authenticator` is here for the same kind of reason and a
-stronger one: who a caller is is one answer per process, not a slice's
-question. It is required because a marked fragment made it a dependency of the
-router provider, so omitting it leaves `AuthenticatorPort` in the root's
+reads it. The **authenticators are not** here, and that is the point: who a
+caller is is one answer per process, so they were declared once in `auth.ts`
+and they ride the router, which is what needs them — `HttpModule` puts them in
+`provides` itself. A marked fragment makes each scheme it names a dependency of
+the router provider, so a scheme with no authenticator behind it leaves
+`HttpAuthenticator:<scheme>` in the root's
 `Needs` and `start` refuses the module — not a gate of this package's, and not
 di's arity gate either, but the plain assignability of the `Needs` channel
 against `Env | Scope`, which names the port. Nothing else about what a slice
@@ -231,7 +235,7 @@ needs is spelled at the root.
 
 This form is **exact**: a key the record above is missing, a key the
 contract does not declare, and a controller wired under the wrong key are all
-compile errors at the `HttpRouter(contract)({...})` call, not runtime
+compile errors at the `api.HttpRouter(contract)({...})` call, not runtime
 surprises the first time a client hits the missing slice.
 
 ## Step 4 — lifting a slice into its own process
@@ -242,21 +246,21 @@ controller's own port as its single dependency and hands back what that
 controller built:
 
 ```ts
-export const ordersRouter = HttpRouter(contract.orders)(
+export const ordersRouter = api.HttpRouter(contract.orders)(
   { implementation: ordersController.port },
   { sync: ({ implementation }) => implementation },
 );
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, observability()],
 });
 ```
 
-`HttpRouter` here is `auth.ts`'s too — the lifted fragment carries its marker,
-so the lifted root needs the same authenticator the modulith did, and that is
-the only line about identity extraction adds.
+`api` here is `auth.ts`'s too — the lifted fragment carries its marker, so the
+lifted root owes the same schemes the modulith did, and the router brings the
+authenticators for them from that same call. Extraction adds no line about
+identity at all.
 
 `OrdersSlice` is the very module the modulith imported and `ordersController`
 the very provider it composed — not a copy, not a rewritten `sync`. Extraction
@@ -269,9 +273,9 @@ composing slices into one router a starting point rather than a trap.
 
 - [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http) — the
   one-router form, and everything the starter itself decides.
-- [`@btravstack/http`](/reference/http) — `HttpController` and
+- [`@btravstack/http`](/reference/http) — `defineHttp`, `HttpController` and
   `HttpRouter`'s full signatures.
 - [Protect a procedure](/how-to/protect-a-procedure) — `auth.ts`, the
-  authenticator, and what a marked fragment does to a controller.
+  authenticators, and what a marked fragment does to a controller.
 - [Order API (HTTP)](/examples/order-api) — the two-slice example these
   samples come from.

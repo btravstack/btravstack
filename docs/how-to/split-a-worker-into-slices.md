@@ -26,7 +26,7 @@ from `examples/order-amqp-worker` (two subscriber slices) and
 [Split a router into controllers](/how-to/split-a-router-into-controllers)
 starts from a contract that is already nested — `{ orders: {...}, customers:
 {...} }` — so a slice's fragment is a sub-object and the root composes a
-**record**, one controller per top-level key, with `HttpRouter(contract)({
+**record**, one controller per top-level key, with `api.HttpRouter(contract)({
 orders: ordersController, customers: customersController })`. An
 `amqp-contract` or `temporal-contract` contract has no such nesting: its
 consumers and its workflows are already flat top-level keys of one contract,

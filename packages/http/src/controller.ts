@@ -27,20 +27,20 @@ import type { Implementation } from "./orpc.js";
  * measured on `examples/order-api`).
  */
 /** What both arms of a minted controller return; `N` is the only thing that differs. */
-type Minted<Name extends string, C extends RouterContract, Identity, N> = Provider<
-  PortInstance<Name, Implementation<C, Identity>>,
+type Minted<Name extends string, C extends RouterContract, Schemes, N> = Provider<
+  PortInstance<Name, Implementation<C, Schemes>>,
   never,
   N
-> & { readonly port: PortClassOf<Name, Implementation<C, Identity>> };
+> & { readonly port: PortClassOf<Name, Implementation<C, Schemes>> };
 
 export const controllerFor =
-  <Identity>() =>
+  <Schemes>() =>
   <const Name extends string, C extends RouterContract>(name: Name, contract: C) => {
     // The parameter is named, not `_`-prefixed, so it reads as `contract` in the
     // published `.d.ts` and in an editor hint; nothing needs its value.
     void contract;
     // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-    const port = class extends Port(name)<Implementation<C, Identity>> {};
+    const port = class extends Port(name)<Implementation<C, Schemes>> {};
 
     // Two arms, discriminated by ARITY, mirroring `Provider(port)`'s own —
     // a controller that calls no use case is the common shape here, not an
@@ -52,12 +52,12 @@ export const controllerFor =
       options: {
         readonly sync: (services: {
           readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-        }) => Implementation<C, Identity>;
+        }) => Implementation<C, Schemes>;
       },
-    ): Minted<Name, C, Identity, InstanceType<D[keyof D]>>;
+    ): Minted<Name, C, Schemes, InstanceType<D[keyof D]>>;
     function build(options: {
-      readonly sync: () => Implementation<C, Identity>;
-    }): Minted<Name, C, Identity, never>;
+      readonly sync: () => Implementation<C, Schemes>;
+    }): Minted<Name, C, Schemes, never>;
     function build(depsOrOptions: unknown, options?: unknown): unknown {
       return options === undefined
         ? Provider(port as never)(depsOrOptions as never)
@@ -65,11 +65,3 @@ export const controllerFor =
     }
     return build;
   };
-
-/**
- * The controller, with no server-side identity: a handler under a marked
- * fragment sees `principal: never`, so any read of it is a compile error —
- * the "use the factory" signal. `httpAuth<Identity>()` mints the form whose
- * handlers see the application's own principal.
- */
-export const HttpController: ReturnType<typeof controllerFor<never>> = controllerFor<never>();

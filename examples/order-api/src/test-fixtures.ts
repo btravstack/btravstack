@@ -24,7 +24,6 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { inject, test } from "vitest";
 
-import { bearerAuthenticator } from "./authenticator.js";
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
@@ -81,11 +80,6 @@ const recorderOf = () => {
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   HttpModule("StubApi")({
     router: orderRouter,
-    // The same authenticator as the real root: the contract marks `orders`, so
-    // every composition serving that router owes one. Swapping it out is how a
-    // spec would test a different identity story — not something the transport
-    // can be asked to skip.
-    authenticator: bearerAuthenticator,
     imports: [
       OrderApplicationModule,
       CustomerApplicationModule,
@@ -114,7 +108,6 @@ const recordingApi = () => {
   return {
     api: HttpModule("RecordingApi")({
       router: orderRouter,
-      authenticator: bearerAuthenticator,
       // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
       // real root, and this root exists to be read.
       imports: [
@@ -238,6 +231,12 @@ export type ApiFixtures = {
     app: RunningApp<E, HttpInfo>,
     token: string | undefined,
   ) => Promise<OrderApiClient>;
+  /**
+   * A client presenting an API key and no bearer token — the `service`
+   * scheme's credential. `export` names `user` first, so this is the caller
+   * that has to reach the second requirement to be served at all.
+   */
+  readonly serviceClientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;
   readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<string>;
   readonly statusOf: (url: string) => Promise<number>;
   /** The real composition root. */
@@ -293,6 +292,13 @@ export const it = test.extend<ApiFixtures>({
 
   clientFor: async ({ tenant, clientWith }, use) => {
     await use(async (app) => clientWith(app, `Bearer ${tenant}:u-1`));
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  serviceClientFor: async ({}, use) => {
+    await use(async (app) =>
+      createOrderApiClient(await originOf(app), "/rpc", { "x-api-key": "reporting" }),
+    );
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

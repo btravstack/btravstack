@@ -1,15 +1,9 @@
 import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 
-import {
-  Port,
-  Provider,
-  type AnyPort,
-  type PortClassOf,
-  type PortInstance,
-  type ServiceOf,
-} from "@btravstack/di";
+import type { Requirements } from "@btravstack/contract";
+import { Port, type AnyPort, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { ORPCError } from "@orpc/server";
-import { ErrAsync, TaggedError, type AsyncResult } from "unthrown";
+import { TaggedError, type AsyncResult } from "unthrown";
 
 /**
  * A caller was refused. Carries nothing: the starter surfaces no reason — a
@@ -19,46 +13,125 @@ import { ErrAsync, TaggedError, type AsyncResult } from "unthrown";
  */
 export class Unauthenticated extends TaggedError("Unauthenticated") {}
 
+// Module-private, so the mark cannot be applied by accident: `Grant` is the
+// only shape carrying it and `granted` the only thing that mints one. The type
+// parameter is erased at runtime, so structure is all the middleware has to go
+// on — and `{ userId, tenantId, scopes }` is an ordinary JWT-claims identity, a
+// BARE answer that a `"scopes" in granted` test read as the scoped one and
+// destroyed. `Symbol.for` rather than `Symbol()`: two copies of this package
+// would otherwise read each other's grants as bare.
+const GRANT: unique symbol = Symbol.for("@btravstack/http/grant") as never;
+
 /**
- * What an application provides so a marked procedure can name its caller.
+ * The scoped answer, and the reason `granted()` is mandatory rather than
+ * advisory: the brand is what tells it from an identity that merely happens to
+ * carry a `scopes` field.
+ */
+export type Grant<P, Scope extends string> = {
+  readonly identity: P;
+  readonly scopes: readonly Scope[];
+  readonly [GRANT]: true;
+};
+
+/**
+ * What an authenticator hands back. A scheme with no scope vocabulary returns
+ * the identity bare — byte-for-byte what applications write today — and one
+ * with a vocabulary reports what the credential actually granted, so the
+ * starter can compare it against what the endpoint declared.
+ */
+export type Granted<P, Scope extends string> = [Scope] extends [never] ? P : Grant<P, Scope>;
+
+/**
+ * What a scoped scheme answers with:
+ *
+ * ```ts
+ * OkAsync(granted({ userId }, ["orders:export"]));
+ * ```
+ *
+ * `Scope` is not inferred from the vocabulary — an empty grant would collapse
+ * it to `never` and take the return type back to the bare arm — so the array is
+ * what states it, checked against the vocabulary by the assignment.
+ */
+export const granted = <P, const Scope extends string = never>(
+  identity: P,
+  scopes: readonly Scope[],
+): Grant<P, Scope> => ({ identity, scopes, [GRANT]: true });
+
+/**
  * Headers, not the request: an authenticator has no business reading a body,
  * and the narrower argument is what keeps it testable without a socket.
  */
-export type AuthenticatorService<P> = (
+export type AuthenticatorService<P, Scope extends string = never> = (
   headers: IncomingHttpHeaders,
-) => AsyncResult<P, Unauthenticated>;
+) => AsyncResult<Granted<P, Scope>, Unauthenticated>;
+
+const ports = new Map<string, unknown>();
 
 /**
- * The authenticator's port — one id, the starter's own, like `HttpRouterPort`.
- * The service type is erased to `unknown` because di identifies a port by id;
- * the principal's type is carried by the provider `HttpAuthenticator` returns
- * and checked where the router and the authenticator meet.
+ * One port per scheme, its id carrying the scheme name — the move
+ * `AmqpHandler(contract, key)` makes. The service type is erased to
+ * `AuthenticatorService<unknown>` — `Granted<unknown, never>` is `unknown`, so
+ * it admits the bare and the scoped answer alike — because di identifies a port
+ * by id; the principal and scope types ride the description `HttpAuthenticator`
+ * returns, and `defineHttp` reads the registry off them.
+ *
+ * The id is a LITERAL type, so `PortInstance<"HttpAuthenticator:user", …>` and
+ * `PortInstance<"HttpAuthenticator:service", …>` are different types: a
+ * contract naming a scheme the registry has no authenticator for leaves that
+ * scheme's port unmet, which is di's own diagnostic naming the port rather than
+ * a gate this package writes.
  */
-export const AuthenticatorPort = Port("HttpAuthenticator") as PortClassOf<
-  "HttpAuthenticator",
-  AuthenticatorService<unknown>
->;
-export type AuthenticatorPort = PortInstance<"HttpAuthenticator", AuthenticatorService<unknown>>;
+export const authenticatorPort = <const S extends string>(
+  scheme: S,
+): PortClassOf<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>> => {
+  const id = `HttpAuthenticator:${scheme}` as const;
+  // Memoised: `defineHttp` asks for a scheme's port when it binds the
+  // authenticator and `routerFor` asks again for every scheme its contract
+  // names, and two `Port(id)` calls under one id are di's duplicate-id warning.
+  const existing = ports.get(id);
+  if (existing !== undefined) return existing as never;
+  // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
+  const minted = class extends Port(id)<AuthenticatorService<unknown>> {};
+  ports.set(id, minted);
+  return minted as never;
+};
 
 /**
- * The authenticator as a provider, with its principal type stated at the call:
+ * What `HttpAuthenticator` hands back: a description `defineHttp` binds to a
+ * port once the scheme name is known, carrying its principal and scope types
+ * so the registry can be inferred rather than declared.
+ */
+export type Authenticator<P, Scope extends string, N> = {
+  readonly deps: unknown;
+  readonly options: unknown;
+  readonly principal: P;
+  readonly scope: Scope;
+  readonly needs: N;
+};
+
+/**
+ * The authenticator for one scheme, with its principal type — and the scopes it
+ * can grant — stated at the call:
  *
  * ```ts
- * export const jwtAuthenticator = HttpAuthenticator<Principal>()({ verify: JwtVerifier }, {
- *   sync: ({ verify }) => (headers) => verify(headers.authorization),
- * });
+ * export const userAuth = HttpAuthenticator<Identity, "orders:export">()(
+ *   { verify: JwtVerifier },
+ *   { sync: ({ verify }) => (headers) => verify(headers.authorization) },
+ * );
  *
  * // An authenticator that reads nothing but the headers declares no deps:
- * export const bearerAuthenticator = HttpAuthenticator<Principal>()({
- *   sync: () => (headers) => principalOf(headers.authorization),
+ * export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+ *   sync: () => (headers) => apiKey(headers["x-api-key"]),
  * });
  * ```
  *
- * The type argument is explicit rather than inferred from `sync`: inference
- * through a returned function's `AsyncResult` is exactly where a `Principal`
- * silently widens to `unknown`, and the whole point is that it cannot.
+ * The type arguments are explicit rather than inferred from `sync`: inference
+ * through a returned function's `AsyncResult` is exactly where a principal
+ * silently widens to `unknown`, and the whole point is that it cannot. The
+ * scheme NAME is not stated here — it is the key this authenticator sits under
+ * in `defineHttp({ authenticators })`, so it is written once.
  */
-export const HttpAuthenticator = <P>() => {
+export const HttpAuthenticator = <P, Scope extends string = never>() => {
   // Two arms, discriminated by ARITY, mirroring `Provider(port)`'s own — an
   // authenticator that reads only the request's headers declares no
   // dependencies, which is the common shape rather than an edge case.
@@ -67,56 +140,88 @@ export const HttpAuthenticator = <P>() => {
     options: {
       readonly sync: (services: {
         readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-      }) => AuthenticatorService<P>;
+      }) => AuthenticatorService<P, Scope>;
     },
-  ): Provider<AuthenticatorPort, never, InstanceType<D[keyof D]>> & { readonly principal: P };
+  ): Authenticator<P, Scope, InstanceType<D[keyof D]>>;
   function build(options: {
-    readonly sync: () => AuthenticatorService<P>;
-  }): Provider<AuthenticatorPort, never, never> & { readonly principal: P };
+    readonly sync: () => AuthenticatorService<P, Scope>;
+  }): Authenticator<P, Scope, never>;
   function build(depsOrOptions: unknown, options?: unknown): unknown {
-    return options === undefined
-      ? Provider(AuthenticatorPort)(depsOrOptions as never)
-      : Provider(AuthenticatorPort)(depsOrOptions as never, options as never);
+    // The port is minted by `defineHttp`, which is the only place the scheme
+    // NAME exists; this description is bound onto it there.
+    return { deps: depsOrOptions, options };
   }
   return build;
 };
 
 /**
- * Unreachable today, and kept anyway. `routerOf` falls back to this when a
- * marked leaf has no authenticator behind it — which `HasMark<C>` and
- * `hasMarked` agreeing makes impossible, since a mark anywhere requires one.
- * It is two lines of insurance on a seam that has already failed twice, and it
- * fails **closed**: every caller refused, never a leaf served unprotected.
- * `auth.spec.ts` exercises it directly, because no router can reach it.
- */
-export const noAuthenticator: AuthenticatorService<never> = () => ErrAsync(new Unauthenticated());
-
-/**
- * The one middleware this package installs, and only on a marked leaf. It reads
- * the request from oRPC's initial context — which is what initial context is
- * for — and either injects the principal or refuses.
+ * The one middleware this package installs, and only on a leaf whose
+ * requirements say so. It reads the request from oRPC's initial context — which
+ * is what initial context is for — and tries the requirements in the order the
+ * contract declared them, taking the first a caller satisfies.
  */
 export const principalMiddleware =
-  (authenticate: AuthenticatorService<unknown>) =>
+  (
+    requirements: Requirements,
+    authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
+  ) =>
   async (options: {
     readonly context: { readonly request: IncomingMessage };
     readonly next: (injected: {
       readonly context: { readonly principal: unknown };
     }) => Promise<unknown>;
   }): Promise<unknown> => {
-    const resolved = await authenticate(options.context.request.headers);
-    if (resolved.isErr()) {
-      // No message: oRPC serializes `message` to the client, and a refusal
-      // has nothing a caller is entitled to.
-      // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm to use instead
-      throw new ORPCError("UNAUTHORIZED");
+    // Tagged when the leaf names more than one SCHEME, not more than one
+    // requirement. One requirement may name several schemes, and counting
+    // requirements disagreed with `SchemesOf`, which unions the scheme names
+    // across all of them: the handler typed `Tagged` while this injected bare,
+    // so `principal.scheme` read `undefined` with no type error to catch it.
+    const tagged =
+      new Set(requirements.flatMap((requirement) => Object.keys(requirement))).size > 1;
+    let underScoped = false;
+    for (const requirement of requirements) {
+      for (const [scheme, required] of Object.entries(requirement)) {
+        // Asserted, not guarded: the router declares one dep per scheme its
+        // contract names, so every scheme a requirement names is a key here and
+        // di refuses the graph long before a request lands.
+        const authenticate = authenticators[scheme] as AuthenticatorService<unknown>;
+        const resolved = await authenticate(options.context.request.headers);
+        if (resolved.isDefect()) {
+          // A defect is a bug in the authenticator, not a refusal. Falling
+          // through would let a broken verifier silently promote every caller
+          // to the next scheme.
+          // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to oRPC, whose middleware protocol has no returned-error arm
+          throw resolved.cause;
+        }
+        if (resolved.isErr()) continue;
+        // `Granted` is erased to `unknown` on the port, so which arm answered
+        // has to be read back at runtime. The BRAND is what says so — a
+        // structural `"scopes" in answer` test misreads a claims-shaped bare
+        // identity as the scoped answer and hands the handler `undefined`.
+        const answer = resolved.value;
+        const scoped =
+          typeof answer === "object" && answer !== null && GRANT in answer
+            ? (answer as Grant<unknown, string>)
+            : undefined;
+        // A requirement that names scopes is NOT satisfied by a credential
+        // reporting none. A scheme declared without a vocabulary answers bare,
+        // and skipping the comparison for it admitted the caller outright —
+        // the one place in this package where the failure direction matters.
+        // An empty `required` still passes trivially.
+        const scopesGranted = scoped?.scopes ?? [];
+        if (!required.every((scope) => scopesGranted.includes(scope))) {
+          underScoped = true;
+          continue;
+        }
+        const identity = scoped === undefined ? answer : scoped.identity;
+        return await options.next({
+          context: { principal: tagged ? { scheme, identity } : identity },
+        });
+      }
     }
-    if (resolved.isDefect()) {
-      // A defect is a bug in the authenticator, not a refusal. Its own cause
-      // goes up unchanged so oRPC's INTERNAL_SERVER_ERROR collapse answers it —
-      // folding it into the 401 above would report a bug as a rejected caller.
-      // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to oRPC, whose middleware protocol has no returned-error arm
-      throw resolved.cause;
-    }
-    return options.next({ context: { principal: resolved.value } });
+    // No message: oRPC serializes `message` to the client, and a refusal has
+    // nothing a caller is entitled to. A credential that was valid but
+    // under-scoped is a 403, never the 401 an anonymous caller gets.
+    // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm to use instead
+    throw new ORPCError(underScoped ? "FORBIDDEN" : "UNAUTHORIZED");
   };

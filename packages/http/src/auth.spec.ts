@@ -1,15 +1,16 @@
+import { ErrAsync, OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
-import { Unauthenticated, noAuthenticator } from "./auth.js";
+import { Unauthenticated, granted, principalMiddleware } from "./auth.js";
 import { it } from "./test-fixtures.js";
 
 describe("an authenticated procedure", () => {
-  it("hands the handler the identity its factory typed", async ({ rpcAuthed }) => {
+  it("hands the handler the identity its scheme resolves", async ({ rpcAuthed }) => {
     // GIVEN a client presenting a token the authenticator accepts
     const client = rpcAuthed.clientWith("good");
 
     // WHEN a marked procedure reads a field the contract declares nowhere —
-    // the contract names no identity type, so `httpAuth<Identity>()` is the
+    // the contract names no identity type, so `defineHttp`'s registry is the
     // only thing that could have typed it
     await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-good" });
   });
@@ -64,6 +65,20 @@ describe("an authenticated procedure", () => {
   });
 });
 
+describe("an authenticator with dependencies of its own", () => {
+  it("is built from the services it declared, and names the caller with them", async ({
+    rpcVerified,
+  }) => {
+    // GIVEN a client presenting a token only the injected table knows
+    const client = await rpcVerified("keyed");
+
+    // WHEN a marked procedure is called
+    // THEN the authenticator resolved it through the dependency di gave it —
+    // `defineHttp` bound the deps arm, and the need reached the graph
+    await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-keyed" });
+  });
+});
+
 describe("a contract marked at its root", () => {
   it("protects every leaf beneath it", async ({ rpcRootMarked }) => {
     // GIVEN a client presenting a token the authenticator rejects
@@ -92,19 +107,20 @@ describe("a contract marked at its root", () => {
 });
 
 describe("a router over a marked contract", () => {
-  it("adds the authenticator to the dependencies the caller already declared", ({
+  it("declares the scheme's own port alongside the dependencies the caller wrote", ({
     authedRouterDeps,
   }) => {
     // GIVEN the same marked contract composed through both arms of HttpRouter
     // WHEN each provider's declared dependencies are read
-    // THEN the authenticator joins both, alongside — never in place of — the caller's own
+    // THEN the scheme's port joins both, named for the scheme and alongside —
+    // never in place of — the caller's own
     expect(authedRouterDeps).toEqual({
-      keyed: ["AuthedOrders", "AuthedHealth", "HttpAuthenticator"],
-      fromDeps: ["Greeter", "HttpAuthenticator"],
+      keyed: ["AuthedOrders", "AuthedHealth", "HttpAuthenticator:user"],
+      fromDeps: ["Greeter", "HttpAuthenticator:user"],
     });
   });
 
-  it("declares no authenticator when the contract marks nothing", ({ controllers }) => {
+  it("declares no scheme port when the contract marks nothing", ({ controllers }) => {
     // GIVEN a router composed from a controller over an unmarked contract
     // WHEN its declared dependencies are read
     // THEN nothing was appended — an application with no protected route provides nothing
@@ -112,13 +128,162 @@ describe("a router over a marked contract", () => {
   });
 });
 
-describe("the fail-closed authenticator", () => {
-  it("refuses every caller, so a mark with nothing behind it is a 401", async () => {
-    // GIVEN the stand-in a marked leaf gets when no authenticator reached the walk
-    // WHEN it is asked to name a caller
-    // THEN it refuses — the safe direction for a disagreement between the two halves
-    await expect(noAuthenticator({})).resolves.toBeErrWith(
-      expect.objectContaining({ constructor: Unauthenticated }),
+describe("a leaf naming several requirements", () => {
+  it("takes the first requirement a caller satisfies", async ({ headers }) => {
+    // GIVEN two schemes where only the second accepts this caller
+    const middleware = principalMiddleware([{ user: [] }, { service: [] }], {
+      user: () => ErrAsync(new Unauthenticated()),
+      service: () => OkAsync({ appId: "a-1" }),
+    });
+
+    // WHEN a request arrives
+    const injected = middleware({
+      context: { request: { headers } as never },
+      next: (o) => Promise.resolve(o.context.principal),
+    });
+
+    // THEN the second scheme's principal is injected, tagged because the leaf
+    // names more than one
+    await expect(injected).resolves.toEqual({ scheme: "service", identity: { appId: "a-1" } });
+  });
+
+  it("refuses with UNAUTHORIZED when no requirement is satisfied", async ({ headers }) => {
+    // GIVEN a scheme that accepts nobody
+    const middleware = principalMiddleware([{ user: [] }], {
+      user: () => ErrAsync(new Unauthenticated()),
+    });
+
+    // WHEN a request arrives
+    const refused = middleware({
+      context: { request: { headers } as never },
+      next: () => Promise.resolve(undefined),
+    }).catch((error: unknown) => error);
+
+    // THEN it is a 401 carrying no message a caller is not entitled to
+    await expect(refused).resolves.toEqual(
+      expect.objectContaining({
+        code: "UNAUTHORIZED",
+        message: expect.not.stringContaining("user"),
+      }),
     );
+  });
+
+  it("admits a caller whose credential grants the scope the requirement names", async ({
+    headers,
+  }) => {
+    // GIVEN an endpoint requiring a scope this credential does grant
+    const middleware = principalMiddleware([{ user: ["orders:export"] }], {
+      user: () => OkAsync(granted({ userId: "u-1" }, ["orders:read", "orders:export"])),
+    });
+
+    // WHEN a request arrives
+    const injected = middleware({
+      context: { request: { headers } as never },
+      next: (o) => Promise.resolve(o.context.principal),
+    });
+
+    // THEN the identity is injected, bare — the leaf names one scheme, and the
+    // scopes are checked rather than handed to the handler
+    await expect(injected).resolves.toEqual({ userId: "u-1" });
+  });
+
+  it("injects a bare identity carrying a `scopes` field whole", async ({ headers }) => {
+    // GIVEN a scheme declared with NO vocabulary whose identity happens to
+    // carry claims-shaped scopes — the ordinary JWT shape
+    const middleware = principalMiddleware([{ user: [] }], {
+      user: () => OkAsync({ userId: "u-1", tenantId: "t-1", scopes: ["a"] }),
+    });
+
+    // WHEN a request arrives
+    const injected = middleware({
+      context: { request: { headers } as never },
+      next: (o) => Promise.resolve(o.context.principal),
+    });
+
+    // THEN the whole identity reached the handler: reading the arm structurally
+    // took this for the scoped answer and injected its absent `identity`
+    await expect(injected).resolves.toEqual({
+      userId: "u-1",
+      tenantId: "t-1",
+      scopes: ["a"],
+    });
+  });
+
+  it("refuses with FORBIDDEN when the scheme grants no scopes at all", async ({ headers }) => {
+    // GIVEN a requirement naming a scope against a scheme declared with no
+    // vocabulary, which answers the identity BARE
+    const middleware = principalMiddleware([{ user: ["orders:export"] }], {
+      user: () => OkAsync({ userId: "u-1" }),
+    });
+
+    // WHEN a request arrives
+    const refused = middleware({
+      context: { request: { headers } as never },
+      next: () => Promise.resolve(undefined),
+    }).catch((error: unknown) => error);
+
+    // THEN a credential reporting no scopes covers none of them — skipping the
+    // comparison for a bare answer admitted the caller outright
+    await expect(refused).resolves.toEqual(expect.objectContaining({ code: "FORBIDDEN" }));
+  });
+
+  it("tags the principal when ONE requirement names two schemes", async ({ headers }) => {
+    // GIVEN a single requirement naming two schemes — what `SchemesOf` unions,
+    // and so what the handler was typed against
+    const middleware = principalMiddleware([{ user: [], service: [] }], {
+      user: () => ErrAsync(new Unauthenticated()),
+      service: () => OkAsync({ appId: "a-1" }),
+    });
+
+    // WHEN a request arrives
+    const injected = middleware({
+      context: { request: { headers } as never },
+      next: (o) => Promise.resolve(o.context.principal),
+    });
+
+    // THEN it is tagged: counting requirements rather than schemes would inject
+    // bare here, and `principal.scheme` would read `undefined`
+    await expect(injected).resolves.toEqual({ scheme: "service", identity: { appId: "a-1" } });
+  });
+
+  it("refuses with FORBIDDEN when the credential is valid but under-scoped", async ({
+    headers,
+  }) => {
+    // GIVEN an endpoint requiring a scope the credential does not grant
+    const middleware = principalMiddleware([{ user: ["orders:export"] }], {
+      user: () => OkAsync(granted({ userId: "u-1" }, ["orders:read"])),
+    });
+
+    // WHEN a request arrives
+    const refused = middleware({
+      context: { request: { headers } as never },
+      next: () => Promise.resolve(undefined),
+    }).catch((error: unknown) => error);
+
+    // THEN authenticated-but-insufficient is 403, not 401
+    await expect(refused).resolves.toEqual(expect.objectContaining({ code: "FORBIDDEN" }));
+  });
+
+  it("does not fall through to the next requirement on a defect", async ({ headers }) => {
+    // GIVEN a first scheme whose authenticator is buggy and a second that accepts
+    const boom = new Error("verifier exploded");
+    const middleware = principalMiddleware([{ user: [] }, { service: [] }], {
+      user: () =>
+        OkAsync().map((): never => {
+          // oxlint-disable-next-line unthrown/no-throw -- the subject under test: a defect is what a buggy authenticator produces, and `Defect` has no public constructor
+          throw boom;
+        }),
+      service: () => OkAsync({ appId: "a-1" }),
+    });
+
+    // WHEN a request arrives
+    const raised = middleware({
+      context: { request: { headers } as never },
+      next: () => Promise.resolve(undefined),
+    }).catch((error: unknown) => error);
+
+    // THEN the bug surfaces rather than silently promoting the caller to the
+    // second scheme
+    await expect(raised).resolves.toBe(boom);
   });
 });

@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/http"
-description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
+description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
 # @btravstack/http
@@ -18,30 +18,38 @@ description: The HTTP starter — HttpModule, HttpRouter, HttpController, HttpAu
 
 `packages/http/src/index.ts` exports exactly this:
 
-| Export                 | Kind  | What it is                                                                                                                                                                                                                                                |
-| ---------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HttpModule`           | value | `HttpModule(name)({ router, authenticator?, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
-| `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                               |
-| `HttpRouter`           | value | `HttpRouter(contract)(deps, { sync })`, or `HttpRouter(contract)(controllers)` — the router as a provider on the starter's own router port, contract-first, either from one `sync` or from a keyed record of controllers                                  |
-| `HttpController`       | value | `HttpController(name, fragment)({ name: Dep }, { sync })`, or `({ sync })` with no deps — one slice of a contract, as a provider on a port minted for it                                                                                                  |
-| `HttpAuthenticator`    | value | `HttpAuthenticator<P>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — the provider that turns a request's headers into a principal `P`, on `AuthenticatorPort`                                                                                |
-| `httpAuth`             | value | `httpAuth<Identity>()` — mints `HttpController`, `HttpRouter` and `HttpAuthenticator` fixed to the server's own identity; the only thing that gives a marked handler a readable `context.principal`                                                       |
-| `HttpAuth`             | type  | what `httpAuth<Identity>()` returns — the three, as one type                                                                                                                                                                                              |
-| `HttpControllerOf`     | type  | `HttpControllerOf<Identity>` — the annotation a file exporting the factory's `HttpController` needs                                                                                                                                                       |
-| `HttpRouterOf`         | type  | `HttpRouterOf<Identity>` — the same, for the router                                                                                                                                                                                                       |
-| `HttpAuthenticatorOf`  | type  | `HttpAuthenticatorOf<Identity>` — the same, for the authenticator                                                                                                                                                                                         |
-| `AuthenticatorPort`    | value | `Port("HttpAuthenticator")` over `AuthenticatorService<unknown>` — the port a marked contract's router depends on                                                                                                                                         |
-| `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<P, Unauthenticated>` — headers in, principal out                                                                                                                                                           |
-| `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                                  |
-| `HasMark`              | type  | `HasMark<C>` — exactly `true` or `false`: whether the contract marks anything, anywhere in its tree                                                                                                                                                       |
-| `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                         |
-| `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                        |
-| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                                |
-| `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                                                                           |
-| `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                                   |
+| Export                 | Kind  | What it is                                                                                                                                                                                                                                |
+| ---------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `HttpController`, `HttpRouter` and `authenticators` typed by them                  |
+| `Http`                 | type  | `Http<A>` — what `defineHttp` returns, held as one binding and never destructured                                                                                                                                                         |
+| `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                      |
+| `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                              |
+| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
+| `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                               |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                    |
+| `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                    |
+| `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                 |
+| `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                  |
+| `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                          |
+| `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                          |
+| `authenticatorPort`    | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                            |
+| `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                  |
+| `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                  |
+| `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                |
+| `HasMark`              | type  | `HasMark<C>` — exactly `true` or `false`: whether the contract marks anything, anywhere in its tree                                                                                                                                       |
+| `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                         |
+| `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                        |
+| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                |
+| `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                                                           |
+| `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                   |
+
+`HttpController` and `HttpRouter` are **not** top-level exports: they come off
+`defineHttp`, because that is where the scheme registry that types them is
+stated. A marked contract reached through anything else would type
+`principal: never`.
 
 `HttpRouterPort` (the starter's router port, `Port("HttpRouter")`),
-`Implementation<C>` (the record type `HttpRouter`'s `sync` returns) and
+`Implementation<C, Schemes>` (the record type `HttpRouter`'s `sync` returns) and
 `HttpHandler` (the node listener port) exist in `src/orpc.ts` and
 `src/handler.ts` but are **not** exported from the package entry point: the
 first is reached as `provider.port` when a caller needs it, the second is
@@ -52,45 +60,48 @@ inferred at the call, the third is an internal seam.
 Everything `Module(name)({...})` takes — `imports`, `provides`, `exports` —
 plus the starter's own fields. It appends
 `http({ prefix, port, hostname, plugins, securityHeaders })` to `imports`,
-prepends `router` (and `authenticator`, when one is given) to `provides`,
+prepends `router` **and the scheme authenticators the router carries** to
+`provides`,
 prepends `HttpRuntime` to `exports`, and hands the augmented tuples to di's own
 `Module(name)`, whose return type is the sugar's. The kernel and both gates see
 a plain module.
 
-| Option            | Required | Default          | What it is                                                                                                                                                                 |
-| ----------------- | -------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router`          | yes      | —                | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
-| `authenticator`   | no\*     | —                | what `HttpAuthenticator<P>()({ name: Dep }, { sync })` returns; \*owed whenever the contract marks anything (see [Authentication](#authentication))                        |
-| `prefix`          | no       | `/rpc`           | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                |
-| `port`            | no       | read from `PORT` | pins the port instead of reading it                                                                                                                                        |
-| `hostname`        | no       | read from `HOST` | pins the host instead of reading it                                                                                                                                        |
-| `plugins`         | no       | `[]`             | oRPC handler plugins, forwarded to `RPCHandler` — CORS, body limits, compression, CSRF                                                                                     |
-| `securityHeaders` | no       | `true`           | response headers set on the raw listener, before dispatch                                                                                                                  |
-| `imports`         | no       | `[]`             | the application's modules                                                                                                                                                  |
-| `provides`        | no       | `[]`             | the application's own providers                                                                                                                                            |
-| `exports`         | no       | `[]`             | the application's own exports; `HttpRuntime` is added                                                                                                                      |
+| Option            | Required | Default          | What it is                                                                                                                                                                     |
+| ----------------- | -------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `router`          | yes      | —                | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `api.HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
+| `prefix`          | no       | `/rpc`           | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                    |
+| `port`            | no       | read from `PORT` | pins the port instead of reading it                                                                                                                                            |
+| `hostname`        | no       | read from `HOST` | pins the host instead of reading it                                                                                                                                            |
+| `plugins`         | no       | `[]`             | oRPC handler plugins, forwarded to `RPCHandler` — CORS, body limits, compression, CSRF                                                                                         |
+| `securityHeaders` | no       | `true`           | response headers set on the raw listener, before dispatch                                                                                                                      |
+| `imports`         | no       | `[]`             | the application's modules                                                                                                                                                      |
+| `provides`        | no       | `[]`             | the application's own providers                                                                                                                                                |
+| `exports`         | no       | `[]`             | the application's own exports; `HttpRuntime` is added                                                                                                                          |
 
 The worked composition root, from `examples/order-api/src/module.ts`:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  authenticator: bearerAuthenticator,
   imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
 
 That is exactly the module
-`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(), http()], provides: [orderRouter, bearerAuthenticator], exports: [HttpRuntime, Logger] })`
-would have declared. `authenticator` is a plain optional field: present, it
-joins `provides`, which is all discharging di's need takes.
+`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(), http()], provides: [orderRouter, ...orderRouter.authenticators], exports: [HttpRuntime, Logger] })`
+would have declared. **There is no `authenticator` option**: the
+authenticators ride the router — which is what needs them — and the sugar
+spreads them into `provides` itself, so an application never lists one and
+cannot list the wrong one. Their own dependencies (a JWT verifier, a key set)
+travel with them, so a root that satisfies none is refused at **this** call by
+di's `NeedsGate`, exactly as a hand-listed provider would be.
 [`observability()`](/reference/observability) is a second
 starter, not this package's business: it brings the `Logger` the application
 writes to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
 carrying the trace id of the unit this runtime opened.
 
-## `HttpRouter(contract)(deps, { sync })`
+## `api.HttpRouter(contract)(deps, { sync })`
 
 Contract-first: `contract` is an oRPC router record (`Record<string,
 RouterContract>` — a record, not a bare procedure), and the second call is
@@ -112,16 +123,17 @@ framework-owned like `HttpConfig` — and two router providers in one graph are
 di's duplicate-provider defect at build. Returns
 `Provider<PortInstance<"HttpRouter", Router<…>>, never, InstanceType<D[keyof D]>> & { readonly port: PortClassOf<"HttpRouter", Router<…>> }` —
 `provider.port` is the port class, for a hand-declared provider or a type
-test. The implementation below is the one in
+test, and `provider.authenticators` carries the scheme providers `defineHttp`
+bound. The implementation below is the one in
 `examples/order-api/src/slices/orders/controller.ts`, served through the
 deps form — the example composes it as a controller instead (see the
 keyed form), and a fragment is a contract, so the same `sync` reads either way.
-`contract.orders` is `authenticated`, so `HttpRouter` here is the application's
-own — `httpAuth<Identity>()`'s, from its `src/auth.ts` — and the tenant comes
-off `context.principal` rather than off the input:
+`contract.orders` is marked `authenticated({ user: [] })`, so `api` here is the
+application's own `defineHttp` binding, from its `src/auth.ts`, and the tenant
+comes off `context.principal` rather than off the input:
 
 ```ts
-export const ordersRouter = HttpRouter(contract.orders)(
+export const ordersRouter = api.HttpRouter(contract.orders)(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -164,6 +176,20 @@ export const ordersRouter = HttpRouter(contract.orders)(
               }),
             ),
           ),
+      // `export` names two schemes, so its principal is a tagged union the
+      // handler narrows — and the switch is exhaustive or the build fails.
+      export: ({ context }) => {
+        switch (context.principal.scheme) {
+          case "user":
+            return OkAsync({
+              csv: `user,${context.principal.identity.userId}`,
+            });
+          case "service":
+            return OkAsync({
+              csv: `service,${context.principal.identity.appId}`,
+            });
+        }
+      },
     }),
   },
 );
@@ -172,23 +198,23 @@ export const ordersRouter = HttpRouter(contract.orders)(
 An implementation key the contract does not declare is unreachable through
 the types; if one is smuggled past them it is dropped, not defected on.
 
-### The keyed form: `HttpRouter(contract)(controllers)`
+### The keyed form: `api.HttpRouter(contract)(controllers)`
 
 For a `contract` shaped `Record<string, RouterContract>`, `HttpRouter`
 also takes a **record of controllers**, one per top-level key, instead of
 `(deps, { sync })`:
 
 ```ts
-export const orderRouter = HttpRouter(contract)({
+export const orderRouter = api.HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
 });
 ```
 
-Each value is what [`HttpController`](#httpcontrollername-fragment)
+Each value is what [`HttpController`](#api-httpcontroller-name-fragment)
 returns. The call is **exact**: `M` is constrained to
 `{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
-IsMarked<C>>, Identity> }`, and the `controllers`
+RequirementsOf<C>>, Schemes> }`, and the `controllers`
 **parameter** itself is typed:
 
 ```ts
@@ -213,9 +239,10 @@ error TS2769: No overload matches this call.
 
 Read the **last** line: the ones above it name the type you passed. The
 `Exclude`/`Inherit` pair is the same one
-[`Implementation<C>`](#authentication) carries: a contract marked at its
-**root** composes through this form too, and each fragment inherits that mark,
-so a controller under it types `context.principal`.
+[`Implementation<C, Schemes>`](#authentication) carries: a contract marked at
+its **root** composes through this form too, and each fragment inherits those
+requirements, so a controller under it types `context.principal` — unless it
+carries a mark of its own, in which case that one wins.
 Five gates are pinned by
 `packages/http/src/controller.test-d.ts`: every contract key must be covered;
 a key the contract does not declare is rejected; a controller wired under the
@@ -223,17 +250,22 @@ wrong key is rejected (its fragment does not match that key's); a
 procedure a controller's own fragment does not declare is rejected inside the
 controller, before the root ever sees it; and a slice lifts into a process of
 its own with its controller untouched —
-`HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
+`api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
 compiles — the property a slice's independent deployability
-rests on. The `(deps, { sync })`
-form is unchanged and stays correct for a small API — the two are
-discriminated **by arity** at the call, the same way
-`Provider(port)(depsOrOptions, …)` discriminates its own two forms, since a
-deps record and a controllers record are both objects. See
+rests on. Three further arms pin what the requirements themselves do: a
+procedure under a marked record inherits that record's requirement, a procedure
+with its own mark replaces it, and the router's needs channel carries one
+`HttpAuthenticator:<scheme>` port per scheme the contract names anywhere. The
+`(deps, { sync })`
+form is unchanged and stays correct for a small API — it is told from the
+controllers record **by arity**, the same way
+`Provider(port)(depsOrOptions, …)` discriminates its own two forms, and the
+third form — an arm alone, `({ sync })` — is told from a controllers record by
+whether `sync` holds a function. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the worked recipe.
 
-## `HttpController(name, fragment)`
+## `api.HttpController(name, fragment)`
 
 ```ts
 const HttpController: <const Name extends string, C extends RouterContract>(
@@ -244,19 +276,19 @@ const HttpController: <const Name extends string, C extends RouterContract>(
   options: {
     readonly sync: (services: {
       readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-    }) => Implementation<C>;
+    }) => Implementation<C, Schemes>;
   },
 ) => Provider<
-  PortInstance<Name, Implementation<C>>,
+  PortInstance<Name, Implementation<C, Schemes>>,
   never,
   InstanceType<D[keyof D]>
 > & {
-  readonly port: PortClassOf<Name, Implementation<C>>;
+  readonly port: PortClassOf<Name, Implementation<C, Schemes>>;
 };
 ```
 
 One slice of a contract, as a provider over a port minted for it — the same
-two-call shape as `HttpRouter(contract)({ name: Dep }, { sync })`, aimed at a
+two-call shape as `api.HttpRouter(contract)({ name: Dep }, { sync })`, aimed at a
 `fragment` rather than the whole contract. `fragment` is read for its
 **type** only: it shapes `sync`'s return, so a procedure the fragment does
 not declare, or a handler whose input or output has drifted, is a compile
@@ -272,14 +304,17 @@ export const OrdersSlice = Module("OrdersSlice")({
 });
 ```
 
-The controller does no oRPC work: it is a plain record, and `HttpRouter`'s
+`Schemes` is fixed by the `defineHttp` call the controller was minted from,
+which is what gives a marked fragment's handlers a readable
+`context.principal`. The controller does no oRPC work: it is a plain record,
+and `HttpRouter`'s
 own walk wraps each leaf in `.result(...)` when the keyed form composes the
 router. **A fragment is itself a valid contract**, so a slice lifts out into a
 process of its own without its controller changing at all — the lifted root
 declares the controller's own port and hands back what it built:
 
 ```ts
-export const ordersRouter = HttpRouter(contract.orders)(
+export const ordersRouter = api.HttpRouter(contract.orders)(
   { implementation: ordersController.port },
   { sync: ({ implementation }) => implementation },
 );
@@ -291,145 +326,237 @@ slices into one router a starting point rather than a trap.
 ## Authentication
 
 A contract marked with [`@btravstack/contract`](/reference/contract)'s
-`authenticated` is what turns this on. Nothing here is a switch on the
-starter: the marker is a fact about the contract, and both halves of the
-package follow it.
+`authenticated(...requirements)` is what turns this on. Nothing here is a
+switch on the starter: the marker is a fact about the contract, and both halves
+of the package follow it.
 
-**In the types.** `Implementation<C, Identity>` branches on the marker. A
-marked **leaf** gets `{ readonly principal: Identity }` in its implementer's
+A **requirement** is OpenAPI's own shape — a security scheme's name mapped to
+the scopes it must grant. Several requirements on one mark are **ORed**, tried
+in declaration order. A marked record is the default for every procedure
+beneath it; a procedure's own mark **replaces** that default for itself.
+Nearest mark wins.
+
+**In the types.** `Implementation<C, Schemes>` branches on the marker. A
+marked **leaf** gets `{ readonly principal: Principal<SchemesOf<R>, Schemes> }`
+in its implementer's
 injected context, so the handler reads `opts.context.principal` — oRPC's own
 context channel, not a second handler parameter this package invents and not a
-wrapper around `.result()`. A marked **record** pushes its marker onto each
-child, so a marked fragment protects every procedure beneath it. An unmarked
+wrapper around `.result()`. An unmarked
 leaf's context is unchanged, which is what makes reading a principal there a
 compile error. `HasMark<C>` is whether the contract marks anything anywhere in
 its tree — a yes/no, since the contract names no principal to recover.
 
-**At runtime.** `HttpRouter`'s walk carries the mark down the contract exactly
-as the types do, and a marked leaf is built as
-`node.use(principalMiddleware(authenticate)).result(fn)` — `.use` before
-`.result`, which is the only order oRPC leaves available. The middleware reads
-the request off oRPC's initial context, calls the authenticator with its
-headers, and either injects `{ context: { principal } }` or terminates the
-request.
+**At runtime.** `HttpRouter`'s walk carries the effective requirements down the
+contract exactly as the types do, and a protected leaf is built as
+`node.use(principalMiddleware(requirements, authenticators)).result(fn)` —
+`.use` before `.result`, which is the only order oRPC leaves available. The
+middleware reads the request off oRPC's initial context and tries the
+requirements in order, calling each scheme's authenticator with the request's
+headers, until one is satisfied.
 
-### `HttpAuthenticator<P>()({ name: Dep }, { sync })` / `({ sync })`
+### `Principal` — what a handler actually reads
 
-An ordinary di provider on `AuthenticatorPort`, whose service is
-`AuthenticatorService<P>`:
+| The leaf's requirements name | `context.principal`                           |
+| ---------------------------- | --------------------------------------------- |
+| one scheme                   | that scheme's identity, **bare**              |
+| several schemes              | `{ scheme, identity }`, a discriminated union |
+| none (unmarked)              | absent — reading it is a compile error        |
+
+The one-scheme case is byte-for-byte what a handler wrote before named schemes
+existed, so the common case pays nothing for the feature. The multi-scheme case
+is narrowed with a `switch` whose missing arm leaves a path returning nothing,
+which the handler's own return type refuses:
 
 ```ts
-type AuthenticatorService<P> = (
+export: ({ context }) => {
+  switch (context.principal.scheme) {
+    case "user":
+      return OkAsync({ csv: `user,${context.principal.identity.userId}` });
+    case "service":
+      return OkAsync({ csv: `service,${context.principal.identity.appId}` });
+  }
+};
+```
+
+### `HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })` / `({ sync })`
+
+How **one scheme** is implemented. It hands back a description `defineHttp`
+binds to that scheme's port; the scheme's **name** is not stated here, because
+it is the key the authenticator sits under in `defineHttp({ authenticators })`
+— written once.
+
+```ts
+type Grant<P, Scope extends string> = {
+  readonly identity: P;
+  readonly scopes: readonly Scope[];
+  readonly [GRANT]: true; // a module-private symbol; `granted()` is what stamps it
+};
+
+type Granted<P, Scope extends string> = [Scope] extends [never]
+  ? P
+  : Grant<P, Scope>;
+
+const granted: <P, const Scope extends string = never>(
+  identity: P,
+  scopes: readonly Scope[],
+) => Grant<P, Scope>;
+
+type AuthenticatorService<P, Scope extends string = never> = (
   headers: IncomingHttpHeaders,
-) => AsyncResult<P, Unauthenticated>;
+) => AsyncResult<Granted<P, Scope>, Unauthenticated>;
 ```
 
 **Headers, not the request**: an authenticator has no business reading a body,
 and the narrower argument is what keeps it testable without a socket. `deps`
 are di's, so a JWT verifier or a user directory is injected the way any
-provider's dependencies are. The type argument is **explicit** rather than
+provider's dependencies are, and that need travels with the authenticator into
+the graph. Both type arguments are **explicit** rather than
 inferred from `sync` — inference through a returned function's `AsyncResult` is
-where a principal silently widens to `unknown` — though in an application that
-has an `src/auth.ts` the argument is already fixed by `httpAuth<Identity>()`
-and the call is `HttpAuthenticator({ name: Dep }, { sync })`. `Unauthenticated` is a
-`TaggedError` with an **empty payload**: the starter surfaces no reason, so a
-field would be write-only. A rejected caller gets an `UNAUTHORIZED` and oRPC's
-default message; an authenticator that wants to record why logs it before
-returning. Forwarding a reason would put "no such user" versus "bad signature"
-in a 401 body by default.
+where a principal silently widens to `unknown`.
+
+A scheme with **no scope vocabulary** returns the identity bare. One **with**
+a vocabulary reports what the credential actually granted through
+**`granted(identity, scopes)`**, checked against the declared vocabulary at the
+authenticator rather than compared as loose strings at the endpoint. The helper
+is **mandatory, not advisory**: the type parameter is erased at runtime, so the
+brand it stamps is the only sound way the starter can tell the scoped answer
+from an identity that merely happens to carry a `scopes` field — an ordinary
+JWT-claims shape, which a structural test read as the scoped answer and handed
+the handler `undefined`.
 
 ```ts
 import { TenantId } from "@btravstack/example-order-domain";
+import { granted } from "@btravstack/http";
 
-export const bearerAuthenticator = HttpAuthenticator({
+export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
       ? header.slice("Bearer ".length)
       : "";
-    const [tenantId, userId] = token.split(":");
+    const [tenantId, userId, ...rest] = token.split(":");
+    // Rejoined rather than taken as one field: a scope name contains the
+    // delimiter itself, so `orders:export` cannot survive a plain third field.
+    const claimed = rest.join(":");
     return tenantId === undefined ||
       tenantId === "" ||
       userId === undefined ||
       userId === ""
       ? ErrAsync(new Unauthenticated())
-      : OkAsync({ tenantId: TenantId(tenantId), userId });
+      : OkAsync(
+          granted(
+            { tenantId: TenantId(tenantId), userId },
+            claimed
+              .split(",")
+              .filter(
+                (scope): scope is "orders:export" => scope === "orders:export",
+              ),
+          ),
+        );
+  },
+});
+
+// A second scheme: an API key, no scopes, no tenant.
+export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  sync: () => (headers) => {
+    const key = headers["x-api-key"];
+    return typeof key === "string" && key !== ""
+      ? OkAsync({ appId: key })
+      : ErrAsync(new Unauthenticated());
   },
 });
 ```
 
-### `httpAuth<Identity>()` — what the principal is, server-side
+`Unauthenticated` is a `TaggedError` with an **empty payload**: the starter
+surfaces no reason, so a field would be write-only. An authenticator that wants
+to record why logs it before returning. Forwarding a reason would put "no such
+user" versus "bad signature" in a 401 body by default.
 
-**The contract says _whether_ a route is protected; this says _what_ the
-principal is.** The contract names no identity type at all, so nothing about
-the server's view of a caller reaches a client — and this factory is the only
-thing that gives a marked handler a readable `context.principal`. It states the
-identity once and hands back the three pieces fixed to it:
+### `defineHttp({ authenticators })` — what each scheme resolves to
+
+**The contract says _which schemes_ protect a route; this says _what each one
+is_.** The contract names no identity type at all, so nothing about the
+server's view of a caller reaches a client — and this call is the only thing
+that gives a marked handler a readable `context.principal`. Declaring a scheme
+and implementing it are the **same act**, so a scheme without an authenticator
+is not a state this can reach:
 
 ```ts
-import type { TenantId } from "@btravstack/example-order-domain";
-
 // src/auth.ts — one per application
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
+export type ServiceIdentity = { readonly appId: string };
 
-const identity = httpAuth<Identity>();
-
-export const HttpController: HttpControllerOf<Identity> =
-  identity.HttpController;
-export const HttpRouter: HttpRouterOf<Identity> = identity.HttpRouter;
-export const HttpAuthenticator: HttpAuthenticatorOf<Identity> =
-  identity.HttpAuthenticator;
+export const api = defineHttp({
+  authenticators: { user: userAuth, service: serviceAuth },
+});
 ```
 
-Every slice imports `HttpController` from there, and its marked handlers see
-`Identity` on `context.principal` with no annotation of their own; nothing else
-about a controller changes. The `HttpAuthenticator` handed back is already
-applied, so it is called `HttpAuthenticator({ name: Dep }, { sync })` — which is also
-why the authenticator and the controllers cannot disagree about the identity.
+Every slice mints its controller from that one `api`, and its handlers see the
+right principal with no annotation of their own; nothing else about a
+controller changes.
+
+::: warning Hold it whole — never destructure it
+`const { HttpController } = defineHttp(...)` is **TS2527**: each binding of a
+destructured member expands to a type mentioning `@btravstack/contract`'s
+inaccessible `unique symbol`, which the file cannot emit. Held whole, the
+inferred type collapses to `Http<A>`, which is nameable — which is why the
+file above writes **no type annotation at all**.
+:::
+
+`defineHttp()` with no argument is the public-API case: the registry is
+`Record<never, never>`, so a contract that marks anything leaves a scheme port
+unmet and the composition is refused. It is deliberately not
+`Record<string, never>` — an index signature would make every scheme's port
+look available, and the composition would type-check and then fail at build.
 
 It is per application rather than per slice because a handler's parameter types
 are fixed **where the arrow is written**: a composition root cannot re-type a
-`sync` callback that lives in another module, so the identity has to be in
-scope where the handler is. The three `…Of<Identity>` aliases are annotations
-rather than ceremony — a controller's port expands to a type carrying the
-marker's phantom `unique symbol`, which a consumer's own `.d.ts` cannot name.
+`sync` callback that lives in another module, so the registry has to be in
+scope where the handler is.
 
-The identity reaches a **marked** node only, and none is invented on an
-unmarked one: the contract still decides _whether_. `HttpController` and
-`HttpRouter` imported from the package itself are the `Identity = never` case —
-a marked fragment reached through them types `principal: never`, so every read
-is a compile error. That is the signal to use the factory, not a fallback.
+### The gate: one dependency per scheme
 
-### Two gates, and why they are two
+For every scheme its contract names anywhere, `HttpRouter` adds that scheme's
+port — `` `HttpAuthenticator:${scheme}` `` — to the router provider's deps
+record under a **namespaced** key (so it cannot collide with one you wrote),
+strips those keys back out before your own `sync` sees the record, and adds
+them to the provider's needs channel. A scheme with no authenticator behind it
+is therefore an ordinary unmet need at `start`, not a gate this package
+invented, and the diagnostic **names the port**:
 
-When the contract marks anything, `HttpRouter` adds `AuthenticatorPort` to the
-router provider's deps record under a **namespaced** key
-(`"@btravstack/http/authenticator"`, so it cannot collide with one you wrote),
-strips it back out before your own `sync` sees the record, and adds it to the
-provider's needs channel. Which makes a marked router with no authenticator
-behind it an ordinary unmet need at `start`, not a gate this package invented.
-What prints is `start`'s `module` parameter refusing the leftover need —
-`Type 'AuthenticatorPort' is not assignable to type 'Env | Scope'`, down to
-`Type '"HttpAuthenticator"' is not assignable to type '"@di/Scope"'` — so the
-port is named. (Not di's `UNSATISFIED DEPENDENCIES` arity gate: that one guards
+```
+Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'
+```
+
+(Not di's `UNSATISFIED DEPENDENCIES` arity gate: that one guards
 `Module.build`/`Module.scoped`, and `start` types the need out on its parameter
 instead.)
 
-What di cannot see is the **identity**: `AuthenticatorPort`'s service type is
-erased to `unknown`, so any authenticator discharges that need. So
-`HttpModule` checks the other half — the **router's** identity, inferred from
-`router.identity`, against the **authenticator's**. A router minted by
-`httpAuth<A>()` refuses an authenticator minted by `httpAuth<B>()`, at the
-`HttpModule(...)` call. The direction is `AuthIdentity extends RouterIdentity`:
-the authenticator must resolve **at least** what the handlers read, so a
-subtype discharges it. A router from the package's own top-level `HttpRouter`
-carries no identity and accepts any authenticator, including none — a provider
-nothing needs is di's business and not an error to invent.
+There is nothing left for a second gate to check. The registry that types the
+handlers and the providers that discharge those ports come from the **same**
+`defineHttp` call, so they cannot disagree — which is why the identity
+comparison an earlier design performed at `HttpModule` is gone, along with the
+`authenticator` option it lived on.
 
-A mark with no authenticator behind it still **fails closed**: an internal
-`noAuthenticator` refuses every caller, so such a leaf answers `401` rather
-than serving unprotected. It is unreachable while the types and the walk
-agree, which is exactly why it is there.
+### `401` and `403`
+
+Requirements are tried in the order the contract declared them, and the first
+a caller satisfies wins.
+
+| Outcome                                                         | Answer                                       |
+| --------------------------------------------------------------- | -------------------------------------------- |
+| a requirement is satisfied                                      | the handler runs, principal injected         |
+| no requirement accepted the caller                              | **`401 UNAUTHORIZED`**                       |
+| a credential was valid but lacked a scope the requirement named | **`403 FORBIDDEN`**                          |
+| an authenticator returned a `Defect`                            | oRPC's `INTERNAL_SERVER_ERROR`, walk stopped |
+
+Neither refusal carries a message: oRPC serializes `message` to the client, and
+a refusal has nothing a caller is entitled to. A requirement naming scopes is
+**not** satisfied by a credential reporting none — a scheme declared without a
+vocabulary answers bare, and admitting it there would admit the caller
+outright. An empty scope list still passes trivially. A `Defect` is a bug in
+the authenticator rather than a refusal, so it short-circuits: falling through
+would let a broken verifier silently promote every caller to the next scheme.
 
 ### The marker is legibility, not enforcement
 
@@ -460,7 +587,7 @@ hand. `HttpOptions`:
 
 The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
 **needs** `Env` (the kernel discharges it) and the starter's router port
-(`HttpRouterPort`, the port `HttpRouter(contract)(deps, arm)` provides on) —
+(`HttpRouterPort`, the port `api.HttpRouter(contract)(deps, arm)` provides on) —
 the runtime provider depends on the router through di, which is why a
 composition that imports `http()` without providing the router carries an
 unmet need `start` refuses (di's gate, not the kernel's). The router is not an
@@ -540,17 +667,18 @@ that is the only way to learn the port that was actually bound.
 
 ## What it decides about a request
 
-| Request                                                           | Answer                                                                 | Decided by       |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------- |
-| a procedure under `prefix`                                        | the procedure's output, or the `ORPCError` its `Result` was mapped to  | oRPC, the router |
-| a defect thrown inside a procedure                                | oRPC's own `INTERNAL_SERVER_ERROR` collapse                            | oRPC             |
-| a marked procedure whose authenticator returned `Unauthenticated` | `401 UNAUTHORIZED`, the handler never entered                          | this package     |
-| a marked procedure whose authenticator defected                   | oRPC's `INTERNAL_SERVER_ERROR` collapse — a bug, not a rejected caller | oRPC             |
-| a path under `prefix` naming no procedure                         | `404 {"error":"NotFound"}` — oRPC declines it unwritten                | this package     |
-| any path outside `prefix`                                         | `404 {"error":"NotFound"}` — likewise                                  | this package     |
-| the listener resolved without writing                             | `404 {"error":"NotFound"}`                                             | this package     |
-| the listener failed before headers were out                       | `500 {"error":"InternalError"}`                                        | this package     |
-| a failure with headers already on the wire                        | the socket is destroyed — a reset, not a hang                          | this package     |
+| Request                                                      | Answer                                                                 | Decided by       |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------- | ---------------- |
+| a procedure under `prefix`                                   | the procedure's output, or the `ORPCError` its `Result` was mapped to  | oRPC, the router |
+| a defect thrown inside a procedure                           | oRPC's own `INTERNAL_SERVER_ERROR` collapse                            | oRPC             |
+| a protected procedure no requirement accepted the caller for | `401 UNAUTHORIZED`, the handler never entered                          | this package     |
+| a protected procedure whose caller lacked a required scope   | `403 FORBIDDEN`, the handler never entered                             | this package     |
+| a protected procedure whose authenticator defected           | oRPC's `INTERNAL_SERVER_ERROR` collapse — a bug, not a rejected caller | oRPC             |
+| a path under `prefix` naming no procedure                    | `404 {"error":"NotFound"}` — oRPC declines it unwritten                | this package     |
+| any path outside `prefix`                                    | `404 {"error":"NotFound"}` — likewise                                  | this package     |
+| the listener resolved without writing                        | `404 {"error":"NotFound"}`                                             | this package     |
+| the listener failed before headers were out                  | `500 {"error":"InternalError"}`                                        | this package     |
+| a failure with headers already on the wire                   | the socket is destroyed — a reset, not a hang                          | this package     |
 
 The last three are the package's own fallbacks, guaranteeing that every
 request produces exactly one completed response. The two `500` shapes are
@@ -615,10 +743,20 @@ read as unmarked here. Node `>=20`.
   and no listener port to provide.
 - **A middleware slot for application logic.** oRPC's own, inside the
   router's procedures. `principalMiddleware` is the one per-request hook the
-  package installs, only on a marked leaf. [`plugins`](#plugins) is an honest
+  package installs, only on a leaf whose requirements say so.
+  [`plugins`](#plugins) is an honest
   escape hatch rather than a keyhole — a plugin can reach the handler's
   interceptors — but the ordinary path is configuration visible at the
   composition root, and an application middleware acting on the handler's
   `Result` is what this package refuses.
 - **`Result` → HTTP status.** The router's `.result()` triage owns it.
+- **Resource-dependent authorization.** A **scope** is checked here, because it
+  is a property of the credential and answerable before dispatch. "Is this
+  caller the order's owner?" is not, and stays in the handler.
+- **AND within one requirement.** A requirement names one scheme; requiring two
+  credentials at once would put a record rather than an identity on the
+  handler. A composite scheme models it where it is genuinely needed.
+- **OpenAPI document metadata.** A scheme's own definition — `type: http`,
+  `bearerFormat`, an OAuth flow — belongs beside the contract, not in
+  `defineHttp`.
 - **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.
