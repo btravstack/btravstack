@@ -15,7 +15,7 @@
       "project": ["scripts/**/*.ts"]
     },
     "internal/slice-codegen": {
-      "entry": ["src/index.ts"]
+      "entry": ["src/index.ts", "src/cli.ts"]
     },
     "packages/core": {
       "ignoreDependencies": ["@btravstack/testing"]
