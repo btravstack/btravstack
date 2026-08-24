@@ -218,6 +218,54 @@ real `OrderApi` with only its `Logger` provider substituted, and a loud
 `jsonSink()` on stdout — does not write into the runner's output. See
 [Log and correlate](/how-to/log-and-correlate).
 
+## Read the contract-less surfaces with supertest
+
+The typed client is the right tool for every procedure — inputs typed by the
+contract, errors `Result`-shaped. What it cannot speak is the surface that
+has **no contract**: the kernel's probes (`/livez`, `/readyz`), a refusal's
+bare status code, the headers the listener sets before dispatch. supertest
+is the right client there — handed the origin the booted app published, via
+`request(origin)`:
+
+```sh
+pnpm add -D supertest @types/supertest
+```
+
+It never boots anything itself, and that is the point: `PORT=0` plus
+`runtimeInfo()` already is a "random port" boot — supertest's own would run
+the same socket at the same speed while skipping the config binding, the
+lifecycle and the drain that make the booted test worth having.
+`examples/order-api`'s fixtures hand out both forms: `probesFor(app)` is an
+agent on the probe server's port, and `origin` is the served real root as the
+string `request()` takes directly:
+
+<!-- doctest: isolate
+import request from "supertest";
+import { expect } from "vitest";
+import { it } from "../../test-fixtures.js";
+-->
+
+```ts
+it("refuses the anonymous caller on the wire", async ({ origin }) => {
+  // GIVEN the real root, served by the `origin` fixture
+
+  // WHEN the marked procedure is called with no credential at all
+  const response = await request(origin)
+    .post("/rpc/orders/place")
+    .set("content-type", "application/json")
+    .send({
+      json: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 },
+    });
+
+  // THEN it was refused before any use case ran
+  expect(response.status).toBe(401);
+});
+```
+
+The statuses are read off the response and asserted once, as a projection —
+supertest's own `.expect(200)` chain is a second assertion style this repo's
+one-deep-expect rule declines.
+
 ## Kernel-level: `testRuntime` and `createFakeClock`
 
 To test the lifecycle itself — a drain, an abandonment, an exit report —
