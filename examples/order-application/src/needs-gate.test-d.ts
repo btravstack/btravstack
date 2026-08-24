@@ -17,6 +17,8 @@ import {
   OrderNotFound,
   TenantId,
   type Order,
+  type CustomerId,
+  type OrderId,
 } from "@btravstack/example-order-domain";
 import { Logger, createLogger } from "@btravstack/observability";
 import { ErrAsync } from "unthrown";
@@ -35,13 +37,16 @@ import { findOrderProvider, placeOrderProvider } from "./use-cases.js";
 const orderRepository = Provider(OrderRepository)({
   value: {
     save: (_tenantId: TenantId, order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
-    find: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id })),
-    remove: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id })),
+    find: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
+    remove: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
   },
 });
 
 const customerRepository = Provider(CustomerRepository)({
-  value: { find: (_tenantId: TenantId, id: string) => ErrAsync(new CustomerNotFound({ id })) },
+  value: {
+    find: (_tenantId: TenantId, id: string) =>
+      ErrAsync(new CustomerNotFound({ id: id as CustomerId })),
+  },
 });
 
 const logger = Provider(Logger)({ value: createLogger(() => {}) });

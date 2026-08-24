@@ -1,6 +1,6 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
 import { CustomerRepository } from "@btravstack/example-order-application";
-import { Customer, CustomerNotFound } from "@btravstack/example-order-domain";
+import { Customer, CustomerNotFound, type CustomerId } from "@btravstack/example-order-domain";
 import { Err, P, type Result } from "unthrown";
 
 import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
@@ -35,7 +35,9 @@ export const prismaCustomerRepository = (
   find: (tenantId, id) =>
     db.customer
       .tryFindUnique({ where: { tenantId_customerId: { tenantId, customerId: id } } })
-      .flatMap((row) => (row === null ? Err(new CustomerNotFound({ id })) : hydrate(row))),
+      .flatMap((row) =>
+        row === null ? Err(new CustomerNotFound({ id: id as CustomerId })) : hydrate(row),
+      ),
 });
 
 export const customerRepositoryProvider = Provider(CustomerRepository)(

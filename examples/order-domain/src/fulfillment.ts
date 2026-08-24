@@ -1,5 +1,7 @@
 import { TaggedError } from "unthrown";
 
+import type { OrderId } from "./order.js";
+
 /**
  * The three failures fulfillment can answer with beyond placement's own. They
  * live here — not in the application's ports file — for the same reason
@@ -9,13 +11,13 @@ import { TaggedError } from "unthrown";
 
 /** The stock on hand cannot cover the order. A permanent answer for this order. */
 export class OutOfStock extends TaggedError("OutOfStock")<{
-  readonly id: string;
+  readonly id: OrderId;
   readonly quantity: number;
 }> {}
 
 /** No carrier can take the shipment. Permanent for this order, too. */
 export class ShippingUnavailable extends TaggedError("ShippingUnavailable")<{
-  readonly id: string;
+  readonly id: OrderId;
 }> {}
 
 /**
@@ -24,5 +26,5 @@ export class ShippingUnavailable extends TaggedError("ShippingUnavailable")<{
  * changes nothing.
  */
 export class PaymentDeclined extends TaggedError("PaymentDeclined")<{
-  readonly id: string;
+  readonly id: OrderId;
 }> {}

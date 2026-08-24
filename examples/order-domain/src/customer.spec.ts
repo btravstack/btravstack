@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { Customer, CustomerNotFound } from "./index.js";
+import { Customer, CustomerNotFound, type CustomerId } from "./index.js";
 import { it } from "./test-fixtures.js";
 
 describe("Customer", () => {
@@ -35,8 +35,8 @@ describe("domain errors", () => {
     // GIVEN the error, constructed with its payload
     // WHEN its message is read
     // THEN the customer it is about is named in it
-    expect(new CustomerNotFound({ id: "0199a1e0-0000-7000-8000-0000000000c9" }).message).toBe(
-      "no customer with id 0199a1e0-0000-7000-8000-0000000000c9",
-    );
+    expect(
+      new CustomerNotFound({ id: "0199a1e0-0000-7000-8000-0000000000c9" as CustomerId }).message,
+    ).toBe("no customer with id 0199a1e0-0000-7000-8000-0000000000c9");
   });
 });

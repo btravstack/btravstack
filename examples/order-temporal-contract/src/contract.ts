@@ -8,10 +8,10 @@ import { z } from "zod";
  * survive serialization. Temporal persists every activity input and output in
  * an event history, so the transport's shape has to be a real one.
  */
-const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
+const orderView = z.object({ id: z.uuidv7().brand("OrderId"), quantity: z.number() });
 
 /** The payload every declared error carries — which order it was about. */
-const orderRef = z.object({ id: z.uuidv7() });
+const orderRef = z.object({ id: z.uuidv7().brand("OrderId") });
 
 /**
  * What `InvalidOrderId` carries, and the one ref whose `id` is a bare

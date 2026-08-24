@@ -9,6 +9,8 @@ import { z } from "zod";
  * review.
  */
 export const CustomerId = z.uuidv7().brand("CustomerId");
+/** The branded id, nameable as a type — what an error payload carries (issue #80). */
+export type CustomerId = z.infer<typeof CustomerId>;
 export const CustomerName = z.string().brand("CustomerName");
 
 /**
@@ -26,7 +28,7 @@ export class Customer extends Entity("Customer")({
 }) {}
 
 export class CustomerNotFound extends TaggedError("CustomerNotFound")<{
-  readonly id: string;
+  readonly id: CustomerId;
 }> {
   override message = `no customer with id ${this.id}`;
 }

@@ -97,7 +97,9 @@ export const placeOrder = (
     matcher.with(P.tag("InvalidEntity"), (invalid) =>
       invalid.issues.some((issue) => Entity.keysOf(issue)[0] === "id")
         ? new InvalidOrderId({ id })
-        : new InvalidQuantity({ id, quantity }),
+        : // The schema PASSED for `id` — a malformed one is `InvalidOrderId`,
+          // checked first — so the claim is a cast, not a parse.
+          new InvalidQuantity({ id: id as OrderId, quantity }),
     ),
   );
 ```

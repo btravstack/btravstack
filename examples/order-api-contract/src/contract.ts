@@ -3,10 +3,16 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 
 /**
- * What an order looks like on the wire. Not the entity: `Order`'s fields are
- * branded (`OrderId`, `Quantity`), and a brand is a compile-time fiction that
- * does not survive serialization. The transport speaks its own shape, and
- * the orders slice's controller is the one place the two are converted.
+ * What an order looks like on the wire. Not the entity — the transport speaks
+ * its own shape, and the orders slice's controller is the one place the two
+ * are converted. The `id` slot carries the domain's `"OrderId"` brand
+ * (issue #80): a brand is a compile-time fiction that does not survive
+ * serialization, and the fiction is asked only of the SERVER — the
+ * construction side, where `error.id` and `order.id` already carry it — never
+ * of a caller, whose inputs stay bare strings. What it buys is that two
+ * same-shaped refs stop being interchangeable: a customers ref in an orders
+ * slot was shipped twice in one day (#76, #77) before the brands separated
+ * them.
  *
  * A **schema**, with the type inferred from it rather than declared beside it.
  * `type<T>()` — what this contract used before — is oRPC's escape hatch for
@@ -15,11 +21,11 @@ import { z } from "zod";
  * One definition means the checked shape and the compiled shape cannot drift,
  * which is what `order-temporal-contract` and `order-amqp-contract` already do.
  */
-const orderView = z.object({ id: z.uuidv7(), quantity: z.number() });
+const orderView = z.object({ id: z.uuidv7().brand("OrderId"), quantity: z.number() });
 export type OrderView = z.infer<typeof orderView>;
 
 /** The payload every declared error carries — which order it was about. */
-const orderRef = z.object({ id: z.uuidv7() });
+const orderRef = z.object({ id: z.uuidv7().brand("OrderId") });
 export type OrderRef = z.infer<typeof orderRef>;
 
 /**
@@ -49,16 +55,17 @@ const tenanted = z.object({ tenantId: z.uuidv7() });
 export type Tenanted = z.infer<typeof tenanted>;
 
 /** What a customer looks like on the wire. */
-const customerView = z.object({ id: z.uuidv7(), name: z.string() });
+const customerView = z.object({ id: z.uuidv7().brand("CustomerId"), name: z.string() });
 export type CustomerView = z.infer<typeof customerView>;
 
 /**
  * What the customers fragment's `NOT_FOUND` carries. The same *shape* as
- * `orderRef` and deliberately not the same schema: reusing that one would type
- * a customer id as "which order it was about", and the exported type would lie
- * to a client about which entity it names.
+ * `orderRef` and no longer merely a different schema by discipline: the
+ * `"CustomerId"` brand makes the two refs mutually unassignable, so reusing
+ * `orderRef` here — the defect #76 shipped and #77 copied — is a compile
+ * error at the controller now, not a lie a reader has to catch.
  */
-const customerRef = z.object({ id: z.uuidv7() });
+const customerRef = z.object({ id: z.uuidv7().brand("CustomerId") });
 export type CustomerRef = z.infer<typeof customerRef>;
 
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */

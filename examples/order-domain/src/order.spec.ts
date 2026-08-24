@@ -9,6 +9,7 @@ import {
   OrderNotFound,
   Quantity,
   placeOrder,
+  type OrderId,
 } from "./index.js";
 import { it } from "./test-fixtures.js";
 
@@ -196,7 +197,8 @@ describe("domain errors", () => {
     // WHEN its message is read
     // THEN the order it is about is named in it
     expect(
-      new InvalidQuantity({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 0 }).message,
+      new InvalidQuantity({ id: "0199a1e0-0000-7000-8000-000000000001" as OrderId, quantity: 0 })
+        .message,
     ).toBe(
       "order 0199a1e0-0000-7000-8000-000000000001 asks for 0 items, which is not a positive quantity",
     );
@@ -213,17 +215,17 @@ describe("domain errors", () => {
     // GIVEN the error, constructed with its payload
     // WHEN its message is read
     // THEN the order it is about is named in it
-    expect(new OrderNotFound({ id: "0199a1e0-0000-7000-8000-000000000002" }).message).toBe(
-      "no order with id 0199a1e0-0000-7000-8000-000000000002",
-    );
+    expect(
+      new OrderNotFound({ id: "0199a1e0-0000-7000-8000-000000000002" as OrderId }).message,
+    ).toBe("no order with id 0199a1e0-0000-7000-8000-000000000002");
   });
 
   it("names the order in a DuplicateOrder message", () => {
     // GIVEN the error, constructed with its payload
     // WHEN its message is read
     // THEN the order it is about is named in it
-    expect(new DuplicateOrder({ id: "0199a1e0-0000-7000-8000-000000000003" }).message).toBe(
-      "order 0199a1e0-0000-7000-8000-000000000003 already exists",
-    );
+    expect(
+      new DuplicateOrder({ id: "0199a1e0-0000-7000-8000-000000000003" as OrderId }).message,
+    ).toBe("order 0199a1e0-0000-7000-8000-000000000003 already exists");
   });
 });
