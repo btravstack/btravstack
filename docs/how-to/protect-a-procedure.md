@@ -26,7 +26,9 @@ declare const userId: string;
 
 # Protect a procedure
 
-> **How-to.** Declare in the contract which security schemes a procedure
+> **How-to.** The lesson that fronts this recipe:
+> [Protect the API](/tutorial/protect-the-api).
+> Declare in the contract which security schemes a procedure
 > accepts and which scopes each must grant, resolve the caller once per
 > request, and read it in the handler. For
 > the marker's surface, see [`@btravstack/contract`](/reference/contract); for

@@ -5,10 +5,12 @@ description: Boot the module from the first lesson as a Temporal worker — a se
 
 # The same application, a second runtime
 
-> **Tutorial.** The second hands-on lesson. It assumes you finished
-> [Getting started](/tutorial/getting-started) and have `GreetingModule` and
-> `Greeter` in `greeter.ts`. We keep explanation to a minimum here and link
-> out to it.
+> **Tutorial.** The final hands-on lesson. It assumes you have
+> `GreetingModule` and `Greeter` in `greeter.ts` — any lesson of the arc
+> since [Getting started](/tutorial/getting-started) leaves them there, and
+> the worker composes the module, not its internals, so it does not matter
+> which version you arrived with. We keep explanation to a minimum here and
+> link out to it.
 
 By the end you will have **two `main.ts` files sharing one application
 module**: the HTTP service from lesson one, and a Temporal worker that runs

@@ -18,6 +18,7 @@ import {
 import type { Order } from "@btravstack/example-order-domain";
 import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { api } from "../../auth.js";
 import { customersController } from "../../slices/customers/controller.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 declare const view: (order: Order) => { id: string; quantity: number };
