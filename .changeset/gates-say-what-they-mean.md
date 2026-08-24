@@ -17,5 +17,5 @@ with it, so this is a signature change without a migration.
 
 The same widening reached the composers: `AmqpHandlers`'s/`TemporalActivities`'s
 `UNCOVERED HANDLERS`/`UNCOVERED ACTIVITIES` marker and `HttpRouter`'s
-`UNDECLARED KEY` marker now say the rule in English and name the missing key,
+`UNCOVERED CONTROLLERS` marker now say the rule in English and name the missing key,
 where each used to end on a bare `"UNCOVERED HANDLERS"` or `never`.

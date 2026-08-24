@@ -280,7 +280,7 @@ the marker tuple's own length of 2 — then it arrives as a **separate**
 `TS2769` on the trailing element, whose target is the bare key
 (`is not assignable to type '"users"'`).
 
-The `Exclude`/`Inherit` pair
+The `Exclude`/`Inherit` pair that
 [`Implementation<C, Schemes>`](#authentication) carries applies at the
 **mint** rather than here: a contract marked at its root types
 `context.principal` inside a controller minted from it, unless the fragment

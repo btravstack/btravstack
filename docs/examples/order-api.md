@@ -429,8 +429,8 @@ are gone from the root entirely — a key the contract does not declare is
 refused at `api.HttpController(contract, key)`, and a controller under the
 wrong key cannot be written, because the key rides the port id. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
-the recipe, and `packages/http/src/controller.test-d.ts` for the five gates
-that pin these errors and the lift below. Because a fragment is itself a valid
+the recipe, and `packages/http/src/controller.test-d.ts` for the five gates —
+these errors among them, the lift below being the fifth. Because a fragment is itself a valid
 contract, `ordersController` serves `contract.orders` alone unchanged: the
 lifted root is
 `api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`

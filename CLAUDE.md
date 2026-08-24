@@ -542,8 +542,9 @@ in its place.
   **first** type test — `packages/temporal` had no `*.test-d.ts` file, and no
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http/src/controller.test-d.ts`
   pins the
-  five compile-time gates the composing `HttpRouter(contract)([piece, …])` form
-  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 52 specs, across
+  five compile-time gates `HttpController(contract, key)` and the composing
+  `HttpRouter(contract)([piece, …])` form owe together
+  (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 52 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
   `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the
