@@ -14,8 +14,11 @@ const GUIDE_SIDEBAR = [
   {
     text: "Tutorial",
     items: [
-      { text: "Getting started", link: "/tutorial/getting-started" },
-      { text: "The same application, a second runtime", link: "/tutorial/second-runtime" },
+      { text: "1. Getting started", link: "/tutorial/getting-started" },
+      { text: "2. Configure and test", link: "/tutorial/configure-and-test" },
+      { text: "3. Protect the API", link: "/tutorial/protect-the-api" },
+      { text: "4. Split into slices", link: "/tutorial/split-into-slices" },
+      { text: "5. The same application, a second runtime", link: "/tutorial/second-runtime" },
     ],
   },
   {

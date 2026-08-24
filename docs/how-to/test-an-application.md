@@ -19,7 +19,9 @@ import { OrdersSlice } from "../../slices/orders/module.js";
 
 # Test an application
 
-> **How-to.** Boot a module in a test, drive its lifecycle deterministically,
+> **How-to.** The lesson that fronts this recipe:
+> [Configure and test](/tutorial/configure-and-test).
+> Boot a module in a test, drive its lifecycle deterministically,
 > and assert on what the kernel reports. For _why_ the harness is shaped this
 > way, see [Nothing throws](/explanation/nothing-throws) and
 > [Draining, in three beats](/explanation/draining-in-three-beats); for the

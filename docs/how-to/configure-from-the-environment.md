@@ -11,7 +11,9 @@ const App = OrderApi;
 
 # Configure from the environment
 
-> **How-to.** Turn a handful of environment variables into a typed service the
+> **How-to.** The lesson that fronts this recipe:
+> [Configure and test](/tutorial/configure-and-test).
+> Turn a handful of environment variables into a typed service the
 > rest of your graph depends on, and let the kernel report a bad deployment
 > as exit code `78`. For the full surface, see
 > [`@btravstack/config`](/reference/config); for _why_ configuration is a

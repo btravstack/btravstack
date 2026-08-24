@@ -254,14 +254,10 @@ numbers are `preDrainDelayMs` and `drainTimeoutMs` on
 
 ## Where next
 
-- [The same application, a second runtime](/tutorial/second-runtime) — boot
-  `GreetingModule` as a Temporal worker, and see why the kernel insists on one
-  runtime per process.
-- [Configure from the environment](/how-to/configure-from-the-environment) —
-  bind your own configuration slice the way the starter binds `PORT`.
+- [Configure and test](/tutorial/configure-and-test) — the next lesson: bind
+  a setting of your own the way the starter binds `PORT`, then prove it with
+  a booted test.
 - [Log and correlate](/how-to/log-and-correlate) — `observability()` next to
   the starter, and the kernel events above as lines in the same stream.
-- [Test an application](/how-to/test-an-application) — `bootFixture` from
-  `@btravstack/testing`, and booting `App` on port `0`.
 - [Why start?](/explanation/why-start) — the theses this lesson quietly
   followed.

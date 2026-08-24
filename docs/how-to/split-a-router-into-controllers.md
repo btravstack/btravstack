@@ -11,6 +11,7 @@ import { P } from "unthrown";
 import type { Order } from "@btravstack/example-order-domain";
 import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { api } from "../../auth.js";
 import { customersController } from "../../slices/customers/controller.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 declare const view: (order: Order) => { id: string; quantity: number };
@@ -18,7 +19,9 @@ declare const view: (order: Order) => { id: string; quantity: number };
 
 # Split a router into controllers
 
-> **How-to.** For an API that has outgrown one `sync`. For the shape of a
+> **How-to.** The lesson that fronts this recipe:
+> [Split into slices](/tutorial/split-into-slices).
+> For an API that has outgrown one `sync`. For the shape of a
 > single-slice router, see [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http).
 
 `api.HttpRouter(contract)(deps, { sync })` puts every procedure's implementation in

@@ -5,7 +5,9 @@ description: Provide a temporal-contract's activities as a di service, compose t
 
 # Run a Temporal worker
 
-> **How-to.** Boot a Temporal worker under the kernel: activities built from
+> **How-to.** The lesson that fronts this recipe:
+> [The same application, a second runtime](/tutorial/second-runtime).
+> Boot a Temporal worker under the kernel: activities built from
 > your own services, the connection as a resource of the graph, and a drain
 > that releases the kernel at the kernel's deadline. For the package's full
 > surface, see [`@btravstack/temporal`](/reference/temporal); for _why_ the
