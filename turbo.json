@@ -6,7 +6,7 @@
     },
     "format": {},
     "generate": {
-      "outputs": ["src/generated/**"]
+      "outputs": ["src/generated/**", "src/slices.gen.ts"]
     },
     "typecheck": {
       "dependsOn": ["build", "generate", "^generate"]

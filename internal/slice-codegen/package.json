@@ -1,0 +1,25 @@
+{
+  "name": "@btravstack/internal-slice-codegen",
+  "private": true,
+  "description": "The repository's slice-tree generator: src/slices/*/ into a committed slices.gen.ts, so a slice that exists but was never imported is impossible by construction",
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "unthrown": "catalog:"
+  },
+  "devDependencies": {
+    "@btravstack/tsconfig": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
