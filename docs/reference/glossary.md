@@ -56,14 +56,13 @@ providers, then closed. `StartOptions.unit` is a fork the kernel opens around
 every unit. See [Open a per-request scope](/how-to/open-a-per-request-scope).
 
 **gate** — A phantom type that is inert when a composition is sound and refuses the
-call otherwise. The two shipped here are not the same shape. `start`'s is
-`StartGate`, a marker **intersected onto `module`** — `unknown` when sound, one
-of three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …`,
-`UNSATISFIED UNIT NEEDS — …`) otherwise, and the sentence prints in the error.
-di's on `Module.scoped` is a conditional **rest tuple** labelled
-`UNSATISFIED DEPENDENCIES`, so it fails on arity — `Expected 3 arguments, but
-got 1`, which names nothing; the label and the missing ports are in the
-parameter's type, not the message. See
+call otherwise. Both shipped gates are the same shape: a marker **intersected
+onto a parameter**, `unknown` when sound. `start`'s is `StartGate` — one of
+three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …`,
+`UNSATISFIED UNIT NEEDS — …`), and the sentence prints in the error. di's is
+`DependencyGate` on `Module.build`/`scoped`/`forkScope` — a one-property
+object whose message ends on the missing ports:
+`"UNSATISFIED DEPENDENCIES — nothing provides": Pool`. See
 [start and StartOptions](/reference/core/start) and
 [Compile errors, not surprises](/explanation/compile-time-wiring).
 

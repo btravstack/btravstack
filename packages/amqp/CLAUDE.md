@@ -165,7 +165,7 @@ AmqpInfo>>` — the runtime resolves **nothing**) and the broker on
   it, provides the handlers, exports `AmqpRuntime`; di's `Needs` channel
   carries the port, and `start` refuses a module whose needs channel still
   carries it — by assignability against `Env | Scope` on the `module`
-  parameter, not by di's `UNSATISFIED DEPENDENCIES` arity gate, which is why
+  parameter, not by di's `UNSATISFIED DEPENDENCIES` dependency gate, which is why
   the diagnostic ends on
   `Type '"AmqpHandlers"' is not assignable to type '"@di/Scope"'` and names the
   port (`examples/order-amqp-worker/src/needs-gate.test-d.ts` pins that

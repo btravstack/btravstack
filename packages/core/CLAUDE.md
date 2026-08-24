@@ -367,9 +367,10 @@ Type-level invariants live in `start.test-d.ts` and are checked by
   typechecks (verified), which is the ordinary TypeScript escape rather than
   anything this gate offers: the gate exists to catch the accident, not to be
   unforgeable. It used to be forgeable a second way — spelling the phantom rest
-  arguments out by hand — and that went with the rest tuple, so **parity with
-  di's UNSATISFIED DEPENDENCIES gate no longer holds**: di's is still a rest
-  tuple and still has the hand-spelled hatch. Nothing asserts the cast, because
+  arguments out by hand — and that went with the rest tuple; di's
+  `UNSATISFIED DEPENDENCIES` gate has since made the same move
+  (`DependencyGate`, issue #93), so the cast is the one escape either gate
+  leaves. Nothing asserts the cast, because
   a cast defeats every gate and asserting it would pin TypeScript, not this.
 
 `docs-examples.test-d.ts` compiles every code sample the two READMEs ship —
@@ -440,8 +441,10 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   info pointed at the wrong fix ("an argument for 'options' was not provided").
   Measured: `X` still infers from `Module<X, …>` with the marker alongside, so
   the intersection costs nothing the tuple was protecting. di's own gate on
-  `Module.scoped` is **still** a rest tuple, so the two are no longer the same
-  shape — do not describe them as parallel.
+  the entry points made the same move afterwards (`DependencyGate`, issue
+  #93), so the two gates are the same shape again — di's marker is an object
+  ending on the missing ports where this one is a fixed sentence, which is
+  each gate saying the thing it has to say.
 
 - **The runtime is resolved from the built graph, through the one generic
   port.** `RuntimePort` is `Port("Runtime")` left generic (its construct

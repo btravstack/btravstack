@@ -1,6 +1,6 @@
 ---
 title: Entry points
-description: "Module.build, Module.scoped and Module.forkScope — signatures, the UNSATISFIED DEPENDENCIES gate, ScopedOptions and Context, precisely — and where start takes over for a whole process."
+description: "Module.build, Module.scoped and Module.forkScope — signatures, the UNSATISFIED DEPENDENCIES marker, ScopedOptions and Context, precisely — and where start takes over for a whole process."
 ---
 
 <!-- doctest: prelude
@@ -26,50 +26,28 @@ around it.
 
 ## The gate
 
-Every entry point carries the same compile-time gate, as a conditional rest
-parameter: when the module's remaining `Needs` (after the exclusions each entry
-point is entitled to) is `never`, the gate is the empty tuple and the call is
-ordinary; when it is not, two required parameters appear —
-`error: "UNSATISFIED DEPENDENCIES", missing: N` — and the call is an arity
-error. There is no value to supply for the phantom arguments; the fix is always
-to satisfy the need.
+Every entry point carries the same compile-time gate, as a marker intersected
+onto its `module` parameter: when the module's remaining `Needs` (after the
+exclusions each entry point is entitled to) is `never`, the marker is
+`unknown` — invisible in an intersection — and the call is ordinary; when it
+is not, the marker is an object with one required property and the argument
+fails assignability. The fix is always to satisfy the need.
 
 **What it prints, measured:**
 
 ```
-src/scoped.test-d.ts(65,12): error TS2554: Expected 3 arguments, but got 1.
+error TS2345: Argument of type 'Module<Repo, never, Cfg>' is not assignable to parameter of type 'Module<Repo, never, Cfg> & { readonly "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'.
+  Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type 'Module<Repo, never, Cfg>' but required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'.
 ```
 
-That is the whole message, and it is worth knowing before you go looking for
-more. An arity error never prints a type, so neither the
-`"UNSATISFIED DEPENDENCIES"` label nor the ports in `missing` appear in it.
-With `--pretty`, TypeScript adds related information pointing at the rest
-parameter's declaration in `module.ts` — a reader sees the labels there, but
-sees `N` un-instantiated. **To find out which port is missing, spell the
-phantom arguments out by hand**: the rest parameter is
-`[error: "UNSATISFIED DEPENDENCIES", missing: N]`, so a value neither slot
-accepts turns the arity error into an assignability one, which does print a
-type. The first slot answers first:
-
-```
-error TS2345: Argument of type 'number' is not assignable to parameter of type '"UNSATISFIED DEPENDENCIES"'.
-```
-
-Pass that label through as the first phantom argument and the second slot names
-the port:
-
-```
-error TS2345: Argument of type 'number' is not assignable to parameter of type 'Scope'.
-```
-
-Both measured, on a scratch file since deleted; it is a diagnostic technique,
-not an intended call form. `missing: N` is the same type an editor's language
-service reads, so a hover would be expected to show the same ports — an
-inference from the parameter's type, not something observed here.
-
-`@btravstack/core`'s [`start`](/reference/core/start) answers this differently:
-its gate rides the `module` parameter so its sentence prints. The two are no
-longer the same shape.
+The message ends on the missing ports — `Cfg` here; a union when several are
+unmet. This is the same mechanism as declaration-time
+[`NeedsGate`](/reference/di/modules) and `@btravstack/core`'s
+[`start`](/reference/core/start) gate, one shape everywhere a composing
+application is refused. (It replaced a conditional rest tuple whose failure
+was `error TS2554: Expected 3 arguments, but got 1.` and nothing else — this
+page used to teach hand-spelling the phantom arguments to make the port
+print, a technique the marker made unnecessary.)
 
 | Entry point        | Excludes from `Needs` before checking |
 | ------------------ | ------------------------------------- |

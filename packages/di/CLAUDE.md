@@ -59,21 +59,23 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   off the `Module` const: `Module.build` (requires `Needs = never`),
   `Module.scoped` (opens a scope, excludes `Scope` from the check, guarantees
   close on every path), `Module.forkScope` (per-request scope seeded from a built
-  parent `Context`). Unmet dependencies are compile errors via a conditional rest
-  parameter — `[N] extends [never] ? [] : [error: "UNSATISFIED DEPENDENCIES",
-missing: N]`. What that **prints** is the arity line alone —
-  `error TS2554: Expected 3 arguments, but got 1.` — because an arity error
-  never carries a type: neither the label nor the ports in `missing` reach the
-  message, and `--pretty`'s related information points at the declaration in
-  `module.ts`, where `N` is still un-instantiated. Hand-spelling the phantom
-  arguments is how a reader gets the port printed: a value the rest tuple cannot
-  accept names the label first, then the port itself (measured,
-  `Argument of type 'number' is not assignable to parameter of type 'Scope'`).
-  An editor's language service reads the same instantiated type, so a hover
-  would be expected to show it — inferred, never measured here.
-  `@btravstack/core`'s `start` answers this differently — its marker
-  rides the `module` parameter so its sentence prints — so **the two gates are
-  no longer the same shape**; do not describe them as parallel.
+  parent `Context`). Unmet dependencies are compile errors via `DependencyGate`, a
+  marker intersected onto each entry point's `module` parameter (issue #93):
+  `unknown` when the remaining `Needs` is `never` — invisible in an
+  intersection — and `{ readonly "UNSATISFIED DEPENDENCIES — nothing
+provides": N }` otherwise, so the argument fails assignability and the
+  message **ends on the missing ports** (measured:
+  `Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in
+type 'Module<Repo, never, Cfg>' but required in type '{ readonly
+"UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'`). It replaced a
+  conditional rest tuple whose failure was the arity line alone —
+  `error TS2554: Expected 3 arguments, but got 1.` — with the label and ports
+  unreachable in the message and four documents teaching how to hand-spell
+  the phantom arguments around it. Same mechanism as `NeedsGate` below and
+  `@btravstack/core`'s `StartGate`: **one gate shape everywhere**, with di's
+  marker an object ending on the ports where `start`'s is a fixed sentence.
+  The covariant `_needs` refusal is unchanged beside it — the gate is a
+  message, not the check.
   `needs` is the fourth tuple and the subject of **Module visibility** below:
   what this module expects a composition root to supply, named. Anything it
   owes and did not name is refused at the `Module(name)({...})` call by

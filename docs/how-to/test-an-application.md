@@ -143,7 +143,7 @@ it("broadcasts every committed write, end to end", async ({
 ```
 
 A port the module does not export is refused at the call site by the
-[tap gate](/reference/testing#the-tap-gate-an-arity-error), and `services()`
+[tap gate](/reference/testing#the-tap-gate), and `services()`
 throws if read before the graph is built — a bug in the test, kept loud
 rather than answered with an `undefined`.
 

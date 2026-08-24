@@ -182,7 +182,7 @@ starter's runtime provider depends on its activities port through di, so a
 root whose imports do not cover what the provider declared (`FulfillmentModule`
 and `BillingModule` here — `chargeOrder`'s `PaymentService` comes from the
 latter) is refused at `start` — the `Needs` channel failing to assign against
-`Env | Scope`, which names the port, not di's `UNSATISFIED DEPENDENCIES` arity
+`Env | Scope`, which names the port, not di's `UNSATISFIED DEPENDENCIES` dependency
 gate; a root with no starter is refused against
 `"NO RUNTIME — the module exports no port declared over RuntimePort"`.
 `activities` is typed against the module's own

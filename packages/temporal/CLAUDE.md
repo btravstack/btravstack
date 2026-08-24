@@ -176,7 +176,7 @@ ActivitiesPortOf<C> }, { sync })` —
   `Needs` and a root that imports the starter without providing the
   activities is rejected by `start` for still owing it — by assignability
   against `Env | Scope` on the `module` parameter, not by di's
-  `UNSATISFIED DEPENDENCIES` arity gate, so the diagnostic names the port and
+  `UNSATISFIED DEPENDENCIES` dependency gate, so the diagnostic names the port and
   ends on `Type '"TemporalActivities"' is not assignable to type '"@di/Scope"'`
   (the
   `examples/order-temporal-worker` `needs-gate.test-d.ts` pins that; there is

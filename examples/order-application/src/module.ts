@@ -22,13 +22,13 @@ import { findCustomerProvider, findOrderProvider, placeOrderProvider } from "./u
  * rather than letting a composition root happen to hold them.
  * `Module.scoped(OrderApplicationModule, …)` therefore
  * does not compile — an importing module must provide the repository and a
- * logger first. That arity error is the layering, enforced by the compiler
+ * logger first. That refusal is the layering, enforced by the compiler
  * rather than by convention, and splitting the module sharpened it: each
  * vertical's gate now carries that vertical's own repository, so a graph
- * cannot close the orders half with a customers adapter. Carries, not prints —
- * the message is `Expected 5 arguments, but got 2` and nothing else; the
- * repository is in the rest parameter's type, which hand-spelling the phantom
- * arguments prints.
+ * cannot close the orders half with a customers adapter — and prints it: the
+ * diagnostic ends on `"UNSATISFIED DEPENDENCIES — nothing provides":
+ * Logger | OrderRepository` (di's `DependencyGate`, the marker that replaced
+ * the mute rest-tuple arity error).
  *
  * The logger is `@btravstack/observability`'s port, not one this layer
  * declares: a composition root imports `observability()` and the lines this

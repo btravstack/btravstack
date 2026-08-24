@@ -12,7 +12,7 @@ import { AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp";
  * read — is now
  * the starter's own handlers port, which the starter DEPENDS on, so a
  * composition without a provider for it is the needs channel, not the marker
- * and not di's `UNSATISFIED DEPENDENCIES` arity gate: the module's needs
+ * and not di's `UNSATISFIED DEPENDENCIES` dependency gate: the module's needs
  * channel carries that port, `start` accepts only `Scope | Env` there, and the
  * assignability failure names the port.
  *

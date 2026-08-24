@@ -670,7 +670,7 @@ import's needs travel without the importer re-declaring them. `start` — whose
 and the diagnostic names the port:
 `Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`, down to
 `Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. It is **not** di's
-`UNSATISFIED DEPENDENCIES` arity gate, which guards `Module.build` and
+`UNSATISFIED DEPENDENCIES` dependency gate, which guards `Module.build` and
 `Module.scoped`; conflating the two is easy and the distinction is the point of
 having both pinned here. There is no `UNSATISFIED RUNTIME PORTS` arm, because
 the shipped runtime resolves nothing.

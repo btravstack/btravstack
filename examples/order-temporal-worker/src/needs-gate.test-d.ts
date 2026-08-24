@@ -8,7 +8,7 @@ import { start } from "@btravstack/core";
  * `UNSATISFIED RUNTIME PORTS` arm to pin here, as there was when the runtime
  * resolved five ports of its own; what replaces it is di's needs channel —
  * refused by `start`'s `Module<X, E, Scope | Env>` parameter, which names the
- * port, and NOT di's `UNSATISFIED DEPENDENCIES` arity gate.
+ * port, and NOT di's `UNSATISFIED DEPENDENCIES` dependency gate.
  *
  * Two distinct negatives, at two distinct levels. `orderActivities`'s own
  * `deps` are the two pieces' PORTS (`fulfillOrder.port | chargeOrder.port`),

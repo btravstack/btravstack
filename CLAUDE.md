@@ -460,15 +460,19 @@ type checker already verifies.
   the starter is an IMPORT, and an import's needs travel without the importer
   re-declaring them, so di's declaration gate has nothing to say and this stays
   the kernel's); the fourth, `order-application`'s, pins **di's**
-  `UNSATISFIED DEPENDENCIES` gate on `Module.scoped`, which is a rest-tuple
-  **arity** error printing `Expected 5 arguments, but got 2` and nothing else.
+  `UNSATISFIED DEPENDENCIES` gate on `Module.scoped` — `DependencyGate`, a
+  marker on the `module` parameter since issue #93, whose message ends on the
+  missing ports:
+  `'{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository; }'`
+  (it was a rest-tuple arity error printing `Expected 5 arguments, but got 2`
+  and nothing else).
   A **fourth** mechanism joined them in #50 and is pinned beside the third:
   di's `NeedsGate`, which fires when a module's OWN provider reads a port
   nothing local satisfies and `needs` does not name it —
   `order-temporal-worker`'s `FulfillmentlessSlice`, printing
   `'{ readonly "UNDECLARED NEEDS — name it in `needs`": StockService | ShippingService; }'`.
-  **Four** mechanisms, easy to conflate — and only two print a
-  name. Do not call the second "di's `UNSATISFIED DEPENDENCIES` gate": an
+  **Four** mechanisms, easy to conflate — and since #93 every one of them
+  prints a name. Do not call the second "di's `UNSATISFIED DEPENDENCIES` gate": an
   earlier revision of this file did, and it is wrong in both halves. `start`'s
   `UNSATISFIED RUNTIME PORTS` arm is pinned only by `packages/core`'s own
   `start.test-d.ts`, since every shipped runtime declares `resolves: []`.
@@ -816,7 +820,7 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `"NO RUNTIME — the module exports no port declared over RuntimePort"`, the
   sentence intersected onto `start`'s `module` parameter, and one that imports
   it without providing `orderRouter` leaves `HttpRouterPort` in `Needs`, which
-  the same parameter refuses by assignability — not di's arity gate.
+  the same parameter refuses by assignability — not di's dependency gate.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.28` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned

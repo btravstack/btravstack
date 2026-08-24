@@ -1,6 +1,6 @@
 ---
 title: Compile errors, not surprises
-description: How the Needs channel, a conditional rest parameter and a phantom marker turn missing dependencies, leaked internals, forgotten scopes and a missing runtime into errors at the call site — what each one actually prints, and where the compile-time line sits.
+description: How the Needs channel and a phantom marker turn missing dependencies, leaked internals, forgotten scopes and a missing runtime into errors at the call site — what each one actually prints, and where the compile-time line sits.
 ---
 
 <!-- doctest: prelude
@@ -80,23 +80,25 @@ nothing can provide it, so it is never something an ancestor signs over.
 
 The remaining checks happen at the one place a graph becomes running services.
 
-## The gate: an arity error
+## The gate ends on the missing port
 
-Each [entry point](/reference/di/entry-points) ends in a conditional rest
-parameter:
+Each [entry point](/reference/di/entry-points) intersects a marker onto its
+`module` parameter:
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-build<X, E, N>(
-  module: Module<X, E, N>,
-  ..._missing: [N] extends [never] ? [] : [error: "UNSATISFIED DEPENDENCIES", missing: N]
-)
+build<X, E, N>(module: Module<X, E, N> & DependencyGate<N>)
+
+type DependencyGate<N> = [N] extends [never]
+  ? unknown
+  : { readonly "UNSATISFIED DEPENDENCIES — nothing provides": N };
 ```
 
-When `Needs` is `never`, the tuple is empty and `Module.build(mod)` is an
-ordinary call. When it is not, the call is missing two required arguments —
-arguments no value can supply. The gate differs per entry point only in what it
+When `Needs` is `never`, the marker is `unknown` — invisible in an
+intersection — and `Module.build(mod)` is an ordinary call. When it is not,
+the argument fails assignability against an object with one required
+property. The gate differs per entry point only in what it
 is entitled to exclude first: `scoped` excludes `Scope` (it opens a real
 scope), `forkScope` excludes `Scope` and the parent context's channel (the
 parent supplies those).
@@ -104,22 +106,18 @@ parent supplies those).
 **What it prints, measured:**
 
 ```
-src/scoped.test-d.ts(65,12): error TS2554: Expected 3 arguments, but got 1.
+error TS2345: Argument of type 'Module<Repo, never, Cfg>' is not assignable to parameter of type 'Module<Repo, never, Cfg> & { readonly "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'.
+  Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type 'Module<Repo, never, Cfg>' but required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'.
 ```
 
-That is the whole message. An arity error never prints a type, so neither the
-`"UNSATISFIED DEPENDENCIES"` label nor the ports in `missing` reach it: with
-`--pretty`, TypeScript adds related information pointing at the rest parameter's
-_declaration_ in `module.ts`, where a reader sees the labels but sees `N`
-un-instantiated. The missing ports are in the parameter's type, and spelling the
-phantom arguments out by hand is what gets them printed: a value the rest tuple
-cannot accept turns the arity error into an assignability one naming each slot
-in turn — the label first, then the port (measured, `Argument of type 'number'
-is not assignable to parameter of type 'Scope'`). An editor's language service
-reads that same type, so a hover would be expected to show them too. The label
-is a signpost for whoever goes looking, not a sentence the compiler hands you.
-`start`'s gate below is the same idea paying differently, and the difference is
-exactly this.
+Two lines, and the last thing printed is the missing port. This is the same
+mechanism as `NeedsGate` at declaration time and `start`'s `StartGate` below —
+one shape for every gate a composing application meets. It replaced a
+conditional rest tuple whose failure was a bare arity line (`error TS2554:
+Expected 3 arguments, but got 1.`) that named neither the label nor the
+ports; this page used to spend two paragraphs teaching how to hand-spell the
+phantom arguments to make the port print, and their deletion is the measure
+of the fix.
 
 The same trick guards a related mistake at declaration time: an `exports`
 entry must be provided or imported, so a module cannot claim a surface it
@@ -204,9 +202,9 @@ an inference-bearing position can defer that parameter's inference and collapse
 infers from the `Module<X, …>` half of the intersection. What the tuple cost was
 the diagnostic: a missing rest argument is an arity error, `NO RUNTIME` never
 reached a reader, and TypeScript's related information pointed at the wrong fix
-("an argument for 'options' was not provided"). di's gate on `Module.scoped` is
-**still** a rest tuple, so the two are no longer the same shape — do not read
-them as parallel.
+("an argument for 'options' was not provided"). di's entry points
+[made the same move](#the-gate-ends-on-the-missing-port) afterwards — issue
+#93 — so the two gates are the same shape again, and this time on purpose.
 
 One thing went with the tuple: the hand-spelled bypass. `start`'s gate is still
 **bypassable on purpose**, but only by a cast (`start(App as never)`), which is
@@ -242,30 +240,29 @@ escape hatches (`as never`, `any`) that no library survives; the runtime checks
 exist precisely so that even those degrade into a loud pre-construction defect
 rather than silent misbehaviour.
 
-## Why an arity error — and why the kernel stopped using one
+## Why it was an arity error, and why it stopped being one
 
-di's gate could have been a constraint (`N extends never`) on the module
-parameter. The rest-parameter form was chosen for where it puts the blame: a
-constraint reports a failure on the whole argument, deep in a generic
-instantiation, while the arity form points at the call itself and leaves the
-module type alone. That is a real property, and it is the one di keeps.
+di's gate was originally a conditional rest tuple, chosen for where it puts
+the blame: an arity error points at the call itself and leaves the module
+type alone, where a constraint reports a failure on the whole argument, deep
+in a generic instantiation. That is a real property, and it was real enough
+to keep for a while.
 
-What it is not is a message. `Expected 3 arguments, but got 1` is the entire
-diagnostic, and the labels a reader is told to look for live in the rest
-parameter's declaration rather than in the error. The kernel wanted the arm's
-name in the message, so it moved its own gate onto the `module` parameter and
-took the constraint-shaped diagnostic on purpose — the sentence is the last
-thing printed, which is where the eye lands. **When a guarantee's only user
-interface is a compiler diagnostic, the diagnostic is the design**, and this is
-the same principle reaching two different answers because the two gates have
-different things to say: di's `missing: N` is a set of ports a reader can read
-off the signature, the kernel's is one of three fixed sentences.
+What the tuple never was is a message. `Expected 3 arguments, but got 1` was
+the entire diagnostic, and the labels a reader was told to look for lived in
+the rest parameter's declaration rather than in the error. The kernel moved
+first (`StartGate`, above); di followed once `NeedsGate` proved the marker
+shape could end the message **on the port itself** rather than on a fixed
+sentence — the one thing di's gate has to say that the kernel's does not.
+**When a guarantee's only user interface is a compiler diagnostic, the
+diagnostic is the design**, and four documents apologizing for one mute gate
+was the measure of the old one's cost.
 
 ## The cost, stated plainly
 
-The types work hard, and it shows at the edges: di's wiring mistakes surface as
-an arity error rather than a friendly sentence, and the kernel's surface as a
-long assignability error whose readable half is its last line. A large module's
+The types work hard, and it shows at the edges: every gate's diagnostic is an
+assignability error whose readable half is its last line, reached after
+however many lines the caller's own types take to print. A large module's
 channel unions are real types, and a diagnostic that has to print one prints it
 at full width. The container is also deliberately small — one construction
 family, one module algebra, three entry points, one name per concept.
@@ -277,23 +274,23 @@ are not missing features; this is the wrong library for them on purpose.
 Three gate mechanisms live in this repo that a composing application meets,
 not two — and before this branch, thirteen places across the documentation and
 the examples named one as another. A **fourth** lives in the test harness:
-`@btravstack/testing`'s `tapped` keeps di's conditional rest tuple, so a port
-the module does not export is an arity error there too, and
-[the testing reference measures it](/reference/testing#the-tap-gate-an-arity-error).
+`@btravstack/testing`'s `tapped`, whose `NOT EXPORTED` marker rides the
+`ports` array the same way, and
+[the testing reference measures it](/reference/testing#the-tap-gate).
 This table is the index of the three. Where the full diagnostic is already
 told above, the row points back rather than repeating it; where it is not,
 the row carries the measured target — the type each diagnostic's last line
 ends on, which is the payload of the whole message.
 
-| Mechanism                                                                | Case                                                                                  | Printed target, before                                                                        | Printed target, after                                                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| di's own gate (a conditional rest tuple)                                 | `Module.scoped`/`build`/`forkScope`                                                   | `Expected 3 arguments, but got 1.` — [the whole message](#the-gate-an-arity-error), unchanged | same — no task on this branch touched it                                                                                                                                                                                                                                                            |
-| An unmet need at `start` (plain assignability)                           | a starter's own port, e.g. `AmqpHandlers`                                             | `'"AmqpHandlers"' is not assignable to type '"@di/Scope"'`                                    | same — this was always the best diagnostic in the repo; the thirteen corrections were to the documentation calling it di's gate, not to the gate                                                                                                                                                    |
-| `start`'s `StartGate` — `NO RUNTIME`                                     | [the Greeter example above](#the-kernels-own-gate)                                    | `Expected 4 arguments, but got 1.`                                                            | ends on `"NO RUNTIME — the module exports no port declared over RuntimePort"` — [full example above](#the-kernels-own-gate)                                                                                                                                                                         |
-| `start`'s `StartGate` — `UNSATISFIED RUNTIME PORTS`                      | a runtime's `resolves` uncovered by the module's exports                              | `Expected 4 arguments, but got 1.`                                                            | ends on `"UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"`                                                                                                                                                                                                      |
-| `start`'s `StartGate` — `UNSATISFIED UNIT NEEDS`                         | a unit module's needs uncovered                                                       | `Expected 4 arguments, but got 2.`                                                            | ends on `"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"`                                                                                                                                                                                                        |
-| amqp's/temporal's composer — `UNCOVERED HANDLERS`/`UNCOVERED ACTIVITIES` | `AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])` missing a key | ends on `'"UNCOVERED HANDLERS"'` / `'"UNCOVERED ACTIVITIES"'`                                 | ends on `'"UNCOVERED HANDLERS — the contract declares a consumer this array does not cover"'` / the `ACTIVITIES` twin; the missing key prints too, as a separate diagnostic on the trailing element, once the array is as long as the marker tuple (measured: `'"orderAudit"'`, `'"fulfillOrder"'`) |
-| http's keyed router — `UNDECLARED KEY`                                   | `api.HttpRouter(contract)(controllers)` with a key the contract does not declare      | ends on `'never'`                                                                             | ends on `'"UNDECLARED KEY — the contract declares no fragment under billing"'` — the key is named too, straight from the mapped type's own `K`                                                                                                                                                      |
+| Mechanism                                                                | Case                                                                                  | Printed target, before                                        | Printed target, after                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| di's own gate (`DependencyGate`, a marker on the `module` parameter)     | `Module.scoped`/`build`/`forkScope`                                                   | `Expected 3 arguments, but got 1.` — the whole message        | ends on the missing port — `required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'` ([measured above](#the-gate-ends-on-the-missing-port); moved off the rest tuple later than the rest of this table, in issue #93)                                                   |
+| An unmet need at `start` (plain assignability)                           | a starter's own port, e.g. `AmqpHandlers`                                             | `'"AmqpHandlers"' is not assignable to type '"@di/Scope"'`    | same — this was always the best diagnostic in the repo; the thirteen corrections were to the documentation calling it di's gate, not to the gate                                                                                                                                                    |
+| `start`'s `StartGate` — `NO RUNTIME`                                     | [the Greeter example above](#the-kernels-own-gate)                                    | `Expected 4 arguments, but got 1.`                            | ends on `"NO RUNTIME — the module exports no port declared over RuntimePort"` — [full example above](#the-kernels-own-gate)                                                                                                                                                                         |
+| `start`'s `StartGate` — `UNSATISFIED RUNTIME PORTS`                      | a runtime's `resolves` uncovered by the module's exports                              | `Expected 4 arguments, but got 1.`                            | ends on `"UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"`                                                                                                                                                                                                      |
+| `start`'s `StartGate` — `UNSATISFIED UNIT NEEDS`                         | a unit module's needs uncovered                                                       | `Expected 4 arguments, but got 2.`                            | ends on `"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"`                                                                                                                                                                                                        |
+| amqp's/temporal's composer — `UNCOVERED HANDLERS`/`UNCOVERED ACTIVITIES` | `AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])` missing a key | ends on `'"UNCOVERED HANDLERS"'` / `'"UNCOVERED ACTIVITIES"'` | ends on `'"UNCOVERED HANDLERS — the contract declares a consumer this array does not cover"'` / the `ACTIVITIES` twin; the missing key prints too, as a separate diagnostic on the trailing element, once the array is as long as the marker tuple (measured: `'"orderAudit"'`, `'"fulfillOrder"'`) |
+| http's keyed router — `UNDECLARED KEY`                                   | `api.HttpRouter(contract)(controllers)` with a key the contract does not declare      | ends on `'never'`                                             | ends on `'"UNDECLARED KEY — the contract declares no fragment under billing"'` — the key is named too, straight from the mapped type's own `K`                                                                                                                                                      |
 
 No gate's behaviour moved: the same 82 `@ts-expect-error` directives fire
 after this branch as before it — none added or removed, and none now guards a
