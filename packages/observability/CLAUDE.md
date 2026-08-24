@@ -149,17 +149,35 @@ reason `Config` is a hand-rolled Standard Schema.
 
 ## Deferred, deliberately
 
-- **Traces and metrics.** The shape: `Tracer`/`Meter` ports, the OTel
-  `NodeSDK` as a **resourceful** provider whose `release` flushes — the kernel
-  closes the scope on every exit path, so a lost span becomes a
-  `teardownError` and exit `2` rather than silence — a span per unit as a
-  `StartOptions.unit` provider (the kernel already tears that down inside the
-  unit's ambient record, so no kernel change is needed), an OTel appender as a
-  `Sink`, and W3C `traceparent` propagation feeding `UnitMeta.traceId` in the
-  three transport starters (`@btravstack/http` reads `x-request-id` today).
+- **Traces and metrics shipped in issue #64**, as the deferred design
+  prescribed, behind the `@btravstack/observability/otel` subpath on the
+  `pino` protocol: `@opentelemetry/api` and `@opentelemetry/sdk-node` are
+  **optional** peers a consumer that never imports the subpath never installs
+  (`src/otel.ts` is `tsdown`'s third entry point). The surface: `Tracer` (a
+  narrowed `{ startSpan(name) }`, so a test double is one line) and `Meter`
+  (OTel's own, whole) ports; `otel(options?)`, a module providing both over a
+  `NodeSDK` held as a **resourceful** provider — `release` is `sdk.shutdown()`,
+  which flushes, so the kernel's close-on-every-path is what gets spans out of
+  a dying process and a lost flush becomes a `teardownError` and exit `2`
+  rather than silence (pinned by `otel.spec.ts` with an hour-delayed batch
+  processor: the span leaves only because release flushed it) — and
+  `UnitSpanModule`, a `StartOptions.unit` module opening a span per kernel
+  unit with the ambient record's `unitId`/`traceId`/`tenantId` as attributes,
+  ended by `onStop` on every path out. **No config slice, deliberately**: the
+  SDK reads the `OTEL_*` env conventions itself, and re-binding them through
+  `Config` would be a second spelling of names operators already know. **One
+  `otel()` per process**: the api's globals register once — the SDK's own
+  contract, restated in the spec's teardown. The remote W3C **parent is
+  deliberately not reconstructed**: `UnitMeta.traceId` carries the inbound
+  trace id alone (never the caller's span id), so v1 correlates spans to logs
+  by attribute rather than pretending to a parent-child edge it cannot prove.
+  Inbound `traceparent` is honoured by `@btravstack/http` (over
+  `x-request-id`) and `@btravstack/amqp` (over `messageId`), trace-id field
+  only; `@btravstack/temporal` deliberately keeps the workflow/activity id as
+  its correlation — see its own `CLAUDE.md`.
 - **A constraint that will not go away**: OTel _auto_-instrumentation
   (`@opentelemetry/auto-instrumentations-node/register`) must be preloaded
   before the instrumented libraries are imported, so it cannot be DI-provided.
-  The package will ship manual instrumentation for what this stack owns and
-  document the `--import` preload for third-party libraries; do not try to
+  The package ships the graph-owned half only and `otel`'s TSDoc says so;
+  the `--import` preload is the deployment's line. Do not try to
   wire auto-instrumentation into a provider.

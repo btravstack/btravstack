@@ -337,19 +337,38 @@ const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
     : fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
 
 /**
+ * The trace id inside a W3C `traceparent` header —
+ * `00-{trace-id}-{parent-id}-{flags}` — and nothing else of it: the parent's
+ * SPAN id is deliberately dropped, because `UnitMeta.traceId` is a
+ * correlation id, not a span context, and carrying half a parentage would
+ * invite pretending to the other half. An all-zero trace id is the spec's
+ * own "invalid" value and is refused like a malformed header.
+ */
+const traceIdOfTraceparent = (header: string): string | undefined => {
+  const match = /^[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/.exec(header.trim());
+  const traceId = match?.[1];
+  return traceId === undefined || /^0{32}$/.test(traceId) ? undefined : traceId;
+};
+
+/**
  * `UnitMeta.traceId` defaults to `id`, so `id` is minted fresh per request and
  * never taken from the route: a category there would give every request the same
- * trace id and silently defeat the ambient record. An inbound `x-request-id`
- * becomes the trace id.
+ * trace id and silently defeat the ambient record. Inbound, W3C `traceparent`
+ * wins — the trace-id field alone, so a request that crossed another service
+ * joins the trace it started (issue #64) — with `x-request-id` as the
+ * fallback vocabulary for callers that speak it.
  *
  * Only a NON-BLANK header is adopted: the kernel falls back to `meta.id` when
  * `traceId` is nullish, and `""` is not, so an empty header would win and hand
  * a caller's every request the same blank id — defeating the ambient record
- * exactly as a route template would.
+ * exactly as a route template would. A malformed `traceparent` falls through
+ * to `x-request-id`, never half-adopted.
  */
 const metaFor = (request: IncomingMessage): UnitMeta => {
+  const parent = request.headers["traceparent"];
+  const fromParent = typeof parent === "string" ? traceIdOfTraceparent(parent) : undefined;
   const inbound = request.headers["x-request-id"];
-  const traceId = typeof inbound === "string" ? inbound.trim() : "";
+  const traceId = fromParent ?? (typeof inbound === "string" ? inbound.trim() : "");
   return {
     kind: "http",
     id: randomUUID(),

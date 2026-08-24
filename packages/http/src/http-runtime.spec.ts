@@ -228,6 +228,45 @@ describe("httpRuntime", () => {
     expect(traced.seen()).toEqual(["abc-123"]);
   });
 
+  it("adopts the trace id inside a W3C traceparent, over x-request-id", async ({
+    serve,
+    traced,
+  }) => {
+    // GIVEN a caller that crossed another service, carrying both headers
+    const { origin } = await serve(traced.handler);
+
+    // WHEN it makes a request
+    await fetch(origin, {
+      headers: {
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        "x-request-id": "abc-123",
+      },
+    });
+
+    // THEN the traceparent's trace-id field won — the parent's span id
+    // dropped, the trace joined
+    expect(traced.seen()).toEqual(["4bf92f3577b34da6a3ce929d0e0e4736"]);
+  });
+
+  it("falls through a malformed or all-zero traceparent to x-request-id", async ({
+    serve,
+    traced,
+  }) => {
+    // GIVEN a caller whose traceparent carries the spec's own invalid value
+    const { origin } = await serve(traced.handler);
+
+    // WHEN it makes a request with the zero trace id beside a real request id
+    await fetch(origin, {
+      headers: {
+        traceparent: "00-00000000000000000000000000000000-00f067aa0ba902b7-01",
+        "x-request-id": "abc-123",
+      },
+    });
+
+    // THEN nothing was half-adopted: the fallback vocabulary answered
+    expect(traced.seen()).toEqual(["abc-123"]);
+  });
+
   it("keeps its own minted trace id when x-request-id is blank", async ({ serve, traced }) => {
     // GIVEN a caller that sends the header but leaves it empty
     const { origin } = await serve(traced.handler);

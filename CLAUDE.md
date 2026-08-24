@@ -1293,15 +1293,18 @@ And a seventh, about the infrastructure a suite runs against:
   that would pull a container out from under a concurrent workspace.
 - The `@btravstack/oxlint` rule banning `currentUnit()` outside infrastructure
   adapters (Thesis #2) — it needs a way to identify an adapter.
-- **Traces and metrics in `@btravstack/observability`.** The package is named
-  for the whole because logs, traces and metrics share a correlation id, a
-  resource, a config slice and a flush-on-shutdown lifecycle; only the logging
-  half ships. The shape the rest will take — `Tracer`/`Meter` ports, the OTel
-  `NodeSDK` as a resourceful provider whose `release` flushes, a span per unit
-  through `StartOptions.unit`, W3C `traceparent` feeding `UnitMeta.traceId` in
-  the three transport starters — and the auto-instrumentation constraint that
-  will not go away are in `packages/observability/CLAUDE.md`. Never describe
-  them as shipped.
+- ~~Traces and metrics in `@btravstack/observability`.~~ **Closed by
+  shipping the shape as written** (issue #64): `Tracer`/`Meter` ports and the
+  OTel `NodeSDK` as a resourceful provider whose `release` flushes, behind
+  the `@btravstack/observability/otel` subpath on the `pino` optional-peer
+  protocol; `UnitSpanModule` as a span per unit through `StartOptions.unit`;
+  W3C `traceparent` honoured inbound by `@btravstack/http` and
+  `@btravstack/amqp` (trace-id field only — the parent span id is dropped,
+  never half-carried), with `@btravstack/temporal` deliberately keeping the
+  workflow id as its correlation. The auto-instrumentation constraint held:
+  the preload cannot be DI-provided, so the package ships the graph-owned
+  half and the `--import` line stays the deployment's. Surfaces in
+  `packages/observability/CLAUDE.md`.
 - ~~A `docs-examples.test-d.ts` for `@btravstack/temporal`, `@btravstack/amqp`
   and `@btravstack/observability`.~~ **Closed by the doc-samples gate**
   (issue #94): `docs/scripts/extract-doc-samples.ts` now compiles every `ts`
