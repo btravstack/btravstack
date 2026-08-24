@@ -3,6 +3,22 @@ title: Log and correlate
 description: Add @btravstack/observability, log structured attributes from a use case, read a line back, raise the level from the environment, swap in pino, and put the kernel's own events in the same stream.
 ---
 
+<!-- doctest: prelude
+import { type ServiceOf } from "@btravstack/di";
+import { Logger, type Line } from "@btravstack/observability";
+import { TenantId, placeOrder } from "@btravstack/example-order-domain";
+import { OrderApplicationModule, OrderRepository, PlaceOrder } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { orderRouter } from "../../module.js";
+import { RequestModule } from "../../request-scope.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+declare const logger: ServiceOf<Logger>;
+declare const event: { readonly id: string };
+declare const cause: unknown;
+declare const payload: { readonly size: number };
+-->
+
 # Log and correlate
 
 > **How-to.** Get structured lines out of your application, each one stamped
@@ -34,7 +50,7 @@ import { Logger, observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
@@ -178,6 +194,8 @@ that shows up in a profile, `pino` is an **optional** peer behind a subpath:
 pnpm add pino
 ```
 
+<!-- doctest: skip — needs `pino`, which no example workspace installs; held by packages/observability/src/pino.spec.ts instead -->
+
 ```ts
 import pino from "pino";
 import { observability } from "@btravstack/observability";
@@ -251,8 +269,8 @@ const lines: Line[] = [];
 const RecordingApi = HttpModule("RecordingApi")({
   router: orderRouter,
   imports: [
-    OrderApplicationModule,
-    OrderPersistenceModule,
+    OrdersSlice,
+    CustomersSlice,
     observability({ sink: (line) => lines.push(line), level: "trace" }),
   ],
   exports: [Logger],

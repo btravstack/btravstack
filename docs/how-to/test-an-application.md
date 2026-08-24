@@ -3,6 +3,20 @@ title: Test an application
 description: Boot a module in a vitest fixture with bootFixture, reach a running service with tapped, drive the drain on a fake clock, and test through the real starters on an ephemeral port.
 ---
 
+<!-- doctest: prelude
+import { Env } from "@btravstack/config";
+import { HttpModule } from "@btravstack/http";
+import { Logger, observability, type Line } from "@btravstack/observability";
+import { bootFixture, tapped, type Boot } from "@btravstack/testing";
+import { expect, test } from "vitest";
+import type {} from "@unthrown/vitest";
+import { OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
+import { OrderApi, orderRouter } from "../../module.js";
+import { RequestModule } from "../../request-scope.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+-->
+
 # Test an application
 
 > **How-to.** Boot a module in a test, drive its lifecycle deterministically,
@@ -24,6 +38,9 @@ transport, `createFakeClock` moves time when you say so.
 The recipe is one fixture module per package, exporting the `it` every spec
 imports:
 
+<!-- doctest: group=order-api -->
+<!-- doctest: skip — quotes examples/order-api/src/test-fixtures.ts, which the gate compiles and runs -->
+
 ```ts
 // src/test-fixtures.ts
 import { bootFixture, type Boot } from "@btravstack/testing";
@@ -40,6 +57,8 @@ application it starts is stopped when the test ends**, on every exit path.
 A call's own options win over the fixture's (`boot(module, { probes: { port:
 0 } })` binds an ephemeral probe port), and `unit` goes on the call, because a
 unit module is the composition's choice, not the fixture's:
+
+<!-- doctest: skip — an excerpt of examples/order-api/src/api.spec.ts, which the gate runs -->
 
 ```ts
 // src/api.spec.ts
@@ -100,6 +119,8 @@ through. `tapped(module,
 it was built with; boot `tap.module` in place of the module and read
 `tap.services()` afterwards:
 
+<!-- doctest: skip — an excerpt of examples/order-amqp-worker/src/amqp-runtime.spec.ts, which the gate runs -->
+
 ```ts
 it("broadcasts every committed write, end to end", async ({
   tenant,
@@ -133,6 +154,17 @@ A tap is the wrong tool for this, and `examples/order-api` uses none:
 is a value the composition takes, so what a spec gets back is the `Line`
 itself — `unit.traceId` as a field rather than a prefix parsed out of a
 string. Compose the root's own shape with a recording sink, and boot that:
+
+<!-- doctest: isolate
+import { expect } from "vitest";
+import type {} from "@unthrown/vitest";
+import { HttpModule } from "@btravstack/http";
+import { Logger, observability, type Line } from "@btravstack/observability";
+import { orderRouter } from "../../module.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+import { it } from "../../test-fixtures.js";
+-->
 
 ```ts
 const lines: Line[] = [];
@@ -279,6 +311,8 @@ on an ephemeral loopback port and talk to it with a typed client.
 `examples/order-api/src/test-fixtures.ts` starts from `bootFixture` and layers
 the example's own fixtures on top of `boot`:
 
+<!-- doctest: skip — quotes examples/order-api/src/test-fixtures.ts, which the gate compiles and runs -->
+
 ```ts
 export const it = test.extend<ApiFixtures>({
   boot: bootFixture({
@@ -300,6 +334,19 @@ shutdown is still the fixture's; `clientFor` builds the oRPC client from
 (`Bearer ${tenant}:u-1`), since the contract marks the `orders` fragment and an
 anonymous call to it never reaches a use case; and `recording` is the real
 root's composition with a recording sink in place of stdout:
+
+<!-- doctest: isolate
+import { Env } from "@btravstack/config";
+import { HttpModule } from "@btravstack/http";
+import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
+import { orderRouter } from "../../module.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+declare const recorderOf: () => {
+  readonly sink: Sink;
+  readonly lines: readonly Line[];
+};
+-->
 
 ```ts
 const recordingApi = () => {
@@ -359,6 +406,12 @@ the tests that share that schema never see each other's rows.
 Reading a tenant back needs nothing at all, because the example application
 names it on its ports rather than reading it from ambient context:
 
+<!-- doctest: isolate
+import { test } from "vitest";
+import { TenantId } from "@btravstack/example-order-domain";
+import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
+-->
+
 ```ts
 export const it = test.extend<{ tenant: TenantId }>({
   // oxlint-disable-next-line no-empty-pattern -- depends on no other fixture
@@ -366,7 +419,11 @@ export const it = test.extend<{ tenant: TenantId }>({
     await use(TenantId(uuidv7()));
   },
 });
+```
 
+<!-- doctest: skip — uses the `repository` and `anOrder` fixtures of examples/order-infrastructure/src/test-fixtures.ts, which the gate runs -->
+
+```ts
 it("reads back only its own tenant's order", async ({
   tenant,
   repository,

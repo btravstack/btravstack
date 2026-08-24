@@ -3,6 +3,16 @@ title: RunningApp
 description: The handle start returns — exited, stop, requestDrain, phase, ready, probePort and runtimeInfo — with what each resolves and when, plus the Phase union.
 ---
 
+<!-- doctest: prelude
+import { TestRuntimePort } from "@btravstack/testing";
+import { Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
+declare const OrderApi: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
+declare const RequestModule: Module<never, never, never>;
+import { start, type ExitReport, type RunningApp } from "@btravstack/core";
+import type { AsyncResult } from "unthrown";
+-->
+
 # `RunningApp`
 
 > **Reference.** The handle `start` returns: every member, what it resolves,
@@ -12,6 +22,8 @@ description: The handle start returns — exited, stop, requestDrain, phase, rea
 > [Embed without runMain](/how-to/embed-without-run-main).
 
 ## The type
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type RunningApp<E, Info = never> = {
@@ -46,6 +58,8 @@ and an uncaught exception all settle the same one-shot deferred, and the
 `reason` is whichever arrived first.
 
 ## `Phase`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type Phase =

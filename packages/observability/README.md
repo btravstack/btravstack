@@ -1,3 +1,21 @@
+<!-- doctest: prelude
+import { HttpModule } from "@btravstack/http";
+import { Port } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+import { orderRouter } from "../../module.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+class PlaceOrder extends Port("PlaceOrder")<{
+  readonly execute: (id: string, quantity: number) => AsyncResult<void, never>;
+}> {}
+class OrderRepository extends Port("OrderRepository")<{
+  readonly save: (order: {
+    readonly id: string;
+    readonly quantity: number;
+  }) => AsyncResult<void, never>;
+}> {}
+-->
+
 # @btravstack/observability
 
 > Observability for [`@btravstack/core`](../core), starting with logging: a
@@ -49,7 +67,7 @@ const placeOrder = Provider(PlaceOrder)(
 // fallback to `info`.
 const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 
@@ -90,6 +108,8 @@ argument threaded through the call stack.
 
 `observability({ sink })` replaces the destination; providing `Logger`
 yourself replaces everything. For a deployment that wants pino's throughput:
+
+<!-- doctest: skip — needs `pino`, which no example workspace installs; held by packages/observability/src/pino.spec.ts instead -->
 
 ```ts
 import pino from "pino";

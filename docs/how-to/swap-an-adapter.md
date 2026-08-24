@@ -3,6 +3,38 @@ title: Swap an adapter for tests
 description: Wire one application module against a production adapter or an in-memory one, with the type system choosing the entry point each graph is allowed to use.
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Env } from "@btravstack/config";
+import { Err, Ok, TaggedError, type AsyncResult } from "unthrown";
+type Order = { readonly id: string; readonly total: number };
+class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
+type PoolClient = {
+  readonly findById: (id: string) => Order | undefined;
+  readonly close: () => void;
+};
+class AppConfig extends Port("AppConfig")<{ readonly url: string }> {}
+class GetOrder extends Port("GetOrder")<{
+  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+declare const ConfigModule: Module<AppConfig, never, never>;
+declare const openPool: (deps: {
+  readonly config: ServiceOf<AppConfig>;
+}) => AsyncResult<PoolClient, never>;
+
+class Pool extends Port("Pool")<PoolClient> {}
+class GetOrderInteractor {
+  readonly #orders: ServiceOf<OrderRepository>;
+  constructor({ orders }: { readonly orders: ServiceOf<OrderRepository> }) {
+    this.#orders = orders;
+  }
+  execute(id: string): AsyncResult<Order, OrderNotFound> {
+    return this.#orders.findById(id);
+  }
+}
+import { expect, it } from "vitest";
+-->
+
 # Swap an adapter for tests
 
 > **How-to.** Compose one application module against two adapters and let the
@@ -120,7 +152,7 @@ const built = await Module.build(makeAppModule(InMemoryPersistenceModule));
 The wrong pairing does not compile:
 
 ```ts
-// error TS2554: Expected 3 arguments, but got 1.
+// @ts-expect-error — error TS2554: Expected 3 arguments, but got 1.
 await Module.build(makeAppModule(makePersistenceModule()));
 ```
 

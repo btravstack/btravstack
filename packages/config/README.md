@@ -21,6 +21,14 @@ Not yet published: this repository has not cut a release yet.
 
 ## A slice of the environment, as a port
 
+<!-- doctest: prelude
+import { Port } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+type DatabaseClient = { readonly close: () => void };
+class Database extends Port("Database")<DatabaseClient> {}
+declare const openDatabase: (url: string) => AsyncResult<DatabaseClient, never>;
+-->
+
 ```ts
 import { Config, Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
@@ -28,7 +36,11 @@ import { Module, Provider } from "@btravstack/di";
 const databaseConfig = Config.provider("DatabaseConfig")(
   Config.object({
     url: Config.string("DATABASE_URL"),
-    poolSize: Config.integer("DATABASE_POOL_SIZE", { min: 1, max: 64, default: 8 }),
+    poolSize: Config.integer("DATABASE_POOL_SIZE", {
+      min: 1,
+      max: 64,
+      default: 8,
+    }),
   }),
 );
 
@@ -36,7 +48,13 @@ const Persistence = Module("Persistence")({
   needs: [Env],
   provides: [
     databaseConfig,
-    Provider(Database)({ config: databaseConfig.port }, { acquire: ({ config }) => …, release: … }),
+    Provider(Database)(
+      { config: databaseConfig.port },
+      {
+        acquire: ({ config }) => openDatabase(config.url),
+        release: (db) => db.close(),
+      },
+    ),
   ],
   exports: [Database],
 });

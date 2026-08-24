@@ -3,6 +3,14 @@ title: Serve an oRPC contract over HTTP
 description: Implement an oRPC contract as a di-provided router, compose it with HttpModule, and boot it under the kernel with one runMain call.
 ---
 
+<!-- doctest: prelude
+import { start } from "@btravstack/core";
+import { Module } from "@btravstack/di";
+import { HttpRuntime, http } from "@btravstack/http";
+import { api } from "../../auth.js";
+import { RequestModule } from "../../request-scope.js";
+-->
+
 # Serve an oRPC contract over HTTP
 
 > **How-to.** Take a contract, implement it as `Result`-returning procedures,

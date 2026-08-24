@@ -3,6 +3,17 @@ title: Scopes and resource safety
 description: Why Scope is a phantom port rather than a runtime object you pass around, the close-on-every-path, LIFO, never-mask-the-failure guarantees the scope makes, and how the kernel widens one scope to the whole process.
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider, type Context } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+class Greeter extends Port("Greeter")<{ readonly greet: () => string }> {}
+const App = Module("App")({
+  provides: [Provider(Greeter)({ value: { greet: () => "hi" } })],
+  exports: [Greeter],
+});
+declare const run: (ctx: Context<Greeter>) => AsyncResult<string, never>;
+-->
+
 # Scopes and resource safety
 
 > **Explanation.** This page explains how `di` makes forgetting teardown a

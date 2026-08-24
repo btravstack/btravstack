@@ -3,6 +3,24 @@ title: "@btravstack/amqp"
 description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime, AmqpConfig and AmqpInfo, the unit per delivery, the drain with one deadline, and the three-way ack/nack/dead-letter split it declines to own.
 ---
 
+<!-- doctest: prelude
+import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { Env } from "@btravstack/config";
+import { Logger, observability } from "@btravstack/observability";
+import { OkAsync } from "unthrown";
+import {
+  OrderApplicationModule,
+  OrderRepository,
+  Outbox,
+  PlaceOrder,
+} from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { outboxRelay, relayConfig } from "../../outbox-relay.js";
+import { AuditSlice } from "../../slices/audit/module.js";
+import { NotificationsSlice } from "../../slices/notifications/module.js";
+-->
+
 # @btravstack/amqp
 
 > **Reference.** A complete, structured description of the AMQP starter's
@@ -77,6 +95,9 @@ augmented tuples to di's own `Module(name)`.
 | `exports`                | no       | `[]`                 | the application's own exports; `AmqpRuntime` is added                                                                                                                                                                                             |
 
 The worked composition root, from `examples/order-amqp-worker/src/module.ts`:
+
+<!-- doctest: group=order-amqp-worker -->
+<!-- doctest: defer -->
 
 ```ts
 export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
@@ -208,6 +229,13 @@ nothing minted by hand: the return is di's own `Provider(port)`, so every arm
 is on `AmqpHandlers(contract)`, and the provider carries its port as
 `provider.port` (`HandlerPortOf<C, K>`).
 
+<!-- doctest: isolate
+import { AmqpHandler, AmqpHandlers } from "@btravstack/amqp";
+import { Logger } from "@btravstack/observability";
+import { OkAsync } from "unthrown";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
+-->
+
 ```ts
 const orderNotifications = AmqpHandler(orderContract, "orderNotifications")(
   { logger: Logger },
@@ -240,6 +268,8 @@ const orderHandlers = AmqpHandlers(orderContract)([
 ```
 
 ## `amqp(options)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 const amqp: <TContract extends AnyAmqpContract>(

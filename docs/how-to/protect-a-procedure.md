@@ -3,6 +3,27 @@ title: Protect a procedure
 description: Mark a contract fragment or a procedure with authenticated(), declare the security schemes and scopes it accepts, implement each scheme with HttpAuthenticator, and read the principal in the handler.
 ---
 
+<!-- doctest: prelude
+import { HttpModule } from "@btravstack/http";
+import { Logger, observability } from "@btravstack/observability";
+import { OkAsync, P } from "unthrown";
+import type { Order } from "@btravstack/example-order-domain";
+import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
+import { oc } from "@orpc/contract";
+import { z } from "zod";
+import { api } from "../../auth.js";
+import { createOrderApiClient } from "../../client.js";
+import { Module } from "@btravstack/di";
+declare const OrdersSlice: Module<InstanceType<(typeof ordersController)["port"]>, never, never>;
+declare const CustomersSlice: Module<InstanceType<(typeof customersController)["port"]>, never, never>;
+const customersController = api.HttpController("CustomersController", {
+  find: oc.input(z.object({ id: z.uuidv7() })).output(z.object({ name: z.string() })),
+})({}, { sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) });
+declare const view: (order: Order) => { id: string; quantity: number };
+declare const tenantId: string;
+declare const userId: string;
+-->
+
 # Protect a procedure
 
 > **How-to.** Declare in the contract which security schemes a procedure
@@ -59,6 +80,11 @@ const ordersContract = authenticated({ user: [] })({
       CONFLICT: { data: orderRef },
     }),
 
+  find: oc
+    .input(orderRef)
+    .output(z.object({ id: z.uuidv7(), quantity: z.number() }))
+    .errors({ NOT_FOUND: { data: orderRef } }),
+
   // Replaces the default for itself: a `user` token granting `orders:export`,
   // OR a `service` key with no scopes at all.
   export: authenticated(
@@ -111,6 +137,12 @@ credential from the request's **headers** — not the request: an authenticator
 has no business reading a body, and the narrower argument is what keeps it
 testable without a socket. The scheme's **name** is not stated here; it is the
 key the authenticator sits under in `defineHttp`, so it is written once.
+
+<!-- doctest: isolate
+import { TenantId } from "@btravstack/example-order-domain";
+import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http";
+import { ErrAsync, OkAsync } from "unthrown";
+-->
 
 ```ts
 // src/auth.ts — one file per application

@@ -29,6 +29,13 @@ features:
     details: Every async surface is an unthrown AsyncResult, the startup error channel is the application's own, and the process exit code is decided in exactly one place — runMain.
 ---
 
+<!-- doctest: prelude
+import { observability } from "@btravstack/observability";
+import { OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { api } from "../../auth.js";
+-->
+
 ## At a glance
 
 `examples/order-api`'s **orders slice**, served on its own and condensed to one
@@ -111,7 +118,7 @@ const ordersRouter = api.HttpRouter(ordersContract)(
 // The composition root. The runtime is a service of this module.
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  imports: [OrderApplicationModule, OrderPersistenceModule],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
 });
 
 // main.ts — the whole process.

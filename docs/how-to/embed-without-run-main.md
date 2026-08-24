@@ -3,6 +3,13 @@ title: Embed without runMain
 description: Use start directly for a RunningApp handle, fold ExitReport into an exit code yourself, and avoid the silent exit 0 after a crash.
 ---
 
+<!-- doctest: prelude
+import { TestRuntimePort } from "@btravstack/testing";
+import { Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
+declare const TickerApp: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
+-->
+
 # Embed without `runMain`
 
 > **How-to.** Boot with `start` when you want the `RunningApp` itself — a dev

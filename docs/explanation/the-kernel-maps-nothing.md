@@ -53,6 +53,8 @@ error becomes a status is the `mapErrCases` in each procedure. From
 [`examples/order-api`](/examples/order-api), whose `orders` fragment is
 `authenticated`, so the tenant comes off the principal rather than the input:
 
+<!-- doctest: skip — a mapErrCases excerpt of the router shown in full in docs/reference/http.md -->
+
 ```ts
       place: ({ errors, context }, input) =>
         place
@@ -93,6 +95,8 @@ that way**: it is nacked once, immediately, straight to the dead-letter queue,
 never touching the retry budget. So an infrastructure failure a handler did not
 model — a database that went away — is parked on its first attempt exactly like
 a permanent domain error, unless the handler recovers it itself:
+
+<!-- doctest: skip — a recoverDefect excerpt of the handler shown in full in docs/how-to/consume-amqp-messages.md -->
 
 ```ts
           .recoverDefect((cause) =>

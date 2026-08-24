@@ -12,6 +12,8 @@ description: Runtime, RuntimeHost, RunUnit, Serving, RuntimePort and RuntimeStar
 
 ## `Runtime<Resolves, Info>`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 type Runtime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
@@ -35,6 +37,8 @@ resolves nothing gets a context it can read nothing from.
 
 ## `RuntimeHost<Resolves>`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 type RuntimeHost<Resolves extends AnyPort> = {
   readonly ctx: Context<InstanceType<Resolves>>;
@@ -47,6 +51,8 @@ type RuntimeHost<Resolves extends AnyPort> = {
 that context.
 
 ## `RunUnit<Resolves>`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type RunUnit<Resolves extends AnyPort> = <T, E>(
@@ -70,6 +76,8 @@ settles.
 
 ## `Serving<Info>`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 type Serving<Info = never> = {
   readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
@@ -90,6 +98,8 @@ and is threaded, not dropped.
 
 ## `RuntimePort`, `RuntimeInfoOf` and `RuntimeStartFailed`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 const RuntimePort = Port("Runtime"); // generic: no fixed service
 
@@ -102,6 +112,8 @@ boots exactly one — while each carries its own `Resolves`/`Info` in the type. 
 runtime package declares its own class over it and ships a module providing it.
 `RuntimeInfoOf<X>` reads the `Info` back out of a module's exports; it is the
 only helper type of that family the package exports.
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
@@ -116,6 +128,8 @@ answers it with `runtime: "probes"` when the probe server cannot bind or
 `PROBE_PORT` is malformed (its `cause` then a `ConfigInvalid`).
 
 ## Units of work
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type UnitMeta = {
@@ -161,6 +175,8 @@ const currentUnit: () => UnitRecord | undefined;
 | `currentUnit()` | The ambient read; `undefined` outside a unit. Its legitimate readers are infrastructure adapters (a logger, an OTel exporter, a database adapter) — see [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit). Not enforced by lint today. |
 
 ## `Clock` and `systemClock`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type Clock = {

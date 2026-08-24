@@ -3,6 +3,20 @@ title: "@btravstack/http"
 description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
+<!-- doctest: prelude
+import { contract, type OrderView } from "@btravstack/example-order-api-contract";
+import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { Logger } from "@btravstack/observability";
+import type { Order } from "@btravstack/example-order-domain";
+import { Module } from "@btravstack/di";
+import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http";
+import { ErrAsync, OkAsync, P } from "unthrown";
+import { customersController } from "../../slices/customers/controller.js";
+import { ordersController } from "../../slices/orders/controller.js";
+declare const view: (order: Order) => OrderView;
+-->
+
 # @btravstack/http
 
 > **Reference.** A complete, structured description of the HTTP starter's
@@ -80,6 +94,14 @@ a plain module.
 
 The worked composition root, from `examples/order-api/src/module.ts`:
 
+<!-- doctest: isolate
+import { HttpModule } from "@btravstack/http";
+import { Logger, observability } from "@btravstack/observability";
+import { orderRouter } from "../../module.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+-->
+
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
@@ -131,6 +153,8 @@ keyed form), and a fragment is a contract, so the same `sync` reads either way.
 `contract.orders` is marked `authenticated({ user: [] })`, so `api` here is the
 application's own `defineHttp` binding, from its `src/auth.ts`, and the tenant
 comes off `context.principal` rather than off the input:
+
+<!-- doctest: defer -->
 
 ```ts
 export const ordersRouter = api.HttpRouter(contract.orders)(
@@ -204,6 +228,8 @@ For a `contract` shaped `Record<string, RouterContract>`, `HttpRouter`
 also takes a **record of controllers**, one per top-level key, instead of
 `(deps, { sync })`:
 
+<!-- doctest: defer -->
+
 ```ts
 export const orderRouter = api.HttpRouter(contract)({
   orders: ordersController,
@@ -216,6 +242,8 @@ returns. The call is **exact**: `M` is constrained to
 `{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
 RequirementsOf<C>>, Schemes> }`, and the `controllers`
 **parameter** itself is typed:
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 M & {
@@ -267,6 +295,8 @@ the worked recipe.
 
 ## `api.HttpController(name, fragment)`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 const HttpController: <const Name extends string, C extends RouterContract>(
   name: Name,
@@ -297,10 +327,14 @@ back on `provider.port` — the shape `Config.provider("RelayConfig")(schema)`
 already uses — so a slice's module exports `controller.port` rather than
 naming a port of its own:
 
+<!-- doctest: defer -->
+
 ```ts
 export const OrdersSlice = Module("OrdersSlice")({
+  needs: [Logger],
+  imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [ordersController],
-  exports: [ordersController.port],
+  exports: [ordersController],
 });
 ```
 
@@ -312,6 +346,12 @@ own walk wraps each leaf in `.result(...)` when the keyed form composes the
 router. **A fragment is itself a valid contract**, so a slice lifts out into a
 process of its own without its controller changing at all — the lifted root
 declares the controller's own port and hands back what it built:
+
+<!-- doctest: isolate
+import { contract } from "@btravstack/example-order-api-contract";
+import { api } from "../../auth.js";
+import { ordersController } from "../../slices/orders/controller.js";
+-->
 
 ```ts
 export const ordersRouter = api.HttpRouter(contract.orders)(
@@ -367,6 +407,8 @@ existed, so the common case pays nothing for the feature. The multi-scheme case
 is narrowed with a `switch` whose missing arm leaves a path returning nothing,
 which the handler's own return type refuses:
 
+<!-- doctest: skip — an excerpt of the handler shown in full in the fence above -->
+
 ```ts
 export: ({ context }) => {
   switch (context.principal.scheme) {
@@ -384,6 +426,8 @@ How **one scheme** is implemented. It hands back a description `defineHttp`
 binds to that scheme's port; the scheme's **name** is not stated here, because
 it is the key the authenticator sits under in `defineHttp({ authenticators })`
 — written once.
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type Grant<P, Scope extends string> = {
@@ -567,6 +611,8 @@ sides, and that is all it claims. See
 [Protect a procedure](/how-to/protect-a-procedure).
 
 ## `http(options)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 const http: (

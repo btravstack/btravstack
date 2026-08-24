@@ -13,6 +13,8 @@ description: The signature of start, every StartOptions field with its default, 
 
 ## Signature
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 const start: <X, E, UnitX = never, UnitNeeds = never>(
   module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
@@ -81,6 +83,8 @@ already fired.
 argument ever carries it. It is `unknown` — and therefore invisible — when the
 module is boot-able, and one of three sentences otherwise, so a bad composition
 fails to match the parameter type at the call site.
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [

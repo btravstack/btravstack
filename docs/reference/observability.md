@@ -3,6 +3,24 @@ title: "@btravstack/observability"
 description: The complete surface of @btravstack/observability — the Logger port, createLogger, jsonSink, pinoSink, the observability starter, LOG_LEVEL and kernelEvents.
 ---
 
+<!-- doctest: prelude
+import { runMain } from "@btravstack/core";
+import { Config } from "@btravstack/config";
+import { HttpModule } from "@btravstack/http";
+import {
+  Logger,
+  createLogger,
+  jsonSink,
+  kernelEvents,
+  logLevel,
+  observability,
+} from "@btravstack/observability";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+import { orderRouter } from "../../module.js";
+import { RequestModule } from "../../request-scope.js";
+-->
+
 # @btravstack/observability
 
 > **Reference.** A complete, structured description of
@@ -35,6 +53,8 @@ The package itself has no runtime dependencies: the default sink is
 Standard Schema.
 
 ## `Logger` and `LoggerService`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 class Logger extends Port("Logger")<LoggerService> {}
@@ -119,6 +139,8 @@ package's whole argument:
 
 ## `Level`, `LEVELS` and `Attributes`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 type Level = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 const LEVELS: readonly Level[];
@@ -140,6 +162,8 @@ whatever it is handed. Anything else is the caller's to render; a failure has
 a channel of its own.
 
 ## `createLogger(sink, level?)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 createLogger(sink: Sink, level: Level = "info"): LoggerService;
@@ -164,6 +188,8 @@ A line below `level` is dropped before the sink is called and before
 `currentUnit()` is read.
 
 ## `Line` and `Sink`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type Line = {
@@ -194,6 +220,8 @@ A `Sink` is allowed to throw. `createLogger` is what makes that safe, which is
 why a sink is a plain function with no error channel of its own.
 
 ## `jsonSink(stream?)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 jsonSink(stream?: { readonly write: (chunk: string) => unknown }): Sink;
@@ -234,6 +262,8 @@ and `cause: "[unserialisable]"` rather than costing the line.
 
 ## `observability(options?)`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 observability(options?: ObservabilityOptions):
   Module<Logger | LoggerConfig, ConfigInvalid, Env>;
@@ -252,7 +282,7 @@ application and export `Logger` if anything outside the root reads it —
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```
@@ -270,6 +300,8 @@ An application that wants its own implementation entirely does not import
 this module and provides `Logger` itself. Nothing else in the graph can tell.
 
 ## `LoggerConfig` and `LOG_LEVEL`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 class LoggerConfig extends Port("LoggerConfig")<LoggerSettings> {}
@@ -294,6 +326,8 @@ is an error. See [`@btravstack/config`](/reference/config).
 
 ### `logLevel(options?)`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 logLevel(options?: { readonly default?: Level }): ConfigField<Level>;
 ```
@@ -311,6 +345,8 @@ const appConfig = Config.provider("AppConfig")(
 ```
 
 ## `kernelEvents(logger)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 kernelEvents(logger: LoggerService): EventSink;
@@ -364,6 +400,8 @@ watching — so it logs at the default `info`.
 
 ## `pinoSink(logger)`
 
+<!-- doctest: skip — needs `pino`, which no example workspace installs; held by packages/observability/src/pino.spec.ts instead -->
+
 ```ts
 import { pinoSink } from "@btravstack/observability/pino";
 
@@ -372,6 +410,8 @@ pinoSink(logger: import("pino").Logger): Sink;
 
 A `Sink` over a pino logger, behind a subpath so `pino` can be an **optional**
 peer: a consumer that never imports it never installs it.
+
+<!-- doctest: skip — needs `pino`, which no example workspace installs; held by packages/observability/src/pino.spec.ts instead -->
 
 ```ts
 import pino from "pino";

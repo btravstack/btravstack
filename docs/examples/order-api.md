@@ -3,6 +3,26 @@ title: Order API example
 description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, HttpController and full vertical down to Prisma, an auth.ts declaring two schemes and a scope through defineHttp, composed by the keyed HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
 ---
 
+<!-- doctest: prelude
+import { runMain } from "@btravstack/core";
+import { Module, Port, Provider } from "@btravstack/di";
+import { HttpModule } from "@btravstack/http";
+import { OkAsync, P } from "unthrown";
+import {
+  Logger,
+  createLogger,
+  jsonSink,
+  kernelEvents,
+  observability,
+} from "@btravstack/observability";
+import type { Order } from "@btravstack/example-order-domain";
+import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { customersController } from "../../slices/customers/controller.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+declare const view: (order: Order) => { id: string; quantity: number };
+-->
+
 # Order API (HTTP)
 
 [`examples/order-api`](https://github.com/btravstack/start/tree/main/examples/order-api)
@@ -129,6 +149,12 @@ src/auth.ts             the two schemes, and the one defineHttp call that declar
 
 `auth.ts` is where each scheme's identity is stated and its authenticator
 written, and where the one `defineHttp` call the application makes lives:
+
+<!-- doctest: isolate
+import { TenantId } from "@btravstack/example-order-domain";
+import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http";
+import { ErrAsync, OkAsync } from "unthrown";
+-->
 
 ```ts
 import { TenantId } from "@btravstack/example-order-domain";
@@ -411,6 +437,8 @@ composition root and one fewer import, not a rewrite.
 
 `module.ts` is a list of **slices**, plus what no slice owns:
 
+<!-- doctest: defer -->
+
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
@@ -475,6 +503,8 @@ so nothing is passed in from `main.ts`, and a spec boots this very module with
 
 `main.ts` is one statement:
 
+<!-- doctest: defer -->
+
 ```ts
 await runMain(OrderApi, {
   unit: RequestModule,
@@ -538,6 +568,8 @@ request's own trace id — and no handler code manages the fork. See
 `test-fixtures.ts` starts from `@btravstack/testing`'s `bootFixture` and
 wraps it in `serve`, where every spec starts, real composition root included:
 
+<!-- doctest: skip — an excerpt of src/test-fixtures.ts, which the gate compiles and runs -->
+
 ```ts
 export const it = test.extend<ApiFixtures>({
   boot: bootFixture({
@@ -572,6 +604,8 @@ as a field rather than parsing a prefix out of a string. The suite then pins wha
 `Err` holding an inferable `CONFLICT`, a value the client matches by code, not
 a thrown 500:
 
+<!-- doctest: skip — an assertion excerpt of src/api.spec.ts, which the gate runs -->
+
 ```ts
 expect(conflict).toBeErrWith(
   expect.objectContaining({
@@ -600,6 +634,8 @@ router actually mounted both controllers rather than one.
 `needs-gate.test-d.ts` is type-checked, never executed. It pins the two
 directions of `start`'s own gate and di's, side by side:
 
+<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the NO RUNTIME arm -->
+
 ```ts
 // @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 const _missingRuntime = start(RuntimelessApi, options);
@@ -614,6 +650,8 @@ even so, deliberately: the contract
 marks `orders`, so a graph carrying the router without them has an
 unmet need too, and an arm that could fail either way pins neither gate. That
 spread is exactly what `HttpModule` does for a root that uses the sugar.
+
+<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the missing-router arm -->
 
 ```ts
 const RouterlessApi = Module("RouterlessApi")({
@@ -636,6 +674,8 @@ and the diagnostic names the port:
 `Module.scoped`; conflating the two is easy and the distinction is the point of
 having both pinned here. There is no `UNSATISFIED RUNTIME PORTS` arm, because
 the shipped runtime resolves nothing.
+
+<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the UNSATISFIED UNIT NEEDS arm -->
 
 ```ts
 // @ts-expect-error — UNSATISFIED UNIT NEEDS: the module does not export Logger for RequestModule to read.

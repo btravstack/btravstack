@@ -3,6 +3,48 @@ title: Keep a port private
 description: Use a module's exports list as the visibility boundary — internal ports stay unnameable outside the module, enforced at compile time, even though the built container is one flat map.
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Env } from "@btravstack/config";
+import { Err, Ok, TaggedError, type AsyncResult } from "unthrown";
+type Order = { readonly id: string; readonly total: number };
+class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
+type PoolClient = {
+  readonly findById: (id: string) => Order | undefined;
+  readonly close: () => void;
+};
+class AppConfig extends Port("AppConfig")<{ readonly url: string }> {}
+class OrderRepository extends Port("OrderRepository")<{
+  readonly findById: (id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+class GetOrder extends Port("GetOrder")<{
+  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+declare const ConfigModule: Module<AppConfig, never, never>;
+declare const openPool: (deps: {
+  readonly config: ServiceOf<AppConfig>;
+}) => AsyncResult<PoolClient, never>;
+
+class Pool extends Port("Pool")<PoolClient> {}
+class Metrics extends Port("Metrics")<{ readonly count: () => void }> {}
+class Audit extends Port("Audit")<{ readonly record: () => void }> {}
+class GetOrderInteractor {
+  readonly #orders: ServiceOf<OrderRepository>;
+  constructor({ orders }: { readonly orders: ServiceOf<OrderRepository> }) {
+    this.#orders = orders;
+  }
+  execute(id: string): AsyncResult<Order, OrderNotFound> {
+    return this.#orders.findById(id);
+  }
+}
+declare const Config: Module<AppConfig, never, Env>;
+declare const makeRepository: (pool: ServiceOf<Pool>) => ServiceOf<OrderRepository>;
+declare const makeAudit: (deps: { readonly pool: ServiceOf<Pool> }) => ServiceOf<Audit>;
+declare const ctx: import("@btravstack/di").Context<GetOrder>;
+declare const DatabaseModule: Module<Pool, never, Env>;
+declare const CacheModule: Module<Metrics, never, Env>;
+-->
+
 # Keep a port private
 
 > **How-to.** Hide a module's internals — a pool, a raw client, a parsed
@@ -43,6 +85,7 @@ const Persistence = Module("Persistence")({
 Any module importing `Persistence` sees exactly one port:
 
 ```ts
+// @ts-expect-error — UNDECLARED NEEDS: `Pool` is neither provided, imported, nor named in `needs`.
 const App = Module("App")({
   imports: [Persistence],
   provides: [
@@ -77,6 +120,7 @@ And on a built context:
 
 ```ts
 ctx.get(GetOrder); // compiles
+// @ts-expect-error — the context's channel holds only App's exports
 ctx.get(Pool); // does not compile
 ```
 
@@ -100,8 +144,12 @@ The `exports` list cannot lie:
 ```ts
 Module("Persistence")({
   provides: [
-    Provider(OrderRepository)({ pool: Pool }, { sync: makeRepository }),
+    Provider(OrderRepository)(
+      { pool: Pool },
+      { sync: ({ pool }) => makeRepository(pool) },
+    ),
   ],
+  // @ts-expect-error — NOT EXPORTABLE: `Metrics` is neither provided nor imported.
   exports: [OrderRepository, Metrics], // Metrics: neither provided nor imported
 });
 ```

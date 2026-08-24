@@ -3,6 +3,18 @@ title: Order Temporal worker example
 description: The orchestration deployment — two saga slices, FulfillmentSlice and BillingSlice, composed by TemporalActivities over one task queue, a chargeOrder saga compensating with a refund, mapErrCases making a domain Err a nonRetryable contract error, a namespace per spec file on the shared Temporal server, and a drain that honours the kernel's deadline.
 ---
 
+<!-- doctest: prelude
+import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal";
+import { P } from "unthrown";
+import { observability } from "@btravstack/observability";
+import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { PaymentService } from "@btravstack/example-order-application";
+import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
+import { fulfillOrder } from "../../slices/fulfillment/activities.js";
+import { FulfillmentSlice } from "../../slices/fulfillment/module.js";
+import { BillingSlice } from "../../slices/billing/module.js";
+-->
+
 # Order Temporal worker
 
 [`examples/order-temporal-worker`](https://github.com/btravstack/start/tree/main/examples/order-temporal-worker)
@@ -50,6 +62,8 @@ port class, no name, since the contract key IS the port's name — and the piece
 is typed by the ONE workflow it implements: an activity the workflow does not
 declare is a compile error in that slice's own file, not a defect
 `declareActivitiesHandler` reports at startup.
+
+<!-- doctest: group=order-temporal-worker -->
 
 ```ts
 export const chargeOrder = TemporalWorkflowActivities(
@@ -140,6 +154,17 @@ authorizePayment ──▶ capturePayment ──▶ done
                           └── refundPayment
 ```
 
+<!-- doctest: isolate
+import { orderContract } from "@btravstack/example-order-temporal-contract";
+import {
+  ACTIVITY_CANCELLED_ERROR_TAG,
+  ACTIVITY_ERROR_TAG,
+  declareWorkflow,
+  propagateActivityFailure,
+} from "@temporal-contract/worker/workflow";
+import { ErrAsync, P } from "unthrown";
+-->
+
 ```ts
 export const chargeOrder = declareWorkflow({
   workflowName: "chargeOrder",
@@ -224,6 +249,8 @@ real persistence: after a refusal, the spec reads the database through the
 same repository the saga used and finds the placement gone. `ShippingService.arrange`
 is the deployment's one kernel touchpoint:
 
+<!-- doctest: skip — an excerpt of src/fulfillment.ts, which the gate compiles and runs -->
+
 ```ts
 arrange: (orderId) =>
   currentUnit()?.signal.aborted === true
@@ -259,6 +286,8 @@ queue and a workflow bundle memoised per spec file — and composes
 `BillingModule` beside whichever fulfillment module the test hands it, since
 billing is never swapped:
 
+<!-- doctest: skip — an excerpt of src/test-fixtures.ts, which the gate compiles and runs -->
+
 ```ts
 const worker = TemporalModule("StubTemporalWorker")({
   contract,
@@ -283,6 +312,8 @@ the duplicate the API answers `CONFLICT` for arrives at the client as
 `OrderAlreadyPlaced`, rehydrated by name with its payload intact; and the
 billing saga answers on the same task queue as the fulfillment one —
 proving every piece was mounted under its own key:
+
+<!-- doctest: skip — an assertion excerpt of src/temporal-runtime.spec.ts, which the gate runs -->
 
 ```ts
 const { client } = await serve(fulfilling.module);
@@ -315,6 +346,8 @@ shutdown to escalate to. See
 fails to match the sentence intersected onto `start`'s `module` parameter) and
 the unmet-need refusal spelled with the `temporal()` primitive, since the sugar
 cannot leave the activities out at all:
+
+<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the unmet-need arm -->
 
 ```ts
 // @ts-expect-error — UNMET NEED: the module's needs channel carries the activities port, which nothing provides.

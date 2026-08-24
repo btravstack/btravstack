@@ -14,6 +14,8 @@ description: What exited resolves to — reason, drain, teardownErrors, uptimeMs
 
 ## `ExitReport`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 type ExitReport = {
   readonly reason: "signal" | "runtimeStopped" | "uncaught";
@@ -54,6 +56,8 @@ the report object is built and before a caller can observe it. Read it once
 :::
 
 ## `DrainReport`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type DrainReport = {

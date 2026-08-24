@@ -3,6 +3,40 @@ title: The order application example
 description: The layers every deployment boots — order-domain, order-application, order-infrastructure — and the three contract packages beside them; entities and errors as values, use cases as providers over caller-declared ports, a Prisma repository with the outbox in the same transaction, and the type tests that pin the arrows.
 ---
 
+<!-- doctest: prelude
+import { Entity } from "@btravstack/entity";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Logger } from "@btravstack/observability";
+import {
+  DuplicateOrder,
+  InvalidOrderId,
+  InvalidQuantity,
+  OrderId,
+  OrderNotFound,
+  Quantity,
+} from "@btravstack/example-order-domain";
+import {
+  CustomerRepository,
+  FindCustomer,
+  FindOrder,
+  PlaceOrder,
+} from "@btravstack/example-order-application";
+import {
+  databaseConfig,
+  openDatabase,
+  type OrderDatabaseClient,
+} from "@btravstack/example-order-infrastructure";
+import { P, type AsyncResult, type Result } from "unthrown";
+
+class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
+declare const PlaceOrderInteractor: new (deps: {
+  readonly repository: ServiceOf<OrderRepository>;
+  readonly logger: ServiceOf<Logger>;
+}) => ServiceOf<PlaceOrder>;
+declare const findOrderProvider: Provider<FindOrder, never, OrderRepository | Logger>;
+declare const findCustomerProvider: Provider<FindCustomer, never, CustomerRepository>;
+-->
+
 # The order application
 
 [`examples/order-domain`](https://github.com/btravstack/start/tree/main/examples/order-domain),
@@ -157,11 +191,13 @@ The module — one per vertical, not one for the layer — provides neither
 
 ```ts
 export const OrderApplicationModule = Module("OrderApplication")({
+  needs: [OrderRepository, Logger],
   provides: [placeOrderProvider, findOrderProvider],
   exports: [PlaceOrder, FindOrder],
 });
 
 export const CustomerApplicationModule = Module("CustomerApplication")({
+  needs: [CustomerRepository],
   provides: [findCustomerProvider],
   exports: [FindCustomer],
 });
@@ -199,10 +235,13 @@ provider — acquired when the scope opens, released when it closes, so the
 kernel's teardown reaches a real `$disconnect()`:
 
 ```ts
-export const orderDatabaseProvider = Provider(OrderDatabase)({
-  acquire: () => openDatabase(),
-  release: (db) => db.$disconnect(),
-});
+export const orderDatabaseProvider = Provider(OrderDatabase)(
+  { config: databaseConfig.port },
+  {
+    acquire: ({ config }) => openDatabase(config.url),
+    release: (db) => db.$disconnect(),
+  },
+);
 ```
 
 `OrderDatabase` lives in an internal `DatabaseModule` that the two persistence
@@ -214,6 +253,8 @@ provider reference behind both, so the two verticals share one connection. The r
 transactional outbox's write side — the row and the fact of the row commit
 together or not at all — and its `mapErrCases` is where Prisma's vocabulary
 becomes the domain's:
+
+<!-- doctest: skip — an object-property excerpt of prisma-order-repository.ts, which the gate compiles in full -->
 
 ```ts
 save: (tenantId, order) =>
@@ -319,6 +360,8 @@ no worker or broker in scope.
 **`layering.test-d.ts`** — in `order-domain` and in each contract package —
 pins a package boundary. The domain's:
 
+<!-- doctest: skip — quotes order-domain's layering.test-d.ts, the real gate: its @ts-expect-error sits on an import, which extraction would hoist away from it -->
+
 ```ts
 // @ts-expect-error — the domain layer must not be able to reach the application
 // layer: order-domain does not depend on it, so the specifier does not resolve.
@@ -335,6 +378,8 @@ activities or handlers that implement it.
 **`needs-gate.test-d.ts`** in `order-application` pins **di's**
 `UNSATISFIED DEPENDENCIES` gate on `Module.scoped` — a different gate from
 `start`'s, and easy to conflate with it:
+
+<!-- doctest: skip — quotes order-application's needs-gate.test-d.ts, the real gate for di's UNSATISFIED DEPENDENCIES arm -->
 
 ```ts
 // Negative: nothing provides `OrderRepository`, so di's rest parameter is a

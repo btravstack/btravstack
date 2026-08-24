@@ -3,6 +3,12 @@ title: Configure from the environment
 description: Bind a typed configuration slice from environment variables with @btravstack/config, validated once as the graph is built and injected like any other service.
 ---
 
+<!-- doctest: prelude
+import { start } from "@btravstack/core";
+import { OrderApi } from "../../module.js";
+const App = OrderApi;
+-->
+
 # Configure from the environment
 
 > **How-to.** Turn a handful of environment variables into a typed service the
@@ -190,6 +196,15 @@ The kernel's own `PROBE_PORT` is bound the same way; a bad one is a
 `Config.object` produces a Standard Schema, and `Config.provider` accepts any
 — `zod`, `valibot`, `arktype` — as long as it takes the flat environment record
 and produces the port's service:
+
+<!-- doctest: isolate
+import { Config } from "@btravstack/config";
+import { Port } from "@btravstack/di";
+class CacheConfig extends Port("CacheConfig")<{
+  readonly url: string;
+  readonly ttlSeconds: number;
+}> {}
+-->
 
 ```ts
 import { z } from "zod";

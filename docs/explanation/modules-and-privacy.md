@@ -3,6 +3,40 @@ title: Modules and privacy
 description: The built container is one flat map at runtime — module privacy is the type system withholding names, and why that is both enough and the point.
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider, type Context } from "@btravstack/di";
+import { Config, Env } from "@btravstack/config";
+import type { AsyncResult } from "unthrown";
+type Order = { readonly id: string };
+class OrderRepository extends Port("OrderRepository")<{
+  readonly find: (id: string) => AsyncResult<Order, never>;
+}> {}
+class Pool extends Port("Pool")<{ readonly close: () => void }> {}
+declare const ctx: Context<OrderRepository>;
+class Logger extends Port("Logger")<{ readonly info: (message: string) => void }> {}
+const orderAudit = Provider(Port("OrderAudit")<{ readonly record: () => void }>)(
+  { logger: Logger },
+  { sync: ({ logger }) => ({ record: () => logger.info("audited") }) },
+);
+class OrderDatabase extends Port("OrderDatabase")<{ readonly query: () => void }> {}
+class Outbox extends Port("Outbox")<{ readonly push: () => void }> {}
+const databaseConfig = Config.provider("DatabaseConfig")(
+  Config.object({ url: Config.string("DATABASE_URL") }),
+);
+const orderDatabaseProvider = Provider(OrderDatabase)(
+  { config: databaseConfig.port },
+  { sync: () => ({ query: () => {} }) },
+);
+const orderRepositoryProvider = Provider(OrderRepository)(
+  { db: OrderDatabase },
+  { sync: () => ({ find: () => undefined as never }) },
+);
+const outboxProvider = Provider(Outbox)(
+  { db: OrderDatabase },
+  { sync: () => ({ push: () => {} }) },
+);
+-->
+
 # Modules and privacy
 
 > **Explanation.** This page explains what enforces a module's `exports`
@@ -38,6 +72,7 @@ by the module's `Exports` channel, and `ctx.get` only accepts ports in `X`:
 
 ```ts
 ctx.get(OrderRepository); // exported — compiles
+// @ts-expect-error — Pool is not in X: the context's channel holds only the exports
 ctx.get(Pool); // does not compile — Pool is not in X
 ```
 

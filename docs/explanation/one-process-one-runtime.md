@@ -3,6 +3,11 @@ title: One process, one runtime
 description: Why a process boots exactly one runtime, why the runtime is one port rather than a list, and what a Temporal worker taught the drain.
 ---
 
+<!-- doctest: prelude
+import { RuntimePort, type Runtime } from "@btravstack/core";
+type HttpInfo = { readonly port: number };
+-->
+
 # One process, one runtime
 
 > **Explanation.** This page explains the kernel's first thesis and the design

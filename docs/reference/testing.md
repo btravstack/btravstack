@@ -31,6 +31,8 @@ kernel and its peers, and a runner with the same `use` shape can consume it.
 
 ## `bootFixture(defaults?)`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 const bootFixture: (
   defaults?: BootDefaults,
@@ -86,6 +88,8 @@ may be asserting. `stop()` and the await are no-ops for an application the
 test already drove to exit.
 
 ## `tapped(module, ports)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 const tapped: <X, E, N, const P extends readonly AnyPort[]>(
@@ -158,6 +162,8 @@ A tap is for the **services** a spec drives or asserts against.
 `examples/order-amqp-worker` taps the writer it places orders through and the
 outbox it reads back, on a root composed to record what its logger wrote:
 
+<!-- doctest: skip — needs `@btravstack/amqp`, which packages/core does not install; the shape it shows is exercised by examples/order-amqp-worker's specs -->
+
 ```ts
 const lines: Line[] = [];
 const recording = AmqpModule("RecordingAmqpWorker")({
@@ -187,6 +193,8 @@ for inside the graph. See
 [Log and correlate](/how-to/log-and-correlate).
 
 ## `testRuntime(name?)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 const testRuntime: (name?: string) => TestRuntime; // name defaults to "test"
@@ -231,6 +239,8 @@ abort tests tests of the kernel, not of the fake.
 
 ## `createFakeClock(start?)`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 const createFakeClock: (start?: number) => FakeClock; // start defaults to 0
 
@@ -256,6 +266,24 @@ Timing in the kernel's own suite is asserted through this clock, never a real
 
 The kernel-level pieces, composed as `packages/core`'s compiled README sample
 does:
+
+<!-- doctest: isolate
+import { Module, Port, Provider } from "@btravstack/di";
+import { Ok } from "unthrown";
+import { expect, test } from "vitest";
+import {
+  TestRuntimePort,
+  bootFixture,
+  createFakeClock,
+  testRuntime,
+  type Boot,
+} from "@btravstack/testing";
+class Greeter extends Port("Greeter")<{ readonly greet: () => string }> {}
+const AppModule = Module("App")({
+  provides: [Provider(Greeter)({ value: { greet: () => "hi" } })],
+  exports: [Greeter],
+});
+-->
 
 ```ts
 import { Module } from "@btravstack/di";

@@ -1,3 +1,19 @@
+<!-- doctest: prelude
+import { TestRuntimePort } from "@btravstack/testing";
+import { Env } from "@btravstack/config";
+import { Port, type Module, type Scope } from "@btravstack/di";
+class Logger extends Port("Logger")<{
+  readonly info: (message: string) => void;
+  readonly lines: () => readonly string[];
+}> {}
+declare const OrderApi: Module<
+  InstanceType<typeof TestRuntimePort> | Logger,
+  never,
+  Env | Scope
+>;
+declare const RequestModule: Module<never, never, Logger>;
+-->
+
 # @btravstack/testing
 
 > Test the applications [`@btravstack/core`](../core) boots. A `test.extend`

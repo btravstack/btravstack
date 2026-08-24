@@ -3,6 +3,28 @@ title: Manage a resource's lifetime
 description: Acquire a connection once, release it on every path out, and run start/stop hooks at the right moments — with the compiler refusing any graph that could leak.
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider, type Context, type ScopedOptions, type Scope, type ServiceOf } from "@btravstack/di";
+import { Env } from "@btravstack/config";
+import type { AsyncResult } from "unthrown";
+class AppConfig extends Port("AppConfig")<{ readonly dbUrl: string }> {}
+type PoolClient = { readonly close: () => void };
+class Database extends Port("Database")<PoolClient> {}
+declare const Config: Module<AppConfig, never, Env>;
+declare const openPool: (url: string) => AsyncResult<PoolClient, never>;
+type CacheClient = { readonly warm: () => void; readonly flush: () => void };
+class Cache extends Port("Cache")<CacheClient> {}
+declare const connectCache: (
+  config: ServiceOf<AppConfig>,
+) => AsyncResult<CacheClient, never>;
+declare const App: Module<Database, never, Scope>;
+declare const runServer: (ctx: Context<Database>) => AsyncResult<void, never>;
+declare const use: (ctx: Context<Database>) => AsyncResult<void, never>;
+declare const logger: {
+  readonly error: (data: unknown, message: string) => void;
+};
+-->
+
 # Manage a resource's lifetime
 
 > **How-to.** Own a service that must be torn down — a pool, a file handle, a

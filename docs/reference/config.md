@@ -16,6 +16,8 @@ nothing else. Every export is named below.
 
 ## `Env` and `Environment`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 type Environment = Readonly<Record<string, string | undefined>>;
 class Env extends Port("Env")<Environment> {}
@@ -32,6 +34,8 @@ its own wins.
 ## Fields
 
 A field reads **one** variable into a typed value:
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type ConfigField<T> = {
@@ -69,6 +73,8 @@ precedence is **explicit > environment > default, per field**:
 
 ## `Config.object(fields)`
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 Config.object<F extends Record<string, ConfigField<unknown>>>(fields: F):
   ConfigSchema<Environment, { readonly [K in keyof F]: /* the field's T */ }>
@@ -86,6 +92,8 @@ A record of fields, as a **Standard Schema v1** over the environment
 
 `ConfigSchema<Input, Output>` is the structural slice of Standard Schema this
 package speaks, restated locally so it depends on nothing:
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type ConfigSchema<Input, Output> = {
@@ -115,6 +123,8 @@ bring no schema library at all.
 
 Two overloads over one body, curried like di's own `Provider(port)(…)`: the
 first call names the port, the second says how it is bound.
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 Config.provider<P extends AnyPort>(port: P):

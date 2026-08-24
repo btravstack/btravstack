@@ -3,6 +3,25 @@ title: Split a worker into slices
 description: Give each consumer or workflow its own slice, and compose them into one handlers or activities record with AmqpHandler or TemporalWorkflowActivities.
 ---
 
+<!-- doctest: prelude
+import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { Config, Env } from "@btravstack/config";
+import { Module } from "@btravstack/di";
+import { Logger, observability } from "@btravstack/observability";
+import { OkAsync } from "unthrown";
+import {
+  OrderApplicationModule,
+  OrderRepository,
+  Outbox,
+  PlaceOrder,
+} from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { outboxRelay, relayConfig } from "../../outbox-relay.js";
+import { orderAudit } from "../../slices/audit/handler.js";
+import { AuditSlice } from "../../slices/audit/module.js";
+-->
+
 # Split a worker into slices
 
 > **How-to.** For an AMQP consumer or a Temporal worker that has outgrown one
@@ -49,6 +68,8 @@ name — and the second is di's own `Provider(port)(deps, { sync })`, so
 record whose message or input has drifted is a compile error inside the
 piece's own file, not at the root:
 
+<!-- doctest: group=order-amqp-worker -->
+
 ```ts
 // slices/notifications/handler.ts
 export const orderNotifications = AmqpHandler(
@@ -75,6 +96,8 @@ export const orderNotifications = AmqpHandler(
   },
 );
 ```
+
+<!-- doctest: skip — needs `@btravstack/temporal`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
 // slices/billing/activities.ts
@@ -114,11 +137,17 @@ gives any provider:
 
 ```ts
 export const NotificationsSlice = Module("NotificationsSlice")({
+  needs: [Logger],
   provides: [orderNotifications],
   exports: [orderNotifications],
 });
+```
 
+<!-- doctest: skip — needs `@btravstack/temporal`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
+
+```ts
 export const BillingSlice = Module("BillingSlice")({
+  needs: [Logger],
   imports: [BillingModule],
   provides: [chargeOrder],
   exports: [chargeOrder],
@@ -145,7 +174,11 @@ export const orderHandlers = AmqpHandlers(orderContract)([
   orderNotifications,
   orderAudit,
 ]);
+```
 
+<!-- doctest: skip — needs `@btravstack/temporal`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
+
+```ts
 export const orderActivities = TemporalActivities(orderContract)([
   fulfillOrder,
   chargeOrder,
@@ -194,6 +227,8 @@ through, so the next step is a callback that cannot start before the previous
 settles — and each step's error triage and compensation stay at one level of
 indentation rather than accumulating:
 
+<!-- doctest: skip — a saga excerpt with elided arms; the full workflow is compiled by docs/examples/order-temporal-worker.md -->
+
 ```ts
 context.activities
   .place(order)
@@ -217,6 +252,8 @@ Two mistakes are caught before the array is ever composed, both inside
 `AmqpHandler(contract, key)` / `TemporalWorkflowActivities(contract, key)`'s
 own call:
 
+<!-- doctest: skip — quotes the gates packages/amqp/src/handler.test-d.ts and packages/temporal/src/workflow-activities.test-d.ts pin for real -->
+
 ```ts
 // @ts-expect-error -- "notAKey" is not one of orderContract's consumer/rpc names
 AmqpHandler(orderContract, "notAKey");
@@ -234,6 +271,8 @@ key the contract declares: an array missing one is refused, against an
 `"UNCOVERED HANDLERS — …"` / `"UNCOVERED ACTIVITIES — …"` marker rather than a
 runtime stack trace, and never a silent failure or an `undefined` merged into
 the record:
+
+<!-- doctest: skip — quotes the gates packages/amqp/src/handler.test-d.ts and packages/temporal/src/workflow-activities.test-d.ts pin for real -->
 
 ```ts
 // @ts-expect-error -- the "orderAudit" consumer is uncovered
