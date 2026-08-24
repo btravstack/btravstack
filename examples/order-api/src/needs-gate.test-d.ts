@@ -1,5 +1,5 @@
 import { Env } from "@btravstack/config";
-import { start } from "@btravstack/core";
+import { start, Logger } from "@btravstack/core";
 /**
  * The compile-time half of the transport layer: `start` resolves its runtime
  * from the `HttpRuntime` port the composition root exports, and
@@ -15,7 +15,7 @@ import { start } from "@btravstack/core";
  */
 import { Module } from "@btravstack/di";
 import { HttpRuntime, http } from "@btravstack/http";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 
 import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";

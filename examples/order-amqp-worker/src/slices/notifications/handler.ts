@@ -1,8 +1,7 @@
 import { RetryableError } from "@amqp-contract/worker";
 import { AmqpHandler } from "@btravstack/amqp";
-import { currentUnit } from "@btravstack/core";
+import { currentUnit, Logger } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { Logger } from "@btravstack/observability";
 import { ErrAsync, OkAsync } from "unthrown";
 
 /**

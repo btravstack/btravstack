@@ -27,12 +27,12 @@ import { AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp";
  * carried in, `observability()` left out, and `Logger` still reaching `start`.
  */
 import { Env } from "@btravstack/config";
-import { start } from "@btravstack/core";
+import { start, Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 
 import { OrderAmqpWorker, orderHandlers } from "./module.js";
 import { AuditSlice } from "./slices/audit/module.js";

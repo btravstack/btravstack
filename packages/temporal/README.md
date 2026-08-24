@@ -27,7 +27,7 @@ import { Module } from "@btravstack/di";
 import { PlaceOrder, OrderRepository, Outbox, OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { TenantId } from "@btravstack/example-order-domain";
-import { observability, Logger } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 import { z } from "zod";
 
 // The contract this README's worker serves — one workflow, one activity, one
@@ -62,7 +62,7 @@ const AppModule = Module("App")({
 -->
 
 ```ts
-import { runMain } from "@btravstack/core";
+import { runMain, Logger } from "@btravstack/core";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
 import { P } from "unthrown";
 

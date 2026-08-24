@@ -18,6 +18,7 @@
 // from it still fails here.
 
 import { Env } from "@btravstack/config";
+import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import {
   contract,
@@ -37,7 +38,7 @@ import {
   OrderPersistenceModule,
 } from "@btravstack/example-order-infrastructure";
 import { HttpAuthenticator, HttpModule, Unauthenticated, granted } from "@btravstack/http";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
 import { api } from "./auth.js";

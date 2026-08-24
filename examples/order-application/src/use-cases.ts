@@ -1,3 +1,4 @@
+import { Logger } from "@btravstack/core";
 import { Provider, type ServiceOf } from "@btravstack/di";
 import {
   placeOrder,
@@ -10,7 +11,6 @@ import {
   type OrderNotFound,
   type TenantId,
 } from "@btravstack/example-order-domain";
-import { Logger } from "@btravstack/observability";
 import type { AsyncResult } from "unthrown";
 
 import {

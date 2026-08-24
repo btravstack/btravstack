@@ -1,7 +1,7 @@
+import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { Logger } from "@btravstack/observability";
 
 import { ordersController } from "./controller.js";
 

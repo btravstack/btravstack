@@ -7,10 +7,10 @@ description: The broadcast deployment — two subscriber slices composed by Amqp
 import { AmqpConfig, AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp";
 import { RetryableError } from "@amqp-contract/worker";
 import { Config, Env } from "@btravstack/config";
-import { currentUnit } from "@btravstack/core";
+import { currentUnit, Logger, Meter, Tracer } from "@btravstack/core";
 import { Provider, type ServiceOf } from "@btravstack/di";
-import { Logger, observability } from "@btravstack/observability";
-import { Meter, Tracer, otel } from "@btravstack/observability/otel";
+import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { ErrAsync, OkAsync, TaggedError } from "unthrown";
 import { TenantId } from "@btravstack/example-order-domain";
 import {

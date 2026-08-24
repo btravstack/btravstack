@@ -10,6 +10,7 @@
  * half, and the compiler says so at each module rather than once for the
  * layer. Type-checked by this package's `test:types` script, never executed.
  */
+import { Logger } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import {
   CustomerNotFound,
@@ -20,7 +21,7 @@ import {
   type CustomerId,
   type OrderId,
 } from "@btravstack/example-order-domain";
-import { Logger, createLogger } from "@btravstack/observability";
+import { createLogger } from "@btravstack/observability";
 import { ErrAsync } from "unthrown";
 
 import {

@@ -1,6 +1,7 @@
+import { Tracer } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
-import { Tracer, otel } from "@btravstack/observability/otel";
+import { otel } from "@btravstack/observability/otel";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 

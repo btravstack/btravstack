@@ -1,7 +1,6 @@
+import { Logger, Meter } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { PaymentService } from "@btravstack/example-order-application";
-import { Logger } from "@btravstack/observability";
-import { Meter } from "@btravstack/observability/otel";
 import { OkAsync } from "unthrown";
 
 /**

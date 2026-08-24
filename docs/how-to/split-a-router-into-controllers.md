@@ -4,9 +4,10 @@ description: Give each slice of a large API its own contract fragment and contro
 ---
 
 <!-- doctest: prelude
+import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 import { P } from "unthrown";
 import type { Order } from "@btravstack/example-order-domain";
 import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";

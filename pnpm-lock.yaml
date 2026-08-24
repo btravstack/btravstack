@@ -507,6 +507,9 @@ importers:
 
   examples/order-application:
     dependencies:
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@btravstack/di':
         specifier: workspace:*
         version: link:../../packages/di

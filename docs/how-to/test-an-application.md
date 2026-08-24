@@ -4,9 +4,10 @@ description: Boot a module in a vitest fixture with bootFixture, reach a running
 ---
 
 <!-- doctest: prelude
+import { Logger, Logger, Logger } from "@btravstack/core";
 import { Env } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http";
-import { Logger, observability, type Line } from "@btravstack/observability";
+import { observability, type Line } from "@btravstack/observability";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { expect, test } from "vitest";
 import type {} from "@unthrown/vitest";
@@ -158,10 +159,11 @@ itself — `unit.traceId` as a field rather than a prefix parsed out of a
 string. Compose the root's own shape with a recording sink, and boot that:
 
 <!-- doctest: isolate
+import { Logger } from "@btravstack/core";
 import { expect } from "vitest";
 import type {} from "@unthrown/vitest";
 import { Provider } from "@btravstack/di";
-import { Logger, createLogger, type Line } from "@btravstack/observability";
+import { createLogger, type Line } from "@btravstack/observability";
 import { overridden } from "@btravstack/testing";
 import { OrderApi } from "../../module.js";
 import { it } from "../../test-fixtures.js";
@@ -385,8 +387,9 @@ anonymous call to it never reaches a use case; and `recording` is the real
 root's composition with a recording sink in place of stdout:
 
 <!-- doctest: isolate
+import { Logger } from "@btravstack/core";
 import { Provider } from "@btravstack/di";
-import { Logger, createLogger, type Line, type Sink } from "@btravstack/observability";
+import { createLogger, type Line, type Sink } from "@btravstack/observability";
 import { overridden } from "@btravstack/testing";
 import { OrderApi } from "../../module.js";
 declare const recorderOf: () => {

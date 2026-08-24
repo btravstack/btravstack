@@ -4,9 +4,10 @@ description: The layers every deployment boots — order-domain, order-applicati
 ---
 
 <!-- doctest: prelude
+import { Logger } from "@btravstack/core";
 import { Entity } from "@btravstack/entity";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
-import { Logger } from "@btravstack/observability";
+
 import {
   DuplicateOrder,
   InvalidOrderId,

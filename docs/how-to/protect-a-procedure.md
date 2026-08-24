@@ -4,8 +4,9 @@ description: Mark a contract fragment or a procedure with authenticated(), decla
 ---
 
 <!-- doctest: prelude
+import { Logger } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 import { OkAsync, P } from "unthrown";
 import type { Order } from "@btravstack/example-order-domain";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";

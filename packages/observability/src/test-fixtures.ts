@@ -1,10 +1,16 @@
-import { RuntimePort, type Runtime } from "@btravstack/core";
+import {
+  Logger,
+  RuntimePort,
+  type Level,
+  type LoggerService,
+  type Runtime,
+} from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { bootFixture, testRuntime, TestRuntimePort, type Boot } from "@btravstack/testing";
 import { Ok, OkAsync } from "unthrown";
 import { test } from "vitest";
 
-import { Logger, createLogger, type Level, type Line, type LoggerService } from "./logger.js";
+import { createLogger, type Line } from "./logger.js";
 import { LoggerConfig, observability, type ObservabilityOptions } from "./observability.js";
 
 /** A sink that keeps what it was given, so a spec asserts on the line rather than on a stream. */

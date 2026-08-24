@@ -4,10 +4,11 @@ description: The orchestration deployment — two saga slices, FulfillmentSlice 
 ---
 
 <!-- doctest: prelude
+import { Tracer } from "@btravstack/core";
 import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal";
 import { P } from "unthrown";
 import { observability } from "@btravstack/observability";
-import { Tracer, otel } from "@btravstack/observability/otel";
+import { otel } from "@btravstack/observability/otel";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { PaymentService } from "@btravstack/example-order-application";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";

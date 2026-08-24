@@ -1,6 +1,6 @@
 import { AmqpHandler } from "@btravstack/amqp";
+import { Logger } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { Logger } from "@btravstack/observability";
 import { OkAsync } from "unthrown";
 
 /**

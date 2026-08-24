@@ -1,5 +1,5 @@
+import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
-import { Logger } from "@btravstack/observability";
 
 import {
   CustomerRepository,

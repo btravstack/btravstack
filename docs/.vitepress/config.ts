@@ -69,6 +69,7 @@ const GUIDE_SIDEBAR = [
           { text: "The Runtime contract", link: "/reference/core/runtime" },
           { text: "ExitReport and DrainReport", link: "/reference/core/exit-report" },
           { text: "Kernel events", link: "/reference/core/events" },
+          { text: "Observability contracts", link: "/reference/core/observability" },
           { text: "runMain and exit codes", link: "/reference/core/exit-codes" },
           { text: "Probes", link: "/reference/core/probes" },
         ],

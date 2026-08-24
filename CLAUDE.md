@@ -25,8 +25,10 @@ implements it — zero dependencies, zero peers), `di` (the container), `config`
 (configuration from the environment, as
 providers), `core` (the kernel), `testing` (the test harness — `bootFixture`,
 `tapped`, the in-memory runtime, the fake clock; peers on `core`),
-`observability` (the logging starter — a `Logger` port correlated with the
-ambient unit, a JSON sink, the kernel's events as lines), `http`
+`observability` (the observability starter — `createLogger` correlated with
+the ambient unit, a JSON sink, the kernel's events as lines, and the OTel
+adapter behind its own subpath; it IMPLEMENTS the `Logger`, `Tracer` and
+`Meter` ports rather than declaring them, which is `core`'s job), `http`
 (the HTTP starter — oRPC), `temporal` (the Temporal starter) and `amqp` (the
 AMQP starter). `di` was its own repository until it was merged here
 **with its history**; it and `contract` are the two packages that depend on
@@ -182,7 +184,8 @@ major.
    tenant id read by the Postgres adapter is not. Legitimate readers are
    infrastructure adapters only (logger, OTel exporter, database adapter), and
    the logger is no longer hypothetical: `@btravstack/observability`'s
-   `createLogger` reads `currentUnit()` **per call** and stamps `unitId` /
+   `createLogger` — the implementation of the kernel's own `Logger` port —
+   reads `currentUnit()` **per call** and stamps `unitId` /
    `traceId` / `tenantId` on every line, so an application writes
    `logger.info("placing an order", { orderId, quantity })` and mentions
    correlation nowhere. Per call, not at construction, is the load-bearing
@@ -472,6 +475,18 @@ the copy with no gate is the one that lies.
 | `@btravstack/http`          | `packages/http/CLAUDE.md`          | `/reference/http`          |
 | `@btravstack/temporal`      | `packages/temporal/CLAUDE.md`      | `/reference/temporal`      |
 | `@btravstack/amqp`          | `packages/amqp/CLAUDE.md`          | `/reference/amqp`          |
+
+**Three ports are declared in `@btravstack/core` and implemented elsewhere:
+`Logger`, `Tracer` and `Meter`.** That is the one place the table's
+"surface lives in" column splits from "who ships the behaviour", and it is
+deliberate: a contract that other framework packages depend on has to be
+reachable without installing an implementation, and `core` is the package all
+of them already peer on — so `@btravstack/cache` can count its hits without
+its consumers installing a logging package and an OpenTelemetry SDK to
+compile. The tracing pair is declared **without naming OpenTelemetry**, as a
+narrowing its real types satisfy structurally, so the vendor stops at
+`@btravstack/observability/otel`. Their detailed home is
+`packages/core/CLAUDE.md` and `/reference/core/observability`.
 
 What stays here is what no single package owns: the theses above, the footgun,
 the two contracts a runtime owes, and the conventions below.
@@ -927,7 +942,9 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   `core` peers on all three; `testing` peers on all four (and not on
   `vitest` — `bootFixture` is a plain function in vitest's fixture shape);
   `observability` peers on all four too and has **no runtime dependency of its
-  own** — the default sink is `JSON.stringify` and a `write`. A
+  own** — the default sink is `JSON.stringify` and a `write`; its peer on
+  `core` is not optional and cannot be, since the ports it implements are
+  declared there. A
   **starter** is the exception by definition:
   `@btravstack/http` peers on `@orpc/server`, `@orpc/contract` and
   `@unthrown/orpc` — peers, not dependencies, so an application holds one

@@ -4,10 +4,10 @@ description: Implement an oRPC contract as a di-provided router, compose it with
 ---
 
 <!-- doctest: prelude
-import { start } from "@btravstack/core";
+import { start, Meter, Tracer, Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { HttpRuntime, http } from "@btravstack/http";
-import { Meter, Tracer, otel } from "@btravstack/observability/otel";
+import { otel } from "@btravstack/observability/otel";
 import { api } from "../../auth.js";
 import { RequestModule } from "../../request-scope.js";
 -->
@@ -190,7 +190,7 @@ a compile error: the signal to use the factory, not a fallback. See
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { HttpModule } from "@btravstack/http";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 
 import { ordersRouter } from "./router.js";
 

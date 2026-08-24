@@ -1,5 +1,6 @@
 import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
 import { Env } from "@btravstack/config";
+import { Logger, Tracer } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
   OrderApplicationModule,
@@ -8,8 +9,8 @@ import {
   PlaceOrder,
 } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { Logger, observability } from "@btravstack/observability";
-import { Tracer, otel } from "@btravstack/observability/otel";
+import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
 import { orderAudit } from "./slices/audit/handler.js";

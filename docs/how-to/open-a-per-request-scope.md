@@ -37,7 +37,6 @@ request took:
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
-import { Logger } from "@btravstack/observability";
 
 export class RequestSpan extends Port("RequestSpan")<{
   readonly finish: () => void;
@@ -77,7 +76,7 @@ is `Module<RequestSpan, never, Logger | Scope>`.
 ## Step 2 — hand it to the kernel
 
 ```ts
-import { runMain } from "@btravstack/core";
+import { runMain, Logger } from "@btravstack/core";
 import {
   createLogger,
   jsonSink,

@@ -1,8 +1,7 @@
-import { start } from "@btravstack/core";
+import { start, Logger } from "@btravstack/core";
 import { tapped } from "@btravstack/testing";
 import { describe, expect } from "vitest";
 
-import { Logger } from "./logger.js";
 import { kernelEvents } from "./observability.js";
 import { LoggerConfig } from "./observability.js";
 import { it } from "./test-fixtures.js";

@@ -1,25 +1,23 @@
-import { currentUnit } from "@btravstack/core";
+import { Meter, Tracer, currentUnit, type Span } from "@btravstack/core";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
-import { metrics, trace, type Meter as MeterService, type Span } from "@opentelemetry/api";
+import { metrics, trace } from "@opentelemetry/api";
 import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 import { Ok } from "unthrown";
 
 /**
- * The tracing half of observability, as ports (issue #64). `@opentelemetry/*`
- * is an **optional** peer behind this subpath, exactly like `pino`: install
- * the two packages, import `@btravstack/observability/otel`, compose
- * `otel()` — a consumer that never imports this file never needs them.
+ * The tracing half of observability (issue #64) — the **adapter**, not the
+ * contract. `Tracer` and `Meter` are the kernel's ports; this file is one
+ * implementation of them, and OTel's presence stops at this subpath.
  *
- * `Tracer`'s service is deliberately a `(name) => span` starter rather than
- * OTel's own `Tracer` interface: what an application does per operation is
- * open a span, and the narrower shape keeps a test double one line.
+ * `@opentelemetry/*` is an **optional** peer behind it, exactly like `pino`:
+ * install the two packages, import `@btravstack/observability/otel`, compose
+ * `otel()` — a consumer that never imports this file never needs them, and a
+ * package that merely depends on `Tracer` never needed them at all.
+ *
+ * The ports' contracts are narrowings of OTel's own shapes, so what the SDK
+ * hands back satisfies them with no translation in between: `metrics.getMeter()`
+ * IS a `MeterService`, and a real span IS a `Span`.
  */
-export class Tracer extends Port("Tracer")<{
-  readonly startSpan: (name: string) => Span;
-}> {}
-
-/** OTel's own `Meter`, whole: counters and histograms are its vocabulary, not ours. */
-export class Meter extends Port("Meter")<MeterService> {}
 
 /**
  * The SDK itself, module-private: nothing should resolve it — providing it is
