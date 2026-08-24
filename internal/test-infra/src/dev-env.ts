@@ -13,7 +13,14 @@ import {
 import { withLock } from "./lock.js";
 
 const run = promisify(execFile);
-const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+/**
+ * Stays a `URL` all the way to `writeFile`, which accepts one. Round-tripping
+ * it through a path string and back (`file://${repoRoot}`) happens to work on
+ * POSIX and is wrong in general: a Windows path would produce `file://C:\…`,
+ * and a repository checked out under a directory with a space or a `#` would
+ * be mis-parsed. There is no reason to leave URL semantics and re-enter them.
+ */
+const envFile = new URL("../../../.env.dev", import.meta.url);
 /**
  * The one workspace this script knows by path. It owns the schema and the
  * `prisma` CLI, so applying the committed migrations has to happen there —
@@ -64,7 +71,7 @@ const main = async (): Promise<void> => {
     "",
   ].join("\n");
 
-  await writeFile(new URL(".env.dev", `file://${repoRoot}`), env);
+  await writeFile(envFile, env);
 
   process.stderr.write(`[dev:env] containers up, .env.dev written\n`);
 };

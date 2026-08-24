@@ -164,6 +164,27 @@ The five seconds between the first two lines are beat 2 — the pre-drain delay
 that exists because Kubernetes endpoint removal is eventually consistent. See
 [Tune the drain for Kubernetes](/how-to/tune-the-drain-for-kubernetes).
 
+::: tip Two event shapes, and which one you are looking at
+Those lines are `order-api`'s, which passes
+`onEvent: kernelEvents(createLogger(jsonSink()))` — `@btravstack/observability`
+renders each event with an `event` field and flattens the drain counters, so
+the kernel's lines sit in the same stream as the application's own.
+
+The two workers pass no `onEvent`, so they get the kernel's default
+`stderrSink`, which writes the raw [`KernelEvent`](/reference/core/events) —
+a `type` field, with the counters nested under `report`:
+
+```json
+{
+  "type": "drained",
+  "report": { "inFlightAtStart": 0, "completed": 0, "abandoned": 0 }
+}
+```
+
+Same events, two renderings. Which you see is a property of the application's
+composition root, not of the kernel.
+:::
+
 ## Production is unchanged
 
 Nothing here is a deployment shape. In production each of these three entry

@@ -133,19 +133,6 @@ major.
    every runtime package's port is declared over the kernel's `RuntimePort`, so
    they share one id and a graph can hold exactly one — and no future surface
    should make it plural.
-
-   **The local loop is the production shape, not an exception to it** (issue
-   #67). Three deployments meant three terminals, and the tempting fix — a
-   kernel API booting all three in one process, which `start` would happily
-   support — was measured and declined: it cannot watch (reloading an ESM
-   graph in place is a bespoke loader), it shares one event loop and the
-   process-global uncaught handlers, so one crash takes all three down and a
-   blocking worker starves the API, and it exercises the drain through one
-   shared signal instead of three real ones. A dev loop that misrepresents
-   failure isolation teaches the wrong lesson about the very thesis it sits
-   under. So `pnpm dev` is `turbo run dev --filter=./examples/*`: one process
-   per deployment, `tsx watch` on each, output prefixed by workspace — see
-   **The local loop** under _Toolchain & conventions_.
    `examples/order-api`, `examples/order-temporal-worker` and
    `examples/order-amqp-worker`
    make this testable rather than asserted: the same `OrderApplicationModule` +
@@ -166,6 +153,19 @@ major.
    `Serving.stop` well past the kernel's `drainTimeoutMs` unless the signal is
    raced against it — and `@temporalio/worker` exposes no public forced
    shutdown to escalate to, so "stop waiting" is the escalation.
+
+   **The local loop is the production shape, not an exception to it** (issue
+   #67). Three deployments meant three terminals, and the tempting fix — a
+   kernel API booting all three in one process, which `start` would happily
+   support — was measured and declined: it cannot watch (reloading an ESM
+   graph in place is a bespoke loader), it shares one event loop and the
+   process-global uncaught handlers, so one crash takes all three down and a
+   blocking worker starves the API, and it exercises the drain through one
+   shared signal instead of three real ones. A dev loop that misrepresents
+   failure isolation teaches the wrong lesson about the very thesis it sits
+   under. So `pnpm dev` is `turbo run dev --filter=./examples/*`: one process
+   per deployment, `tsx watch` on each, output prefixed by workspace — see
+   **The local loop** under _Toolchain & conventions_.
 
    **The transport role map is a decision, not an inventory** (issues #61 and
    #60): answering is `@btravstack/http`; orchestration — and with it
