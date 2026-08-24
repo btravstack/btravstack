@@ -39,9 +39,8 @@ repository has not cut a release yet.
 ## A worked example
 
 ```ts
-import { runMain } from "@btravstack/core";
+import { runMain, Logger } from "@btravstack/core";
 import {
-  Logger,
   createLogger,
   jsonSink,
   kernelEvents,

@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 
 import type { Env } from "@btravstack/config";
-import type { RunningApp, StartOptions } from "@btravstack/core";
+import {
+  type RunningApp,
+  type StartOptions,
+  Logger,
+  type Meter,
+  type Tracer,
+} from "@btravstack/core";
 import { Provider, type Module, type Scope, type ServiceOf } from "@btravstack/di";
 import { CustomerRepository, OrderRepository } from "@btravstack/example-order-application";
 import {
@@ -16,14 +22,7 @@ import {
 } from "@btravstack/example-order-domain";
 import type { HttpInfo, HttpRuntime } from "@btravstack/http";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
-import {
-  Logger,
-  LoggerConfig,
-  createLogger,
-  type Line,
-  type Sink,
-} from "@btravstack/observability";
-import type { Meter, Tracer } from "@btravstack/observability/otel";
+import { LoggerConfig, createLogger, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import request from "supertest";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";

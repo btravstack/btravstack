@@ -28,7 +28,7 @@ import { TenantId } from "@btravstack/example-order-domain";
 import { Module } from "@btravstack/di";
 import { OrderApplicationModule, OrderRepository, Outbox } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { observability, Logger } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 
 // The application module the README's composition imports — the orders
 // vertical plus its persistence, as an application would compose it.
@@ -41,7 +41,7 @@ const AppModule = Module("App")({
 ```ts
 import { Env } from "@btravstack/config";
 import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
-import { runMain } from "@btravstack/core";
+import { runMain, Logger } from "@btravstack/core";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
 // The handlers, as a service: one entry per consumer the contract declares,

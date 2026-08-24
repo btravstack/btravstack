@@ -1,6 +1,6 @@
+import { Logger, Meter } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
-import { Logger } from "@btravstack/observability";
-import { Meter, UnitSpanModule } from "@btravstack/observability/otel";
+import { UnitSpanModule } from "@btravstack/observability/otel";
 
 /**
  * A service that exists for the length of one request and is torn down with it.

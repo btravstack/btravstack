@@ -47,7 +47,7 @@ import { Provider, type ServiceOf } from "@btravstack/di";
 import { Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
-import { Meter, otel } from "@btravstack/observability/otel";
+import { otel } from "@btravstack/observability/otel";
 import { OutboxRelay } from "../../outbox-relay.js";
 
 // The two module-private helpers the outbox-relay excerpt leans on — the
@@ -59,7 +59,7 @@ declare const startOutboxRelay: (
   meter: ServiceOf<Meter>,
   options: { url: string; pollMs: number; tenants: readonly TenantId[] },
 ) => AsyncResult<ServiceOf<OutboxRelay>, RetryableError>;
-import { currentUnit } from "@btravstack/core";
+import { currentUnit, Meter, Logger } from "@btravstack/core";
 import { RetryableError } from "@amqp-contract/worker";
 import { ErrAsync } from "unthrown";
 -->
@@ -67,7 +67,7 @@ import { ErrAsync } from "unthrown";
 ```ts
 import { AmqpHandlers } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
-import { Logger } from "@btravstack/observability";
+
 import { OkAsync } from "unthrown";
 
 export const orderHandlers = AmqpHandlers(orderContract)(
@@ -186,7 +186,7 @@ import {
   PlaceOrder,
 } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 
 import { orderHandlers } from "./handlers.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";

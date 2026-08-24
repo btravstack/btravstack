@@ -4,10 +4,11 @@ description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpContro
 ---
 
 <!-- doctest: prelude
+import { Logger } from "@btravstack/core";
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { Logger } from "@btravstack/observability";
+
 import type { Order } from "@btravstack/example-order-domain";
 import { Module } from "@btravstack/di";
 import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http";
@@ -95,8 +96,9 @@ a plain module.
 The worked composition root, from `examples/order-api/src/module.ts`:
 
 <!-- doctest: isolate
+import { Logger } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";

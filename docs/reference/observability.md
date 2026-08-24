@@ -4,18 +4,11 @@ description: The complete surface of @btravstack/observability — the Logger po
 ---
 
 <!-- doctest: prelude
-import { runMain } from "@btravstack/core";
+import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
 import { Config } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http";
-import {
-  Logger,
-  createLogger,
-  jsonSink,
-  kernelEvents,
-  logLevel,
-  observability,
-} from "@btravstack/observability";
-import { Meter, Tracer, otel } from "@btravstack/observability/otel";
+import { createLogger, jsonSink, kernelEvents, logLevel, observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 import { orderRouter } from "../../module.js";
@@ -25,7 +18,7 @@ import { RequestModule } from "../../request-scope.js";
 # @btravstack/observability
 
 > **Reference.** A complete, structured description of
-> `@btravstack/observability`: the `Logger` port and its service, the default
+> `@btravstack/observability`: the `Logger` port's implementation, the default
 > implementation, the `Line`/`Sink` contract, the two sinks, the starter and
 > the `LOG_LEVEL` field, and the kernel-event adapter. For the task, see
 > [Log and correlate](/how-to/log-and-correlate); for the generated
@@ -54,6 +47,12 @@ The package itself has no runtime dependencies: the default sink is
 Standard Schema.
 
 ## `Logger` and `LoggerService`
+
+> **These are `@btravstack/core`'s**, not this package's — import them from
+> the kernel. They are described here too because this is where the reader
+> looking for a logger arrives, and
+> [/reference/core/observability](/reference/core/observability) is their one
+> detailed home. Everything below is what this package _does_ with them.
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
@@ -139,6 +138,8 @@ package's whole argument:
 | Correlation is the implementation's job     | A trace id threaded through every signature to reach the one place that writes it out                       |
 
 ## `Level`, `LEVELS` and `Attributes`
+
+> Also the kernel's, and imported from there.
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
@@ -412,9 +413,8 @@ pnpm add @opentelemetry/api @opentelemetry/sdk-node
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-class Tracer extends Port("Tracer")<{ readonly startSpan: (name: string) => Span }> {}
-class Meter extends Port("Meter")<OtelMeter> {}
-
+// `Tracer` and `Meter` are the kernel's ports — see /reference/core/observability.
+// This subpath is one implementation of them.
 otel(options?: Partial<NodeSDKConfiguration>): Module<Tracer | Meter, never, Scope>;
 
 class UnitSpan extends Port("UnitSpan")<Span> {}
@@ -492,11 +492,8 @@ collapses into another.
 | Export                 | Kind                                               |
 | ---------------------- | -------------------------------------------------- |
 | `Logger`               | port                                               |
-| `LoggerService`        | type — the service behind it                       |
 | `LoggerConfig`         | port — `{ level }`, bound from `LOG_LEVEL`         |
 | `LoggerSettings`       | type                                               |
-| `Level` / `LEVELS`     | type / value — the six, in order                   |
-| `Attributes`           | type                                               |
 | `Line` / `Sink`        | type — what an implementation hands a destination  |
 | `createLogger`         | value — the implementation                         |
 | `jsonSink`             | value — the default sink                           |
@@ -505,19 +502,17 @@ collapses into another.
 | `logLevel`             | value — the `LOG_LEVEL` field alone                |
 | `kernelEvents`         | value — the kernel's `EventSink` over a logger     |
 | `pinoSink`             | value — `@btravstack/observability/pino` only      |
-| `Tracer`               | port class — `@btravstack/observability/otel` only |
-| `Meter`                | port class — `@btravstack/observability/otel` only |
 | `otel`                 | value — `@btravstack/observability/otel` only      |
 | `UnitSpan`             | port class — `@btravstack/observability/otel` only |
 | `UnitSpanModule`       | value — `@btravstack/observability/otel` only      |
 
 ## What it does not do
 
-- **No traces and no metrics yet.** The shape they will take — `Tracer` /
-  `Meter` ports, the OpenTelemetry `NodeSDK` as a resourceful provider whose
-  `release` flushes, a span per unit through `StartOptions.unit`, W3C
-  `traceparent` feeding `UnitMeta.traceId` — is recorded in the package's own
-  spec. Nothing of it ships.
+- **It does not declare the ports it implements.** `Logger`, `Tracer` and
+  `Meter` — and `LoggerService`, `Level`, `LEVELS`, `Attributes` with them —
+  are [the kernel's](/reference/core/observability). This package provides
+  them; importing one from here is a compile error, deliberately, so two
+  import paths for one contract can never drift.
 - **No transport, no rotation, no batching.** A sink is a function; a
   deployment that wants any of those brings pino, or writes eleven lines of
   its own.

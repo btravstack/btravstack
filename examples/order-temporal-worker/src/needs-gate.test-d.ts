@@ -1,5 +1,5 @@
 import { Env } from "@btravstack/config";
-import { start } from "@btravstack/core";
+import { start, Logger } from "@btravstack/core";
 /**
  * The compile-time half of the orchestration deployment: `start` resolves its
  * runtime from the `TemporalRuntime` port `TemporalModule` exports, and that
@@ -37,7 +37,7 @@ import {
 } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 import { TemporalModule, TemporalRuntime, temporal } from "@btravstack/temporal";
 
 import { OrderTemporalWorker, orderActivities } from "./module.js";

@@ -1,12 +1,11 @@
 import { TypedAmqpClient } from "@amqp-contract/client";
 import { AmqpConfig } from "@btravstack/amqp";
 import { Config } from "@btravstack/config";
+import { Logger, Meter } from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Outbox } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
-import { Logger } from "@btravstack/observability";
-import { Meter } from "@btravstack/observability/otel";
 import { ErrAsync, P, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
 /**

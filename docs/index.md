@@ -159,11 +159,12 @@ lines in [Packages and install](/reference/packages).
 - **`@btravstack/config`** — configuration from the environment, as providers:
   `Config.object`, `Config.provider`, the `Env` port, `ConfigInvalid`.
 - **`@btravstack/core`** — the kernel: `start`, `runMain`, the lifecycle state
-  machine, the unit registry and the `Runtime` contract.
-- **`@btravstack/observability`** — logging, as a starter: a strict `Logger`
-  port stamped with the ambient unit's trace id, a dependency-free JSON sink,
-  pino behind a subpath, and the kernel's own events as lines in the same
-  stream. Traces and metrics are not here yet.
+  machine, the unit registry, the `Runtime` contract — and the `Logger`,
+  `Tracer` and `Meter` ports every other package depends on.
+- **`@btravstack/observability`** — those three ports implemented, as a
+  starter: a logger stamped with the ambient unit's trace id, a
+  dependency-free JSON sink, pino behind a subpath, OpenTelemetry behind
+  another, and the kernel's own events as lines in the same stream.
 - **`@btravstack/http`** — the HTTP starter: an oRPC contract served over
   `node:http`, one unit per request, `defineHttp` and `HttpModule`.
 - **`@btravstack/temporal`** — the Temporal worker starter: one unit per

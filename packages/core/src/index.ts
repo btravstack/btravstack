@@ -3,6 +3,18 @@ export type { Clock } from "./clock.js";
 export type { DrainReport } from "./drain.js";
 export { stderrSink } from "./events.js";
 export type { EventSink, KernelEvent } from "./events.js";
+export { LEVELS, Logger, Meter, SPAN_STATUS, Tracer } from "./observability.js";
+export type {
+  Attributes,
+  Counter,
+  Histogram,
+  Level,
+  LoggerService,
+  MeterService,
+  Span,
+  SpanStatusCode,
+  TracerService,
+} from "./observability.js";
 export type { Phase } from "./phase.js";
 export { runMain } from "./run-main.js";
 export { RuntimePort, RuntimeStartFailed } from "./runtime.js";

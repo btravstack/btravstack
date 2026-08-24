@@ -1,3 +1,4 @@
+import { Meter, Tracer } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import {
   TestRuntimePort,
@@ -11,7 +12,7 @@ import { BatchSpanProcessor, type ReadableSpan, type SpanExporter } from "@opent
 import { Ok } from "unthrown";
 import { describe, expect, test } from "vitest";
 
-import { Meter, Tracer, UnitSpan, UnitSpanModule, otel } from "./otel.js";
+import { UnitSpan, UnitSpanModule, otel } from "./otel.js";
 
 /**
  * An exporter whose memory SURVIVES its own shutdown — `InMemorySpanExporter`

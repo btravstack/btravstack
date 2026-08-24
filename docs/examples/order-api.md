@@ -4,18 +4,12 @@ description: The HTTP deployment — two slices, orders and customers, one marke
 ---
 
 <!-- doctest: prelude
-import { runMain } from "@btravstack/core";
+import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http";
 import { OkAsync, P } from "unthrown";
-import {
-  Logger,
-  createLogger,
-  jsonSink,
-  kernelEvents,
-  observability,
-} from "@btravstack/observability";
-import { Meter, Tracer, UnitSpanModule, otel } from "@btravstack/observability/otel";
+import { createLogger, jsonSink, kernelEvents, observability } from "@btravstack/observability";
+import { UnitSpanModule, otel } from "@btravstack/observability/otel";
 import type { Order } from "@btravstack/example-order-domain";
 import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";

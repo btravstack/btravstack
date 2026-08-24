@@ -1,11 +1,16 @@
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
-import type { EventSink, KernelEvent } from "@btravstack/core";
+import {
+  Logger,
+  type EventSink,
+  type KernelEvent,
+  type Level,
+  type LoggerService,
+} from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 
 import { loggerSchema, type LoggerSettings } from "./config.js";
 import { jsonSink } from "./json-sink.js";
-import { createLogger, type Level, type LoggerService, type Sink } from "./logger.js";
-import { Logger } from "./logger.js";
+import { createLogger, type Sink } from "./logger.js";
 
 /**
  * What the graph bound from the environment: the level every logger in it

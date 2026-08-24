@@ -5,8 +5,8 @@ description: Add @btravstack/observability, log structured attributes from a use
 
 <!-- doctest: prelude
 import { type ServiceOf } from "@btravstack/di";
-import { Logger, type Line } from "@btravstack/observability";
-import { Meter, Tracer, otel } from "@btravstack/observability/otel";
+import { type Line } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { TenantId, placeOrder } from "@btravstack/example-order-domain";
 import { OrderApplicationModule, OrderRepository, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
@@ -47,7 +47,7 @@ happened. The recipe is one import.
 ```ts
 import { Module, Provider } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
@@ -220,7 +220,7 @@ for one with: two streams, two shapes, two sets of fields to search.
 `kernelEvents` is the adapter between them:
 
 ```ts
-import { runMain } from "@btravstack/core";
+import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
 import {
   createLogger,
   jsonSink,

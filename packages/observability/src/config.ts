@@ -1,7 +1,6 @@
 import { Config, ConfigFieldInvalid, type ConfigField } from "@btravstack/config";
+import { LEVELS, type Level } from "@btravstack/core";
 import { Err, Ok } from "unthrown";
-
-import { LEVELS, type Level } from "./logger.js";
 
 /**
  * `LOG_LEVEL`, as a `ConfigField` of the six levels and nothing else.

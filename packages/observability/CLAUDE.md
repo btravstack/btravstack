@@ -6,19 +6,37 @@ only matters when you are working under `packages/observability/`. Keep it in
 sync with the code in the same commit, and with `README.md` — the package
 ships no `docs-examples.test-d.ts`, so nothing else compiles these claims.
 
-## What this is, and what it is not yet
+## What this is: the implementations, not the contracts
 
-Logging, today. The package is named for the whole of observability because
-logs, traces and metrics share a correlation id, a resource, a config slice
-and a flush-on-shutdown lifecycle — splitting them across two packages would
-duplicate all four, and the second would end up depending on the first. Traces
-and metrics are **not here yet**; the shape they will take is in
-_Deferred, deliberately_ at the end of this file. Do not describe them as
-shipped.
+Logs, traces and metrics — all three ship. One package, because they share a
+correlation id, a resource, a config slice and a flush-on-shutdown lifecycle;
+splitting them would duplicate all four and the second half would depend on
+the first.
+
+**The ports are not here.** `Logger`, `Tracer` and `Meter`, and the service
+types behind them, are declared in `@btravstack/core`; this package is where
+they are _implemented_ — `createLogger` and the sinks for the first,
+`otel()` for the other two. The split is the same one every port in this
+stack makes, applied to the framework's own packages: a contract that other
+framework packages depend on has to be reachable without installing an
+implementation, and the kernel is the one package all of them already peer
+on. It also let the tracing contracts stop naming OpenTelemetry — they are
+narrowings of its shapes, so a real span, tracer and meter satisfy them
+structurally and OTel's types stop at the `/otel` subpath.
+
+So: to change what a logger _is_, edit `packages/core`. To change how one
+_behaves_, edit here.
 
 ## Public surface
 
-- **`Logger`** (`logger.ts`) — `Port("Logger")` over `LoggerService`:
+- **`Logger`, `LoggerService`, `Level`, `LEVELS`, `Attributes`,
+  `Tracer`, `Meter` and the types behind them are `@btravstack/core`'s.** They
+  are documented in `packages/core/CLAUDE.md`, imported from there by
+  everything here, and **not re-exported** — one home per contract, so two
+  import paths can never drift. The paragraphs below describe what this
+  package does with them.
+- **The logger's shape**, for the reader who is here rather than there —
+  `LoggerService` is
   `log(level, message, attributes?, cause?)`, one method per level with the
   **same three arguments in the same order** — `(message, attributes?,
 cause?)` — plus `with(attributes)` and `isEnabled(level)`. The uniformity
@@ -43,14 +61,6 @@ cause?)` — plus `with(attributes)` and `isEnabled(level)`. The uniformity
   has its own `cause` channel; it cannot throw; and correlation is the
   implementation's job, not the caller's. Keep that list in the port's TSDoc —
   it is the package's whole argument.
-- **`Level` / `LEVELS`** — `trace | debug | info | warn | error | fatal`,
-  ordered, exported as an array so `logLevel` validates against one list and a
-  future OTel bridge maps severities without a table of synonyms.
-- **`Attributes`** — `Readonly<Record<string, string | number | boolean |
-undefined>>`. Flat and scalar deliberately: a nested object is where a field
-  name stops being stable across lines, and an `unknown` value is where a
-  logger starts stringifying whatever it is handed — which is how a log call
-  becomes the thing that throws.
 - **`createLogger(sink, level?)`** — the implementation. Two load-bearing
   details: `currentUnit()` is read **per call** (one logger per scope, a
   record per unit — capturing it at construction would stamp the first unit's
@@ -143,7 +153,9 @@ sets.
 ## Dependencies
 
 Peers: `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`,
-and `pino` as an **optional** one. The package itself has no runtime
+with `pino`, `@opentelemetry/api` and `@opentelemetry/sdk-node` as
+**optional** ones behind their subpaths. `@btravstack/core` is not optional
+and cannot be: the ports this package implements are declared there. The package itself has no runtime
 dependencies — the default sink is `JSON.stringify` and a `write`, for the same
 reason `Config` is a hand-rolled Standard Schema.
 
@@ -153,9 +165,8 @@ reason `Config` is a hand-rolled Standard Schema.
   prescribed, behind the `@btravstack/observability/otel` subpath on the
   `pino` protocol: `@opentelemetry/api` and `@opentelemetry/sdk-node` are
   **optional** peers a consumer that never imports the subpath never installs
-  (`src/otel.ts` is `tsdown`'s third entry point). The surface: `Tracer` (a
-  narrowed `{ startSpan(name) }`, so a test double is one line) and `Meter`
-  (OTel's own, whole) ports; `otel(options?)`, a module providing both over a
+  (`src/otel.ts` is `tsdown`'s third entry point). The surface: `otel(options?)`,
+  a module providing the kernel's `Tracer` and `Meter` ports over a
   `NodeSDK` held as a **resourceful** provider — `release` is `sdk.shutdown()`,
   which flushes, so the kernel's close-on-every-path is what gets spans out of
   a dying process and a lost flush becomes a `teardownError` and exit `2`
@@ -175,6 +186,13 @@ reason `Config` is a hand-rolled Standard Schema.
   `x-request-id`) and `@btravstack/amqp` (over `messageId`), trace-id field
   only; `@btravstack/temporal` deliberately keeps the workflow/activity id as
   its correlation — see its own `CLAUDE.md`.
+- **The two ports moved to `@btravstack/core` after this shipped**, when the
+  first application-service package (`@btravstack/cache`) needed to depend on
+  the contracts without pulling OTel in. `Tracer` kept its narrowed
+  `{ startSpan(name) }`; `Meter` stopped being OTel's own type and became a
+  narrowing too (`createCounter` / `createHistogram`, verified structurally
+  against the real meter). Nothing here changed but the import: this file
+  provides them, and no longer declares them.
 - **A constraint that will not go away**: OTel _auto_-instrumentation
   (`@opentelemetry/auto-instrumentations-node/register`) must be preloaded
   before the instrumented libraries are imported, so it cannot be DI-provided.

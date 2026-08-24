@@ -2,12 +2,12 @@ import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp";
 import type { Env } from "@btravstack/config";
-import type { RunningApp } from "@btravstack/core";
+import { type RunningApp, Logger } from "@btravstack/core";
 import { Provider, type Module, type Scope } from "@btravstack/di";
 import { OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
-import { Logger, LoggerConfig, createLogger, type Line } from "@btravstack/observability";
+import { LoggerConfig, createLogger, type Line } from "@btravstack/observability";
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
 import { inject, type TestAPI } from "vitest";
 

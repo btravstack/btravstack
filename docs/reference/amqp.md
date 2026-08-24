@@ -4,17 +4,13 @@ description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime,
 ---
 
 <!-- doctest: prelude
+import { Logger, Tracer } from "@btravstack/core";
 import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp";
 import { Env } from "@btravstack/config";
-import { Logger, observability } from "@btravstack/observability";
-import { otel, Tracer } from "@btravstack/observability/otel";
+import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { OkAsync } from "unthrown";
-import {
-  OrderApplicationModule,
-  OrderRepository,
-  Outbox,
-  PlaceOrder,
-} from "@btravstack/example-order-application";
+import { OrderApplicationModule, OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { outboxRelay, relayConfig } from "../../outbox-relay.js";
@@ -233,7 +229,7 @@ is on `AmqpHandlers(contract)`, and the provider carries its port as
 
 <!-- doctest: isolate
 import { AmqpHandler, AmqpHandlers } from "@btravstack/amqp";
-import { Logger } from "@btravstack/observability";
+import { Logger } from "@btravstack/core";
 import { OkAsync } from "unthrown";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 -->

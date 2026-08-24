@@ -1,7 +1,8 @@
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { contract } from "@btravstack/example-order-api-contract";
 import { HttpModule } from "@btravstack/http";
-import { Logger, observability } from "@btravstack/observability";
-import { Meter, Tracer, otel } from "@btravstack/observability/otel";
+import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 
 import { api } from "./auth.js";
 import { customersController } from "./slices/customers/controller.js";

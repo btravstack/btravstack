@@ -1,5 +1,5 @@
 import type { ConfigInvalid, Env } from "@btravstack/config";
-import type { RunningApp } from "@btravstack/core";
+import { type RunningApp, Logger, Meter } from "@btravstack/core";
 import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
 import {
   OrderApplicationModule,
@@ -18,8 +18,8 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
-import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
-import { Meter, otel } from "@btravstack/observability/otel";
+import { observability, type Line, type Sink } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";

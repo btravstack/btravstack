@@ -1,7 +1,6 @@
-import { currentUnit } from "@btravstack/core";
+import { currentUnit, Logger } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { ShippingService, StockService } from "@btravstack/example-order-application";
-import { Logger } from "@btravstack/observability";
 import { OkAsync, fromSafePromise } from "unthrown";
 
 /**

@@ -4,8 +4,9 @@ description: The Spring Boot idea applied to this kernel — a module that bring
 ---
 
 <!-- doctest: prelude
+import { Logger } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http";
-import { Logger, observability } from "@btravstack/observability";
+import { observability } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";

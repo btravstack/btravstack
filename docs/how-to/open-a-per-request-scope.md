@@ -37,7 +37,6 @@ request took:
 
 ```ts
 import { Module, Port, Provider } from "@btravstack/di";
-import { Logger } from "@btravstack/observability";
 
 export class RequestSpan extends Port("RequestSpan")<{
   readonly finish: () => void;
@@ -68,16 +67,17 @@ export const RequestModule = Module("Request")({
 });
 ```
 
-`Logger` is [`@btravstack/observability`](/reference/observability)'s port,
-provided at application scope by the `observability()` the composition root
-imports: the fork **reads** it from the parent, it does not rebuild it. `onStop` puts `Scope` in the module's needs, and only a fork
+`Logger` is [the kernel's port](/reference/core/observability), provided at
+application scope by the
+[`observability()`](/reference/observability) the composition root imports:
+the fork **reads** it from the parent, it does not rebuild it. `onStop` puts `Scope` in the module's needs, and only a fork
 (or `Module.scoped`) opens one — so the teardown cannot be forgotten. Its type
 is `Module<RequestSpan, never, Logger | Scope>`.
 
 ## Step 2 — hand it to the kernel
 
 ```ts
-import { runMain } from "@btravstack/core";
+import { runMain, Logger } from "@btravstack/core";
 import {
   createLogger,
   jsonSink,

@@ -1,7 +1,7 @@
+import { Logger } from "@btravstack/core";
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
-import { Logger } from "@btravstack/observability";
 import { OkAsync, P } from "unthrown";
 
 import { api } from "../../auth.js";

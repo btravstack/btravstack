@@ -159,6 +159,33 @@ signal }`. `signal` is the same `AbortSignal` `UnitWork` receives as its
   returns `AsyncResult<void, never>`. It takes an `AbortSignal` because a second
   signal must cut the pre-drain delay short, and `systemClock` `unref`s its
   timer so a shutdown sleep is never the reason the event loop stays alive.
+- **`Logger` / `LoggerService` / `Level` / `LEVELS` / `Attributes`** — the
+  logging **contract**, declared here and implemented in
+  `@btravstack/observability` (`createLogger`, the sinks, `observability()`).
+  Six methods with one argument order, `(message, attributes?, cause?)`, plus
+  `with` and `isEnabled`; synchronous `void`, which is thesis 6's one
+  deliberate exemption. It lives in the kernel because a contract every
+  framework package may depend on has to be reachable without installing an
+  implementation — core is the one package all of them already peer on — and
+  because it sits on a concept the kernel owns: the correlation an
+  implementation stamps per line is `UnitRecord`'s own, read through
+  `currentUnit()`. The kernel neither provides nor consumes it; `EventSink` is
+  what the kernel itself writes through, and `kernelEvents` in the
+  observability package is the adapter between the two.
+- **`Tracer` / `TracerService` / `Span` / `SPAN_STATUS` / `SpanStatusCode`
+  and `Meter` / `MeterService` / `Counter` / `Histogram`** — the tracing and
+  metrics contracts, on the same terms, and **declared without naming
+  OpenTelemetry**. Each is a narrowing of the ecosystem's own shape, verified
+  structurally rather than asserted: a real OTel `Span`, `Tracer` and `Meter`
+  satisfy them with no translation in between (`metrics.getMeter()` IS a
+  `MeterService`), so `@btravstack/observability/otel` is an ordinary adapter
+  and OTel's types stop at that subpath. A port typed as a vendor's type
+  points the dependency arrow outwards, which is the mistake this family
+  documents everywhere else; `Meter` was OTel's `Meter` whole until the first
+  application-service package needed the contract without the vendor.
+  `MeterService` mints two instruments, a counter and a histogram: a gauge is
+  something an application declares about its own domain, and it reaches the
+  vendor's meter for that the way it reaches any other adapter.
 - **`Phase`** — `"building" | "starting" | "serving" | "draining" | "stopping" | "exited"`.
 - **`KernelEvent` / `EventSink` / `stderrSink`** — nine events: `building`,
   `startFailed`, `serving`, `draining`, `drained`, `stopping`, `exited`,
