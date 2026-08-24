@@ -469,6 +469,25 @@ that wants to record why logs it before returning `Unauthenticated`. A
 rather than promoting the caller to the next scheme. See
 [Protect a procedure](https://btravstack.github.io/start/how-to/protect-a-procedure).
 
+## Options
+
+`HttpModule(name)({...})` and the `http()` primitive take the same options —
+the sugar adds `router` and the module lists (`imports`, `provides`,
+`exports`, `needs`):
+
+| Option            | What it is                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `router`          | the router provider — what `api.HttpRouter(contract)(...)` returns                     |
+| `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                     |
+| `port`            | pins the port instead of reading `PORT`                                                |
+| `hostname`        | pins the host instead of reading `HOST`                                                |
+| `plugins`         | oRPC handler plugins, forwarded to `RPCHandler` — CORS, body limits, compression, CSRF |
+| `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                 |
+
+The full table — required/optional, defaults, and the reasoning — lives on
+[the reference page](https://btravstack.github.io/start/reference/http),
+which is this list's one detailed home.
+
 ## What it guarantees
 
 Every request produces exactly one completed response, and its unit stays open

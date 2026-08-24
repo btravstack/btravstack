@@ -106,6 +106,25 @@ pieces' ports, not what they close over. Two slices claiming one key are di's
 duplicate-provider defect at build, which is the point: a consumer belongs to
 exactly one slice.
 
+## Options
+
+`AmqpModule(name)({...})` and the `amqp()` primitive take the same options —
+the sugar adds `handlers` and the module lists (`imports`, `provides`,
+`exports`, `needs`):
+
+| Option                   | What it is                                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `contract`               | the `amqp-contract` contract; the queues consumed are read off it                                               |
+| `handlers`               | the handlers provider — what `AmqpHandlers(contract)(...)` returns for this contract                            |
+| `url`                    | pins the broker instead of reading `AMQP_URL` (default `amqp://127.0.0.1:5672`) — a test's container            |
+| `connectionOptions`      | `AmqpConnectionOptions`, the library's own connection tuning: heartbeat, reconnect interval, `findServers`, TLS |
+| `defaultConsumerOptions` | the library's `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob), `priority`, …      |
+| `connectTimeoutMs`       | how long startup waits before an unreachable broker is a `RuntimeStartFailed` (the library defaults to 30 s)    |
+
+The full table — required/optional, defaults, and the reasoning — lives on
+[the reference page](https://btravstack.github.io/start/reference/amqp),
+which is this list's one detailed home.
+
 ## What it decides, and what it does not
 
 `Result` → ack / retry / dead-letter is a **three-way** split and none of it is

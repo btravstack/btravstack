@@ -130,6 +130,26 @@ the pieces' ports, not what they close over. Two slices claiming one key are
 di's duplicate-provider defect at build, which is the point: a workflow's
 activities belong to exactly one slice.
 
+## Options
+
+`TemporalModule(name)({...})` and the `temporal()` primitive take the same
+options — the sugar adds `activities` and the module lists (`imports`,
+`provides`, `exports`, `needs`):
+
+| Option        | What it is                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| `contract`    | the `temporal-contract` contract; the task queue this worker polls is read off it                      |
+| `activities`  | the activities provider — what `TemporalActivities(contract)(...)` returns for this contract           |
+| `workflows`   | where the sandbox's code comes from: `{ workflowsPath }` or `{ workflowBundle }`                       |
+| `address`     | pins the service instead of reading `TEMPORAL_ADDRESS`                                                 |
+| `namespace`   | pins the namespace instead of reading `TEMPORAL_NAMESPACE`                                             |
+| `gracePeriod` | Temporal's `shutdownGraceTime`, a `Duration` (default `"10 seconds"`)                                  |
+| `forceAfter`  | Temporal's `shutdownForceTime`, a `Duration` (default `"15 seconds"`) — keep it under `drainTimeoutMs` |
+
+The full table — required/optional, defaults, and the reasoning — lives on
+[the reference page](https://btravstack.github.io/start/reference/temporal),
+which is this list's one detailed home.
+
 ## The drain
 
 `worker.shutdown()` stops polling at once, but `run()` resolves only when the
