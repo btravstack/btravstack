@@ -4,7 +4,7 @@ description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpContro
 ---
 
 <!-- doctest: prelude
-import { Logger, Logger } from "@btravstack/core";
+import { Logger } from "@btravstack/core";
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";

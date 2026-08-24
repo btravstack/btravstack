@@ -59,7 +59,7 @@ declare const startOutboxRelay: (
   meter: ServiceOf<Meter>,
   options: { url: string; pollMs: number; tenants: readonly TenantId[] },
 ) => AsyncResult<ServiceOf<OutboxRelay>, RetryableError>;
-import { currentUnit, Meter, Logger, Logger } from "@btravstack/core";
+import { currentUnit, Meter, Logger } from "@btravstack/core";
 import { RetryableError } from "@amqp-contract/worker";
 import { ErrAsync } from "unthrown";
 -->

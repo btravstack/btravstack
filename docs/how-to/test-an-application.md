@@ -4,13 +4,13 @@ description: Boot a module in a vitest fixture with bootFixture, reach a running
 ---
 
 <!-- doctest: prelude
-import { Logger, Logger, Logger } from "@btravstack/core";
+import { Logger } from "@btravstack/core";
 import { Env } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http";
 import { observability, type Line } from "@btravstack/observability";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { expect, test } from "vitest";
-import type {} from "@unthrown/vitest";
+import type {  } from "@unthrown/vitest";
 import { OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderApi, orderRouter } from "../../module.js";
 import { RequestModule } from "../../request-scope.js";
@@ -161,7 +161,7 @@ string. Compose the root's own shape with a recording sink, and boot that:
 <!-- doctest: isolate
 import { Logger } from "@btravstack/core";
 import { expect } from "vitest";
-import type {} from "@unthrown/vitest";
+import type {  } from "@unthrown/vitest";
 import { Provider } from "@btravstack/di";
 import { createLogger, type Line } from "@btravstack/observability";
 import { overridden } from "@btravstack/testing";
@@ -353,7 +353,7 @@ unit to the kernel.
 `toBeOkWith`, `toBeErrWith`, `toBeErrTagged` and `toBeDefectWith` come from
 [`@unthrown/vitest`](https://github.com/btravstack/unthrown/tree/main/packages/vitest);
 register them once through `setupFiles` and add
-`import type {} from "@unthrown/vitest";` to a `vitest.d.ts` so they type.
+`import type {  } from "@unthrown/vitest";` to a `vitest.d.ts` so they type.
 
 ## How the examples do it
 

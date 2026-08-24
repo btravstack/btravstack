@@ -18,7 +18,7 @@ import { RequestModule } from "../../request-scope.js";
 # @btravstack/observability
 
 > **Reference.** A complete, structured description of
-> `@btravstack/observability`: the `Logger` port and its service, the default
+> `@btravstack/observability`: the `Logger` port's implementation, the default
 > implementation, the `Line`/`Sink` contract, the two sinks, the starter and
 > the `LOG_LEVEL` field, and the kernel-event adapter. For the task, see
 > [Log and correlate](/how-to/log-and-correlate); for the generated

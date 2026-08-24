@@ -67,9 +67,10 @@ export const RequestModule = Module("Request")({
 });
 ```
 
-`Logger` is [`@btravstack/observability`](/reference/observability)'s port,
-provided at application scope by the `observability()` the composition root
-imports: the fork **reads** it from the parent, it does not rebuild it. `onStop` puts `Scope` in the module's needs, and only a fork
+`Logger` is [the kernel's port](/reference/core/observability), provided at
+application scope by the
+[`observability()`](/reference/observability) the composition root imports:
+the fork **reads** it from the parent, it does not rebuild it. `onStop` puts `Scope` in the module's needs, and only a fork
 (or `Module.scoped`) opens one — so the teardown cannot be forgotten. Its type
 is `Module<RequestSpan, never, Logger | Scope>`.
 

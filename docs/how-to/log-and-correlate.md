@@ -220,7 +220,7 @@ for one with: two streams, two shapes, two sets of fields to search.
 `kernelEvents` is the adapter between them:
 
 ```ts
-import { runMain, Logger, Meter, Tracer, Logger } from "@btravstack/core";
+import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
 import {
   createLogger,
   jsonSink,

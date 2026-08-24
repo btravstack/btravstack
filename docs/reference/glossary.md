@@ -114,8 +114,8 @@ events](/reference/core/events) and
 **starter** — A package that brings one concern's defaults for the standard case, in the
 Spring Boot sense: `@btravstack/http`, `@btravstack/temporal` and
 `@btravstack/amqp` each bring a runtime, a module sugar and a
-port-and-provider sugar; `@btravstack/observability` brings a `Logger` and no
-runtime. See [Starters](/explanation/starters).
+port-and-provider sugar; `@btravstack/observability` brings implementations of
+the kernel's `Logger`, `Tracer` and `Meter` ports, and no runtime. See [Starters](/explanation/starters).
 
 **structured logging** — A line whose message is a constant and whose facts are fields — `info("placing
 an order", { orderId, quantity })`, not a rendered sentence — so the receiving
