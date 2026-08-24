@@ -1,3 +1,4 @@
+import type { ConsumerOptions } from "@amqp-contract/worker";
 import type { ConfigInvalid, Env } from "@btravstack/config";
 import {
   Module,
@@ -13,6 +14,7 @@ import {
   AmqpRuntime,
   amqp,
   type AmqpConfig,
+  type AmqpConnectionOptions,
   type AnyAmqpContract,
   type HandlersInstanceOf,
 } from "./amqp-runtime.js";
@@ -55,8 +57,10 @@ export type AmqpModuleOptions<
   readonly handlers: Provider<HandlersInstanceOf<TContract>, HandlersError, HandlersNeeds>;
   /** Pins the broker instead of reading `AMQP_URL` — a test's container. */
   readonly url?: string;
-  readonly connectionOptions?: Record<string, unknown>;
-  readonly defaultConsumerOptions?: Record<string, unknown>;
+  /** See `AmqpOptions.connectionOptions`. */
+  readonly connectionOptions?: AmqpConnectionOptions;
+  /** See `AmqpOptions.defaultConsumerOptions`. */
+  readonly defaultConsumerOptions?: ConsumerOptions;
   /** See `AmqpOptions.connectTimeoutMs`. */
   readonly connectTimeoutMs?: number;
   readonly imports?: I;

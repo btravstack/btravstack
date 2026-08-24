@@ -177,7 +177,18 @@ AmqpInfo>>` — the runtime resolves **nothing**) and the broker on
   nothing from the environment; the declared type stays `Module<AmqpRuntime |
 AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>` either way,
   one signature — see the
-  sugar entry above), `connectionOptions`, `defaultConsumerOptions`,
+  sugar entry above), `connectionOptions?: AmqpConnectionOptions` (the
+  connection tuning `TypedAmqpWorker.create` accepts — heartbeat, reconnect
+  interval, `findServers`, TLS/socket options; the library declares
+  `AmqpConnectionManagerOptions` without exporting it by name, so the alias
+  reaches it by index, the same trick as `AnyAmqpContract`, and `index.ts`
+  exports it so an application can name a config value),
+  `defaultConsumerOptions?: ConsumerOptions` (the library's own exported
+  type — `prefetch`, `priority`, `arguments`, `consumerTag`, `exclusive`;
+  prefetch is the throughput knob). Neither is a `Record<string, unknown>`
+  bag any more — issue #25's policy, pinned by `amqp-runtime.test-d.ts`'s
+  passthrough block: a key the library does not accept is a compile error at
+  the composition root, not a silently ignored setting.
   `connectTimeoutMs` (a top-level `CreateWorkerOptions` field, **not** nested
   under `connectionOptions`, where setting it is silently inert — an
   unreachable broker takes the library's 30s default to report without it).
@@ -282,9 +293,9 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   Per-message identity is a **field on the contract's own envelope**, the way
   `tenantId` already is: the same argument-not-ambient trade
   `examples/order-amqp-worker` makes, and nothing this package reads. Limiting
-  throughput is **prefetch**, reachable today through
-  `defaultConsumerOptions` — issue #25's bag, a different question from this
-  one. `@btravstack/contract` is dependency-free, so its marker combinator
+  throughput is **prefetch**, reachable through
+  `defaultConsumerOptions` — typed as the library's `ConsumerOptions` since
+  issue #25 landed — a different question from this one. `@btravstack/contract` is dependency-free, so its marker combinator
   _would_ work over an AMQP contract; it is deliberately not wired, because
   there is nothing here to authenticate **from**.
 - **The suite needs Docker** (`@amqp-contract/testing` boots one RabbitMQ per

@@ -231,8 +231,8 @@ handlers port. Options on `AmqpModule` and `amqp()` alike:
 | ------------------------ | ----------------------- | -------------------------------------------------------------------------------------------- |
 | `AMQP_URL` / `url`       | `amqp://127.0.0.1:5672` | `url` pins the broker (a test's container); a blank variable is a `ConfigInvalid`, exit `78` |
 | `connectTimeoutMs`       | the library's `30s`     | how long `create` waits before an unreachable broker is a `RuntimeStartFailed`, exit `1`     |
-| `connectionOptions`      | —                       | passed through to `TypedAmqpWorker.create`                                                   |
-| `defaultConsumerOptions` | —                       | likewise                                                                                     |
+| `connectionOptions`      | —                       | `AmqpConnectionOptions` — heartbeat, reconnect interval, `findServers`, TLS/socket options   |
+| `defaultConsumerOptions` | —                       | the library's `ConsumerOptions` — `prefetch` (the throughput knob), `priority`, …            |
 
 Once consuming, the runtime publishes `AmqpInfo` — `{ queues }`, every queue
 the contract's consumers and RPCs drain — on `Serving.info`, read through
