@@ -5,6 +5,11 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.spec.ts"],
     setupFiles: ["@unthrown/vitest"],
+    // The one Redis server the whole gate shares. Tests separate by key
+    // prefix, not by server or by database index.
+    globalSetup: ["@btravstack/internal-test-infra/redis"],
+    // The image pull dominates a cold run.
+    hookTimeout: 120_000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],

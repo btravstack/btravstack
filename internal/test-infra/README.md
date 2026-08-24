@@ -11,8 +11,9 @@ rather than one per workspace.
 | `postgres:18.1`                    | Temporal's own persistence, and the example application's `orders` database |
 | `rabbitmq:4.2.1-management-alpine` | `packages/amqp`, `examples/order-amqp-worker`                               |
 | `temporalio/auto-setup:1.29.1`     | `packages/temporal`, `examples/order-temporal-worker`                       |
+| `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                      |
 
-Three containers for six workspaces. Before this existed there were five
+Four containers for eight workspaces. Before this existed there were five
 servers for those six — two RabbitMQ containers and up to three Temporal
 time-skipping servers — and `pnpm test` was intermittently red at turbo's
 default concurrency because the 60s testcontainers startup wait was what gave
@@ -34,6 +35,9 @@ finer than "a server of my own":
 - **A tenant per test.** The example application is multi-tenant, so one
   migrated database serves the whole gate. See
   `examples/order-infrastructure/README.md`.
+- **A key prefix per test.** A Redis test mints `test:<uuid>:` and writes
+  under it, which is finer than a database index and, like every boundary
+  here, needs no cleanup.
 
 ## Reuse, and what it costs
 
