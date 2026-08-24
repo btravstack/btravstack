@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "dependencies": {
+    "@btravstack/cache": "workspace:*",
     "@btravstack/config": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",

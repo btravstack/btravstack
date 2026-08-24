@@ -1,0 +1,97 @@
+{
+  "name": "@btravstack/cache",
+  "version": "0.2.0",
+  "description": "A Cache port for @btravstack/core: an in-memory adapter, a Redis adapter, and an opt-in instrumented composition that spans, counts and logs every call",
+  "keywords": [
+    "cache",
+    "dependency-injection",
+    "redis",
+    "typescript",
+    "unthrown"
+  ],
+  "homepage": "https://github.com/btravstack/start#readme",
+  "bugs": {
+    "url": "https://github.com/btravstack/start/issues"
+  },
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/btravstack/start.git",
+    "directory": "packages/cache"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./redis": {
+      "import": {
+        "types": "./dist/redis.d.mts",
+        "default": "./dist/redis.mjs"
+      },
+      "require": {
+        "types": "./dist/redis.d.cts",
+        "default": "./dist/redis.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts src/redis.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/redis.ts --format cjs,esm --dts --watch",
+    "test": "vitest run --coverage",
+    "test:types": "tsc -p tsconfig.test-d.json --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@btravstack/config": "workspace:*",
+    "@btravstack/core": "workspace:*",
+    "@btravstack/di": "workspace:*",
+    "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/observability": "workspace:*",
+    "@btravstack/testing": "workspace:*",
+    "@btravstack/tsconfig": "catalog:",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
+    "@opentelemetry/sdk-node": "catalog:",
+    "@opentelemetry/sdk-trace": "catalog:",
+    "@types/node": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "redis": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unthrown": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@btravstack/config": "workspace:^",
+    "@btravstack/core": "workspace:^",
+    "@btravstack/di": "workspace:^",
+    "redis": "^6.2.0",
+    "unthrown": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "redis": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -8,7 +8,11 @@ export default defineConfig({
     // The shared PostgreSQL server and the application's migrated database —
     // once for the whole repository, not once per workspace. Tests separate by
     // tenant, not by database.
-    globalSetup: ["@btravstack/example-order-infrastructure/global-setup"],
+    globalSetup: [
+      "@btravstack/example-order-infrastructure/global-setup",
+      // The shared Redis the customers slice reads through.
+      "@btravstack/internal-test-infra/redis",
+    ],
     // The image pull dominates a cold run.
     testTimeout: 30_000,
     hookTimeout: 120_000,

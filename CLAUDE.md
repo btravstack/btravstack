@@ -19,7 +19,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds nine published packages,
+pnpm workspace + turbo monorepo. `packages/` holds ten published packages,
 `contract` (contract-level markers shared by a client and the server that
 implements it — zero dependencies, zero peers), `di` (the container), `config`
 (configuration from the environment, as
@@ -28,13 +28,15 @@ providers), `core` (the kernel), `testing` (the test harness — `bootFixture`,
 `observability` (the observability starter — `createLogger` correlated with
 the ambient unit, a JSON sink, the kernel's events as lines, and the OTel
 adapter behind its own subpath; it IMPLEMENTS the `Logger`, `Tracer` and
-`Meter` ports rather than declaring them, which is `core`'s job), `http`
+`Meter` ports rather than declaring them, which is `core`'s job), `cache`
+(the first application-service port — a `Cache`, a memory and a Redis
+adapter, and an instrumented composition), `http`
 (the HTTP starter — oRPC), `temporal` (the Temporal starter) and `amqp` (the
 AMQP starter). `di` was its own repository until it was merged here
 **with its history**; it and `contract` are the two packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
-back, with `testing`, `observability` and the three transport starters on
+back, with `testing`, `observability`, `cache` and the three transport starters on
 `core`. Its own spec is `packages/di/CLAUDE.md`; `contract`'s is
 `packages/contract/CLAUDE.md`; the harness's is
 `packages/testing/CLAUDE.md`; the logging starter's is
@@ -51,7 +53,7 @@ container's own `hexagonal-order-api`, which composes a `Module` and never calls
 consumers, not fixtures: they are part of the gate, and `examples/README.md`
 is their index. `docs/` is the documentation site (see **Documentation
 site** below); it is a workspace but not a published package. `internal/`
-holds one more, `test-infra`, which is neither: it owns the three containers
+holds one more, `test-infra`, which is neither: it owns the four containers
 the whole gate shares and is documented in its own README.
 
 ## Commands
@@ -76,9 +78,9 @@ pnpm dev              # the three example deployments, one process each, watchin
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all nine packages move as one
+## Versioning: all ten packages move as one
 
-The nine published packages share **one version number**, enforced by a
+The ten published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. A release bumps every one of them,
 whether or not it changed — Spring Boot's model, and the reason is the same:
 an application installs a kernel and two or three starters together, and
@@ -491,6 +493,7 @@ the copy with no gate is the one that lies.
 | `@btravstack/core`          | `packages/core/CLAUDE.md`          | `/reference/core/`         |
 | `@btravstack/testing`       | `packages/testing/CLAUDE.md`       | `/reference/testing`       |
 | `@btravstack/observability` | `packages/observability/CLAUDE.md` | `/reference/observability` |
+| `@btravstack/cache`         | `packages/cache/CLAUDE.md`         | `/reference/cache`         |
 | `@btravstack/http`          | `packages/http/CLAUDE.md`          | `/reference/http`          |
 | `@btravstack/temporal`      | `packages/temporal/CLAUDE.md`      | `/reference/temporal`      |
 | `@btravstack/amqp`          | `packages/amqp/CLAUDE.md`          | `/reference/amqp`          |
@@ -613,11 +616,11 @@ in its place.
     a devDependency of the three example workspaces, and no new dependency.
   - **`.env.dev` is generated, never committed.** The `dev` task depends on
     `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
-    three shared containers the specs use** (`withReuse()` — a second set
+    four shared containers the specs use** (`withReuse()` — a second set
     would be issue #52's duplication in another hat), runs
     `prisma migrate deploy` under the same lock as the example's own
     `globalSetup`, and writes `DATABASE_URL` / `AMQP_URL` /
-    `TEMPORAL_ADDRESS`. They are written to a file rather than defaulted
+    `TEMPORAL_ADDRESS` / `REDIS_URL`. They are written to a file rather than defaulted
     because the ports are whatever Docker mapped, and an ephemeral mapped
     port cannot be a default. `--env-file` is Node's own; no `dotenv`.
   - **`PROBE_PORT` is per app, inline in each `dev` script** (`9000`, `9001`,
@@ -631,20 +634,23 @@ in its place.
     `preDrainDelayMs: 5_000` then up to `drainTimeoutMs: 20_000`. To watch a
     real drain, run the entry point without `watch`. Measured end to end:
     `draining` → `drained` exactly 5.002 s later → `stopping` → `exited 0`.
-  - **The root `dev` script is filtered for a reason.** Thirteen workspaces
-    have a `dev` script (nine packages' watch-builds, `docs`, three examples),
+  - **The root `dev` script is filtered for a reason.** Fourteen workspaces
+    have a `dev` script (ten packages' watch-builds, `docs`, three examples),
     and turbo refuses more persistent tasks than its concurrency — so the
     unfiltered `turbo run dev` the root carried was **already broken** before
     this, failing on ten persistent tasks against a concurrency of ten.
-- **The whole gate runs on THREE containers, shared, and `internal/test-infra`
-  owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine` and
-  one `temporalio/auto-setup:1.29.1`, started once per machine and reused by
-  every workspace's vitest run **and by `pnpm dev`**. Six workspaces need a Docker daemon —
-  `packages/amqp`, `packages/temporal`, and the four `examples/` that boot the
+- **The whole gate runs on FOUR containers, shared, and `internal/test-infra`
+  owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine`,
+  one `temporalio/auto-setup:1.29.1` and one `redis:8.8.2-alpine`, started
+  once per machine and reused by
+  every workspace's vitest run **and by `pnpm dev`**. Seven workspaces need a Docker daemon —
+  `packages/amqp`, `packages/temporal`, `packages/cache`, and the four
+  `examples/` that boot the
   application or a broker-backed runtime — and that is a fact a contributor
   discovers the hard way unless a README says so, which is why each one's
   does. Measured on this machine: `pnpm test` at turbo's default concurrency,
-  **27/27, ~32 s warm**.
+  **27/27, ~32 s warm** (before `packages/cache` joined; the Redis container
+  is the cheapest of the four to start).
 
   It used to be **five servers for those six workspaces** — a RabbitMQ
   container per AMQP vitest run and a Temporal time-skipping server per
@@ -663,7 +669,9 @@ in its place.
     task queue per test — which both suites already mint — separates the tests
     inside one file;
   - **a tenant per test**, which is what the example application being
-    multi-tenant buys (see below).
+    multi-tenant buys (see below);
+  - **a key prefix per test**, which is what a Redis suite mints — finer than
+    a database index, and free.
 
   `withReuse()` is what makes the second, third and fourth workspace attach
   instead of start. Two consequences are deliberate and stated in
@@ -766,6 +774,16 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   a test needs no machinery at all — no fixture that "enters" a tenant, no
   store to set — which is why the persistence specs read
   `repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001")`.
+
+  **A cache key carries the tenant, and that is the same rule one layer
+  out.** `@btravstack/cache`'s `Cache` takes plain string keys — no namespace
+  parameter, no tenant slot — because a cache is an application service and
+  the framework has no concept of a tenant to put there. So
+  `examples/order-api`'s customers controller composes
+  `customers:{tenantId}:{id}` by hand, which is the one place the discipline
+  is spelled rather than typed: a port states it in its signature, a string
+  key cannot, and the test that proves the read-through reads under a tenant
+  of its own for exactly that reason.
 
   `Outbox.pending(tenantId, limit)` is the case that shows ambient could not
   have covered this anyway: the relay reading it is a background sweep with no
@@ -925,7 +943,7 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   composition root, a list of slices plus what no slice owns — the
   sugar imports `http()`, provides the router on the starter's
   `HttpRouterPort` and
-  exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` and `DATABASE_URL` come from the
+  exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST`, `DATABASE_URL` and `REDIS_URL` come from the
   environment inside the graph, and the router is mounted under `/rpc`. The
   two authenticators are **not** in that list: they ride the router, which is
   what needs them, and `HttpModule` puts them in `provides` itself. The
@@ -1002,11 +1020,15 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   **starter** is the exception by definition:
   `@btravstack/http` peers on `@orpc/server`, `@orpc/contract` and
   `@unthrown/orpc` — peers, not dependencies, so an application holds one
-  copy of each. `@btravstack/observability` carries the family's one
-  **optional** peer, `pino`, needed only by the
-  `@btravstack/observability/pino` subpath: a consumer that never imports it
-  never installs it, and the package's own `tsdown` build emits `src/pino.ts`
-  as a second entry point for exactly that.
+  copy of each. **Optional peers behind a subpath** are the family's second
+  shape, and `@btravstack/observability`'s `pino` was the first: a consumer
+  that never imports `@btravstack/observability/pino` never installs it, and
+  the package's own `tsdown` build emits `src/pino.ts` as a second entry
+  point for exactly that. `@btravstack/observability/otel` follows it, and
+  `@btravstack/cache` now has three subpaths on the same protocol — `redis`
+  behind `/redis`, and `@btravstack/observability` + `@opentelemetry/api`
+  behind `/instrumented`, so a graph composing the plain `cache()` over the
+  memory adapter installs none of them.
 - **`packages/core`'s specs use `@btravstack/testing`, which peers on core —
   and it is NOT a devDependency of core**, because that would be a
   package-graph cycle turbo refuses. Instead: `packages/core/tsconfig.json`
@@ -1020,14 +1042,14 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   `@btravstack/core#typecheck` an explicit edge on
   `@btravstack/testing#build`; `knip.json` ignores the dependency for
   `packages/core`. Four places; a change to one is a change to all.
-- `declarationMap: false` on all nine published packages — the published
+- `declarationMap: false` on all ten published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All nine published packages claim `engines: { node: ">=20" }` while the root
+- All ten published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change.
@@ -1141,8 +1163,9 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   `packages/http/CLAUDE.md`, `packages/temporal/CLAUDE.md` or
   `packages/amqp/CLAUDE.md`, whichever is where that package's public
   surface lives — or `packages/di/CLAUDE.md` for the container, or
-  `packages/contract/CLAUDE.md` for the auth marker. There are
-  **ten** `CLAUDE.md` files; naming the wrong one is how the last drift
+  `packages/contract/CLAUDE.md` for the auth marker, or
+  `packages/cache/CLAUDE.md` for the cache port. There are
+  **eleven** `CLAUDE.md` files; naming the wrong one is how the last drift
   happened.
 
 ## Documentation site
@@ -1158,12 +1181,12 @@ was folded in here when the container was merged; nothing under
 
 - **TypeDoc runs from `docs/`, not from the packages** — it needs its own
   TypeScript (`catalog:typedoc` pins 6.0.3; 7.x is the native port and ships
-  no `typescript.js`). One `typedoc.<name>.json` per package — nine — points
+  no `typescript.js`). One `typedoc.<name>.json` per package — ten — points
   at that package's `src/index.ts` (core's one entry point; the doubles are
   `typedoc.testing.json`'s, and `typedoc.observability.json` names two entry
   points, `src/index.ts` and `src/pino.ts`) and writes straight into
   `api/<name>/` (gitignored; `docs/api/index.md` is the one committed file
-  there); `scripts/build-api.ts` runs the nine concurrently.
+  there); `scripts/build-api.ts` runs the ten concurrently.
   The package list is repeated in four places that must stay in sync: the
   configs, `build-api.ts`, `@btravstack/docs#build`'s `dependsOn` in
   `turbo.json` (explicit `<pkg>#build` edges — the site does not _depend_ on

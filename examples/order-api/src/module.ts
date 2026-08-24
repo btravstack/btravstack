@@ -1,3 +1,5 @@
+import { cache } from "@btravstack/cache";
+import { redisCache } from "@btravstack/cache/redis";
 import { Logger, Meter, Tracer } from "@btravstack/core";
 import { contract } from "@btravstack/example-order-api-contract";
 import { HttpModule } from "@btravstack/http";
@@ -29,7 +31,10 @@ export const orderRouter = api.HttpRouter(contract)({
  *
  * What is left here is what no slice owns: `observability()`, whose `Logger`
  * every layer writes to and which is exported because the per-request
- * `RequestModule` reads it out of the application scope. The two
+ * `RequestModule` reads it out of the application scope, and the `Cache` the
+ * customers slice reads through — composed INSTRUMENTED, so every cache call
+ * lands in the same span tree and the same metric stream as everything else
+ * here, and the slice that uses it declares nothing about observability. The two
  * authenticators are **not** listed: they ride the router, which is what needs
  * them, and `HttpModule` puts them in `provides` itself — a scheme the
  * contract names with no authenticator behind it is di's own unmet need on
@@ -51,7 +56,7 @@ export const orderRouter = api.HttpRouter(contract)({
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  imports: [OrdersSlice, CustomersSlice, cache({ adapter: redisCache() }), observability(), otel()],
   // `Tracer` and `Meter` join `Logger` in the exports for the same reason it
   // is there: `RequestModule` reads them out of the application scope.
   exports: [Logger, Tracer, Meter],

@@ -105,6 +105,22 @@ export const sharedRabbitMq = (): Promise<StartedTestContainer> =>
   );
 
 /**
+ * The cache server `@btravstack/cache`'s Redis adapter is tested against.
+ *
+ * Each test mints a UUID key prefix of its own, which is a finer boundary
+ * than a database index and needs no cleanup — the same trade the vhost, the
+ * namespace and the tenant already make.
+ */
+export const sharedRedis = (): Promise<StartedTestContainer> =>
+  shared("redis", () =>
+    new GenericContainer("redis:8.8.2-alpine")
+      .withExposedPorts(6379)
+      .withWaitStrategy(
+        Wait.forAll([Wait.forLogMessage(/Ready to accept connections/), Wait.forListeningPorts()]),
+      ),
+  );
+
+/**
  * The Temporal server, backed by {@link sharedPostgres}.
  *
  * It reaches PostgreSQL by container IP on the default bridge rather than

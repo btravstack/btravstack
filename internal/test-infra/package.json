@@ -10,6 +10,7 @@
     "./lock": "./src/lock.ts",
     "./namespace": "./src/namespace.ts",
     "./rabbitmq": "./src/rabbitmq.ts",
+    "./redis": "./src/redis.ts",
     "./temporal": "./src/temporal.ts",
     "./uuid": "./src/uuid.ts"
   },

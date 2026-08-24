@@ -1,3 +1,4 @@
+import { Cache } from "@btravstack/cache";
 import { Module } from "@btravstack/di";
 import { CustomerApplicationModule } from "@btravstack/example-order-application";
 import { CustomerPersistenceModule } from "@btravstack/example-order-infrastructure";
@@ -12,9 +13,14 @@ import { customersController } from "./controller.js";
  * here as `FindCustomer` is over there.
  *
  * What the two slices do share is the connection underneath both persistence
- * modules: one provider reference, so one database.
+ * modules: one provider reference, so one database — and, since its
+ * controller reads through one, the `Cache` the root composes.
  */
 export const CustomersSlice = Module("CustomersSlice")({
+  // Its controller reads a cache, and a slice declares what its OWN providers
+  // expect from the root — never what its imports already state for
+  // themselves.
+  needs: [Cache],
   imports: [CustomerApplicationModule, CustomerPersistenceModule],
   provides: [customersController],
   exports: [customersController],

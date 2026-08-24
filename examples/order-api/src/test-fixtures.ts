@@ -104,6 +104,30 @@ const recordingApi = () => {
 };
 
 /**
+ * The real root with a customers repository that COUNTS its reads, which is
+ * how a spec tells a cache hit from a second query — the only externally
+ * visible difference between the two is that one of them happened.
+ */
+const countingCustomers = () => {
+  let reads = 0;
+  return {
+    api: overridden(OrderApi, [
+      Provider(CustomerRepository)({
+        value: {
+          find: (_tenantId: TenantId, id: string) => {
+            reads += 1;
+            return id === "0199a1e0-0000-7000-8000-0000000000c1"
+              ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
+              : ErrAsync(new CustomerNotFound({ id: id as CustomerId }));
+          },
+        },
+      }),
+    ]),
+    reads: () => reads,
+  };
+};
+
+/**
  * The stub root at rest: nothing hangs, nothing blows up, and the customer
  * `0199a1e0-0000-7000-8000-0000000000c1` is registered. What the customers slice's success path needs, which
  * the real root cannot give it — its database is born empty inside the graph
@@ -243,6 +267,8 @@ export type ApiFixtures = {
   readonly gate: ReturnType<typeof gatedApi>;
   /** The real root's composition, plus everything its logger wrote. */
   readonly recording: ReturnType<typeof recordingApi>;
+  /** The real root over a customers repository that counts its reads. */
+  readonly counting: ReturnType<typeof countingCustomers>;
 };
 
 /**
@@ -268,6 +294,9 @@ export const it = test.extend<ApiFixtures>({
       // own otel.spec.ts.
       OTEL_SDK_DISABLED: "true",
       DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
+      // The shared Redis, which every spec here reaches under a tenant of its
+      // own — so the cache needs no more cleanup than the database does.
+      REDIS_URL: inject("__TESTCONTAINERS_REDIS_URL__"),
     },
   }),
 
@@ -338,5 +367,10 @@ export const it = test.extend<ApiFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   recording: async ({}, use) => {
     await use(recordingApi());
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  counting: async ({}, use) => {
+    await use(countingCustomers());
   },
 });

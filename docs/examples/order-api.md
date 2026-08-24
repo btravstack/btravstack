@@ -15,6 +15,8 @@ import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/examp
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { api } from "../../auth.js";
 import { customersController } from "../../slices/customers/controller.js";
+import { cache } from "@btravstack/cache";
+import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
 declare const view: (order: Order) => { id: string; quantity: number };
 -->
@@ -438,7 +440,13 @@ composition root and one fewer import, not a rewrite.
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  imports: [
+    OrdersSlice,
+    CustomersSlice,
+    cache({ adapter: redisCache() }),
+    observability(),
+    otel(),
+  ],
   // `RequestModule` reads all three out of the application scope.
   exports: [Logger, Tracer, Meter],
 });

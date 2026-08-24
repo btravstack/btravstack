@@ -12,6 +12,8 @@ import { OrderApplicationModule, OrderRepository, PlaceOrder } from "@btravstack
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderRouter } from "../../module.js";
 import { RequestModule } from "../../request-scope.js";
+import { cache } from "@btravstack/cache";
+import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 declare const logger: ServiceOf<Logger>;
@@ -47,11 +49,18 @@ happened. The recipe is one import.
 ```ts
 import { Module, Provider } from "@btravstack/di";
 import { HttpModule } from "@btravstack/http";
+import { Logger } from "@btravstack/core";
 import { observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  imports: [
+    OrdersSlice,
+    CustomersSlice,
+    cache({ adapter: redisCache() }),
+    observability(),
+    otel(),
+  ],
   // `RequestModule` reads all three out of the application scope.
   exports: [Logger, Tracer, Meter],
 });
@@ -200,6 +209,7 @@ pnpm add pino
 
 ```ts
 import pino from "pino";
+import { Logger } from "@btravstack/core";
 import { observability } from "@btravstack/observability";
 import { pinoSink } from "@btravstack/observability/pino";
 
@@ -273,7 +283,9 @@ const RecordingApi = HttpModule("RecordingApi")({
   imports: [
     OrdersSlice,
     CustomersSlice,
+    cache({ adapter: redisCache() }),
     observability({ sink: (line) => lines.push(line), level: "trace" }),
+    otel(),
   ],
   exports: [Logger],
 });
