@@ -69,7 +69,9 @@ export type Instrumented = {
   /** Runs a body against an instrumented cache over `adapter`, in a scope of its own. */
   readonly run: <T>(
     adapter: Module<CacheBackend, never, never>,
-    body: (service: CacheService) => Promise<T>,
+    // `PromiseLike`, not `Promise`: a body is usually one `AsyncResult`
+    // expression, and an `AsyncResult` is thenable without being a Promise.
+    body: (service: CacheService) => PromiseLike<T>,
   ) => Promise<T>;
   readonly spans: () => readonly ReadableSpan[];
   readonly points: () => readonly DataPoint<number>[];
@@ -183,7 +185,7 @@ export const it = test.extend<CacheFixtures>({
 
     const run = async <T>(
       adapter: Module<CacheBackend, never, never>,
-      body: (service: CacheService) => Promise<T>,
+      body: (service: CacheService) => PromiseLike<T>,
     ): Promise<T> => {
       const served = await Module.scoped(
         Module("InstrumentedFixture")({
@@ -206,7 +208,7 @@ export const it = test.extend<CacheFixtures>({
         }),
         (ctx) =>
           fromSafePromise(
-            body(ctx.get(Cache)).then(async (value) => {
+            Promise.resolve(body(ctx.get(Cache))).then(async (value) => {
               await collect();
               return value;
             }),
