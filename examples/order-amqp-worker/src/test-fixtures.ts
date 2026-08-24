@@ -1,27 +1,17 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import { AmqpModule, type AmqpInfo, type AmqpRuntime } from "@btravstack/amqp";
-import { Env } from "@btravstack/config";
+import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp";
+import type { Env } from "@btravstack/config";
 import type { RunningApp } from "@btravstack/core";
-import type { Module, Scope } from "@btravstack/di";
-import { orderContract } from "@btravstack/example-order-amqp-contract";
-import {
-  OrderApplicationModule,
-  OrderRepository,
-  Outbox,
-  PlaceOrder,
-} from "@btravstack/example-order-application";
+import { Provider, type Module, type Scope } from "@btravstack/di";
+import { OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
-import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
-import { observability, type Line } from "@btravstack/observability";
-import { bootFixture, tapped, type Boot } from "@btravstack/testing";
+import { Logger, LoggerConfig, createLogger, type Line } from "@btravstack/observability";
+import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
 import { inject, type TestAPI } from "vitest";
 
-import { orderHandlers } from "./module.js";
-import { outboxRelay, relayConfig } from "./outbox-relay.js";
-import { AuditSlice } from "./slices/audit/module.js";
-import { NotificationsSlice } from "./slices/notifications/module.js";
+import { OrderAmqpWorker } from "./module.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
@@ -42,41 +32,30 @@ type Serve = <E>(
 ) => Promise<App<E>>;
 
 /**
- * The composition root's own shape, with a recording sink in place of stdout —
- * a parallel root rather than `OrderAmqpWorker` itself because nothing can be
- * layered over a graph that already provides `Logger`, and
- * `observability({ sink })` is the seam. What the consumer said comes back as
- * `Line` values, so no tap is needed for it at all.
+ * `OrderAmqpWorker` ITSELF, with a recording logger overridden in — not a
+ * parallel root any more. `observability({ sink })` used to force one:
+ * nothing can be layered over a graph that already provides `Logger`, so
+ * this fixture restated the whole root and drifted from it by hand (issue
+ * #63; PR #49 is where the drift bit). `overridden` replaces the `Logger`
+ * provider inside the real root instead — reading the real `LoggerConfig`,
+ * so `LOG_LEVEL` filters exactly as in production — and an override the
+ * root stops backing is a loud `WiringDefect`, which is the sync-by-hand
+ * this comment used to ask for, made mechanical.
  *
  * `start` hands the application context to the runtime alone, so a spec still
  * cannot reach the *services* the way `Module.scoped` can:
  * `@btravstack/testing`'s `tapped` captures the very instances the running app
- * uses — the writer the spec places orders through (the same database the
- * relay sweeps, which for `:memory:` SQLite is the whole point) and the outbox
+ * uses — the writer the spec places orders through and the outbox
  * it asserts against.
- *
- * Both slices are imported here too, mirroring `OrderAmqpWorker`'s own root:
- * `orderHandlers`'s pieces are discovered only through `imports` / `provides`,
- * so a recording root that dropped either slice would leave that piece's port
- * unmet — a runtime `WiringDefect`, not a compile error.
  */
 const tappedAmqp = () => {
   const lines: Line[] = [];
-  const recording = AmqpModule("RecordingAmqpWorker")({
-    // The recording root provides `relayConfig` itself, so `Env` is its own.
-    needs: [Env],
-    contract: orderContract,
-    handlers: orderHandlers,
-    imports: [
-      OrderApplicationModule,
-      OrderPersistenceModule,
-      NotificationsSlice,
-      AuditSlice,
-      observability({ sink: (line) => lines.push(line) }),
-    ],
-    provides: [relayConfig, outboxRelay],
-    exports: [PlaceOrder, OrderRepository, Outbox],
-  });
+  const recording = overridden(OrderAmqpWorker, [
+    Provider(Logger)(
+      { config: LoggerConfig },
+      { sync: ({ config }) => createLogger((line) => lines.push(line), config.level) },
+    ),
+  ]);
   const tap = tapped(recording, [PlaceOrder, OrderRepository, Outbox]);
   return {
     module: tap.module,

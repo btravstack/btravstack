@@ -1,7 +1,7 @@
 import { Err, Ok, TaggedError, fromSafePromise } from "unthrown";
 import { expect, test, vi } from "vitest";
 
-import { Module, Port, Provider } from "./index.js";
+import { Module, Port, Provider, overrideProvider } from "./index.js";
 
 class AError extends TaggedError("AError")<{ readonly why: string }> {}
 class BError extends TaggedError("BError")<{ readonly why: string }> {}
@@ -204,4 +204,95 @@ test("a built context resolves an exported port", async () => {
   });
   const built = await Module.build(mod);
   expect(built.isOk() && built.value.get(A).v).toBe("A");
+});
+
+test("an override replaces the base provider, which is never constructed", async () => {
+  // GIVEN a graph whose base provider records construction, and an override for its port
+  let baseConstructed = false;
+  const mod = Module("Overridden")({
+    provides: [
+      Provider(A)({
+        sync: () => {
+          baseConstructed = true;
+          return { v: "base" };
+        },
+      }),
+      overrideProvider(Provider(A)({ value: { v: "override" } })),
+    ],
+    exports: [A],
+  });
+
+  // WHEN the graph is built
+  const built = await Module.build(mod).map((ctx) => ({
+    served: ctx.get(A).v,
+    baseConstructed,
+  }));
+
+  // THEN the override's service answers and the base never ran
+  expect(built).toBeOkWith({ served: "override", baseConstructed: false });
+});
+
+test("a resourceful base is replaced whole — its acquire never runs", async () => {
+  // GIVEN a resourceful base provider and a value override for its port
+  let acquired = false;
+  const mod = Module("OverriddenResource")({
+    provides: [
+      Provider(A)({
+        acquire: () => {
+          acquired = true;
+          return Ok({ v: "base" });
+        },
+        release: () => {},
+      }),
+      overrideProvider(Provider(A)({ value: { v: "override" } })),
+    ],
+    exports: [A],
+  });
+
+  // WHEN the graph is built and read — `build`, because the override erased
+  // the graph's one resource along with its provider... except `Scope` rides
+  // the module TYPE, so `scoped` is still the entry point that accepts it
+  const built = await Module.scoped(mod, (ctx) => Ok({ served: ctx.get(A).v, acquired }).toAsync());
+
+  // THEN the override's value answers and no resource was ever acquired
+  expect(built).toBeOkWith({ served: "override", acquired: false });
+});
+
+test("an override with nothing to override is a wiring defect", async () => {
+  // GIVEN an override for a port no provider in the tree supplies
+  const mod = Module("Orphaned")({
+    provides: [overrideProvider(Provider(A)({ value: { v: "override" } }))],
+    exports: [A],
+  });
+
+  // WHEN the graph is built
+  const built = await Module.build(mod);
+
+  // THEN the defect names the port and the drift
+  expect(built).toBeDefectWith(
+    expect.objectContaining({
+      message:
+        '[di] override for port "BA" with nothing to override — the tree no longer provides it',
+    }),
+  );
+});
+
+test("two overrides for one port are the duplicate defect", async () => {
+  // GIVEN two overrides for the same port beside its base
+  const mod = Module("DoublyOverridden")({
+    provides: [
+      Provider(A)({ value: { v: "base" } }),
+      overrideProvider(Provider(A)({ value: { v: "one" } })),
+      overrideProvider(Provider(A)({ value: { v: "two" } })),
+    ],
+    exports: [A],
+  });
+
+  // WHEN the graph is built
+  const built = await Module.build(mod);
+
+  // THEN the defect is the duplicate, spelled for overrides
+  expect(built).toBeDefectWith(
+    expect.objectContaining({ message: '[di] two overrides registered for port "BA"' }),
+  );
 });

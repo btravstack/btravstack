@@ -189,6 +189,49 @@ string. A sink is a value the composition takes, so nothing has to be reached
 for inside the graph. See
 [Log and correlate](/how-to/log-and-correlate).
 
+## `overridden(module, overrides)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+const overridden: <X, E, N, const O extends readonly AnyProviderFor[]>(
+  module: Module<X, E, N>,
+  overrides: O,
+) => Module<X, E | ErrorsOf<O>, N>;
+```
+
+The real composition root with named providers substituted — the testing half
+of "swapping an adapter is composing a different module", for the seam
+composition cannot reach: nothing can be layered over a graph that already
+provides a port (that is di's duplicate defect doing its job), so before this
+helper a recording sink or a stubbed adapter meant a hand-maintained parallel
+root that restated the real one and drifted from it silently (issue #63).
+
+Each override is an ordinary `Provider(Port)(...)` — the service type is
+checked against the port at that call. At build, di REPLACES the base
+provider for that port: the base is never constructed (a resourceful base's
+`acquire` never runs), and two invariants hold the line, both `WiringDefect`s
+before any factory runs:
+
+```
+[di] override for port "OrderRepository" with nothing to override — the tree no longer provides it
+[di] two overrides registered for port "Logger"
+```
+
+The first is the drift gate: a fixture overriding a port the root stops
+providing fails loudly instead of diverging. An override's own deps resolve
+from the graph's **internals** (a recording logger reading the real
+`LoggerConfig`) and deliberately do not widen the returned `Needs` — they are
+checked at build by the missing-provider defect instead. And an override
+replaces one **provider**, never a subsystem: the replaced provider's
+siblings still construct, so swapping a whole adapter stack — or a graph
+whose shape varies per test — remains a different module composed in its
+place, as `examples/order-temporal-worker`'s fixture shows.
+
+`overridden` rides `overrideProvider`, the one deliberately test-facing
+export in `@btravstack/di`'s own surface; a production root that reaches for
+either is recomposing the lazy way.
+
 ## `testRuntime(name?)`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
@@ -328,6 +371,7 @@ it("drains in-flight work", async ({ boot }) => {
 | `BootDefaults`    | type — `Omit<StartOptions, "signals" \| "unit">` |
 | `tapped`          | function                                         |
 | `ServicesOf`      | type                                             |
+| `overridden`      | function                                         |
 | `testRuntime`     | function                                         |
 | `TestRuntimePort` | port class, declared over `RuntimePort`          |
 | `TestRuntime`     | type                                             |

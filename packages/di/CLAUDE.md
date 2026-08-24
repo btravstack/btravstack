@@ -51,6 +51,13 @@ prismaOrderRepository(db) }` — an adapter factory takes the client, not a
   thing it declines to ship), so this is its price, not a bug to route around.
   Do not reintroduce a positional arm to recover it.
 
+  `overrideProvider(provider)` (issue #63) marks a provider — via a
+  module-private symbol, so this call is the only mint — to REPLACE the base
+  provider for its port at plan time; `isOverride` is the package-private
+  predicate `build.ts` reads. Test-harness-facing, stated in its TSDoc and in
+  `index.ts`: `@btravstack/testing`'s `overridden` is the intended caller,
+  and production composition stays override-free by convention.
+
 - **`module.ts`** — the `Module<Exports, E, Needs>` algebra. Four option
   tuples — `imports`, `provides`, `exports`, `needs` — and three phantom
   channels with a deliberate variance rule: capability channels (`_exports`) are
@@ -89,7 +96,11 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
 - **`build.ts`** — `flatten` (dedupe by provider reference), `plan` (levels
   providers for concurrent construction; detects cycles, duplicate providers,
   providers for `Scope`, missing providers — all
-  _before_ any factory runs), `run`, `runScoped`. Wiring bugs are thrown as
+  _before_ any factory runs; its first act is `resolveOverrides`, which
+  replaces each overridden base with its override so the base is never
+  levelled or constructed, and throws the two override defects — "nothing to
+  override", the drift gate a fixture gets, and "two overrides registered" —
+  on the same pre-construction channel), `run`, `runScoped`. Wiring bugs are thrown as
   `WiringDefect` inside a `.map` callback on purpose: unthrown converts the throw
   into its `Defect` channel, which is where wiring bugs (vs. modeled failures)
   belong.

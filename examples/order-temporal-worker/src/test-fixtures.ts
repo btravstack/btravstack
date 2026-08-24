@@ -72,7 +72,15 @@ type Serve = <E>(
 ) => Promise<Deployment<E>>;
 
 /**
- * The application half of a root shaped like the real one, with this test's
+ * Composed, deliberately — not `overridden(OrderTemporalWorker, …)`: the
+ * harness's override substitutes providers into a FIXED root, and this
+ * deployment has none to substitute into — the contract itself varies per
+ * test (a task queue of its own, minted in `serve`) and the fulfillment
+ * module per spec. Recomposition is the right tool when the graph's SHAPE is
+ * what varies; overriding is for a named provider inside a root that
+ * otherwise stands (the http and amqp fixtures, since issue #63).
+ *
+ * The application half of that per-test root, with this test's
  * fulfillment module swapped in: same `OrderApplicationModule`, same
  * `OrderPersistenceModule`, same `observability()` — so the orchestration under
  * test is unchanged and only the external services' answers differ, and the

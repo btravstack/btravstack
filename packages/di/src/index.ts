@@ -41,6 +41,11 @@ export { Port } from "./port.js";
 export type { AnyPort, PortClass, PortClassOf, PortInstance, Scope, ServiceOf } from "./port.js";
 export { Context } from "./context.js";
 export { Provider } from "./provider.js";
+// Test-harness-facing (`@btravstack/testing`'s `overridden` is the intended
+// caller): marks a provider to REPLACE the base one for its port at build.
+// Production composition stays override-free — swapping an adapter is
+// composing a different module.
+export { overrideProvider } from "./provider.js";
 export { Module } from "./module.js";
 // `AnyModule`, `AnyProvider` and `Exportable` are exported so a package
 // offering a *shaped* module (a starter's `HttpModule(name)({...})` sugar,

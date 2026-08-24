@@ -3,6 +3,7 @@ import { Ok, fromSafePromise, type AsyncResult } from "unthrown";
 import { Context, unsafeAddAll, unsafeKeys } from "./context.js";
 import { constructLevel, runStartHooks, type AnyProvider } from "./lifecycle.js";
 import { Scope } from "./port.js";
+import { isOverride } from "./provider.js";
 import { createScope, type ClosableFinalisers, type TeardownReporter } from "./scope.js";
 
 type AnyModule = {
@@ -45,10 +46,48 @@ class WiringDefect extends Error {}
  * chosen on failure deterministic (see `run`).
  * Internal only, same as `flatten` above — `run` is the only caller.
  */
+/**
+ * Replaces each overridden base provider with its override, before any other
+ * check runs — so the base is never levelled, never constructed, and the
+ * duplicate check below sees one provider per port again. Two defects guard
+ * the mechanism: an override with no base in the tree ("nothing to
+ * override") — the loud failure a drifted fixture gets instead of a silent
+ * divergence — and two overrides for one port, which is the ordinary
+ * duplicate. A port the SEED context carries is deliberately not a base: the
+ * parent's services are already built, so there is nothing an override could
+ * replace there.
+ */
+const resolveOverrides = (providers: readonly AnyProvider[]): readonly AnyProvider[] => {
+  const overrides = providers.filter((provider) => isOverride(provider));
+  if (overrides.length === 0) return providers;
+  const seen = new Set<string>();
+  for (const override of overrides) {
+    const id = override.port.portId;
+    if (seen.has(id)) {
+      // Deliberate: same channel as every wiring bug — `run`'s `.map`
+      // callback converts the throw to a `Defect`.
+      // oxlint-disable-next-line unthrown/no-throw
+      throw new WiringDefect(`[di] two overrides registered for port ${JSON.stringify(id)}`);
+    }
+    seen.add(id);
+    if (!providers.some((base) => !isOverride(base) && base.port.portId === id)) {
+      // oxlint-disable-next-line unthrown/no-throw -- same rationale as above
+      throw new WiringDefect(
+        `[di] override for port ${JSON.stringify(id)} with nothing to override — the tree no longer provides it`,
+      );
+    }
+  }
+  return [
+    ...providers.filter((provider) => !isOverride(provider) && !seen.has(provider.port.portId)),
+    ...overrides,
+  ];
+};
+
 const plan = (
   providers: readonly AnyProvider[],
   seedKeys: ReadonlySet<string>,
 ): readonly (readonly AnyProvider[])[] => {
+  providers = resolveOverrides(providers);
   const byPort = new Map<string, AnyProvider>();
   for (const provider of providers) {
     const id = provider.port.portId;

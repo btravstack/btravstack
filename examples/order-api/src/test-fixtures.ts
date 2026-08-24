@@ -2,13 +2,8 @@ import assert from "node:assert/strict";
 
 import type { Env } from "@btravstack/config";
 import type { RunningApp, StartOptions } from "@btravstack/core";
-import { Module, Provider, type Scope, type ServiceOf } from "@btravstack/di";
-import {
-  CustomerApplicationModule,
-  CustomerRepository,
-  OrderApplicationModule,
-  OrderRepository,
-} from "@btravstack/example-order-application";
+import { Provider, type Module, type Scope, type ServiceOf } from "@btravstack/di";
+import { CustomerRepository, OrderRepository } from "@btravstack/example-order-application";
 import {
   Customer,
   CustomerNotFound,
@@ -17,44 +12,42 @@ import {
   type Order,
   type TenantId,
 } from "@btravstack/example-order-domain";
-import { HttpModule, type HttpInfo, type HttpRuntime } from "@btravstack/http";
+import type { HttpInfo, HttpRuntime } from "@btravstack/http";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
-import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
-import { bootFixture, type Boot } from "@btravstack/testing";
+import {
+  Logger,
+  LoggerConfig,
+  createLogger,
+  type Line,
+  type Sink,
+} from "@btravstack/observability";
+import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { inject, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
-import { OrderApi, orderRouter } from "./module.js";
+import { OrderApi } from "./module.js";
 import { RequestModule } from "./request-scope.js";
-import { customersController } from "./slices/customers/controller.js";
-import { CustomersSlice } from "./slices/customers/module.js";
-import { ordersController } from "./slices/orders/controller.js";
-import { OrdersSlice } from "./slices/orders/module.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
 /**
- * Both repositories in one stub module, so a root closes both verticals' needs
- * the way the two persistence modules do. Only the orders half varies per
+ * Both repositories as overrides, so one call closes both verticals the way
+ * the two persistence modules do. Only the orders half varies per
  * spec; the customers one holds a single registered customer, which is all
  * that slice's one procedure needs to answer.
  */
-const persistenceOf = (repository: ServiceOf<OrderRepository>) =>
-  Module("StubPersistence")({
-    provides: [
-      Provider(OrderRepository)({ value: repository }),
-      Provider(CustomerRepository)({
-        value: {
-          find: (_tenantId: TenantId, id: string) =>
-            id === "0199a1e0-0000-7000-8000-0000000000c1"
-              ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
-              : ErrAsync(new CustomerNotFound({ id })),
-        },
-      }),
-    ],
-    exports: [OrderRepository, CustomerRepository],
-  });
+const persistenceOf = (repository: ServiceOf<OrderRepository>) => [
+  Provider(OrderRepository)({ value: repository }),
+  Provider(CustomerRepository)({
+    value: {
+      find: (_tenantId: TenantId, id: string) =>
+        id === "0199a1e0-0000-7000-8000-0000000000c1"
+          ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
+          : ErrAsync(new CustomerNotFound({ id })),
+    },
+  }),
+];
 
 /** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */
 const recorderOf = () => {
@@ -63,32 +56,26 @@ const recorderOf = () => {
 };
 
 /**
- * A composition root shaped like the real one but with persistence swapped:
- * same application modules, same controllers, same `HttpModule` sugar —
- * unpinned, so `serve`'s `env` is what binds it to an ephemeral loopback port
- * — same exports, so the transport under test is unchanged. The sink defaults
+ * `OrderApi` ITSELF with persistence and the logger overridden — not a
+ * parallel root any more (issue #63). The slices still bring the Prisma
+ * providers with them; `overridden` REPLACES those providers by port, so the
+ * stub answers and the real adapter is never constructed. The database
+ * client behind it still opens — an override replaces one provider, never a
+ * subsystem — which is fine here: every spec's environment carries the
+ * shared database anyway. The sink defaults
  * to a no-op: these roots are booted to exercise the transport, and the real
  * `jsonSink()` would put the application's lines in the test runner's own
- * output.
- *
- * Flat rather than a list of slices, and that is the point of the change that
- * made it so: a slice now imports the vertical it needs, so `OrdersSlice`
- * brings the Prisma repository with it and there is nothing to layer a stub
- * over — two providers for one port is di's duplicate defect. Swapping an
- * adapter is composing a different module, which is exactly what this is.
+ * output; the logger override reads the real `LoggerConfig`, so `boot`'s
+ * `LOG_LEVEL` filters exactly as the composed `observability()` did.
  */
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
-  HttpModule("StubApi")({
-    router: orderRouter,
-    imports: [
-      OrderApplicationModule,
-      CustomerApplicationModule,
-      persistenceOf(repository),
-      observability({ sink }),
-    ],
-    provides: [ordersController, customersController],
-    exports: [Logger],
-  });
+  overridden(OrderApi, [
+    ...persistenceOf(repository),
+    Provider(Logger)(
+      { config: LoggerConfig },
+      { sync: ({ config }) => createLogger(sink, config.level) },
+    ),
+  ]);
 
 /**
  * The real root's composition with a recording sink in place of stdout.
@@ -99,24 +86,16 @@ const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) 
  * own array, and reaching into the graph for that instance was the price. A
  * sink is a value the composition takes, so what comes back is the `Line`
  * itself — `unit.traceId` as a field, not a prefix parsed out of a string.
- * A parallel root rather than `OrderApi` itself for the same reason
- * `apiWith` is one: nothing can be layered over a graph that already provides
- * `Logger`.
+ * `OrderApi` itself here too, with only the logger overridden — the drift
+ * this fixture used to invite ("mirror the real root by hand") is now a
+ * `WiringDefect` the moment the root stops providing `Logger`.
  */
 const recordingApi = () => {
   const recorder = recorderOf();
   return {
-    api: HttpModule("RecordingApi")({
-      router: orderRouter,
-      // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
-      // real root, and this root exists to be read.
-      imports: [
-        OrdersSlice,
-        CustomersSlice,
-        observability({ sink: recorder.sink, level: "trace" }),
-      ],
-      exports: [Logger],
-    }),
+    // `"trace"` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
+    // real root, and this root exists to be read.
+    api: overridden(OrderApi, [Provider(Logger)({ value: createLogger(recorder.sink, "trace") })]),
     lines: recorder.lines,
   };
 };
