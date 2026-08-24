@@ -1,5 +1,6 @@
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
+import { Tracer, otel } from "@btravstack/observability/otel";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
@@ -54,5 +55,8 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
-  imports: [FulfillmentSlice, BillingSlice, observability()],
+  imports: [FulfillmentSlice, BillingSlice, observability(), otel()],
+  // `UnitSpanModule`, passed as `StartOptions.unit` in `main.ts`, reads
+  // `Tracer` out of the application scope.
+  exports: [Tracer],
 });

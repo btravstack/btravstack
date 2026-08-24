@@ -351,6 +351,9 @@ importers:
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
+      '@opentelemetry/sdk-node':
+        specifier: 'catalog:'
+        version: 0.221.0(@opentelemetry/api@1.9.1)
       unthrown:
         specifier: 'catalog:'
         version: 5.7.0
@@ -409,6 +412,12 @@ importers:
       '@btravstack/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
+      '@opentelemetry/sdk-node':
+        specifier: 'catalog:'
+        version: 0.221.0(@opentelemetry/api@1.9.1)
       '@orpc/client':
         specifier: 'catalog:'
         version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
@@ -670,6 +679,12 @@ importers:
       '@btravstack/temporal':
         specifier: workspace:*
         version: link:../../packages/temporal
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
+      '@opentelemetry/sdk-node':
+        specifier: 'catalog:'
+        version: 0.221.0(@opentelemetry/api@1.9.1)
       '@temporal-contract/client':
         specifier: 'catalog:'
         version: 8.0.0-beta.5(@temporalio/client@1.22.0)(@temporalio/common@1.22.0)(unthrown@5.7.0)

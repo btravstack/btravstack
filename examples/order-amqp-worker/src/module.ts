@@ -9,6 +9,7 @@ import {
 } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { Logger, observability } from "@btravstack/observability";
+import { Tracer, otel } from "@btravstack/observability/otel";
 
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
 import { orderAudit } from "./slices/audit/handler.js";
@@ -76,7 +77,10 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     NotificationsSlice,
     AuditSlice,
     observability(),
+    otel(),
   ],
   provides: [relayConfig, outboxRelay],
-  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+  // `Tracer` beside `Logger` for the same reason: `UnitSpanModule`, passed
+  // as `StartOptions.unit` in `main.ts`, reads it out of the application scope.
+  exports: [PlaceOrder, OrderRepository, Outbox, Logger, Tracer],
 });

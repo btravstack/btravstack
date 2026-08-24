@@ -47,6 +47,7 @@ import { Provider, type ServiceOf } from "@btravstack/di";
 import { Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
+import { Meter, otel } from "@btravstack/observability/otel";
 import { OutboxRelay } from "../../outbox-relay.js";
 
 // The two module-private helpers the outbox-relay excerpt leans on — the
@@ -55,6 +56,7 @@ declare const tenantsOf: (value: string) => readonly TenantId[];
 declare const startOutboxRelay: (
   outbox: ServiceOf<Outbox>,
   logger: ServiceOf<Logger>,
+  meter: ServiceOf<Meter>,
   options: { url: string; pollMs: number; tenants: readonly TenantId[] },
 ) => AsyncResult<ServiceOf<OutboxRelay>, RetryableError>;
 import { currentUnit } from "@btravstack/core";
@@ -193,7 +195,14 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  // otel() supplies the `Meter` the relay counts through, beside the
+  // `Logger` observability() does.
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    observability(),
+    otel(),
+  ],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
@@ -313,6 +322,7 @@ export const outboxRelay = Provider(OutboxRelay)(
   {
     outbox: Outbox,
     logger: Logger,
+    meter: Meter,
     broker: AmqpConfig,
     config: relayConfig.port,
   },
@@ -320,10 +330,11 @@ export const outboxRelay = Provider(OutboxRelay)(
     acquire: ({
       outbox,
       logger,
+      meter,
       broker: { url },
       config: { pollMs, tenants },
     }) =>
-      startOutboxRelay(outbox, logger, {
+      startOutboxRelay(outbox, logger, meter, {
         url,
         pollMs,
         tenants: tenantsOf(tenants),

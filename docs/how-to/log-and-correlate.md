@@ -6,6 +6,7 @@ description: Add @btravstack/observability, log structured attributes from a use
 <!-- doctest: prelude
 import { type ServiceOf } from "@btravstack/di";
 import { Logger, type Line } from "@btravstack/observability";
+import { Meter, Tracer, otel } from "@btravstack/observability/otel";
 import { TenantId, placeOrder } from "@btravstack/example-order-domain";
 import { OrderApplicationModule, OrderRepository, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
@@ -50,8 +51,9 @@ import { Logger, observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
+  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  // `RequestModule` reads all three out of the application scope.
+  exports: [Logger, Tracer, Meter],
 });
 ```
 

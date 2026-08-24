@@ -6,6 +6,7 @@ import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Outbox } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import { Logger } from "@btravstack/observability";
+import { Meter } from "@btravstack/observability/otel";
 import { ErrAsync, P, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
@@ -99,6 +100,7 @@ export class BrokerUnreachable extends TaggedError("BrokerUnreachable")<{
 const startOutboxRelay = (
   outbox: ServiceOf<Outbox>,
   logger: ServiceOf<Logger>,
+  meter: ServiceOf<Meter>,
   {
     url,
     pollMs,
@@ -108,6 +110,10 @@ const startOutboxRelay = (
   TypedAmqpClient.create({ contract: orderContract, urls: [url] })
     .recoverDefect((cause) => ErrAsync(new BrokerUnreachable({ url, cause })))
     .map((client) => {
+      // The relay's own signal, counted where the fact leaves the process —
+      // per tenant, since the sweep is per tenant and one tenant's backlog is
+      // the thing an operator asks about.
+      const relayed = meter.createCounter("btravstack.outbox.relayed");
       let stopped = false;
       let wake: (() => void) | undefined;
       const sleep = (): Promise<void> =>
@@ -139,6 +145,7 @@ const startOutboxRelay = (
                 .match({
                   ok: () => {
                     published.push(event.id);
+                    relayed.add(1, { "btravstack.tenant_id": event.tenantId });
                   },
                   errCases: (matcher) =>
                     matcher.with(P.tag("@amqp-contract/MessageValidationError"), (error) => {
@@ -221,10 +228,10 @@ const startOutboxRelay = (
  * kernel then reports as a `teardownError`.
  */
 export const outboxRelay = Provider(OutboxRelay)(
-  { outbox: Outbox, logger: Logger, broker: AmqpConfig, config: relayConfig.port },
+  { outbox: Outbox, logger: Logger, meter: Meter, broker: AmqpConfig, config: relayConfig.port },
   {
-    acquire: ({ outbox, logger, broker: { url }, config: { pollMs, tenants } }) =>
-      startOutboxRelay(outbox, logger, { url, pollMs, tenants: tenantsOf(tenants) }),
+    acquire: ({ outbox, logger, meter, broker: { url }, config: { pollMs, tenants } }) =>
+      startOutboxRelay(outbox, logger, meter, { url, pollMs, tenants: tenantsOf(tenants) }),
     release: (running) => running.stop().get(),
   },
 );

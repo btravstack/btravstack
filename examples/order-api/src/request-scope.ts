@@ -1,5 +1,6 @@
 import { Module, Port, Provider } from "@btravstack/di";
 import { Logger } from "@btravstack/observability";
+import { Meter, UnitSpanModule } from "@btravstack/observability/otel";
 
 /**
  * A service that exists for the length of one request and is torn down with it.
@@ -20,17 +21,25 @@ export class RequestSpan extends Port("RequestSpan")<{ readonly finish: () => vo
  * own trace id.
  */
 export const RequestModule = Module("Request")({
-  // The fork seam: `Logger` is read out of the application scope this
-  // per-request module is forked from.
-  needs: [Logger],
+  // The fork seam: `Logger` and `Meter` are read out of the application scope
+  // this per-request module is forked from. `UnitSpanModule` rides along, so
+  // every request also opens an OTel span carrying the same unit ids the
+  // logger stamps — its own `needs: [Tracer]` travels with the import.
+  needs: [Logger, Meter],
+  imports: [UnitSpanModule],
   provides: [
     Provider(RequestSpan)(
-      { logger: Logger },
+      { logger: Logger, meter: Meter },
       {
-        sync: ({ logger }) => {
+        sync: ({ logger, meter }) => {
           const startedAt = Date.now();
+          const duration = meter.createHistogram("btravstack.request.duration", { unit: "ms" });
           return {
-            finish: () => logger.info("request finished", { durationMs: Date.now() - startedAt }),
+            finish: () => {
+              const durationMs = Date.now() - startedAt;
+              duration.record(durationMs);
+              logger.info("request finished", { durationMs });
+            },
           };
         },
         onStop: (span) => span.finish(),

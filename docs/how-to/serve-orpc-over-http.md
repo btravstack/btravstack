@@ -7,6 +7,7 @@ description: Implement an oRPC contract as a di-provided router, compose it with
 import { start } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { HttpRuntime, http } from "@btravstack/http";
+import { Meter, Tracer, otel } from "@btravstack/observability/otel";
 import { api } from "../../auth.js";
 import { RequestModule } from "../../request-scope.js";
 -->
@@ -195,8 +196,15 @@ import { ordersRouter } from "./router.js";
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
-  exports: [Logger],
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    observability(),
+    otel(),
+  ],
+  // `RequestModule` (passed as `StartOptions.unit` below) reads all three
+  // out of the application scope.
+  exports: [Logger, Tracer, Meter],
 });
 ```
 

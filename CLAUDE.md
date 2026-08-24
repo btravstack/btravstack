@@ -740,7 +740,7 @@ shipping: ShippingService }, { sync })` and `BillingSlice`'s `chargeOrder = Temp
 chargeOrder])`, into the composition root
   `TemporalModule("OrderTemporalWorker")({ contract, activities:
 orderActivities, workflows, imports: [FulfillmentSlice, BillingSlice,
-observability()] })`, the sugar importing the starter. `FulfillmentSlice`
+observability(), otel()], exports: [Tracer] })`, the sugar importing the starter. `FulfillmentSlice`
   imports the orders vertical (`OrderApplicationModule` +
   `OrderPersistenceModule`) plus `FulfillmentModule`; `BillingSlice` imports
   `BillingModule` alone — the two verticals meet only in that `imports` list,
@@ -756,7 +756,7 @@ orderAudit])` — but **neither** slice imports a vertical: a subscriber reacts
   the root, next to the outbox relay that writes it
   (`AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers,
 imports: [OrderApplicationModule, OrderPersistenceModule, NotificationsSlice,
-AuditSlice, observability()], … })`),
+AuditSlice, observability(), otel()], … })`),
   with its outbox relay a resourceful provider of its own rather than
   something layered onto the runtime — the relay is also the one place in the
   examples that logs a **failure**, `logger.error(message, cause, { eventId })`
@@ -852,7 +852,7 @@ AuditSlice, observability()], … })`),
   `orderRouter = api.HttpRouter(contract)({ orders: ordersController,
 customers: customersController })`, the keyed form — and
   **`HttpModule("OrderApi")({ router: orderRouter, imports: [OrdersSlice,
-CustomersSlice, observability()], exports: [Logger] })`** is the whole
+CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`** is the whole
   composition root, a list of slices plus what no slice owns — the
   sugar imports `http()`, provides the router on the starter's
   `HttpRouterPort` and
@@ -872,13 +872,20 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   reads it out of the application scope. `RequestModule` rides
   `StartOptions.unit` so
   the per-request fork is the kernel's. There is no `runtime`, `resolves`,
-  `handler`, `port` or env-reading to spell anywhere. It is also the **one**
-  `main.ts` that is not a single line: it passes
+  `handler`, `port` or env-reading to spell anywhere. Its `main.ts` passes
   `onEvent: kernelEvents(createLogger(jsonSink()))` so the kernel's nine events
   land in the application's own stream, with the logger built by hand because
-  `building` is emitted while the graph still is. The other two stay one line
-  — the kernel's stderr sink is a fine default and this is the upgrade, not
-  the requirement. Each procedure is a plain
+  `building` is emitted while the graph still is — the kernel's stderr sink
+  is a fine default and this is the upgrade, not the requirement. All three
+  `main.ts` files pass a unit module since the examples were instrumented
+  with the trio: `RequestModule` here (which imports `UnitSpanModule` and
+  records a request-duration histogram beside the finish line it logs), bare
+  `UnitSpanModule` on the two workers — so every unit, request or delivery
+  or activity attempt, opens an OTel span carrying the same ids the logger
+  stamps, and the roots compose `otel()` beside `observability()` and export
+  its ports for the fork to read. Each metric sits at an adapter seam, never
+  in the application layer: the request span's histogram, the outbox relay's
+  per-tenant `relayed` counter, the billing stand-in's `authorized` counter. Each procedure is a plain
   `Result`-returning function typed by its slice's fragment (`@unthrown/orpc`'s
   `.result()` handler, attached inside each `HttpController`). It reads
   `port` back off

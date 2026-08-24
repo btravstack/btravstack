@@ -1,6 +1,7 @@
 import { contract } from "@btravstack/example-order-api-contract";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
+import { Meter, Tracer, otel } from "@btravstack/observability/otel";
 
 import { api } from "./auth.js";
 import { customersController } from "./slices/customers/controller.js";
@@ -49,6 +50,8 @@ export const orderRouter = api.HttpRouter(contract)({
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
+  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  // `Tracer` and `Meter` join `Logger` in the exports for the same reason it
+  // is there: `RequestModule` reads them out of the application scope.
+  exports: [Logger, Tracer, Meter],
 });

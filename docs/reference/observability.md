@@ -15,6 +15,7 @@ import {
   logLevel,
   observability,
 } from "@btravstack/observability";
+import { Meter, Tracer, otel } from "@btravstack/observability/otel";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 import { orderRouter } from "../../module.js";
@@ -282,8 +283,8 @@ application and export `Logger` if anything outside the root reads it —
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
+  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  exports: [Logger, Tracer, Meter],
 });
 ```
 
