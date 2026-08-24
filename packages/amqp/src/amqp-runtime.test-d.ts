@@ -92,3 +92,25 @@ const Unmet = Module("Unmet")({
 });
 // @ts-expect-error -- and `start` refuses it too, on the needs channel
 start(Unmet, { signals: false, probes: false });
+
+// The passthrough options are the library's own types, never a
+// `Record<string, unknown>` bag (issue #25's policy): a key the library does
+// not accept is refused at the composition root, not silently ignored by the
+// broker client.
+amqp({
+  contract: pinContract,
+  connectionOptions: { heartbeatIntervalInSeconds: 5, reconnectTimeInSeconds: 10 },
+  defaultConsumerOptions: { prefetch: 16 },
+});
+
+amqp({
+  contract: pinContract,
+  // @ts-expect-error -- `heartbeat` is amqplib's spelling; the manager's is `heartbeatIntervalInSeconds`
+  connectionOptions: { heartbeat: 5 },
+});
+
+amqp({
+  contract: pinContract,
+  // @ts-expect-error -- `prefetchCount` is not a `ConsumerOptions` key
+  defaultConsumerOptions: { prefetchCount: 16 },
+});

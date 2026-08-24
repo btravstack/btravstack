@@ -1,4 +1,8 @@
-import { TypedAmqpWorker, type WorkerInferHandlers } from "@amqp-contract/worker";
+import {
+  TypedAmqpWorker,
+  type ConsumerOptions,
+  type WorkerInferHandlers,
+} from "@amqp-contract/worker";
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
   RuntimePort,
@@ -40,6 +44,16 @@ export class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}
 export type AnyAmqpContract = Parameters<typeof TypedAmqpWorker.create>[0]["contract"];
 
 /**
+ * The connection tuning `TypedAmqpWorker.create` accepts — heartbeat,
+ * reconnect interval, `findServers`, TLS/socket options. The library declares
+ * it (`AmqpConnectionManagerOptions`) without exporting it by name, so it is
+ * reached by index for the same reason {@link AnyAmqpContract} is.
+ */
+export type AmqpConnectionOptions = NonNullable<
+  Parameters<typeof TypedAmqpWorker.create>[0]["connectionOptions"]
+>;
+
+/**
  * The handlers' port — one id, the starter's own. A consumer serves one
  * handlers record as it boots one runtime, so the port is framework-owned
  * like `AmqpConfig`, and an application never names it:
@@ -76,8 +90,10 @@ export type AmqpOptions<TContract extends AnyAmqpContract> = {
   readonly contract: TContract;
   /** Pins the broker instead of reading `AMQP_URL` — a test's container. */
   readonly url?: string;
-  readonly connectionOptions?: Record<string, unknown>;
-  readonly defaultConsumerOptions?: Record<string, unknown>;
+  /** Connection tuning, `@amqp-contract/worker`'s own type: heartbeat, reconnect interval, `findServers`, TLS/socket options. */
+  readonly connectionOptions?: AmqpConnectionOptions;
+  /** Consumer defaults applied to every handler, the library's own type: `prefetch`, `priority`, `arguments`, `consumerTag`, `exclusive`. */
+  readonly defaultConsumerOptions?: ConsumerOptions;
   /**
    * How long `create` waits for the connection before failing. Passed straight
    * through — it is a top-level `CreateWorkerOptions` field, NOT nested under

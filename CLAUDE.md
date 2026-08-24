@@ -918,6 +918,21 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `.spec.ts` (see Test conventions); it stays on everywhere else, where nothing
   uses it. An unused `oxlint-disable` is itself a warning,
   so do not add one pre-emptively.
+- **A passthrough option is typed by the underlying library's own types, or
+  it does not exist — a `Record<string, unknown>` bag is banned.** Decided in
+  issue #25, where `@btravstack/amqp`'s `connectionOptions` /
+  `defaultConsumerOptions` were the family's only untyped bags (twice each —
+  the primitive and the `AmqpModule` sugar re-declared them): an `unknown`
+  bag cuts against the typesafety pitch, and a key the library ignores was
+  silently inert. They now take `@amqp-contract/worker`'s own exported
+  `ConsumerOptions` and an `AmqpConnectionOptions` alias reached by index —
+  the library declares the type without exporting it, the same trick as
+  `AnyAmqpContract` — pinned by `amqp-runtime.test-d.ts`'s passthrough block.
+  No starter is obliged to grow a passthrough: `@btravstack/http` and
+  `@btravstack/temporal` have none, and temporal's named typed options
+  (`gracePeriod`, `forceAfter`) are the preferred shape when a handful of
+  knobs is all that is wanted — but a passthrough that exists is typed by the
+  library it forwards to.
 - **Pre-lifted constructors, not `.toAsync()` on a fresh literal.** `OkAsync(v)`
   / `ErrAsync(e)` / `OkAsync()` are what unthrown ships for this;
   `Ok(v).toAsync()` and `Ok(undefined)` are the boilerplate they replace.
