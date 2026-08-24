@@ -12,6 +12,8 @@ import { OrderApplicationModule, OrderRepository, PlaceOrder } from "@btravstack
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderRouter } from "../../module.js";
 import { RequestModule } from "../../request-scope.js";
+import { instrumentedCache } from "@btravstack/cache/instrumented";
+import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 declare const logger: ServiceOf<Logger>;
@@ -51,7 +53,13 @@ import { observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  imports: [
+    OrdersSlice,
+    CustomersSlice,
+    instrumentedCache({ adapter: redisCache() }),
+    observability(),
+    otel(),
+  ],
   // `RequestModule` reads all three out of the application scope.
   exports: [Logger, Tracer, Meter],
 });
@@ -273,7 +281,9 @@ const RecordingApi = HttpModule("RecordingApi")({
   imports: [
     OrdersSlice,
     CustomersSlice,
+    instrumentedCache({ adapter: redisCache() }),
     observability({ sink: (line) => lines.push(line), level: "trace" }),
+    otel(),
   ],
   exports: [Logger],
 });

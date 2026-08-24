@@ -9,6 +9,8 @@ import { Config } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http";
 import { createLogger, jsonSink, kernelEvents, logLevel, observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
+import { instrumentedCache } from "@btravstack/cache/instrumented";
+import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 import { orderRouter } from "../../module.js";
@@ -284,7 +286,13 @@ application and export `Logger` if anything outside the root reads it —
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  imports: [
+    OrdersSlice,
+    CustomersSlice,
+    instrumentedCache({ adapter: redisCache() }),
+    observability(),
+    otel(),
+  ],
   exports: [Logger, Tracer, Meter],
 });
 ```

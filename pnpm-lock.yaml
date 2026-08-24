@@ -394,6 +394,9 @@ importers:
 
   examples/order-api:
     dependencies:
+      '@btravstack/cache':
+        specifier: workspace:*
+        version: link:../../packages/cache
       '@btravstack/config':
         specifier: workspace:*
         version: link:../../packages/config

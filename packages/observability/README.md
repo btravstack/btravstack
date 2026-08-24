@@ -3,6 +3,9 @@ import { HttpModule } from "@btravstack/http";
 import { Port } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
 import { orderRouter } from "../../module.js";
+import { otel } from "@btravstack/observability/otel";
+import { instrumentedCache } from "@btravstack/cache/instrumented";
+import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 class PlaceOrder extends Port("PlaceOrder")<{
@@ -66,7 +69,13 @@ const placeOrder = Provider(PlaceOrder)(
 // fallback to `info`.
 const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
+  imports: [
+    OrdersSlice,
+    CustomersSlice,
+    instrumentedCache({ adapter: redisCache() }),
+    observability(),
+    otel(),
+  ],
   exports: [Logger],
 });
 
