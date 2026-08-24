@@ -1014,7 +1014,11 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
 - Documentation drifts silently, and a sibling repo has already shipped a
   falsehood this way. When the public surface changes, update **this** file,
   the documentation site's page for it (see **Documentation site** below),
-  the package README if its sample is touched, **and**
+  the package README if its sample is touched — a **runtime** package's
+  README also carries an `## Options` index, one line per option with the
+  reference page as its one detailed home (issue #26's skeleton: the index
+  makes every option greppable on npm, the defaults and reasoning live where
+  the deploy gate holds them) — **and**
   `docs-examples.test-d.ts` in the same commit — and when
   the change is to `packages/core/src/` internals or the invariants guarding
   them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
