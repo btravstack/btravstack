@@ -346,6 +346,9 @@ importers:
       '@amqp-contract/testing':
         specifier: 'catalog:'
         version: 3.0.0-beta.6(vitest@4.1.10)
+      '@btravstack/internal-slice-codegen':
+        specifier: workspace:*
+        version: link:../../internal/slice-codegen
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra

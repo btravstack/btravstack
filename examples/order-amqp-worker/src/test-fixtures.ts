@@ -20,8 +20,7 @@ import { inject, type TestAPI } from "vitest";
 
 import { orderHandlers } from "./module.js";
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
-import { AuditSlice } from "./slices/audit/module.js";
-import { NotificationsSlice } from "./slices/notifications/module.js";
+import { slices } from "./slices.gen.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 
@@ -55,10 +54,11 @@ type Serve = <E>(
  * relay sweeps, which for `:memory:` SQLite is the whole point) and the outbox
  * it asserts against.
  *
- * Both slices are imported here too, mirroring `OrderAmqpWorker`'s own root:
- * `orderHandlers`'s pieces are discovered only through `imports` / `provides`,
- * so a recording root that dropped either slice would leave that piece's port
- * unmet — a runtime `WiringDefect`, not a compile error.
+ * `...slices` is spread in here too, mirroring `OrderAmqpWorker`'s own root:
+ * it comes from the same generated `slices.gen.ts` `orderHandlers`'s pieces
+ * do, so a slice on disk is a slice in `imports` by construction rather than
+ * something a recording root could drop and only discover at runtime as a
+ * `WiringDefect`.
  */
 const tappedAmqp = () => {
   const lines: Line[] = [];
@@ -70,8 +70,7 @@ const tappedAmqp = () => {
     imports: [
       OrderApplicationModule,
       OrderPersistenceModule,
-      NotificationsSlice,
-      AuditSlice,
+      ...slices,
       observability({ sink: (line) => lines.push(line) }),
     ],
     provides: [relayConfig, outboxRelay],

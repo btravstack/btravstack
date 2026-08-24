@@ -18,8 +18,8 @@ import {
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { outboxRelay, relayConfig } from "../../outbox-relay.js";
-import { orderAudit } from "../../slices/audit/handler.js";
-import { AuditSlice } from "../../slices/audit/module.js";
+import { piece as orderAudit } from "../../slices/audit/handler.js";
+import { slice as AuditSlice } from "../../slices/audit/module.js";
 -->
 
 # Split a worker into slices

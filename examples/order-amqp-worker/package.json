@@ -10,7 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-amqp-worker --out src/generated/doc-samples",
+    "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-amqp-worker --out src/generated/doc-samples && node ../../internal/slice-codegen/src/cli.ts",
     "test": "vitest run",
     "test:types": "tsc --noEmit -p tsconfig.test-d.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@amqp-contract/testing": "catalog:",
+    "@btravstack/internal-slice-codegen": "workspace:*",
     "@btravstack/internal-test-infra": "workspace:*",
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",

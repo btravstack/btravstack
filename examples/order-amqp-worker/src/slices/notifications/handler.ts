@@ -24,7 +24,7 @@ import { ErrAsync, OkAsync } from "unthrown";
  * `RetryableError` leaves the message un-acked, so the broker hands it to the
  * next worker.
  */
-export const orderNotifications = AmqpHandler(orderContract, "orderNotifications")(
+export const piece = AmqpHandler(orderContract, "orderNotifications")(
   { logger: Logger },
   {
     sync:

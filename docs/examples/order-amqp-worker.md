@@ -21,9 +21,9 @@ import {
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { OutboxRelay } from "../../outbox-relay.js";
-import { orderAudit } from "../../slices/audit/handler.js";
-import { AuditSlice } from "../../slices/audit/module.js";
-import { NotificationsSlice } from "../../slices/notifications/module.js";
+import { piece as orderAudit } from "../../slices/audit/handler.js";
+import { slice as AuditSlice } from "../../slices/audit/module.js";
+import { slice as NotificationsSlice } from "../../slices/notifications/module.js";
 declare const startOutboxRelay: (
   outbox: ServiceOf<Outbox>,
   logger: ServiceOf<Logger>,

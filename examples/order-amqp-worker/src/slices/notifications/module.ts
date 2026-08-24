@@ -1,7 +1,7 @@
 import { Module } from "@btravstack/di";
 import { Logger } from "@btravstack/observability";
 
-import { orderNotifications } from "./handler.js";
+import { piece } from "./handler.js";
 
 /**
  * The notifications slice: one consumer, its handler, and nothing else the
@@ -13,12 +13,12 @@ import { orderNotifications } from "./handler.js";
  * is that each consumer declares the ports IT calls — this one takes `Logger`
  * and knows nothing of the audit slice's.
  *
- * `exports: [orderNotifications]` is the provider, not a port class:
+ * `exports: [piece]` is the provider, not a port class:
  * `AmqpHandler` mints the port from the contract key, so there is nothing to
  * name.
  */
-export const NotificationsSlice = Module("NotificationsSlice")({
+export const slice = Module("NotificationsSlice")({
   needs: [Logger],
-  provides: [orderNotifications],
-  exports: [orderNotifications],
+  provides: [piece],
+  exports: [piece],
 });

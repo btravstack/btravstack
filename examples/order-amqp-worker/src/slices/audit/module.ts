@@ -1,7 +1,7 @@
 import { Module } from "@btravstack/di";
 import { Logger } from "@btravstack/observability";
 
-import { orderAudit } from "./handler.js";
+import { piece } from "./handler.js";
 
 /**
  * The audit slice: same shape as the notifications one, its own consumer and
@@ -11,14 +11,14 @@ import { orderAudit } from "./handler.js";
  * budget in the contract, and its own answer to the drain deadline — it keeps
  * writing through the drain window rather than leaving a delivery un-acked.
  *
- * `exports: [orderAudit]` is the provider, not a port class: `AmqpHandler`
+ * `exports: [piece]` is the provider, not a port class: `AmqpHandler`
  * mints the port from the contract key, so there is nothing to name.
  */
-export const AuditSlice = Module("AuditSlice")({
+export const slice = Module("AuditSlice")({
   // The one thing this slice expects from outside, named here rather than
   // absorbed from whatever the root happens to hold — and `slices/audit/` now
   // says where its `Logger` comes from: not from in here.
   needs: [Logger],
-  provides: [orderAudit],
-  exports: [orderAudit],
+  provides: [piece],
+  exports: [piece],
 });

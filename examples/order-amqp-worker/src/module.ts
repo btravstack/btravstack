@@ -11,10 +11,7 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { Logger, observability } from "@btravstack/observability";
 
 import { outboxRelay, relayConfig } from "./outbox-relay.js";
-import { orderAudit } from "./slices/audit/handler.js";
-import { AuditSlice } from "./slices/audit/module.js";
-import { orderNotifications } from "./slices/notifications/handler.js";
-import { NotificationsSlice } from "./slices/notifications/module.js";
+import { pieces, slices } from "./slices.gen.js";
 
 /**
  * The handlers record, composed from each slice's own piece — keyed by the
@@ -22,7 +19,7 @@ import { NotificationsSlice } from "./slices/notifications/module.js";
  * error and two slices claiming one consumer are di's duplicate-provider
  * defect at build.
  */
-export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]);
+export const orderHandlers = AmqpHandlers(orderContract)(pieces);
 
 /**
  * The composition root of the broadcast deployment — now a list of slices
@@ -37,11 +34,11 @@ export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, or
  * `Logger` every subscriber and the relay write to — `LOG_LEVEL`, JSON on
  * stdout, every line correlated with the delivery's own unit.
  *
- * `NotificationsSlice` and `AuditSlice` are both imported here because
- * `orderHandlers`'s pieces are di-discovered only through `imports` /
- * `provides`, never through a provider's own `deps` — dropping either import
- * leaves its piece's port unmet and `start` fails with a `WiringDefect`
- * naming it, not a compile error.
+ * `...slices` spreads every slice `slices.gen.ts` found — generated from the
+ * same `src/slices/*` directories `orderHandlers`'s `pieces` came from — into
+ * `imports`, so a slice on disk is a slice in `imports` by construction:
+ * there is no longer a hole where dropping one leaves its piece's port unmet
+ * and `start` fails at runtime with a `WiringDefect`.
  *
  * The exports are this deployment's own selection: `PlaceOrder` /
  * `OrderRepository` / `Outbox` / `Logger` are the writer's surface — what a
@@ -70,13 +67,7 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   needs: [Env],
   contract: orderContract,
   handlers: orderHandlers,
-  imports: [
-    OrderApplicationModule,
-    OrderPersistenceModule,
-    NotificationsSlice,
-    AuditSlice,
-    observability(),
-  ],
+  imports: [OrderApplicationModule, OrderPersistenceModule, ...slices, observability()],
   provides: [relayConfig, outboxRelay],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });

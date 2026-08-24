@@ -35,8 +35,8 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { Logger, observability } from "@btravstack/observability";
 
 import { OrderAmqpWorker, orderHandlers } from "./module.js";
-import { AuditSlice } from "./slices/audit/module.js";
-import { NotificationsSlice } from "./slices/notifications/module.js";
+import { slice as AuditSlice } from "./slices/audit/module.js";
+import { slice as NotificationsSlice } from "./slices/notifications/module.js";
 
 const options = { signals: false, probes: false } as const;
 

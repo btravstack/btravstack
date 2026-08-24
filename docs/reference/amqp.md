@@ -17,8 +17,8 @@ import {
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { outboxRelay, relayConfig } from "../../outbox-relay.js";
-import { AuditSlice } from "../../slices/audit/module.js";
-import { NotificationsSlice } from "../../slices/notifications/module.js";
+import { slice as AuditSlice } from "../../slices/audit/module.js";
+import { slice as NotificationsSlice } from "../../slices/notifications/module.js";
 -->
 
 # @btravstack/amqp

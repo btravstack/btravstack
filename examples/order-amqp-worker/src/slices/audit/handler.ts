@@ -15,7 +15,7 @@ import { OkAsync } from "unthrown";
  * not. What a slice answers when the kernel stops waiting is the slice's own
  * business.
  */
-export const orderAudit = AmqpHandler(orderContract, "orderAudit")(
+export const piece = AmqpHandler(orderContract, "orderAudit")(
   { logger: Logger },
   {
     sync:
