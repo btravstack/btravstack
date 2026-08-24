@@ -14,6 +14,8 @@ export class SliceTreeInvalid extends TaggedError("SliceTreeInvalid")<{
 const camel = (dir: string): string =>
   dir.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
 
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
 /**
  * Walks `<srcDir>/slices/*` and renders `slices.gen.ts`: every slice's
  * `module.ts` import plus a `slices` array, and every transport piece —
@@ -34,6 +36,7 @@ export const renderSlicesGen = (srcDir: string): Result<string, SliceTreeInvalid
   const reexports: string[] = [];
   const sliceNames: string[] = [];
   const pieceNames: string[] = [];
+  const taken = new Set(["slices", "pieces"]);
 
   for (const dir of dirs) {
     if (!existsSync(join(slicesDir, dir, "module.ts"))) {
@@ -53,13 +56,33 @@ export const renderSlicesGen = (srcDir: string): Result<string, SliceTreeInvalid
     }
 
     const name = camel(dir);
+    if (!IDENTIFIER.test(name)) {
+      return Err(
+        new SliceTreeInvalid({
+          directory: dir,
+          problem: `camelCases to \`${name}\`, which is not a valid identifier`,
+        }),
+      );
+    }
     const sliceName = `${name}Slice`;
+    const pieceName = transport === "controller.ts" ? `${name}Controller` : name;
+    for (const identifier of [pieceName, sliceName]) {
+      if (taken.has(identifier)) {
+        return Err(
+          new SliceTreeInvalid({
+            directory: dir,
+            problem: `emits \`${identifier}\`, which another slice or a reserved export already claims`,
+          }),
+        );
+      }
+      taken.add(identifier);
+    }
     if (transport === "controller.ts") {
-      reexports.push(`export { piece as ${name}Controller } from "./slices/${dir}/controller.js";`);
+      reexports.push(`export { piece as ${pieceName} } from "./slices/${dir}/controller.js";`);
     } else {
       const module = transport.replace(".ts", ".js");
-      imports.push(`import { piece as ${name} } from "./slices/${dir}/${module}";`);
-      pieceNames.push(name);
+      imports.push(`import { piece as ${pieceName} } from "./slices/${dir}/${module}";`);
+      pieceNames.push(pieceName);
     }
     imports.push(`import { slice as ${sliceName} } from "./slices/${dir}/module.js";`);
     sliceNames.push(sliceName);

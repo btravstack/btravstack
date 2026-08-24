@@ -78,4 +78,51 @@ export const slices = [customersSlice, ordersSlice] as const;
       }),
     );
   });
+
+  it("refuses a directory whose name is not a valid identifier", ({ tree }) => {
+    // GIVEN a slice directory starting with a digit
+    const src = tree.src(["slices/2fast/module.ts", "slices/2fast/handler.ts"]);
+    // WHEN the tree is rendered
+    const rendered = renderSlicesGen(src);
+    // THEN the error names the directory and the problem
+    expect(rendered).toBeErrWith(
+      expect.objectContaining({
+        directory: "2fast",
+        problem: expect.stringContaining("identifier"),
+      }),
+    );
+  });
+
+  it("refuses a directory that would claim a reserved export", ({ tree }) => {
+    // GIVEN a slice directory named after the generated `slices` export
+    const src = tree.src(["slices/slices/module.ts", "slices/slices/handler.ts"]);
+    // WHEN the tree is rendered
+    const rendered = renderSlicesGen(src);
+    // THEN the error names the directory and the claimed identifier
+    expect(rendered).toBeErrWith(
+      expect.objectContaining({
+        directory: "slices",
+        problem: expect.stringContaining("`slices`"),
+      }),
+    );
+  });
+
+  it("refuses two directories whose names collide once camelCased", ({ tree }) => {
+    // GIVEN `audit` (whose slice import is `auditSlice`) and `audit-slice` (which camelCases to the same)
+    const src = tree.src([
+      "slices/audit/module.ts",
+      "slices/audit/handler.ts",
+      "slices/audit-slice/module.ts",
+      "slices/audit-slice/handler.ts",
+    ]);
+    // WHEN the tree is rendered
+    const rendered = renderSlicesGen(src);
+    // THEN the error names the second directory and the colliding identifier
+    expect(rendered).toBeErrWith(
+      expect.objectContaining({
+        directory: "audit-slice",
+        problem: expect.stringContaining("`auditSlice`"),
+      }),
+    );
+  });
 });
