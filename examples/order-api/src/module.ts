@@ -56,13 +56,7 @@ export const orderRouter = api.HttpRouter(contract)({
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [
-    OrdersSlice,
-    CustomersSlice,
-    cache({ adapter: redisCache(), instrumented: true }),
-    observability(),
-    otel(),
-  ],
+  imports: [OrdersSlice, CustomersSlice, cache({ adapter: redisCache() }), observability(), otel()],
   // `Tracer` and `Meter` join `Logger` in the exports for the same reason it
   // is there: `RequestModule` reads them out of the application scope.
   exports: [Logger, Tracer, Meter],

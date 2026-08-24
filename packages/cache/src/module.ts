@@ -12,13 +12,18 @@ export type CacheOptions<E, N, Instrumented extends boolean> = {
    */
   readonly adapter: Module<CacheBackend, E, N>;
   /**
-   * Span, count and log every call. Default `false`.
+   * Span, count and log every call. **Default `true`** — `false` opts out,
+   * the way `StartOptions`' `signals` and `probes` do.
    *
-   * Off by default because it is three declared needs — `Logger`, `Meter`
-   * and `Tracer` — and a package should not put ports in a root's way that
-   * the root did not ask for. Turning it on is one word, and forgetting to
-   * compose `observability()` and `otel()` beside it is a compile error
-   * naming all three rather than a silent nothing.
+   * On by default because telemetry that is missing is discovered during an
+   * incident, not before one; a cache that silently counts nothing is the
+   * worse failure. The cost is stated rather than hidden: instrumenting puts
+   * `Logger`, `Meter` and `Tracer` in this module's `Needs`, so a root that
+   * has not composed `observability()` and `otel()` gets a compile error
+   * naming all three — never a quiet absence of spans.
+   *
+   * `false` is the whole opt-out: the graph then installs no observability
+   * at all and declares none of the three.
    */
   readonly instrumented?: Instrumented;
 };
@@ -28,8 +33,8 @@ export type CacheOptions<E, N, Instrumented extends boolean> = {
  * or not, decided here at the composition root.
  *
  * ```ts
- * cache({ adapter: redisCache() });                     // just a cache
- * cache({ adapter: redisCache(), instrumented: true }); // + spans, counts, error lines
+ * cache({ adapter: redisCache() });                      // spans, counts, error lines
+ * cache({ adapter: redisCache(), instrumented: false }); // just a cache
  * ```
  *
  * **Why the provider is a passthrough, and why there are two ports.** di
@@ -43,10 +48,17 @@ export type CacheOptions<E, N, Instrumented extends boolean> = {
  * **Why `instrumented` can be one boolean.** The three ports it needs are
  * the kernel\'s — `@btravstack/core` declares `Logger`, `Tracer` and `Meter`
  * — so this package names them without depending on any implementation, and
- * a consumer that leaves the flag off installs no observability at all.
- * That the flag can be this small IS the reason those contracts live in the
- * kernel: passing the ports in would have been one function too, and a
- * longer call at every composition root.
+ * a graph that passes `false` installs no observability at all. That the
+ * flag can be this small IS the reason those contracts live in the kernel:
+ * passing the ports in would have been one function too, and a longer call
+ * at every composition root.
+ *
+ * **Why not auto-detect them instead**, which would need an optional-provider
+ * notion in di: the type would stop telling the truth. Composing without
+ * `otel()` would silently produce no spans rather than a compile error, and
+ * adding `otel()` for one reason would quietly change this module\'s
+ * behaviour — behaviour by action at a distance, in a container whose whole
+ * claim is that wiring is proven before the process exists.
  *
  * What the instrumented form emits, per call: a span named
  * `cache.get` / `cache.set` / `cache.delete` carrying the key; one counter,
@@ -58,7 +70,7 @@ export type CacheOptions<E, N, Instrumented extends boolean> = {
  * wrapper is transparent to the `Result`, the kernel\'s own `RunUnit` rule
  * one layer down.
  */
-export const cache = <E, N, Instrumented extends boolean = false>({
+export const cache = <E, N, Instrumented extends boolean = true>({
   adapter,
   instrumented,
 }: CacheOptions<E, N, Instrumented>): Module<
@@ -70,7 +82,7 @@ export const cache = <E, N, Instrumented extends boolean = false>({
   // type is the conditional above rather than either branch\'s own — which no
   // inference can produce. The cast is how a value-level branch reports a
   // type-level one.
-  (instrumented === true
+  (instrumented !== false
     ? Module("InstrumentedCache")({
         needs: [Logger, Meter, Tracer],
         imports: [adapter],

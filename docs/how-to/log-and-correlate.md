@@ -57,7 +57,7 @@ export const OrderApi = HttpModule("OrderApi")({
   imports: [
     OrdersSlice,
     CustomersSlice,
-    cache({ adapter: redisCache(), instrumented: true }),
+    cache({ adapter: redisCache() }),
     observability(),
     otel(),
   ],
@@ -283,7 +283,7 @@ const RecordingApi = HttpModule("RecordingApi")({
   imports: [
     OrdersSlice,
     CustomersSlice,
-    cache({ adapter: redisCache(), instrumented: true }),
+    cache({ adapter: redisCache() }),
     observability({ sink: (line) => lines.push(line), level: "trace" }),
     otel(),
   ],

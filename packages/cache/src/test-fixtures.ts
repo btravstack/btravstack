@@ -191,7 +191,8 @@ export const it = test.extend<CacheFixtures>({
       const served = await Module.scoped(
         Module("InstrumentedFixture")({
           imports: [
-            cache({ adapter, instrumented: true }),
+            // No flag: the harness exercises the DEFAULT, which is instrumented.
+            cache({ adapter }),
             Module("RecordingLogger")({
               provides: [
                 Provider(Logger)({ value: createLogger((line) => lines.push(line), "debug") }),

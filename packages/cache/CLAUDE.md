@@ -14,19 +14,19 @@ Stated once, here.
 
 ### `@btravstack/cache` (root)
 
-| Export                              | What it is                                                                                                                                                                                                                              |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Cache`                             | The port an application depends on. `get` / `set` / `delete`, all `AsyncResult`.                                                                                                                                                        |
-| `CacheBackend`                      | The port every adapter provides. Not for application code — see **Why two ports** below.                                                                                                                                                |
-| `CacheService`                      | The service both ports carry.                                                                                                                                                                                                           |
-| `CacheHit`                          | `{ readonly value: unknown }` — what a `get` answers on a hit.                                                                                                                                                                          |
-| `CacheUnavailable`                  | The modeled failure: `{ operation: "get" \| "set" \| "delete"; key: string }`.                                                                                                                                                          |
-| `cache({ adapter, instrumented? })` | The composition: the adapter's module, plus `Cache` provided from its backend — spanned, counted and logged when `instrumented` is `true`, which puts `Logger`, `Meter` and `Tracer` in the returned module's `Needs`. Default `false`. |
-| `CacheOptions`                      | `{ adapter: Module<CacheBackend, E, N>; instrumented?: boolean }`.                                                                                                                                                                      |
-| `memoryCache({ clock? })`           | The in-memory adapter as a module.                                                                                                                                                                                                      |
-| `memoryCacheProvider({ clock? })`   | The same adapter as a provider — the shape `overridden` takes.                                                                                                                                                                          |
-| `memoryCacheBackend({ clock? })`    | The service itself, for a spec that wants no graph.                                                                                                                                                                                     |
-| `MemoryCacheOptions`                | `{ clock?: Clock }`, defaulting to the kernel's `systemClock`.                                                                                                                                                                          |
+| Export                              | What it is                                                                                                                                                                                                                                                        |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Cache`                             | The port an application depends on. `get` / `set` / `delete`, all `AsyncResult`.                                                                                                                                                                                  |
+| `CacheBackend`                      | The port every adapter provides. Not for application code — see **Why two ports** below.                                                                                                                                                                          |
+| `CacheService`                      | The service both ports carry.                                                                                                                                                                                                                                     |
+| `CacheHit`                          | `{ readonly value: unknown }` — what a `get` answers on a hit.                                                                                                                                                                                                    |
+| `CacheUnavailable`                  | The modeled failure: `{ operation: "get" \| "set" \| "delete"; key: string }`.                                                                                                                                                                                    |
+| `cache({ adapter, instrumented? })` | The composition: the adapter's module, plus `Cache` provided from its backend — spanned, counted and logged **by default**, which puts `Logger`, `Meter` and `Tracer` in the returned module's `Needs`. `instrumented: false` opts out and declares none of them. |
+| `CacheOptions`                      | `{ adapter: Module<CacheBackend, E, N>; instrumented?: boolean }`.                                                                                                                                                                                                |
+| `memoryCache({ clock? })`           | The in-memory adapter as a module.                                                                                                                                                                                                                                |
+| `memoryCacheProvider({ clock? })`   | The same adapter as a provider — the shape `overridden` takes.                                                                                                                                                                                                    |
+| `memoryCacheBackend({ clock? })`    | The service itself, for a spec that wants no graph.                                                                                                                                                                                                               |
+| `MemoryCacheOptions`                | `{ clock?: Clock }`, defaulting to the kernel's `systemClock`.                                                                                                                                                                                                    |
 
 ### `@btravstack/cache/redis`
 
@@ -40,14 +40,33 @@ Stated once, here.
 `redis` is an **optional** peer: a consumer that never imports this subpath
 never installs it, exactly like `@btravstack/observability/pino`.
 
-### `instrumented: true`
+### `instrumented`, and why it defaults to `true`
 
 **One function, one flag — no subpath and no optional peer for it.** `Logger`,
 `Tracer` and `Meter` are `@btravstack/core`'s ports, so this package names
-them without depending on an implementation; a graph that leaves the flag off
-installs no observability at all, and one that turns it on owes the three
-ports at its root. The flag is off by default because a package should not
-put ports in a root's way that the root did not ask for.
+them without depending on an implementation; a graph that passes `false`
+installs no observability at all, and one that does not owes the three ports
+at its root.
+
+**On by default** because telemetry that is missing is discovered during an
+incident, not before one — and because the cost of the loud arm is _stated_:
+a root that has not composed `observability()` and `otel()` gets a compile
+error naming all three ports, never a cache that quietly counts nothing.
+
+**The name stays positive** even though the default is `true`, following
+`StartOptions`' own `signals` and `probes` — both default `true`, both
+disabled with `false`. A negative name (`noInstrument`) would read as a
+double negative the first time anybody wrote `noInstrument: false`, and it
+would encode today's default into the identifier.
+
+**Auto-detection was considered and declined.** Instrumenting when a graph
+happens to provide the three ports would need an optional-provider notion in
+di — touching `Needs` computation, `NeedsGate`, `DependencyGate`, context
+resolution, the fork path and `build.ts`'s missing-provider `WiringDefect` —
+and it would cost the property the flag exists for: the type would stop
+telling the truth, composing without `otel()` would silently produce no
+spans, and adding `otel()` for an unrelated reason would change this module's
+behaviour at a distance.
 
 The two arms build genuinely different graphs from one signature, so the
 return type is conditional (`Instrumented extends true ? N | Logger | Meter |
@@ -151,5 +170,5 @@ process's.
 
 Coverage is 100% lines/functions, `test-fixtures.ts` excluded.
 `src/module.test-d.ts` pins the needs gate: a root composing
-`cache({ instrumented: true })` without `observability()` and `otel()` fails
+a cache without `observability()` and `otel()` beside it fails
 di's `UNSATISFIED DEPENDENCIES` gate naming `Logger | Meter | Tracer`.

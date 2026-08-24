@@ -72,7 +72,7 @@ const OrderApi = HttpModule("OrderApi")({
   imports: [
     OrdersSlice,
     CustomersSlice,
-    cache({ adapter: redisCache(), instrumented: true }),
+    cache({ adapter: redisCache() }),
     observability(),
     otel(),
   ],

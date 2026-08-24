@@ -196,10 +196,10 @@ One function. The adapter it composes and whether that composition is
 instrumented are both decided here, at the composition root, and nowhere
 else.
 
-### Plain — the default
+### `instrumented: false` — the opt-out
 
 The adapter's module, plus `Cache` provided from its backend. No
-observability, none installed, nothing to configure:
+observability, none installed, nothing declared:
 
 ```ts
 export const Plain = Module("PlainCacheApp")({
@@ -208,9 +208,9 @@ export const Plain = Module("PlainCacheApp")({
 });
 ```
 
-### `instrumented: true`
+### The default
 
-The same graph, with every call spanned, counted and — when it fails — logged.
+Every call spanned, counted and — when it fails — logged.
 
 | Signal   | Name                                       | Attributes                                                |
 | -------- | ------------------------------------------ | --------------------------------------------------------- |
@@ -234,11 +234,7 @@ gate, naming all three:
 
 ```ts
 export const Instrumented = Module("InstrumentedCacheApp")({
-  imports: [
-    cache({ adapter: redisCache(), instrumented: true }),
-    observability(),
-    otel(),
-  ],
+  imports: [cache({ adapter: redisCache() }), observability(), otel()],
   exports: [Cache, Logger],
 });
 ```
@@ -246,14 +242,27 @@ export const Instrumented = Module("InstrumentedCacheApp")({
 **Why one boolean is enough, and what it cost to get there.** `Logger`,
 `Tracer` and `Meter` are [the kernel's ports](/reference/core/observability),
 so this package names them without depending on any implementation — no
-subpath, no optional peer, nothing installed when the flag is off. That is
-the whole reason those contracts were moved into `@btravstack/core`: the
+subpath, no optional peer, nothing installed when the flag is `false`. That
+is the whole reason those contracts were moved into `@btravstack/core`: the
 alternative was a second exported function behind a subpath, or a call that
 made every root pass the three ports in by hand.
 
-The flag is **off by default** because turning it on adds three declared
-needs, and a package should not put ports in a root's way that the root did
-not ask for.
+**Why it defaults on.** Telemetry that is missing gets discovered during an
+incident, not before one, so the quiet arm is the wrong default. And the cost
+of the loud one is stated rather than hidden: instrumenting puts the three
+ports in the module's `Needs`, so a root that has not composed
+`observability()` and `otel()` gets a compile error naming all three. `false`
+disabling a default-`true` boolean is the shape
+[`StartOptions`](/reference/core/start) already uses for `signals` and
+`probes`, which is also why the option keeps a positive name — `noInstrument:
+false` would be a double negative.
+
+**Why not detect the ports instead**, and instrument when a graph happens to
+provide them? It would need an optional-provider notion in the container, and
+it would cost the property that makes the flag worth having: the type would
+stop telling the truth. Composing without `otel()` would silently produce no
+spans instead of a compile error, and adding `otel()` for an unrelated reason
+would quietly change this module's behaviour.
 
 ## What it deliberately does not do
 
