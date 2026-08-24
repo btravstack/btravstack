@@ -53,6 +53,7 @@
   },
   "scripts": {
     "build": "tsdown src/index.ts src/redis.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/redis.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "test:types": "tsc -p tsconfig.test-d.json --noEmit",
     "typecheck": "tsc --noEmit"

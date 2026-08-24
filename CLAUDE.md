@@ -616,11 +616,11 @@ in its place.
     a devDependency of the three example workspaces, and no new dependency.
   - **`.env.dev` is generated, never committed.** The `dev` task depends on
     `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
-    three shared containers the specs use** (`withReuse()` — a second set
+    four shared containers the specs use** (`withReuse()` — a second set
     would be issue #52's duplication in another hat), runs
     `prisma migrate deploy` under the same lock as the example's own
     `globalSetup`, and writes `DATABASE_URL` / `AMQP_URL` /
-    `TEMPORAL_ADDRESS`. They are written to a file rather than defaulted
+    `TEMPORAL_ADDRESS` / `REDIS_URL`. They are written to a file rather than defaulted
     because the ports are whatever Docker mapped, and an ephemeral mapped
     port cannot be a default. `--env-file` is Node's own; no `dotenv`.
   - **`PROBE_PORT` is per app, inline in each `dev` script** (`9000`, `9001`,
@@ -634,8 +634,8 @@ in its place.
     `preDrainDelayMs: 5_000` then up to `drainTimeoutMs: 20_000`. To watch a
     real drain, run the entry point without `watch`. Measured end to end:
     `draining` → `drained` exactly 5.002 s later → `stopping` → `exited 0`.
-  - **The root `dev` script is filtered for a reason.** Thirteen workspaces
-    have a `dev` script (nine packages' watch-builds, `docs`, three examples),
+  - **The root `dev` script is filtered for a reason.** Fourteen workspaces
+    have a `dev` script (ten packages' watch-builds, `docs`, three examples),
     and turbo refuses more persistent tasks than its concurrency — so the
     unfiltered `turbo run dev` the root carried was **already broken** before
     this, failing on ten persistent tasks against a concurrency of ten.
@@ -943,7 +943,7 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   composition root, a list of slices plus what no slice owns — the
   sugar imports `http()`, provides the router on the starter's
   `HttpRouterPort` and
-  exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST` and `DATABASE_URL` come from the
+  exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST`, `DATABASE_URL` and `REDIS_URL` come from the
   environment inside the graph, and the router is mounted under `/rpc`. The
   two authenticators are **not** in that list: they ride the router, which is
   what needs them, and `HttpModule` puts them in `provides` itself. The
