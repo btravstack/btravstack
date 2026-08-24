@@ -3,6 +3,27 @@ title: Write a runtime
 description: Hand-roll a Runtime for a transport the stack does not ship, declare its port over RuntimePort, and honour the contracts the kernel cannot check.
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider, type AnyPort } from "@btravstack/di";
+import { Ok, OkAsync, type AsyncResult } from "unthrown";
+import {
+  RuntimePort,
+  type Runtime,
+  type RuntimeHost,
+  type Serving,
+  type UnitMeta,
+} from "@btravstack/core";
+class Greeter extends Port("Greeter")<{
+  readonly greet: (name: string) => string;
+}> {}
+const AppModule = Module("App")({
+  provides: [
+    Provider(Greeter)({ value: { greet: (name: string) => `hello, ${name}` } }),
+  ],
+  exports: [Greeter],
+});
+-->
+
 # Write a runtime
 
 > **How-to.** Build a runtime for a transport `@btravstack/http`,
@@ -31,6 +52,8 @@ resolves `Greeter` from the application context; `start` refuses, at compile
 time, a module that exports the port without exporting `Greeter`.
 
 ## Step 2 — implement `Runtime`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type Runtime<Resolves extends AnyPort = never, Info = never> = {

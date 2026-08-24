@@ -41,3 +41,4 @@ docs/api/*/
 # database next to the schema, and this example's was committed by accident.
 # The suites run against the shared PostgreSQL container, so nothing reads it.
 examples/order-infrastructure/.migrate.db
+**/src/generated/doc-samples/

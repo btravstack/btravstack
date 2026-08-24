@@ -3,6 +3,25 @@ title: "@btravstack/temporal"
 description: The Temporal worker starter — TemporalModule, TemporalActivities, TemporalWorkflowActivities, temporal(), its three ports, TemporalUnreachable, WorkflowSource, the unit per activity attempt, and the drain raced against the kernel's deadline.
 ---
 
+<!-- doctest: prelude
+import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal";
+import { P } from "unthrown";
+import { TenantId } from "@btravstack/example-order-domain";
+import {
+  OrderApplicationModule,
+  OrderRepository,
+  PaymentService,
+  PlaceOrder,
+  ShippingService,
+  StockService,
+} from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
+import { BillingModule } from "../../billing.js";
+import { FulfillmentModule } from "../../fulfillment.js";
+-->
+
 # @btravstack/temporal
 
 > **Reference.** A complete, structured description of the Temporal worker
@@ -81,6 +100,9 @@ provider and the workflow source. It appends
 The worked composition root, from
 `examples/order-temporal-worker/src/module.ts`:
 
+<!-- doctest: group=order-temporal-worker -->
+<!-- doctest: defer -->
+
 ```ts
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
@@ -88,7 +110,12 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   workflows: {
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
-  imports: [OrderApplicationModule, OrderPersistenceModule, FulfillmentModule],
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    FulfillmentModule,
+    BillingModule,
+  ],
 });
 ```
 
@@ -253,6 +280,8 @@ di's own `Provider(port)`, so every arm is available exactly as it is on
 `TemporalActivities(contract)`, and the provider carries its port as
 `provider.port` (`WorkflowActivitiesPortOf<C, K>`).
 
+<!-- doctest: skip — elides all but one activity per piece; the full pieces are compiled by docs/examples/order-temporal-worker.md -->
+
 ```ts
 const orderFulfillment = TemporalWorkflowActivities(
   orderContract,
@@ -314,6 +343,8 @@ const orderActivities = TemporalActivities(orderContract)([
 ```
 
 ## `temporal(options)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 const temporal: <C extends ContractDefinition>(
@@ -389,6 +420,8 @@ runs a failable step, discards its value and passes the **original** one
 through, so the next step is a callback that cannot start before the previous
 settles — and each step's error triage and compensation stay at one level of
 indentation rather than accumulating:
+
+<!-- doctest: skip — a saga excerpt with elided arms; the full workflow is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
 context.activities

@@ -3,6 +3,19 @@ title: Split a router into controllers
 description: Give each slice of a large API its own contract fragment and controller, and compose them into one router at the root.
 ---
 
+<!-- doctest: prelude
+import { Module } from "@btravstack/di";
+import { HttpModule } from "@btravstack/http";
+import { Logger, observability } from "@btravstack/observability";
+import { P } from "unthrown";
+import type { Order } from "@btravstack/example-order-domain";
+import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { customersController } from "../../slices/customers/controller.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+declare const view: (order: Order) => { id: string; quantity: number };
+-->
+
 # Split a router into controllers
 
 > **How-to.** For an API that has outgrown one `sync`. For the shape of a

@@ -21,6 +21,47 @@ has not cut a release yet.
 
 ## A worked example
 
+<!-- doctest: isolate
+import { oc, type } from "@orpc/contract";
+import { Port, type Module } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+import {
+  DuplicateOrder,
+  InvalidOrderId,
+  InvalidQuantity,
+  OrderNotFound,
+  type Order,
+} from "@btravstack/example-order-domain";
+type OrderView = { readonly id: string; readonly quantity: number };
+type OrderRef = { readonly id: string };
+declare const view: (order: Order) => OrderView;
+class PlaceOrder extends Port("PlaceOrder")<{
+  readonly execute: (
+    id: string,
+    quantity: number,
+  ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
+}> {}
+declare const Persistence: Module<never, never, never>;
+class FindOrder extends Port("FindOrder")<{
+  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+const ordersContract = {
+  place: oc
+    .input(type<{ readonly id: string; readonly quantity: number }>())
+    .output(type<OrderView>())
+    .errors({
+      INVALID_QUANTITY: { data: type<OrderRef>() },
+      BAD_REQUEST: { data: type<OrderRef>() },
+      CONFLICT: { data: type<OrderRef>() },
+    }),
+  find: oc
+    .input(type<OrderRef>())
+    .output(type<OrderView>())
+    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+};
+declare const Application: Module<PlaceOrder | FindOrder, never, never>;
+-->
+
 ```ts
 import { runMain } from "@btravstack/core";
 import { HttpModule, defineHttp } from "@btravstack/http";
@@ -106,6 +147,58 @@ port back from `app.runtimeInfo()`.
 one splits into **controllers**, one per slice of the contract, composed at the
 root by a keyed call instead:
 
+<!-- doctest: isolate
+import { oc, type } from "@orpc/contract";
+import { Port, type Module } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+import {
+  DuplicateOrder,
+  InvalidOrderId,
+  InvalidQuantity,
+  OrderNotFound,
+  type Order,
+} from "@btravstack/example-order-domain";
+type OrderView = { readonly id: string; readonly quantity: number };
+type OrderRef = { readonly id: string };
+declare const view: (order: Order) => OrderView;
+class PlaceOrder extends Port("PlaceOrder")<{
+  readonly execute: (
+    id: string,
+    quantity: number,
+  ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
+}> {}
+declare const Persistence: Module<never, never, never>;
+import { OkAsync, P } from "unthrown";
+import { defineHttp } from "@btravstack/http";
+const api = defineHttp();
+class FindOrder extends Port("FindOrder")<{
+  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+const ordersContract = {
+  place: oc
+    .input(type<{ readonly id: string; readonly quantity: number }>())
+    .output(type<OrderView>())
+    .errors({
+      INVALID_QUANTITY: { data: type<OrderRef>() },
+      BAD_REQUEST: { data: type<OrderRef>() },
+      CONFLICT: { data: type<OrderRef>() },
+    }),
+  find: oc
+    .input(type<OrderRef>())
+    .output(type<OrderView>())
+    .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
+};
+const customersContract = {
+  find: oc.input(type<{ readonly id: string }>()).output(type<{ readonly name: string }>()),
+};
+const orderContract = { orders: ordersContract, customers: customersContract };
+const customersController = api.HttpController("CustomersController", customersContract)(
+  {},
+  { sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) },
+);
+declare const Application: Module<PlaceOrder | FindOrder, never, never>;
+-->
+
 ```ts
 const ordersController = api.HttpController("OrdersController", ordersContract)(
   { place: PlaceOrder, find: FindOrder },
@@ -183,6 +276,11 @@ Declaring a scheme and implementing it are the same act, so there is no
 registry to keep in step with the contract and nothing for a composition root
 to forget:
 
+<!-- doctest: isolate
+import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http";
+import { ErrAsync, OkAsync } from "unthrown";
+-->
+
 ```ts
 // src/auth.ts — the one file that names this deployment's identities
 import {
@@ -249,6 +347,36 @@ export const api = defineHttp({
   authenticators: { user: userAuth, service: serviceAuth },
 });
 ```
+
+<!-- doctest: isolate
+import { oc, type } from "@orpc/contract";
+import { Port, type Module } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+import {
+  DuplicateOrder,
+  InvalidOrderId,
+  InvalidQuantity,
+  OrderNotFound,
+  type Order,
+} from "@btravstack/example-order-domain";
+type OrderView = { readonly id: string; readonly quantity: number };
+type OrderRef = { readonly id: string };
+declare const view: (order: Order) => OrderView;
+class PlaceOrder extends Port("PlaceOrder")<{
+  readonly execute: (
+    id: string,
+    quantity: number,
+  ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
+}> {}
+declare const Persistence: Module<never, never, never>;
+import { OkAsync, P } from "unthrown";
+import { HttpModule } from "@btravstack/http";
+import { api } from "../../auth.js";
+class FindOrder extends Port("FindOrder")<{
+  readonly execute: (tenantId: string, id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+declare const Application: Module<FindOrder, never, never>;
+-->
 
 ```ts
 import { authenticated } from "@btravstack/contract";

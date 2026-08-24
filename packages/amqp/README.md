@@ -20,11 +20,29 @@ this repository has not cut a release yet.
 
 ## A worked example
 
+<!-- doctest: prelude
+import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { PlaceOrder } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
+import { Module } from "@btravstack/di";
+import { OrderApplicationModule, OrderRepository, Outbox } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { observability, Logger } from "@btravstack/observability";
+
+// The application module the README's composition imports — the orders
+// vertical plus its persistence, as an application would compose it.
+const AppModule = Module("App")({
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+});
+-->
+
 ```ts
 import { Env } from "@btravstack/config";
 import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
 import { runMain } from "@btravstack/core";
-import { ErrAsync, P } from "unthrown";
+import { ErrAsync, OkAsync, P } from "unthrown";
 
 // The handlers, as a service: one entry per consumer the contract declares,
 // built by di from the use cases it lists — no injected context — on the
@@ -34,9 +52,13 @@ const orderHandlers = AmqpHandlers(orderContract)(
   { placeOrder: PlaceOrder },
   {
     sync: ({ placeOrder }) => ({
-      placeOrder: (message) =>
+      orderNotifications: (message) =>
         placeOrder
-          .execute(message.payload.orderId, message.payload.quantity)
+          .execute(
+            TenantId(message.payload.tenantId),
+            message.payload.id,
+            message.payload.payload?.quantity ?? 0,
+          )
           .map(() => undefined)
           // A modeled domain error is permanent: dead-letter it, no retry.
           .mapErrCases((matcher) =>
@@ -51,6 +73,9 @@ const orderHandlers = AmqpHandlers(orderContract)(
           .recoverDefect((cause) =>
             ErrAsync(new RetryableError("placing the order failed", cause)),
           ),
+      // Every consumer the contract declares must be covered — an uncovered
+      // key is refused at this call, not on the first delivery.
+      orderAudit: () => OkAsync(undefined),
     }),
   },
 );

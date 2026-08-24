@@ -3,6 +3,15 @@ title: Nothing throws
 description: Why start returns a Result and never calls process.exit, why every async surface is an AsyncResult, how failures are classified by phase, and how runMain closes the exit-0-after-a-crash hole.
 ---
 
+<!-- doctest: prelude
+import { start } from "@btravstack/core";
+import { P } from "unthrown";
+import { TestRuntimePort } from "@btravstack/testing";
+import { Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
+declare const TickerApp: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
+-->
+
 # Nothing throws
 
 > **Explanation.** This page explains three of the kernel's theses together —

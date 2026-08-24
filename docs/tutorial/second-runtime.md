@@ -51,6 +51,19 @@ temporal server start-dev
 Where lesson one declared an oRPC procedure, this declares an **activity** and
 the **workflow** that calls it, on a named task queue:
 
+<!-- doctest: prelude
+// The artifacts lesson one built, restated so this lesson compiles on its
+// own: the port, the service, and the module the new runtime is added to.
+import { Port, Provider, Module } from "@btravstack/di";
+
+class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
+
+const GreetingModule = Module("Greeting")({
+  provides: [Provider(Greeter)({ value: { greet: (name) => `Hello, ${name}!` } })],
+  exports: [Greeter],
+});
+-->
+
 ```ts
 // temporal-contract.ts
 import {
@@ -118,6 +131,32 @@ time.
 Workflow code runs in Temporal's deterministic sandbox, bundled separately from
 the worker, so it lives in its own file and touches neither di nor the
 `Greeter` — only the activity:
+
+<!-- doctest: isolate
+// `greeting` names the workflow FILE's declaration here, and the contract
+// fence above already used the name for the definition — two files on the
+// page, one module in the gate. This copy of the contract is the isolate's
+// context: keep it in step with the fence above.
+import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
+import { z } from "zod";
+
+const greet = defineActivity({
+  input: z.object({ name: z.string() }),
+  output: z.object({ message: z.string() }),
+  activityOptions: { startToCloseTimeout: "1 minute" },
+});
+const greetingContract = defineContract({
+  taskQueue: "greetings",
+  workflows: {
+    greeting: defineWorkflow({
+      input: z.object({ name: z.string() }),
+      output: z.object({ message: z.string() }),
+      idempotency: "allow-duplicate",
+      activities: { greet },
+    }),
+  },
+});
+-->
 
 ```ts
 // workflows.ts

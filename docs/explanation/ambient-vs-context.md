@@ -14,6 +14,8 @@ description: Why the kernel's AsyncLocalStorage record holds five fields of data
 The kernel opens one `AsyncLocalStorage` store per unit of work. It holds a
 small, fixed record — `UnitRecord`, five fields — and nothing else:
 
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
 ```ts
 type UnitRecord = {
   readonly unitId: string;
@@ -118,6 +120,8 @@ the current unit is their job.
 The logger is no longer a hypothesis about that rule: it is
 [`@btravstack/observability`](/reference/observability), and
 `createLogger` is the reference reading of the record —
+
+<!-- doctest: skip — an excerpt of packages/observability/src/logger.ts, which the gate compiles -->
 
 ```ts
 const write = (level, message, attributes, cause) => {

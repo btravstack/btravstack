@@ -3,6 +3,11 @@ title: Read the ambient unit from an adapter
 description: Stamp a trace id on every log line with currentUnit(), honour the drain deadline from an activity or a handler, know which code may read it, and see how each starter fills the record.
 ---
 
+<!-- doctest: prelude
+import { Port } from "@btravstack/di";
+import { currentUnit } from "@btravstack/core";
+-->
+
 # Read the ambient unit from an adapter
 
 > **How-to.** Read the kernel's per-unit record — trace id, tenant id,
@@ -16,6 +21,8 @@ record in it. `currentUnit()` reads it from anywhere in the unit's async
 continuation, `undefined` outside one.
 
 ## The record
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type UnitRecord = {
@@ -54,6 +61,8 @@ already answered them.
 The example application is multi-tenant, and it needs none of that. It makes
 the tenant part of its **own** vocabulary — the ports name it, so it is an
 argument a caller cannot forget and a reader can see:
+
+<!-- doctest: skip — quotes examples/order-application/src/ports.ts, which its own workspace compiles -->
 
 ```ts
 // examples/order-application/src/ports.ts
@@ -131,6 +140,8 @@ The canonical reader ships:
 `observability()` next to your application and every line an application
 writes carries the unit it was written in, with nothing in the application
 mentioning correlation:
+
+<!-- doctest: skip — a one-line call excerpt of the interactor shown in docs/how-to/log-and-correlate.md -->
 
 ```ts
 logger.info("placing an order", { orderId: id, quantity });
@@ -214,6 +225,8 @@ subscribers answer differently. On AMQP, an un-acked delivery goes back to the
 broker, so a `RetryableError` hands the message to the next worker —
 `examples/order-amqp-worker/src/slices/notifications/handler.ts`:
 
+<!-- doctest: skip — quotes the amqp handler compiled by docs/examples/order-amqp-worker.md's group -->
+
 ```ts
 export const orderNotifications = AmqpHandler(
   orderContract,
@@ -252,6 +265,8 @@ On Temporal, the platform retries an attempt that fails as a **defect** on
 another worker, which is the right shape for "we ran out of time" — where the
 contract's own `ShippingUnavailable` is a permanent no and would be the wrong
 error. `examples/order-temporal-worker/src/fulfillment.ts`:
+
+<!-- doctest: skip — quotes examples/order-temporal-worker/src/fulfillment.ts, which the gate compiles -->
 
 ```ts
 Provider(ShippingService)(

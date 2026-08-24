@@ -3,6 +3,24 @@ title: Providers
 description: "Provider(port)(deps, options) — the five construction arms, the onStart/onStop hooks, the typed port it hands back, and the three channels a provider carries, precisely."
 ---
 
+<!-- doctest: prelude
+import { Port, Provider } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+type Order = { readonly id: string; readonly quantity: number };
+class OrderRepository extends Port("OrderRepository")<{
+  readonly findById: (id: string) => AsyncResult<Order, never>;
+}> {}
+class Database extends Port("Database")<{
+  readonly query: (id: string) => AsyncResult<Order, never>;
+}> {}
+class AppConfig extends Port("AppConfig")<{ readonly dbUrl: string }> {}
+type CacheClient = { readonly warm: () => void; readonly flush: () => void };
+class Cache extends Port("Cache")<CacheClient> {}
+declare const connectCache: (
+  config: { readonly dbUrl: string },
+) => AsyncResult<CacheClient, never>;
+-->
+
 # Providers
 
 > **Reference.** A complete, structured description of `Provider`. For the

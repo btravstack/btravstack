@@ -3,6 +3,12 @@ title: Entry points
 description: "Module.build, Module.scoped and Module.forkScope — signatures, the UNSATISFIED DEPENDENCIES gate, ScopedOptions and Context, precisely — and where start takes over for a whole process."
 ---
 
+<!-- doctest: prelude
+import { Port, type Context } from "@btravstack/di";
+class SomePort extends Port("SomePort")<{ readonly go: () => void }> {}
+declare const ctx: Context<SomePort>;
+-->
+
 # Entry points
 
 > **Reference.** A complete, structured description of the three functions
@@ -74,6 +80,8 @@ longer the same shape.
 
 ## `Module.build(module)`
 
+<!-- doctest: skip — a usage sketch over schematic type variables (X, E, A), not a program -->
+
 ```ts
 const built: AsyncResult<Context<X>, E> = Module.build(App);
 ```
@@ -89,6 +97,8 @@ The `Context` it resolves to has no scope behind it — appropriate for services
 that live as long as the process.
 
 ## `Module.scoped(module, use, options?)`
+
+<!-- doctest: skip — a usage sketch over schematic type variables (X, E, A), not a program -->
 
 ```ts
 const result: AsyncResult<A, E | E2> = Module.scoped(
@@ -115,6 +125,8 @@ The `Context` must not outlive the callback — after `use` settles, acquired
 resources are released. Do what needs services **inside** `use`.
 
 ## `Module.forkScope(parent, module, use, options?)`
+
+<!-- doctest: skip — a usage sketch over schematic type variables (X, E, A), not a program -->
 
 ```ts
 const result: AsyncResult<A, E | E2> = Module.forkScope(
@@ -146,6 +158,8 @@ module the kernel forks around **every unit**, and the same gate is checked at
 ## `ScopedOptions`
 
 Accepted by `Module.scoped` and `Module.forkScope`:
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type ScopedOptions = {

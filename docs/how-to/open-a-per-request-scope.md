@@ -3,6 +3,10 @@ title: Open a per-request scope
 description: Pass a module as StartOptions.unit and let the kernel fork it around every unit — built as the request opens, torn down as it closes, with no handler code managing the fork.
 ---
 
+<!-- doctest: prelude
+import { OrderApi } from "../../module.js";
+-->
+
 # Open a per-request scope
 
 > **How-to.** Give a service the lifetime of one request, job or delivery,
@@ -128,6 +132,8 @@ unit module's needs must be covered by the module's **exports**, `Scope` or
 refused against
 `"UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"`,
 the last line of the error:
+
+<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the UNSATISFIED UNIT NEEDS arm -->
 
 ```ts
 const UnloggedApi = Module("UnloggedApi")({

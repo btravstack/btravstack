@@ -14,6 +14,14 @@ Node `>=20`. Not yet published: this repository has not cut a release yet.
 
 ## Usage
 
+<!-- doctest: prelude
+import { oc } from "@orpc/contract";
+import { z } from "zod";
+const order = z.object({ id: z.uuidv7() });
+const place = oc.input(order).output(order);
+const find = oc.input(order).output(order);
+-->
+
 ```ts
 import { authenticated } from "@btravstack/contract";
 
@@ -23,7 +31,10 @@ export const contract = {
     find,
     // Overrides the group default for itself: a `user` token needs the scope,
     // or a `service` token needs nothing.
-    export: authenticated({ user: ["orders:export"] }, { service: [] })(oc.output(…)),
+    export: authenticated(
+      { user: ["orders:export"] },
+      { service: [] },
+    )(oc.output(z.object({ csv: z.string() }))),
   }),
   customers: { find },
 };

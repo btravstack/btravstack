@@ -40,6 +40,28 @@ A record covers **every** consumer and rpc the contract declares —
 `orderContract` has two, `orderNotifications` and `orderAudit`, both reading
 the one `orderChanged` event on their own queue:
 
+<!-- doctest: prelude
+import { Config } from "@btravstack/config";
+import { AmqpConfig } from "@btravstack/amqp";
+import { Provider, type ServiceOf } from "@btravstack/di";
+import { Outbox, PlaceOrder } from "@btravstack/example-order-application";
+import { TenantId } from "@btravstack/example-order-domain";
+import type { AsyncResult } from "unthrown";
+import { OutboxRelay } from "../../outbox-relay.js";
+
+// The two module-private helpers the outbox-relay excerpt leans on — the
+// page shows the provider, not the whole file.
+declare const tenantsOf: (value: string) => readonly TenantId[];
+declare const startOutboxRelay: (
+  outbox: ServiceOf<Outbox>,
+  logger: ServiceOf<Logger>,
+  options: { url: string; pollMs: number; tenants: readonly TenantId[] },
+) => AsyncResult<ServiceOf<OutboxRelay>, RetryableError>;
+import { currentUnit } from "@btravstack/core";
+import { RetryableError } from "@amqp-contract/worker";
+import { ErrAsync } from "unthrown";
+-->
+
 ```ts
 import { AmqpHandlers } from "@btravstack/amqp";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
@@ -149,6 +171,8 @@ retries), not the same number Temporal's `maximumAttempts: 3` names.
 
 ## Step 3 — the composition root
 
+<!-- doctest: defer -->
+
 ```ts
 import { Env } from "@btravstack/config";
 import { AmqpModule } from "@btravstack/amqp";
@@ -188,6 +212,8 @@ own `contract`, so a provider built for another contract is refused here.
 
 ## Step 4 — `main.ts`
 
+<!-- doctest: defer -->
+
 ```ts
 import { runMain } from "@btravstack/core";
 
@@ -225,6 +251,8 @@ An adapter reads the trace id from `currentUnit()`.
 The middleware calls `next()` unchanged, so a handler has no parameter to
 receive the unit's `AbortSignal` through: `currentUnit()?.signal` is the only
 route to it, and it is aborted at the kernel's `drainTimeoutMs`.
+
+<!-- doctest: skip — an object-property excerpt, not a statement: the handler in situ is the `orderHandlers` fence above, and the full slice form is on /how-to/split-a-worker-into-slices -->
 
 ```ts
 orderNotifications: (message) => {

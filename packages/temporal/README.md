@@ -20,6 +20,47 @@ this repository has not cut a release yet.
 
 ## A worked example
 
+<!-- doctest: prelude
+import { defineActivity, defineContract, defineWorkflow } from "@temporal-contract/contract";
+import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
+import { Module } from "@btravstack/di";
+import { PlaceOrder, OrderRepository, Outbox, OrderApplicationModule } from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { TenantId } from "@btravstack/example-order-domain";
+import { observability, Logger } from "@btravstack/observability";
+import { z } from "zod";
+
+// The contract this README's worker serves — one workflow, one activity, one
+// modeled contract error.
+const contract = defineContract({
+  taskQueue: "orders",
+  workflows: {
+    placeOrder: defineWorkflow({
+      input: z.object({ tenantId: z.uuidv7(), orderId: z.uuidv7(), quantity: z.number() }),
+      output: z.object({ id: z.uuidv7() }),
+      idempotency: "allow-duplicate",
+      activities: {
+        place: defineActivity({
+          input: z.object({ tenantId: z.uuidv7(), orderId: z.uuidv7(), quantity: z.number() }),
+          output: z.object({ id: z.uuidv7() }),
+          errors: {
+            OrderAlreadyPlaced: { data: z.object({ id: z.uuidv7() }), nonRetryable: true },
+            InvalidOrderId: { data: z.object({ id: z.string() }), nonRetryable: true },
+            InvalidQuantity: { data: z.object({ id: z.uuidv7() }), nonRetryable: true },
+          },
+          activityOptions: { startToCloseTimeout: "30 seconds" },
+        }),
+      },
+    }),
+  },
+});
+
+const AppModule = Module("App")({
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+});
+-->
+
 ```ts
 import { runMain } from "@btravstack/core";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
@@ -36,11 +77,18 @@ const orderActivities = TemporalActivities(contract)(
       placeOrder: {
         place: (args, { errors }) =>
           place
-            .execute(args.orderId, args.quantity)
+            .execute(TenantId(args.tenantId), args.orderId, args.quantity)
             .mapErrCases((matcher) =>
-              matcher.with(P.tag("DuplicateOrder"), (error) =>
-                errors.OrderAlreadyPlaced({ id: error.id }),
-              ),
+              matcher
+                .with(P.tag("DuplicateOrder"), (error) =>
+                  errors.OrderAlreadyPlaced({ id: error.id }),
+                )
+                .with(P.tag("InvalidOrderId"), (error) =>
+                  errors.InvalidOrderId({ id: error.id }),
+                )
+                .with(P.tag("InvalidQuantity"), (error) =>
+                  errors.InvalidQuantity({ id: error.id }),
+                ),
             ),
       },
     }),

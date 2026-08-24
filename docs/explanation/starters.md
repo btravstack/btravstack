@@ -3,6 +3,14 @@ title: Starters
 description: The Spring Boot idea applied to this kernel — a module that brings one transport's default behaviour, opinionated about the one way it is done and configurable where a deployment differs.
 ---
 
+<!-- doctest: prelude
+import { HttpModule } from "@btravstack/http";
+import { Logger, observability } from "@btravstack/observability";
+import { orderRouter } from "../../module.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+-->
+
 # Starters
 
 > **Explanation.** This page explains what a starter is here, why the three
@@ -88,10 +96,12 @@ handlers **provider** to `provides`, adds the runtime port to `exports`, and
 hands those tuples to `Module(name)` — whose return type is the sugar's,
 spelled once. From [`examples/order-api`](/examples/order-api):
 
+<!-- doctest: group=order-api -->
+
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [OrdersSlice, CustomersSlice, observability()],
   exports: [Logger],
 });
 ```

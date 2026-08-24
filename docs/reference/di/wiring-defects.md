@@ -3,6 +3,17 @@ title: Wiring defects
 description: "The pre-construction checks — a provider for Scope, one id as two kinds, duplicate provider, missing provider, dependency cycle — their exact messages, and the channel they arrive on."
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider, type Context } from "@btravstack/di";
+import { P } from "unthrown";
+class Greeter extends Port("Greeter")<{ readonly greet: () => string }> {}
+const App = Module("App")({
+  provides: [Provider(Greeter)({ value: { greet: () => "hi" } })],
+  exports: [Greeter],
+});
+declare const respond: (ctx: Context<Greeter>) => number;
+-->
+
 # Wiring defects
 
 > **Reference.** A complete list of the checks `di` runs before any factory,

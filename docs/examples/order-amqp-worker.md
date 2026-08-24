@@ -3,6 +3,35 @@ title: Order AMQP worker example
 description: The broadcast deployment — two subscriber slices composed by AmqpHandlers over the order contract, a transactional outbox relayed onto RabbitMQ by a resourceful provider with its own RelayConfig and a modeled BrokerUnreachable, a tombstone behind every cancellation, and a real broker container per run.
 ---
 
+<!-- doctest: prelude
+import { AmqpConfig, AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { RetryableError } from "@amqp-contract/worker";
+import { Config, Env } from "@btravstack/config";
+import { currentUnit } from "@btravstack/core";
+import { Provider, type ServiceOf } from "@btravstack/di";
+import { Logger, observability } from "@btravstack/observability";
+import { ErrAsync, OkAsync, TaggedError } from "unthrown";
+import { TenantId } from "@btravstack/example-order-domain";
+import {
+  OrderApplicationModule,
+  OrderRepository,
+  Outbox,
+  PlaceOrder,
+} from "@btravstack/example-order-application";
+import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { orderContract } from "@btravstack/example-order-amqp-contract";
+import { OutboxRelay } from "../../outbox-relay.js";
+import { orderAudit } from "../../slices/audit/handler.js";
+import { AuditSlice } from "../../slices/audit/module.js";
+import { NotificationsSlice } from "../../slices/notifications/module.js";
+declare const startOutboxRelay: (
+  outbox: ServiceOf<Outbox>,
+  logger: ServiceOf<Logger>,
+  options: { url: string; pollMs: number; tenants: readonly TenantId[] },
+) => AsyncResult<ServiceOf<OutboxRelay>, BrokerUnreachable>;
+import type { AsyncResult } from "unthrown";
+-->
+
 # Order AMQP worker
 
 [`examples/order-amqp-worker`](https://github.com/btravstack/start/tree/main/examples/order-amqp-worker)
@@ -52,6 +81,8 @@ ports its own handler calls.
 
 `AmqpHandler(contract, key)` mints one piece per consumer — no port class, no
 name, since the contract key IS the port's name:
+
+<!-- doctest: group=order-amqp-worker -->
 
 ```ts
 export const orderNotifications = AmqpHandler(
@@ -260,6 +291,8 @@ what the specs tap. `main.ts` is `await runMain(OrderAmqpWorker);`.
 `order-amqp-contract` gives each subscriber queue its own policy, and the
 broker enforces it:
 
+<!-- doctest: skip — quotes examples/order-amqp-contract/src/contract.ts, which its own workspace compiles -->
+
 ```ts
 const notifications = defineQueue("order-notifications", {
   deadLetter: { exchange: parked, externalConsumers: true },
@@ -296,6 +329,8 @@ tenant }` — the poll tight because every spec waits on real broker round
 trips, and the tenant this test's alone, so the relay sweeps its rows and
 nobody else's:
 
+<!-- doctest: skip — an excerpt of src/test-fixtures.ts, which the gate compiles and runs -->
+
 ```ts
 await use(async (module, options) => {
   const app = boot(module, { env, ...options });
@@ -325,6 +360,8 @@ broadcast, not a work queue; and a foreign queue — bound to the same `orders`
 exchange by the test, declared by nothing in the contract — receives the same
 event too:
 
+<!-- doctest: skip — an assertion excerpt of src/amqp-runtime.spec.ts, which the gate runs -->
+
 ```ts
 const [message] = await waitForMessages({ count: 1, timeoutMs: 5_000 });
 expect(JSON.parse(String(message?.content))).toEqual({
@@ -343,6 +380,8 @@ an exchange, never a consumer.
 `needs-gate.test-d.ts` pins `NO RUNTIME — …`, and the unmet-need refusal
 spelled with the `amqp()` primitive — the sugar cannot leave the handlers out,
 which is what it is for:
+
+<!-- doctest: skip — quotes src/needs-gate.test-d.ts, the real gate for the unmet-handlers arm -->
 
 ```ts
 const HandlerlessAmqp = Module("HandlerlessAmqp")({

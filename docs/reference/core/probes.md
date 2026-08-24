@@ -3,6 +3,14 @@ title: Probes
 description: The kernel's own liveness and readiness server — /livez and /readyz, PROBE_PORT, probes false and port 0, what each route answers in each phase.
 ---
 
+<!-- doctest: prelude
+import { TestRuntimePort } from "@btravstack/testing";
+import { Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
+declare const OrderApi: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
+declare const RequestModule: Module<never, never, never>;
+-->
+
 # Probes
 
 > **Reference.** The kernel's own liveness and readiness endpoints: routes,

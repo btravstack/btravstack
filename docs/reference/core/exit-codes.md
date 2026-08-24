@@ -3,6 +3,15 @@ title: runMain and exit codes
 description: The signature of runMain, the exit-code table (0, 1, 2, 70, 78) with its precedence, and why it sets process.exitCode rather than calling process.exit.
 ---
 
+<!-- doctest: prelude
+import { TestRuntimePort } from "@btravstack/testing";
+import { Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
+declare const OrderApi: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
+declare const RequestModule: Module<never, never, never>;
+import { runMain } from "@btravstack/core";
+-->
+
 # `runMain` and exit codes
 
 > **Reference.** The front door of `@btravstack/core` and the table it turns an
@@ -12,6 +21,8 @@ description: The signature of runMain, the exit-code table (0, 1, 2, 70, 78) wit
 > see [Nothing throws](/explanation/nothing-throws).
 
 ## Signature
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 const runMain: <X, E, UnitX = never, UnitNeeds = never>(

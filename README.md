@@ -1,3 +1,22 @@
+<!-- doctest: prelude
+import { Port, type Module } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+import {
+  DuplicateOrder,
+  InvalidOrderId,
+  InvalidQuantity,
+  type Order,
+} from "@btravstack/example-order-domain";
+class PlaceOrder extends Port("PlaceOrder")<{
+  readonly execute: (
+    id: string,
+    quantity: number,
+  ) => AsyncResult<Order, InvalidQuantity | InvalidOrderId | DuplicateOrder>;
+}> {}
+declare const OrderApplicationModule: Module<PlaceOrder, never, never>;
+declare const OrderPersistenceModule: Module<never, never, never>;
+-->
+
 <div align="center">
 
 # start
@@ -97,10 +116,14 @@ export const ordersContract = {
 
 ```ts
 // router.ts — one Result-returning function per procedure, typed by the contract.
-import { HttpRouter } from "@btravstack/http";
+import { defineHttp } from "@btravstack/http";
 import { P } from "unthrown";
 
-export const ordersRouter = HttpRouter(ordersContract)(
+// One call mints every marker-typed HTTP entity; a public API declares no
+// security scheme, so it takes no argument.
+const api = defineHttp();
+
+export const ordersRouter = api.HttpRouter(ordersContract)(
   { place: PlaceOrder },
   {
     sync: ({ place }) => ({

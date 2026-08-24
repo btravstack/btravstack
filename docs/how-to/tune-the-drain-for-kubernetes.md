@@ -3,6 +3,16 @@ title: Tune the drain for Kubernetes
 description: Set preDrainDelayMs and drainTimeoutMs against terminationGracePeriodSeconds, wire the probes, and read what the drain reported.
 ---
 
+<!-- doctest: prelude
+import { TestRuntimePort } from "@btravstack/testing";
+import { Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
+declare const OrderApi: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
+declare const RequestModule: Module<never, never, never>;
+import { runMain, start } from "@btravstack/core";
+import { createServer } from "node:http";
+-->
+
 # Tune the drain for Kubernetes
 
 > **How-to.** Make a pod stop without dropping requests: size the two drain

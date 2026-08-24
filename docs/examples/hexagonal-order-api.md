@@ -3,6 +3,29 @@ title: Hexagonal order API example
 description: The container on its own — application-named ports, a private connection pool behind a public repository, one application module wired against a production adapter or an in-memory one, and the two guarantees that exist only at compile time, pinned by a type test.
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Env } from "@btravstack/config";
+import { Err, Ok, TaggedError, type AsyncResult } from "unthrown";
+type Order = { readonly id: string; readonly total: number };
+class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
+type PoolClient = {
+  readonly findById: (id: string) => Order | undefined;
+  readonly close: () => void;
+};
+class AppConfig extends Port("AppConfig")<{ readonly url: string }> {}
+class GetOrder extends Port("GetOrder")<{
+  readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+declare const ConfigModule: Module<AppConfig, never, never>;
+declare const openPool: (deps: {
+  readonly config: ServiceOf<AppConfig>;
+}) => AsyncResult<PoolClient, never>;
+
+import { expect } from "vitest";
+declare const options: { readonly onTeardownError: (portId: string, cause: unknown) => void };
+-->
+
 # Hexagonal order API (di alone)
 
 [`examples/hexagonal-order-api`](https://github.com/btravstack/start/tree/main/examples/hexagonal-order-api)
@@ -42,7 +65,7 @@ and never names an adapter:
 ```ts
 export class GetOrderInteractor {
   private readonly orders: ServiceOf<OrderRepository>;
-  constructor(orders: ServiceOf<OrderRepository>) {
+  constructor({ orders }: { readonly orders: ServiceOf<OrderRepository> }) {
     this.orders = orders;
   }
   execute(id: string): AsyncResult<Order, OrderNotFound> {

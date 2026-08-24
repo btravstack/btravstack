@@ -39,6 +39,12 @@ error the contract declares:
 A single record covers **every** workflow the contract declares — `orderContract`
 has two, `fulfillOrder` and `chargeOrder`:
 
+<!-- doctest: prelude
+import { start } from "@btravstack/core";
+import { FulfillmentModule } from "../../fulfillment.js";
+import { BillingModule } from "../../billing.js";
+-->
+
 ```ts
 import {
   OrderRepository,
@@ -295,6 +301,8 @@ Because the middleware injects nothing, `currentUnit()?.signal` is the **only**
 route to the unit's `AbortSignal` from inside an activity — there is no
 parameter to receive one through, and adding a context the contract does not
 type was the alternative. It is aborted at the kernel's `drainTimeoutMs`:
+
+<!-- doctest: skip — an object-property excerpt, not a statement: the compiled form is `examples/order-temporal-worker`'s own `ShippingService`, which this fence quotes -->
 
 ```ts
 arrange: (orderId) =>

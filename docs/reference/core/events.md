@@ -3,6 +3,15 @@ title: Kernel events
 description: The nine KernelEvent variants with their fields, the EventSink type, and stderrSink's one-JSON-line format including how it renders an Error cause.
 ---
 
+<!-- doctest: prelude
+import { TestRuntimePort } from "@btravstack/testing";
+import { Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
+declare const OrderApi: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
+declare const RequestModule: Module<never, never, never>;
+import { start, type EventSink } from "@btravstack/core";
+-->
+
 # Kernel events
 
 > **Reference.** The nine events the kernel emits, the sink type that receives
@@ -11,6 +20,8 @@ description: The nine KernelEvent variants with their fields, the EventSink type
 > events rather than logging, see [Design decisions](/explanation/design-decisions).
 
 ## `KernelEvent`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type KernelEvent =
@@ -45,6 +56,8 @@ type KernelEvent =
 advances, so they can never be emitted twice or out of order.
 
 ## `EventSink`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 type EventSink = (event: KernelEvent) => void;

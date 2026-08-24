@@ -3,6 +3,31 @@ title: Modules
 description: "Module(name)({ imports, provides, exports, needs }) — what each list means, how the Exports/E/Needs channels are computed, the declaration gate that refuses an unnamed need, and the AnyModule/Exportable bounds a shaped module is built from."
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
+import { Env } from "@btravstack/config";
+import type { AsyncResult } from "unthrown";
+type PoolClient = { readonly close: () => void };
+class Pool extends Port("Pool")<PoolClient> {}
+class AppConfig extends Port("AppConfig")<{ readonly url: string }> {}
+type Order = { readonly id: string };
+class OrderRepository extends Port("OrderRepository")<{
+  readonly find: (id: string) => AsyncResult<Order, never>;
+}> {}
+declare const Config: Module<AppConfig, never, Env>;
+declare const openPool: (deps: {
+  readonly config: ServiceOf<AppConfig>;
+}) => AsyncResult<PoolClient, never>;
+declare const makeRepository: (deps: {
+  readonly pool: ServiceOf<Pool>;
+}) => ServiceOf<OrderRepository>;
+class Logger extends Port("Logger")<{ readonly info: (message: string) => void }> {}
+const auditHandler = Provider(Port("AuditHandler")<{ readonly handle: () => void }>)(
+  { logger: Logger },
+  { sync: ({ logger }) => ({ handle: () => logger.info("audited") }) },
+);
+-->
+
 # Modules
 
 > **Reference.** A complete, structured description of `Module`. For the
@@ -45,6 +70,8 @@ Exporting a provider means exactly what exporting its port class means — same
 `Exports` channel, same gates — and it is the only spelling available when the
 port was minted inside a helper (`Config.provider("RelayConfig")(schema)`,
 `api.HttpController(name, fragment)`), where there is no class to name:
+
+<!-- doctest: skip — an exports-line excerpt of the module shown in full below -->
 
 ```ts
 exports: [Logger, ordersController], // a port class and a provider, together
@@ -106,6 +133,8 @@ Concretely: annotating a module as exporting less than it does is fine
 (forgetting a capability); annotating away an error case or an unmet need does
 not compile (laundering an obligation). This is what makes the adapter-seam
 pattern safe:
+
+<!-- doctest: skip — names its type arguments schematically (Options, Imports, Provides); the shaped-module pattern's real spelling is `packages/http`'s HttpModule -->
 
 ```ts
 const makeAppModule = <E, N extends Scope>(

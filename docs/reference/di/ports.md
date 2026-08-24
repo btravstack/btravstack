@@ -3,6 +3,13 @@ title: Ports
 description: "Port, ServiceOf, the type-only Scope, and the class and instance types a consumer's declaration emit needs — the tokens the rest of the container keys on, precisely."
 ---
 
+<!-- doctest: prelude
+import { Port, type AnyPort, type PortClassOf, type ServiceOf } from "@btravstack/di";
+import { TaggedError, type AsyncResult } from "unthrown";
+type Order = { readonly id: string; readonly quantity: number };
+class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
+-->
+
 # Ports
 
 > **Reference.** A complete, structured description of the port surface of

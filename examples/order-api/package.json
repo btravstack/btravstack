@@ -10,6 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-api --out src/generated/doc-samples",
     "test": "vitest run",
     "test:types": "tsc --noEmit -p tsconfig.test-d.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
@@ -30,12 +31,15 @@
     "unthrown": "catalog:"
   },
   "devDependencies": {
+    "@btravstack/contract": "workspace:^",
+    "@btravstack/entity": "catalog:",
     "@btravstack/internal-test-infra": "workspace:*",
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }

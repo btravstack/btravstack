@@ -3,6 +3,12 @@ title: Compile errors, not surprises
 description: How the Needs channel, a conditional rest parameter and a phantom marker turn missing dependencies, leaked internals, forgotten scopes and a missing runtime into errors at the call site — what each one actually prints, and where the compile-time line sits.
 ---
 
+<!-- doctest: prelude
+import { Module, Port, Provider } from "@btravstack/di";
+import { start } from "@btravstack/core";
+class Greeter extends Port("Greeter")<{ readonly hello: () => string }> {}
+-->
+
 # Compile errors, not surprises
 
 > **Explanation.** This page explains the machinery behind `di`'s one-sentence
@@ -78,6 +84,8 @@ The remaining checks happen at the one place a graph becomes running services.
 
 Each [entry point](/reference/di/entry-points) ends in a conditional rest
 parameter:
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
 build<X, E, N>(
@@ -176,6 +184,7 @@ const Application = Module("Application")({
   exports: [Greeter],
 });
 
+// @ts-expect-error — NO RUNTIME: the module exports no port declared over RuntimePort.
 start(Application);
 ```
 
