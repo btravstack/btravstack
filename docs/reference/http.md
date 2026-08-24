@@ -572,7 +572,7 @@ invented, and the diagnostic **names the port**:
 Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'
 ```
 
-(Not di's `UNSATISFIED DEPENDENCIES` arity gate: that one guards
+(Not di's `UNSATISFIED DEPENDENCIES` dependency gate: that one guards
 `Module.build`/`Module.scoped`, and `start` types the need out on its parameter
 instead.)
 

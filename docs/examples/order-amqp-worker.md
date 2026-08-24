@@ -409,7 +409,7 @@ takes only `Scope | Env`, so what prints is
 `Type 'HandlersInstanceOf<…>' is not assignable to type 'Env | Scope'` — wide,
 because the contract expands, but ending on
 `Type '"AmqpHandlers"' is not assignable to type '"@di/Scope"'`, which names the
-port. Neither is di's `UNSATISFIED DEPENDENCIES` arity gate.
+port. Neither is di's `UNSATISFIED DEPENDENCIES` dependency gate.
 
 ## Where to go next
 

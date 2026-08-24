@@ -2,7 +2,8 @@
  * The compile-time half of the layering, once per vertical:
  * `OrderApplicationModule` declares `OrderRepository` and `Logger` as unmet
  * needs and `CustomerApplicationModule` declares `CustomerRepository`, so di's
- * phantom rest-tuple gate makes scoping either one a call-site arity error
+ * `DependencyGate` refuses scoping either one at the call site — with the
+ * missing port in the message —
  * until an outer module provides them — and, since the `needs` gate, an outer
  * module that neither provides nor declares them does not compile at all. Two gates rather than one, which is the
  * point of the split: closing the orders half says nothing about the customers
@@ -45,12 +46,12 @@ const customerRepository = Provider(CustomerRepository)({
 
 const logger = Provider(Logger)({ value: createLogger(() => {}) });
 
-// Negative: nothing provides `OrderRepository`, so di's rest parameter is a
-// required two-element tuple the call does not pass, and `Expected 5 arguments,
-// but got 2` is the whole message. An arity error carries no type, so neither
-// the label nor the ports are in it; hand-spelling the phantom arguments prints
-// them, ending on `not assignable to parameter of type
-// 'Logger | OrderRepository'`.
+// Negative: nothing provides `OrderRepository`, so `DependencyGate`'s marker
+// object rides `Module.scoped`'s parameter and the call fails assignability —
+// the message ends on `required in type '{ readonly "UNSATISFIED DEPENDENCIES
+// — nothing provides": Logger | OrderRepository; }'` (measured), the label and
+// the ports both printed. The rest-tuple arity error this replaced printed
+// `Expected 5 arguments, but got 2` and nothing else.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
   ctx.get(PlaceOrder).execute(TenantId("acme"), "0199a1e0-0000-7000-8000-000000000001", 1),
@@ -66,7 +67,7 @@ const _unwiredCustomers = Module.scoped(CustomerApplicationModule, (ctx) =>
 
 // Negative, per vertical: the orders repository closes the orders module, and
 // says nothing about the customers one — a graph that wires the wrong
-// vertical's adapter is still rejected. It is `Module.scoped`'s arity gate,
+// vertical's adapter is still rejected. It is `Module.scoped`'s dependency gate,
 // not di's declaration one: `CustomerRepository` is owed by an IMPORT, and an
 // import's needs travel published in its type rather than being re-declared
 // by whoever composes it.

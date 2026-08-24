@@ -86,9 +86,9 @@ describe("Module.build", () => {
       ],
       exports: [Repo],
     });
-    // @ts-expect-error unsatisfied dependency: Cfg — the rest parameter
-    // becomes a required two-element tuple when Needs is not `never`, so
-    // calling with just `mod` is an arity error at the call site. The
+    // @ts-expect-error unsatisfied dependency: Cfg — `DependencyGate`
+    // intersects a marker object onto the parameter when Needs is not
+    // `never`, refused by assignability with the port in the message. The
     // "complete module" test above is the negative control: it calls
     // `Module.build(mod)` with exactly one argument and no
     // `@ts-expect-error`, so this failure is specific to the unmet

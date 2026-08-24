@@ -263,24 +263,42 @@ function ModuleDeclaration<const Name extends string>(name: Name) {
 }
 
 /**
+ * The entry points' gate for unmet dependencies, on the same intersection
+ * mechanism as `NeedsGate` and `@btravstack/core`'s `StartGate`: `unknown`
+ * when nothing is left unmet (an intersection with `unknown` is invisible),
+ * the one-property object otherwise, so the argument fails assignability and
+ * the diagnostic **ends on the missing port** —
+ *
+ *   Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in
+ *   type 'Module<Repo, never, Pool>' but required in type
+ *   '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Pool; }'.
+ *
+ * (measured). This replaced a conditional rest tuple whose failure was a bare
+ * arity line — `error TS2554: Expected 3 arguments, but got 1.` — that named
+ * neither the label nor the port and whose related information pointed at the
+ * un-instantiated declaration here; four documents carried paragraphs
+ * explaining it. Kept local: nothing outside the entry points constrains by
+ * it, and the sentence prints reduced either way.
+ */
+type DependencyGate<N> = [N] extends [never]
+  ? unknown
+  : { readonly "UNSATISFIED DEPENDENCIES — nothing provides": N };
+
+/**
  * `Module.build` sorts the tree into dependency-ordered levels, checks for
  * wiring bugs (cycles, duplicate providers) before any factory runs, then
  * constructs level by level. See `build.ts` for the implementation; this is
  * just the typed entry point, namespaced on `Module` per the package's
  * convention of hanging operations off the type's constructor.
  *
- * The rest parameter is the compile-time gate for unmet dependencies: when
- * `N` (the module's remaining `Needs`) is `never`, `..._missing` is typed as
- * the empty tuple `[]`, so `Module.build(mod)` is a normal one-argument call.
- * When `N` is not `never`, the tuple has two *required* elements, so calling
- * with just `mod` is an arity error — the module's unmet dependency becomes a
- * compile error at the call site, not a runtime surprise.
+ * The intersected `DependencyGate` is the compile-time gate for unmet
+ * dependencies: `unknown` when `N` (the module's remaining `Needs`) is
+ * `never`, so `Module.build(mod)` is a normal call; the marker object
+ * otherwise, refused by assignability with the missing ports in the message.
  */
 export const Module = Object.assign(ModuleDeclaration, {
-  build: <X, E, N>(
-    module: Module<X, E, N>,
-    ..._missing: [N] extends [never] ? [] : [error: "UNSATISFIED DEPENDENCIES", missing: N]
-  ): AsyncResult<Context<X>, E> => run(module as never, createScope()) as never,
+  build: <X, E, N>(module: Module<X, E, N> & DependencyGate<N>): AsyncResult<Context<X>, E> =>
+    run(module as never, createScope()) as never,
 
   /**
    * `Module.build`'s resourceful counterpart: opens a scope, runs the module,
@@ -289,23 +307,20 @@ export const Module = Object.assign(ModuleDeclaration, {
    * construction failed, `use` failed, or `use` succeeded. See
    * `build.ts`'s `runScoped` for the unwind itself.
    *
-   * The gate mirrors `build`'s — a rest parameter that is the empty tuple
-   * only when there is nothing left unmet — except it excludes `Scope`
+   * The gate mirrors `build`'s — `DependencyGate`, `unknown` only when
+   * there is nothing left unmet — except it excludes `Scope`
    * first: `Scope` is not a real dependency the caller must supply, it is
    * the phantom marker that routed the module here in the first place, and
    * this is the one entry point that discharges it (by actually opening a
    * `createScope`, unlike `build`, which never sees a resourceful module at
    * all — `Scope` in `Needs` makes that a compile error). Any *other*
    * unmet requirement in `N` still has to surface, so `Exclude<N, Scope>`,
-   * not a blanket bypass, is what the rest parameter is computed from.
+   * not a blanket bypass, is what the gate is computed from.
    */
   scoped: <X, E, N, A, E2>(
-    module: Module<X, E, N>,
+    module: Module<X, E, N> & DependencyGate<Exclude<N, Scope>>,
     use: (ctx: Context<X>) => AsyncResult<A, E2>,
     options?: ScopedOptions,
-    ..._missing: [Exclude<N, Scope>] extends [never]
-      ? []
-      : [error: "UNSATISFIED DEPENDENCIES", missing: Exclude<N, Scope>]
   ): AsyncResult<A, E | E2> => runScoped(module as never, use as never, options) as never,
 
   /**
@@ -332,17 +347,14 @@ export const Module = Object.assign(ModuleDeclaration, {
    * allowed to depend on anything the parent already provides (that is the
    * entire point of forking over a *built* parent instead of an empty one);
    * only a need that neither the request module itself nor the parent
-   * satisfies must surface as the "UNSATISFIED DEPENDENCIES" arity error,
+   * satisfies must surface as the "UNSATISFIED DEPENDENCIES" marker,
    * exactly as `NeedsMissing` does in `fork.test-d.ts`.
    */
   forkScope: <PParent, X, E, N, A, E2>(
     parent: Context<PParent>,
-    module: Module<X, E, N>,
+    module: Module<X, E, N> & DependencyGate<Exclude<N, PParent | Scope>>,
     use: (ctx: Context<PParent | X>) => AsyncResult<A, E2>,
     options?: ScopedOptions,
-    ..._missing: [Exclude<N, PParent | Scope>] extends [never]
-      ? []
-      : [error: "UNSATISFIED DEPENDENCIES", missing: Exclude<N, PParent | Scope>]
   ): AsyncResult<A, E | E2> =>
     runScoped(module as never, use as never, options, parent as never) as never,
 });

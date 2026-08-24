@@ -455,7 +455,7 @@ it": "order:export"`). `VocabFrom<A>` reads the vocabulary off the same
   `SchemePortsOf<C>` to the needs channel
   plus `readonly authenticators` to the result.
   A router naming a scheme nobody implements is therefore an
-  ordinary unmet need refused at `start` — no new gate, and not di's arity
+  ordinary unmet need refused at `start` — no new gate, and not di's dependency
   gate. There is nothing left for a
   gate to check afterwards: the registry that types the handlers and the
   providers that discharge the ports come from the **same** `defineHttp` call,
@@ -534,7 +534,7 @@ plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
   `http()` on the same `...(x === undefined ? {} : { x })` spread every
   other option here uses.
 - **Two gates, both compile-time, and they are different mechanisms.**
-  `start`'s phantom marker — intersected onto `module`, not a rest tuple — turns
+  `start`'s phantom marker — intersected onto `module` — turns
   a composition exporting no `HttpRuntime` into a `TS2345` whose last line is
   `"NO RUNTIME — the module exports no port declared over RuntimePort"`; and
   because the runtime provider depends on the router port **through di**,
@@ -542,7 +542,7 @@ plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
   carries `HttpRouterPort` as an unmet need `start` refuses on the same
   parameter's `Module<X, E, Scope | Env>` half, ending on
   `Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. Neither is
-  di's `UNSATISFIED DEPENDENCIES` arity gate.
+  di's `UNSATISFIED DEPENDENCIES` dependency gate.
   `examples/order-api/src/needs-gate.test-d.ts` pins both, plus the
   `StartOptions.unit` halves. There is no `UNSATISFIED RUNTIME PORTS` case for
   this runtime any more: it declares none.

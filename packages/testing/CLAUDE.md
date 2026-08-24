@@ -48,9 +48,12 @@ probes: { port: 0 } })` binds a probe server over the default. Teardown
   still finds the runtime and the gates see nothing new. **`Tap` is
   `Port("@btravstack/testing/Tap")` declared once**, module-private: two `tapped` modules in one
   graph are di's duplicate-provider defect at build, and one tap per
-  application is the case. **The gate** is a phantom rest tuple —
-  `[Exclude<InstanceType<P[number]>, X>] extends [never] ? [] : [error: "NOT
-EXPORTED", missing]` — refusing at the call site a port `module` does not
+  application is the case. **The gate** is `TapGate`, a marker intersected onto the
+  `ports` parameter — `unknown` when every tapped port is exported, `{
+readonly "NOT EXPORTED — tap only what the module exports": Missing }`
+  otherwise, so the diagnostic ends on the port (measured; the conditional
+  rest tuple it replaced printed only a bare arity line) — refusing at the
+  call site a port `module` does not
   export: an application-scope service is the only thing there is to tap.
   **`services()` is loud**: it throws (`unthrown/no-throw` disabled with a
   reason) when read before the graph is built — reading a tap nobody booted

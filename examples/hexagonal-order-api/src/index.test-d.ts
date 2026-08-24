@@ -1,5 +1,5 @@
 /**
- * The compile-time half of this example: `Pool`'s privacy and the arity gate
+ * The compile-time half of this example: `Pool`'s privacy and the dependency gate
  * that routes a resourceful graph through `Module.scoped`. Both are
  * compile-time guarantees, so — mirroring the library's own
  * `example.test-d.ts` — this file's bodies are type-checked (this package's

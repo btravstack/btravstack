@@ -382,8 +382,8 @@ activities or handlers that implement it.
 <!-- doctest: skip — quotes order-application's needs-gate.test-d.ts, the real gate for di's UNSATISFIED DEPENDENCIES arm -->
 
 ```ts
-// Negative: nothing provides `OrderRepository`, so di's rest parameter is a
-// required two-element tuple the call does not pass.
+// Negative: nothing provides `OrderRepository`, so `DependencyGate`'s marker
+// rides `Module.scoped`'s parameter and the call fails assignability.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: no OrderRepository is provided.
 const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
   ctx
@@ -392,15 +392,11 @@ const _unwiredOrders = Module.scoped(OrderApplicationModule, (ctx) =>
 );
 ```
 
-What that prints is `error TS2554: Expected 5 arguments, but got 2.` and
-nothing else — an arity error carries no type, so neither the
-`UNSATISFIED DEPENDENCIES` label nor `OrderRepository` appears in it. Both are
-in the rest parameter's type, and hand-spelling the phantom arguments is what
-prints them: pass the label through as the fourth argument and the fifth reports
-`Argument of type 'number' is not assignable to parameter of type
-'Logger | OrderRepository'` — measured, this vertical's own two open needs.
-`start`'s three arms are the deliberate contrast: they ride the `module`
-parameter precisely so their sentence prints.
+What that prints ends on the ports: `required in type '{ readonly
+"UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository; }'`
+(measured) — the label and the missing ports in one message, where the
+rest-tuple arity error this gate replaced printed `Expected 5 arguments, but
+got 2.` and nothing else.
 
 Each vertical's gate is pinned separately, which is the split showing up in
 the type tests: a graph that provides `OrderRepository` still cannot scope

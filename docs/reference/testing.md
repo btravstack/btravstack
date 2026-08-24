@@ -94,10 +94,7 @@ test already drove to exit.
 ```ts
 const tapped: <X, E, N, const P extends readonly AnyPort[]>(
   module: Module<X, E, N>,
-  ports: P,
-  ...gate: [Exclude<InstanceType<P[number]>, X>] extends [never]
-    ? []
-    : [error: "NOT EXPORTED", missing: Exclude<InstanceType<P[number]>, X>]
+  ports: P & TapGate<P, X>,
 ) => {
   readonly module: Module<X, E, N>;
   readonly services: () => ServicesOf<P>;
@@ -106,6 +103,17 @@ const tapped: <X, E, N, const P extends readonly AnyPort[]>(
 type ServicesOf<P extends readonly AnyPort[]> = {
   readonly [K in keyof P]: ServiceOf<InstanceType<P[K]>>;
 };
+
+type TapGate<P extends readonly AnyPort[], X> = [
+  Exclude<InstanceType<P[number]>, X>,
+] extends [never]
+  ? unknown
+  : {
+      readonly "NOT EXPORTED — tap only what the module exports": Exclude<
+        InstanceType<P[number]>,
+        X
+      >;
+    };
 ```
 
 Read services out of a booted application. `start` hands the application
@@ -114,44 +122,33 @@ the running graph writes through — not a fresh one — has nothing to `ctx.get
 it with. `tapped` composes one more provider around `module`, depending on
 `ports`, and remembers what it was built with.
 
-| Member       | Semantics                                                                                                                                                                                                                                                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `module`     | A `Module<X, E, N>` exporting **exactly what `module` exports** — the kernel still finds the runtime, the gate still sees the same `X`. Boot this one instead of `module`.                                                                                                                             |
-| `services()` | The service instances behind `ports`, in order, as a tuple typed by `ServicesOf<P>` (`const [repository] = tap.services()`). **Throws** before the graph has been built: reading a tap nobody booted is a bug in the test, not a modeled outcome, so it is loud rather than an `undefined`.            |
-| `...gate`    | A conditional rest tuple, phantom, refusing at the call site any port `module` does not export — as an **arity error**; see [what it prints](#the-tap-gate-an-arity-error) below. An application-scope service is the only thing there is to tap; a unit-scoped port exists only while a unit is open. |
+| Member       | Semantics                                                                                                                                                                                                                                                                                      |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `module`     | A `Module<X, E, N>` exporting **exactly what `module` exports** — the kernel still finds the runtime, the gate still sees the same `X`. Boot this one instead of `module`.                                                                                                                     |
+| `services()` | The service instances behind `ports`, in order, as a tuple typed by `ServicesOf<P>` (`const [repository] = tap.services()`). **Throws** before the graph has been built: reading a tap nobody booted is a bug in the test, not a modeled outcome, so it is loud rather than an `undefined`.    |
+| `TapGate`    | A marker intersected onto `ports`, refusing at the call site any port `module` does not export — with the port in the message; see [what it prints](#the-tap-gate) below. An application-scope service is the only thing there is to tap; a unit-scoped port exists only while a unit is open. |
 
-### The tap gate: an arity error
+### The tap gate
 
-`tapped` keeps the mechanism [di's own entry points
-use](/reference/di/entry-points#the-gate) — a conditional rest parameter, empty
-when every port is exported and two required parameters
-(`error: "NOT EXPORTED", missing: …`) when one is not — rather than the marker
-[`start` intersects onto its `module`](/reference/core/start#the-gate-startgate-x-unitneeds).
-It is the fourth gate mechanism in this repo, and the only one a **test**
-meets rather than a composing application.
+`tapped`'s marker rides the `ports` parameter the way [di's own entry points
+gate their `module`](/reference/di/entry-points#the-gate): `unknown` when
+every tapped port is exported, a one-property object otherwise, refused by
+assignability with the port in the message. It is the fourth gate mechanism
+in this repo, and the only one a **test** meets rather than a composing
+application.
 
 What it prints, measured on a one-port tap of a module that does not export
 that port:
 
 ```
-src/__scratch.ts(15,1): error TS2554: Expected 4 arguments, but got 2.
+error TS2345: Argument of type '[typeof Inner]' is not assignable to parameter of type 'readonly [typeof Inner] & { readonly "NOT EXPORTED — tap only what the module exports": Inner; }'.
+  Property '"NOT EXPORTED — tap only what the module exports"' is missing in type '[typeof Inner]' but required in type '{ readonly "NOT EXPORTED — tap only what the module exports": Inner; }'.
 ```
 
-Reading that message, and finding the missing port by hand-spelling the
-phantom arguments, is the same technique [di's own
-gate](/reference/di/entry-points#the-gate) documents. The slots answer one at
-a time, the first one first:
-
-```
-error TS2345: Argument of type '0' is not assignable to parameter of type '"NOT EXPORTED"'.
-```
-
-Pass that label through as the first phantom argument and the second slot names
-the port:
-
-```
-error TS2345: Argument of type 'number' is not assignable to parameter of type 'Secret'.
-```
+The message ends on the port. (The gate was a conditional rest tuple until
+issue #93 swept the last two arity gates — this one and di's entry points' —
+onto the marker mechanism; the arity form printed `Expected 4 arguments, but
+got 2.` and nothing else.)
 
 The tap provider is not exported and nothing resolves it; di builds every
 provider in a graph, exported or not, which is what makes the capture work.

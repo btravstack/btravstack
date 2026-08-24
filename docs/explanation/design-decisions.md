@@ -38,8 +38,10 @@ The tuple was chosen originally because a conditional type in an
 inference-bearing position can make TypeScript defer that parameter's
 inference and collapse `X` or `E` to `unknown`. Measured, it does not here: `X`
 still infers from the `Module<X, …>` half of the intersection. di's
-`UNSATISFIED DEPENDENCIES` gate on `Module.scoped` is still a rest tuple, so
-the two are **no longer the same shape**.
+`UNSATISFIED DEPENDENCIES` gate followed the same path later (issue #93,
+`DependencyGate` on the entry points), so the two gates are the same shape —
+with di's marker ending on the missing ports rather than on a fixed
+sentence, since the ports are the thing di's gate has to say.
 
 The gate is still bypassable, by a cast (`start(App as never)`) — the ordinary
 TypeScript escape, not a hatch this gate offers, and nothing asserts it because

@@ -10,7 +10,7 @@ import { start } from "@btravstack/core";
  * `Module` typing turns a composition that imports the starter without
  * providing its router into an unmet need the same parameter refuses by
  * assignability, naming the port. Neither is di's `UNSATISFIED DEPENDENCIES`
- * arity gate. Type-checked by
+ * gate. Type-checked by
  * this package's `test:types` script, never executed.
  */
 import { Module } from "@btravstack/di";

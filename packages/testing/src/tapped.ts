@@ -27,16 +27,26 @@ export type ServicesOf<P extends readonly AnyPort[]> = {
  * outcome, so it throws rather than answering an `undefined` a careless
  * assertion could swallow. The gate refuses a port `module` does not export,
  * at this call site: an application-scope service is the only thing there is
- * to tap.
+ * to tap. It rides the `ports` parameter as an intersection — `unknown` when
+ * every tapped port is exported, a one-property marker object otherwise, so
+ * the diagnostic names the port (the same mechanism as di's `DependencyGate`;
+ * the conditional rest tuple it replaced printed only a bare arity line).
  */
+type TapGate<P extends readonly AnyPort[], X> = [Exclude<InstanceType<P[number]>, X>] extends [
+  never,
+]
+  ? unknown
+  : {
+      readonly "NOT EXPORTED — tap only what the module exports": Exclude<
+        InstanceType<P[number]>,
+        X
+      >;
+    };
+
 export const tapped = <X, E, N, const P extends readonly AnyPort[]>(
   module: Module<X, E, N>,
-  ports: P,
-  ...gate: [Exclude<InstanceType<P[number]>, X>] extends [never]
-    ? []
-    : [error: "NOT EXPORTED", missing: Exclude<InstanceType<P[number]>, X>]
+  ports: P & TapGate<P, X>,
 ): { readonly module: Module<X, E, N>; readonly services: () => ServicesOf<P> } => {
-  void gate;
   let services: ServicesOf<P> | undefined;
   // `ports` stays an array — it is what `services()` answers positionally, not
   // a dependency declaration a reader writes. Keying it by index is the

@@ -355,7 +355,7 @@ const _missingActivities = start(ActivitylessTemporal, options);
 ```
 
 That second one is the `Needs` channel, not di's `UNSATISFIED DEPENDENCIES`
-arity gate: `start`'s `module` parameter accepts only `Scope | Env`
+dependency gate: `start`'s `module` parameter accepts only `Scope | Env`
 outstanding, so the activities port fails to assign and the diagnostic ends on
 `Type '"TemporalActivities"' is not assignable to type '"@di/Scope"'` — the
 port named, after several lines of the contract expanding.
