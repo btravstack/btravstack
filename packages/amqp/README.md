@@ -108,9 +108,10 @@ exactly one slice.
 
 ## Options
 
-`AmqpModule(name)({...})` and the `amqp()` primitive take the same options —
-the sugar adds `handlers` and the module lists (`imports`, `provides`,
-`exports`, `needs`):
+`AmqpModule(name)({...})` takes `amqp()`'s options plus `handlers` and the
+module lists (`imports`, `provides`, `exports`, `needs`). The `amqp()`
+primitive does not take `handlers` as an option — it **needs** the handlers
+provider on its own port, which is how the composition root supplies it:
 
 | Option                   | What it is                                                                                                      |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------- |

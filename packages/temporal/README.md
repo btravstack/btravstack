@@ -132,9 +132,11 @@ activities belong to exactly one slice.
 
 ## Options
 
-`TemporalModule(name)({...})` and the `temporal()` primitive take the same
-options — the sugar adds `activities` and the module lists (`imports`,
-`provides`, `exports`, `needs`):
+`TemporalModule(name)({...})` takes `temporal()`'s options plus `activities`
+and the module lists (`imports`, `provides`, `exports`, `needs`). The
+`temporal()` primitive does not take `activities` as an option — it **needs**
+the activities provider on its own port, which is how the composition root
+supplies it:
 
 | Option        | What it is                                                                                             |
 | ------------- | ------------------------------------------------------------------------------------------------------ |

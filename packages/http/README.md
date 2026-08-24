@@ -471,9 +471,10 @@ rather than promoting the caller to the next scheme. See
 
 ## Options
 
-`HttpModule(name)({...})` and the `http()` primitive take the same options —
-the sugar adds `router` and the module lists (`imports`, `provides`,
-`exports`, `needs`):
+`HttpModule(name)({...})` takes `http()`'s options plus `router` and the
+module lists (`imports`, `provides`, `exports`, `needs`). The `http()`
+primitive does not take `router` as an option — it **needs** the router
+provider on its own port, which is how the composition root supplies it:
 
 | Option            | What it is                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------- |
