@@ -167,8 +167,14 @@ const parsePage = (file: string): Page | undefined => {
   }
   if (fences.length === 0 && skips.length === 0) return undefined;
   const prelude = preludes.join("\n");
-  const imports = [prelude, ...fences.map((fence) => fence.body)].flatMap((body) =>
-    [...body.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!),
+  // Classification reads the isolates' private preludes too: a page whose only
+  // transport-identifying imports live in an isolate (a tutorial restating its
+  // stack per spec fence) would otherwise fall to the default group.
+  const isolatePreludes = fences.map((fence) =>
+    typeof fence.marker === "object" && "isolate" in fence.marker ? fence.marker.isolate : "",
+  );
+  const imports = [prelude, ...isolatePreludes, ...fences.map((fence) => fence.body)].flatMap(
+    (body) => [...body.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!),
   );
   return { file, group: pageGroup ?? classify(imports), prelude, fences, skips };
 };
@@ -256,7 +262,16 @@ const emit = (page: Page, outDir: string): number => {
     }
     for (const fence of fences) {
       const split = splitImports(fence.body);
-      for (const statement of split.imports) imports.add(statement.trim());
+      // A FENCE's relative imports — `./x.js` and `../x.js` alike — are
+      // dropped: they narrate the page's own file layout, and the
+      // concatenated module supplies those names directly. Only a PRELUDE may
+      // import by relative path, which is the real-artifact trick (the
+      // generated module lives inside the workspace's `src/`, so
+      // `../../auth.js` reaches the application's own file).
+      for (const statement of split.imports) {
+        if (/from "\./.test(statement.replace(/\s+/g, " "))) continue;
+        imports.add(statement.trim());
+      }
       if (split.rest !== "") bodies.push(`${banner(fence)}\n${split.rest}`);
     }
     const header =
