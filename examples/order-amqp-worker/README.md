@@ -12,12 +12,14 @@ served by `@btravstack/http`; the contract lives in
 binding its own queue to the `orders` exchange needs it and needs none of this.
 
 ```
-src/slices/notifications/handler.ts   the notifier: orderNotifications, one piece on the "orderNotifications" consumer, built by AmqpHandler from Logger
-src/slices/notifications/module.ts    NotificationsSlice — provides the piece, exports only it
-src/slices/audit/handler.ts           the auditor: orderAudit, one piece on the "orderAudit" consumer, built by AmqpHandler from Logger
-src/slices/audit/module.ts            AuditSlice — same shape as NotificationsSlice
+src/slices/notifications/handler.ts   the notifier: export const piece = AmqpHandler(orderContract, "orderNotifications")(…), built from Logger
+src/slices/notifications/module.ts    export const slice = Module("NotificationsSlice")(…) — provides the piece, exports only it
+src/slices/audit/handler.ts           the auditor: export const piece = AmqpHandler(orderContract, "orderAudit")(…), built from Logger
+src/slices/audit/module.ts            export const slice = Module("AuditSlice")(…) — same shape as the notifications slice
+src/slices.gen.ts      GENERATED from src/slices/*/ — the slices and pieces arrays
+src/slices-gen.spec.ts the drift check: the same generator, byte for byte against the committed file
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
-src/module.ts          orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]); OrderAmqpWorker — the composition root, an AmqpModule importing both slices and observability(), a constant
+src/module.ts          orderHandlers = AmqpHandlers(orderContract)(pieces); OrderAmqpWorker — the composition root, an AmqpModule spreading ...slices next to the vertical, the relay and observability(), a constant
 src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
 src/test-fixtures.ts   boot / serve / tapped, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
 ```
@@ -30,7 +32,7 @@ This deployment is a modulith of **two** slices, `NotificationsSlice` and
 dead-letter parking). `defineContract` accepts two consumers of one
 publisher because that is what a broadcast IS: neither subscriber knows the
 other exists, and one slow reader cannot stall the other. `orderHandlers =
-AmqpHandlers(orderContract)([orderNotifications, orderAudit])` composes the
+AmqpHandlers(orderContract)(pieces)` composes the
 two pieces into the one handlers record the starter needs — keyed by the
 contract's own consumer names, so a consumer with no piece is a compile
 error and two pieces claiming one consumer are di's duplicate-provider
@@ -50,14 +52,17 @@ belongs to the **relay**, the publishing half, not to either subscriber; it
 sits in the root's own `imports` for that reason, next to the two slices
 rather than inside one of them.
 
-A wiring rule worth stating because it fails at runtime, not at compile
-time: `orderHandlers`'s pieces are the composed provider's `deps`, and di's
+A wiring rule that used to fail at runtime, and no longer can:
+`orderHandlers`'s pieces are the composed provider's `deps`, and di's
 `flatten` discovers providers only from a module's `imports` and `provides`
-— never from a provider's own `deps`. So the root **must** import both
-`NotificationsSlice` and `AuditSlice`, even though nothing in the root ever
-names `orderNotifications` or `orderAudit` directly; dropping either import
-leaves that piece's port unmet, and `start` fails with a `WiringDefect`
-naming it — not a compile error.
+— never from a provider's own `deps`. So the root **must** import both slice
+modules, even though nothing in it ever names a consumer directly; dropping
+either import left that piece's port unmet, and `start` failed with a
+`WiringDefect` naming it, not a compile error. Both `pieces` and `slices`
+now come from the generated `src/slices.gen.ts` and the root spreads
+`...slices` into `imports`, so the two lists are the same walk of the same
+directories and cannot part company — see
+[the slice tree is generated](#the-slice-tree-is-generated) below.
 
 ## The pattern, in three places
 
@@ -85,15 +90,16 @@ _foreign_ queue to the same exchange and receiving the same event too.
 `@btravstack/amqp`'s starter needs one thing from the application: its
 **handlers, as a service**. This deployment builds that record from two
 pieces rather than one function. `src/slices/notifications/handler.ts` is one
-call — `AmqpHandler(orderContract, "orderNotifications")({ logger: Logger },
+call — `export const piece = AmqpHandler(orderContract, "orderNotifications")({ logger: Logger },
 { sync: … })` — di's own `Provider(port)` on a port minted from the contract key,
 typed for that one consumer's message; `src/slices/audit/handler.ts` is the
 same shape for `"orderAudit"`. Neither declares a port class or a name: the
 contract key IS the port's name, and each piece closes over only what its own
 handler calls — both take `Logger` here, but nothing ties one subscriber's
-dependencies to the other's. `src/module.ts` composes them —
-`orderHandlers = AmqpHandlers(orderContract)([orderNotifications,
-orderAudit])` — into the one handlers record `AmqpModule` takes: keyed by the
+dependencies to the other's. The export name is `piece` in both, fixed by
+convention so the tree can be walked. `src/module.ts` composes them —
+`orderHandlers = AmqpHandlers(orderContract)(pieces)` — into the one handlers
+record `AmqpModule` takes: keyed by the
 contract's consumer names, so a consumer with no piece is a compile error and
 two pieces claiming one key are di's duplicate-provider defect at build. The
 composition root is `AmqpModule("OrderAmqpWorker")({ contract: orderContract,
@@ -101,8 +107,8 @@ handlers: orderHandlers, imports, provides, exports })` — a `Module(...)` that
 also takes the handlers provider: under the hood it imports the starter
 (`amqp({ contract: orderContract })`, the runtime on
 `AmqpRuntime` and the broker on `AmqpConfig`), provides `orderHandlers`, and
-exports `AmqpRuntime` for `start` to resolve. Its `imports` also names
-`NotificationsSlice` and `AuditSlice` themselves — not just their handlers —
+exports `AmqpRuntime` for `start` to resolve. Its `imports` also spreads
+`...slices` — the slice modules themselves, not just their handlers —
 because that is the only way di's `flatten` discovers the two pieces at all
 (see "Two subscribers, not one" above). It also imports
 `observability()`, the starter that provides the `Logger` every subscriber
@@ -147,6 +153,27 @@ runtime, and that a composition which forgets to provide `orderHandlers` is
 refused — by di's needs channel now, since the runtime itself has no needs
 left for `start`'s gate to check (spelled with the `amqp()` primitive, since
 the sugar cannot leave the handlers out).
+
+## The slice tree is generated
+
+Neither the composing array nor the root's `imports` is written by hand.
+`pnpm generate` runs [`internal/slice-codegen`](../../internal/slice-codegen),
+which walks `src/slices/*/` and emits the committed `src/slices.gen.ts`: each
+directory's fixed exports — `slice` from `module.ts`, `piece` from
+`handler.ts` — become the `slices` and `pieces` arrays this root reads.
+A directory must hold `module.ts` plus exactly one of `controller.ts` /
+`handler.ts` / `activities.ts`; anything else is a `SliceTreeInvalid` naming
+the directory, and the generate task fails.
+
+That is what closes the `WiringDefect` hazard above by construction rather
+than by care: the array handed to `AmqpHandlers` and the modules spread into
+`imports` are the same walk of the same directories, so a slice cannot be in
+one and missing from the other.
+
+`src/slices-gen.spec.ts` is the drift check: it renders this workspace's tree
+through `renderSlicesGen`, the very function the CLI calls, and compares the
+committed file byte for byte. A stale `slices.gen.ts` fails a test rather
+than needing a step in the pipeline.
 
 ## The environment
 

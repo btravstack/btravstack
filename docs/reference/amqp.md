@@ -17,8 +17,7 @@ import {
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { outboxRelay, relayConfig } from "../../outbox-relay.js";
-import { slice as AuditSlice } from "../../slices/audit/module.js";
-import { slice as NotificationsSlice } from "../../slices/notifications/module.js";
+import { slices } from "../../slices.gen.js";
 -->
 
 # @btravstack/amqp
@@ -107,8 +106,7 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,
-    NotificationsSlice,
-    AuditSlice,
+    ...slices,
     observability(),
   ],
   provides: [relayConfig, outboxRelay],
@@ -116,12 +114,13 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
 });
 ```
 
-`NotificationsSlice` and `AuditSlice` are each a slice module exporting one
-**piece** of `orderHandlers` — see the composing form below and
+`slices` holds one slice module per `src/slices/*` directory, each exporting
+one **piece** of `orderHandlers` — see the composing form below and
 [Split a worker into slices](/how-to/split-a-worker-into-slices) — imported
 here because `orderHandlers`'s own `deps` are the pieces' ports, and di
 discovers a provider only through a module's `imports` / `provides`, never
-through another provider's `deps`.
+through another provider's `deps`. The array is generated, alongside the
+`pieces` the composing form takes, so the two cannot disagree.
 
 [`observability()`](/reference/observability) is a second starter, not this
 package's business: it brings the `Logger` the handlers and the relay write
@@ -229,6 +228,10 @@ nothing minted by hand: the return is di's own `Provider(port)`, so every arm
 is on `AmqpHandlers(contract)`, and the provider carries its port as
 `provider.port` (`HandlerPortOf<C, K>`).
 
+Each piece lives in its own slice and is exported under the fixed name
+`piece`; shown here side by side, they carry the names the generated
+`slices.gen.ts` imports them under — one per slice directory.
+
 <!-- doctest: isolate
 import { AmqpHandler, AmqpHandlers } from "@btravstack/amqp";
 import { Logger } from "@btravstack/observability";
@@ -237,7 +240,8 @@ import { orderContract } from "@btravstack/example-order-amqp-contract";
 -->
 
 ```ts
-const orderNotifications = AmqpHandler(orderContract, "orderNotifications")(
+// slices/notifications/handler.ts — `export const piece = …`
+const notifications = AmqpHandler(orderContract, "orderNotifications")(
   { logger: Logger },
   {
     sync:
@@ -249,7 +253,8 @@ const orderNotifications = AmqpHandler(orderContract, "orderNotifications")(
   },
 );
 
-const orderAudit = AmqpHandler(orderContract, "orderAudit")(
+// slices/audit/handler.ts — `export const piece = …`
+const audit = AmqpHandler(orderContract, "orderAudit")(
   { logger: Logger },
   {
     sync:
@@ -261,10 +266,8 @@ const orderAudit = AmqpHandler(orderContract, "orderAudit")(
   },
 );
 
-const orderHandlers = AmqpHandlers(orderContract)([
-  orderNotifications,
-  orderAudit,
-]);
+// module.ts, where the real root writes `AmqpHandlers(orderContract)(pieces)`
+const orderHandlers = AmqpHandlers(orderContract)([notifications, audit]);
 ```
 
 ## `amqp(options)`

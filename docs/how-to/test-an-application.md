@@ -13,8 +13,7 @@ import type {} from "@unthrown/vitest";
 import { OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderApi, orderRouter } from "../../module.js";
 import { RequestModule } from "../../request-scope.js";
-import { slice as CustomersSlice } from "../../slices/customers/module.js";
-import { slice as OrdersSlice } from "../../slices/orders/module.js";
+import { slices } from "../../slices.gen.js";
 -->
 
 # Test an application
@@ -163,8 +162,7 @@ import type {} from "@unthrown/vitest";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability, type Line } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
-import { slice as CustomersSlice } from "../../slices/customers/module.js";
-import { slice as OrdersSlice } from "../../slices/orders/module.js";
+import { slices } from "../../slices.gen.js";
 import { it } from "../../test-fixtures.js";
 -->
 
@@ -176,8 +174,7 @@ const lines: Line[] = [];
 const recordingApi = HttpModule("RecordingApi")({
   router: orderRouter,
   imports: [
-    OrdersSlice,
-    CustomersSlice,
+    ...slices,
     // Pinned rather than bound: the fixture's `LOG_LEVEL` silences the real
     // root, and this root exists to be read.
     observability({ sink: (line) => lines.push(line), level: "trace" }),
@@ -342,8 +339,7 @@ import { Env } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
-import { slice as CustomersSlice } from "../../slices/customers/module.js";
-import { slice as OrdersSlice } from "../../slices/orders/module.js";
+import { slices } from "../../slices.gen.js";
 declare const recorderOf: () => {
   readonly sink: Sink;
   readonly lines: readonly Line[];
@@ -358,8 +354,7 @@ const recordingApi = () => {
       needs: [Env],
       router: orderRouter,
       imports: [
-        OrdersSlice,
-        CustomersSlice,
+        ...slices,
         observability({ sink: recorder.sink, level: "trace" }),
       ],
       exports: [Logger],

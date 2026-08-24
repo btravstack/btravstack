@@ -121,7 +121,7 @@ type Available<I extends readonly AnyModule[], P extends readonly AnyProvider[]>
  *
  * The provider arm exists because the helpers that mint their own port —
  * `Config.provider(name)(schema)`, a starter's `HttpRouter(contract)(…)` —
- * hand back a provider and no class to name, so `exports: [ordersController]`
+ * hand back a provider and no class to name, so a slice's `exports: [piece]`
  * is the only spelling that does not go back through `.port`. It is
  * `AnyProvider &`, not a bare `{ port }`, so nothing but a provider matches.
  *

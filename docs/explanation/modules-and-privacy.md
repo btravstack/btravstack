@@ -14,7 +14,7 @@ class OrderRepository extends Port("OrderRepository")<{
 class Pool extends Port("Pool")<{ readonly close: () => void }> {}
 declare const ctx: Context<OrderRepository>;
 class Logger extends Port("Logger")<{ readonly info: (message: string) => void }> {}
-const orderAudit = Provider(Port("OrderAudit")<{ readonly record: () => void }>)(
+const piece = Provider(Port("OrderAudit")<{ readonly record: () => void }>)(
   { logger: Logger },
   { sync: ({ logger }) => ({ record: () => logger.info("audited") }) },
 );
@@ -100,10 +100,11 @@ imported.
 it — but only one **its own providers asked for by name**:
 
 ```ts
-export const AuditSlice = Module("AuditSlice")({
+// slices/audit/module.ts — `piece` is the handler, from ./handler.js
+export const slice = Module("AuditSlice")({
   needs: [Logger],
-  provides: [orderAudit],
-  exports: [orderAudit],
+  provides: [piece],
+  exports: [piece],
 });
 ```
 

@@ -19,8 +19,7 @@ import type { Order } from "@btravstack/example-order-domain";
 import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { api } from "../../auth.js";
-import { piece as customersController } from "../../slices/customers/controller.js";
-import { slice as CustomersSlice } from "../../slices/customers/module.js";
+import { customersController, ordersController, slices } from "../../slices.gen.js";
 declare const view: (order: Order) => { id: string; quantity: number };
 -->
 
@@ -265,23 +264,26 @@ use cases in [`order-application`](/examples/order-application), and the
 entities and Prisma adapters behind it.
 
 ```
-src/slices/orders/controller.ts       api.HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
-src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
-src/slices/customers/controller.ts    api.HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync })
-src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
+src/slices/orders/controller.ts       export const piece = api.HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
+src/slices/orders/module.ts           export const slice = Module("OrdersSlice")(…) — imports the vertical, provides the controller, exports only it
+src/slices/customers/controller.ts    export const piece = api.HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync })
+src/slices/customers/module.ts        export const slice = Module("CustomersSlice")(…) — same shape
+src/slices.gen.ts                     GENERATED from the two directories above — the slices array, and each controller re-exported by name
 ```
+
+The two export names are fixed — `piece` in the transport file, `slice` in
+`module.ts` — because the root's wiring is generated from the tree; see
+[the generated slice tree](#the-slice-tree-is-generated) below.
 
 `slices/orders/controller.ts` is the transport boundary and the only place in
 this slice where a domain error becomes something else — `slices/customers/controller.ts`
 below does the same for its own slice:
 
 ```ts
+// slices/orders/controller.ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(
-  "OrdersController",
-  contract.orders,
-)(
+export const piece = api.HttpController("OrdersController", contract.orders)(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -409,6 +411,7 @@ a record of controllers, one per top-level contract key, instead of one
 
 ```ts
 import { api } from "./auth.js";
+import { customersController, ordersController } from "./slices.gen.js";
 
 export const orderRouter = api.HttpRouter(contract)({
   orders: ordersController,
@@ -428,11 +431,11 @@ errors at this call — see
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the recipe, and `packages/http/src/controller.test-d.ts` for the five gates
 that pin these errors and the lift below. Because a fragment is itself a valid
-contract, `ordersController` serves `contract.orders` alone unchanged: the
+contract, the orders controller serves `contract.orders` alone unchanged: the
 lifted root is
 `api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
-over `OrdersSlice`, so extracting a slice out of this modulith is a new
-composition root and one fewer import, not a rewrite.
+over the orders slice alone, so extracting a slice out of this modulith is a
+new composition root and one fewer import, not a rewrite.
 
 ## The composition root, and the process
 
@@ -441,9 +444,11 @@ composition root and one fewer import, not a rewrite.
 <!-- doctest: defer -->
 
 ```ts
+import { slices } from "./slices.gen.js";
+
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
+  imports: [...slices, observability()],
   exports: [Logger],
 });
 ```
@@ -463,15 +468,16 @@ so the root names what the process serves rather than everything every slice
 happens to depend on:
 
 ```ts
-export const OrdersSlice = Module("OrdersSlice")({
+// slices/orders/module.ts — `piece` is the controller, from ./controller.js
+export const slice = Module("OrdersSlice")({
   // The controller writes a line itself, so `Logger` is this slice's own
   // provider's need. The environment its persistence reads `DATABASE_URL` from
   // is not: that one is `DatabaseModule`'s, declared there and inherited
   // through the imports below.
   needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
-  provides: [ordersController],
-  exports: [ordersController],
+  provides: [piece],
+  exports: [piece],
 });
 ```
 
@@ -487,7 +493,7 @@ the same internal `DatabaseModule`, which owns the connection and is the only
 module that exports `OrderDatabase`. That is a diamond, not duplication: di
 flattens the module tree into a `Set` keyed by provider **reference**, so the
 graph builds one database. `exports` takes the provider
-rather than `ordersController.port` — `HttpController` minted that port, so
+rather than `piece.port` — `HttpController` minted that port, so
 there is no class to spell back off it.
 
 `HttpModule` imports the starter (`http()` — `HttpRuntime`, `HttpConfig` bound
@@ -522,6 +528,40 @@ stderr; the logger there is built by hand because `building` is emitted while
 the graph still is, so a sink taken out of the context it is watching would
 have nothing to write the two events that matter most with. See
 [Log and correlate](/how-to/log-and-correlate).
+
+## The slice tree is generated
+
+Neither `slices` nor the two controller names is written by hand.
+`pnpm generate` runs `internal/slice-codegen`, which walks `src/slices/*/` and
+emits the committed `src/slices.gen.ts` from each directory's fixed exports —
+`slice` in `module.ts`, `piece` in `controller.ts`:
+
+```
+// Generated by @btravstack/internal-slice-codegen — do not edit; regenerate with `pnpm generate`.
+import { slice as customersSlice } from "./slices/customers/module.js";
+import { slice as ordersSlice } from "./slices/orders/module.js";
+
+export { piece as customersController } from "./slices/customers/controller.js";
+export { piece as ordersController } from "./slices/orders/controller.js";
+export const slices = [customersSlice, ordersSlice] as const;
+```
+
+The root spreads `...slices` into `imports`, so a slice on disk is a slice in
+the graph by construction — the one wiring mistake that used to fail at
+`start` with a `WiringDefect` rather than at compile time. A directory must
+hold `module.ts` plus exactly one of `controller.ts` / `handler.ts` /
+`activities.ts`; anything else is a modeled `SliceTreeInvalid` naming the
+directory, and the generate task fails.
+
+The controllers are re-exported **by name** rather than collected into an
+array, because the keyed router record is addressed by contract key. That
+record stays hand-written: it is already exact against the contract, and
+generating it would take a directory-name → contract-key mapping — a second
+source of truth for what this process serves. The tree supplies wiring only.
+
+Drift is a spec, not a pipeline step: `src/slices-gen.spec.ts` re-renders the
+tree through `renderSlicesGen`, the very function the CLI calls, and compares
+the committed file byte for byte.
 
 ## A request scope over the application scope
 

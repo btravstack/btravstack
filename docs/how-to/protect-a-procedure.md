@@ -14,8 +14,11 @@ import { z } from "zod";
 import { api } from "../../auth.js";
 import { createOrderApiClient } from "../../client.js";
 import { Module } from "@btravstack/di";
-declare const OrdersSlice: Module<InstanceType<(typeof ordersController)["port"]>, never, never>;
-declare const CustomersSlice: Module<InstanceType<(typeof customersController)["port"]>, never, never>;
+declare const ordersController: typeof piece;
+declare const slices: readonly [
+  Module<InstanceType<(typeof ordersController)["port"]>, never, never>,
+  Module<InstanceType<(typeof customersController)["port"]>, never, never>,
+];
 const customersController = api.HttpController("CustomersController", {
   find: oc.input(z.object({ id: z.uuidv7() })).output(z.object({ name: z.string() })),
 })({}, { sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) });
@@ -271,12 +274,10 @@ readable type — and its **shape follows the requirements**:
 | none (unmarked)              | absent — reading it is a compile error        |
 
 ```ts
+// slices/orders/controller.ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(
-  "OrdersController",
-  contract.orders,
-)(
+export const piece = api.HttpController("OrdersController", contract.orders)(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -357,6 +358,8 @@ There is **no authenticator to pass**. The authenticators ride the router —
 which is what needs them — and `HttpModule` puts them in `provides` itself:
 
 ```ts
+// module.ts — `ordersController`, `customersController` and `slices` all come
+// from the generated ./slices.gen.js
 export const orderRouter = api.HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
@@ -364,7 +367,7 @@ export const orderRouter = api.HttpRouter(contract)({
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
+  imports: [...slices, observability()],
   exports: [Logger],
 });
 ```

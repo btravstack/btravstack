@@ -14,15 +14,17 @@ starts these workflows needs it and needs none of this.
 
 ```
 src/workflows.ts                    fulfillOrder and chargeOrder — both sagas, in Temporal's deterministic sandbox
-src/slices/fulfillment/activities.ts  fulfillOrder's five activities, one piece on the "fulfillOrder" key, built by
-                                     TemporalWorkflowActivities from PlaceOrder, OrderRepository, StockService, ShippingService
-src/slices/fulfillment/module.ts    FulfillmentSlice — imports the orders vertical plus FulfillmentModule, exports the piece
-src/slices/billing/activities.ts    chargeOrder's three activities, one piece on the "chargeOrder" key, built from PaymentService
-src/slices/billing/module.ts        BillingSlice — imports BillingModule alone, exports the piece
+src/slices/fulfillment/activities.ts  export const piece = TemporalWorkflowActivities(orderContract, "fulfillOrder")(…) — the saga's five
+                                     activities, built from PlaceOrder, OrderRepository, StockService, ShippingService
+src/slices/fulfillment/module.ts    export const slice = Module("FulfillmentSlice")(…) — imports the orders vertical plus FulfillmentModule, exports the piece
+src/slices/billing/activities.ts    export const piece = TemporalWorkflowActivities(orderContract, "chargeOrder")(…) — three activities, from PaymentService
+src/slices/billing/module.ts        export const slice = Module("BillingSlice")(…) — imports BillingModule alone, exports the piece
+src/slices.gen.ts                   GENERATED from src/slices/*/ — the slices and pieces arrays
+src/slices-gen.spec.ts              the drift check: the same generator, byte for byte against the committed file
 src/fulfillment.ts                  FulfillmentModule — the two external fulfillment services, as stand-ins
 src/billing.ts                      BillingModule — the payment provider, as a stand-in
-src/module.ts                       orderActivities = TemporalActivities(orderContract)([fulfillOrder, chargeOrder]);
-                                     OrderTemporalWorker — the composition root, importing both slices
+src/module.ts                       orderActivities = TemporalActivities(orderContract)(pieces);
+                                     OrderTemporalWorker — the composition root, spreading ...slices into imports
 src/main.ts                         the process: runMain(OrderTemporalWorker)
 src/test-fixtures.ts                boot / serve / server / tenant / fulfilling / outOfStock / noShipping, against the shared Temporal server
 ```
@@ -49,10 +51,8 @@ does not declare is a compile error in that slice's own file, not a defect
 `declareActivitiesHandler` reports at startup.
 
 ```ts
-export const chargeOrder = TemporalWorkflowActivities(
-  orderContract,
-  "chargeOrder",
-)(
+// src/slices/billing/activities.ts
+export const piece = TemporalWorkflowActivities(orderContract, "chargeOrder")(
   { payments: PaymentService },
   {
     sync: ({ payments }) => ({
@@ -73,13 +73,13 @@ export const chargeOrder = TemporalWorkflowActivities(
 ```
 
 The root composes both pieces into the one activities record the starter
-needs, keyed by the contract's own workflow names:
+needs, keyed by the contract's own workflow names — `pieces` and `slices`
+both read off the generated `src/slices.gen.ts`:
 
 ```ts
-export const orderActivities = TemporalActivities(orderContract)([
-  fulfillOrder,
-  chargeOrder,
-]);
+import { pieces, slices } from "./slices.gen.js";
+
+export const orderActivities = TemporalActivities(orderContract)(pieces);
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
@@ -87,18 +87,19 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   workflows: {
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
-  imports: [FulfillmentSlice, BillingSlice, observability()],
+  imports: [...slices, observability()],
 });
 ```
 
-A wiring rule worth stating because it fails at runtime, not at compile time:
+A wiring rule that used to fail at runtime, and no longer can:
 `orderActivities`'s own `deps` are the two pieces' **ports**, and di's
 `flatten` discovers providers only from a module's `imports` and `provides` —
-never from a provider's own `deps`. So the root **must** import both
-`FulfillmentSlice` and `BillingSlice`, even though nothing in the root ever
-names `fulfillOrder` or `chargeOrder` directly; dropping either import leaves
-that piece's port unmet, and `start` fails with a `WiringDefect` naming it —
-not a compile error.
+never from a provider's own `deps`. So the root **must** import both slice
+modules, even though nothing in it ever names a workflow directly; dropping
+either import left that piece's port unmet, and `start` failed with a
+`WiringDefect` naming it, not a compile error. Both arrays now come from the
+same walk of the same directories, so they cannot part company — see
+[the slice tree is generated](#the-slice-tree-is-generated) below.
 
 ## The fulfillment saga
 
@@ -153,6 +154,26 @@ fulfillment specs swap in providers that say no; that is where both of
 real persistence: after a refusal, the spec reads the database through the
 same repository the saga used and finds the placement gone.
 
+## The slice tree is generated
+
+Neither the composing array nor the root's `imports` is written by hand.
+`pnpm generate` runs [`internal/slice-codegen`](../../internal/slice-codegen),
+which walks `src/slices/*/` and emits the committed `src/slices.gen.ts`: each
+directory's fixed exports — `slice` from `module.ts`, `piece` from
+`activities.ts` — become the `slices` and `pieces` arrays this root reads.
+A directory must hold `module.ts` plus exactly one of `controller.ts` /
+`handler.ts` / `activities.ts`; anything else is a `SliceTreeInvalid` naming
+the directory, and the generate task fails.
+
+That is what closes the `WiringDefect` hazard above by construction rather
+than by care: the array handed to `TemporalActivities` and the modules spread
+into `imports` are the same walk of the same directories.
+
+`src/slices-gen.spec.ts` is the drift check: it renders this workspace's tree
+through `renderSlicesGen`, the very function the CLI calls, and compares the
+committed file byte for byte. A stale `slices.gen.ts` fails a test rather
+than needing a step in the pipeline.
+
 ## The environment
 
 Read inside the graph — the starter's `TemporalConfig` for the first two, the
@@ -203,8 +224,8 @@ The fixtures are [`@btravstack/testing`](../../packages/testing)'s: `serve`
 boots the worker through the `boot` fixture, so it is stopped when the test
 ends, composing `BillingModule` beside the (real or stubbed) fulfillment
 module it is handed — `BillingModule` is never swapped by a spec, so it rides
-along as a sibling import the same way `OrderTemporalWorker`'s own root lists
-`BillingSlice` beside `FulfillmentSlice` — and `fulfilling` / `outOfStock` /
+along as a sibling import the same way `OrderTemporalWorker`'s own root holds
+the billing slice beside the fulfillment one — and `fulfilling` / `outOfStock` /
 `noShipping` are `tapped` compositions whose `services()` hand back the very
 `OrderRepository` the running deployment holds — how the compensation specs
 read the state back. Each also composes `observability({ sink })`, so

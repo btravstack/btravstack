@@ -69,7 +69,7 @@ const recorderOf = () => {
  * output.
  *
  * Flat rather than a list of slices, and that is the point of the change that
- * made it so: a slice now imports the vertical it needs, so `OrdersSlice`
+ * made it so: a slice now imports the vertical it needs, so the orders slice
  * brings the Prisma repository with it and there is nothing to layer a stub
  * over — two providers for one port is di's duplicate defect. Swapping an
  * adapter is composing a different module, which is exactly what this is.

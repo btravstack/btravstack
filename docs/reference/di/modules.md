@@ -74,7 +74,7 @@ port was minted inside a helper (`Config.provider("RelayConfig")(schema)`,
 <!-- doctest: skip — an exports-line excerpt of the module shown in full below -->
 
 ```ts
-exports: [Logger, ordersController], // a port class and a provider, together
+exports: [Logger, auditHandler], // a port class and a provider, together
 ```
 
 Everything provided but not exported is

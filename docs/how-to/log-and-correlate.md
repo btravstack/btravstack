@@ -11,8 +11,7 @@ import { OrderApplicationModule, OrderRepository, PlaceOrder } from "@btravstack
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderRouter } from "../../module.js";
 import { RequestModule } from "../../request-scope.js";
-import { slice as CustomersSlice } from "../../slices/customers/module.js";
-import { slice as OrdersSlice } from "../../slices/orders/module.js";
+import { slices } from "../../slices.gen.js";
 declare const logger: ServiceOf<Logger>;
 declare const event: { readonly id: string };
 declare const cause: unknown;
@@ -50,7 +49,7 @@ import { Logger, observability } from "@btravstack/observability";
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
+  imports: [...slices, observability()],
   exports: [Logger],
 });
 ```
@@ -269,8 +268,7 @@ const lines: Line[] = [];
 const RecordingApi = HttpModule("RecordingApi")({
   router: orderRouter,
   imports: [
-    OrdersSlice,
-    CustomersSlice,
+    ...slices,
     observability({ sink: (line) => lines.push(line), level: "trace" }),
   ],
   exports: [Logger],

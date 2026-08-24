@@ -180,10 +180,10 @@ declarations in `order-api`, one of them the feature that reads
 `ConfigModule.forFeature` has, reached without a global.
 
 ```ts
-export const AuditSlice = Module("AuditSlice")({
+export const slice = Module("AuditSlice")({
   needs: [Logger],
-  provides: [orderAudit],
-  exports: [orderAudit],
+  provides: [piece],
+  exports: [piece],
 });
 ```
 

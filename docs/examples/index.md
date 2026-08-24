@@ -62,8 +62,8 @@ Every deployment composes the same pair — `OrderApplicationModule`,
 not always at the same level: `order-api`'s root and `order-amqp-worker`'s
 root import the pair directly (the relay owns the outbox vertical, and
 neither of `order-amqp-worker`'s subscriber slices owns any vertical at all),
-while `order-temporal-worker`'s `FulfillmentSlice` imports it — the orders
-vertical is `fulfillOrder`'s alone there, and `chargeOrder`'s `BillingSlice`
+while `order-temporal-worker`'s fulfillment slice imports it — the orders
+vertical is `fulfillOrder`'s alone there, and `chargeOrder`'s billing slice
 carries a different one, `BillingModule`, instead. The customers vertical is a
 separate pair of modules everywhere, and a deployment that never answers a
 customer question does not carry its use case, its repository or its table
@@ -129,8 +129,8 @@ composition root; `RequestModule` forked per request through
 
 ### [Order Temporal worker](/examples/order-temporal-worker)
 
-`TemporalWorkflowActivities` and `TemporalActivities` composing a
-`FulfillmentSlice` and a `BillingSlice` — two sagas, two verticals, one task
+`TemporalWorkflowActivities` and `TemporalActivities` composing a fulfillment
+slice and a billing one — two sagas, two verticals, one task
 queue — each in the deterministic sandbox with compensation in reverse; the
 triage that makes a domain `Err` a `nonRetryable` contract error the client
 branches on by name; a namespace per spec file on the Temporal server the

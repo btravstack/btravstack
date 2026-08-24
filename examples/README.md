@@ -97,9 +97,9 @@ Every deployment composes the same pair — `OrderApplicationModule`,
 not always at the same level: `order-api`'s root and `order-amqp-worker`'s
 root import the pair directly (the relay owns the outbox vertical, and
 neither of `order-amqp-worker`'s subscriber slices owns any vertical at all),
-while `order-temporal-worker`'s `FulfillmentSlice` imports it instead — the
-orders vertical is `fulfillOrder`'s alone there, and `chargeOrder`'s
-`BillingSlice` carries a different one, `BillingModule`, instead. The
+while `order-temporal-worker`'s fulfillment slice imports it instead — the
+orders vertical is `fulfillOrder`'s alone there, and `chargeOrder`'s billing
+slice carries a different one, `BillingModule`, instead. The
 customers vertical is a separate pair of modules everywhere, so a deployment
 that never answers a customer question does not carry its use case or its
 repository. What differs is what each transport is **for**:
@@ -175,9 +175,9 @@ process serves one router / activities record / handlers record as it boots
 one runtime): `order-api`'s `orderRouter = HttpRouter(contract)({ orders:
 ordersController, customers: customersController })`, a **slice's controller
 per top-level contract key** (below); `order-temporal-worker`'s `orderActivities =
-TemporalActivities(orderContract)([fulfillOrder, chargeOrder])`, one
+TemporalActivities(orderContract)(pieces)`, one
 `TemporalWorkflowActivities` piece per saga slice; `order-amqp-worker`'s
-`orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit])`,
+`orderHandlers = AmqpHandlers(orderContract)(pieces)`,
 one `AmqpHandler` piece per subscriber slice — di's own
 `Provider(port)(deps, arm)` on that port either way, typed by the
 contract, and each composition root the matching `HttpModule` / `TemporalModule` /
@@ -228,15 +228,16 @@ same three-package vertical below it.
 order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
                             │                        │
 order-api              slices/orders/           slices/customers/
-                         controller.ts            controller.ts     ← HttpController(name, fragment)({ name: Dep }, { sync })
-                         module.ts                module.ts         ← the slice's own di module
+                         controller.ts            controller.ts     ← export const piece = HttpController(name, fragment)({ name: Dep }, { sync })
+                         module.ts                module.ts         ← export const slice = the slice's own di module
                             └───────────┬────────────┘
+                                 slices.gen.ts                      ← GENERATED: the slices array + each controller by name
                                    module.ts                        ← HttpRouter(contract)({ orders, customers })
                             ┌───────────┴────────────┐
                        PlaceOrder / FindOrder    FindCustomer       ← use cases, entities, Prisma adapters — the same three packages
 ```
 
-A **controller** is `HttpController("OrdersController", contract.orders)({ place:
+A **controller** is `export const piece = HttpController("OrdersController", contract.orders)({ place:
 PlaceOrder, find: FindOrder }, { sync })` — an ordinary di provider on a port `HttpController`
 mints and hands back on `.port`. A **slice** is an ordinary di `Module` that
 **imports the vertical it needs**, provides its controller and exports
@@ -256,9 +257,26 @@ customersController })` form, which is exact against the contract — a missing
   key, an undeclared key and a controller under the wrong key are all compile
   errors at that call.
 
+The list of slices is **generated**, in all three deployments.
+`internal/slice-codegen` walks `src/slices/*/` and emits a committed
+`src/slices.gen.ts` from each directory's fixed exports — `slice` in
+`module.ts`, `piece` in the one transport file beside it (`controller.ts`,
+`handler.ts` or `activities.ts`, exactly one). Workers get `slices` and
+`pieces` arrays; `order-api` gets `slices` plus its two controllers
+re-exported by name, since a keyed router record is addressed by contract key
+rather than by position. That record stays hand-written on purpose: it is
+already exact against the contract, and generating it would take a
+directory-name → contract-key mapping, a second source of truth for what the
+process serves. Each root spreads `...slices` into `imports`, so a slice on
+disk cannot be missing from the graph — the one wiring mistake that used to
+fail at `start` with a `WiringDefect` instead of at compile time. A
+`slices-gen.spec.ts` per deployment re-renders the tree through the same
+generator and compares byte for byte, so drift is a failing test rather than
+a pipeline step.
+
 Nothing here is a new concept: a controller is a provider, a slice is a
-module, a modulith is several slice modules in one root — and `exports:
-[ordersController]` is di's provider form, since `HttpController` mints the
+module, a modulith is several slice modules in one root — and a slice's
+`exports: [piece]` is di's provider form, since `HttpController` mints the
 port and there is no class to name. And because a
 fragment is itself a valid contract, lifting `orders` into a process of its
 own leaves the slice untouched —

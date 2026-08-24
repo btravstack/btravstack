@@ -10,14 +10,16 @@ its own package, because a client needs it and needs none of this.
 
 ```
 src/auth.ts                           the two schemes (user, service), their authenticators, and the one api = defineHttp({ authenticators }) call
-src/slices/orders/controller.ts       api.HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync }) — where the orders slice's own domain error becomes an ORPCError
-src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
-src/slices/customers/controller.ts    api.HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync }) — same shape, for the customers slice's own domain error
-src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
+src/slices/orders/controller.ts       export const piece = api.HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync }) — where the orders slice's own domain error becomes an ORPCError
+src/slices/orders/module.ts           export const slice = Module("OrdersSlice")(…) — provides the controller, exports only it
+src/slices/customers/controller.ts    export const piece = api.HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync }) — same shape, for the customers slice's own domain error
+src/slices/customers/module.ts        export const slice = Module("CustomersSlice")(…) — same shape as the orders slice
+src/slices.gen.ts                     GENERATED from src/slices/*/ — the slices array, plus ordersController / customersController re-exported by name
+src/slices-gen.spec.ts                the drift check: the same generator, byte for byte against the committed file
 src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts                         an AsyncResult client for the same contract
 src/module.ts                         OrderApi — the composition root: orderRouter = api.HttpRouter(contract)({ orders, customers }), then HttpModule("OrderApi")({
-  needs: [Env], router: orderRouter, … })
+  router: orderRouter, imports: [...slices, observability()], exports: [Logger] })
 src/main.ts                           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
 src/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
 ```
@@ -100,10 +102,14 @@ root that is a `Module(...)` which also knows about it:
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
+  imports: [...slices, observability()],
   exports: [Logger],
 });
 ```
+
+`slices`, `ordersController` and `customersController` are all read off
+`src/slices.gen.ts` — see [the slice tree is generated](#the-slice-tree-is-generated)
+below.
 
 There is **no authenticator to list**. The contract marks its `orders`
 fragment, so the router declares one dependency per scheme that fragment names
@@ -161,15 +167,16 @@ The root is a list of **slices**. Each one imports the vertical it needs —
 `OrderPersistenceModule`, which provides it — and exports only its controller:
 
 ```ts
-export const OrdersSlice = Module("OrdersSlice")({
+// src/slices/orders/module.ts — `piece` is the controller, from ./controller.js
+export const slice = Module("OrdersSlice")({
   // The controller writes a line itself, so `Logger` is this slice's own
   // provider's need. The environment its persistence reads `DATABASE_URL` from
   // is not: that one is `DatabaseModule`'s, declared there and inherited
   // through the imports below.
   needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
-  provides: [ordersController],
-  exports: [ordersController],
+  provides: [piece],
+  exports: [piece],
 });
 ```
 
@@ -183,13 +190,13 @@ flattens the module tree into a `Set` keyed by provider **reference**, so the
 graph builds one database (measured on this composition — a naive walk visits
 16 provider slots and di keeps 15, where the same walk over the pre-split
 modules visited 22 for the same 15).
-`exports` takes the provider itself, not `ordersController.port`:
+`exports` takes the provider itself, not `piece.port`:
 `api.HttpController` minted that port, so there is no class to spell back off it.
 
 `HttpModule` is sugar over the same primitives: it imports the starter
 (`http()` — the whole surface), provides the
 router and exports `HttpRuntime`, and returns exactly the di module
-`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(),
+`Module("OrderApi")({ imports: [...slices, observability(),
 http()], provides: [orderRouter], exports: [HttpRuntime, Logger] })` would
 have. `observability()` is the starter that provides the
 `Logger` the use cases and the request scope write to — `LOG_LEVEL` bound from
@@ -222,6 +229,30 @@ built, per request, and a request-scoped provider reads what the parent
 constructed instead of rebuilding it. `RequestSpan`'s `onStop` runs while the
 unit is still open, which is what gives its line the request's own trace id —
 and no handler code manages any of it.
+
+## The slice tree is generated
+
+Nothing hand-writes the list of slices. `pnpm generate` runs
+[`internal/slice-codegen`](../../internal/slice-codegen), which walks
+`src/slices/*/` and emits the committed `src/slices.gen.ts`: each directory's
+fixed exports — `slice` from `module.ts`, `piece` from the one transport file
+beside it — become a `slices` array plus, in controller mode, the two
+controllers re-exported **by name** (`export { piece as ordersController }`).
+The root spreads `...slices` into `imports`, so a slice on disk is a slice in
+the graph by construction: there is no longer a hole where adding a directory
+and forgetting the root leaves its controller's port unmet and `start` fails
+with a `WiringDefect`.
+
+The keyed router record stays **hand-written**. It is already compile-exact
+against the contract, and generating it would take a directory-name →
+contract-key mapping — a second source of truth for what this process serves,
+where the contract is the only one there is. The tree supplies wiring, nothing
+about the surface.
+
+`src/slices-gen.spec.ts` is the drift check: it renders this workspace's tree
+through `renderSlicesGen`, the very function the CLI calls, and compares the
+committed file byte for byte. A stale `slices.gen.ts` fails a test, locally
+and in CI, rather than needing a step in the pipeline.
 
 ## The client half
 

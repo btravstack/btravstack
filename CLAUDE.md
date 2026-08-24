@@ -49,8 +49,10 @@ container's own `hexagonal-order-api`, which composes a `Module` and never calls
 consumers, not fixtures: they are part of the gate, and `examples/README.md`
 is their index. `docs/` is the documentation site (see **Documentation
 site** below); it is a workspace but not a published package. `internal/`
-holds one more, `test-infra`, which is neither: it owns the three containers
-the whole gate shares and is documented in its own README.
+holds two more, neither of them either: `test-infra`, which owns the three
+containers the whole gate shares and is documented in its own README, and
+`slice-codegen`, which generates each example's `src/slices.gen.ts` from its
+`src/slices/*` tree and is documented in the piece/slice bullet below.
 
 ## Commands
 
@@ -693,33 +695,39 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   activities provider and the `mapErrCases` triage, and reads `{ taskQueue,
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. It is a **two-slice
-  modulith**: `FulfillmentSlice`'s `fulfillOrder = TemporalWorkflowActivities(orderContract,
+  modulith**: `slices/fulfillment/activities.ts`'s
+  `export const piece = TemporalWorkflowActivities(orderContract,
 "fulfillOrder")({ place: PlaceOrder, repository: OrderRepository, stock: StockService,
-shipping: ShippingService }, { sync })` and `BillingSlice`'s `chargeOrder = TemporalWorkflowActivities(orderContract,
+shipping: ShippingService }, { sync })` and `slices/billing/activities.ts`'s
+  `export const piece = TemporalWorkflowActivities(orderContract,
 "chargeOrder")({ payments: PaymentService }, { sync })` are each a **piece** — a provider
   on the port its own contract key mints, closing over only the services its
   own saga calls, no context read at call time — and the root composes them,
-  `orderActivities = TemporalActivities(orderContract)([fulfillOrder,
-chargeOrder])`, into the composition root
+  `orderActivities = TemporalActivities(orderContract)(pieces)`, into the
+  composition root
   `TemporalModule("OrderTemporalWorker")({ contract, activities:
-orderActivities, workflows, imports: [FulfillmentSlice, BillingSlice,
-observability()] })`, the sugar importing the starter. `FulfillmentSlice`
+orderActivities, workflows, imports: [...slices, observability()] })`, the
+  sugar importing the starter. `pieces` and `slices` are both read off the
+  generated `src/slices.gen.ts`, never spelled by hand — see the piece/slice
+  bullet below. The fulfillment slice
   imports the orders vertical (`OrderApplicationModule` +
-  `OrderPersistenceModule`) plus `FulfillmentModule`; `BillingSlice` imports
+  `OrderPersistenceModule`) plus `FulfillmentModule`; the billing slice imports
   `BillingModule` alone — the two verticals meet only in that `imports` list,
   never inside either slice's own graph. The connection and `TEMPORAL_*` come
   from the starter, and `LOG_LEVEL` and the `Logger` the sagas' stand-in
   services write to come from `observability()`. `order-amqp-worker` is the
-  same shape — `NotificationsSlice`'s `orderNotifications = AmqpHandler(orderContract,
-"orderNotifications")({ logger: Logger }, { sync })` and `AuditSlice`'s `orderAudit =
-AmqpHandler(orderContract, "orderAudit")({ logger: Logger }, { sync })`, composed as
-  `orderHandlers = AmqpHandlers(orderContract)([orderNotifications,
-orderAudit])` — but **neither** slice imports a vertical: a subscriber reacts
+  same shape — `slices/notifications/handler.ts`'s
+  `export const piece = AmqpHandler(orderContract,
+"orderNotifications")({ logger: Logger }, { sync })` and
+  `slices/audit/handler.ts`'s `export const piece = AmqpHandler(orderContract,
+"orderAudit")({ logger: Logger }, { sync })`, composed as
+  `orderHandlers = AmqpHandlers(orderContract)(pieces)` — but **neither** slice
+  imports a vertical: a subscriber reacts
   to a fact somebody else already committed, so the orders vertical stays at
   the root, next to the outbox relay that writes it
   (`AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers,
-imports: [OrderApplicationModule, OrderPersistenceModule, NotificationsSlice,
-AuditSlice, observability()], … })`),
+imports: [OrderApplicationModule, OrderPersistenceModule, ...slices,
+observability()], … })`),
   with its outbox relay a resourceful provider of its own rather than
   something layered onto the runtime — the relay is also the one place in the
   examples that logs a **failure**, `logger.error(message, cause, { eventId })`
@@ -741,7 +749,12 @@ AuditSlice, observability()], … })`),
   Temporal workflow and its activities, an AMQP consumer and its handler — and
   (if it needs one) its own adapter, and ships as an ordinary di `Module` that
   exports only that piece's port — everything else about the slice stays
-  private. It also **declares what its own providers expect from the
+  private. The two exports are **fixed by name**: `slices/<name>/module.ts`
+  exports `slice`, and the one transport file beside it —
+  `controller.ts`, `handler.ts` or `activities.ts` — exports `piece`. That is
+  what makes the tree machine-readable (the generated-tree paragraph below); a slice's own
+  identity lives in the directory name and in its `Module("…")` display name,
+  not in a binding a root has to remember. It also **declares what its own providers expect from the
   root**, in `needs`: `AuditSlice` is `needs: [Logger]` because its handler
   reads one, `OrdersSlice` is `needs: [Logger]` because its controller does,
   and a slice whose provider owed a port and named none does not compile (#50,
@@ -793,6 +806,39 @@ AuditSlice, observability()], … })`),
   exist on this side: a worker's array has no lifted-fragment form to
   preserve, since a piece already IS one contract key on its own.
 
+  **The root's list of slices is generated, not written.**
+  `internal/slice-codegen` (`@btravstack/internal-slice-codegen`, private, not
+  published) walks `src/slices/*/` and emits a committed `src/slices.gen.ts`;
+  each example's `generate` script runs its CLI
+  (`node ../../internal/slice-codegen/src/cli.ts`, bare node, no bundler — the
+  `.ts` specifier in `cli.ts`'s own import is deliberate, since type stripping
+  does not remap `.js`), and
+  turbo's existing `generate` / `^generate` edges put it ahead of `typecheck`,
+  `test` and `test:types`; `generate.outputs` names `src/slices.gen.ts` so a
+  cache hit restores it. A slice directory must hold `module.ts` plus **exactly
+  one** of `controller.ts` / `handler.ts` / `activities.ts`; anything else is a
+  modeled `SliceTreeInvalid` naming the directory, and the generate task fails.
+  Directories are visited in sorted order, so the emitted file is a function of
+  the tree alone. Worker apps get `slices` and `pieces` arrays — the root
+  spreads `...slices` into `imports` and hands `pieces` straight to
+  `AmqpHandlers` / `TemporalActivities`; `order-api` gets `slices` plus
+  **named** re-exports (`export { piece as ordersController }`), because the
+  keyed router record is addressed by contract key and a positional array
+  cannot fill it. That record stays **hand-written**, deliberately: it is
+  already compile-exact against the contract, and generating it would need a
+  directory-name → contract-key mapping — a second source of truth for the
+  surface, when the contract is the only one there is. The tree supplies
+  wiring; it says nothing about what the process serves.
+
+  What this buys is one hazard closed by construction: a slice on disk that
+  nobody added to the root used to leave its piece's port unmet and fail at
+  `start` with a `WiringDefect` — a runtime error for a wiring mistake, in a
+  repo whose whole pitch is that wiring is proven before the process exists.
+  Drift is caught by a **spec**, not a CI step (the reusable CI workflow takes
+  no extra steps): each example's `src/slices-gen.spec.ts` renders through
+  `renderSlicesGen`, the very function the CLI calls, and compares the
+  committed file byte for byte.
+
 - **`examples/order-api` consumes `@btravstack/http` rather than
   hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
   over its own node adapter, `@unthrown/orpc` at the boundary.** It is a
@@ -801,7 +847,7 @@ AuditSlice, observability()], … })`),
   `HttpController` and its own di module — which **imports the vertical it
   needs** (`OrderApplicationModule` + `OrderPersistenceModule`,
   `CustomerApplicationModule` + `CustomerPersistenceModule`) and exports only
-  its controller, in di's provider form (`exports: [ordersController]`, since
+  its controller, in di's provider form (`exports: [piece]`, since
   `HttpController` mints the port and there is no class to name; the two
   slices are that form's first call sites). One module per vertical in **both**
   layers, not one per layer: a slice, and each worker, carries its own
@@ -813,9 +859,10 @@ AuditSlice, observability()], … })`),
   (the same walk over the pre-split modules visited 22 for the same 15, and
   the difference is the over-inclusion the split removed). The root composes them —
   `orderRouter = api.HttpRouter(contract)({ orders: ordersController,
-customers: customersController })`, the keyed form — and
-  **`HttpModule("OrderApi")({ router: orderRouter, imports: [OrdersSlice,
-CustomersSlice, observability()], exports: [Logger] })`** is the whole
+customers: customersController })`, the keyed form, over the two controllers
+  `src/slices.gen.ts` re-exports by name — and
+  **`HttpModule("OrderApi")({ router: orderRouter, imports: [...slices,
+observability()], exports: [Logger] })`** is the whole
   composition root, a list of slices plus what no slice owns — the
   sugar imports `http()`, provides the router on the starter's
   `HttpRouterPort` and

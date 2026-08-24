@@ -12,8 +12,7 @@ import type { Order } from "@btravstack/example-order-domain";
 import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { api } from "../../auth.js";
-import { piece as customersController } from "../../slices/customers/controller.js";
-import { slice as CustomersSlice } from "../../slices/customers/module.js";
+import { customersController, ordersController, slices } from "../../slices.gen.js";
 declare const view: (order: Order) => { id: string; quantity: number };
 -->
 
@@ -116,12 +115,10 @@ so `sync`'s return is typed by the fragment at the call — a typo'd or missing
 procedure is a compile error inside the controller itself, not at the root:
 
 ```ts
+// slices/orders/controller.ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(
-  "OrdersController",
-  contract.orders,
-)(
+export const piece = api.HttpController("OrdersController", contract.orders)(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -188,19 +185,26 @@ that **imports the vertical it needs** and exports only that controller, the
 same privacy di already gives any provider:
 
 ```ts
-export const OrdersSlice = Module("OrdersSlice")({
+// slices/orders/module.ts
+export const slice = Module("OrdersSlice")({
   // The controller writes a line itself, so `Logger` is this slice's own
   // provider's need. The environment its persistence reads `DATABASE_URL` from
   // is not: that one is `DatabaseModule`'s, declared there and inherited
   // through the imports below.
   needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
-  provides: [ordersController],
-  exports: [ordersController],
+  provides: [piece],
+  exports: [piece],
 });
 ```
 
-`exports` takes the provider itself, not `ordersController.port`: the port was
+Both export names are **fixed**: `piece` in the transport file, `slice` in
+`module.ts`. The root's wiring is generated from the directory tree, so the
+names have to be the same in every slice — see
+[The root stays honest by generation](#the-root-stays-honest-by-generation)
+below.
+
+`exports` takes the provider itself, not `piece.port`: the port was
 minted inside `HttpController`, so there is no class to spell back off it.
 Importing the vertical here rather than leaving `PlaceOrder` and `FindOrder`
 as needs for the root is what makes the slice a unit — the reason to open this
@@ -219,6 +223,8 @@ top-level keys, one `HttpController` per key — replaces the
 `(deps, { sync })` call at the root, and is told apart from it by **arity**:
 
 ```ts
+// module.ts — `ordersController` and `customersController` are what
+// slices.gen.ts re-exports each slice's `piece` as.
 export const orderRouter = api.HttpRouter(contract)({
   orders: ordersController,
   customers: customersController,
@@ -226,12 +232,13 @@ export const orderRouter = api.HttpRouter(contract)({
 ```
 
 The composition root is then a list of **slices**, plus whatever no slice
-owns:
+owns — `slices` being the array `slices.gen.ts` built from the same
+directories:
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
+  imports: [...slices, observability()],
   exports: [Logger],
 });
 ```
@@ -263,13 +270,13 @@ controller built:
 
 ```ts
 export const ordersRouter = api.HttpRouter(contract.orders)(
-  { implementation: ordersController.port },
+  { implementation: piece.port },
   { sync: ({ implementation }) => implementation },
 );
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  imports: [OrdersSlice, observability()],
+  imports: [slice, observability()],
 });
 ```
 
@@ -278,12 +285,43 @@ lifted root owes the same schemes the modulith did, and the router brings the
 authenticators for them from that same call. Extraction adds no line about
 identity at all.
 
-`OrdersSlice` is the very module the modulith imported and `ordersController`
+`slice` is the very module the modulith imported and `piece`
 the very provider it composed — not a copy, not a rewritten `sync`. Extraction
 is a new composition root and one fewer import, and the slice itself is
 untouched. `packages/http/src/controller.test-d.ts` pins that call as its
 fifth gate: the property is marked do-not-break, and it is what makes
 composing slices into one router a starting point rather than a trap.
+
+## The root stays honest by generation
+
+In `examples/order-api`, `slices`, `ordersController` and `customersController`
+are not written by hand. The workspace's `generate` script walks
+`src/slices/*/`, and each slice's fixed exports —
+`slice` in `module.ts`, `piece` in `controller.ts` — land in a committed
+`src/slices.gen.ts`: the modules as a `slices` array, and each controller
+**re-exported by name** (`export { piece as ordersController } from
+"./slices/orders/controller.js";`), because a keyed router record is addressed
+by contract key rather than by position. The root spreads `slices` into
+`imports`, so a slice that exists on disk but is missing from the root — the
+one wiring mistake that fails at `start` with a `WiringDefect` instead of at
+compile time — is impossible by construction.
+
+**The keyed record itself stays hand-written**, and that is a decision rather
+than an omission. It is already compile-exact against the contract — every
+declared key covered, an undeclared key refused, a controller under the wrong
+key refused — so generation would buy nothing there, and it would cost a
+directory-name → contract-key mapping: a second statement of what this process
+serves, next to the contract that already says it. The tree supplies wiring;
+the contract stays the source of truth for the surface.
+
+The generator is this repository's own (`internal/slice-codegen`, private and
+not published): the useful part is the **convention**, not the tool. A slice
+directory holds `module.ts` plus **exactly one** of `controller.ts` /
+`handler.ts` / `activities.ts`; anything else is a modeled `SliceTreeInvalid`
+naming the directory, and the generate task fails. Drift is a **spec**, not a
+pipeline step: `src/slices-gen.spec.ts` re-renders the tree through the same
+generator entry point the CLI calls and compares the committed file byte for
+byte.
 
 ## See also
 

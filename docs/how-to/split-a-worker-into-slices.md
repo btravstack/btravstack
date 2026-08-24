@@ -18,8 +18,7 @@ import {
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { outboxRelay, relayConfig } from "../../outbox-relay.js";
-import { piece as orderAudit } from "../../slices/audit/handler.js";
-import { slice as AuditSlice } from "../../slices/audit/module.js";
+import { pieces, slices } from "../../slices.gen.js";
 -->
 
 # Split a worker into slices
@@ -72,10 +71,7 @@ piece's own file, not at the root:
 
 ```ts
 // slices/notifications/handler.ts
-export const orderNotifications = AmqpHandler(
-  orderContract,
-  "orderNotifications",
-)(
+export const piece = AmqpHandler(orderContract, "orderNotifications")(
   { logger: Logger },
   {
     sync:
@@ -101,10 +97,7 @@ export const orderNotifications = AmqpHandler(
 
 ```ts
 // slices/billing/activities.ts
-export const chargeOrder = TemporalWorkflowActivities(
-  orderContract,
-  "chargeOrder",
-)(
+export const piece = TemporalWorkflowActivities(orderContract, "chargeOrder")(
   { payments: PaymentService },
   {
     sync: ({ payments }) => ({
@@ -124,8 +117,14 @@ export const chargeOrder = TemporalWorkflowActivities(
 );
 ```
 
-Each piece declares only the ports **it** calls: `orderNotifications` takes
-`Logger` and knows nothing of the audit slice's; `chargeOrder` takes
+The export is called `piece`, in every slice and on every transport. That is
+not a style note: the root's wiring is **generated** from the tree, so the
+name has to be the same in every directory — see
+[The root stays honest by generation](#the-root-stays-honest-by-generation)
+below.
+
+Each piece declares only the ports **it** calls: the notifications piece takes
+`Logger` and knows nothing of the audit slice's; the billing piece takes
 `PaymentService` and knows nothing of `PlaceOrder`, the fulfillment saga's own
 use case. A subscriber and a workflow differ in what they are allowed to own,
 not in the shape of the piece itself — see **What a slice owns** below.
@@ -133,31 +132,34 @@ not in the shape of the piece itself — see **What a slice owns** below.
 ## Step 2 — the slice module that exports the piece
 
 A piece ships as a module that provides and exports it, the same privacy di
-gives any provider:
+gives any provider. Its export is fixed too: `slice`, in `module.ts`, next to
+the transport file's `piece`.
 
 ```ts
-export const NotificationsSlice = Module("NotificationsSlice")({
+// slices/notifications/module.ts
+export const slice = Module("NotificationsSlice")({
   needs: [Logger],
-  provides: [orderNotifications],
-  exports: [orderNotifications],
+  provides: [piece],
+  exports: [piece],
 });
 ```
 
 <!-- doctest: skip — needs `@btravstack/temporal`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
-export const BillingSlice = Module("BillingSlice")({
+// slices/billing/module.ts
+export const slice = Module("BillingSlice")({
   needs: [Logger],
   imports: [BillingModule],
-  provides: [chargeOrder],
-  exports: [chargeOrder],
+  provides: [piece],
+  exports: [piece],
 });
 ```
 
-`exports: [chargeOrder]` is the provider itself, not a port class:
+`exports: [piece]` is the provider itself, not a port class:
 `TemporalWorkflowActivities` (like `AmqpHandler`) mints the port from the
 contract key, so there is no class to spell back off it. `BillingSlice`
-imports `BillingModule` because `chargeOrder`'s activities close over
+imports `BillingModule` because its activities close over
 `PaymentService`; `NotificationsSlice` imports nothing, because a subscriber
 reacting to a fact somebody else committed owns no domain and no persistence
 at all. Both are still slices in exactly the sense
@@ -167,23 +169,25 @@ that piece's port.
 
 ## Step 3 — the root's array
 
-The root composes every slice's piece into the one record the starter needs:
+The root composes every slice's piece into the one record the starter needs.
+`pieces` is the array `src/slices.gen.ts` exports — one entry per slice
+directory, in name order:
 
 ```ts
-export const orderHandlers = AmqpHandlers(orderContract)([
-  orderNotifications,
-  orderAudit,
-]);
+// module.ts — `pieces` and `slices` come from ./slices.gen.js
+export const orderHandlers = AmqpHandlers(orderContract)(pieces);
 ```
 
 <!-- doctest: skip — needs `@btravstack/temporal`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
-export const orderActivities = TemporalActivities(orderContract)([
-  fulfillOrder,
-  chargeOrder,
-]);
+export const orderActivities = TemporalActivities(orderContract)(pieces);
 ```
+
+An explicit array of pieces is accepted too —
+`AmqpHandlers(orderContract)([notifications, audit])`, each imported aliased
+from its own slice — and that is the form the compile-time gates below are
+written against. Generating it is what keeps it in step with the tree.
 
 Di constructs every piece first — they are the composed provider's own
 `deps`, declared under the very key each piece's port id carries, so the
@@ -200,8 +204,7 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
   imports: [
     OrderApplicationModule,
     OrderPersistenceModule,
-    NotificationsSlice,
-    AuditSlice,
+    ...slices,
     observability(),
   ],
   provides: [relayConfig, outboxRelay],
@@ -209,10 +212,12 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
 });
 ```
 
-Dropping a slice's import here would leave its piece's port unmet — a runtime
+Dropping a slice's import here leaves its piece's port unmet — a runtime
 `WiringDefect` naming it, not a compile error, since `AmqpHandlers`/
 `TemporalActivities` cannot see what a slice's module has or has not been
-imported by; only `start` can.
+imported by; only `start` can. Spreading `...slices` is what makes that
+impossible to do: the array `imports` gets and the array `pieces` came from
+are the same walk of the same directories.
 
 ## Sequencing a saga: `flatTap`, never sibling `const`s
 
@@ -276,10 +281,10 @@ the record:
 
 ```ts
 // @ts-expect-error -- the "orderAudit" consumer is uncovered
-AmqpHandlers(orderContract)([orderNotifications]);
+AmqpHandlers(orderContract)([notifications]);
 
 // @ts-expect-error -- the "fulfillOrder" key is uncovered
-TemporalActivities(orderContract)([chargeOrder]);
+TemporalActivities(orderContract)([billing]);
 ```
 
 **Where the marker actually is.** Both are a `TS2769` —
@@ -342,6 +347,33 @@ and `BillingSlice` imports `BillingModule` alone — two different verticals,
 meeting only in the root's `imports` list, never inside either slice's own
 graph. Neither shape is weaker than the other: a slice owns as much as its
 transport gives it to own.
+
+## The root stays honest by generation
+
+In the two example workers the composing array and the root's `imports` are
+not written by hand. Each one's `generate` script walks `src/slices/*/`, and
+each slice's fixed exports — `slice` in `module.ts`, `piece` in `handler.ts`
+or `activities.ts` — land in a
+committed `src/slices.gen.ts` as `slices` and `pieces`. The root spreads
+`slices` into `imports` and hands `pieces` to the composing call, so a slice
+that exists on disk but is missing from the root — the one wiring mistake that
+fails at `start` with a `WiringDefect` instead of at compile time — is
+impossible by construction.
+
+The generator is this repository's own (`internal/slice-codegen`, private and
+not published), because the useful part is the **convention**, not the tool: a
+fixed export name per file and one transport file per directory is what makes
+a slice tree machine-readable at all, and thirty lines of `readdirSync` is the
+whole of it. The rule it enforces is small: a slice directory holds `module.ts`
+plus **exactly one** of `controller.ts` / `handler.ts` / `activities.ts`.
+Anything else is a modeled `SliceTreeInvalid` naming the directory, and the
+generate task fails before a type-check ever runs. Directories are walked in
+name order, so the output is a function of the tree and nothing else.
+
+Drift is a **spec**, not a pipeline step: each worker's `slices-gen.spec.ts`
+re-renders its own tree through the same generator entry point the CLI calls
+and compares the committed file byte for byte. A stale `slices.gen.ts` fails
+a test, wherever the tests run.
 
 ## See also
 

@@ -228,10 +228,7 @@ broker, so a `RetryableError` hands the message to the next worker —
 <!-- doctest: skip — quotes the amqp handler compiled by docs/examples/order-amqp-worker.md's group -->
 
 ```ts
-export const orderNotifications = AmqpHandler(
-  orderContract,
-  "orderNotifications",
-)(
+export const piece = AmqpHandler(orderContract, "orderNotifications")(
   { logger: Logger },
   {
     sync:

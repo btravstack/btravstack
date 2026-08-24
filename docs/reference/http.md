@@ -12,8 +12,8 @@ import type { Order } from "@btravstack/example-order-domain";
 import { Module } from "@btravstack/di";
 import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http";
 import { ErrAsync, OkAsync, P } from "unthrown";
-import { piece as customersController } from "../../slices/customers/controller.js";
-import { piece as ordersController } from "../../slices/orders/controller.js";
+import { piece } from "../../slices/orders/controller.js";
+import { customersController, ordersController } from "../../slices.gen.js";
 declare const view: (order: Order) => OrderView;
 -->
 
@@ -98,20 +98,22 @@ The worked composition root, from `examples/order-api/src/module.ts`:
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
-import { slice as CustomersSlice } from "../../slices/customers/module.js";
-import { slice as OrdersSlice } from "../../slices/orders/module.js";
+import { slices } from "../../slices.gen.js";
 -->
 
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
+  imports: [...slices, observability()],
   exports: [Logger],
 });
 ```
 
+`slices` is the array `src/slices.gen.ts` builds from the `src/slices/*`
+directories — see
+[Split a router into controllers](/how-to/split-a-router-into-controllers).
 That is exactly the module
-`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(), http()], provides: [orderRouter, ...orderRouter.authenticators], exports: [HttpRuntime, Logger] })`
+`Module("OrderApi")({ imports: [...slices, observability(), http()], provides: [orderRouter, ...orderRouter.authenticators], exports: [HttpRuntime, Logger] })`
 would have declared. **There is no `authenticator` option**: the
 authenticators ride the router — which is what needs them — and the sugar
 spreads them into `provides` itself, so an application never lists one and
@@ -324,17 +326,19 @@ two-call shape as `api.HttpRouter(contract)({ name: Dep }, { sync })`, aimed at 
 not declare, or a handler whose input or output has drifted, is a compile
 error inside the controller. The port is minted under `name` and carried
 back on `provider.port` — the shape `Config.provider("RelayConfig")(schema)`
-already uses — so a slice's module exports `controller.port` rather than
-naming a port of its own:
+already uses — so a slice's module exports the controller **provider** rather
+than naming a port of its own. Both exports are fixed by name, so the tree can
+be walked: `piece` in `controller.ts`, `slice` in `module.ts`.
 
 <!-- doctest: defer -->
 
 ```ts
-export const OrdersSlice = Module("OrdersSlice")({
+// slices/orders/module.ts — `piece` is the controller, from ./controller.js
+export const slice = Module("OrdersSlice")({
   needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
-  provides: [ordersController],
-  exports: [ordersController],
+  provides: [piece],
+  exports: [piece],
 });
 ```
 

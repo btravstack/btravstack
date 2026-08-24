@@ -207,7 +207,7 @@ type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C
  *
  * ```ts
  * TemporalActivities(orderContract)({ place: PlaceOrder }, { sync: ({ place }) => ({ fulfillOrder: { … } }) })
- * TemporalActivities(orderContract)([fulfillOrder, chargeOrder])
+ * TemporalActivities(orderContract)([fulfillment, billing])
  * ```
  *
  * The first two are di's own `Provider(port)` on the starter's activities port

@@ -1,6 +1,6 @@
 ---
 title: Order Temporal worker example
-description: The orchestration deployment — two saga slices, FulfillmentSlice and BillingSlice, composed by TemporalActivities over one task queue, a chargeOrder saga compensating with a refund, mapErrCases making a domain Err a nonRetryable contract error, a namespace per spec file on the shared Temporal server, and a drain that honours the kernel's deadline.
+description: The orchestration deployment — two saga slices, fulfillment and billing, composed by TemporalActivities from a generated slice tree over one task queue, a chargeOrder saga compensating with a refund, mapErrCases making a domain Err a nonRetryable contract error, a namespace per spec file on the shared Temporal server, and a drain that honours the kernel's deadline.
 ---
 
 <!-- doctest: prelude
@@ -10,9 +10,8 @@ import { observability } from "@btravstack/observability";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { PaymentService } from "@btravstack/example-order-application";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
-import { piece as fulfillOrder } from "../../slices/fulfillment/activities.js";
-import { slice as FulfillmentSlice } from "../../slices/fulfillment/module.js";
-import { slice as BillingSlice } from "../../slices/billing/module.js";
+import { piece as fulfillment } from "../../slices/fulfillment/activities.js";
+import { pieces, slices } from "../../slices.gen.js";
 -->
 
 # Order Temporal worker
@@ -50,10 +49,10 @@ modulith of two slices, `src/slices/fulfillment/` and `src/slices/billing/`,
 one per workflow — the same shape [`order-api`](/examples/order-api)'s HTTP
 controllers use, but with a property `order-amqp-worker`'s two subscriber
 slices deliberately do **not** have: each slice here owns a genuinely
-different vertical. `FulfillmentSlice` imports the orders vertical
+different vertical. The fulfillment slice imports the orders vertical
 (`OrderApplicationModule` + `OrderPersistenceModule`) plus `FulfillmentModule`;
-`BillingSlice` imports `BillingModule` alone. `PlaceOrder` is as invisible
-inside `BillingSlice` as `PaymentService` is inside `FulfillmentSlice` — the
+the billing slice imports `BillingModule` alone. `PlaceOrder` is as invisible
+inside the one as `PaymentService` is inside the other — the
 two verticals meet only at the root, in the list of slices, never inside
 either slice's own graph.
 
@@ -66,10 +65,8 @@ declare is a compile error in that slice's own file, not a defect
 <!-- doctest: group=order-temporal-worker -->
 
 ```ts
-export const chargeOrder = TemporalWorkflowActivities(
-  orderContract,
-  "chargeOrder",
-)(
+// slices/billing/activities.ts
+export const piece = TemporalWorkflowActivities(orderContract, "chargeOrder")(
   { payments: PaymentService },
   {
     sync: ({ payments }) => ({
@@ -89,16 +86,18 @@ export const chargeOrder = TemporalWorkflowActivities(
 );
 ```
 
-`fulfillOrder`'s own piece is the same activities record this example always
-had, moved into `src/slices/fulfillment/activities.ts` unchanged and typed by
-its own key. The root composes both pieces into the one record the starter
+The export is called `piece` here and in `src/slices/fulfillment/activities.ts`
+— the same activities record this example always had, moved into its own slice
+unchanged and typed by its own key. The name is fixed because the root's wiring
+is generated from the directory tree; see
+[the generated slice tree](#the-slice-tree-is-generated) below.
+
+The root composes both pieces into the one record the starter
 needs, keyed by the contract's own workflow names:
 
 ```ts
-export const orderActivities = TemporalActivities(orderContract)([
-  fulfillOrder,
-  chargeOrder,
-]);
+// module.ts — `pieces` and `slices` come from ./slices.gen.js
+export const orderActivities = TemporalActivities(orderContract)(pieces);
 
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
@@ -106,18 +105,19 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   workflows: {
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
-  imports: [FulfillmentSlice, BillingSlice, observability()],
+  imports: [...slices, observability()],
 });
 ```
 
-A wiring rule worth stating because it fails at runtime, not at compile time:
+A wiring rule that used to fail at runtime, and no longer can:
 `orderActivities`'s own `deps` are the two pieces' **ports**, and di's
 `flatten` discovers providers only from a module's `imports` and `provides` —
-never from a provider's own `deps`. The root **must** import both
-`FulfillmentSlice` and `BillingSlice`, even though nothing in it names
-`fulfillOrder` or `chargeOrder` directly; dropping either import leaves that
+never from a provider's own `deps`. The root **must** import both slice
+modules, even though nothing in it names a workflow
+directly; dropping either import leaves that
 piece's port unmet, and `start` fails with a `WiringDefect` naming it — not a
-compile error.
+compile error. Spreading the generated `...slices` is what makes dropping one
+impossible.
 
 ## The fulfillment saga
 
@@ -273,6 +273,33 @@ and would be the wrong answer to "we ran out of time". Temporal's own
 `Context.current().cancellationSignal` is a different clock, firing on
 `shutdownGraceTime`; the two are honoured together. See
 [Read the ambient unit from an adapter](/how-to/read-the-ambient-unit).
+
+## The slice tree is generated
+
+`pieces` and `slices` both come from the committed `src/slices.gen.ts`, which
+`pnpm generate` writes by walking `src/slices/*/`:
+
+```
+// Generated by @btravstack/internal-slice-codegen — do not edit; regenerate with `pnpm generate`.
+import { piece as billing } from "./slices/billing/activities.js";
+import { slice as billingSlice } from "./slices/billing/module.js";
+import { piece as fulfillment } from "./slices/fulfillment/activities.js";
+import { slice as fulfillmentSlice } from "./slices/fulfillment/module.js";
+
+export const slices = [billingSlice, fulfillmentSlice] as const;
+export const pieces = [billing, fulfillment] as const;
+```
+
+That is what closes the `WiringDefect` hazard above by construction: the array
+`TemporalActivities` composes and the modules spread into `imports` are the
+same walk of the same directories. A directory must hold `module.ts` plus
+exactly one of `controller.ts` / `handler.ts` / `activities.ts`; anything else
+is a modeled `SliceTreeInvalid` naming the directory, and the generate task
+fails.
+
+Drift is a spec, not a pipeline step: `src/slices-gen.spec.ts` re-renders this
+tree through `renderSlicesGen`, the very function the CLI calls, and compares
+the committed file byte for byte.
 
 ## The specs: a namespace as a fixture
 

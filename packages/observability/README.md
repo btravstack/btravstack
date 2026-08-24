@@ -3,8 +3,7 @@ import { HttpModule } from "@btravstack/http";
 import { Port } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
 import { orderRouter } from "../../module.js";
-import { slice as CustomersSlice } from "../../slices/customers/module.js";
-import { slice as OrdersSlice } from "../../slices/orders/module.js";
+import { slices } from "../../slices.gen.js";
 class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (id: string, quantity: number) => AsyncResult<void, never>;
 }> {}
@@ -67,7 +66,7 @@ const placeOrder = Provider(PlaceOrder)(
 // fallback to `info`.
 const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
+  imports: [...slices, observability()],
   exports: [Logger],
 });
 

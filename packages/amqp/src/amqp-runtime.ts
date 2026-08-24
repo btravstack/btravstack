@@ -198,7 +198,7 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  *
  * ```ts
  * AmqpHandlers(orderContract)({ logger: Logger }, { sync: ({ logger }) => ({ orderNotifications: (m) => … }) })
- * AmqpHandlers(orderContract)([orderNotifications, orderAudit])
+ * AmqpHandlers(orderContract)([notifications, audit])
  * ```
  *
  * The first two are di's own `Provider(port)` on the starter's handlers port
