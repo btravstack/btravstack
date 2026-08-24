@@ -80,14 +80,26 @@ const ports = new Map<string, unknown>();
  * contract naming a scheme the registry has no authenticator for leaves that
  * scheme's port unmet, which is di's own diagnostic naming the port rather than
  * a gate this package writes.
+ *
+ * Exported for the consumer `defineHttp` does not cover: a test composition
+ * substituting ONE scheme's authenticator provides its own on this port —
+ * `Provider(authenticatorPort("user"))({ value: stub })` — instead of minting
+ * a second registry. `test-fixtures.ts`'s `rpcSubstitutedAppOf` is that story
+ * exercised: the stub composition serves a caller the real token table would
+ * refuse, and never builds the verifier at all.
  */
 export const authenticatorPort = <const S extends string>(
   scheme: S,
 ): PortClassOf<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>> => {
   const id = `HttpAuthenticator:${scheme}` as const;
-  // Memoised: `defineHttp` asks for a scheme's port when it binds the
-  // authenticator and `routerFor` asks again for every scheme its contract
-  // names, and two `Port(id)` calls under one id are di's duplicate-id warning.
+  // Memoised — but not for resolution: di identifies a port by its `portId`
+  // string and the instance type is branded by the id literal, so two classes
+  // under one id ARE the same type and the same lookup, and the suite passes
+  // with a fresh class per call (measured). What a second `Port(id)` call DOES
+  // cost is di's dev-time duplicate-id warning, once per scheme, in every
+  // consumer's terminal (measured on the built package) — and `defineHttp`
+  // binding plus `routerFor` depending is the designed two-call pattern, not a
+  // declaration bug the warning exists to catch.
   const existing = ports.get(id);
   if (existing !== undefined) return existing as never;
   // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes

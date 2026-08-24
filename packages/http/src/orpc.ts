@@ -432,7 +432,11 @@ type SchemePortsOf<C> =
 
 /**
  * Whether the contract marks anything, anywhere — a yes/no, not a type, since
- * the contract names no principal.
+ * the contract names no principal. Nothing inside this package consumes it any
+ * more (`SchemePortsOf` replaced it on the router's overloads); it stays
+ * exported for the consumer a library must assume: tooling over a contract —
+ * an OpenAPI generator deciding whether to emit `security` at all is the
+ * canonical reader.
  */
 export type HasMark<C> =
   IsMarked<C> extends true

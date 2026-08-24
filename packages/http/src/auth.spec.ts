@@ -65,12 +65,27 @@ describe("an authenticated procedure", () => {
   });
 });
 
+describe("substituting one scheme's authenticator", () => {
+  it("serves a caller the real table would refuse, without building the verifier", async ({
+    rpcSubstituted,
+  }) => {
+    // GIVEN a hand-rolled composition providing a stub on the scheme's own
+    // port — recomposition, not a second registry: the TokenTable-backed
+    // authenticator is not in this graph at all
+    const client = rpcSubstituted("not-in-any-table");
+
+    // WHEN a marked procedure is called with a token only the stub accepts
+    // THEN the stub named the caller
+    await expect(client.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-stub" });
+  });
+});
+
 describe("an authenticator with dependencies of its own", () => {
   it("is built from the services it declared, and names the caller with them", async ({
     rpcVerified,
   }) => {
     // GIVEN a client presenting a token only the injected table knows
-    const client = await rpcVerified("keyed");
+    const client = rpcVerified("keyed");
 
     // WHEN a marked procedure is called
     // THEN the authenticator resolved it through the dependency di gave it —
