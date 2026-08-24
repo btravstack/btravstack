@@ -101,40 +101,26 @@ const greetingRouter = publicApi.HttpRouter(greetingContract)(
   },
 );
 
-/** Two controllers over the same contract's two halves — what the keyed router composes. */
-export const helloController = publicApi.HttpController("HelloController", helloFragment)(
+/**
+ * The composing form's own contract, over the same two fragments.
+ * `greetingContract` is the deps form's fixture, carrying its `boom` defect and
+ * the stray key smuggled past the types, and the two arms are worth exercising
+ * side by side.
+ */
+const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
+
+/** Two pieces over `slicedContract`'s two keys — the key is the port's name. */
+export const helloController = publicApi.HttpController(slicedContract, "greetings")(
   { greeter: Greeter },
   { sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet("world")) }) },
 );
 
-/**
- * The keyed form's own contract, over the same two fragments. Not a constraint
- * — a bare procedure is a `RouterContract` too, so a controller sits at such a
- * key as happily as at a nested one — but `greetingContract` is the deps
- * form's fixture, carrying its `boom` defect and the stray key smuggled past
- * the types, and the two arms are worth exercising side by side.
- */
-const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
-
-/** The other half of `slicedContract`, alongside the reused `helloController`. */
 const echoesController = publicApi.HttpController(
-  "EchoesController",
-  nestedFragment,
+  slicedContract,
+  "echoes",
 )({
   sync: () => ({ ping: () => OkAsync("pong") }),
 });
-
-/**
- * A contract whose top-level key is literally `sync` — the one input that could
- * confuse `HttpRouter`'s runtime discriminator, which tells its arm-only form
- * from its keyed-controllers form by whether `sync` holds a function. A
- * contract may name a key anything, so this is the adversarial case: the value
- * under `sync` here is a CONTROLLER, an object carrying `.port`, and the check
- * must keep picking the keyed arm.
- */
-const syncKeyedContract = oc.router({ sync: helloFragment });
-
-export const syncKeyedRouter = publicApi.HttpRouter(syncKeyedContract)({ sync: helloController });
 
 /**
  * An arm-only router whose `sync` records its own arity. The arm-only form is
@@ -152,11 +138,8 @@ export const armOnlyRouterRecording = () => {
   return { provider, arity: () => seen };
 };
 
-/** The same kind of API as `greetingRouter`, composed from controllers instead of one `sync`. */
-const slicedRouter = publicApi.HttpRouter(slicedContract)({
-  greetings: helloController,
-  echoes: echoesController,
-});
+/** The same kind of API as `greetingRouter`, composed from pieces instead of one `sync`. */
+const slicedRouter = publicApi.HttpRouter(slicedContract)([helloController, echoesController]);
 
 /** `HttpModule` over the composed router, mirroring `rpcAppOf`. */
 const rpcSlicedAppOf = () =>
@@ -206,8 +189,8 @@ const authedContract = { orders: authenticated({ user: [] })({ whoami }), health
 let authedRuns = 0;
 
 const authedOrdersController = api.HttpController(
-  "AuthedOrders",
-  authedContract.orders,
+  authedContract,
+  "orders",
 )({
   sync: () => ({
     whoami: ({ context }) => {
@@ -218,16 +201,16 @@ const authedOrdersController = api.HttpController(
 });
 
 const authedHealthController = api.HttpController(
-  "AuthedHealth",
-  authedContract.health,
+  authedContract,
+  "health",
 )({
   sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
 });
 
-const authedRouter = api.HttpRouter(authedContract)({
-  orders: authedOrdersController,
-  health: authedHealthController,
-});
+const authedRouter = api.HttpRouter(authedContract)([
+  authedOrdersController,
+  authedHealthController,
+]);
 
 /**
  * The same marked contract through the deps form, so the scheme's own key on
@@ -565,14 +548,14 @@ export type HttpFixtures = {
     }>;
     readonly stoppedAccepting: (origin: string) => Promise<void>;
   };
-  /** The controllers the keyed router form composes, and what the unmarked router they build declares. */
+  /** The pieces the composing router form takes, and what the unmarked router they build declares. */
   readonly controllers: {
     readonly controller: typeof helloController;
     readonly unmarkedRouterDeps: readonly string[];
   };
   /**
-   * The starter over a router composed from several controllers, keyed by
-   * the contract — the same shape as `rpc`, but built from `slicedRouter`.
+   * The starter over a router composed from an array of pieces, one per
+   * contract key — the same shape as `rpc`, but built from `slicedRouter`.
    * Shut down by the fixture.
    */
   readonly rpcSliced: () => Promise<{

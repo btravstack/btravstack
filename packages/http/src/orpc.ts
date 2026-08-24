@@ -26,6 +26,7 @@ import { RPCHandler, type NodeHttpHandlerPlugin } from "@orpc/server/node";
 import "@unthrown/orpc/extensions/result";
 
 import { authenticatorPort, principalMiddleware, type AuthenticatorService } from "./auth.js";
+import { CONTROLLER_PREFIX, type ControllerKeyOf, type ControllerPortOf } from "./controller.js";
 import { HttpHandler } from "./handler.js";
 import type { Principal, SchemesOf } from "./principal.js";
 
@@ -117,12 +118,12 @@ export const orpc = (options: OrpcOptions = {}) => {
  * the port is the starter's (`HttpRouterPort`), and the provider carries it
  * typed (`orderRouter.port`) for whoever else needs the class.
  *
- * The second call also takes a **keyed record of controllers** instead of
- * `(deps, { sync })` — one argument rather than two, which is what tells the
- * two apart, exactly as `Provider(port)(…)` discriminates its own: `api.HttpRouter(contract)({ orders: ordersController, users:
- * usersController })`, one `HttpController` per top-level contract key. Each
- * fragment is composed as-is rather than re-implemented, and every key of the
- * contract must be covered — a missing or extra key is a compile error.
+ * The second call also takes an **array of pieces** instead of
+ * `(deps, { sync })` — `api.HttpRouter(contract)([ordersController,
+ * usersController])`, one `HttpController(contract, key)` piece per top-level
+ * contract key. Each fragment is composed as-is rather than re-implemented,
+ * and every key the contract declares must be covered — an uncovered one is
+ * refused at this call, against the `"UNCOVERED CONTROLLERS — …"` marker.
  */
 /** What every `HttpRouter` arm returns; only the needs channel `N` differs. */
 type Built<Auth, N> = Provider<
@@ -165,21 +166,21 @@ export const routerFor =
     function build(options: {
       readonly sync: () => Implementation<C, Schemes>;
     }): Built<Auth, SchemePortsOf<C>>;
-    function build<
-      M extends {
-        readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<
-          Inherit<C[K], RequirementsOf<C>>,
-          Schemes
-        >;
-      },
-    >(
-      controllers: M & {
-        readonly [
-          K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>
-        ]: `UNDECLARED KEY — the contract declares no fragment under ${K & string}`;
-      },
-    ): Built<Auth, InstanceType<M[keyof M]["port"]> | SchemePortsOf<C>>;
-    function build(depsOrControllers: unknown, options?: unknown): unknown {
+    // The composing arm — declared LAST on purpose: TypeScript reports the
+    // last overload's failure, so a non-covering array is refused against the
+    // "UNCOVERED CONTROLLERS — …" marker rather than degrading to di's
+    // `Qualification`, which names nothing (measured in `packages/amqp`). The
+    // marker is a SENTENCE because it is the only actionable part of the
+    // diagnostic and it prints last, past the caller's own wide piece type.
+    function build<const T extends readonly PieceOf<C, Schemes>[]>(
+      pieces: [Uncovered<C, Schemes, T>] extends [never]
+        ? T
+        : readonly [
+            "UNCOVERED CONTROLLERS — the contract declares a fragment this array does not cover",
+            Uncovered<C, Schemes, T>,
+          ],
+    ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<C>>;
+    function build(depsOrPieces: unknown, options?: unknown): unknown {
       const schemes = schemesOf(contract);
       // Each scheme's port rides a NAMESPACED key on the deps record, for the
       // same reason `tapped`'s port id is namespaced: the other keys are the
@@ -214,54 +215,43 @@ export const routerFor =
           ),
         );
 
-      // THREE forms, two arguments' worth of arity — so this is the one place
-      // in the family that cannot discriminate on arity alone. `(deps, arm)`
-      // is settled by arity as everywhere else; the two one-argument forms —
-      // an arm, and a controllers record — are told apart by whether `sync`
-      // holds a FUNCTION. That is total rather than a heuristic: this helper
-      // accepts no arm but `sync`, and a contract free to declare a key called
-      // `sync` would put a *controller* there, which is an object carrying a
-      // `.port`, never a function.
-      const arm = (first: unknown): { readonly sync: (s: never) => unknown } | undefined =>
-        typeof (first as { readonly sync?: unknown }).sync === "function"
-          ? (first as { readonly sync: (s: never) => unknown })
-          : undefined;
-      const armOnly = options === undefined ? arm(depsOrControllers) : undefined;
-      if (options !== undefined || armOnly !== undefined) {
-        const supplied = (options ?? armOnly) as {
-          readonly sync: (s: Record<string, unknown>) => unknown;
-        };
-        const deps = armOnly === undefined ? (depsOrControllers as Record<string, AnyPort>) : {};
-        const sync = (services: Record<string, unknown>): Router<Record<never, never>> => {
-          const call = supplied.sync as (...args: readonly unknown[]) => unknown;
-          // The arm-only form's `sync` is typed `() => …`, so it is handed
-          // nothing — the same arity guarantee `Provider` makes a no-deps
-          // factory, and the reason this cannot just always pass a record.
-          const built = armOnly === undefined ? call(own(services)) : call();
-          return routerFrom(built as Record<string, unknown>, services);
-        };
+      // ONE array argument is never a valid `Provider(port)` call — its arms
+      // are `(deps, options)` and `(options)`, both records — so `Array.isArray`
+      // alone identifies this composing arm. The three-form discrimination the
+      // retired keyed record needed (told apart by whether `sync` held a
+      // function) is gone with it.
+      if (options === undefined && Array.isArray(depsOrPieces)) {
+        const pieces = depsOrPieces as readonly { readonly port: AnyPort }[];
+        // Each piece is declared under the very contract key its port id
+        // carries, so the services record IS the implementation record and the
+        // `routerOf` walk needs nothing reassembled.
+        const deps = Object.fromEntries(
+          pieces.map((piece) => [piece.port.portId.slice(CONTROLLER_PREFIX.length), piece.port]),
+        );
+        const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
+          routerFrom(own(services), services);
         return Object.assign(Provider(HttpRouterPort)(withSchemes(deps), { sync } as never), {
           authenticators,
         });
       }
 
-      // The controllers record is keyed by contract key, and so is the services
-      // record it becomes — so the implementation IS what the graph resolved,
-      // with nothing to reassemble positionally.
-      const controllers = depsOrControllers as Record<string, { readonly port: AnyPort }>;
-      const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
-        routerFrom(own(services), services);
-      return Object.assign(
-        Provider(HttpRouterPort)(
-          withSchemes(
-            Object.fromEntries(
-              Object.entries(controllers).map(([key, controller]) => [key, controller.port]),
-            ),
-          ),
-          { sync } as never,
-        ),
-        { authenticators },
-      );
+      // `(deps, arm)` and `(arm)` are told apart by plain ARITY, as everywhere
+      // else in the family.
+      const supplied = (options ?? depsOrPieces) as {
+        readonly sync: (s: Record<string, unknown>) => unknown;
+      };
+      const deps = options === undefined ? {} : (depsOrPieces as Record<string, AnyPort>);
+      const sync = (services: Record<string, unknown>): Router<Record<never, never>> => {
+        const call = supplied.sync as (...args: readonly unknown[]) => unknown;
+        // The arm-only form's `sync` is typed `() => …`, so it is handed
+        // nothing — the same arity guarantee `Provider` makes a no-deps
+        // factory, and the reason this cannot just always pass a record.
+        const built = options === undefined ? call() : call(own(services));
+        return routerFrom(built as Record<string, unknown>, services);
+      };
+      return Object.assign(Provider(HttpRouterPort)(withSchemes(deps), { sync } as never), {
+        authenticators,
+      });
     }
 
     return build;
@@ -271,10 +261,42 @@ export const routerFor =
 // The trailing colon is part of the prefix: the scheme name follows it.
 const AUTHENTICATOR = "@btravstack/http/authenticator:";
 
-/** A controller for one fragment — what `HttpController` returns, as the keyed form consumes it. */
-type ControllerFor<Fragment extends RouterContract, Schemes = never> = {
-  readonly port: PortClassOf<string, Implementation<Fragment, Schemes>>;
-};
+/**
+ * One piece of the router — what `HttpController(contract, key)(…)` returns, as
+ * the composing form consumes it. The port is spelled INLINE rather than as
+ * `ControllerPortOf<C, K, Schemes>`, and that is load-bearing: two
+ * instantiations of one alias are compared by TypeScript's alias-variance fast
+ * path, which measures `C` covariant here — and a marked contract IS a
+ * structural subtype of the same contract unmarked (the marker is an
+ * intersection), so a piece whose handler reads a principal slipped under the
+ * unmarked contract without the handler types ever being compared (measured:
+ * the refused direction in `controller.test-d.ts` stopped erroring). The
+ * anonymous spelling has no alias for the fast path to match, so the construct
+ * signatures are compared structurally and the contravariant handler check
+ * runs.
+ */
+type PieceOf<C extends Record<string, RouterContract>, Schemes> = {
+  readonly [K in ControllerKeyOf<C>]: {
+    readonly port: {
+      readonly portId: `${typeof CONTROLLER_PREFIX}${K}`;
+      new (): InstanceType<ControllerPortOf<C, K, Schemes>>;
+    };
+  };
+}[ControllerKeyOf<C>];
+
+/** The key a piece carries, read back off its port id. */
+type KeyOfPiece<P> = P extends {
+  readonly port: { readonly portId: `${typeof CONTROLLER_PREFIX}${infer K}` };
+}
+  ? K
+  : never;
+
+/** The fragments no piece in `T` covers. */
+type Uncovered<
+  C extends Record<string, RouterContract>,
+  Schemes,
+  T extends readonly PieceOf<C, Schemes>[],
+> = Exclude<ControllerKeyOf<C>, KeyOfPiece<T[number]>>;
 
 /**
  * What `HttpRouter(contract)(…)(…, { sync })`'s `sync` returns: the contract's
@@ -331,9 +353,11 @@ type ContextOf<C, R extends Requirements, Schemes> = [Effective<C, R>] extends [
  * Pushes a record's requirements onto a child that carries none, so a marked
  * fragment protects every procedure beneath it. Nearest mark wins: a node with
  * its own requirements is left alone. This is the type side of `routerOf`'s
- * `inherited` argument; the two must agree.
+ * `inherited` argument; the two must agree. Exported for `controller.ts`, which
+ * applies it at the MINT now that a piece knows its own contract key — the
+ * check the keyed composing form used to perform at the root.
  */
-type Inherit<T, R extends Requirements> = [R] extends [never]
+export type Inherit<T, R extends Requirements> = [R] extends [never]
   ? T
   : IsMarked<T> extends true
     ? T

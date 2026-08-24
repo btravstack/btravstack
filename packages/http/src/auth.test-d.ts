@@ -3,7 +3,7 @@
 // an unmarked one does not. Each `@ts-expect-error` is an assertion: if one
 // stops erroring, the gate is gone.
 import { Env } from "@btravstack/config";
-import { authenticated, type Authenticated } from "@btravstack/contract";
+import { authenticated } from "@btravstack/contract";
 import { start } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { oc } from "@orpc/contract";
@@ -143,28 +143,24 @@ const strandedRouter = openApi.HttpRouter(strandedFragment)({
 // @ts-expect-error — UNDECLARED NEEDS: nothing discharges `HttpAuthenticator:user`
 void HttpModule("Stranded")({ needs: [Env], router: strandedRouter });
 
-// 10. A ROOT-marked contract composes through the KEYED form, and a controller
-//     under it reads the identity its scheme resolves. The keyed overload must
-//     therefore `Exclude` the phantom key from the keys it demands (or the
-//     record can never be complete) and `Inherit` the root's requirements down
-//     to each fragment (or no controller under it could type
-//     `context.principal`) — both of which the deps arm already did.
-//     `contract.orders` above marks a KEY, so neither omission showed there.
-declare const ordersFragment: Authenticated<
-  { readonly whoami: typeof oc },
-  [{ readonly user: readonly [] }]
->;
+// 10. A ROOT-marked contract composes through the ARRAY form — and the
+//     stronger claim now sits at the MINT: `ControllerKeyOf` excludes the
+//     phantom key (or no array could ever cover the contract), and `Inherit`
+//     pushes the root's requirements onto the fragment as the piece is minted
+//     (or no piece under it could type `context.principal` — reading `userId`
+//     in this `sync` IS that assertion). `contract.orders` above marks a KEY,
+//     so neither omission would show there.
+const rootMarkedContract = authenticated({ user: [] })({ orders: { whoami: oc } });
 const rootOrders = api.HttpController(
-  "RootOrders",
-  ordersFragment,
+  rootMarkedContract,
+  "orders",
 )({
   sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
 });
-const rootMarkedContract = authenticated({ user: [] })({ orders: { whoami: oc } });
 const _rootKeyed = HttpModule("RootKeyed")({
   needs: [Env],
-  router: api.HttpRouter(rootMarkedContract)({ orders: rootOrders }),
-  // The controller is provided too: the keyed router depends on its PORT, and
+  router: api.HttpRouter(rootMarkedContract)([rootOrders]),
+  // The piece is provided too: the composed router depends on its PORT, and
   // a root that names no slice still owes it.
   provides: [rootOrders],
 });

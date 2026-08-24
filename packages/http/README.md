@@ -144,8 +144,9 @@ port back from `app.runtimeInfo()`.
 ## Splitting a large API into slices
 
 `api.HttpRouter(contract)(deps, { sync })` is right for a small API; a large
-one splits into **controllers**, one per slice of the contract, composed at the
-root by a keyed call instead:
+one splits into **pieces**, one per top-level contract key, composed at the
+root as an array instead — the same shape `AmqpHandlers(contract)([...])` and
+`TemporalActivities(contract)([...])` already have:
 
 <!-- doctest: isolate
 import { oc, type } from "@orpc/contract";
@@ -192,15 +193,14 @@ const customersContract = {
   find: oc.input(type<{ readonly id: string }>()).output(type<{ readonly name: string }>()),
 };
 const orderContract = { orders: ordersContract, customers: customersContract };
-const customersController = api.HttpController("CustomersController", customersContract)(
-  {},
-  { sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) },
-);
+const customersController = api.HttpController(orderContract, "customers")({
+  sync: () => ({ find: () => OkAsync({ name: "Ada" }) }),
+});
 declare const Application: Module<PlaceOrder | FindOrder, never, never>;
 -->
 
 ```ts
-const ordersController = api.HttpController("OrdersController", ordersContract)(
+const ordersController = api.HttpController(orderContract, "orders")(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -247,20 +247,21 @@ const ordersController = api.HttpController("OrdersController", ordersContract)(
   },
 );
 
-const orderRouter = api.HttpRouter(orderContract)({
-  orders: ordersController,
-  customers: customersController,
-});
+const orderRouter = api.HttpRouter(orderContract)([
+  ordersController,
+  customersController,
+]);
 ```
 
-`api.HttpController(name, fragment)({ name: Dep }, { sync })` — or just
-`({ sync })` when the slice calls nothing — is the same two-call shape
-as `api.HttpRouter`, aimed at one fragment: it mints a port under `name` and
-returns the provider carrying it on `.port`. The keyed form is **exact** — a
-missing slice, an undeclared key and a controller under the wrong key are all
-compile errors — and because a fragment is itself a valid contract, a slice
-can be served alone, its controller unchanged: the lifted root is
-`api.HttpRouter(ordersContract)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
+`api.HttpController(contract, key)({ name: Dep }, { sync })` — or just
+`({ sync })` when the slice calls nothing — is the same two-call shape as
+`api.HttpRouter`, aimed at one fragment: the contract key IS the port's name,
+so there is nothing to name, and the provider carries the minted port on
+`.port`. The array is **exact** — a key the contract does not declare is
+refused at the mint, and an array that leaves a fragment uncovered is refused
+at the root — and because a fragment is itself a valid contract, a slice can
+be served alone, its piece unchanged: the lifted root is
+`api.HttpRouter(orderContract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
 declaring the very provider the modulith composed. See
 [Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
 
