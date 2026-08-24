@@ -19,6 +19,7 @@ import { orderContract, type OrderContract } from "@btravstack/example-order-tem
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
+import { Meter, otel } from "@btravstack/observability/otel";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
@@ -70,7 +71,7 @@ type Deployment<E> = {
  */
 type Serve = <E>(
   module: Module<
-    PlaceOrder | OrderRepository | StockService | ShippingService | Logger,
+    PlaceOrder | OrderRepository | StockService | ShippingService | Logger | Meter,
     E,
     Scope | Env
   >,
@@ -100,8 +101,16 @@ type Serve = <E>(
  */
 const rootWith = (fulfillment: typeof FulfillmentModule, sink: Sink) =>
   Module("StubTemporal")({
-    imports: [OrderApplicationModule, OrderPersistenceModule, fulfillment, observability({ sink })],
-    exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger],
+    imports: [
+      OrderApplicationModule,
+      OrderPersistenceModule,
+      fulfillment,
+      observability({ sink }),
+      otel(),
+    ],
+    // `Meter` beside `Logger` for the same sibling: `BillingModule` counts
+    // its authorizations through it.
+    exports: [PlaceOrder, OrderRepository, StockService, ShippingService, Logger, Meter],
   });
 
 /**
@@ -266,6 +275,9 @@ export const it = test.extend<TemporalFixtures>({
           TEMPORAL_ADDRESS: server.address,
           TEMPORAL_NAMESPACE: server.namespace,
           DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
+          // otel() rides the root; a spec run stands up no collector, so the
+          // SDK is disabled through its own switch — the ports still resolve.
+          OTEL_SDK_DISABLED: "true",
         },
       });
 

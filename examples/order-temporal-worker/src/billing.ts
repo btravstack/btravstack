@@ -1,6 +1,7 @@
 import { Module, Provider } from "@btravstack/di";
 import { PaymentService } from "@btravstack/example-order-application";
 import { Logger } from "@btravstack/observability";
+import { Meter } from "@btravstack/observability/otel";
 import { OkAsync } from "unthrown";
 
 /**
@@ -14,25 +15,30 @@ import { OkAsync } from "unthrown";
  * the specs supply the refusing provider, which is where compensation runs.
  */
 export const BillingModule = Module("Billing")({
-  needs: [Logger],
+  needs: [Logger, Meter],
   provides: [
     Provider(PaymentService)(
-      { logger: Logger },
+      { logger: Logger, meter: Meter },
       {
-        sync: ({ logger }) => ({
-          authorize: (orderId, amount) => {
-            logger.info("authorized the payment", { orderId, amount });
-            return OkAsync(`auth-${orderId}`);
-          },
-          capture: (authorizationId) => {
-            logger.info("captured the payment", { authorizationId });
-            return OkAsync();
-          },
-          refund: (authorizationId) => {
-            logger.info("refunded the payment", { authorizationId });
-            return OkAsync();
-          },
-        }),
+        sync: ({ logger, meter }) => {
+          // Counted at the adapter, the seam metrics share with the logger.
+          const authorized = meter.createCounter("btravstack.payments.authorized");
+          return {
+            authorize: (orderId, amount) => {
+              authorized.add(1);
+              logger.info("authorized the payment", { orderId, amount });
+              return OkAsync(`auth-${orderId}`);
+            },
+            capture: (authorizationId) => {
+              logger.info("captured the payment", { authorizationId });
+              return OkAsync();
+            },
+            refund: (authorizationId) => {
+              logger.info("refunded the payment", { authorizationId });
+              return OkAsync();
+            },
+          };
+        },
       },
     ),
   ],

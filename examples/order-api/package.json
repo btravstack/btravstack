@@ -25,6 +25,8 @@
     "@btravstack/example-order-infrastructure": "workspace:*",
     "@btravstack/http": "workspace:*",
     "@btravstack/observability": "workspace:*",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/sdk-node": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@unthrown/orpc": "catalog:",

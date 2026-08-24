@@ -151,6 +151,7 @@ import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { TemporalModule } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
@@ -170,6 +171,9 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
     FulfillmentModule,
     BillingModule,
     observability(),
+    // `BillingModule` counts its authorizations through `Meter` — otel()
+    // is what supplies it, beside the `Logger` observability() does.
+    otel(),
   ],
 });
 ```
@@ -237,6 +241,9 @@ export const Pinned = TemporalModule("OrderTemporalWorkerLocal")({
     FulfillmentModule,
     BillingModule,
     observability(),
+    // `BillingModule` counts its authorizations through `Meter` — otel()
+    // is what supplies it, beside the `Logger` observability() does.
+    otel(),
   ],
 });
 ```

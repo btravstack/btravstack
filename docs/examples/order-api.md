@@ -15,6 +15,7 @@ import {
   kernelEvents,
   observability,
 } from "@btravstack/observability";
+import { Meter, Tracer, UnitSpanModule, otel } from "@btravstack/observability/otel";
 import type { Order } from "@btravstack/example-order-domain";
 import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
@@ -443,8 +444,9 @@ composition root and one fewer import, not a rewrite.
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
+  imports: [OrdersSlice, CustomersSlice, observability(), otel()],
+  // `RequestModule` reads all three out of the application scope.
+  exports: [Logger, Tracer, Meter],
 });
 ```
 
@@ -536,18 +538,26 @@ export class RequestSpan extends Port("RequestSpan")<{
 }> {}
 
 export const RequestModule = Module("Request")({
-  needs: [Logger],
+  needs: [Logger, Meter],
+  imports: [UnitSpanModule],
   provides: [
     Provider(RequestSpan)(
-      { logger: Logger },
+      { logger: Logger, meter: Meter },
       {
-        sync: ({ logger }) => {
+        sync: ({ logger, meter }) => {
           const startedAt = Date.now();
+          const duration = meter.createHistogram(
+            "btravstack.request.duration",
+            {
+              unit: "ms",
+            },
+          );
           return {
-            finish: () =>
-              logger.info("request finished", {
-                durationMs: Date.now() - startedAt,
-              }),
+            finish: () => {
+              const durationMs = Date.now() - startedAt;
+              duration.record(durationMs);
+              logger.info("request finished", { durationMs });
+            },
           };
         },
         onStop: (span) => span.finish(),

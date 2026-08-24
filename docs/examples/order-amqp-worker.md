@@ -10,6 +10,7 @@ import { Config, Env } from "@btravstack/config";
 import { currentUnit } from "@btravstack/core";
 import { Provider, type ServiceOf } from "@btravstack/di";
 import { Logger, observability } from "@btravstack/observability";
+import { Meter, Tracer, otel } from "@btravstack/observability/otel";
 import { ErrAsync, OkAsync, TaggedError } from "unthrown";
 import { TenantId } from "@btravstack/example-order-domain";
 import {
@@ -27,6 +28,7 @@ import { NotificationsSlice } from "../../slices/notifications/module.js";
 declare const startOutboxRelay: (
   outbox: ServiceOf<Outbox>,
   logger: ServiceOf<Logger>,
+  meter: ServiceOf<Meter>,
   options: { url: string; pollMs: number; tenants: readonly TenantId[] },
 ) => AsyncResult<ServiceOf<OutboxRelay>, BrokerUnreachable>;
 import type { AsyncResult } from "unthrown";
@@ -221,6 +223,7 @@ export const outboxRelay = Provider(OutboxRelay)(
   {
     outbox: Outbox,
     logger: Logger,
+    meter: Meter,
     broker: AmqpConfig,
     config: relayConfig.port,
   },
@@ -228,10 +231,11 @@ export const outboxRelay = Provider(OutboxRelay)(
     acquire: ({
       outbox,
       logger,
+      meter,
       broker: { url },
       config: { pollMs, tenants },
     }) =>
-      startOutboxRelay(outbox, logger, {
+      startOutboxRelay(outbox, logger, meter, {
         url,
         pollMs,
         tenants: tenantsOf(tenants),
@@ -270,9 +274,12 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     NotificationsSlice,
     AuditSlice,
     observability(),
+    otel(),
   ],
   provides: [relayConfig, outboxRelay],
-  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+  // `Tracer` beside `Logger`: `UnitSpanModule`, passed as `StartOptions.unit`
+  // in `main.ts`, reads it out of the application scope.
+  exports: [PlaceOrder, OrderRepository, Outbox, Logger, Tracer],
 });
 ```
 

@@ -23,6 +23,7 @@ import {
   type Line,
   type Sink,
 } from "@btravstack/observability";
+import type { Meter, Tracer } from "@btravstack/observability/otel";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import request from "supertest";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
@@ -196,7 +197,7 @@ export type ApiFixtures = {
    * passed as `StartOptions.unit`, reads it out of the parent.
    */
   readonly serve: <E>(
-    module: Module<HttpRuntime | Logger, E, Scope | Env>,
+    module: Module<HttpRuntime | Logger | Tracer | Meter, E, Scope | Env>,
     options?: Pick<StartOptions, "drainTimeoutMs" | "probes">,
   ) => RunningApp<E, HttpInfo>;
   /**
@@ -262,6 +263,11 @@ export const it = test.extend<ApiFixtures>({
       PORT: "0",
       HOST: "127.0.0.1",
       LOG_LEVEL: "fatal",
+      // The real root composes otel(); a spec run stands up no collector, so
+      // the SDK is disabled through its own switch — the ports still resolve
+      // (noop tracer and meter), and the machinery is pinned by the package's
+      // own otel.spec.ts.
+      OTEL_SDK_DISABLED: "true",
       DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
     },
   }),

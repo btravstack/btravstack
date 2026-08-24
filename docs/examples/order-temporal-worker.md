@@ -7,6 +7,7 @@ description: The orchestration deployment — two saga slices, FulfillmentSlice 
 import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal";
 import { P } from "unthrown";
 import { observability } from "@btravstack/observability";
+import { Tracer, otel } from "@btravstack/observability/otel";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { PaymentService } from "@btravstack/example-order-application";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
@@ -106,7 +107,10 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   workflows: {
     workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js"),
   },
-  imports: [FulfillmentSlice, BillingSlice, observability()],
+  imports: [FulfillmentSlice, BillingSlice, observability(), otel()],
+  // `UnitSpanModule`, passed as `StartOptions.unit` in `main.ts`, reads
+  // `Tracer` out of the application scope.
+  exports: [Tracer],
 });
 ```
 
