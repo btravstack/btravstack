@@ -13,7 +13,7 @@ packages:
 catalog:
   # `@amqp-contract/{contract,testing,worker}` v3 are still in beta and their
   # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
-  # this repo pins 5.5.0. The exact beta is the contract until v3 goes stable;
+  # this repo pins 5.6.0. The exact beta is the contract until v3 goes stable;
   # raise it deliberately, not on a bot bump.
   "@amqp-contract/client": 3.0.0-beta.6
   "@amqp-contract/contract": 3.0.0-beta.6
@@ -45,7 +45,7 @@ catalog:
   "@prisma/adapter-pg": 7.9.1
   "@prisma/client": 7.9.1
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
-  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.5.0. 8.x also
+  # 7.x line, which peers on `unthrown@^4` while this repo pins 5.6.0. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
   # specs are built on. The exact beta is the contract until v8 goes stable.
   "@temporal-contract/client": 8.0.0-beta.5
@@ -59,11 +59,11 @@ catalog:
   "@temporalio/worker": 1.22.0
   "@temporalio/workflow": 1.22.0
   "@types/node": 26.2.0
-  "@unthrown/oxlint": 5.5.0
+  "@unthrown/oxlint": 5.6.0
   "@unthrown/orpc": 0.1.2
   "@unthrown/prisma": 0.3.2
-  "@unthrown/standard-schema": 5.5.0
-  "@unthrown/vitest": 5.5.0
+  "@unthrown/standard-schema": 5.6.0
+  "@unthrown/vitest": 5.6.0
   knip: 6.32.2
   lefthook: 2.1.10
   oxfmt: 0.63.0
@@ -85,7 +85,7 @@ catalog:
   # everything. Aliased because one `package.json` cannot name `typescript`
   # twice.
   typescript-consumer: "npm:typescript@5.9.3"
-  unthrown: 5.5.0
+  unthrown: 5.6.0
   "@vitest/coverage-v8": 4.1.10
   vitepress: 1.6.4
   vitest: 4.1.10
@@ -148,8 +148,8 @@ minimumReleaseAgeExclude:
   - "@amqp-contract/testing@3.0.0-beta.6"
   - "@amqp-contract/worker@3.0.0-beta.6"
   - "@btravstack/entity@0.7.0"
-  - "@unthrown/oxlint@5.2.0"
+  - "@unthrown/oxlint@5.6.0"
   - "@unthrown/prisma@0.3.2"
-  - "@unthrown/standard-schema@5.5.0"
-  - "@unthrown/vitest@5.5.0"
-  - "unthrown@5.5.0"
+  - "@unthrown/standard-schema@5.6.0"
+  - "@unthrown/vitest@5.6.0"
+  - "unthrown@5.6.0"
