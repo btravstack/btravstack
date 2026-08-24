@@ -376,6 +376,9 @@ importers:
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.7.0(unthrown@5.7.0)(vitest@4.1.10)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.12
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -458,6 +461,9 @@ importers:
       supertest:
         specifier: 'catalog:'
         version: 7.2.2
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.12
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -731,6 +737,9 @@ importers:
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.7.0(unthrown@5.7.0)(vitest@4.1.10)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.12
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -762,6 +771,9 @@ importers:
       '@unthrown/vitest':
         specifier: 'catalog:'
         version: 5.7.0(unthrown@5.7.0)(vitest@4.1.10)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.12
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

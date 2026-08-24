@@ -275,7 +275,15 @@ of them, run by the repository's own `pnpm test`:
 pnpm install
 pnpm test        # every example's specs, alongside the kernel's own
 pnpm typecheck   # includes the compile-time-only guarantees pinned with @ts-expect-error
+pnpm dev         # the three deployments, side by side, watching
 ```
+
+`pnpm dev` is the local loop: it brings up the same three shared containers
+the specs use, applies the migrations, and runs all three entry points at once
+with their output prefixed by workspace — one process per deployment, exactly
+as in production, because that is the only way the drain and the failure
+isolation mean anything. See
+[Run several deployments locally](../docs/how-to/run-several-deployments-locally.md).
 
 Nothing is faked at the boundaries that matter. `order-infrastructure` runs
 against a real Prisma client over a real PostgreSQL, so a `DuplicateOrder`

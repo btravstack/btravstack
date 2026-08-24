@@ -36,6 +36,10 @@ const GUIDE_SIDEBAR = [
       { text: "Manage a resource's lifetime", link: "/how-to/manage-a-resource" },
       { text: "Swap an adapter for tests", link: "/how-to/swap-an-adapter" },
       { text: "Test an application", link: "/how-to/test-an-application" },
+      {
+        text: "Run several deployments locally",
+        link: "/how-to/run-several-deployments-locally",
+      },
       { text: "Tune the drain for Kubernetes", link: "/how-to/tune-the-drain-for-kubernetes" },
       { text: "Embed without runMain", link: "/how-to/embed-without-run-main" },
       { text: "Write a runtime", link: "/how-to/write-a-runtime" },

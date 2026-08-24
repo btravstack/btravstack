@@ -67,6 +67,12 @@ pnpm test             # vitest + v8 coverage (100% lines/functions, enforced)
 pnpm build            # tsdown dual CJS/ESM + d.ts
 ```
 
+Not part of the gate, but the command a contributor runs all day:
+
+```sh
+pnpm dev              # the three example deployments, one process each, watching
+```
+
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
@@ -147,6 +153,19 @@ major.
    `Serving.stop` well past the kernel's `drainTimeoutMs` unless the signal is
    raced against it — and `@temporalio/worker` exposes no public forced
    shutdown to escalate to, so "stop waiting" is the escalation.
+
+   **The local loop is the production shape, not an exception to it** (issue
+   #67). Three deployments meant three terminals, and the tempting fix — a
+   kernel API booting all three in one process, which `start` would happily
+   support — was measured and declined: it cannot watch (reloading an ESM
+   graph in place is a bespoke loader), it shares one event loop and the
+   process-global uncaught handlers, so one crash takes all three down and a
+   blocking worker starves the API, and it exercises the drain through one
+   shared signal instead of three real ones. A dev loop that misrepresents
+   failure isolation teaches the wrong lesson about the very thesis it sits
+   under. So `pnpm dev` is `turbo run dev --filter=./examples/*`: one process
+   per deployment, `tsx watch` on each, output prefixed by workspace — see
+   **The local loop** under _Toolchain & conventions_.
 
    **The transport role map is a decision, not an inventory** (issues #61 and
    #60): answering is `@btravstack/http`; orchestration — and with it
@@ -582,10 +601,45 @@ in its place.
   mentioning `@btravstack/contract`'s inaccessible `unique symbol` (TS2527),
   while held whole it collapses to the nameable `Http<A>`, which is why the
   application writes no type annotation at all.
+- **The local loop is `pnpm dev`, and it is the production shape** (issue
+  #67): `turbo run dev --filter=./examples/*`, one process per deployment,
+  each `tsx watch --env-file=../../.env.dev src/main.ts`, output prefixed by
+  workspace. The reasoning against a one-process runner is in thesis #1; what
+  lives here is the mechanics.
+  - **`tsx`, because Node alone cannot run these files.** Relative imports
+    carry `.js` (`moduleResolution: NodeNext`) and Node's own type stripping
+    does not remap `./module.js` to `./module.ts` — measured, it is an
+    `ERR_MODULE_NOT_FOUND`. `tsx` was already in the catalog for `docs`; it is
+    a devDependency of the three example workspaces, and no new dependency.
+  - **`.env.dev` is generated, never committed.** The `dev` task depends on
+    `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
+    three shared containers the specs use** (`withReuse()` — a second set
+    would be issue #52's duplication in another hat), runs
+    `prisma migrate deploy` under the same lock as the example's own
+    `globalSetup`, and writes `DATABASE_URL` / `AMQP_URL` /
+    `TEMPORAL_ADDRESS`. They are written to a file rather than defaulted
+    because the ports are whatever Docker mapped, and an ephemeral mapped
+    port cannot be a default. `--env-file` is Node's own; no `dotenv`.
+  - **`PROBE_PORT` is per app, inline in each `dev` script** (`9000`, `9001`,
+    `9002`): it defaults to `9000` for every application, so on one machine
+    two of the three fail with `RuntimeStartFailed` for `"probes"`. That is
+    the kernel reporting an `EADDRINUSE` correctly — in production each pod
+    has the port to itself — and it is why per-app values live in the per-app
+    script while shared ones live in `.env.dev`.
+  - **`tsx watch` force-kills its child 5 s after a signal**, so a Ctrl-C
+    under the watcher can cut beat 3 short — the kernel's own defaults are
+    `preDrainDelayMs: 5_000` then up to `drainTimeoutMs: 20_000`. To watch a
+    real drain, run the entry point without `watch`. Measured end to end:
+    `draining` → `drained` exactly 5.002 s later → `stopping` → `exited 0`.
+  - **The root `dev` script is filtered for a reason.** Thirteen workspaces
+    have a `dev` script (nine packages' watch-builds, `docs`, three examples),
+    and turbo refuses more persistent tasks than its concurrency — so the
+    unfiltered `turbo run dev` the root carried was **already broken** before
+    this, failing on ten persistent tasks against a concurrency of ten.
 - **The whole gate runs on THREE containers, shared, and `internal/test-infra`
   owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine` and
   one `temporalio/auto-setup:1.29.1`, started once per machine and reused by
-  every workspace's vitest run. Six workspaces need a Docker daemon —
+  every workspace's vitest run **and by `pnpm dev`**. Six workspaces need a Docker daemon —
   `packages/amqp`, `packages/temporal`, and the four `examples/` that boot the
   application or a broker-backed runtime — and that is a fact a contributor
   discovers the hard way unless a README says so, which is why each one's

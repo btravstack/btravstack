@@ -14,6 +14,7 @@
     "./uuid": "./src/uuid.ts"
   },
   "scripts": {
+    "dev:env": "tsx src/dev-env.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -26,6 +27,7 @@
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "zod": "catalog:"

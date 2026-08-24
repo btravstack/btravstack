@@ -51,11 +51,20 @@ export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, 
  * points Temporal at the workflow module so it can bundle it for the sandbox;
  * a spec hands over a prebuilt bundle instead, which is why `WorkflowSource`
  * has two arms.
+ *
+ * It names `./workflows.ts`, not the `./workflows.js` the library's own
+ * example shows, and the difference is this workspace rather than a
+ * disagreement: a `workflowsPath` is a **filesystem** path Temporal's bundler
+ * stats, not an import specifier the `.js` convention applies to, and the
+ * examples here are source-only — never built, run straight from `src/` by
+ * `pnpm dev`. A deployment that compiles to `dist/` names the compiled file.
+ * Nothing caught this until `main.ts` was first executed: every spec supplies
+ * a prebuilt bundle, so the path went unread.
  */
 export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
   activities: orderActivities,
-  workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
+  workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.ts") },
   imports: [FulfillmentSlice, BillingSlice, observability(), otel()],
   // `UnitSpanModule`, passed as `StartOptions.unit` in `main.ts`, reads
   // `Tracer` out of the application scope.

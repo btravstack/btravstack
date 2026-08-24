@@ -22,11 +22,9 @@
       "project": ["src/**/*.ts"]
     },
     "examples/order-api": {
-      "entry": ["src/main.ts"],
       "ignoreDependencies": ["@btravstack/entity", "zod"]
     },
     "examples/order-temporal-worker": {
-      "entry": ["src/main.ts"],
       "ignoreDependencies": ["zod"]
     }
   }
