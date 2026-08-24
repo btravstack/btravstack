@@ -30,8 +30,8 @@ import { inject, test } from "vitest";
 import { BillingModule } from "./billing.js";
 import { FulfillmentModule } from "./fulfillment.js";
 import { orderActivities } from "./module.js";
-import { chargeOrder } from "./slices/billing/activities.js";
-import { fulfillOrder } from "./slices/fulfillment/activities.js";
+import { piece as chargeOrder } from "./slices/billing/activities.js";
+import { piece as fulfillOrder } from "./slices/fulfillment/activities.js";
 
 /**
  * One Temporal server for the whole repository — see `internal/test-infra` —
@@ -231,12 +231,13 @@ export const it = test.extend<TemporalFixtures>({
       // under the next.
       //
       // `BillingModule` sits beside `module` rather than inside it: billing is
-      // never swapped by a spec, so it is a sibling import the same way
-      // `OrderTemporalWorker`'s own root lists `BillingSlice` beside
-      // `FulfillmentSlice`. `fulfillOrder` and `chargeOrder` are in `provides`
-      // for the reason `module.ts`'s own TSDoc gives — the composed
-      // `orderActivities`'s `deps` are the two pieces' PORTS, and nothing
-      // discharges them unless something in this tree does.
+      // never swapped by a spec, so it is a sibling import here rather than a
+      // slice `module` folds in — unlike `OrderTemporalWorker`'s own root,
+      // which spreads `...slices` from the generated `slices.gen.ts`.
+      // `fulfillOrder` and `chargeOrder` are in `provides` for the reason
+      // `module.ts`'s own TSDoc gives — the composed `orderActivities`'s
+      // `deps` are the two pieces' PORTS, and nothing discharges them unless
+      // something in this tree does.
       const worker = TemporalModule("StubTemporalWorker")({
         contract,
         activities: orderActivities,

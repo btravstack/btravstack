@@ -14,7 +14,7 @@ import { P } from "unthrown";
  * `never`, because a compensation that could answer no would leave the saga
  * stuck half-done.
  */
-export const chargeOrder = TemporalWorkflowActivities(orderContract, "chargeOrder")(
+export const piece = TemporalWorkflowActivities(orderContract, "chargeOrder")(
   { payments: PaymentService },
   {
     sync: ({ payments }) => ({

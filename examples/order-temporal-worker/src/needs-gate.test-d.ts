@@ -41,9 +41,9 @@ import { Logger, observability } from "@btravstack/observability";
 import { TemporalModule, TemporalRuntime, temporal } from "@btravstack/temporal";
 
 import { OrderTemporalWorker, orderActivities } from "./module.js";
-import { BillingSlice } from "./slices/billing/module.js";
-import { fulfillOrder } from "./slices/fulfillment/activities.js";
-import { FulfillmentSlice } from "./slices/fulfillment/module.js";
+import { slice as BillingSlice } from "./slices/billing/module.js";
+import { piece as fulfillOrder } from "./slices/fulfillment/activities.js";
+import { slice as FulfillmentSlice } from "./slices/fulfillment/module.js";
 
 const options = { signals: false, probes: false } as const;
 

@@ -3,10 +3,7 @@ import { observability } from "@btravstack/observability";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
-import { chargeOrder } from "./slices/billing/activities.js";
-import { BillingSlice } from "./slices/billing/module.js";
-import { fulfillOrder } from "./slices/fulfillment/activities.js";
-import { FulfillmentSlice } from "./slices/fulfillment/module.js";
+import { pieces, slices } from "./slices.gen.js";
 
 /**
  * The activities record, composed from each slice's own piece — keyed by the
@@ -14,7 +11,7 @@ import { FulfillmentSlice } from "./slices/fulfillment/module.js";
  * error and two pieces claiming one key are di's duplicate-provider defect at
  * build.
  */
-export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, chargeOrder]);
+export const orderActivities = TemporalActivities(orderContract)(pieces);
 
 /**
  * The composition root of the orchestration deployment — now a list of slices
@@ -28,8 +25,8 @@ export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, 
  * trace id).
  *
  * The root no longer imports `OrderApplicationModule`, `OrderPersistenceModule`
- * or `FulfillmentModule` directly: `FulfillmentSlice` imports the orders
- * vertical plus the two fulfillment services, `BillingSlice` imports
+ * or `FulfillmentModule` directly: the fulfillment slice imports the orders
+ * vertical plus the two fulfillment services, the billing slice imports
  * `BillingModule` alone, and the two verticals meet only here — in the list of
  * slices, never inside one slice's own graph. `PlaceOrder` is as invisible to
  * billing as `PaymentService` is to fulfillment.
@@ -37,12 +34,13 @@ export const orderActivities = TemporalActivities(orderContract)([fulfillOrder, 
  * `orderActivities`'s own `deps` are the two pieces' PORTS, not what they
  * close over. Naming a piece in that composing array is not what registers
  * it: `flatten` walks `imports` and `provides` only, never a provider's own
- * `deps`. So `fulfillOrder` and `chargeOrder` are discharged by
- * `FulfillmentSlice` and `BillingSlice`, which `provides` and `exports` them
- * — which is why both slices are imported here even though the composing call
- * above already names their pieces. Drop one import and the composed
- * activities still type-check; what fails is `start`, with a `WiringDefect`
- * naming the unmet port, not a compile error.
+ * `deps` — so the two pieces are discharged by their own slices, which
+ * `provides` and `exports` them. `...slices` spreads every slice
+ * `slices.gen.ts` found — generated from the same `src/slices/*` directories
+ * `orderActivities`'s `pieces` came from — into `imports`, so a slice on disk
+ * is a slice in `imports` by construction: there is no longer a hole where
+ * dropping one leaves its piece's port unmet and `start` fails at runtime
+ * with a `WiringDefect`.
  *
  * A constant: configuration is read inside the graph, and where the workflow
  * code lives is a static fact of this deployment. `workflowsPathFromURL`
@@ -54,5 +52,5 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.js") },
-  imports: [FulfillmentSlice, BillingSlice, observability()],
+  imports: [...slices, observability()],
 });

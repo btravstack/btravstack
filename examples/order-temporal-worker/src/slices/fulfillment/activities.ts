@@ -63,7 +63,7 @@ import { P } from "unthrown";
  * placement that never landed is the no-op a *repeated* compensation performs,
  * and an activity Temporal may re-run has to answer the same both times.
  */
-export const fulfillOrder = TemporalWorkflowActivities(orderContract, "fulfillOrder")(
+export const piece = TemporalWorkflowActivities(orderContract, "fulfillOrder")(
   {
     place: PlaceOrder,
     repository: OrderRepository,

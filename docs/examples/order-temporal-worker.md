@@ -10,9 +10,9 @@ import { observability } from "@btravstack/observability";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { PaymentService } from "@btravstack/example-order-application";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
-import { fulfillOrder } from "../../slices/fulfillment/activities.js";
-import { FulfillmentSlice } from "../../slices/fulfillment/module.js";
-import { BillingSlice } from "../../slices/billing/module.js";
+import { piece as fulfillOrder } from "../../slices/fulfillment/activities.js";
+import { slice as FulfillmentSlice } from "../../slices/fulfillment/module.js";
+import { slice as BillingSlice } from "../../slices/billing/module.js";
 -->
 
 # Order Temporal worker
