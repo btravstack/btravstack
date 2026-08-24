@@ -296,3 +296,25 @@ test("two overrides for one port are the duplicate defect", async () => {
     expect.objectContaining({ message: '[di] two overrides registered for port "BA"' }),
   );
 });
+
+test("an override inherits its base's declaration position — onStart order is untouched", async () => {
+  // GIVEN two started providers, the first of them overridden (with the
+  // override itself DECLARED last, where the old resolution would leave it)
+  const started: string[] = [];
+  const mod = Module("OverriddenInPlace")({
+    provides: [
+      Provider(A)({ value: { v: "base" }, onStart: () => void started.push("A-base") }),
+      Provider(B)({ value: { v: "b" }, onStart: () => void started.push("B") }),
+      overrideProvider(
+        Provider(A)({ value: { v: "override" }, onStart: () => void started.push("A-override") }),
+      ),
+    ],
+    exports: [A, B],
+  });
+
+  // WHEN the graph is built and its onStart hooks have fired
+  const order = await Module.build(mod).map(() => started);
+
+  // THEN the override fired in A's own position, ahead of B — not at the tail
+  expect(order).toBeOkWith(["A-override", "B"]);
+});

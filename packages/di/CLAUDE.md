@@ -97,8 +97,10 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   providers for concurrent construction; detects cycles, duplicate providers,
   providers for `Scope`, missing providers — all
   _before_ any factory runs; its first act is `resolveOverrides`, which
-  replaces each overridden base with its override so the base is never
-  levelled or constructed, and throws the two override defects — "nothing to
+  substitutes each override IN ITS BASE'S POSITION — so the base is never
+  levelled or constructed and declaration order, which error determinism and
+  `onStart` ordering rely on, is untouched (pinned by `build.spec.ts`'s
+  in-place test) — and throws the two override defects — "nothing to
   override", the drift gate a fixture gets, and "two overrides registered" —
   on the same pre-construction channel), `run`, `runScoped`. Wiring bugs are thrown as
   `WiringDefect` inside a `.map` callback on purpose: unthrown converts the throw

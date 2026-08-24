@@ -77,10 +77,22 @@ const resolveOverrides = (providers: readonly AnyProvider[]): readonly AnyProvid
       );
     }
   }
-  return [
-    ...providers.filter((provider) => !isOverride(provider) && !seen.has(provider.port.portId)),
-    ...overrides,
-  ];
+  // Substituted IN PLACE — each override takes its base's position, and its
+  // own tail position drops out — so declaration order, which the plan below
+  // relies on for deterministic error selection and `onStart` ordering, is
+  // untouched by an override. Only the FIRST base for an id is substituted:
+  // a second base keeps its own reference and still collides with the
+  // override in the duplicate check below, so overriding cannot hide a
+  // duplicate-provider bug.
+  const overrideOf = new Map(overrides.map((override) => [override.port.portId, override]));
+  const substituted = new Set<string>();
+  return providers.flatMap((provider) => {
+    if (isOverride(provider)) return [];
+    const override = overrideOf.get(provider.port.portId);
+    if (override === undefined || substituted.has(provider.port.portId)) return [provider];
+    substituted.add(provider.port.portId);
+    return [override];
+  });
 };
 
 const plan = (

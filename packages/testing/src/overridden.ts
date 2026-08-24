@@ -43,7 +43,8 @@ export const overridden = <X, E, N, const O extends readonly AnyProviderFor[]>(
   // The same re-export-through-import move `tapped` makes: `X` stays exactly
   // what the caller composed, and the `as never`s restate that di's declared
   // gates cannot be computed while `X`/`N` are still type parameters — the
-  // overrides' own needs travel in the return type instead.
+  // overrides' own deps are validated at build by the missing-provider
+  // defect, never represented in `N` (see the TSDoc above).
   Module("Overridden")({
     imports: [module as never],
     provides: overrides.map((override) => overrideProvider(override as never)),
