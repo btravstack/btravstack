@@ -65,6 +65,8 @@ export type AuthenticatorService<P, Scope extends string = never> = (
   headers: IncomingHttpHeaders,
 ) => AsyncResult<Granted<P, Scope>, Unauthenticated>;
 
+const ports = new Map<string, unknown>();
+
 /**
  * One port per scheme, its id carrying the scheme name — the move
  * `AmqpHandler(contract, key)` makes. The service type is erased to
@@ -89,15 +91,21 @@ export type AuthenticatorService<P, Scope extends string = never> = (
 export const authenticatorPort = <const S extends string>(
   scheme: S,
 ): PortClassOf<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>> => {
-  // Not memoised: di identifies a port by its `portId` string and the instance
-  // type is branded by the id literal, so two classes minted under one id are
-  // the same type and the same lookup — `defineHttp` binding and `routerFor`
-  // depending resolve to one provider either way (measured: the suite passes
-  // with a fresh class per call).
+  const id = `HttpAuthenticator:${scheme}` as const;
+  // Memoised — but not for resolution: di identifies a port by its `portId`
+  // string and the instance type is branded by the id literal, so two classes
+  // under one id ARE the same type and the same lookup, and the suite passes
+  // with a fresh class per call (measured). What a second `Port(id)` call DOES
+  // cost is di's dev-time duplicate-id warning, once per scheme, in every
+  // consumer's terminal (measured on the built package) — and `defineHttp`
+  // binding plus `routerFor` depending is the designed two-call pattern, not a
+  // declaration bug the warning exists to catch.
+  const existing = ports.get(id);
+  if (existing !== undefined) return existing as never;
   // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
-  return class extends Port(`HttpAuthenticator:${scheme}`)<
-    AuthenticatorService<unknown>
-  > {} as never;
+  const minted = class extends Port(id)<AuthenticatorService<unknown>> {};
+  ports.set(id, minted);
+  return minted as never;
 };
 
 /**
