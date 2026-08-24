@@ -8,7 +8,7 @@ import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp";
 import { Config, Env } from "@btravstack/config";
 import { Module } from "@btravstack/di";
 import { Logger, observability } from "@btravstack/observability";
-import { otel } from "@btravstack/observability/otel";
+import { otel, Tracer } from "@btravstack/observability/otel";
 import { OkAsync } from "unthrown";
 import {
   OrderApplicationModule,
@@ -207,7 +207,7 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     otel(),
   ],
   provides: [relayConfig, outboxRelay],
-  exports: [PlaceOrder, OrderRepository, Outbox, Logger],
+  exports: [PlaceOrder, OrderRepository, Outbox, Logger, Tracer],
 });
 ```
 
