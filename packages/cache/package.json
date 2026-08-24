@@ -76,6 +76,7 @@
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@opentelemetry/api": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
     "@opentelemetry/sdk-node": "catalog:",
     "@opentelemetry/sdk-trace": "catalog:",
     "@types/node": "catalog:",
