@@ -8,7 +8,12 @@ import {
   ShippingService,
   StockService,
 } from "@btravstack/example-order-application";
-import { OutOfStock, ShippingUnavailable, TenantId } from "@btravstack/example-order-domain";
+import {
+  OutOfStock,
+  ShippingUnavailable,
+  TenantId,
+  type OrderId,
+} from "@btravstack/example-order-domain";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
@@ -132,7 +137,8 @@ const outOfStockTemporal = () =>
       provides: [
         Provider(StockService)({
           value: {
-            reserve: (orderId, quantity) => ErrAsync(new OutOfStock({ id: orderId, quantity })),
+            reserve: (orderId, quantity) =>
+              ErrAsync(new OutOfStock({ id: orderId as OrderId, quantity })),
             release: () => OkAsync(),
           },
         }),
@@ -164,7 +170,9 @@ const noShippingTemporal = () => {
           },
         }),
         Provider(ShippingService)({
-          value: { arrange: (orderId) => ErrAsync(new ShippingUnavailable({ id: orderId })) },
+          value: {
+            arrange: (orderId) => ErrAsync(new ShippingUnavailable({ id: orderId as OrderId })),
+          },
         }),
       ],
       exports: [StockService, ShippingService],

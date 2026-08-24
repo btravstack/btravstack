@@ -7,6 +7,8 @@ import {
   OrderNotFound,
   type Order,
   type TenantId,
+  type CustomerId,
+  type OrderId,
 } from "@btravstack/example-order-domain";
 import { observability, type Line, type Sink } from "@btravstack/observability";
 import { ErrAsync, OkAsync } from "unthrown";
@@ -48,10 +50,14 @@ const stubRepository = Provider(OrderRepository)({
       },
       find: (tenantId: TenantId, id: string) => {
         const row = rows.get(key(tenantId, id));
-        return row === undefined ? ErrAsync(new OrderNotFound({ id })) : OkAsync(row);
+        return row === undefined
+          ? ErrAsync(new OrderNotFound({ id: id as OrderId }))
+          : OkAsync(row);
       },
       remove: (tenantId: TenantId, id: string) =>
-        rows.delete(key(tenantId, id)) ? OkAsync() : ErrAsync(new OrderNotFound({ id })),
+        rows.delete(key(tenantId, id))
+          ? OkAsync()
+          : ErrAsync(new OrderNotFound({ id: id as OrderId })),
     };
   },
 });
@@ -68,7 +74,9 @@ const stubCustomerRepository = Provider(CustomerRepository)({
     return {
       find: (tenantId: TenantId, id: string) => {
         const row = rows.get(`${tenantId}/${id}`);
-        return row === undefined ? ErrAsync(new CustomerNotFound({ id })) : OkAsync(row);
+        return row === undefined
+          ? ErrAsync(new CustomerNotFound({ id: id as CustomerId }))
+          : OkAsync(row);
       },
     };
   },

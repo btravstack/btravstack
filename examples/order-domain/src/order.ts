@@ -12,6 +12,8 @@ import { z } from "zod";
  * failure to name; see its TSDoc.
  */
 export const OrderId = z.uuidv7().brand("OrderId");
+/** The branded id, nameable as a type — what an error payload carries (issue #80). */
+export type OrderId = z.infer<typeof OrderId>;
 export const Quantity = z.number().int().brand("Quantity");
 
 /**
@@ -39,9 +41,16 @@ export class Order extends Entity("Order")(
   },
 ) {}
 
-/** The one rule this layer owns: an order is for a positive number of items. */
+/**
+ * The one rule this layer owns: an order is for a positive number of items.
+ * `id` is branded: `InvalidQuantity` only fires when the id PASSED the
+ * schema — a malformed id is `InvalidOrderId`, checked first — so the value
+ * genuinely is an `OrderId`, claimed by a cast where `placeOrder` constructs
+ * this (issue #80: an error payload is branded so a customers ref cannot
+ * wear an orders slot; the id "as received" stays bare on `InvalidOrderId`).
+ */
 export class InvalidQuantity extends TaggedError("InvalidQuantity")<{
-  readonly id: string;
+  readonly id: OrderId;
   readonly quantity: number;
 }> {
   override message = `order ${this.id} asks for ${this.quantity} items, which is not a positive quantity`;
@@ -55,13 +64,13 @@ export class InvalidOrderId extends TaggedError("InvalidOrderId")<{
 }
 
 export class OrderNotFound extends TaggedError("OrderNotFound")<{
-  readonly id: string;
+  readonly id: OrderId;
 }> {
   override message = `no order with id ${this.id}`;
 }
 
 export class DuplicateOrder extends TaggedError("DuplicateOrder")<{
-  readonly id: string;
+  readonly id: OrderId;
 }> {
   override message = `order ${this.id} already exists`;
 }
@@ -98,6 +107,9 @@ export const placeOrder = (
     matcher.with(P.tag("InvalidEntity"), (invalid) =>
       invalid.issues.some((issue) => Entity.keysOf(issue)[0] === "id")
         ? new InvalidOrderId({ id })
-        : new InvalidQuantity({ id, quantity }),
+        : // The schema PASSED for `id` (a malformed one is `InvalidOrderId`,
+          // checked first), so the claim is a cast, not a parse — the same
+          // once-per-boundary rule `TenantId` documents.
+          new InvalidQuantity({ id: id as OrderId, quantity }),
     ),
   );

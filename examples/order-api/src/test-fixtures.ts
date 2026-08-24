@@ -11,6 +11,8 @@ import {
   placeOrder,
   type Order,
   type TenantId,
+  type CustomerId,
+  type OrderId,
 } from "@btravstack/example-order-domain";
 import type { HttpInfo, HttpRuntime } from "@btravstack/http";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
@@ -45,7 +47,7 @@ const persistenceOf = (repository: ServiceOf<OrderRepository>) => [
       find: (_tenantId: TenantId, id: string) =>
         id === "0199a1e0-0000-7000-8000-0000000000c1"
           ? OkAsync(Customer.make({ id, name: "Ada" }).getOrThrow())
-          : ErrAsync(new CustomerNotFound({ id })),
+          : ErrAsync(new CustomerNotFound({ id: id as CustomerId })),
     },
   }),
 ];
@@ -110,7 +112,7 @@ const recordingApi = () => {
 const stubbedApi = () =>
   apiWith({
     save: (_tenantId, order) => OkAsync(order),
-    find: (_tenantId, id) => ErrAsync(new OrderNotFound({ id })),
+    find: (_tenantId, id) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
     remove: () => OkAsync(),
   });
 

@@ -646,12 +646,23 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   `UnitRecord.tenantId` stays what it always was: a field for a **hand-rolled**
   runtime whose author has already answered them, set by no shipped starter.
 
-  **The tenant is branded and the ids beside it are not** (`TenantId` in
+  **The tenant is branded, and the ids beside it are branded on the answer
+  side only** (`TenantId` in
   `examples/order-domain/src/tenant.ts`, a `z.uuidv7().brand("TenantId")`).
   Two strings in a fixed order are what the compiler has nothing to say about,
   so `find(id, tenantId)` compiled and queried the wrong tenant; a pair need
   differ in ONE position to become unswappable, which is why branding every id
-  is a separate question and not this one. The constructor is a **cast, not a
+  was a separate question — answered separately, in issue #80: **error
+  payloads and outputs carry the id's brand, inputs never do.** The domain's
+  errors declare `id: OrderId` / `CustomerId` (except the two "as received"
+  ids — `InvalidOrderId`'s, which by definition is not one, and the
+  contracts' `malformedRef`), and the contracts' refs and views brand their
+  `id` slots with the same brand keys, so a customers ref in an orders slot —
+  shipped twice in one day, #76 and #77 — is a compile error at the
+  controller now. A caller's ergonomics are untouched: the fiction is asked
+  only of the server, and a port's `id: string` parameters stay bare, claimed
+  by a cast where the error is minted — the same once-per-boundary rule the
+  tenant follows. The constructor is a **cast, not a
   parse** — `.parse()` throws, and the value arrived through a contract that
   already validated it — so each path claims the brand exactly once, where an
   outside value becomes the application's vocabulary: the API's

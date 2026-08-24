@@ -6,6 +6,14 @@
     },
     "format": {},
     "generate": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../docs/{tutorial,how-to,reference,explanation,examples}/**/*.md",
+        "../../docs/index.md",
+        "../../docs/scripts/extract-doc-samples.ts",
+        "../../README.md",
+        "../../packages/*/README.md"
+      ],
       "outputs": ["src/generated/**"]
     },
     "typecheck": {

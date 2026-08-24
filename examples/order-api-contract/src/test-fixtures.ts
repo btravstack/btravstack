@@ -54,8 +54,11 @@ const stubServer = (): StubFetch => {
     // client-side stub has an identity to model. The unmarked `customers`
     // fragment is where an input still names one.
     if (path.join(".") === "orders.place") {
+      // Typed with the view's own branded id: this stub stands where the
+      // transport's validation already ran, so the claim is the read, not a
+      // parse.
       const { id, quantity } = inputOf<{
-        readonly id: string;
+        readonly id: OrderView["id"];
         readonly quantity: number;
       }>(init);
       if (stored.has(id)) return declared(409, "CONFLICT", id);

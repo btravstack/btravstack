@@ -1,6 +1,11 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
 import { OrderRepository } from "@btravstack/example-order-application";
-import { DuplicateOrder, Order, OrderNotFound } from "@btravstack/example-order-domain";
+import {
+  DuplicateOrder,
+  Order,
+  OrderNotFound,
+  type OrderId,
+} from "@btravstack/example-order-domain";
 import { Err, P, type Result } from "unthrown";
 
 import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
@@ -68,7 +73,9 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
   find: (tenantId, id) =>
     db.order
       .tryFindUnique({ where: { tenantId_orderId: { tenantId, orderId: id } } })
-      .flatMap((row) => (row === null ? Err(new OrderNotFound({ id })) : hydrate(row))),
+      .flatMap((row) =>
+        row === null ? Err(new OrderNotFound({ id: id as OrderId })) : hydrate(row),
+      ),
 
   // Compensation's persistence arm — `delete`, not `deleteMany`, because
   // `orderId` carries the UNIQUE index and this deletes exactly one row.
@@ -101,7 +108,7 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
       .map(() => undefined)
       .mapErrCases((matcher, defect) =>
         matcher
-          .with(P.tag("RecordNotFound"), () => new OrderNotFound({ id }))
+          .with(P.tag("RecordNotFound"), () => new OrderNotFound({ id: id as OrderId }))
           // No relation to violate in this schema; reaching it is a bug.
           .with(P.tag("ForeignKeyViolation"), (violation) => defect(violation))
           .with(P.tag("UniqueConstraintViolation"), (clash) => defect(clash)),
