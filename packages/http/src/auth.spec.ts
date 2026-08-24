@@ -141,7 +141,7 @@ describe("a router over a marked contract", () => {
     // THEN nothing was appended — an application with no protected route provides nothing
     expect(controllers.unmarkedRouterDeps).toEqual([
       "HttpController:greetings",
-      "HttpController:echoes",
+      "HttpController:echoes.ping",
     ]);
   });
 });

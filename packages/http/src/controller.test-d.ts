@@ -242,13 +242,67 @@ void publicApi.HttpRouter(flat)([flatPlace, flatFind]);
 // @ts-expect-error — `find` is uncovered, exactly as for a contract of fragments
 void publicApi.HttpRouter(flat)([flatPlace]);
 
-// A DEEP contract slices at depth ONE only: a piece is minted from a top-level
-// key and there is no path syntax to reach below it. The fragment a piece owns
-// may itself be a tree — the piece implements the whole subtree — but
-// `{ v1: { orders, customers } }` is ONE slice, not two. Restructure the
-// contract, mount the version through the starter's `prefix`, or use the
-// `(deps, arm)` form, which reaches any depth.
-const deep = { v1: { orders: { place: oc }, customers: { find: oc } } };
-void publicApi.HttpController(deep, "v1");
-// @ts-expect-error — a nested path is not a key
-void publicApi.HttpController(deep, "v1.orders");
+// A DEEP contract slices at ANY depth: a piece may own any node of the tree,
+// named by a dotted path, and the coverage gate is over the LEAVES — an array
+// composes when its paths partition the procedures, at any mix of depths.
+const deep = { v1: { orders: { place: oc, find: oc }, customers: { find: oc } }, health: oc };
+const v1Orders = publicApi.HttpController(
+  deep,
+  "v1.orders",
+)({
+  sync: () => ({ place: () => OkAsync("placed"), find: () => OkAsync("found") }),
+});
+const v1Customers = publicApi.HttpController(
+  deep,
+  "v1.customers",
+)({
+  sync: () => ({ find: () => OkAsync("found") }),
+});
+const health = publicApi.HttpController(deep, "health")({ sync: () => () => OkAsync("ok") });
+const v1 = publicApi.HttpController(
+  deep,
+  "v1",
+)({
+  sync: () => ({
+    orders: { place: () => OkAsync("placed"), find: () => OkAsync("found") },
+    customers: { find: () => OkAsync("found") },
+  }),
+});
+
+// Pieces that PARTITION the leaves compose, at any mix of depths.
+void publicApi.HttpRouter(deep)([v1Orders, v1Customers, health]);
+void publicApi.HttpRouter(deep)([v1, health]);
+
+// Coverage is over the LEAVES, so what `Uncovered` computes is procedure paths.
+// @ts-expect-error — the `health` procedure is uncovered
+void publicApi.HttpRouter(deep)([v1]);
+
+// Two elements match the marker tuple's length, so this diagnostic names the
+// missing PROCEDURE itself: `v1.customers.find`.
+// @ts-expect-error — `v1.customers.find` is uncovered
+void publicApi.HttpRouter(deep)([v1Orders, health]);
+
+// @ts-expect-error — `v1.orders` sits inside `v1`: two pieces implementing one procedure
+void publicApi.HttpRouter(deep)([v1, v1Orders, v1Customers, health]);
+
+// @ts-expect-error — a path the contract does not declare
+void publicApi.HttpController(deep, "v1.billing");
+
+// The port id carries the whole path.
+type _PathPortId = Expect<
+  typeof v1Orders.port.portId extends "HttpController:v1.orders" ? true : false
+>;
+
+// The requirements fold down a dotted path: a mark on `v1` reaches a piece
+// minted at `v1.orders`, exactly as `routerOf`'s `inherited` walk pushes it at
+// runtime — a handler there reads the principal the ancestor's mark typed.
+const markedDeep = { v1: authenticated({ user: [] })(deep.v1), health: oc };
+void api.HttpController(
+  markedDeep,
+  "v1.orders",
+)({
+  sync: () => ({
+    place: (opts) => OkAsync(opts.context.principal.userId),
+    find: () => OkAsync("found"),
+  }),
+});

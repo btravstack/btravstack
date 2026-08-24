@@ -120,10 +120,12 @@ export const orpc = (options: OrpcOptions = {}) => {
  *
  * The second call also takes an **array of pieces** instead of
  * `(deps, { sync })` — `api.HttpRouter(contract)([ordersController,
- * usersController])`, one `HttpController(contract, key)` piece per top-level
- * contract key. Each fragment is composed as-is rather than re-implemented,
- * and every key the contract declares must be covered — an uncovered one is
- * refused at this call, against the `"UNCOVERED CONTROLLERS — …"` marker.
+ * usersController])`, each an `HttpController(contract, path)` over one node
+ * of the contract tree, at any depth. Each fragment is composed as-is rather
+ * than re-implemented, and the paths must PARTITION the contract's procedures:
+ * an uncovered leaf is refused against the `"UNCOVERED CONTROLLERS — …"`
+ * marker, a piece nested inside another piece's fragment against
+ * `"OVERLAPPING CONTROLLERS — …"`.
  */
 /** What every `HttpRouter` arm returns; only the needs channel `N` differs. */
 type Built<Auth, N> = Provider<
@@ -173,11 +175,16 @@ export const routerFor =
     // marker is a SENTENCE because it is the only actionable part of the
     // diagnostic and it prints last, past the caller's own wide piece type.
     function build<const T extends readonly PieceOf<C, Schemes>[]>(
-      pieces: [Uncovered<C, Schemes, T>] extends [never]
-        ? T
+      pieces: [Uncovered<C, KeyOfPiece<T[number]>>] extends [never]
+        ? [Overlapping<KeyOfPiece<T[number]>>] extends [never]
+          ? T
+          : readonly [
+              "OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment",
+              Overlapping<KeyOfPiece<T[number]>>,
+            ]
         : readonly [
-            "UNCOVERED CONTROLLERS — the contract declares a fragment this array does not cover",
-            Uncovered<C, Schemes, T>,
+            "UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover",
+            Uncovered<C, KeyOfPiece<T[number]>>,
           ],
     ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<C>>;
     function build(depsOrPieces: unknown, options?: unknown): unknown {
@@ -222,14 +229,14 @@ export const routerFor =
       // function) is gone with it.
       if (options === undefined && Array.isArray(depsOrPieces)) {
         const pieces = depsOrPieces as readonly { readonly port: AnyPort }[];
-        // Each piece is declared under the very contract key its port id
-        // carries, so the services record IS the implementation record and the
-        // `routerOf` walk needs nothing reassembled.
+        // Each piece is declared under the very dotted path its port id
+        // carries; `nest` folds those paths back into the contract's own tree
+        // before the `routerOf` walk.
         const deps = Object.fromEntries(
           pieces.map((piece) => [piece.port.portId.slice(CONTROLLER_PREFIX.length), piece.port]),
         );
         const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
-          routerFrom(own(services), services);
+          routerFrom(nest(own(services)), services);
         return Object.assign(Provider(HttpRouterPort)(withSchemes(deps), { sync } as never), {
           authenticators,
         });
@@ -261,6 +268,25 @@ export const routerFor =
 // The trailing colon is part of the prefix: the scheme name follows it.
 const AUTHENTICATOR = "@btravstack/http/authenticator:";
 
+// A piece's dotted path becomes the nesting the contract already has, so
+// `routerOf` walks the same tree it always did — marks, inheritance and the
+// stray-key drop included. Written here rather than pushed into the walk
+// because the walk is shared with the `(deps, arm)` form, which never nests.
+const nest = (flat: Record<string, unknown>): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
+  for (const [path, value] of Object.entries(flat)) {
+    const segments = path.split(".");
+    const last = segments.pop() as string;
+    let node = out;
+    for (const segment of segments) {
+      node[segment] ??= {};
+      node = node[segment] as Record<string, unknown>;
+    }
+    node[last] = value;
+  }
+  return out;
+};
+
 /**
  * One piece of the router — what `HttpController(contract, key)(…)` returns, as
  * the composing form consumes it. The port is spelled INLINE rather than as
@@ -291,12 +317,48 @@ type KeyOfPiece<P> = P extends {
   ? K
   : never;
 
-/** The fragments no piece in `T` covers. */
-type Uncovered<
-  C extends Record<string, RouterContract>,
-  Schemes,
-  T extends readonly PieceOf<C, Schemes>[],
-> = Exclude<ControllerKeyOf<C>, KeyOfPiece<T[number]>>;
+/** Every path to a PROCEDURE — the leaves a cover must partition. */
+type LeafPathsOf<C, P extends string = ""> =
+  C extends ProcedureContract<infer _I, infer _O, infer _E>
+    ? P
+    : {
+        [K in Exclude<keyof C, PrincipalKey> & string]: LeafPathsOf<
+          C[K],
+          P extends "" ? K : `${P}.${K}`
+        >;
+      }[Exclude<keyof C, PrincipalKey> & string];
+
+/** Whether leaf `L` sits at, or under, piece path `P`. */
+type CoveredBy<L extends string, P extends string> = L extends P | `${P}.${string}` ? true : false;
+
+/** The procedures no piece in the array covers. */
+type Uncovered<C, Paths extends string> =
+  LeafPathsOf<C> extends infer L extends string
+    ? L extends string
+      ? true extends { [P in Paths]: CoveredBy<L, P> }[Paths]
+        ? never
+        : L
+      : never
+    : never;
+
+/**
+ * A piece path nested inside another piece's path. Both would implement the
+ * same procedures, and — unlike two pieces under ONE key, which are one port id
+ * and therefore di's duplicate-provider defect — these are two distinct ids that
+ * di cannot see conflicting, so the rebuild below would silently let one win.
+ * This gate is the only thing standing between a dotted path and that.
+ */
+type Overlapping<Paths extends string> = {
+  [P in Paths]: Paths extends infer Q extends string
+    ? Q extends string
+      ? Q extends P
+        ? never
+        : P extends `${Q}.${string}`
+          ? P
+          : never
+      : never
+    : never;
+}[Paths];
 
 /**
  * What `HttpRouter(contract)(…)(…, { sync })`'s `sync` returns: the contract's
@@ -305,11 +367,11 @@ type Uncovered<
  * the input is the contract's parsed input, the output its declared output
  * and the `errors` helpers its declared error map.
  */
-export type Implementation<
-  C extends RouterContract,
-  Schemes = never,
-  R extends Requirements = never,
-> =
+// `C` is deliberately unbounded: `controller.ts` instantiates this with the
+// deferred `FragmentAt<C, K>`, whose branches TypeScript cannot prove
+// `RouterContract` for a generic contract — the mapped arm below already
+// guards each child with `C[K] extends RouterContract`.
+export type Implementation<C, Schemes = never, R extends Requirements = never> =
   C extends ProcedureContract<infer I, infer O, infer E>
     ? Parameters<
         ProcedureImplementer<
@@ -328,9 +390,10 @@ export type Implementation<
 
 /**
  * The requirements actually in force at a node: its own, or the inherited ones.
- * Nearest mark wins, which is OpenAPI's own rule.
+ * Nearest mark wins, which is OpenAPI's own rule. Exported for `controller.ts`,
+ * whose `FragmentAt` folds it down a dotted path.
  */
-type Effective<C, R extends Requirements> = IsMarked<C> extends true ? RequirementsOf<C> : R;
+export type Effective<C, R extends Requirements> = IsMarked<C> extends true ? RequirementsOf<C> : R;
 
 /**
  * What a leaf's handler gets on `opts.context`: the principal its effective

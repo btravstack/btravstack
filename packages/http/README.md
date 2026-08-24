@@ -144,7 +144,8 @@ port back from `app.runtimeInfo()`.
 ## Splitting a large API into slices
 
 `api.HttpRouter(contract)(deps, { sync })` is right for a small API; a large
-one splits into **pieces**, one per top-level contract key, composed at the
+one splits into **pieces**, each owning one node of the contract tree, named
+by a dotted path, composed at the
 root as an array instead — the same shape `AmqpHandlers(contract)([...])` and
 `TemporalActivities(contract)([...])` already have:
 
@@ -255,15 +256,60 @@ const orderRouter = api.HttpRouter(orderContract)([
 
 `api.HttpController(contract, key)({ name: Dep }, { sync })` — or just
 `({ sync })` when the slice calls nothing — is the same two-call shape as
-`api.HttpRouter`, aimed at one fragment: the contract key IS the port's name,
-so there is nothing to name, and the provider carries the minted port on
-`.port`. The array is **exact** — a key the contract does not declare is
-refused at the mint, and an array that leaves a fragment uncovered is refused
-at the root — and because a fragment is itself a valid contract, a slice can
+`api.HttpRouter`, aimed at one node of the contract tree: the key is a
+**dotted path** (`"orders"`, `"v1.orders"`), the path IS the port's name, so
+there is nothing to name, and the provider carries the minted port on
+`.port`. The array is **exact** — a path the contract does not declare is
+refused at the mint, and the paths must partition the contract's procedures:
+an uncovered procedure and a piece nested inside another piece's fragment are
+each refused at the root — and because a fragment is itself a valid contract,
+a slice can
 be served alone, its piece unchanged: the lifted root is
 `api.HttpRouter(orderContract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
 declaring the very provider the modulith composed. See
 [Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
+
+A nested contract slices at any depth — a versioned API keeps its tree and
+still gets a piece per team:
+
+<!-- doctest: isolate
+import { defineHttp } from "@btravstack/http";
+import { oc } from "@orpc/contract";
+import { OkAsync } from "unthrown";
+const api = defineHttp();
+-->
+
+```ts
+const contract = {
+  v1: { orders: { place: oc }, customers: { find: oc } },
+  health: oc,
+};
+
+const v1Orders = api.HttpController(
+  contract,
+  "v1.orders",
+)({
+  sync: () => ({ place: () => OkAsync("placed") }),
+});
+const v1Customers = api.HttpController(
+  contract,
+  "v1.customers",
+)({
+  sync: () => ({ find: () => OkAsync("found") }),
+});
+const health = api.HttpController(
+  contract,
+  "health",
+)({
+  sync: () => () => OkAsync("ok"),
+});
+
+const versionedRouter = api.HttpRouter(contract)([
+  v1Orders,
+  v1Customers,
+  health,
+]);
+```
 
 ## Protecting a procedure
 

@@ -109,7 +109,11 @@ const greetingRouter = publicApi.HttpRouter(greetingContract)(
  */
 const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
 
-/** Two pieces over `slicedContract`'s two keys — the key is the port's name. */
+/**
+ * Two pieces over `slicedContract` — the path is the port's name. The second is
+ * minted by a DOTTED path, so the composing arm's `nest` rebuild is exercised
+ * on a real request rather than only on top-level keys.
+ */
 export const helloController = publicApi.HttpController(slicedContract, "greetings")(
   { greeter: Greeter },
   { sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet("world")) }) },
@@ -117,9 +121,9 @@ export const helloController = publicApi.HttpController(slicedContract, "greetin
 
 const echoesController = publicApi.HttpController(
   slicedContract,
-  "echoes",
+  "echoes.ping",
 )({
-  sync: () => ({ ping: () => OkAsync("pong") }),
+  sync: () => () => OkAsync("pong"),
 });
 
 /**

@@ -90,19 +90,39 @@ PortInstance<…> }`) rather than the class's own type because a class
 - **`api.HttpRouter(contract)([piece, …])` — the composing form** (`orpc.ts`, a
   third overload of `build`, declared **last**) — for
   `contract: Record<string, RouterContract>`, an **array of pieces** instead of
-  `(deps, { sync })`, one `HttpController(contract, key)` per top-level
-  contract key — the same shape as `AmqpHandlers(contract)([...])` and
-  `TemporalActivities(contract)([...])`. Every key the contract declares must
-  be covered: an uncovered one is refused against the
-  `"UNCOVERED CONTROLLERS — the contract declares a fragment this array does
-not cover"` marker. Declared last is load-bearing (measured in
+  `(deps, { sync })`, each an `HttpController(contract, path)` over one node
+  of the contract tree, at any depth — the same shape as
+  `AmqpHandlers(contract)([...])` and `TemporalActivities(contract)([...])`,
+  with the paths as HTTP's extra degree of freedom. Coverage is **leaf-based**:
+  the paths must partition the contract's PROCEDURES (`LeafPathsOf`, each leaf
+  covered when it sits at or under a piece's path), so any mix of depths
+  composes — `[v1Orders, v1Customers, health]` and `[v1, health]` alike. An
+  uncovered leaf is refused against the
+  `"UNCOVERED CONTROLLERS — the contract declares a procedure this array does
+not cover"` marker, and what the marker names is a procedure path
+  (`"v1.customers.find"`), not a fragment. Declared last is load-bearing
+  (measured in
   `packages/amqp`, same mechanism): TypeScript reports the last overload's
   failure, so a non-covering array fails against the marker rather than
   degrading to di's `Qualification`, which names nothing; the marker is a
   **sentence** because it is the only actionable part of the diagnostic and it
-  prints last, past the caller's own wide piece type. The missing key itself is
-  named only when the array's length matches the marker tuple's own length of 2. `Uncovered` is computed by stripping `CONTROLLER_PREFIX` back off each
-  piece's port id (`KeyOfPiece`), so the key is never spelled twice; and
+  prints last, past the caller's own wide piece type. The missing leaf itself
+  is named only when the array's length matches the marker tuple's own length
+  of 2, as a separate diagnostic on the trailing element whose target is the
+  bare path (measured: `… is not assignable to type '"v1.customers.find"'`).
+  A **second gate** rides the same overload: `Overlapping<Paths>` — a piece
+  path nested inside another piece's path
+  (`Overlapping<"v1" | "v1.orders" | "health">` is `"v1.orders"`), refused
+  against
+  `"OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment"`.
+  It must exist because the two pieces would implement the same procedures on
+  **two distinct port ids** — unlike two pieces at ONE path, which share an id
+  and are di's duplicate-provider defect — so di cannot see them conflicting,
+  and the `nest` rebuild below would silently let one win. This gate is the
+  only thing standing between a dotted path and that silent overwrite.
+  `Uncovered` reads each
+  piece's path by stripping `CONTROLLER_PREFIX` back off its port id
+  (`KeyOfPiece`), so the path is never spelled twice; and
   `PieceOf`'s port type is spelled **inline**, not as
   `ControllerPortOf<C, K, Schemes>` — that is a measured regression guard, see
   `PieceOf`'s own TSDoc: two instantiations of one alias are compared by
@@ -116,27 +136,34 @@ not cover"` marker. Declared last is load-bearing (measured in
   `(deps, arm)` / `(arm)` pair is settled by plain arity as everywhere else
   (the arm-only `sync` is still handed **no** arguments, pinned by
   `controller.spec.ts`). The composed provider's `deps` are the piece **ports**,
-  keyed by the very contract key each port id carries — so di builds every
-  piece before the router, the services record IS the implementation record,
-  and the `routerOf` walk needs nothing reassembled. The pieces themselves
+  keyed by the very dotted path each port id carries — so di builds every
+  piece before the router, and `nest` folds the flat path-keyed services
+  record back into the nesting the contract already has before `routerFrom`:
+  `routerOf` walks the same tree it always did, marks, inheritance and the
+  stray-key drop included. The walk itself is untouched — `nest` lives in the
+  composing arm because the walk is shared with the `(deps, arm)` form, which
+  never nests. The pieces themselves
   still need discharging — listed in `provides` alongside the router, or
   exported by a slice module imported in — exactly as in `packages/amqp`.
-  `Uncovered` checks that every key has a piece, not that no two share one, so
-  two pieces claiming one fragment type-check together fine. Whether di
-  catches the conflict depends on whether **both** end up discharged as
-  providers in the same graph: only then are they two providers for one port —
-  di's duplicate-provider defect at build. Wire in only one of the two and the
+  Coverage is not uniqueness, but with paths the split moved: a piece
+  **inside** another piece's fragment is now caught at the call (the
+  `OVERLAPPING CONTROLLERS` gate above), while two pieces at the **same** path
+  remain one port id and therefore di's duplicate-provider defect — and only
+  when **both** end up discharged as providers in the same graph. Wire in only
+  one of the two and the
   other's implementation is simply never registered — no diagnostic marks the
   conflict, and "a fragment belongs to exactly one slice" holds only for the
   slice actually composed in.
   The return is the same `Built<Auth, N>` as the other arms, with
   `N = InstanceType<T[number]["port"]> | SchemePortsOf<C>`.
-  Five compile-time gates are pinned by `controller.test-d.ts`: every contract
-  key covered (the marker above); an undeclared key refused **at the mint**
-  (`HttpController(contract, "billing")` has nothing to type the key by — the
+  Five compile-time gates are pinned by `controller.test-d.ts`: every
+  procedure covered (the marker above); an undeclared path refused **at the
+  mint**
+  (`HttpController(contract, "billing")` and `(deep, "v1.billing")` have
+  nothing to type the key by — the
   keyed record's `"UNDECLARED KEY — …"` gate collapsed into it); a piece under
-  the wrong key impossible **by construction** (its key rides its port id, so
-  what that gate refused is now an array leaving a fragment uncovered — the
+  the wrong key impossible **by construction** (its path rides its port id, so
+  what that gate refused is now an array leaving a leaf uncovered — the
   same marker, pinned as its own arm); a procedure the fragment does not
   declare rejected inside the piece; and — the fifth, marked "do not break" —
   a slice lifting out of the composed router **with its piece unchanged**:
@@ -161,37 +188,56 @@ not cover"` marker. Declared last is load-bearing (measured in
   channel carries one `HttpAuthenticator:<scheme>` port per scheme the contract
   names anywhere — two schemes, one scheme, and none at all, each asserted in
   **both** directions, since a one-way check passes on a collapsed `never`.
+  The depth block at the file's tail pins the dotted paths themselves: pieces
+  at mixed depths partitioning the leaves compose, an uncovered procedure and
+  a nested piece are each refused against their marker, and the port id
+  carries the whole path (`"HttpController:v1.orders"`).
   Covered at runtime by the `rpcSliced` fixture, composing
-  `helloController` and `echoesController` over `slicedContract`'s two
-  fragments.
+  `helloController` over `slicedContract`'s `greetings` fragment and
+  `echoesController` minted by the DOTTED path `"echoes.ping"`, so `nest`'s
+  rebuild answers a real request.
 - **`api.HttpController(contract, key)({ name: Dep }, { sync })`, or
   `({ sync })` with no deps** (`controller.ts`, minted by `defineHttp`) — one
-  fragment of a contract, as a provider on a port of its own. There is no name
-  to give: the contract key IS the port's name, minted as
+  node of a contract, at any depth, as a provider on a port of its own. There
+  is no name
+  to give: the dotted path IS the port's name, minted as
   `` `${CONTROLLER_PREFIX}${key}` `` (`CONTROLLER_PREFIX = "HttpController:"`,
   exported from `controller.ts` only) — the move `AmqpHandler(contract, key)`
-  and `authenticatorPort(scheme)` both make. The port id carrying the key is
-  what makes two slices claiming one fragment di's duplicate-provider defect
+  and `authenticatorPort(scheme)` both make. The port id carrying the path is
+  what makes two slices claiming one node di's duplicate-provider defect
   rather than a silent merge, and what lets the composing form recover each
-  piece's key without it being spelled again. The first call fixes the
-  contract's type — read for its **type** only, so a key the contract does not
-  declare is refused at the call (`ControllerKeyOf<C>`, the contract's
-  top-level keys less the marker's phantom key), and a procedure the fragment
+  piece's path without it being spelled again. The first call fixes the
+  contract's type — read for its **type** only, so a path the contract does
+  not
+  declare is refused at the call (`ControllerKeyOf<C>`, now the union of
+  **every path** into the contract tree — a fragment or a procedure, dotted at
+  each level, less the marker's phantom key; today's top-level keys are its
+  depth-1 subset, so nothing that compiled stopped). Two guards inside it are
+  measured, not stylistic: an index-signature record short-circuits to
+  `string` — that shape is only ever a GENERIC's constraint
+  (`RouterContract` is recursive), and recursing over `string` keys was TS2589
+  at every generic declaration whose constraint mentions the type — and
+  `Implementation`'s first parameter is **unbounded** for the sibling reason:
+  it is instantiated with the deferred `FragmentAt<C, K>`, whose branches
+  TypeScript cannot prove `RouterContract` for a generic contract, while the
+  mapped arm already guards each child with `C[K] extends RouterContract`.
+  A procedure the fragment
   does not declare or a handler whose input or output has drifted is a compile
   error inside the piece rather than at the root. The fragment's type is
-  `Inherit<C[K], RequirementsOf<C>>`, applied **at the mint**: a root-marked
-  contract types `context.principal` in a piece minted from it — the check the
+  `FragmentAt<C, K>`, applied **at the mint**: it folds `Effective` down the
+  path — nearest mark wins at each level, exactly the step `routerOf`'s
+  `inherited` argument takes at runtime, so the types and the walk cannot
+  part — and ends on `Inherit<node, folded>`, which is how a marked ancestor
+  types `context.principal` in a piece minted from below it — the check the
   retired keyed form performed at the root, now performed where the handler is
-  written (the bare `Inherit<…>` satisfies `Implementation`'s
-  `RouterContract` bound with no `& RouterContract` re-assertion needed —
-  measured). The second call is di's `Provider(port)({ name: Dep }, { sync })`,
+  written. The second call is di's `Provider(port)({ name: Dep }, { sync })`,
   unchanged — **including its no-deps arm**, mirrored by arity for the same
   reason di has one: a piece that calls no use case is the common shape here,
   not an edge case, and `({}, { sync })` is what it would otherwise spell.
   Returns
   `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes> }` —
-  `ControllerPortOf<C, K, Schemes>` being `PortClassOf` over the prefixed key
-  and `Implementation<Inherit<C[K], RequirementsOf<C>>, Schemes>`, the same
+  `ControllerPortOf<C, K, Schemes>` being `PortClassOf` over the prefixed path
+  and `Implementation<FragmentAt<C, K>, Schemes>`, the same
   `PortInstance`/`PortClassOf` spelling `HttpRouter` uses and for the
   same reason (TS4023 on a class expression's own type).
   `ControllerKeyOf<C>` and `ControllerPortOf<C, K, Schemes>` are **types**,
@@ -673,10 +719,12 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   through the `controllers` and `rpcSliced` fixtures: a piece carries the
   port its contract key minted (`HttpController:greetings`) and the deps it
   declared, `api.HttpRouter(contract)([...])` serves a router composed from
-  two pieces — `helloController` and `echoesController`, each over its
-  own fragment of `slicedContract` — with a procedure from each answering
+  two pieces — `helloController` over the `greetings` fragment and
+  `echoesController` minted by the dotted path `"echoes.ping"` — with a
+  procedure from each answering
   through one client, proving every piece's slice was mounted under the
-  contract key its port id carries, and one pins that an arm-only router's
+  path its port id carries, `nest`'s rebuild included, and one pins that an
+  arm-only router's
   `sync` is handed **no arguments** at all. (The former sync-key
   discrimination spec is deleted with the record form: there is no record for
   a `sync` key to be confused with, `Array.isArray` decides.)
