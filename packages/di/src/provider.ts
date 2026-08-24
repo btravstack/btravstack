@@ -257,6 +257,30 @@ const descriptor = (
   } as unknown as Provider<unknown, never, never>;
 };
 
+/**
+ * The override brand, and the one place it can be applied. `overrideProvider`
+ * marks a provider so that, when the graph is planned, it REPLACES the base
+ * provider registered for the same port — the base is not constructed at all —
+ * instead of colliding with it as a duplicate. Two invariants hold the line:
+ * an override with no base provider in the tree is a `WiringDefect` ("nothing
+ * to override"), which is what turns a drifted test fixture into a loud
+ * failure instead of a silent divergence; and two overrides for one port are
+ * the duplicate defect they always were.
+ *
+ * Test-harness-facing, deliberately: `@btravstack/testing`'s `overridden` is
+ * the intended caller, and a production composition root that reaches for
+ * this is recomposing the lazy way — swapping an adapter is composing a
+ * different module, which stays the production answer. The brand is a
+ * module-private symbol, so the only way to mint an override is this call.
+ */
+const OVERRIDE = Symbol("di.override");
+
+export const overrideProvider = <P, E, N>(provider: Provider<P, E, N>): Provider<P, E, N> =>
+  ({ ...provider, [OVERRIDE]: true }) as Provider<P, E, N>;
+
+/** Package-private (not in `index.ts`): `build.ts`'s plan resolves with it. */
+export const isOverride = (provider: object): boolean => OVERRIDE in provider;
+
 export function Provider<P extends AnyPort, S = ServiceOf<P>>(port: P) {
   // `& { readonly port: P }`: the provider carries the very port class it was
   // declared for, typed — so a provider a helper hands back on a port the

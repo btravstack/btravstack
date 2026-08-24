@@ -55,7 +55,21 @@ readonly "NOT EXPORTED — tap only what the module exports": Missing }`
   rest tuple it replaced printed only a bare arity line) — refusing at the
   call site a port `module` does not
   export: an application-scope service is the only thing there is to tap.
-  **`services()` is loud**: it throws (`unthrown/no-throw` disabled with a
+  **`overridden(module, overrides)`** is the decision issue #63 recorded: the
+  real root with named providers substituted, riding di's `overrideProvider`
+  (the container's one deliberately test-facing export). It exists because the
+  measured cost of pure recomposition was four hand-maintained parallel roots
+  in `examples/` mirroring the real ones with nothing tying the copies
+  together — nothing can be layered over a graph that already provides
+  `Logger`. The base provider is never constructed; an override the tree no
+  longer backs is a `WiringDefect` ("nothing to override"), which turns fixture
+  drift into a loud failure; an override's own deps resolve from the graph's
+  internals and deliberately do not widen the returned `Needs` (checked at
+  build by the missing-provider defect instead); and it replaces one PROVIDER,
+  never a subsystem — the temporal fixture stays composed because its
+  contract varies per test, and that line is stated in its own TSDoc.
+  Production roots stay override-free by convention, restated in the root
+  `CLAUDE.md`'s public-surface section. **`services()` is loud**: it throws (`unthrown/no-throw` disabled with a
   reason) when read before the graph is built — reading a tap nobody booted
   is a bug in the test, not a modeled outcome, and an `undefined` a careless
   assertion could swallow is worse than a throw. Read it after

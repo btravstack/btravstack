@@ -246,10 +246,15 @@ Temporal's clock until the process exits. It rules out the kernel ever calling
 
 ## What there deliberately is not
 
-No `Defect` constructor, no `overrideProvider`, no accumulation of runtimes,
+No `Defect` constructor, no accumulation of runtimes,
 no `recoverFailure`-style channel-moving helper. Swapping an adapter is
 composing a different module, which di already documents and the type checker
-already verifies. Two more are deferred rather than declined: a lint rule
+already verifies — in production. For tests, `@btravstack/testing`'s
+[`overridden`](/reference/testing#overriddenmodule-overrides) substitutes
+named providers into the real root, because the refusal's measured cost was
+hand-maintained parallel roots drifting silently from the roots they
+mirrored; an override the root stops backing fails loudly ("nothing to
+override"). Two more are deferred rather than declined: a lint rule
 banning `currentUnit()` outside adapters (it needs a convention for
 identifying an adapter), and a `docs-examples.test-d.ts` for the three
 starters (three packages' worth of samples did not yet justify the harness).

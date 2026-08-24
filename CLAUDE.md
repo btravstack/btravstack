@@ -468,10 +468,23 @@ one entry point. The test doubles are `@btravstack/testing`, a package of its
 own that peers on the kernel (the `@nestjs/testing` shape), so a production
 bundle never pulls the fakes in and the kernel ships none.
 
-There is **no** `Defect` construction, no `overrideProvider`, no accumulation
+There is **no** `Defect` construction, no accumulation
 of runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
 adapter is composing a different module, which di already documents and the
-type checker already verifies.
+type checker already verifies — in **production**. The testing half of that
+sentence changed in issue #63: `@btravstack/testing`'s `overridden(module,
+[providers])` substitutes named providers into the real root (di's
+`overrideProvider` is its primitive — the one deliberately test-facing export
+in di's surface), because the alternative was four hand-maintained parallel
+roots in `examples/` that mirrored the real ones and drifted silently. An
+override the root stops backing is a `WiringDefect` ("nothing to override"),
+so the mirror is now held mechanically. Production composition roots stay
+override-free by convention; a root that reaches for `overrideProvider` is
+recomposing the lazy way. And an override replaces one **provider**, never a
+subsystem: the replaced provider's siblings still construct, so swapping a
+whole adapter stack — or a graph whose SHAPE varies per test, like the
+temporal fixture's per-queue contract — remains a different module composed
+in its place.
 
 ## Toolchain & conventions
 

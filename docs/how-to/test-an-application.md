@@ -160,30 +160,25 @@ string. Compose the root's own shape with a recording sink, and boot that:
 <!-- doctest: isolate
 import { expect } from "vitest";
 import type {} from "@unthrown/vitest";
-import { HttpModule } from "@btravstack/http";
-import { Logger, observability, type Line } from "@btravstack/observability";
-import { orderRouter } from "../../module.js";
-import { CustomersSlice } from "../../slices/customers/module.js";
-import { OrdersSlice } from "../../slices/orders/module.js";
+import { Provider } from "@btravstack/di";
+import { Logger, createLogger, type Line } from "@btravstack/observability";
+import { overridden } from "@btravstack/testing";
+import { OrderApi } from "../../module.js";
 import { it } from "../../test-fixtures.js";
 -->
 
 ```ts
 const lines: Line[] = [];
 
-// The same router as the real root, so the same authenticators come with it:
-// they ride the router and `HttpModule` puts them in `provides` itself.
-const recordingApi = HttpModule("RecordingApi")({
-  router: orderRouter,
-  imports: [
-    OrdersSlice,
-    CustomersSlice,
-    // Pinned rather than bound: the fixture's `LOG_LEVEL` silences the real
-    // root, and this root exists to be read.
-    observability({ sink: (line) => lines.push(line), level: "trace" }),
-  ],
-  exports: [Logger],
-});
+// The REAL root, with only its logger substituted — `overridden` replaces the
+// provider by port, and fails loudly ("nothing to override") the day the root
+// stops providing `Logger`. `"trace"` pinned rather than bound: the fixture's
+// `LOG_LEVEL` silences the real root, and this one exists to be read.
+const recordingApi = overridden(OrderApi, [
+  Provider(Logger)({
+    value: createLogger((line) => lines.push(line), "trace"),
+  }),
+]);
 
 it("runs each call in its own unit, with its own trace id", async ({
   serve,
@@ -213,8 +208,12 @@ it("runs each call in its own unit, with its own trace id", async ({
 });
 ```
 
-A parallel root rather than `OrderApi` itself, because nothing can be layered
-over a graph that already provides `Logger`. Give the fixture's own `env` a
+It used to be a parallel root, because nothing can be layered over a graph
+that already provides `Logger` — and the hand-kept mirror is exactly what
+[`overridden`](/reference/testing#overriddenmodule-overrides) retired: the
+real `OrderApi` with only its `Logger` provider substituted, and a loud
+`WiringDefect` the day the root stops providing it. Give the fixture's own
+`env` a
 `LOG_LEVEL: "fatal"` so the real root — whose sink is the production
 `jsonSink()` on stdout — does not write into the runner's output. See
 [Log and correlate](/how-to/log-and-correlate).
@@ -338,12 +337,10 @@ anonymous call to it never reaches a use case; and `recording` is the real
 root's composition with a recording sink in place of stdout:
 
 <!-- doctest: isolate
-import { Env } from "@btravstack/config";
-import { HttpModule } from "@btravstack/http";
-import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
-import { orderRouter } from "../../module.js";
-import { CustomersSlice } from "../../slices/customers/module.js";
-import { OrdersSlice } from "../../slices/orders/module.js";
+import { Provider } from "@btravstack/di";
+import { Logger, createLogger, type Line, type Sink } from "@btravstack/observability";
+import { overridden } from "@btravstack/testing";
+import { OrderApi } from "../../module.js";
 declare const recorderOf: () => {
   readonly sink: Sink;
   readonly lines: readonly Line[];
@@ -354,16 +351,9 @@ declare const recorderOf: () => {
 const recordingApi = () => {
   const recorder = recorderOf();
   return {
-    api: HttpModule("RecordingApi")({
-      needs: [Env],
-      router: orderRouter,
-      imports: [
-        OrdersSlice,
-        CustomersSlice,
-        observability({ sink: recorder.sink, level: "trace" }),
-      ],
-      exports: [Logger],
-    }),
+    api: overridden(OrderApi, [
+      Provider(Logger)({ value: createLogger(recorder.sink, "trace") }),
+    ]),
     lines: recorder.lines,
   };
 };

@@ -190,10 +190,12 @@ signal }`. `signal` is the same `AbortSignal` `UnitWork` receives as its
   those errors observable (the `teardownErrors` aliasing), which reporting `0`
   over them would waste.
 
-There is **no** `Defect` construction, no `overrideProvider`, no accumulation of
+There is **no** `Defect` construction, no accumulation of
 runtimes, and no `recoverFailure`-style channel-moving helper. Swapping an
 adapter is composing a different module, which di already documents and the type
-checker already verifies.
+checker already verifies — in production; `@btravstack/testing`'s `overridden`
+is the testing half of that sentence since issue #63 (see the root
+`CLAUDE.md`'s public-surface section). The kernel itself ships no override.
 
 ## Load-bearing runtime invariants (tests must guard these)
 
