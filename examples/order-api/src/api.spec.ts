@@ -1,4 +1,5 @@
 import { ORPCError } from "@orpc/client";
+import request from "supertest";
 import { Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
@@ -354,16 +355,13 @@ describe("order-api", () => {
   });
 
   it("refuses the anonymous caller on the wire: a 401 wearing the security headers", async ({
-    serve,
-    rawOf,
-    api,
+    origin,
   }) => {
-    // GIVEN the real composition root and supertest on its raw origin — the
-    // transport facts the typed client deliberately hides
-    const raw = await rawOf(serve(api));
+    // GIVEN the real composition root served by the `origin` fixture — the
+    // raw transport surface, where the facts the typed client hides live
 
     // WHEN the marked procedure is called with no credential at all
-    const response = await raw
+    const response = await request(origin)
       .post("/rpc/orders/place")
       .set("content-type", "application/json")
       .send({ json: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 } });

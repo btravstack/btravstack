@@ -235,42 +235,30 @@ It never boots anything itself, and that is the point: `PORT=0` plus
 `runtimeInfo()` already is a "random port" boot — supertest's own would run
 the same socket at the same speed while skipping the config binding, the
 lifecycle and the drain that make the booted test worth having.
-`examples/order-api`'s fixtures hand out two agents: `probesFor(app)` on the
-probe server's port, `rawOf(app)` on the runtime's origin.
+`examples/order-api`'s fixtures hand out both forms: `probesFor(app)` is an
+agent on the probe server's port, and `origin` is the served real root as the
+string `request()` takes directly:
 
 <!-- doctest: isolate
+import request from "supertest";
 import { expect } from "vitest";
 import { it } from "../../test-fixtures.js";
 -->
 
 ```ts
-it("answers the probes and refuses the anonymous caller", async ({
-  serve,
-  probesFor,
-  rawOf,
-  api,
-}) => {
-  // GIVEN the real root serving, with the kernel's probe server bound
-  const app = serve(api, { probes: { port: 0 } });
-  const probes = await probesFor(app);
-  const raw = await rawOf(app);
+it("refuses the anonymous caller on the wire", async ({ origin }) => {
+  // GIVEN the real root, served by the `origin` fixture
 
-  // WHEN the contract-less surfaces are read
-  const surface = {
-    livez: (await probes.get("/livez")).status,
-    anonymous: (
-      await raw
-        .post("/rpc/orders/place")
-        .set("content-type", "application/json")
-        .send({
-          json: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 },
-        })
-    ).status,
-  };
+  // WHEN the marked procedure is called with no credential at all
+  const response = await request(origin)
+    .post("/rpc/orders/place")
+    .set("content-type", "application/json")
+    .send({
+      json: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 },
+    });
 
-  // THEN the process reports live, and the marked procedure refused the
-  // credential-less call before any use case ran
-  expect(surface).toEqual({ livez: 200, anonymous: 401 });
+  // THEN it was refused before any use case ran
+  expect(response.status).toBe(401);
 });
 ```
 

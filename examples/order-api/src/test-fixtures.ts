@@ -228,10 +228,11 @@ export type ApiFixtures = {
    */
   readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<TestAgent>;
   /**
-   * A supertest agent on the runtime's own origin — the raw transport
-   * surface, for a spec about statuses and headers rather than payloads.
+   * The real root, served, as the origin string `supertest` takes directly —
+   * `request(origin).post(…)` — for a spec about the raw transport surface:
+   * statuses and headers rather than payloads.
    */
-  readonly rawOf: <E>(app: RunningApp<E, HttpInfo>) => Promise<TestAgent>;
+  readonly origin: string;
   /** The real composition root. */
   readonly api: typeof OrderApi;
   /** The same two slices over stub persistence, with one customer registered. */
@@ -303,9 +304,8 @@ export const it = test.extend<ApiFixtures>({
     });
   },
 
-  // oxlint-disable-next-line no-empty-pattern -- see above
-  rawOf: async ({}, use) => {
-    await use(async (app) => request(await originOf(app)));
+  origin: async ({ serve }, use) => {
+    await use(await originOf(serve(OrderApi)));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
