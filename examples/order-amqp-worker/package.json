@@ -10,6 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "dev": "PROBE_PORT=9002 tsx watch --env-file=../../.env.dev src/main.ts",
     "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-amqp-worker --out src/generated/doc-samples",
     "test": "vitest run",
     "test:types": "tsc --noEmit -p tsconfig.test-d.json",
@@ -38,6 +39,7 @@
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

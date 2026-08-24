@@ -78,6 +78,14 @@ break.
 | `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                              |
 | `@btravstack/internal-test-infra/uuid`       | `uuidv7()`, a real UUIDv7 for the tenant fixtures — `crypto.randomUUID()` mints v4 |
 
+There is also one **script** rather than an entry point: `pnpm dev:env`
+(`src/dev-env.ts`), which the repository's `pnpm dev` runs first. It starts the
+same three containers, applies the example application's migrations with
+`prisma migrate deploy` under the same `withLock` its vitest `globalSetup`
+uses, and writes the repository root's `.env.dev` — the addresses each example
+process reads through Node's `--env-file`. Same containers, attached to rather
+than duplicated: a dev loop and a `pnpm test` can run side by side.
+
 The two setup modules are drop-in replacements for
 `@amqp-contract/testing/global-setup` and
 `@temporal-contract/testing/global-setup`: they provide the **same** inject

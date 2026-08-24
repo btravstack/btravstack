@@ -30,9 +30,12 @@
       "cache": false
     },
     "dev": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "^generate", "@btravstack/internal-test-infra#dev:env"],
       "cache": false,
       "persistent": true
+    },
+    "dev:env": {
+      "cache": false
     },
     "build": {
       "dependsOn": ["^build"],
