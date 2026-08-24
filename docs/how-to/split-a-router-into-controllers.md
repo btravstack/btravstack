@@ -33,7 +33,7 @@ over one fragment of the contract, minted its own port from the contract key,
 composed by the root through
 `api.HttpRouter(contract)([controller, …])`. It is the same authoring flow
 [a worker slice](/how-to/split-a-worker-into-slices) uses — mint a piece from
-a contract key, compose an array — and not HTTP's own. Everything below is
+a contract key, compose an array — no longer a flow peculiar to HTTP. Everything below is
 lifted from `examples/order-api`, which serves an `orders` slice and a
 `customers` slice this way.
 

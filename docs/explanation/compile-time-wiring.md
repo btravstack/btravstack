@@ -292,9 +292,9 @@ ends on, which is the payload of the whole message.
 | amqp's/temporal's composer — `UNCOVERED HANDLERS`/`UNCOVERED ACTIVITIES` | `AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])` missing a key | ends on `'"UNCOVERED HANDLERS"'` / `'"UNCOVERED ACTIVITIES"'`                                                                                                                                                          | ends on `'"UNCOVERED HANDLERS — the contract declares a consumer this array does not cover"'` / the `ACTIVITIES` twin; the missing key prints too, as a separate diagnostic on the trailing element, once the array is as long as the marker tuple (measured: `'"orderAudit"'`, `'"fulfillOrder"'`) |
 | http's composer — `UNCOVERED CONTROLLERS`                                | `api.HttpRouter(contract)([...])` missing a fragment                                  | — (this row named the keyed router's `UNDECLARED KEY` until #112 retired that form; a key the contract does not declare is now refused at `HttpController(contract, key)`, as a `TS2345` against `ControllerKeyOf<C>`) | ends on `'"UNCOVERED CONTROLLERS — the contract declares a fragment this array does not cover"'`; the missing key prints too, as a separate diagnostic on the trailing element, once the array is as long as the marker tuple (measured: `'"users"'`)                                               |
 
-No gate's behaviour moved: the same 82 `@ts-expect-error` directives fire
-after this branch as before it — none added or removed, and none now guards a
-different call. (Four in `packages/core/src/start.test-d.ts` shifted line —
+No gate's behaviour moved in this branch: the same 82 `@ts-expect-error` directives fire
+as before it — none added or removed, and none now guards a
+different call. (Issue #112 later moved two HTTP gates; see the row above.) (Four in `packages/core/src/start.test-d.ts` shifted line —
 56→57, 66→67, 92→95, 129→131 — because the hand-spelled bypass calls below them
 became `expectTypeOf` assertions; each still sits above the call it always
 guarded.) What changed is which of these target strings a reader sees.
