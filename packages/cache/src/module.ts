@@ -1,33 +1,96 @@
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 
 import { Cache, CacheBackend } from "./cache.js";
+import { instrument } from "./instrument.js";
 
-export type CacheOptions<E, N> = {
+export type CacheOptions<E, N, Instrumented extends boolean> = {
   /**
    * The adapter module: `memoryCache()` from this entry point,
    * `redisCache()` from `@btravstack/cache/redis`, or one an application
    * wrote itself over `CacheBackend`.
    */
   readonly adapter: Module<CacheBackend, E, N>;
+  /**
+   * Span, count and log every call. Default `false`.
+   *
+   * Off by default because it is three declared needs — `Logger`, `Meter`
+   * and `Tracer` — and a package should not put ports in a root's way that
+   * the root did not ask for. Turning it on is one word, and forgetting to
+   * compose `observability()` and `otel()` beside it is a compile error
+   * naming all three rather than a silent nothing.
+   */
+  readonly instrumented?: Instrumented;
 };
 
 /**
- * The cache starter: an adapter, and `Cache` provided from it.
+ * The cache starter: an adapter, and `Cache` provided from it — instrumented
+ * or not, decided here at the composition root.
  *
- * The provider is a passthrough — the adapter's own service, unchanged — and
- * the reason it exists is di's one-provider-per-port rule: the port an
- * application depends on must not be the port an adapter provides, or
- * `@btravstack/cache/instrumented` could only be a layer over this module,
- * which di has no way to express. Two compositions over one adapter is the
- * shape that rule leaves, and it is the honest one: instrumentation is a
- * different graph, chosen at the composition root, not a flag.
+ * ```ts
+ * cache({ adapter: redisCache() });                     // just a cache
+ * cache({ adapter: redisCache(), instrumented: true }); // + spans, counts, error lines
+ * ```
  *
- * Nothing here knows about observability and nothing installs it — an
- * application composing this pays for no logger, no meter and no tracer.
+ * **Why the provider is a passthrough, and why there are two ports.** di
+ * allows one provider per port per graph, so the port an application depends
+ * on must not be the port an adapter provides — otherwise the instrumented
+ * form could only be a layer over the plain one, which di has no way to
+ * express. `CacheBackend` is what an adapter targets, `Cache` is what an
+ * application reads, and this function is the seam between them. It is also
+ * what a spec overrides to swap an adapter under the real root.
+ *
+ * **Why `instrumented` can be one boolean.** The three ports it needs are
+ * the kernel\'s — `@btravstack/core` declares `Logger`, `Tracer` and `Meter`
+ * — so this package names them without depending on any implementation, and
+ * a consumer that leaves the flag off installs no observability at all.
+ * That the flag can be this small IS the reason those contracts live in the
+ * kernel: passing the ports in would have been one function too, and a
+ * longer call at every composition root.
+ *
+ * What the instrumented form emits, per call: a span named
+ * `cache.get` / `cache.set` / `cache.delete` carrying the key; one counter,
+ * `btravstack.cache.operations`, with `{ operation, outcome }` where the
+ * outcome tells a hit from a miss — the number anyone actually asks a cache
+ * for, and one a call count cannot give; and an `error` line when the
+ * backend could not answer. **Keys ride spans and log lines; values never
+ * do** — a cached value is application data this package cannot read. The
+ * wrapper is transparent to the `Result`, the kernel\'s own `RunUnit` rule
+ * one layer down.
  */
-export const cache = <E, N>({ adapter }: CacheOptions<E, N>): Module<Cache, E, N> =>
-  Module("Cache")({
-    imports: [adapter],
-    provides: [Provider(Cache)({ backend: CacheBackend }, { sync: ({ backend }) => backend })],
-    exports: [Cache],
-  });
+export const cache = <E, N, Instrumented extends boolean = false>({
+  adapter,
+  instrumented,
+}: CacheOptions<E, N, Instrumented>): Module<
+  Cache,
+  E,
+  Instrumented extends true ? N | Logger | Meter | Tracer : N
+> =>
+  // The two arms build different graphs from one signature, so the return
+  // type is the conditional above rather than either branch\'s own — which no
+  // inference can produce. The cast is how a value-level branch reports a
+  // type-level one.
+  (instrumented === true
+    ? Module("InstrumentedCache")({
+        needs: [Logger, Meter, Tracer],
+        imports: [adapter],
+        provides: [
+          Provider(Cache)(
+            { backend: CacheBackend, logger: Logger, tracer: Tracer, meter: Meter },
+            {
+              sync: ({ backend, logger, tracer, meter }) =>
+                instrument(backend, logger, tracer, meter),
+            },
+          ),
+        ],
+        exports: [Cache],
+      })
+    : Module("Cache")({
+        imports: [adapter],
+        provides: [Provider(Cache)({ backend: CacheBackend }, { sync: ({ backend }) => backend })],
+        exports: [Cache],
+      })) as unknown as Module<
+    Cache,
+    E,
+    Instrumented extends true ? N | Logger | Meter | Tracer : N
+  >;

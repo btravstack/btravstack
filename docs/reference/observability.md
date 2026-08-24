@@ -9,7 +9,7 @@ import { Config } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http";
 import { createLogger, jsonSink, kernelEvents, logLevel, observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
-import { instrumentedCache } from "@btravstack/cache/instrumented";
+import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
@@ -289,7 +289,7 @@ export const OrderApi = HttpModule("OrderApi")({
   imports: [
     OrdersSlice,
     CustomersSlice,
-    instrumentedCache({ adapter: redisCache() }),
+    cache({ adapter: redisCache(), instrumented: true }),
     observability(),
     otel(),
   ],
@@ -477,6 +477,7 @@ peer: a consumer that never imports it never installs it.
 
 ```ts
 import pino from "pino";
+import { Logger } from "@btravstack/core";
 import { observability } from "@btravstack/observability";
 import { pinoSink } from "@btravstack/observability/pino";
 

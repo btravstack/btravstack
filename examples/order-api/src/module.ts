@@ -1,4 +1,4 @@
-import { instrumentedCache } from "@btravstack/cache/instrumented";
+import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 import { Logger, Meter, Tracer } from "@btravstack/core";
 import { contract } from "@btravstack/example-order-api-contract";
@@ -59,7 +59,7 @@ export const OrderApi = HttpModule("OrderApi")({
   imports: [
     OrdersSlice,
     CustomersSlice,
-    instrumentedCache({ adapter: redisCache() }),
+    cache({ adapter: redisCache(), instrumented: true }),
     observability(),
     otel(),
   ],

@@ -25,7 +25,8 @@ import { FindCustomer } from "@btravstack/example-order-application";
 import type { CustomerNotFound } from "@btravstack/example-order-domain";
 import { TenantId } from "@btravstack/example-order-domain";
 import { OkAsync, P } from "unthrown";
-import { observability, Logger } from "@btravstack/observability";
+import { Logger } from "@btravstack/core";
+import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { CustomerApplicationModule } from "@btravstack/example-order-application";
 import { CustomerPersistenceModule } from "@btravstack/example-order-infrastructure";
@@ -94,7 +95,7 @@ And the composition — the adapter, and whether it is instrumented, are both
 decided here and nowhere else:
 
 ```ts
-import { instrumentedCache } from "@btravstack/cache/instrumented";
+import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 
 export const CustomersApp = Module("CustomersApp")({
@@ -104,7 +105,7 @@ export const CustomersApp = Module("CustomersApp")({
     // `cache({ adapter: redisCache() })` is the same graph without the
     // spans, the counter and the error lines — and without observability
     // installed at all.
-    instrumentedCache({ adapter: redisCache() }),
+    cache({ adapter: redisCache(), instrumented: true }),
     observability(),
     otel(),
   ],
@@ -115,12 +116,13 @@ export const CustomersApp = Module("CustomersApp")({
 
 ## Options
 
-| Option      | Where                               | What it is                                                                        |
-| ----------- | ----------------------------------- | --------------------------------------------------------------------------------- |
-| `adapter`   | `cache` / `instrumentedCache`       | the adapter module providing `CacheBackend` — required                            |
-| `clock`     | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)              |
-| `REDIS_URL` | environment, read by `redisCache()` | the connection URL — required, validated at graph build                           |
-| `ttlMs`     | `cache.set(key, value, { … })`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted) |
+| Option         | Where                               | What it is                                                                          |
+| -------------- | ----------------------------------- | ----------------------------------------------------------------------------------- |
+| `adapter`      | `cache({ adapter })`                | the adapter module providing `CacheBackend` — required                              |
+| `instrumented` | `cache({ instrumented })`           | span, count and log every call (default `false`; needs `Logger`, `Meter`, `Tracer`) |
+| `clock`        | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)                |
+| `REDIS_URL`    | environment, read by `redisCache()` | the connection URL — required, validated at graph build                             |
+| `ttlMs`        | `cache.set(key, value, { … })`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted)   |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/start/reference/cache),

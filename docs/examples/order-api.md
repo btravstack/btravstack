@@ -15,7 +15,7 @@ import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/examp
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { api } from "../../auth.js";
 import { customersController } from "../../slices/customers/controller.js";
-import { instrumentedCache } from "@btravstack/cache/instrumented";
+import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
 declare const view: (order: Order) => { id: string; quantity: number };
@@ -443,7 +443,7 @@ export const OrderApi = HttpModule("OrderApi")({
   imports: [
     OrdersSlice,
     CustomersSlice,
-    instrumentedCache({ adapter: redisCache() }),
+    cache({ adapter: redisCache(), instrumented: true }),
     observability(),
     otel(),
   ],

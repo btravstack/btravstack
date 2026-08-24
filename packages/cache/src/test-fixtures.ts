@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import { Env } from "@btravstack/config";
+import { Logger } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
-import { Logger, createLogger, type Line } from "@btravstack/observability";
+import { createLogger, type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { createFakeClock, type FakeClock } from "@btravstack/testing";
 import { metrics, trace } from "@opentelemetry/api";
@@ -18,8 +19,8 @@ import {
   type CacheHit,
   type CacheService,
 } from "./cache.js";
-import { instrumentedCache } from "./instrumented.js";
 import { memoryCacheBackend } from "./memory.js";
+import { cache } from "./module.js";
 import { redisCache } from "./redis.js";
 
 /** An adapter that is always down, so the failure arms are reachable without breaking the shared server. */
@@ -190,7 +191,7 @@ export const it = test.extend<CacheFixtures>({
       const served = await Module.scoped(
         Module("InstrumentedFixture")({
           imports: [
-            instrumentedCache({ adapter }),
+            cache({ adapter, instrumented: true }),
             Module("RecordingLogger")({
               provides: [
                 Provider(Logger)({ value: createLogger((line) => lines.push(line), "debug") }),

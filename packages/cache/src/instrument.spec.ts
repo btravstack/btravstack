@@ -3,7 +3,7 @@ import { describe, expect } from "vitest";
 import { memoryCache } from "./memory.js";
 import { defectiveCache, failingCache, it } from "./test-fixtures.js";
 
-describe("instrumentedCache", () => {
+describe("cache, instrumented", () => {
   it("opens a span per call, named for the operation and carrying the key", async ({
     instrumented,
   }) => {
@@ -98,7 +98,7 @@ describe("instrumentedCache", () => {
   });
 });
 
-describe("instrumentedCache, when the backend defects", () => {
+describe("cache, instrumented, when the backend defects", () => {
   it("still ends the span and counts the call as an error", async ({ instrumented }) => {
     // GIVEN an instrumented cache over an adapter that defects — the shape a
     // value JSON cannot encode produces, which the port does not model

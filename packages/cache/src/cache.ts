@@ -59,7 +59,7 @@ export class Cache extends Port("Cache")<CacheService> {}
  * It exists because di allows one provider per port per graph: an
  * instrumented composition cannot layer over a module that already provides
  * `Cache`, so an adapter provides this instead and the composition —
- * `cache()` or `instrumentedCache()` — is what turns it into `Cache`. It is
+ * `cache()`, with or without its `instrumented` flag, — is what turns it into `Cache`. It is
  * exported because a spec substituting an adapter under the real root
  * overrides this port, which is a name a fixture has to be able to write.
  */

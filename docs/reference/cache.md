@@ -1,15 +1,15 @@
 ---
 title: "@btravstack/cache"
-description: The complete surface of @btravstack/cache — the Cache and CacheBackend ports, CacheUnavailable, the memory and Redis adapters, cache(), instrumentedCache() and REDIS_URL.
+description: The complete surface of @btravstack/cache — the Cache and CacheBackend ports, CacheUnavailable, the memory and Redis adapters, cache() and its instrumented flag, and REDIS_URL.
 ---
 
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
 import { Module, Port, Provider } from "@btravstack/di";
 import { Cache, CacheBackend, cache, memoryCache, memoryCacheProvider, type CacheService } from "@btravstack/cache";
-import { instrumentedCache } from "@btravstack/cache/instrumented";
 import { redisCache } from "@btravstack/cache/redis";
-import { observability, Logger } from "@btravstack/observability";
+import { Logger } from "@btravstack/core";
+import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { createFakeClock, overridden } from "@btravstack/testing";
 import { OkAsync, P, type AsyncResult } from "unthrown";
@@ -190,9 +190,13 @@ before a single read is served.
 `@btravstack/cache/redis` subpath, so a consumer composing the memory adapter
 never installs it.
 
-## The two compositions
+## `cache({ adapter, instrumented? })`
 
-### `cache({ adapter })`
+One function. The adapter it composes and whether that composition is
+instrumented are both decided here, at the composition root, and nowhere
+else.
+
+### Plain — the default
 
 The adapter's module, plus `Cache` provided from its backend. No
 observability, none installed, nothing to configure:
@@ -204,7 +208,7 @@ export const Plain = Module("PlainCacheApp")({
 });
 ```
 
-### `instrumentedCache({ adapter })`
+### `instrumented: true`
 
 The same graph, with every call spanned, counted and — when it fails — logged.
 
@@ -231,7 +235,7 @@ gate, naming all three:
 ```ts
 export const Instrumented = Module("InstrumentedCacheApp")({
   imports: [
-    instrumentedCache({ adapter: redisCache() }),
+    cache({ adapter: redisCache(), instrumented: true }),
     observability(),
     otel(),
   ],
@@ -239,8 +243,17 @@ export const Instrumented = Module("InstrumentedCacheApp")({
 });
 ```
 
-`@btravstack/observability` and `@opentelemetry/api` are **optional** peers,
-reached only through the `@btravstack/cache/instrumented` subpath.
+**Why one boolean is enough, and what it cost to get there.** `Logger`,
+`Tracer` and `Meter` are [the kernel's ports](/reference/core/observability),
+so this package names them without depending on any implementation — no
+subpath, no optional peer, nothing installed when the flag is off. That is
+the whole reason those contracts were moved into `@btravstack/core`: the
+alternative was a second exported function behind a subpath, or a call that
+made every root pass the three ports in by hand.
+
+The flag is **off by default** because turning it on adds three declared
+needs, and a package should not put ports in a root's way that the root did
+not ask for.
 
 ## What it deliberately does not do
 

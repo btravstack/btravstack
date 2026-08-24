@@ -4,7 +4,7 @@ import { Port } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
 import { orderRouter } from "../../module.js";
 import { otel } from "@btravstack/observability/otel";
-import { instrumentedCache } from "@btravstack/cache/instrumented";
+import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
@@ -72,7 +72,7 @@ const OrderApi = HttpModule("OrderApi")({
   imports: [
     OrdersSlice,
     CustomersSlice,
-    instrumentedCache({ adapter: redisCache() }),
+    cache({ adapter: redisCache(), instrumented: true }),
     observability(),
     otel(),
   ],
