@@ -172,20 +172,20 @@ ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
 resolve is now a **port its provider depends on** through di — the starter's
 own fixed port, provided with the starter's own sugar and never named (a
 process serves one router / activities record / handlers record as it boots
-one runtime): `order-api`'s `orderRouter = HttpRouter(contract)({ orders:
-ordersController, customers: customersController })`, a **slice's controller
-per top-level contract key** (below); `order-temporal-worker`'s `orderActivities =
+one runtime): `order-api`'s `orderRouter = HttpRouter(contract)([ordersController,
+customersController])`, one **`HttpController` piece per top-level contract
+key** (below); `order-temporal-worker`'s `orderActivities =
 TemporalActivities(orderContract)([fulfillOrder, chargeOrder])`, one
 `TemporalWorkflowActivities` piece per saga slice; `order-amqp-worker`'s
 `orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit])`,
 one `AmqpHandler` piece per subscriber slice — di's own
 `Provider(port)(deps, arm)` on that port either way, typed by the
 contract, and each composition root the matching `HttpModule` / `TemporalModule` /
-`AmqpModule` taking the provider. A worker's record has no nesting to key a
-`HttpRouter`-shaped composition by, so each piece's port id carries the
-contract key instead, and the starter composes an **array** rather than a
-record — the same exactness (every key covered, two slices claiming one key
-is di's duplicate-provider defect at build) reached a different way. No
+`AmqpModule` taking the provider. One authoring flow across all three: a piece
+is minted from a **contract key**, its port id carries that key, and the
+starter composes an **array** that names no key at all — so the exactness is
+the same everywhere (every key covered, and two slices claiming one key is
+di's duplicate-provider defect at build once both are discharged). No
 starter
 runtime resolves anything any more — all three are `Runtime<never, Info>`
 — so `start`'s `UNSATISFIED RUNTIME PORTS` arm is exercised only by the
@@ -228,17 +228,18 @@ same three-package vertical below it.
 order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
                             │                        │
 order-api              slices/orders/           slices/customers/
-                         controller.ts            controller.ts     ← HttpController(name, fragment)({ name: Dep }, { sync })
+                         controller.ts            controller.ts     ← HttpController(contract, key)({ name: Dep }, { sync })
                          module.ts                module.ts         ← the slice's own di module
                             └───────────┬────────────┘
-                                   module.ts                        ← HttpRouter(contract)({ orders, customers })
+                                   module.ts                        ← HttpRouter(contract)([ordersController, customersController])
                             ┌───────────┴────────────┐
                        PlaceOrder / FindOrder    FindCustomer       ← use cases, entities, Prisma adapters — the same three packages
 ```
 
-A **controller** is `HttpController("OrdersController", contract.orders)({ place:
-PlaceOrder, find: FindOrder }, { sync })` — an ordinary di provider on a port `HttpController`
-mints and hands back on `.port`. A **slice** is an ordinary di `Module` that
+A **controller** is `HttpController(contract, "orders")({ place:
+PlaceOrder, find: FindOrder }, { sync })` — an ordinary di provider on a port
+`HttpController` mints from the contract key (`HttpController:orders`) and
+hands back on `.port`. A **slice** is an ordinary di `Module` that
 **imports the vertical it needs**, provides its controller and exports
 **only** that controller, so nothing outside the slice can reach anything else
 it holds. Neither slice owns a private adapter: both go through the use cases,
@@ -250,11 +251,12 @@ entity to its own wire shape. Each imports its **own** vertical —
   adapter. They converge only on the internal database module both persistence
   halves import: a diamond, not duplication, since di flattens the tree into a
   `Set` keyed by provider reference and builds one database. The **root** is then a list of
-  slices plus what no slice owns (`observability()`), composed with the
-  keyed `HttpRouter(contract)({ orders: ordersController, customers:
-customersController })` form, which is exact against the contract — a missing
-  key, an undeclared key and a controller under the wrong key are all compile
-  errors at that call.
+  slices plus what no slice owns (`observability()`), composed with
+  `HttpRouter(contract)([ordersController, customersController])`, which is
+  exact on coverage: an array leaving a fragment uncovered is a compile error
+  at that call. The other two mistakes never reach the root — an undeclared
+  key is refused at `HttpController(contract, key)`, and a controller under
+  the wrong key cannot be written, since the key rides the port id.
 
 Nothing here is a new concept: a controller is a provider, a slice is a
 module, a modulith is several slice modules in one root — and `exports:

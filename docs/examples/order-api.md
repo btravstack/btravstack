@@ -1,6 +1,6 @@
 ---
 title: Order API example
-description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, HttpController and full vertical down to Prisma, an auth.ts declaring two schemes and a scope through defineHttp, composed by the keyed HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
+description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, HttpController minted from its contract key and full vertical down to Prisma, an auth.ts declaring two schemes and a scope through defineHttp, composed by HttpRouter's array form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
 ---
 
 <!-- doctest: prelude
@@ -266,9 +266,9 @@ use cases in [`order-application`](/examples/order-application), and the
 entities and Prisma adapters behind it.
 
 ```
-src/slices/orders/controller.ts       api.HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
+src/slices/orders/controller.ts       api.HttpController(contract, "orders")({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
 src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
-src/slices/customers/controller.ts    api.HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync })
+src/slices/customers/controller.ts    api.HttpController(contract, "customers")({ find: FindCustomer }, { sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 ```
 
@@ -399,11 +399,12 @@ defined by owning its fragment, its controller and its triage, not by owning a
 private adapter. The throwaway in-memory directory this replaced declared its
 port over `CustomerView` itself, which pointed the dependency arrow outwards.
 
-## The router: composed from controllers, keyed by the contract
+## The router: composed from the controllers themselves
 
-`module.ts`'s `orderRouter` is `api.HttpRouter(contract)`'s **keyed** form —
-a record of controllers, one per top-level contract key, instead of one
-`sync`:
+`module.ts`'s `orderRouter` is `api.HttpRouter(contract)`'s **composing**
+form — an array of controllers, one per top-level contract key, instead of one
+`sync`. No key is spelled here: each controller's port id carries the one it
+was minted from, and the call strips `HttpController:` back off to recover it.
 
 ```ts
 import { api } from "./auth.js";
@@ -416,13 +417,17 @@ export const orderRouter = api.HttpRouter(contract)([
 
 `HttpRouter` comes off the same `api` as the controllers: the marks on
 `contract.orders` ride
-through the keyed form, so the router declares **one dependency per scheme the
-contract names** — `HttpAuthenticator:user` and `HttpAuthenticator:service` —
-and carries the providers that discharge them, from that same call.
+through the composing form, so the router declares **one dependency per scheme
+the contract names** — `HttpAuthenticator:user` and `HttpAuthenticator:service`
+— and carries the providers that discharge them, from that same call.
 
-This form is exact: a slice missing from the record, a key the contract does
-not declare, and a controller wired under the wrong key are all compile
-errors at this call — see
+This form is exact on coverage: an array leaving a fragment uncovered is a
+compile error at this call, against
+`"UNCOVERED CONTROLLERS — the contract declares a fragment this array does not
+cover"`. The other two mistakes the retired keyed record refused at the root
+are gone from the root entirely — a key the contract does not declare is
+refused at `api.HttpController(contract, key)`, and a controller under the
+wrong key cannot be written, because the key rides the port id. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the recipe, and `packages/http/src/controller.test-d.ts` for the five gates
 that pin these errors and the lift below. Because a fragment is itself a valid

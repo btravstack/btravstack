@@ -12,7 +12,7 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * The transport boundary, and the only place in this slice where a domain
  * error becomes something else.
  *
- * `HttpController(name, contract.orders)` is contract-first: the implementation
+ * `HttpController(contract, "orders")` is contract-first: the implementation
  * is a record shaped like the fragment whose leaves are plain `Result`-returning
  * functions, typed by the contract at the call — the input is the contract's
  * parsed input, the output its declared view, `errors` its declared error

@@ -147,7 +147,7 @@ const DocsCustomersSlice = Module("DocsCustomersSlice")({
 });
 
 // ---------------------------------------------------------------------------
-// "Step 3 — the keyed root" — docs/how-to/split-a-router-into-controllers.md;
+// "Step 3 — the composed root" — docs/how-to/split-a-router-into-controllers.md;
 // "The router" and "The composition root" — docs/examples/order-api.md.
 // ---------------------------------------------------------------------------
 

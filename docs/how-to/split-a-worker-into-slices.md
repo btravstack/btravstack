@@ -41,22 +41,25 @@ contract key, composed by the root into an array. Everything below is lifted
 from `examples/order-amqp-worker` (two subscriber slices) and
 `examples/order-temporal-worker` (two saga slices).
 
-## Why a worker's record is not nested like a router's
+## A worker's contract is flat, and the shape is the router's anyway
 
 [Split a router into controllers](/how-to/split-a-router-into-controllers)
 starts from a contract that is already nested — `{ orders: {...}, customers:
-{...} }` — so a slice's fragment is a sub-object and the root composes a
-**record**, one controller per top-level key, with `api.HttpRouter(contract)({
-orders: ordersController, customers: customersController })`. An
-`amqp-contract` or `temporal-contract` contract has no such nesting: its
-consumers and its workflows are already flat top-level keys of one contract,
-not fragments of it. There is nothing to key a nested composition by, so the
-worker starters compose an **array** instead — `AmqpHandlers(contract)([...])`
-/ `TemporalActivities(contract)([...])` — and reach the same exactness a
-different way: each piece's port id carries the contract key it targets, so
-the array itself needs no keys at all. Two forms, one property: a slice owns
-exactly one key, and the composing call is exact against every key the
-contract declares.
+{...} }` — so a slice's fragment is a sub-object of it. An `amqp-contract` or
+`temporal-contract` contract has no such nesting: its consumers and its
+workflows are already flat top-level keys of one contract, not fragments of
+it.
+
+That difference changes nothing about how a slice is written. All three
+starters mint a piece from a **contract key** —
+`api.HttpController(contract, key)`, `AmqpHandler(contract, key)`,
+`TemporalWorkflowActivities(contract, key)` — and all three compose an
+**array**: `api.HttpRouter(contract)([...])`, `AmqpHandlers(contract)([...])`,
+`TemporalActivities(contract)([...])`. Nothing in an array names a key,
+because each piece's port id already carries the one it targets and the
+composing call strips the prefix back off to recover it. One property, three
+transports: a slice owns exactly one key, and the composing call is exact
+against every key the contract declares.
 
 ## Step 1 — a piece per consumer or per workflow
 
@@ -348,8 +351,9 @@ transport gives it to own.
 ## See also
 
 - [Split a router into controllers](/how-to/split-a-router-into-controllers) —
-  the same idea over a nested contract, composing a keyed record instead of
-  an array.
+  the same idea over a nested contract, with one property a worker has no use
+  for: a fragment lifts into a process of its own with its controller
+  untouched.
 - [`@btravstack/amqp`](/reference/amqp) — `AmqpHandler`'s and
   `AmqpHandlers`'s full signatures.
 - [`@btravstack/temporal`](/reference/temporal) —

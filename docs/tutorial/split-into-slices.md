@@ -1,6 +1,6 @@
 ---
 title: Split into slices
-description: Two contract fragments, two controllers, two modules that own their piece — composed by a keyed router that refuses a key the contract never declared.
+description: Two contract fragments, two controllers minted by contract key, two modules that own their piece — composed into one router that refuses an array leaving a fragment uncovered.
 ---
 
 # Split into slices
@@ -12,10 +12,11 @@ description: Two contract fragments, two controllers, two modules that own their
 
 By the end, the service will have two verticals — greetings and farewells —
 each owning its piece of the contract, its controller and its dependencies,
-composed by a root that is a list of slices. The router becomes **keyed**: one
-entry per contract fragment, and a key the contract does not declare refuses
-to compile. This is the shape an application keeps as it grows, and the reason
-composing slices is a starting point rather than a trap.
+composed by a root that is a list of slices. The router becomes an **array**:
+one controller per contract fragment, each minted from the key it implements,
+and an array that leaves a fragment uncovered refuses to compile. This is the
+shape an application keeps as it grows, and the reason composing slices is a
+starting point rather than a trap.
 
 ## Step 1 — Split the contract into fragments
 
@@ -90,9 +91,10 @@ its controller changing ([the property](/reference/http)).
 
 ## Step 2 — A controller per fragment
 
-`api.HttpController(name, fragment)` is `api.HttpRouter`'s slice-sized form:
-the same deps record, the same `sync` arm, typed by **one fragment** — and it
-mints a port for the piece it builds, so there is no class to name:
+`api.HttpController(contract, key)` is `api.HttpRouter`'s slice-sized form:
+the same deps record, the same `sync` arm, typed by the **one fragment** that
+key names. There is no name to invent — the key IS the port's name, minted as
+`` `HttpController:${key}` `` — so there is no class to write either:
 
 ```ts
 // slices/greetings/controller.ts
@@ -180,10 +182,11 @@ and the `Module(...)` call refuses to compile, naming the port
 readable on its own: which ports come from outside, without naming who
 supplies them.
 
-## Step 4 — The keyed router and the new root
+## Step 4 — The composed router and the new root
 
-The router composes the controllers under the **contract's own keys**, exact
-against it. The root becomes a list of slices, plus what no slice owns:
+The router takes the controllers as an **array** — no keys to repeat, since
+each controller's port already carries the one it was minted from. The root
+becomes a list of slices, plus what no slice owns:
 
 ```ts
 // app.ts
@@ -215,8 +218,11 @@ export const App = HttpModule("App")({
 Delete `router.ts` — its job moved into the slices. `main.ts` has not changed
 since lesson one.
 
-The keyed form is exact both ways. Every fragment must be covered, and a key
-the contract never declared is refused **by name**:
+The two mistakes this shape rules out are caught in two different places.
+Leave a fragment uncovered and the composing call refuses the array, against
+`"UNCOVERED CONTROLLERS — the contract declares a fragment this array does not
+cover"`. Name a fragment the contract never declared and it is refused where
+you named it, at the mint — there is nothing there to type the key by:
 
 ```ts
 // @ts-expect-error — the contract declares no fragment under `ceremonies`.
@@ -248,7 +254,7 @@ src/slices/greetings/controller.ts  the fragment's implementation
 src/slices/greetings/module.ts      imports its vertical
 src/slices/farewells/controller.ts  the other fragment's implementation
 src/slices/farewells/module.ts      declares its need instead
-src/app.ts                          keyed router + a list of slices
+src/app.ts                          composed router + a list of slices
 ```
 
 Growing the application is now additive: a new vertical is a new fragment, a

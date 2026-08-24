@@ -121,6 +121,14 @@ not cover"` marker. Declared last is load-bearing (measured in
   and the `routerOf` walk needs nothing reassembled. The pieces themselves
   still need discharging — listed in `provides` alongside the router, or
   exported by a slice module imported in — exactly as in `packages/amqp`.
+  `Uncovered` checks that every key has a piece, not that no two share one, so
+  two pieces claiming one fragment type-check together fine. Whether di
+  catches the conflict depends on whether **both** end up discharged as
+  providers in the same graph: only then are they two providers for one port —
+  di's duplicate-provider defect at build. Wire in only one of the two and the
+  other's implementation is simply never registered — no diagnostic marks the
+  conflict, and "a fragment belongs to exactly one slice" holds only for the
+  slice actually composed in.
   The return is the same `Built<Auth, N>` as the other arms, with
   `N = InstanceType<T[number]["port"]> | SchemePortsOf<C>`.
   Five compile-time gates are pinned by `controller.test-d.ts`: every contract

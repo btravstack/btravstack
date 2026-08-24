@@ -349,9 +349,10 @@ export const ordersController = api.HttpController(contract, "orders")(
 
 An **unmarked** procedure's `context` has no `principal`, so reading one there
 is a compile error — and a controller whose handler reads `context.principal`
-cannot be mounted under an unmarked contract key, where nothing would inject
-one. The reverse is fine: an unmarked controller under a marked key is a
-handler that ignores its caller's identity.
+cannot be composed by an `api.HttpRouter(contract)([...])` call over an
+**unmarked** contract, where nothing would inject one. The reverse is fine: a
+controller over an unmarked fragment, inside a contract that marks another, is
+a handler that ignores its caller's identity.
 
 ## Step 4 — compose the root
 

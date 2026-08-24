@@ -51,6 +51,8 @@ declare const view: (order: Order) => OrderView;
 | `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                  |
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                |
 | `HasMark`              | type  | `HasMark<C>` — exactly `true` or `false`: whether the contract marks anything, anywhere in its tree                                                                                                                                       |
+| `ControllerKeyOf`      | type  | `ControllerKeyOf<C>` — the top-level fragment keys `C` declares, the contract's own less the marker's phantom key; what `HttpController`'s `key` argument is checked against                                                              |
+| `ControllerPortOf`     | type  | `ControllerPortOf<C, K, Schemes>` — the port one controller targets, `` `HttpController:${K}` ``; exported so a slice module that exports its controller by name has a printable declared type                                            |
 | `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                         |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                        |
 | `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                |
@@ -149,7 +151,8 @@ test, and `provider.authenticators` carries the scheme providers `defineHttp`
 bound. The implementation below is the one in
 `examples/order-api/src/slices/orders/controller.ts`, served through the
 deps form — the example composes it as a controller instead (see the
-keyed form), and a fragment is a contract, so the same `sync` reads either way.
+composing form), and a fragment is a contract, so the same `sync` reads either
+way.
 `contract.orders` is marked `authenticated({ user: [] })`, so `api` here is the
 application's own `defineHttp` binding, from its `src/auth.ts`, and the tenant
 comes off `context.principal` rather than off the input:
@@ -222,10 +225,10 @@ export const ordersRouter = api.HttpRouter(contract.orders)(
 An implementation key the contract does not declare is unreachable through
 the types; if one is smuggled past them it is dropped, not defected on.
 
-### The keyed form: `api.HttpRouter(contract)(controllers)`
+### The composing form: `api.HttpRouter(contract)([controller, …])`
 
 For a `contract` shaped `Record<string, RouterContract>`, `HttpRouter`
-also takes a **record of controllers**, one per top-level key, instead of
+also takes an **array of controllers**, one per top-level key, instead of
 `(deps, { sync })`:
 
 <!-- doctest: defer -->
@@ -237,45 +240,61 @@ export const orderRouter = api.HttpRouter(contract)([
 ]);
 ```
 
-Each value is what [`HttpController`](#api-httpcontroller-name-fragment)
-returns. The call is **exact**: `M` is constrained to
-`{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
-RequirementsOf<C>>, Schemes> }`, and the `controllers`
-**parameter** itself is typed:
+Each element is what [`HttpController`](#api-httpcontroller-contract-key)
+returns. Nothing names a key here: each controller's port id already carries
+the one it was minted from, so the call recovers it by stripping
+`HttpController:` back off (`KeyOfPiece`) and there is no second place for a
+key to drift. The call is **exact** on coverage — every fragment `contract`
+declares must have a controller — and the array parameter is what carries the
+check:
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-M & {
-  readonly [K in Exclude<keyof M, Exclude<keyof C, PrincipalKey>>]:
-    `UNDECLARED KEY — the contract declares no fragment under ${K & string}`;
-};
+function build<const T extends readonly PieceOf<C, Schemes>[]>(
+  pieces: [Uncovered<C, Schemes, T>] extends [never]
+    ? T
+    : readonly [
+        "UNCOVERED CONTROLLERS — the contract declares a fragment this array does not cover",
+        Uncovered<C, Schemes, T>,
+      ],
+): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<C>>;
 ```
 
-The exactness intersection sits on the parameter, not on `M`, so a key `C` does
-not declare is refused there without collapsing `M` (and with it the needs
-channel di orders the controllers by) to `never` too. Because the mapped type is
-keyed by `K`, the sentence **names the offending key**, and it is the last line
-of the error:
+That overload is declared **last** on purpose: TypeScript reports the last
+overload's failure, so a non-covering array is refused against the marker
+rather than degrading to di's `Qualification`, which names nothing (measured
+in `packages/amqp`, the same mechanism). The marker is a **sentence** because
+it is the only actionable part of the diagnostic, and it is the last line of
+the error:
 
 ```
 error TS2769: No overload matches this call.
   The last overload gave the following error.
-    Type 'Minted<"GateOrders", { place: ContractBuilder<object>; }, never, never>' is not assignable to type 'Provider<PortInstance<"GateOrders", { readonly place: ResultHandler<DefaultInitialContext & object, unknown, unknown, AnyORPCError, object>; }>, never, never> & { ...; } & "UNDECLARED KEY — the contract declares no fragment under billing"'.
-      Type 'Minted<"GateOrders", { place: ContractBuilder<object>; }, never, never>' is not assignable to type '"UNDECLARED KEY — the contract declares no fragment under billing"'.
+    Type 'Minted<{ orders: { place: ContractBuilder<object>; }; users: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never>' is not assignable to type '"UNCOVERED CONTROLLERS — the contract declares a fragment this array does not cover"'.
 ```
 
-Read the **last** line: the ones above it name the type you passed. The
-`Exclude`/`Inherit` pair is the same one
-[`Implementation<C, Schemes>`](#authentication) carries: a contract marked at
-its **root** composes through this form too, and each fragment inherits those
-requirements, so a controller under it types `context.principal` — unless it
+Read the **end** of the last line: everything before it is the controller you
+passed. The missing key itself is named only once the array's length matches
+the marker tuple's own length of 2 — then it arrives as a **separate**
+`TS2769` on the trailing element, whose target is the bare key
+(`is not assignable to type '"users"'`).
+
+The `Exclude`/`Inherit` pair
+[`Implementation<C, Schemes>`](#authentication) carries applies at the
+**mint** rather than here: a contract marked at its root types
+`context.principal` inside a controller minted from it, unless the fragment
 carries a mark of its own, in which case that one wins.
+
 Five gates are pinned by
-`packages/http/src/controller.test-d.ts`: every contract key must be covered;
-a key the contract does not declare is rejected; a controller wired under the
-wrong key is rejected (its fragment does not match that key's); a
-procedure a controller's own fragment does not declare is rejected inside the
+`packages/http/src/controller.test-d.ts`, each twice — once against a plain
+contract and once against one whose `orders` fragment is marked, so the
+marker's phantom key cannot quietly break any of them: every contract key must
+be covered; a key the contract does not declare is rejected **at the mint**,
+where there is nothing to type it by; a controller under the wrong key is
+impossible **by construction**, since its key rides its port id — what that
+would have been shows up as an array leaving a fragment uncovered; a procedure
+a controller's own fragment does not declare is rejected inside the
 controller, before the root ever sees it; and a slice lifts into a process of
 its own with its controller untouched —
 `api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
@@ -283,49 +302,75 @@ compiles — the property a slice's independent deployability
 rests on. Three further arms pin what the requirements themselves do: a
 procedure under a marked record inherits that record's requirement, a procedure
 with its own mark replaces it, and the router's needs channel carries one
-`HttpAuthenticator:<scheme>` port per scheme the contract names anywhere. The
-`(deps, { sync })`
-form is unchanged and stays correct for a small API — it is told from the
-controllers record **by arity**, the same way
-`Provider(port)(depsOrOptions, …)` discriminates its own two forms, and the
-third form — an arm alone, `({ sync })` — is told from a controllers record by
-whether `sync` holds a function. See
+`HttpAuthenticator:<scheme>` port per scheme the contract names anywhere.
+
+Coverage is not uniqueness: two controllers claiming one fragment type-check
+together fine, and di catches the conflict only when **both** are discharged
+as providers in the same graph — then they are two providers for one port, its
+duplicate-provider defect at build.
+
+The `(deps, { sync })`
+form is unchanged and stays correct for a small API. An array is never a
+record, so `Array.isArray` alone identifies the composing arm; the remaining
+`(deps, { sync })` / `({ sync })` pair is told apart **by arity**, the same way
+`Provider(port)(depsOrOptions, …)` discriminates its own two forms. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the worked recipe.
 
-## `api.HttpController(name, fragment)`
+## `api.HttpController(contract, key)`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-const HttpController: <const Name extends string, C extends RouterContract>(
-  name: Name,
-  fragment: C,
+const HttpController: <
+  const C extends Record<string, RouterContract>,
+  const K extends ControllerKeyOf<C>,
+>(
+  contract: C,
+  key: K,
 ) => <const D extends Readonly<Record<string, AnyPort>>>(
   deps: D,
   options: {
     readonly sync: (services: {
-      readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-    }) => Implementation<C, Schemes>;
+      readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+    }) => Implementation<Inherit<C[K], RequirementsOf<C>>, Schemes>;
   },
 ) => Provider<
-  PortInstance<Name, Implementation<C, Schemes>>,
+  InstanceType<ControllerPortOf<C, K, Schemes>>,
   never,
   InstanceType<D[keyof D]>
 > & {
-  readonly port: PortClassOf<Name, Implementation<C, Schemes>>;
+  readonly port: ControllerPortOf<C, K, Schemes>;
 };
 ```
 
-One slice of a contract, as a provider over a port minted for it — the same
-two-call shape as `api.HttpRouter(contract)({ name: Dep }, { sync })`, aimed at a
-`fragment` rather than the whole contract. `fragment` is read for its
-**type** only: it shapes `sync`'s return, so a procedure the fragment does
-not declare, or a handler whose input or output has drifted, is a compile
-error inside the controller. The port is minted under `name` and carried
-back on `provider.port` — the shape `Config.provider("RelayConfig")(schema)`
-already uses — so a slice's module exports `controller.port` rather than
-naming a port of its own:
+One fragment of a contract, as a provider over a port minted for it — the same
+two-call shape as `api.HttpRouter(contract)({ name: Dep }, { sync })`, aimed at
+one top-level key rather than the whole contract. There is no name to give: the
+contract key **is** the port's name, minted as `` `HttpController:${key}` `` —
+the move `AmqpHandler(contract, key)` and `authenticatorPort(scheme)` both
+make. That is what makes two slices claiming one fragment di's
+duplicate-provider defect rather than a silent merge, and what lets the
+composing form recover each controller's key without it being spelled again.
+
+`contract` is read for its **type** only: it types `key`, so a fragment the
+contract does not declare is refused right here —
+
+```
+error TS2345: Argument of type '"billing"' is not assignable to parameter of type 'ControllerKeyOf<{ orders: { place: ContractBuilder<object>; }; users: { find: ContractBuilder<object>; }; }>'.
+```
+
+— and it types `sync`'s return, so a procedure the fragment does not declare,
+or a handler whose input or output has drifted, is a compile error inside the
+controller. The fragment's type is `Inherit<C[K], RequirementsOf<C>>`, applied
+at the mint, which is what gives a root-marked contract's handlers a readable
+`context.principal` where they are written. There is a no-deps arm too, by
+arity: a controller that calls no use case writes `({ sync })` rather than
+`({}, { sync })`.
+
+The port is carried back on `provider.port` — the shape
+`Config.provider("RelayConfig")(schema)` already uses — so a slice's module
+exports `controller.port` rather than naming a port of its own:
 
 <!-- doctest: defer -->
 
@@ -342,7 +387,7 @@ export const OrdersSlice = Module("OrdersSlice")({
 which is what gives a marked fragment's handlers a readable
 `context.principal`. The controller does no oRPC work: it is a plain record,
 and `HttpRouter`'s
-own walk wraps each leaf in `.result(...)` when the keyed form composes the
+own walk wraps each leaf in `.result(...)` when the composing form builds the
 router. **A fragment is itself a valid contract**, so a slice lifts out into a
 process of its own without its controller changing at all — the lifted root
 declares the controller's own port and hands back what it built:

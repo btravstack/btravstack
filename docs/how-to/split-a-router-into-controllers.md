@@ -29,8 +29,11 @@ one function. That is right for a small API and wrong for a large one: a
 fifty-procedure contract would mean fifty injected services in one `sync`, one
 slice's typo failing the whole router's type-check, and no way to serve one
 slice without the rest. A **controller** is the fix: an ordinary di provider
-over one fragment of the contract, minted its own port, composed by the root
-through a keyed `api.HttpRouter(contract)(controllers)` call. Everything below is
+over one fragment of the contract, minted its own port from the contract key,
+composed by the root through
+`api.HttpRouter(contract)([controller, …])`. It is the same authoring flow
+[a worker slice](/how-to/split-a-worker-into-slices) uses — mint a piece from
+a contract key, compose an array — and not HTTP's own. Everything below is
 lifted from `examples/order-api`, which serves an `orders` slice and a
 `customers` slice this way.
 
@@ -107,13 +110,15 @@ public half and a protected one stop being one undifferentiated surface.
 
 ## Step 2 — a controller per slice
 
-`api.HttpController(name, fragment)({ name: Dep }, { sync })` is
+`api.HttpController(contract, key)({ name: Dep }, { sync })` is
 `api.HttpRouter`'s own
-shape, aimed at one fragment: the first call fixes the fragment's type and
-mints a port under `name`; the second is di's
-`Provider(port)({ name: Dep }, { sync })`,
+shape, aimed at one fragment: the first call names the fragment by its
+contract key and mints a port from it, `` `HttpController:${key}` ``; the
+second is di's `Provider(port)({ name: Dep }, { sync })`,
 so `sync`'s return is typed by the fragment at the call — a typo'd or missing
-procedure is a compile error inside the controller itself, not at the root:
+procedure is a compile error inside the controller itself, not at the root.
+There is no name to invent, and a key the contract does not declare is refused
+here, where there is nothing to type it by:
 
 ```ts
 import { api } from "../../auth.js";
@@ -179,8 +184,9 @@ no `principal` at all. See [Protect a procedure](/how-to/protect-a-procedure).
 The controller does no oRPC work of its own — it stores a plain record, and
 `api.HttpRouter` wraps each leaf in `.result(...)` when it composes the router.
 `api.HttpController` mints the port and carries it back on `.port`, which the
-keyed form reads to order this controller's construction before the router's —
-there is nothing to name by hand. A slice ships its controller as a module
+composing form reads to order this controller's construction before the
+router's — and whose id carries the contract key, so the root recovers it
+without anybody spelling it twice. A slice ships its controller as a module
 that **imports the vertical it needs** and exports only that controller, the
 same privacy di already gives any provider:
 
@@ -209,11 +215,14 @@ persistence modules import, it is a diamond and not duplication: di flattens
 the module tree into a `Set` keyed by provider **reference**, so one database
 is built.
 
-## Step 3 — the keyed root
+## Step 3 — the composed root
 
-`api.HttpRouter(contract)(controllers)` — a record keyed by the contract's own
-top-level keys, one `HttpController` per key — replaces the
-`(deps, { sync })` call at the root, and is told apart from it by **arity**:
+`api.HttpRouter(contract)([controller, …])` — an array of controllers, one per
+top-level contract key — replaces the
+`(deps, { sync })` call at the root. Nothing names a key here: each
+controller's port id already carries the one it was minted from, and the call
+strips the prefix back off to recover it. An array is never a record, so it is
+told apart from the other two arms outright:
 
 ```ts
 export const orderRouter = api.HttpRouter(contract)([
@@ -246,10 +255,19 @@ di's arity gate either, but the plain assignability of the `Needs` channel
 against `Env | Scope`, which names the port. Nothing else about what a slice
 needs is spelled at the root.
 
-This form is **exact**: a key the record above is missing, a key the
-contract does not declare, and a controller wired under the wrong key are all
-compile errors at the `api.HttpRouter(contract)({...})` call, not runtime
-surprises the first time a client hits the missing slice.
+This form is **exact** on coverage: a fragment no controller in the array
+covers is a compile error at the `api.HttpRouter(contract)([...])` call —
+refused against `"UNCOVERED CONTROLLERS — the contract declares a fragment
+this array does not cover"` — not a runtime surprise the first time a client
+hits the missing slice. The other two gates the keyed record used to carry
+have moved somewhere better: a key the contract does not declare is refused at
+the mint, and a controller under the wrong key is impossible, because the key
+rides the port id rather than a position at the root.
+
+Coverage is not uniqueness, though: two controllers minted for one fragment
+type-check together fine, and di catches the conflict only when **both** are
+discharged — then they are two providers for one port, its duplicate-provider
+defect at build.
 
 ## Step 4 — lifting a slice into its own process
 

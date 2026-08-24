@@ -210,7 +210,7 @@ principal a tagged union the compiler forces you to narrow
 ## Where next
 
 - [Split into slices](/tutorial/split-into-slices) — the next lesson: two
-  contract fragments, two controllers, one keyed router.
+  contract fragments, two controllers, one router composed from them.
 - [Protect a procedure](/how-to/protect-a-procedure) — scopes, a second
   scheme, per-procedure overrides, and the 403/401 distinction.
 - [Cross-cutting concerns](/reference/http) — why authentication is contract
