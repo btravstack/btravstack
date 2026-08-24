@@ -585,7 +585,7 @@ export type HttpFixtures = {
   };
   /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
   readonly authedRouterDeps: {
-    readonly keyed: readonly string[];
+    readonly composed: readonly string[];
     readonly fromDeps: readonly string[];
   };
   /**
@@ -826,7 +826,7 @@ export const it = test.extend<HttpFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   authedRouterDeps: async ({}, use) => {
     await use({
-      keyed: authedRouter.deps.map((dep) => dep.portId),
+      composed: authedRouter.deps.map((dep) => dep.portId),
       fromDeps: authedPositionalRouter.deps.map((dep) => dep.portId),
     });
   },

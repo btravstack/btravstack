@@ -130,7 +130,7 @@ describe("a router over a marked contract", () => {
     // THEN the scheme's port joins both, named for the scheme and alongside —
     // never in place of — the caller's own
     expect(authedRouterDeps).toEqual({
-      keyed: ["HttpController:orders", "HttpController:health", "HttpAuthenticator:user"],
+      composed: ["HttpController:orders", "HttpController:health", "HttpAuthenticator:user"],
       fromDeps: ["Greeter", "HttpAuthenticator:user"],
     });
   });

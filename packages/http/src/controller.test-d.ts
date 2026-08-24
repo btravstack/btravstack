@@ -226,3 +226,29 @@ type _OneSchemeNeeds = Expect<
 type _NoSchemeNeeds = Expect<
   [Extract<NeedsOf<typeof composed>, SchemePort<string>>] extends [never] ? true : false
 >;
+
+// ── What a contract's DEPTH means for slicing ──────────────────────────────
+// A worker's contract is flat — a consumer name, a workflow name — so a piece
+// per key partitions its whole surface. An HTTP contract is a TREE, so these
+// arms pin where a piece may sit, the one degree of freedom the three starters
+// do not share.
+
+// A FLAT contract slices: its top-level keys are procedures rather than
+// fragments, so a piece owns one procedure and the coverage gate still fires.
+const flat = { place: oc, find: oc };
+const flatPlace = publicApi.HttpController(flat, "place")({ sync: () => () => OkAsync("placed") });
+const flatFind = publicApi.HttpController(flat, "find")({ sync: () => () => OkAsync("found") });
+void publicApi.HttpRouter(flat)([flatPlace, flatFind]);
+// @ts-expect-error — `find` is uncovered, exactly as for a contract of fragments
+void publicApi.HttpRouter(flat)([flatPlace]);
+
+// A DEEP contract slices at depth ONE only: a piece is minted from a top-level
+// key and there is no path syntax to reach below it. The fragment a piece owns
+// may itself be a tree — the piece implements the whole subtree — but
+// `{ v1: { orders, customers } }` is ONE slice, not two. Restructure the
+// contract, mount the version through the starter's `prefix`, or use the
+// `(deps, arm)` form, which reaches any depth.
+const deep = { v1: { orders: { place: oc }, customers: { find: oc } } };
+void publicApi.HttpController(deep, "v1");
+// @ts-expect-error — a nested path is not a key
+void publicApi.HttpController(deep, "v1.orders");
