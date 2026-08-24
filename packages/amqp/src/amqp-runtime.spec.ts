@@ -51,6 +51,32 @@ describe("amqp", () => {
     expect(seam.seen()).toEqual([expect.objectContaining({ traceId: "m-1" })]);
   });
 
+  it("adopts a traceparent header's trace id over the message id", async ({
+    serve,
+    seam,
+    publishMessage,
+  }) => {
+    // GIVEN a worker whose handler records the ambient unit it runs under
+    await serve(seam.handlers);
+
+    // WHEN a publisher that crossed another service sends both vocabularies
+    publishMessage(
+      { exchange: "amqp-test", routingKey: "echo.requested" },
+      { value: "x" },
+      {
+        messageId: "m-2",
+        headers: { traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" },
+      },
+    );
+    await vi.waitUntil(() => seam.seen().length === 1);
+
+    // THEN the W3C trace id won — the one value minted to span processes —
+    // and the parent's span id was dropped, not half-carried
+    expect(seam.seen()).toEqual([
+      expect.objectContaining({ traceId: "4bf92f3577b34da6a3ce929d0e0e4736" }),
+    ]);
+  });
+
   it("refuses a blank message id rather than tracing every delivery to it", async ({
     serve,
     seam,

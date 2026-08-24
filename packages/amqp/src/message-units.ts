@@ -31,7 +31,9 @@ export const messageUnits =
  * until `ConsumerOptions` lets a caller pin `consumerTag`. Minting is the only
  * form the rule survives — the same answer `-http` reaches per request.
  *
- * The publisher's `messageId` becomes the `traceId`: minted outside this
+ * A W3C `traceparent` application header wins when the publisher sends one —
+ * see `traceIdOfTraceparent` below. Otherwise the publisher's `messageId`
+ * becomes the `traceId`: minted outside this
  * process and stable across every redelivery, which is what `traceId` is for.
  * `correlationId` is the fallback for an RPC-shaped message.
  *
@@ -46,11 +48,30 @@ const metaFor = (raw: {
   readonly properties: {
     readonly messageId?: string | undefined;
     readonly correlationId?: string | undefined;
+    readonly headers?: Readonly<Record<string, unknown>> | undefined;
   };
 }): UnitMeta => {
   const id = randomUUID();
+  const parent = raw.properties.headers?.["traceparent"];
+  const fromParent = typeof parent === "string" ? traceIdOfTraceparent(parent) : undefined;
   const inbound = [raw.properties.messageId, raw.properties.correlationId]
     .map((value) => value?.trim() ?? "")
     .find((value) => value !== "");
-  return { kind: "delivery", id, traceId: inbound ?? id };
+  return { kind: "delivery", id, traceId: fromParent ?? inbound ?? id };
+};
+
+/**
+ * The trace id inside a W3C `traceparent` application header, when a
+ * publisher sends one (issue #64) — it outranks `messageId`, because it is
+ * the one value minted to span processes. Only the trace-id field is taken:
+ * `traceId` is a correlation id, not a span context, so the parent's span id
+ * is dropped rather than half-carried. The all-zero id is the spec's own
+ * "invalid" and is refused like a malformed header. The same sixteen lines
+ * live in `@btravstack/http` — tracked with the other cross-starter
+ * duplication in issue #24.
+ */
+const traceIdOfTraceparent = (header: string): string | undefined => {
+  const match = /^[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/.exec(header.trim());
+  const traceId = match?.[1];
+  return traceId === undefined || /^0{32}$/.test(traceId) ? undefined : traceId;
 };

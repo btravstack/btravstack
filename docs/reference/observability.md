@@ -398,6 +398,59 @@ await runMain(OrderApi, {
 That logger reads no `LOG_LEVEL` — the binding lives in the graph it is
 watching — so it logs at the default `info`.
 
+## The `otel` subpath — traces and metrics
+
+`@opentelemetry/api` and `@opentelemetry/sdk-node` are **optional** peers
+behind `@btravstack/observability/otel`, exactly as `pino` is behind its
+subpath — a consumer that never imports it never installs them:
+
+```sh
+pnpm add @opentelemetry/api @opentelemetry/sdk-node
+```
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+class Tracer extends Port("Tracer")<{ readonly startSpan: (name: string) => Span }> {}
+class Meter extends Port("Meter")<OtelMeter> {}
+
+otel(options?: Partial<NodeSDKConfiguration>): Module<Tracer | Meter, never, Scope>;
+
+class UnitSpan extends Port("UnitSpan")<Span> {}
+const UnitSpanModule: Module<UnitSpan, never, Scope>; // needs: [Tracer]
+```
+
+`otel()` provides both ports over a `NodeSDK` held as a **resourceful**
+provider: the SDK starts when the scope opens and `release` is
+`sdk.shutdown()`, which flushes — so the kernel's close-on-every-path is what
+gets spans out of a dying process, and a lost flush is a `teardownError` and
+exit `2`, never silence. Compose it beside `observability()` in a root's
+`imports`.
+
+There is **no config slice, deliberately**: the SDK reads the `OTEL_*`
+environment conventions itself (`OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_SERVICE_NAME`, `OTEL_SDK_DISABLED`, …) — that vocabulary is the
+platform's own standard. Programmatic overrides go through `options`, which
+is the SDK's own configuration type. And **one `otel()` per process**: the
+OTel api's globals register once, which is the SDK's own contract.
+
+`UnitSpanModule` rides `StartOptions.unit`: a span opens when the kernel's
+unit does and `onStop` ends it on every path out, with the ambient record's
+`unitId`, `traceId` and `tenantId` as attributes — a span joins the same
+query the logger's lines answer. The remote W3C **parent is deliberately not
+reconstructed**: `UnitMeta.traceId` carries the inbound trace id alone, so
+correlation is by attribute, never a parent-child edge the record cannot
+prove. Inbound, `@btravstack/http` and `@btravstack/amqp` honour a W3C
+`traceparent` (trace-id field only; it outranks `x-request-id` and
+`messageId` respectively); `@btravstack/temporal` keeps the workflow id as
+its correlation, which is what that transport's retries and replays preserve.
+
+**Auto-instrumentation cannot live here**:
+`@opentelemetry/auto-instrumentations-node/register` must be preloaded
+(`node --import`) before the instrumented libraries load, which no DI
+provider can promise. `otel()` owns what the graph owns; the preload is the
+deployment's line.
+
 ## `pinoSink(logger)`
 
 <!-- doctest: skip — needs `pino`, which no example workspace installs; held by packages/observability/src/pino.spec.ts instead -->
@@ -435,22 +488,27 @@ collapses into another.
 
 ## Summary of exports
 
-| Export                 | Kind                                              |
-| ---------------------- | ------------------------------------------------- |
-| `Logger`               | port                                              |
-| `LoggerService`        | type — the service behind it                      |
-| `LoggerConfig`         | port — `{ level }`, bound from `LOG_LEVEL`        |
-| `LoggerSettings`       | type                                              |
-| `Level` / `LEVELS`     | type / value — the six, in order                  |
-| `Attributes`           | type                                              |
-| `Line` / `Sink`        | type — what an implementation hands a destination |
-| `createLogger`         | value — the implementation                        |
-| `jsonSink`             | value — the default sink                          |
-| `observability`        | value — the starter                               |
-| `ObservabilityOptions` | type                                              |
-| `logLevel`             | value — the `LOG_LEVEL` field alone               |
-| `kernelEvents`         | value — the kernel's `EventSink` over a logger    |
-| `pinoSink`             | value — `@btravstack/observability/pino` only     |
+| Export                 | Kind                                               |
+| ---------------------- | -------------------------------------------------- |
+| `Logger`               | port                                               |
+| `LoggerService`        | type — the service behind it                       |
+| `LoggerConfig`         | port — `{ level }`, bound from `LOG_LEVEL`         |
+| `LoggerSettings`       | type                                               |
+| `Level` / `LEVELS`     | type / value — the six, in order                   |
+| `Attributes`           | type                                               |
+| `Line` / `Sink`        | type — what an implementation hands a destination  |
+| `createLogger`         | value — the implementation                         |
+| `jsonSink`             | value — the default sink                           |
+| `observability`        | value — the starter                                |
+| `ObservabilityOptions` | type                                               |
+| `logLevel`             | value — the `LOG_LEVEL` field alone                |
+| `kernelEvents`         | value — the kernel's `EventSink` over a logger     |
+| `pinoSink`             | value — `@btravstack/observability/pino` only      |
+| `Tracer`               | port class — `@btravstack/observability/otel` only |
+| `Meter`                | port class — `@btravstack/observability/otel` only |
+| `otel`                 | value — `@btravstack/observability/otel` only      |
+| `UnitSpan`             | port class — `@btravstack/observability/otel` only |
+| `UnitSpanModule`       | value — `@btravstack/observability/otel` only      |
 
 ## What it does not do
 

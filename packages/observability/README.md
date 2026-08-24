@@ -121,6 +121,37 @@ observability({ sink: pinoSink(pino()) });
 The level filter stays this package's — `LOG_LEVEL`, validated once — so there
 is one filter in the process rather than two that can disagree.
 
+## Traces and metrics
+
+The other half of the package's name, behind an optional-peer subpath the way
+`pino` is:
+
+```sh
+pnpm add @opentelemetry/api @opentelemetry/sdk-node
+```
+
+<!-- doctest: skip — needs `@opentelemetry/*`, which no example workspace installs; held by packages/observability/src/otel.spec.ts instead -->
+
+```ts
+import { observability } from "@btravstack/observability";
+import { UnitSpanModule, otel } from "@btravstack/observability/otel";
+
+// Beside observability() in the root's imports; the SDK is a resource of the
+// graph — started with the scope, flushed by release on every exit path.
+// Configuration is the OTEL_* environment conventions, read by the SDK itself.
+const AppImports = [observability(), otel()];
+
+// A span per kernel unit, correlated with the same ids the logger stamps:
+// runMain(App, { unit: UnitSpanModule })
+```
+
+Inbound W3C `traceparent` feeds the unit's trace id in `@btravstack/http` and
+`@btravstack/amqp`. Auto-instrumentation must be preloaded
+(`node --import @opentelemetry/auto-instrumentations-node/register`) — it
+cannot be a provider, and the package does not pretend otherwise. Full
+semantics on
+[the reference page](https://btravstack.github.io/start/reference/observability).
+
 ## License
 
 [MIT](./LICENSE) © Benoit TRAVERS

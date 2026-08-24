@@ -327,3 +327,13 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
   `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`,
   `@temporal-contract/worker`, `@temporal-contract/contract`.
+
+- **`traceparent` is deliberately not read here** (issue #64, where http and
+  amqp learned it). A workflow's inbound context does not arrive as wire
+  headers this starter sees — Temporal's own interceptor ecosystem owns
+  cross-workflow propagation — and the workflow/activity id already IS the
+  correlation this transport means: minted outside the process, stable across
+  every retry and replay, which is exactly what `UnitMeta.traceId` exists to
+  carry. A deployment that wants full OTel propagation through Temporal wires
+  Temporal's own OpenTelemetry interceptors beside `otel()`, not through this
+  package.
