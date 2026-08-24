@@ -10,6 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-temporal-worker --out src/generated/doc-samples",
     "test": "vitest run",
     "test:types": "tsc --noEmit -p tsconfig.test-d.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
@@ -35,11 +36,13 @@
     "@btravstack/internal-test-infra": "workspace:*",
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
+    "@temporal-contract/contract": "catalog:",
     "@temporal-contract/testing": "catalog:",
     "@temporalio/testing": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }

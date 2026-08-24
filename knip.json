@@ -10,13 +10,24 @@
     "typedoc-plugin-markdown"
   ],
   "workspaces": {
-    "docs": { "entry": ["scripts/*.ts"], "project": ["scripts/**/*.ts"] },
-    "packages/core": { "ignoreDependencies": ["@btravstack/testing"] },
+    "docs": {
+      "entry": ["scripts/*.ts"],
+      "project": ["scripts/**/*.ts"]
+    },
+    "packages/core": {
+      "ignoreDependencies": ["@btravstack/testing"]
+    },
     "examples/hexagonal-order-api": {
       "entry": ["src/emit-guards.ts"],
       "project": ["src/**/*.ts"]
     },
-    "examples/order-api": { "entry": ["src/main.ts"] },
-    "examples/order-temporal-worker": { "entry": ["src/main.ts"] }
+    "examples/order-api": {
+      "entry": ["src/main.ts"],
+      "ignoreDependencies": ["@btravstack/entity", "zod"]
+    },
+    "examples/order-temporal-worker": {
+      "entry": ["src/main.ts"],
+      "ignoreDependencies": ["zod"]
+    }
   }
 }

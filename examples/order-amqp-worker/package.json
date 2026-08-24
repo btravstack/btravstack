@@ -10,6 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "generate": "node ../../docs/scripts/extract-doc-samples.ts --group order-amqp-worker --out src/generated/doc-samples",
     "test": "vitest run",
     "test:types": "tsc --noEmit -p tsconfig.test-d.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
