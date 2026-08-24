@@ -231,10 +231,10 @@ also takes a **record of controllers**, one per top-level key, instead of
 <!-- doctest: defer -->
 
 ```ts
-export const orderRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+export const orderRouter = api.HttpRouter(contract)([
+  ordersController,
+  customersController,
+]);
 ```
 
 Each value is what [`HttpController`](#api-httpcontroller-name-fragment)

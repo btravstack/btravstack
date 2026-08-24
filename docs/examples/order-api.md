@@ -279,10 +279,7 @@ below does the same for its own slice:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(
-  "OrdersController",
-  contract.orders,
-)(
+export const ordersController = api.HttpController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -411,10 +408,10 @@ a record of controllers, one per top-level contract key, instead of one
 ```ts
 import { api } from "./auth.js";
 
-export const orderRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+export const orderRouter = api.HttpRouter(contract)([
+  ordersController,
+  customersController,
+]);
 ```
 
 `HttpRouter` comes off the same `api` as the controllers: the marks on

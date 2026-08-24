@@ -102,10 +102,7 @@ import { api } from "../../auth.js";
 import { contract } from "../../contract.js";
 import { Greeter } from "../../greeter.js";
 
-export const greetingsController = api.HttpController(
-  "GreetingsController",
-  contract.greetings,
-)(
+export const greetingsController = api.HttpController(contract, "greetings")(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({
@@ -126,10 +123,7 @@ import { api } from "../../auth.js";
 import { contract } from "../../contract.js";
 import { Greeter } from "../../greeter.js";
 
-export const farewellsController = api.HttpController(
-  "FarewellsController",
-  contract.farewells,
-)(
+export const farewellsController = api.HttpController(contract, "farewells")(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({
@@ -203,10 +197,10 @@ import { FarewellsSlice } from "./slices/farewells/module.js";
 import { greetingsController } from "./slices/greetings/controller.js";
 import { GreetingsSlice } from "./slices/greetings/module.js";
 
-export const greetingRouter = api.HttpRouter(contract)({
-  greetings: greetingsController,
-  farewells: farewellsController,
-});
+export const greetingRouter = api.HttpRouter(contract)([
+  greetingsController,
+  farewellsController,
+]);
 
 export const App = HttpModule("App")({
   router: greetingRouter,
@@ -225,12 +219,8 @@ The keyed form is exact both ways. Every fragment must be covered, and a key
 the contract never declared is refused **by name**:
 
 ```ts
-api.HttpRouter(contract)({
-  greetings: greetingsController,
-  farewells: farewellsController,
-  // @ts-expect-error — UNDECLARED KEY: the contract declares no fragment under `ceremonies`.
-  ceremonies: farewellsController,
-});
+// @ts-expect-error — the contract declares no fragment under `ceremonies`.
+api.HttpController(contract, "ceremonies");
 ```
 
 ## Step 5 — Run it

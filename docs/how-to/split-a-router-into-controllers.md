@@ -118,10 +118,7 @@ procedure is a compile error inside the controller itself, not at the root:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(
-  "OrdersController",
-  contract.orders,
-)(
+export const ordersController = api.HttpController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -219,10 +216,10 @@ top-level keys, one `HttpController` per key — replaces the
 `(deps, { sync })` call at the root, and is told apart from it by **arity**:
 
 ```ts
-export const orderRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+export const orderRouter = api.HttpRouter(contract)([
+  ordersController,
+  customersController,
+]);
 ```
 
 The composition root is then a list of **slices**, plus whatever no slice

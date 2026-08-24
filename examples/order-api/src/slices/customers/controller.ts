@@ -19,8 +19,13 @@ const view = (customer: Customer): CustomerView => ({ id: customer.id, name: cus
  * pointed the dependency arrow outwards — an adapter speaking the transport's
  * shape. A slice is defined by owning its fragment, its controller and its
  * triage, not by owning a private adapter.
+ *
+ * There is no display name to give any more: `HttpController(contract,
+ * "customers")` mints this piece's port from the contract key itself
+ * (`HttpController:customers`), so the key rides the port id rather than a
+ * string spelled here.
  */
-export const customersController = api.HttpController("CustomersController", contract.customers)(
+export const customersController = api.HttpController(contract, "customers")(
   { find: FindCustomer },
   {
     sync: ({ find }) => ({

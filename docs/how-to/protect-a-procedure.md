@@ -16,9 +16,14 @@ import { createOrderApiClient } from "../../client.js";
 import { Module } from "@btravstack/di";
 declare const OrdersSlice: Module<InstanceType<(typeof ordersController)["port"]>, never, never>;
 declare const CustomersSlice: Module<InstanceType<(typeof customersController)["port"]>, never, never>;
-const customersController = api.HttpController("CustomersController", {
-  find: oc.input(z.object({ id: z.uuidv7() })).output(z.object({ name: z.string() })),
-})({}, { sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) });
+const customersController = api.HttpController(
+  {
+    customers: {
+      find: oc.input(z.object({ id: z.uuidv7() })).output(z.object({ name: z.string() })),
+    },
+  },
+  "customers",
+)({}, { sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) });
 declare const view: (order: Order) => { id: string; quantity: number };
 declare const tenantId: string;
 declare const userId: string;
@@ -273,10 +278,7 @@ readable type — and its **shape follows the requirements**:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(
-  "OrdersController",
-  contract.orders,
-)(
+export const ordersController = api.HttpController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -357,10 +359,10 @@ There is **no authenticator to pass**. The authenticators ride the router —
 which is what needs them — and `HttpModule` puts them in `provides` itself:
 
 ```ts
-export const orderRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+export const orderRouter = api.HttpRouter(contract)([
+  ordersController,
+  customersController,
+]);
 
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,

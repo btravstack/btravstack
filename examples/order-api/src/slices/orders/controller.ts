@@ -35,6 +35,11 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * schemes protect the route, and that call is what says what each one
  * resolves to.
  *
+ * There is no display name to give any more: `HttpController(contract,
+ * "orders")` mints this piece's port from the contract key itself
+ * (`HttpController:orders`), so the key rides the port id rather than a
+ * string spelled here.
+ *
  * `export` is where the two halves separate: it names a second scheme, so its
  * principal is a discriminated union the handler has to narrow, and the
  * compiler checks that every scheme the contract named is answered for. The
@@ -51,11 +56,11 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * application's business.
  *
  * The use cases arrive as arguments, not through oRPC's context: di injects
- * them into the provider — `HttpController(name, contract)` is di's own
+ * them into the provider — `HttpController(contract, key)` is di's own
  * `Provider(port)` on a port it mints for this controller, so this is a
  * provider like any other in the graph.
  */
-export const ordersController = api.HttpController("OrdersController", contract.orders)(
+export const ordersController = api.HttpController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({

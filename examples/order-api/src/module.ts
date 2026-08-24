@@ -10,14 +10,13 @@ import { ordersController } from "./slices/orders/controller.js";
 import { OrdersSlice } from "./slices/orders/module.js";
 
 /**
- * The router, composed from each slice's own controller — keyed by the
- * contract's own top-level keys, so a key the contract does not declare is a
- * compile error and a declared key with no controller is too.
+ * The router, composed from each slice's own controller — an array of
+ * pieces, one per top-level contract key. Every fragment the contract
+ * declares must be covered by exactly one piece; the key rides each piece's
+ * own port id, so an uncovered fragment is a compile error and two slices
+ * claiming one fragment is di's duplicate-provider defect at build.
  */
-export const orderRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+export const orderRouter = api.HttpRouter(contract)([ordersController, customersController]);
 
 /**
  * The composition root, and a list of **slices**: each one imports the vertical

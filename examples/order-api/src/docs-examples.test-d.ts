@@ -64,7 +64,7 @@ const customerViewOf = (customer: Customer): CustomerView => ({
 // controller's byte for byte.
 // ---------------------------------------------------------------------------
 
-const ordersController = api.HttpController("DocsOrdersController", contract.orders)(
+const ordersController = api.HttpController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -115,7 +115,7 @@ const ordersController = api.HttpController("DocsOrdersController", contract.ord
 
 // The unmarked half, and the contrast every page draws: no `principal` on the
 // context at all, the tenant off the input instead.
-const customersController = api.HttpController("DocsCustomersController", contract.customers)(
+const customersController = api.HttpController(contract, "customers")(
   { find: FindCustomer },
   {
     sync: ({ find }) => ({
@@ -151,10 +151,7 @@ const DocsCustomersSlice = Module("DocsCustomersSlice")({
 // "The router" and "The composition root" — docs/examples/order-api.md.
 // ---------------------------------------------------------------------------
 
-const docsRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+const docsRouter = api.HttpRouter(contract)([ordersController, customersController]);
 
 const _DocsOrderApi = HttpModule("DocsOrderApi")({
   needs: [Env],
