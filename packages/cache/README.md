@@ -1,0 +1,141 @@
+# @btravstack/cache
+
+> The cache port for [`@btravstack/core`](../core): one `Cache` an application
+> depends on, an in-memory and a Redis adapter behind it, and an opt-in
+> composition that spans, counts and logs every call.
+
+📖 **[Documentation](https://btravstack.github.io/start/reference/cache)** ·
+[API Reference](https://btravstack.github.io/start/api/cache/)
+
+```sh
+pnpm add @btravstack/cache @btravstack/core @btravstack/config @btravstack/di unthrown
+```
+
+Four peer dependencies, plus `redis` if you compose the Redis adapter and
+`@btravstack/observability` + `@opentelemetry/api` if you compose the
+instrumented one — both optional, so a consumer that imports neither subpath
+installs neither. Node `>=20`. Not yet published: this repository has not cut
+a release yet.
+
+## A worked example
+
+<!-- doctest: prelude
+import { Module } from "@btravstack/di";
+import { FindCustomer } from "@btravstack/example-order-application";
+import type { CustomerNotFound } from "@btravstack/example-order-domain";
+import { TenantId } from "@btravstack/example-order-domain";
+import { OkAsync, P } from "unthrown";
+import { observability, Logger } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
+import { CustomerApplicationModule } from "@btravstack/example-order-application";
+import { CustomerPersistenceModule } from "@btravstack/example-order-infrastructure";
+-->
+
+A read-through, and the two recoveries that make it honest:
+
+```ts
+import { Cache } from "@btravstack/cache";
+import { Port, Provider } from "@btravstack/di";
+import type { AsyncResult } from "unthrown";
+
+type CustomerView = { readonly id: string; readonly name: string };
+declare const view: (customer: {
+  readonly id: string;
+  readonly name: string;
+}) => CustomerView;
+
+class Customers extends Port("ReadmeCustomers")<{
+  readonly find: (
+    tenantId: string,
+    id: string,
+  ) => AsyncResult<CustomerView, CustomerNotFound>;
+}> {}
+
+const customers = Provider(Customers)(
+  { find: FindCustomer, cache: Cache },
+  {
+    sync: ({ find, cache }) => ({
+      find: (tenantId, id) => {
+        // The key carries the tenant, because the port does not: `Cache` takes
+        // plain strings, and composing them is the application's job.
+        const key = `customers:${tenantId}:${id}`;
+        return (
+          cache
+            .get(key)
+            // An unreachable cache is a miss. Whether an outage degrades a
+            // request or fails it is YOUR decision, which is why the package
+            // models the failure instead of swallowing it.
+            .recoverErrCases((matcher) =>
+              matcher.with(P.tag("CacheUnavailable"), () => undefined),
+            )
+            .flatMap((hit) =>
+              hit === undefined
+                ? find
+                    .execute(TenantId(tenantId), id)
+                    .map(view)
+                    .flatTap((cached) =>
+                      cache
+                        .set(key, cached, { ttlMs: 60_000 })
+                        .recoverErrCases((m) =>
+                          m.with(P.tag("CacheUnavailable"), () => undefined),
+                        ),
+                    )
+                : // The stored value is `unknown`; the cast is the boundary where
+                  // it re-enters this application's vocabulary.
+                  OkAsync(hit.value as CustomerView),
+            )
+        );
+      },
+    }),
+  },
+);
+```
+
+And the composition — the adapter, and whether it is instrumented, are both
+decided here and nowhere else:
+
+```ts
+import { instrumentedCache } from "@btravstack/cache/instrumented";
+import { redisCache } from "@btravstack/cache/redis";
+
+export const CustomersApp = Module("CustomersApp")({
+  imports: [
+    CustomerApplicationModule,
+    CustomerPersistenceModule,
+    // `cache({ adapter: redisCache() })` is the same graph without the
+    // spans, the counter and the error lines — and without observability
+    // installed at all.
+    instrumentedCache({ adapter: redisCache() }),
+    observability(),
+    otel(),
+  ],
+  provides: [customers],
+  exports: [Customers, Logger],
+});
+```
+
+## Options
+
+| Option      | Where                               | What it is                                                                        |
+| ----------- | ----------------------------------- | --------------------------------------------------------------------------------- |
+| `adapter`   | `cache` / `instrumentedCache`       | the adapter module providing `CacheBackend` — required                            |
+| `clock`     | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)              |
+| `REDIS_URL` | environment, read by `redisCache()` | the connection URL — required, validated at graph build                           |
+| `ttlMs`     | `cache.set(key, value, { … })`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted) |
+
+The full table — defaults, semantics and the reasoning — lives on
+[the reference page](https://btravstack.github.io/start/reference/cache),
+which is this list's one detailed home.
+
+## What it decides, and what it does not
+
+**It decides** that a miss is `Ok(undefined)` and not an error, that a failing
+backend is a modeled `CacheUnavailable` rather than a swallowed one, that
+values are `unknown` encoded by the adapter, and that keys are plain strings
+the caller composes.
+
+**It does not decide** whether an unreachable cache degrades your request —
+recover `CacheUnavailable` where you call it — nor what your keys look like,
+nor when to invalidate them. There is no `getOrSet`, no eviction on the memory
+adapter, and no namespace parameter; the reasons are in
+[`CLAUDE.md`](./CLAUDE.md).

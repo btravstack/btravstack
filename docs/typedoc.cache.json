@@ -1,0 +1,11 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/cache",
+  "entryPoints": [
+    "../packages/cache/src/index.ts",
+    "../packages/cache/src/redis.ts",
+    "../packages/cache/src/instrumented.ts"
+  ],
+  "tsconfig": "../packages/cache/tsconfig.json",
+  "out": "api/cache"
+}
