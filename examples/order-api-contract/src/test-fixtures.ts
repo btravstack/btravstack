@@ -54,16 +54,17 @@ const stubServer = (): StubFetch => {
     // client-side stub has an identity to model. The unmarked `customers`
     // fragment is where an input still names one.
     if (path.join(".") === "orders.place") {
-      // Typed with the view's own branded id: this stub stands where the
-      // transport's validation already ran, so the claim is the read, not a
-      // parse.
+      // The input is read BARE, as the contract declares it — inputs never
+      // carry the brand (issue #80). The claim happens where the OUTPUT is
+      // constructed, the same boundary the real controller sits on.
       const { id, quantity } = inputOf<{
-        readonly id: OrderView["id"];
+        readonly id: string;
         readonly quantity: number;
       }>(init);
       if (stored.has(id)) return declared(409, "CONFLICT", id);
-      stored.set(id, { id, quantity });
-      return rpc(200, { id, quantity });
+      const view: OrderView = { id: id as OrderView["id"], quantity };
+      stored.set(id, view);
+      return rpc(200, view);
     }
 
     const { id } = inputOf<{ readonly id: string }>(init);
