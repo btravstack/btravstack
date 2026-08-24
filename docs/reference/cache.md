@@ -6,14 +6,19 @@ description: The complete surface of @btravstack/cache — the Cache and CacheBa
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
 import { Module, Port, Provider } from "@btravstack/di";
-import { Cache, CacheBackend, cache, memoryCache, memoryCacheProvider } from "@btravstack/cache";
+import { Cache, CacheBackend, cache, memoryCache, memoryCacheProvider, type CacheService } from "@btravstack/cache";
 import { instrumentedCache } from "@btravstack/cache/instrumented";
 import { redisCache } from "@btravstack/cache/redis";
 import { observability, Logger } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
-import { createFakeClock } from "@btravstack/testing";
-import { overridden } from "@btravstack/testing";
-import { OkAsync, P } from "unthrown";
+import { createFakeClock, overridden } from "@btravstack/testing";
+import { OkAsync, P, type AsyncResult } from "unthrown";
+
+// The stand-ins the fences below read: a graph an application already
+// composed, and the view its own layer defines.
+declare const RealApp: Module<Cache, never, never>;
+type CustomerView = { readonly id: string; readonly name: string };
+declare const findCustomer: (id: string) => AsyncResult<CustomerView, never>;
 -->
 
 # @btravstack/cache
@@ -27,19 +32,41 @@ import { OkAsync, P } from "unthrown";
 ## The port
 
 ```ts
-const readThrough = Provider(Port("Example")<{ readonly run: () => void }>)(
+class Customers extends Port("ReferenceCustomers")<{
+  readonly find: (id: string) => AsyncResult<CustomerView, never>;
+  readonly forget: (id: string) => AsyncResult<void, never>;
+}> {}
+
+export const customersProvider = Provider(Customers)(
   { cache: Cache },
   {
     sync: ({ cache }) => ({
-      run: () => {
-        void cache.get("customers:t1:c1");
-        void cache.set("customers:t1:c1", { name: "Ada" }, { ttlMs: 60_000 });
-        void cache.delete("customers:t1:c1");
-      },
+      find: (id) =>
+        cache
+          .get(`customers:${id}`)
+          .recoverErrCases((m) =>
+            m.with(P.tag("CacheUnavailable"), () => undefined),
+          )
+          .flatMap((hit) =>
+            hit === undefined
+              ? findCustomer(id).flatTap((found) =>
+                  cache
+                    .set(`customers:${id}`, found, { ttlMs: 60_000 })
+                    .recoverErrCases((m) =>
+                      m.with(P.tag("CacheUnavailable"), () => undefined),
+                    ),
+                )
+              : OkAsync(hit.value as CustomerView),
+          ),
+      forget: (id) =>
+        cache
+          .delete(`customers:${id}`)
+          .recoverErrCases((m) =>
+            m.with(P.tag("CacheUnavailable"), () => undefined),
+          ),
     }),
   },
 );
-void readThrough;
 ```
 
 | Method                        | Answers                                                |
@@ -61,10 +88,10 @@ stores JSON — and claiming what came back is yours, once, where the value
 re-enters your application's vocabulary:
 
 ```ts
-type CustomerView = { readonly id: string; readonly name: string };
-declare const hit: { readonly value: unknown } | undefined;
-const view = hit === undefined ? undefined : (hit.value as CustomerView);
-void view;
+export const viewOf = (
+  hit: { readonly value: unknown } | undefined,
+): CustomerView | undefined =>
+  hit === undefined ? undefined : (hit.value as CustomerView);
 ```
 
 A value `JSON.stringify` cannot take — a cycle, a `BigInt` — is a **defect**,
@@ -83,13 +110,12 @@ what the cached value is for, and a package that decided one way would be
 deciding for every application at once. The usual answer, spelled at the call:
 
 ```ts
-declare const someCache: import("@btravstack/cache").CacheService;
-const degrading = someCache
-  .get("k")
-  .recoverErrCases((matcher) =>
-    matcher.with(P.tag("CacheUnavailable"), () => undefined),
-  );
-void degrading;
+export const readOrMiss = (cache: CacheService, key: string) =>
+  cache
+    .get(key)
+    .recoverErrCases((matcher) =>
+      matcher.with(P.tag("CacheUnavailable"), () => undefined),
+    );
 ```
 
 ## Keys are yours
@@ -101,9 +127,8 @@ application service — so a multi-tenant application writes the tenant into the
 key itself:
 
 ```ts
-const keyFor = (tenantId: string, id: string): string =>
+export const keyFor = (tenantId: string, id: string): string =>
   `customers:${tenantId}:${id}`;
-void keyFor;
 ```
 
 ## The two ports
@@ -118,9 +143,7 @@ composition root rather than a flag.
 `CacheBackend` is also the seam a spec overrides:
 
 ```ts
-declare const RealApp: Module<Cache, never, never>;
-const withMemory = overridden(RealApp, [memoryCacheProvider()]);
-void withMemory;
+export const withMemory = overridden(RealApp, [memoryCacheProvider()]);
 ```
 
 ## Adapters
@@ -133,8 +156,7 @@ has no business doing. `clock` defaults to the kernel's `systemClock`; a spec
 passes a fake one and asserts an expiry without waiting:
 
 ```ts
-const fixtureCache = memoryCache({ clock: createFakeClock() });
-void fixtureCache;
+export const fixtureCache = memoryCache({ clock: createFakeClock() });
 ```
 
 It ships in three shapes: `memoryCache()` (a module, for `cache({ adapter })`),
@@ -176,11 +198,10 @@ The adapter's module, plus `Cache` provided from its backend. No
 observability, none installed, nothing to configure:
 
 ```ts
-const Plain = Module("PlainCacheApp")({
+export const Plain = Module("PlainCacheApp")({
   imports: [cache({ adapter: memoryCache() })],
   exports: [Cache],
 });
-void Plain;
 ```
 
 ### `instrumentedCache({ adapter })`
@@ -208,7 +229,7 @@ without `observability()` and `otel()` fails di's `UNSATISFIED DEPENDENCIES`
 gate, naming all three:
 
 ```ts
-const Instrumented = Module("InstrumentedCacheApp")({
+export const Instrumented = Module("InstrumentedCacheApp")({
   imports: [
     instrumentedCache({ adapter: redisCache() }),
     observability(),
@@ -216,7 +237,6 @@ const Instrumented = Module("InstrumentedCacheApp")({
   ],
   exports: [Cache, Logger],
 });
-void Instrumented;
 ```
 
 `@btravstack/observability` and `@opentelemetry/api` are **optional** peers,

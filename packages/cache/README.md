@@ -29,6 +29,11 @@ import { observability, Logger } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { CustomerApplicationModule } from "@btravstack/example-order-application";
 import { CustomerPersistenceModule } from "@btravstack/example-order-infrastructure";
+
+// The application's own view type and the conversion into it — its layer's
+// business, not the cache's, so it stands in here rather than in the sample.
+type CustomerView = { readonly id: string; readonly name: string };
+declare const view: (customer: { readonly id: string; readonly name: string }) => CustomerView;
 -->
 
 A read-through, and the two recoveries that make it honest:
@@ -37,12 +42,6 @@ A read-through, and the two recoveries that make it honest:
 import { Cache } from "@btravstack/cache";
 import { Port, Provider } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
-
-type CustomerView = { readonly id: string; readonly name: string };
-declare const view: (customer: {
-  readonly id: string;
-  readonly name: string;
-}) => CustomerView;
 
 class Customers extends Port("ReadmeCustomers")<{
   readonly find: (
