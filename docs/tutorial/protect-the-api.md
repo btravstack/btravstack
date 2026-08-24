@@ -175,9 +175,10 @@ curl -i -X POST http://localhost:3000/rpc/greetMe \
 HTTP/1.1 401 Unauthorized
 ```
 
-The handler never ran — the `401` is the starter's, produced before dispatch
-because the contract said `greetMe` needs a `user` and no scheme answered.
-Now present one:
+The handler never ran — the `401` is the starter's, produced before
+dispatch: the contract says `greetMe` needs a `user`, so the scheme's
+authenticator ran, found no credential, and answered `Unauthenticated`, which
+the starter maps to `401`. Now present a credential:
 
 ```sh
 curl -X POST http://localhost:3000/rpc/greetMe \

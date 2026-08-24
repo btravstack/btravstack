@@ -162,6 +162,8 @@ const App = HttpModule("App")({ router: greetingRouter, imports: [GreetingModule
 
 ```ts
 // app.spec.ts
+import assert from "node:assert/strict";
+
 import { bootFixture } from "@btravstack/testing";
 import { describe, expect, test } from "vitest";
 
@@ -176,9 +178,10 @@ describe("the greeting service", () => {
     // GIVEN the real application, with this test's own environment
     const app = boot(App, { env: { GREETING: "Ahoy" } });
     const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
 
     // WHEN the procedure is called over real HTTP
-    const response = await fetch(`http://127.0.0.1:${info?.port}/rpc/hello`, {
+    const response = await fetch(`http://127.0.0.1:${info.port}/rpc/hello`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ json: { name: "world" } }),
@@ -201,7 +204,10 @@ npx vitest run
 Two things to notice. The test booted the **whole** application — the graph,
 the config validation, the HTTP listener — not a handler in isolation; and
 `runtimeInfo()` is how it learned the port the runtime actually bound,
-published once the process is serving. The raw `fetch` shows there is no
+published once the process is serving — `get()` plus an assertion is the
+shape, since its error channel is empty and `undefined` only means the
+runtime never reached serving, which deserves a named failure rather than a
+confusing fetch error. The raw `fetch` shows there is no
 magic; in your own suite, hand the origin to lesson one's typed client
 instead.
 

@@ -216,7 +216,7 @@ const mergeImports = (statements: ReadonlySet<string>): string[] => {
     const match = /^import (type )?\{(?<names>[^}]*)\} from "(?<source>[^"]+)";?$/.exec(flat);
     const source = match?.groups?.["source"];
     if (!match || source === undefined) {
-      if (!/from "\./.test(flat)) passthrough.add(flat);
+      if (!/["']\.\.?\//.test(flat)) passthrough.add(flat);
       continue;
     }
     if (source.startsWith("..")) {
@@ -269,7 +269,9 @@ const emit = (page: Page, outDir: string): number => {
       // generated module lives inside the workspace's `src/`, so
       // `../../auth.js` reaches the application's own file).
       for (const statement of split.imports) {
-        if (/from "\./.test(statement.replace(/\s+/g, " "))) continue;
+        // Matched on the specifier, not on `from`, so a side-effect import
+        // (`import "./setup.js";`) is dropped with the rest.
+        if (/["']\.\.?\//.test(statement)) continue;
         imports.add(statement.trim());
       }
       if (split.rest !== "") bodies.push(`${banner(fence)}\n${split.rest}`);
