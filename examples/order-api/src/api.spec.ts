@@ -316,6 +316,10 @@ describe("order-api", () => {
     // GIVEN the runtime and the kernel's probe server both bound
     const app = serve(gate.api, { probes: { port: 0 } });
     const probes = await probesFor(app);
+    // The probe server binds BEFORE the graph is built, and answers 503 until
+    // the runtime is serving — correctly. `runtimeInfo()` settles when it is,
+    // which is the barrier every other test here crosses by asking for a port.
+    await app.runtimeInfo();
 
     // WHEN both endpoints are read while serving — supertest, because the
     // probes are the one surface with no contract for the typed client
