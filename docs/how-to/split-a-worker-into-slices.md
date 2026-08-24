@@ -363,7 +363,7 @@ impossible by construction.
 The generator is this repository's own (`internal/slice-codegen`, private and
 not published), because the useful part is the **convention**, not the tool: a
 fixed export name per file and one transport file per directory is what makes
-a slice tree machine-readable at all, and thirty lines of `readdirSync` is the
+a slice tree machine-readable at all, and a short walk of `readdirSync` is the
 whole of it. The rule it enforces is small: a slice directory holds `module.ts`
 plus **exactly one** of `controller.ts` / `handler.ts` / `activities.ts`.
 Anything else is a modeled `SliceTreeInvalid` naming the directory, and the
