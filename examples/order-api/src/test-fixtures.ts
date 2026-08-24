@@ -23,7 +23,6 @@ import {
 } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import request from "supertest";
-import type TestAgent from "supertest/lib/agent.js";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { inject, test } from "vitest";
 
@@ -167,6 +166,9 @@ const portOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<number> => {
   assert.ok(info !== undefined, "the runtime published no Serving.info");
   return info.port;
 };
+
+/** Derived rather than deep-imported: supertest's `exports` map does not name the agent type publicly, and `supertest/lib/agent.js` is internal layout an upgrade may move. */
+type TestAgent = ReturnType<typeof request>;
 
 export type ApiFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
