@@ -114,7 +114,21 @@ replaces the Redis adapter under the real root, and the drift gate comes free
   and a package that cannot compose them cannot invalidate by pattern either.
 - **No multi-get, no counters, no lists.** One value at a time, on the three
   operations every backend has.
-- **No namespace parameter.** See the decisions above.
+- **No namespace parameter, and no `keyPrefix` either — for two different
+  reasons.** A per-call namespace is the tenancy question one layer out, and
+  the framework has no concept of a tenant to put in that slot. A
+  deployment-level `keyPrefix`, for two applications sharing one server, is
+  the reasonable version of the ask and is declined because **Redis already
+  has it**: `REDIS_URL` carries a database index as its path and node-redis
+  honours it (measured against the gate's own container — a key written on
+  `…/3` is absent on `…/4`), so separating two applications is a deployment
+  change with no code. A prefix would be the weaker of two ways to do one
+  thing: it does not isolate `FLUSHDB`, `SCAN` or `DBSIZE`, and a database
+  does. **The caveat**: Redis Cluster has only database 0, so a clustered
+  deployment genuinely cannot use the URL for this — that is the day
+  `keyPrefix` earns its place, and not before (issue #62's own "not built
+  speculatively"). Tests need none of it: a UUID key prefix per test is the
+  isolation boundary, and it needs no package support.
 
 ## Testing
 

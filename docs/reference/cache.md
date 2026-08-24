@@ -251,3 +251,9 @@ reached only through the `@btravstack/cache/instrumented` subpath.
   package that cannot compose them cannot invalidate by pattern either.
 - **No multi-get, no counters, no lists.** One value at a time, over the three
   operations every backend has.
+- **No `keyPrefix` option.** Two applications sharing one Redis separate
+  through the URL — `redis://host:6379/3` and `…/4` are different keyspaces,
+  and that is a deployment change with no code. A prefix would be the weaker
+  of two ways to do one thing (it does not isolate `FLUSHDB`, `SCAN` or
+  `DBSIZE`). Redis Cluster is the exception — it has only database 0 — and is
+  when the option would earn its place.
