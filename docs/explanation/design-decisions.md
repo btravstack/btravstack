@@ -246,6 +246,15 @@ Temporal's clock until the process exits. It rules out the kernel ever calling
 
 ## What there deliberately is not
 
+No job-queue runtime and no scheduler runtime (issues #61 and #60): the
+transport role map assigns answering to `@btravstack/http`, orchestration —
+and with it everything job-queue-shaped and everything scheduled — to
+`@btravstack/temporal`, and broadcasting to `@btravstack/amqp`. A workflow
+already is a durable job with a handle (retries, delay, idempotency, a result
+that outlives the caller), and Temporal Schedules are the cron; a queue
+package would re-ship those semantics over a broker that models
+announcements.
+
 No `Defect` constructor, no accumulation of runtimes,
 no `recoverFailure`-style channel-moving helper. Swapping an adapter is
 composing a different module, which di already documents and the type checker

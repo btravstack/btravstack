@@ -146,6 +146,19 @@ major.
    raced against it — and `@temporalio/worker` exposes no public forced
    shutdown to escalate to, so "stop waiting" is the escalation.
 
+   **The transport role map is a decision, not an inventory** (issues #61 and
+   #60): answering is `@btravstack/http`; orchestration — and with it
+   everything job-queue-shaped and everything scheduled — is
+   `@btravstack/temporal`; broadcasting is `@btravstack/amqp`. There is no
+   job-queue runtime and no scheduler runtime to come. A workflow already IS
+   a durable job with a handle — retries, per-attempt budgets, delay,
+   idempotency keys and a result that outlives the caller are Temporal's own
+   primitives, and Temporal Schedules are the cron — where a queue package
+   would re-ship those semantics over a broker that models announcements
+   ("AMQP carries announcements, orchestration carries intent", the amqp
+   contract's own line). A workload the map does not cover is a new decision
+   to record here, never a fourth runtime by default.
+
 2. **Ambient carries DATA. The DI `Context` carries CAPABILITIES.** The kernel
    opens one `AsyncLocalStorage` store per unit holding a small, fixed record —
    `{ unitId, traceId, tenantId, deadline, signal }` (`UnitRecord` in
