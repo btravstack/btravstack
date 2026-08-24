@@ -223,18 +223,23 @@ major.
    **Declining the mapping is not declining the help — the help is the `Err`
    channel's own type** (issue #69's question, answered by measurement).
    `placeOrder`'s union (`InvalidQuantity | InvalidOrderId | DuplicateOrder`)
-   is written once, on the interactor's return type in
-   `examples/order-application/src/use-cases.ts`, and flows through the port
+   has one source of truth — the `PlaceOrder` port in
+   `examples/order-application/src/ports.ts`, which the interactor's return
+   type is checked against — and flows through the port
    to every consumer; each triage site folds it with an exhaustive
-   `mapErrCases` (`P._` is banned repo-wide), so widening the union fails
+   `mapErrCases` (`P._` is a lint error, and its two structural disables are
+   nowhere near a triage), so widening the union fails
    **every** site in one `pnpm typecheck` run — the compiler's failure list
    IS the site list, and no hand-kept registry ties the copies together.
    The `InvalidOrderId` arm is the worked proof: adding it broke both sites,
    both grew their arm, and the one surface that drifted — narrative docs —
    is what the doc-samples gate now compiles. That union has exactly **two**
-   triage sites — `examples/order-api`'s orders controller (→ `CONFLICT` /
+   runtime triage sites in the running examples — `examples/order-api`'s
+   orders controller (→ `CONFLICT` /
    `BAD_REQUEST` / `INVALID_QUANTITY`) and `examples/order-temporal-worker`'s
-   fulfillment activities (→ `nonRetryable` contract errors) — and the AMQP
+   fulfillment activities (→ `nonRetryable` contract errors); the copies the
+   documentation shows are mirrors of these two, held to the same compile by
+   the doc-samples gate, so they sit in the same failure list — and the AMQP
    worker is deliberately not a third: a subscriber reacts to a committed
    fact, so a placement's `Err` never reaches it, and the ack/retry/DLQ split
    its `CLAUDE.md` describes triages the handler's OWN failures, a different
