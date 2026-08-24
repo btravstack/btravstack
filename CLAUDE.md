@@ -887,11 +887,15 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   (`prefer-async-result`, a function-type return position) and `run-main.ts`'s
   `P._` (`no-catch-all-pattern`, the generic-`E` case where the catch-all is
   the only arm that can terminate the match).
-- The repo dogfoods **every** `@unthrown/oxlint` rule — the five `recommended`
-  ones plus both opt-ins (`no-throw`, `no-get-or-throw`). There were three
+- The repo dogfoods **every** `@unthrown/oxlint` rule — the six
+  `recommended` ones plus both opt-ins (`no-throw`, `no-get-or-throw`). There
+  were three
   until `@unthrown/oxlint@5.4.0` removed `prefer-ensure` and `no-throw`; 5.5.0
   restored `no-throw` and kept `prefer-ensure` removed, on the grounds that it
-  flagged correct code violating no thesis and carried a known false positive.
+  flagged correct code violating no thesis and carried a known false positive;
+  5.6.0 added `no-async-result-race` (issue #92, born from this repo's own
+  eager-`AsyncResult` hazard — see the sequencing bullet below), and adopting
+  it fired on nothing: the `flatTap`/`DoAsync` discipline was already kept.
   oxlint refuses to parse a config naming an unknown rule, so a config still
   listing a removed rule fails the **whole** lint run, every non-unthrown rule
   included — which is how the 5.5.0 bump surfaced here.
@@ -943,8 +947,11 @@ CustomersSlice, observability()], exports: [Logger] })`** is the whole
   `AsyncResult` is **eager**: constructing it starts the work. So the readable
   spelling of a sequence — each step in its own `const`, then chained — is a
   **race**, and a silent one: it still type-checks and still returns a `Result`,
-  it just runs the steps concurrently. Nothing in the gate catches it, which is
-  the one place this repo's "mistakes are compile errors" thesis does not hold.
+  it just runs the steps concurrently. Since `@unthrown/oxlint@5.6.0` the gate
+  catches it: `unthrown/no-async-result-race` (issue #92, filed from this very
+  paragraph's admission) reports sibling constructions where one is consumed
+  by a later step's callback — the racing spelling is a lint error now, not a
+  convention held by review.
   `flatTap` is the answer where a later step needs only the earlier one's
   _success_: it runs a failable step, discards its value and passes the original
   through, so a five-step saga stays flat instead of becoming five levels of
