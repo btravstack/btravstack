@@ -12,8 +12,8 @@ import type { Order } from "@btravstack/example-order-domain";
 import { Module } from "@btravstack/di";
 import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http";
 import { ErrAsync, OkAsync, P } from "unthrown";
-import { customersController } from "../../slices/customers/controller.js";
-import { ordersController } from "../../slices/orders/controller.js";
+import { piece as customersController } from "../../slices/customers/controller.js";
+import { piece as ordersController } from "../../slices/orders/controller.js";
 declare const view: (order: Order) => OrderView;
 -->
 
@@ -98,8 +98,8 @@ The worked composition root, from `examples/order-api/src/module.ts`:
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
-import { CustomersSlice } from "../../slices/customers/module.js";
-import { OrdersSlice } from "../../slices/orders/module.js";
+import { slice as CustomersSlice } from "../../slices/customers/module.js";
+import { slice as OrdersSlice } from "../../slices/orders/module.js";
 -->
 
 ```ts
@@ -350,7 +350,7 @@ declares the controller's own port and hands back what it built:
 <!-- doctest: isolate
 import { contract } from "@btravstack/example-order-api-contract";
 import { api } from "../../auth.js";
-import { ordersController } from "../../slices/orders/controller.js";
+import { piece as ordersController } from "../../slices/orders/controller.js";
 -->
 
 ```ts

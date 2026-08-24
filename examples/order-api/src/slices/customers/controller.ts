@@ -20,7 +20,7 @@ const view = (customer: Customer): CustomerView => ({ id: customer.id, name: cus
  * shape. A slice is defined by owning its fragment, its controller and its
  * triage, not by owning a private adapter.
  */
-export const customersController = api.HttpController("CustomersController", contract.customers)(
+export const piece = api.HttpController("CustomersController", contract.customers)(
   { find: FindCustomer },
   {
     sync: ({ find }) => ({

@@ -3,10 +3,7 @@ import { HttpModule } from "@btravstack/http";
 import { Logger, observability } from "@btravstack/observability";
 
 import { api } from "./auth.js";
-import { customersController } from "./slices/customers/controller.js";
-import { CustomersSlice } from "./slices/customers/module.js";
-import { ordersController } from "./slices/orders/controller.js";
-import { OrdersSlice } from "./slices/orders/module.js";
+import { customersController, ordersController, slices } from "./slices.gen.js";
 
 /**
  * The router, composed from each slice's own controller — keyed by the
@@ -21,7 +18,12 @@ export const orderRouter = api.HttpRouter(contract)({
 /**
  * The composition root, and a list of **slices**: each one imports the vertical
  * it needs, so this file names what the process serves rather than everything
- * every slice happens to depend on. The verticals meet only at the database
+ * every slice happens to depend on. `...slices` spreads every slice
+ * `slices.gen.ts` found — generated from the same `src/slices/*` directories
+ * the keyed router above reads its controllers from — into `imports`, so a
+ * slice on disk is a slice in `imports` by construction: there is no longer a
+ * hole where dropping one leaves its controller's port unmet and `start` fails
+ * at runtime with a `WiringDefect`. The verticals meet only at the database
  * module both persistence halves import; di flattens the module tree into a
  * `Set` keyed by provider reference, so the diamond builds one connection.
  *
@@ -49,6 +51,6 @@ export const orderRouter = api.HttpRouter(contract)({
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
+  imports: [...slices, observability()],
   exports: [Logger],
 });

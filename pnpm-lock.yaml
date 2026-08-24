@@ -419,6 +419,9 @@ importers:
       '@btravstack/entity':
         specifier: 'catalog:'
         version: 0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.7.0))(unthrown@5.7.0)(zod@4.4.3)
+      '@btravstack/internal-slice-codegen':
+        specifier: workspace:*
+        version: link:../../internal/slice-codegen
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra

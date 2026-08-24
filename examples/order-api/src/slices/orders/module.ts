@@ -3,7 +3,7 @@ import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { Logger } from "@btravstack/observability";
 
-import { ordersController } from "./controller.js";
+import { piece } from "./controller.js";
 
 /**
  * The orders slice: everything it takes to serve `contract.orders`, and
@@ -21,15 +21,15 @@ import { ordersController } from "./controller.js";
  * the same database module, and di flattens the tree with a `Set` keyed by
  * provider **reference**, so the diamond yields one connection, not two.
  *
- * `exports: [ordersController]` is the provider, not `ordersController.port`:
- * `HttpController` mints the port for you, so there is no class to name.
+ * `exports: [piece]` is the provider, not `piece.port`: `HttpController`
+ * mints the port for you, so there is no class to name.
  */
-export const OrdersSlice = Module("OrdersSlice")({
+export const slice = Module("OrdersSlice")({
   // The controller writes a line itself, so `Logger` is this slice's own
   // provider's need. The environment its persistence reads is not: that is
   // `DatabaseModule`'s, declared there and inherited here.
   needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
-  provides: [ordersController],
-  exports: [ordersController],
+  provides: [piece],
+  exports: [piece],
 });

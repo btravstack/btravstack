@@ -27,10 +27,7 @@ import { inject, test } from "vitest";
 import { createOrderApiClient, type OrderApiClient } from "./client.js";
 import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
-import { customersController } from "./slices/customers/controller.js";
-import { CustomersSlice } from "./slices/customers/module.js";
-import { ordersController } from "./slices/orders/controller.js";
-import { OrdersSlice } from "./slices/orders/module.js";
+import { customersController, ordersController, slices } from "./slices.gen.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
@@ -102,6 +99,12 @@ const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) 
  * A parallel root rather than `OrderApi` itself for the same reason
  * `apiWith` is one: nothing can be layered over a graph that already provides
  * `Logger`.
+ *
+ * `...slices` is spread in here too, mirroring `OrderApi`'s own root: it
+ * comes from the same generated `slices.gen.ts` `orderRouter`'s controllers
+ * do, so a slice on disk is a slice in `imports` by construction rather than
+ * something this root could drop and only discover at runtime as a
+ * `WiringDefect`.
  */
 const recordingApi = () => {
   const recorder = recorderOf();
@@ -110,11 +113,7 @@ const recordingApi = () => {
       router: orderRouter,
       // `level` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
       // real root, and this root exists to be read.
-      imports: [
-        OrdersSlice,
-        CustomersSlice,
-        observability({ sink: recorder.sink, level: "trace" }),
-      ],
+      imports: [...slices, observability({ sink: recorder.sink, level: "trace" })],
       exports: [Logger],
     }),
     lines: recorder.lines,

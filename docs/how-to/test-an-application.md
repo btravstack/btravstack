@@ -13,8 +13,8 @@ import type {} from "@unthrown/vitest";
 import { OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderApi, orderRouter } from "../../module.js";
 import { RequestModule } from "../../request-scope.js";
-import { CustomersSlice } from "../../slices/customers/module.js";
-import { OrdersSlice } from "../../slices/orders/module.js";
+import { slice as CustomersSlice } from "../../slices/customers/module.js";
+import { slice as OrdersSlice } from "../../slices/orders/module.js";
 -->
 
 # Test an application
@@ -163,8 +163,8 @@ import type {} from "@unthrown/vitest";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability, type Line } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
-import { CustomersSlice } from "../../slices/customers/module.js";
-import { OrdersSlice } from "../../slices/orders/module.js";
+import { slice as CustomersSlice } from "../../slices/customers/module.js";
+import { slice as OrdersSlice } from "../../slices/orders/module.js";
 import { it } from "../../test-fixtures.js";
 -->
 
@@ -342,8 +342,8 @@ import { Env } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http";
 import { Logger, observability, type Line, type Sink } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
-import { CustomersSlice } from "../../slices/customers/module.js";
-import { OrdersSlice } from "../../slices/orders/module.js";
+import { slice as CustomersSlice } from "../../slices/customers/module.js";
+import { slice as OrdersSlice } from "../../slices/orders/module.js";
 declare const recorderOf: () => {
   readonly sink: Sink;
   readonly lines: readonly Line[];

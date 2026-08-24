@@ -55,7 +55,7 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * `Provider(port)` on a port it mints for this controller, so this is a
  * provider like any other in the graph.
  */
-export const ordersController = api.HttpController("OrdersController", contract.orders)(
+export const piece = api.HttpController("OrdersController", contract.orders)(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({

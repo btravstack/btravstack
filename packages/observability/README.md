@@ -3,8 +3,8 @@ import { HttpModule } from "@btravstack/http";
 import { Port } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
 import { orderRouter } from "../../module.js";
-import { CustomersSlice } from "../../slices/customers/module.js";
-import { OrdersSlice } from "../../slices/orders/module.js";
+import { slice as CustomersSlice } from "../../slices/customers/module.js";
+import { slice as OrdersSlice } from "../../slices/orders/module.js";
 class PlaceOrder extends Port("PlaceOrder")<{
   readonly execute: (id: string, quantity: number) => AsyncResult<void, never>;
 }> {}

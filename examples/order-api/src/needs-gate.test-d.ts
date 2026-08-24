@@ -19,8 +19,8 @@ import { Logger, observability } from "@btravstack/observability";
 
 import { OrderApi, orderRouter } from "./module.js";
 import { RequestModule } from "./request-scope.js";
-import { CustomersSlice } from "./slices/customers/module.js";
-import { OrdersSlice } from "./slices/orders/module.js";
+import { slice as CustomersSlice } from "./slices/customers/module.js";
+import { slice as OrdersSlice } from "./slices/orders/module.js";
 
 const options = { signals: false, probes: false } as const;
 
