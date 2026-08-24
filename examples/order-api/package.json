@@ -37,7 +37,9 @@
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@types/node": "catalog:",
+    "@types/supertest": "catalog:",
     "@unthrown/vitest": "catalog:",
+    "supertest": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "zod": "catalog:"

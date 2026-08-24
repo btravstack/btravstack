@@ -311,20 +311,16 @@ describe("order-api", () => {
     await expect(hung).toBeDefectWith(expect.any(Error));
   });
 
-  it("answers both probes while the runtime serves", async ({
-    serve,
-    probesFor,
-    statusOf,
-    gate,
-  }) => {
+  it("answers both probes while the runtime serves", async ({ serve, probesFor, gate }) => {
     // GIVEN the runtime and the kernel's probe server both bound
     const app = serve(gate.api, { probes: { port: 0 } });
     const probes = await probesFor(app);
 
-    // WHEN both endpoints are read while serving
+    // WHEN both endpoints are read while serving — supertest, because the
+    // probes are the one surface with no contract for the typed client
     const probed = {
-      livez: await statusOf(`${probes}/livez`),
-      readyz: await statusOf(`${probes}/readyz`),
+      livez: (await probes.get("/livez")).status,
+      readyz: (await probes.get("/readyz")).status,
       ready: app.ready(),
     };
 
@@ -355,6 +351,29 @@ describe("order-api", () => {
     expect(refused).toBeDefectWith(
       expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
     );
+  });
+
+  it("refuses the anonymous caller on the wire: a 401 wearing the security headers", async ({
+    serve,
+    rawOf,
+    api,
+  }) => {
+    // GIVEN the real composition root and supertest on its raw origin — the
+    // transport facts the typed client deliberately hides
+    const raw = await rawOf(serve(api));
+
+    // WHEN the marked procedure is called with no credential at all
+    const response = await raw
+      .post("/rpc/orders/place")
+      .set("content-type", "application/json")
+      .send({ json: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 } });
+
+    // THEN the refusal is a plain 401, and the listener's security headers
+    // ride even a refused response
+    expect({
+      status: response.status,
+      nosniff: response.headers["x-content-type-options"],
+    }).toEqual({ status: 401, nosniff: "nosniff" });
   });
 
   it("serves the export to a service token, on the requirement the walk reaches second", async ({
@@ -564,13 +583,7 @@ describe("order-api", () => {
     );
   });
 
-  it("goes unready on drain while staying live", async ({
-    serve,
-    clientFor,
-    probesFor,
-    statusOf,
-    gate,
-  }) => {
+  it("goes unready on drain while staying live", async ({ serve, clientFor, probesFor, gate }) => {
     // GIVEN the runtime and the probe server both bound, with a call in flight
     // so the drain — and the process — stays alive while the probes are read
     const app = serve(gate.api, { probes: { port: 0 } });
@@ -586,8 +599,8 @@ describe("order-api", () => {
     app.requestDrain();
     await vi.waitUntil(() => !app.ready());
     const probed = {
-      readyz: await statusOf(`${probes}/readyz`),
-      livez: await statusOf(`${probes}/livez`),
+      readyz: (await probes.get("/readyz")).status,
+      livez: (await probes.get("/livez")).status,
       ready: app.ready(),
     };
     gate.release();

@@ -22,6 +22,8 @@ import {
   type Sink,
 } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
+import request from "supertest";
+import type TestAgent from "supertest/lib/agent.js";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { inject, test } from "vitest";
 
@@ -216,8 +218,18 @@ export type ApiFixtures = {
    * that has to reach the second requirement to be served at all.
    */
   readonly serviceClientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;
-  readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<string>;
-  readonly statusOf: (url: string) => Promise<number>;
+  /**
+   * A supertest agent bound to the kernel's probe server — the one HTTP
+   * surface in this application that has no contract, which is exactly what
+   * makes supertest the right client for it: the typed oRPC client speaks
+   * the contract, and `/livez` / `/readyz` have none to speak.
+   */
+  readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<TestAgent>;
+  /**
+   * A supertest agent on the runtime's own origin — the raw transport
+   * surface, for a spec about statuses and headers rather than payloads.
+   */
+  readonly rawOf: <E>(app: RunningApp<E, HttpInfo>) => Promise<TestAgent>;
   /** The real composition root. */
   readonly api: typeof OrderApi;
   /** The same two slices over stub persistence, with one customer registered. */
@@ -285,13 +297,13 @@ export const it = test.extend<ApiFixtures>({
     await use(async (app) => {
       const port = (await app.probePort()).get();
       assert.ok(port !== undefined, "the probe server published no port");
-      return `http://127.0.0.1:${port}`;
+      return request(`http://127.0.0.1:${port}`);
     });
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above
-  statusOf: async ({}, use) => {
-    await use(async (url) => (await fetch(url)).status);
+  rawOf: async ({}, use) => {
+    await use(async (app) => request(await originOf(app)));
   },
 
   // oxlint-disable-next-line no-empty-pattern -- see above

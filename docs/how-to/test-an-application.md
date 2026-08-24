@@ -218,6 +218,66 @@ real `OrderApi` with only its `Logger` provider substituted, and a loud
 `jsonSink()` on stdout — does not write into the runner's output. See
 [Log and correlate](/how-to/log-and-correlate).
 
+## Read the contract-less surfaces with supertest
+
+The typed client is the right tool for every procedure — inputs typed by the
+contract, errors `Result`-shaped. What it cannot speak is the surface that
+has **no contract**: the kernel's probes (`/livez`, `/readyz`), a refusal's
+bare status code, the headers the listener sets before dispatch. supertest
+is the right client there — handed the origin the booted app published, via
+`request(origin)`:
+
+```sh
+pnpm add -D supertest @types/supertest
+```
+
+It never boots anything itself, and that is the point: `PORT=0` plus
+`runtimeInfo()` already is a "random port" boot — supertest's own would run
+the same socket at the same speed while skipping the config binding, the
+lifecycle and the drain that make the booted test worth having.
+`examples/order-api`'s fixtures hand out two agents: `probesFor(app)` on the
+probe server's port, `rawOf(app)` on the runtime's origin.
+
+<!-- doctest: isolate
+import { expect } from "vitest";
+import { it } from "../../test-fixtures.js";
+-->
+
+```ts
+it("answers the probes and refuses the anonymous caller", async ({
+  serve,
+  probesFor,
+  rawOf,
+  api,
+}) => {
+  // GIVEN the real root serving, with the kernel's probe server bound
+  const app = serve(api, { probes: { port: 0 } });
+  const probes = await probesFor(app);
+  const raw = await rawOf(app);
+
+  // WHEN the contract-less surfaces are read
+  const surface = {
+    livez: (await probes.get("/livez")).status,
+    anonymous: (
+      await raw
+        .post("/rpc/orders/place")
+        .set("content-type", "application/json")
+        .send({
+          json: { id: "0199a1e0-0000-7000-8000-000000000001", quantity: 1 },
+        })
+    ).status,
+  };
+
+  // THEN the process reports live, and the marked procedure refused the
+  // credential-less call before any use case ran
+  expect(surface).toEqual({ livez: 200, anonymous: 401 });
+});
+```
+
+The statuses are read off the response and asserted once, as a projection —
+supertest's own `.expect(200)` chain is a second assertion style this repo's
+one-deep-expect rule declines.
+
 ## Kernel-level: `testRuntime` and `createFakeClock`
 
 To test the lifecycle itself — a drain, an abandonment, an exit report —
