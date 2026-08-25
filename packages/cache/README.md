@@ -11,12 +11,12 @@
 pnpm add @btravstack/cache @btravstack/core @btravstack/config @btravstack/di unthrown
 ```
 
-Four peer dependencies, plus `redis` — optional, and needed only if you compose
-the Redis adapter. Instrumentation needs no peer of its own: the `Logger`,
-`Tracer` and `Meter` it depends on are [the kernel's
-ports](https://btravstack.github.io/btravstack/reference/core/observability),
-and `@btravstack/observability` is what an application composes to satisfy them.
-Node `>=20`.
+Four peer dependencies, plus `redis` — optional, and needed only if you
+compose the Redis adapter. Instrumentation needs no peer of its own: the
+`Logger`, `Tracer` and `Meter` it depends on are
+[the kernel's ports](https://btravstack.github.io/btravstack/reference/core/observability),
+and `@btravstack/observability` is what an application composes to satisfy
+them. Node `>=20`.
 
 ## A worked example
 

@@ -13,8 +13,8 @@ pnpm add @btravstack/mailer @btravstack/core @btravstack/config @btravstack/di u
 
 Four peer dependencies, plus `nodemailer` — optional, and needed only if you
 compose the SMTP adapter. Instrumentation needs no peer of its own: the
-`Logger`, `Tracer` and `Meter` it depends on are [the kernel's
-ports](https://btravstack.github.io/btravstack/reference/core/observability).
+`Logger`, `Tracer` and `Meter` it depends on are
+[the kernel's ports](https://btravstack.github.io/btravstack/reference/core/observability).
 Node `>=20`.
 
 ## A worked example
