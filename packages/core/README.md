@@ -24,8 +24,8 @@ release yet.
 An application is a di module. A **runtime** is a service of that module,
 provided on a port declared over `RuntimePort`; `start` finds it there, builds
 the graph, and drives what it finds. The transport starters
-([`@btravstack/http-server`](../http), [`@btravstack/temporal-worker`](../temporal),
-[`@btravstack/amqp-worker`](../amqp)) provide real runtimes; this one is a timer, so
+([`@btravstack/http-server`](../http-server), [`@btravstack/temporal-worker`](../temporal-worker),
+[`@btravstack/amqp-worker`](../amqp-worker)) provide real runtimes; this one is a timer, so
 the sample stays self-contained:
 
 ```ts
