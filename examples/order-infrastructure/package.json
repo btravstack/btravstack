@@ -21,6 +21,7 @@
     "@btravstack/di": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
     "@btravstack/example-order-domain": "workspace:*",
+    "@btravstack/prisma": "workspace:*",
     "@prisma/adapter-pg": "catalog:",
     "@prisma/client": "catalog:",
     "@unthrown/prisma": "catalog:",

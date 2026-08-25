@@ -34,6 +34,7 @@ const packages: readonly string[] = [
   "cache",
   "mailer",
   "storage",
+  "prisma",
   "http-server",
   "temporal-worker",
   "amqp-worker",

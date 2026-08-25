@@ -3,7 +3,7 @@
 Release and versioning policy. The gate commands and the package inventory
 live in the root `CLAUDE.md`.
 
-The twelve published packages share **one version number**, enforced by a
+The thirteen published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. A release bumps every one of them,
 whether or not it changed — Spring Boot's model, and the reason is the same:
 an application installs a kernel and two or three starters together, and

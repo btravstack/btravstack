@@ -20,7 +20,7 @@ already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
 
-pnpm workspace + turbo monorepo. `packages/` holds twelve published packages,
+pnpm workspace + turbo monorepo. `packages/` holds thirteen published packages,
 `contract` (contract-level markers shared by a client and the server that
 implements it — zero dependencies, zero peers), `di` (the container), `config`
 (configuration from the environment, as
@@ -96,9 +96,9 @@ pnpm dev              # the three example deployments, one process each, watchin
 Commits follow Conventional Commits (commitlint via a lefthook `commit-msg`
 hook). User-facing changes need a changeset.
 
-## Versioning: all twelve packages move as one
+## Versioning: all thirteen packages move as one
 
-The twelve published packages share **one version number**, enforced by a
+The thirteen published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
 below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
 measurements behind both rules are in `.changeset/CLAUDE.md`.
@@ -458,6 +458,7 @@ the copy with no gate is the one that lies.
 | `@btravstack/cache`           | `packages/cache/CLAUDE.md`                                                   | `/reference/cache`           |
 | `@btravstack/mailer`          | `packages/mailer/CLAUDE.md`                                                  | `/reference/mailer`          |
 | `@btravstack/storage`         | `packages/storage/CLAUDE.md`                                                 | `/reference/storage`         |
+| `@btravstack/prisma`          | `packages/prisma/CLAUDE.md`                                                  | `/reference/prisma`          |
 | `@btravstack/http-server`     | `packages/http-server/CLAUDE.md` (auth half: `packages/http-server/AUTH.md`) | `/reference/http-server`     |
 | `@btravstack/temporal-worker` | `packages/temporal-worker/CLAUDE.md`                                         | `/reference/temporal-worker` |
 | `@btravstack/amqp-worker`     | `packages/amqp-worker/CLAUDE.md`                                             | `/reference/amqp-worker`     |
@@ -746,14 +747,14 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   `@btravstack/core#typecheck` an explicit edge on
   `@btravstack/testing#build`; `knip.json` ignores the dependency for
   `packages/core`. Four places; a change to one is a change to all.
-- `declarationMap: false` on all twelve published packages — the published
+- `declarationMap: false` on all thirteen published packages — the published
   tarball has no `src/`, so maps would be dead ends.
 - **Relative imports carry `.js`.** `moduleResolution: NodeNext` plus
   `verbatimModuleSyntax`, both inherited from `@btravstack/tsconfig/base.json` —
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All twelve published packages claim `engines: { node: ">=20" }` while the root
+- All thirteen published packages claim `engines: { node: ">=20" }` while the root
   claims `>=22.22`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change,
