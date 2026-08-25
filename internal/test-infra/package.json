@@ -1,5 +1,6 @@
 {
   "name": "@btravstack/internal-test-infra",
+  "version": "0.0.0",
   "private": true,
   "description": "The repository's shared test infrastructure: one PostgreSQL, one RabbitMQ and one Temporal container for the whole gate, reused across every workspace's vitest run",
   "license": "MIT",

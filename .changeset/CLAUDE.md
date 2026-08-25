@@ -45,3 +45,32 @@ for a feature release. Reaching `1.0.0` is a decision again rather than an
 accident. **Do not downgrade `@changesets/cli` below 3.0.0** without
 restoring this warning: on 2.x the next `pnpm run version` silently ships a
 major.
+
+## A private workspace package still needs a `version`
+
+`pnpm publish` rewrites every `workspace:` dependency into a concrete range —
+**`devDependencies` included** — and it cannot do that for a workspace package
+that has no `version` field. `@btravstack/internal-test-infra` is `private: true`
+and had none, which is why the `0.3.0` release published `@btravstack/di` and
+then failed on the five packages that devDepend on it:
+
+```
+ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL: Cannot resolve workspace protocol
+of dependency "@btravstack/internal-test-infra" because this dependency is not
+installed. Try running "pnpm install".
+```
+
+**The message is misleading and cost the diagnosis time**: the dependency IS
+installed — `packages/cache/node_modules/@btravstack/internal-test-infra` is a
+live symlink. What pnpm cannot do is resolve `workspace:*` to a version that
+does not exist. `pnpm install` changes nothing.
+
+So every workspace package a **published** package depends on, in any
+dependency field, carries a `version` — `0.0.0` for the private ones, which
+`private: true` still keeps off the registry. The examples and `docs` need none:
+nothing published depends on them.
+
+The published manifests therefore carry
+`"@btravstack/internal-test-infra": "0.0.0"` in `devDependencies`, naming a
+package that is not on npm. That is inert — a consumer never installs a
+dependency's devDependencies — and it is the standard cost of this fix.
