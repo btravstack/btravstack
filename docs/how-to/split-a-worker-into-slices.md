@@ -212,10 +212,11 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
 });
 ```
 
-Dropping a slice's import here would leave its piece's port unmet — a runtime
-`WiringDefect` naming it, not a compile error, since `AmqpHandlers`/
-`TemporalActivities` cannot see what a slice's module has or has not been
-imported by; only `start` can.
+Dropping a slice's import here still fails to compile: `AmqpHandlers` /
+`TemporalActivities` declare each piece's port as one of the composed
+provider's own `deps`, so a missing import is an undeclared need at this
+very call, and di's `NeedsGate` refuses the module, naming the exact port —
+caught by `pnpm typecheck`, not by a runtime `WiringDefect`.
 
 ## Sequencing a saga: `flatTap`, never sibling `const`s
 
