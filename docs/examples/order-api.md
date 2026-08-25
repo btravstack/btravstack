@@ -6,7 +6,7 @@ description: The HTTP deployment — two slices, orders and customers, one marke
 <!-- doctest: prelude
 import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { OkAsync, P } from "unthrown";
 import { createLogger, jsonSink, kernelEvents, observability } from "@btravstack/observability";
 import { UnitSpanModule, otel } from "@btravstack/observability/otel";
@@ -25,7 +25,7 @@ declare const view: (order: Order) => { id: string; quantity: number };
 
 [`examples/order-api`](https://github.com/btravstack/start/tree/main/examples/order-api)
 — the first deployment: [the order application](/examples/order-application)
-answering callers over oRPC, served by [`@btravstack/http`](/reference/http).
+answering callers over oRPC, served by [`@btravstack/http-server`](/reference/http-server).
 
 ```sh
 pnpm turbo run test --filter=@btravstack/example-order-api
@@ -150,7 +150,7 @@ written, and where the one `defineHttp` call the application makes lives:
 
 <!-- doctest: isolate
 import { TenantId } from "@btravstack/example-order-domain";
-import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http";
+import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 -->
 
@@ -161,7 +161,7 @@ import {
   Unauthenticated,
   defineHttp,
   granted,
-} from "@btravstack/http";
+} from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 /** What this deployment knows about a caller under the `user` scheme. */
@@ -423,7 +423,7 @@ This form is exact: a slice missing from the record, a key the contract does
 not declare, and a controller wired under the wrong key are all compile
 errors at this call — see
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
-the recipe, and `packages/http/src/controller.test-d.ts` for the five gates
+the recipe, and `packages/http-server/src/controller.test-d.ts` for the five gates
 that pin these errors and the lift below. Because a fragment is itself a valid
 contract, `ordersController` serves `contract.orders` alone unchanged: the
 lifted root is
@@ -714,5 +714,5 @@ shape of.
 
 - The same `DuplicateOrder`, orchestrated: [Order Temporal worker](/examples/order-temporal-worker).
 - The marker, `auth.ts`, scopes and the 401/403 split as a recipe: [Protect a procedure](/how-to/protect-a-procedure).
-- The package behind the transport: [`@btravstack/http`](/reference/http).
+- The package behind the transport: [`@btravstack/http-server`](/reference/http-server).
 - Why the kernel appears in none of this: [The kernel maps nothing](/explanation/the-kernel-maps-nothing).

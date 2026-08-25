@@ -134,7 +134,7 @@ Concretely: annotating a module as exporting less than it does is fine
 not compile (laundering an obligation). This is what makes the adapter-seam
 pattern safe:
 
-<!-- doctest: skip — names its type arguments schematically (Options, Imports, Provides); the shaped-module pattern's real spelling is `packages/http`'s HttpModule -->
+<!-- doctest: skip — names its type arguments schematically (Options, Imports, Provides); the shaped-module pattern's real spelling is `packages/http-server`'s HttpModule -->
 
 ```ts
 const makeAppModule = <E, N extends Scope>(

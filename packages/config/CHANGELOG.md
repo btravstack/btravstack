@@ -21,7 +21,7 @@
   silently. An empty or blank variable is an error, never an absent one; `PORT=0`
   stays expressible.
 
-  `@btravstack/http` becomes a starter: `http()` provides
+  `@btravstack/http-server` becomes a starter: `http()` provides
   `HttpRuntime` and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST`
   (default `0.0.0.0`) unless pinned (`http({ port: 0 })` for a test —
   explicit beats environment beats default, per field, through

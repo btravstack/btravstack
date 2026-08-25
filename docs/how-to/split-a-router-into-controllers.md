@@ -6,7 +6,7 @@ description: Give each slice of a large API its own contract fragment and contro
 <!-- doctest: prelude
 import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { P } from "unthrown";
 import type { Order } from "@btravstack/example-order-domain";
@@ -171,7 +171,7 @@ export const ordersController = api.HttpController(
 ```
 
 `HttpController` comes off the application's own `api` in `auth.ts`, not from
-`@btravstack/http` — there is no top-level one: the marker on the fragment says
+`@btravstack/http-server` — there is no top-level one: the marker on the fragment says
 which schemes protect the route, and
 `defineHttp({ authenticators })` in that one file is what says what each scheme
 resolves to, so
@@ -282,7 +282,7 @@ identity at all.
 `OrdersSlice` is the very module the modulith imported and `ordersController`
 the very provider it composed — not a copy, not a rewritten `sync`. Extraction
 is a new composition root and one fewer import, and the slice itself is
-untouched. `packages/http/src/controller.test-d.ts` pins that call as its
+untouched. `packages/http-server/src/controller.test-d.ts` pins that call as its
 fifth gate: the property is marked do-not-break, and it is what makes
 composing slices into one router a starting point rather than a trap.
 
@@ -290,7 +290,7 @@ composing slices into one router a starting point rather than a trap.
 
 - [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http) — the
   one-router form, and everything the starter itself decides.
-- [`@btravstack/http`](/reference/http) — `defineHttp`, `HttpController` and
+- [`@btravstack/http-server`](/reference/http-server) — `defineHttp`, `HttpController` and
   `HttpRouter`'s full signatures.
 - [Protect a procedure](/how-to/protect-a-procedure) — `auth.ts`, the
   authenticators, and what a marked fragment does to a controller.

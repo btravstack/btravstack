@@ -5,7 +5,7 @@ description: Give each consumer or workflow its own slice, and compose them into
 
 <!-- doctest: prelude
 import { Logger, Tracer } from "@btravstack/core";
-import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 import { Config, Env } from "@btravstack/config";
 import { Module } from "@btravstack/di";
 import { observability } from "@btravstack/observability";
@@ -99,7 +99,7 @@ export const orderNotifications = AmqpHandler(
 );
 ```
 
-<!-- doctest: skip — needs `@btravstack/temporal`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
+<!-- doctest: skip — needs `@btravstack/temporal-worker`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
 // slices/billing/activities.ts
@@ -145,7 +145,7 @@ export const NotificationsSlice = Module("NotificationsSlice")({
 });
 ```
 
-<!-- doctest: skip — needs `@btravstack/temporal`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
+<!-- doctest: skip — needs `@btravstack/temporal-worker`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
 export const BillingSlice = Module("BillingSlice")({
@@ -178,7 +178,7 @@ export const orderHandlers = AmqpHandlers(orderContract)([
 ]);
 ```
 
-<!-- doctest: skip — needs `@btravstack/temporal`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
+<!-- doctest: skip — needs `@btravstack/temporal-worker`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
 export const orderActivities = TemporalActivities(orderContract)([
@@ -255,7 +255,7 @@ Two mistakes are caught before the array is ever composed, both inside
 `AmqpHandler(contract, key)` / `TemporalWorkflowActivities(contract, key)`'s
 own call:
 
-<!-- doctest: skip — quotes the gates packages/amqp/src/handler.test-d.ts and packages/temporal/src/workflow-activities.test-d.ts pin for real -->
+<!-- doctest: skip — quotes the gates packages/amqp-worker/src/handler.test-d.ts and packages/temporal-worker/src/workflow-activities.test-d.ts pin for real -->
 
 ```ts
 // @ts-expect-error -- "notAKey" is not one of orderContract's consumer/rpc names
@@ -275,7 +275,7 @@ key the contract declares: an array missing one is refused, against an
 runtime stack trace, and never a silent failure or an `undefined` merged into
 the record:
 
-<!-- doctest: skip — quotes the gates packages/amqp/src/handler.test-d.ts and packages/temporal/src/workflow-activities.test-d.ts pin for real -->
+<!-- doctest: skip — quotes the gates packages/amqp-worker/src/handler.test-d.ts and packages/temporal-worker/src/workflow-activities.test-d.ts pin for real -->
 
 ```ts
 // @ts-expect-error -- the "orderAudit" consumer is uncovered
@@ -351,9 +351,9 @@ transport gives it to own.
 - [Split a router into controllers](/how-to/split-a-router-into-controllers) —
   the same idea over a nested contract, composing a keyed record instead of
   an array.
-- [`@btravstack/amqp`](/reference/amqp) — `AmqpHandler`'s and
+- [`@btravstack/amqp-worker`](/reference/amqp-worker) — `AmqpHandler`'s and
   `AmqpHandlers`'s full signatures.
-- [`@btravstack/temporal`](/reference/temporal) —
+- [`@btravstack/temporal-worker`](/reference/temporal-worker) —
   `TemporalWorkflowActivities`'s and `TemporalActivities`'s full signatures.
 - [Order AMQP worker](/examples/order-amqp-worker) and
   [Order Temporal worker](/examples/order-temporal-worker) — the workers

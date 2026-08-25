@@ -52,9 +52,9 @@
         "@btravstack/cache#build",
         "@btravstack/mailer#build",
         "@btravstack/storage#build",
-        "@btravstack/http#build",
-        "@btravstack/temporal#build",
-        "@btravstack/amqp#build"
+        "@btravstack/http-server#build",
+        "@btravstack/temporal-worker#build",
+        "@btravstack/amqp-worker#build"
       ],
       "inputs": ["$TURBO_DEFAULT$", "../packages/*/src/**"],
       "outputs": [".vitepress/dist/**", "api/*/**"]

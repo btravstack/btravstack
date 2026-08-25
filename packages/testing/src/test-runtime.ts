@@ -28,7 +28,7 @@ export class TestRuntimePort extends RuntimePort<Runtime<never, TestRuntimeInfo>
 export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   /**
    * A module providing this very runtime on `TestRuntimePort` — the shape a
-   * runtime package ships (`@btravstack/http`'s `http()`), sized for a test: import it
+   * runtime package ships (`@btravstack/http-server`'s `http()`), sized for a test: import it
    * next to the module under test and export the port, and `start` finds it.
    *
    * It provides **this** object. A wrapper built by spreading (`{ ...runtime,

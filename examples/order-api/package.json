@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/example-order-api",
   "private": true,
-  "description": "The transport layer of the clean-architecture example: an oRPC router served over node:http by @btravstack/http",
+  "description": "The transport layer of the clean-architecture example: an oRPC router served over node:http by @btravstack/http-server",
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "type": "module",
@@ -25,7 +25,7 @@
     "@btravstack/example-order-application": "workspace:*",
     "@btravstack/example-order-domain": "workspace:*",
     "@btravstack/example-order-infrastructure": "workspace:*",
-    "@btravstack/http": "workspace:*",
+    "@btravstack/http-server": "workspace:*",
     "@btravstack/observability": "workspace:*",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/sdk-node": "catalog:",

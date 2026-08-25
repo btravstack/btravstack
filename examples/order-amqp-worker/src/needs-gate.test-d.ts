@@ -1,7 +1,7 @@
-import { AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp";
+import { AmqpModule, AmqpRuntime, amqp } from "@btravstack/amqp-worker";
 /**
  * The compile-time half of the broadcast deployment: `start` resolves its
- * runtime from the `AmqpRuntime` port `@btravstack/amqp`'s starter provides
+ * runtime from the `AmqpRuntime` port `@btravstack/amqp-worker`'s starter provides
  * and the composition root exports, so a module that exports no runtime fails
  * to match the `NO RUNTIME — …` sentence `start` intersects onto its `module`
  * parameter. Type-checked by this package's `test:types` script,

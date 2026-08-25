@@ -1,7 +1,7 @@
 ---
-"@btravstack/http": patch
-"@btravstack/temporal": patch
-"@btravstack/amqp": patch
+"@btravstack/http-server": patch
+"@btravstack/temporal-worker": patch
+"@btravstack/amqp-worker": patch
 ---
 
 Each runtime README carries an `## Options` index: one line per option —

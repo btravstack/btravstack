@@ -6,7 +6,7 @@ description: Implement an oRPC contract as a di-provided router, compose it with
 <!-- doctest: prelude
 import { start, Meter, Tracer, Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
-import { HttpRuntime, http } from "@btravstack/http";
+import { HttpRuntime, http } from "@btravstack/http-server";
 import { otel } from "@btravstack/observability/otel";
 import { api } from "../../auth.js";
 import { RequestModule } from "../../request-scope.js";
@@ -15,8 +15,8 @@ import { RequestModule } from "../../request-scope.js";
 # Serve an oRPC contract over HTTP
 
 > **How-to.** Take a contract, implement it as `Result`-returning procedures,
-> and serve it under the kernel's lifecycle with `@btravstack/http`. For the
-> package's full surface, see [`@btravstack/http`](/reference/http); for _why_
+> and serve it under the kernel's lifecycle with `@btravstack/http-server`. For the
+> package's full surface, see [`@btravstack/http-server`](/reference/http-server); for _why_
 > the transport maps no `Result` to a status itself, see
 > [The kernel maps nothing](/explanation/the-kernel-maps-nothing).
 
@@ -189,7 +189,7 @@ a compile error: the signal to use the factory, not a fallback. See
 ```ts
 import { OrderApplicationModule } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 
 import { ordersRouter } from "./router.js";
@@ -347,7 +347,7 @@ under the request already carries it — see
 
 ## See also
 
-- [`@btravstack/http`](/reference/http) — options, `HttpConfig`, `HttpInfo`, the guarantee.
+- [`@btravstack/http-server`](/reference/http-server) — options, `HttpConfig`, `HttpInfo`, the guarantee.
 - [Protect a procedure](/how-to/protect-a-procedure) — the marker, `auth.ts`
   and the authenticators this page uses, in full, plus scopes and the 401/403
   split.

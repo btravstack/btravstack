@@ -102,7 +102,7 @@ import {
   HttpAuthenticator,
   Unauthenticated,
   defineHttp,
-} from "@btravstack/http";
+} from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 /** What this deployment knows about a caller. The contract names none of it. */
@@ -213,5 +213,5 @@ principal a tagged union the compiler forces you to narrow
   contract fragments, two controllers, one keyed router.
 - [Protect a procedure](/how-to/protect-a-procedure) — scopes, a second
   scheme, per-procedure overrides, and the 403/401 distinction.
-- [Cross-cutting concerns](/reference/http) — why authentication is contract
+- [Cross-cutting concerns](/reference/http-server) — why authentication is contract
   configuration and not a middleware slot.

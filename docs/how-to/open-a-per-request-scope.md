@@ -119,7 +119,7 @@ the fork is, and a drain waits for the teardown too.
 `unit` is `Module<UnitX, never, UnitNeeds>`. A unit is already inside the
 running application, so a construction failure has no modeled startup channel
 to land in — **it rides the unit's defect path**, which every runtime already
-answers: `@btravstack/http` writes its `500` from the unit's `recoverDefect`,
+answers: `@btravstack/http-server` writes its `500` from the unit's `recoverDefect`,
 before any procedure is reached; a queue consumer dead-letters. Keep the unit
 module's providers infallible — `sync`, `value`, `class`, or a `make`/`acquire`
 whose `E` is `never`.
@@ -170,7 +170,7 @@ Two more consequences for anyone [writing a runtime](/how-to/write-a-runtime):
 with a unit module the work runs only once the fork is built — after an
 `await` when a unit provider is async — so a runtime that subscribes to an
 event from inside its work must first check whether it already fired
-(`@btravstack/http` checks `response.closed` for exactly this). And a shipped
+(`@btravstack/http-server` checks `response.closed` for exactly this). And a shipped
 runtime does not read `ctx` at all: what a handler needs, its provider
 declared.
 

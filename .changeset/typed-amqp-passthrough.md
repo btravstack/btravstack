@@ -1,5 +1,5 @@
 ---
-"@btravstack/amqp": minor
+"@btravstack/amqp-worker": minor
 ---
 
 `connectionOptions` and `defaultConsumerOptions` are typed by

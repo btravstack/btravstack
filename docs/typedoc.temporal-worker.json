@@ -1,9 +1,9 @@
 {
   "extends": "@btravstack/typedoc/base.json",
-  "name": "@btravstack/temporal",
-  "entryPoints": ["../packages/temporal/src/index.ts"],
-  "tsconfig": "../packages/temporal/tsconfig.json",
-  "out": "api/temporal",
+  "name": "@btravstack/temporal-worker",
+  "entryPoints": ["../packages/temporal-worker/src/index.ts"],
+  "tsconfig": "../packages/temporal-worker/tsconfig.json",
+  "out": "api/temporal-worker",
   "intentionallyNotExported": [
     "ActivitiesOf",
     "ActivitiesPort",

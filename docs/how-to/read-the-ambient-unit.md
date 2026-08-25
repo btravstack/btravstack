@@ -208,11 +208,11 @@ in this process is waiting for any more.
 
 Which route you take to the signal depends on the runtime's shape:
 
-| Runtime                | Where the signal is                                                          |
-| ---------------------- | ---------------------------------------------------------------------------- |
-| `@btravstack/http`     | the handler's third parameter — and `currentUnit()?.signal`, the same object |
-| `@btravstack/temporal` | `currentUnit()?.signal` only                                                 |
-| `@btravstack/amqp`     | `currentUnit()?.signal` only                                                 |
+| Runtime                       | Where the signal is                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| `@btravstack/http-server`     | the handler's third parameter — and `currentUnit()?.signal`, the same object |
+| `@btravstack/temporal-worker` | `currentUnit()?.signal` only                                                 |
+| `@btravstack/amqp-worker`     | `currentUnit()?.signal` only                                                 |
 
 The two workers are middleware-shaped: the kernel's work callback is the
 library's `next()`, so an activity or a handler has **no parameter** to receive
@@ -299,11 +299,11 @@ Every shipped runtime mints `UnitMeta.id` fresh per unit and puts the
 correlation id in `traceId`, adopting an inbound value only when it is
 non-blank:
 
-| Starter                | `kind`       | `id`                    | `traceId`                                                     |
-| ---------------------- | ------------ | ----------------------- | ------------------------------------------------------------- |
-| `@btravstack/http`     | `"http"`     | `randomUUID()`          | the `x-request-id` header, else the id                        |
-| `@btravstack/temporal` | `"activity"` | the activity task token | the workflow id, else the activity id — stable across retries |
-| `@btravstack/amqp`     | `"delivery"` | `randomUUID()`          | `messageId`, else `correlationId`, else the id                |
+| Starter                       | `kind`       | `id`                    | `traceId`                                                     |
+| ----------------------------- | ------------ | ----------------------- | ------------------------------------------------------------- |
+| `@btravstack/http-server`     | `"http"`     | `randomUUID()`          | the `x-request-id` header, else the id                        |
+| `@btravstack/temporal-worker` | `"activity"` | the activity task token | the workflow id, else the activity id — stable across retries |
+| `@btravstack/amqp-worker`     | `"delivery"` | `randomUUID()`          | `messageId`, else `correlationId`, else the id                |
 
 So a client that sets `x-request-id`, a workflow that starts an activity, and a
 publisher that sets `messageId` each get every line the unit logs stamped with

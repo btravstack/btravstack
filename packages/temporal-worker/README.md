@@ -1,16 +1,17 @@
-# @btravstack/temporal
+# @btravstack/temporal-worker
 
-> The Temporal worker starter for [`@btravstack/core`](../core): one module
+> The **worker half** of Temporal for [`@btravstack/core`](../core) — starting
+> workflows is a client's job, and belongs to `@temporal-contract/client`. One module
 > providing the runtime, its configuration and its connection; one unit per
 > activity attempt; and a drain that releases the kernel at the **kernel's**
 > deadline, not Temporal's `shutdownForceTime`.
 
 📖 **[Documentation](https://btravstack.github.io/start/how-to/run-a-temporal-worker)** ·
-[Reference](https://btravstack.github.io/start/reference/temporal) ·
-[API Reference](https://btravstack.github.io/start/api/temporal/)
+[Reference](https://btravstack.github.io/start/reference/temporal-worker) ·
+[API Reference](https://btravstack.github.io/start/api/temporal-worker/)
 
 ```sh
-pnpm add @btravstack/temporal @btravstack/core @btravstack/config @btravstack/di unthrown \
+pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
   @temporalio/worker @temporalio/activity @temporalio/common \
   @temporal-contract/worker @temporal-contract/contract
 ```
@@ -63,7 +64,10 @@ const AppModule = Module("App")({
 
 ```ts
 import { runMain, Logger } from "@btravstack/core";
-import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
+import {
+  TemporalActivities,
+  TemporalModule,
+} from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 
 // The application's half: its activities, as a service built from the use
@@ -149,7 +153,7 @@ supplies it:
 | `forceAfter`  | Temporal's `shutdownForceTime`, a `Duration` (default `"15 seconds"`) — keep it under `drainTimeoutMs` |
 
 The full table — required/optional, defaults, and the reasoning — lives on
-[the reference page](https://btravstack.github.io/start/reference/temporal),
+[the reference page](https://btravstack.github.io/start/reference/temporal-worker),
 which is this list's one detailed home.
 
 ## The drain
@@ -162,7 +166,7 @@ work is reported `abandoned`, and the worker keeps winding down on Temporal's
 clock until the process exits. `@temporalio/worker` exposes no public forced
 shutdown, so "stop waiting" is the escalation. `Result` → activity failure is
 `declareActivitiesHandler`'s and is deliberately not duplicated here. The rest
-is on the [documentation site](https://btravstack.github.io/start/reference/temporal).
+is on the [documentation site](https://btravstack.github.io/start/reference/temporal-worker).
 
 ## License
 

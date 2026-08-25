@@ -6,8 +6,8 @@ wire — and it gets those facts out without ever letting "the order committed"
 and "the event was sent" disagree: the **transactional outbox** pattern, end
 to end.
 The consuming half is served by
-[`@btravstack/amqp`](../../packages/amqp) the way `order-api` is
-served by `@btravstack/http`; the contract lives in
+[`@btravstack/amqp-worker`](../../packages/amqp-worker) the way `order-api` is
+served by `@btravstack/http-server`; the contract lives in
 [`order-amqp-contract`](../order-amqp-contract), because another service
 binding its own queue to the `orders` exchange needs it and needs none of this.
 
@@ -82,7 +82,7 @@ _foreign_ queue to the same exchange and receiving the same event too.
 
 ## Everything is a provider
 
-`@btravstack/amqp`'s starter needs one thing from the application: its
+`@btravstack/amqp-worker`'s starter needs one thing from the application: its
 **handlers, as a service**. This deployment builds that record from two
 pieces rather than one function. `src/slices/notifications/handler.ts` is one
 call — `AmqpHandler(orderContract, "orderNotifications")({ logger: Logger },
@@ -190,7 +190,7 @@ Tenancy crosses the broker here, which the other two deployments do not have to
 do: a broadcast leaves the process. The **contract** carries it — `tenantId` is
 a field on the envelope — so the relay reads it off the outbox row, puts it on
 the event, and a subscriber reads it off the message it was already handed.
-`@btravstack/amqp` knows nothing about tenants; there is nothing to configure
+`@btravstack/amqp-worker` knows nothing about tenants; there is nothing to configure
 and nothing to hook.
 
 The relay is told which tenants it serves, `OUTBOX_TENANTS`, and that is the

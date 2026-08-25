@@ -5,7 +5,7 @@ description: The orchestration deployment — two saga slices, FulfillmentSlice 
 
 <!-- doctest: prelude
 import { Tracer } from "@btravstack/core";
-import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal";
+import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
@@ -21,7 +21,7 @@ import { BillingSlice } from "../../slices/billing/module.js";
 
 [`examples/order-temporal-worker`](https://github.com/btravstack/start/tree/main/examples/order-temporal-worker)
 — the orchestration deployment: [the order application](/examples/order-application)
-owning two journeys, served by [`@btravstack/temporal`](/reference/temporal).
+owning two journeys, served by [`@btravstack/temporal-worker`](/reference/temporal-worker).
 
 ```sh
 pnpm turbo run test --filter=@btravstack/example-order-temporal-worker
@@ -373,5 +373,5 @@ pinned by the specs instead.
 ## Where to go next
 
 - The same application, broadcasting: [Order AMQP worker](/examples/order-amqp-worker).
-- The package: [`@btravstack/temporal`](/reference/temporal); the task:
+- The package: [`@btravstack/temporal-worker`](/reference/temporal-worker); the task:
   [Run a Temporal worker](/how-to/run-a-temporal-worker).

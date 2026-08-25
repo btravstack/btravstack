@@ -19,7 +19,7 @@
   "dependencies": {
     "@amqp-contract/client": "catalog:",
     "@amqp-contract/worker": "catalog:",
-    "@btravstack/amqp": "workspace:*",
+    "@btravstack/amqp-worker": "workspace:*",
     "@btravstack/config": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",

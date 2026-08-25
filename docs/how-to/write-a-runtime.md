@@ -26,8 +26,8 @@ const AppModule = Module("App")({
 
 # Write a runtime
 
-> **How-to.** Build a runtime for a transport `@btravstack/http`,
-> `@btravstack/temporal` and `@btravstack/amqp` do not cover, and plug it into
+> **How-to.** Build a runtime for a transport `@btravstack/http-server`,
+> `@btravstack/temporal-worker` and `@btravstack/amqp-worker` do not cover, and plug it into
 > `start`. For _why_ the kernel owns the unit and never the outcome, see
 > [The kernel maps nothing](/explanation/the-kernel-maps-nothing); for the
 > types, see [The Runtime contract](/reference/core/runtime).
@@ -215,10 +215,10 @@ const serveOne = (
 A middleware-shaped runtime opens the unit around a call it does not own the
 arguments of, so the `signal` parameter above has nowhere to go — the work
 callback _is_ the library's `next()`. The same signal is on the ambient record
-as `currentUnit()?.signal`, which is how `@btravstack/temporal` and
-`@btravstack/amqp` let an activity or a handler honour the deadline without an
+as `currentUnit()?.signal`, which is how `@btravstack/temporal-worker` and
+`@btravstack/amqp-worker` let an activity or a handler honour the deadline without an
 injected context the transport's contract does not type. Pass it as a
-parameter when you can, as `@btravstack/http` does; read it off the record
+parameter when you can, as `@btravstack/http-server` does; read it off the record
 when you cannot.
 :::
 
@@ -246,7 +246,7 @@ is built, after an `await` when a unit provider is async: a runtime that
 subscribes to an event from inside its work (a response's `'close'`) must first
 check whether it already fired, or a client that hung up during a slow
 per-request acquire leaves the unit open for the process lifetime.
-`@btravstack/http` checks `response.closed` for exactly this.
+`@btravstack/http-server` checks `response.closed` for exactly this.
 
 ## Ship it like a starter
 

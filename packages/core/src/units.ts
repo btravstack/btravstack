@@ -10,7 +10,7 @@ import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrow
  * `signal` is the same `AbortSignal` the work callback receives — aborted at
  * the drain deadline, or at once on a path that skips the drain. It is here
  * because the callback is not always where the work is: a middleware-shaped
- * runtime (`@btravstack/temporal`, `@btravstack/amqp`) opens the unit around
+ * runtime (`@btravstack/temporal-worker`, `@btravstack/amqp-worker`) opens the unit around
  * a call it does not own the arguments of, so an activity or a handler has no
  * parameter to receive it through. It is data, not a capability: there is
  * nothing to substitute in a test, and a deadline nobody can observe is not a

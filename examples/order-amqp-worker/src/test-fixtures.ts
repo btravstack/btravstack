@@ -1,6 +1,6 @@
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp";
+import type { AmqpInfo, AmqpRuntime } from "@btravstack/amqp-worker";
 import type { Env } from "@btravstack/config";
 import { type RunningApp, Logger } from "@btravstack/core";
 import { Provider, type Module, type Scope } from "@btravstack/di";

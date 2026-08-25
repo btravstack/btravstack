@@ -1,8 +1,8 @@
-# packages/temporal
+# packages/temporal-worker
 
 The Temporal worker starter's public surface. The root `CLAUDE.md` is the
 authoritative spec for the kernel and the conventions; this file holds what only
-matters when you are working under `packages/temporal/`. Keep it in sync
+matters when you are working under `packages/temporal-worker/`. Keep it in sync
 with the code in the same commit, and with `README.md` — the package ships no
 `docs-examples.test-d.ts`, so nothing else compiles these claims.
 
@@ -11,7 +11,7 @@ with the code in the same commit, and with `README.md` — the package ships no
 - **`TemporalModule(name)({ contract, activities, workflows, address?,
 namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })`** —
   THE way an application writes its worker root; `temporal-module.ts`, the
-  same shape as `@btravstack/http`'s `HttpModule`. `activities` is the
+  same shape as `@btravstack/http-server`'s `HttpModule`. `activities` is the
   **provider** of the starter's activities port for THIS contract — a plain
   `Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds>`, which
   is what `TemporalActivities(contract)(deps, arm)` returns — so a provider
@@ -54,7 +54,7 @@ key)`, both of which cast it to the typed alias), so there is nothing a
   type-only export would help with.
 - **`TemporalActivities(contract)` → `ReturnType<typeof
 Provider<ActivitiesPortOf<C>>>`** — the activities' provider builder,
-  `temporal-module.ts`, the same shape as `@btravstack/http`'s
+  `temporal-module.ts`, the same shape as `@btravstack/http-server`'s
   `HttpRouter(contract)`. The one call fixes `C` (the contract value is
   otherwise unused; it exists so `C` is inferred rather than written) and
   returns di's own `Provider(port)` on `TemporalActivitiesPort as
@@ -144,7 +144,7 @@ Provider<WorkflowActivitiesPortOf<C, K>>>`** (`workflow-activities.ts`,
   needs the string.
 - **`temporal(options)` → `Module<TemporalRuntime | TemporalConfig |
 TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
-ActivitiesInstanceOf<C>>`** — the starter, the same shape as `@btravstack/http`'s
+ActivitiesInstanceOf<C>>`** — the starter, the same shape as `@btravstack/http-server`'s
   `http()`. It provides `Runtime<never, TemporalInfo>` on the **`TemporalRuntime`**
   port (a class over core's `RuntimePort`, the package's own now that the
   runtime resolves nothing), **`TemporalConfig`** (`{ address, namespace }`) bound
@@ -217,7 +217,7 @@ ActivitiesPortOf<C> }, { sync })` —
   (and devDependencies, for the suite). A starter has real dependencies — it
   calls `declareActivitiesHandler` and types `contract` as a
   `ContractDefinition` — and a peer is what makes the application hold one copy.
-  `@btravstack/config` is a peer for the same reason `@btravstack/http` has it:
+  `@btravstack/config` is a peer for the same reason `@btravstack/http-server` has it:
   `TemporalConfig` is bound through `Config.provider`.
 - **The drain is the reason the package exists.** `Serving.drain` calls
   `worker.shutdown()` then waits on `run()` **raced against the kernel's
@@ -288,7 +288,7 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
   `provides` alongside `activities` because the composed provider's own
   `deps` are the pieces' ports, which nothing else in the graph would
   otherwise discharge (the same shape `handler.spec.ts`'s `serveSliced` uses
-  in `packages/amqp`). `withTaskQueue(contract, taskQueue)` is what stamps
+  in `packages/amqp-worker`). `withTaskQueue(contract, taskQueue)` is what stamps
   the per-test queue onto `slicedContract`: a runtime string can never be the
   contract's own literal `taskQueue` type, so the helper casts internally
   and returns `C` rather than the widened object literal an inline spread
@@ -297,7 +297,7 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
   `activities` is the composing arm's own, more specific, type.
 - **`workflow-activities.test-d.ts` pins the composing form's compile-time
   gates**, on a `pinContract` of its own — **six labelled properties, three of
-  them negatives**, which is exactly what `@btravstack/amqp`'s
+  them negatives**, which is exactly what `@btravstack/amqp-worker`'s
   `handler.test-d.ts` carries: the two are deliberate mirrors and drifted
   apart once (issue #51). A piece typed by its own key
   (`_echoPort`, against `WorkflowActivitiesPortOf`), an array covering every
@@ -322,7 +322,7 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
   intended. Checked by `tsc -p tsconfig.test-d.json` (`include:
 ["src/**/*.test-d.ts"]`, extending `tsconfig.json`), which the package's own
   `test:types` script runs and `typecheck` runs alongside the ordinary
-  `tsc --noEmit` — the same two-script shape as `@btravstack/amqp`.
+  `tsc --noEmit` — the same two-script shape as `@btravstack/amqp-worker`.
 
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`, `@btravstack/di`,
   `unthrown`, `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`,

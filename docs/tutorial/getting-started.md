@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Boot a small oRPC service with @btravstack/core and @btravstack/http, call it with a typed client, then watch it drain on SIGTERM.
+description: Boot a small oRPC service with @btravstack/core and @btravstack/http-server, call it with a typed client, then watch it drain on SIGTERM.
 ---
 
 # Getting started
@@ -19,20 +19,20 @@ to stop. It takes about ten minutes.
 ::: code-group
 
 ```sh [pnpm]
-pnpm add @btravstack/core @btravstack/http @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
+pnpm add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
 ```
 
 ```sh [npm]
-npm install @btravstack/core @btravstack/http @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
+npm install @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
 ```
 
 ```sh [yarn]
-yarn add @btravstack/core @btravstack/http @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
+yarn add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
 ```
 
 :::
 
-Every one of those but `zod` is a **peer** of `@btravstack/http`, so your
+Every one of those but `zod` is a **peer** of `@btravstack/http-server`, so your
 application holds a single copy of each ([why](/explanation/peer-dependencies)). The
 project needs `"type": "module"` in its `package.json` — `main.ts` ends in a
 top-level `await` — TypeScript in `strict` mode, and Node `>=20`.
@@ -102,7 +102,7 @@ typo'd key or a wrong output is a compile error here:
 
 ```ts
 // router.ts
-import { defineHttp } from "@btravstack/http";
+import { defineHttp } from "@btravstack/http-server";
 import { OkAsync } from "unthrown";
 
 import { contract } from "./contract.js";
@@ -136,7 +136,7 @@ exports `HttpRuntime` — the one port the kernel resolves and drives:
 
 ```ts
 // app.ts
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 
 import { GreetingModule } from "./greeter.js";
 import { greetingRouter } from "./router.js";

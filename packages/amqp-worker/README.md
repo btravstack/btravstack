@@ -1,16 +1,18 @@
-# @btravstack/amqp
+# @btravstack/amqp-worker
 
-> The AMQP starter for [`@btravstack/core`](../core): an
+> The **consuming half** of AMQP for [`@btravstack/core`](../core) — publishing
+> belongs to `@amqp-contract/client`, which the outbox relay in
+> `examples/order-amqp-worker` uses directly. An
 > [`amqp-contract`](https://github.com/btravstack/amqp-contract) worker under
 > the kernel's lifecycle — one unit per delivery, and a drain with exactly one
 > deadline, the kernel's own.
 
 📖 **[Documentation](https://btravstack.github.io/start/how-to/consume-amqp-messages)** ·
-[Reference](https://btravstack.github.io/start/reference/amqp) ·
-[API Reference](https://btravstack.github.io/start/api/amqp/)
+[Reference](https://btravstack.github.io/start/reference/amqp-worker) ·
+[API Reference](https://btravstack.github.io/start/api/amqp-worker/)
 
 ```sh
-pnpm add @btravstack/amqp @btravstack/core @btravstack/config @btravstack/di unthrown \
+pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
   @amqp-contract/worker @opentelemetry/api
 ```
 
@@ -40,7 +42,7 @@ const AppModule = Module("App")({
 
 ```ts
 import { Env } from "@btravstack/config";
-import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 import { runMain, Logger } from "@btravstack/core";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
@@ -123,7 +125,7 @@ provider on its own port, which is how the composition root supplies it:
 | `connectTimeoutMs`       | how long startup waits before an unreachable broker is a `RuntimeStartFailed` (the library defaults to 30 s)    |
 
 The full table — required/optional, defaults, and the reasoning — lives on
-[the reference page](https://btravstack.github.io/start/reference/amqp),
+[the reference page](https://btravstack.github.io/start/reference/amqp-worker),
 which is this list's one detailed home.
 
 ## What it decides, and what it does not
@@ -137,7 +139,7 @@ budget — which is why the handler above recovers its own defects into a
 raced against the kernel's deadline: the library is told to wait forever, so
 there is no second timeout in the process to keep in step. Each delivery is one
 unit, `traceId` the publisher's `messageId`. The rest is on the
-[documentation site](https://btravstack.github.io/start/reference/amqp).
+[documentation site](https://btravstack.github.io/start/reference/amqp-worker).
 
 ## License
 

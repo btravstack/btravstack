@@ -1,6 +1,6 @@
 import { PaymentService } from "@btravstack/example-order-application";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
-import { TemporalWorkflowActivities } from "@btravstack/temporal";
+import { TemporalWorkflowActivities } from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 
 /**

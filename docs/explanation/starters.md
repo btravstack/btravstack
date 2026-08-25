@@ -5,7 +5,7 @@ description: The Spring Boot idea applied to this kernel — a module that bring
 
 <!-- doctest: prelude
 import { Logger } from "@btravstack/core";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
@@ -16,9 +16,9 @@ import { OrdersSlice } from "../../slices/orders/module.js";
 
 > **Explanation.** This page explains what a starter is here, why the three
 > shipped ones are shaped alike, and what was folded in or removed to get
-> there. For each starter's surface, see [`@btravstack/http`](/reference/http),
-> [`@btravstack/temporal`](/reference/temporal) and
-> [`@btravstack/amqp`](/reference/amqp); for the tasks, see [Serve an oRPC
+> there. For each starter's surface, see [`@btravstack/http-server`](/reference/http-server),
+> [`@btravstack/temporal-worker`](/reference/temporal-worker) and
+> [`@btravstack/amqp-worker`](/reference/amqp-worker); for the tasks, see [Serve an oRPC
 > contract over HTTP](/how-to/serve-orpc-over-http), [Run a Temporal
 > worker](/how-to/run-a-temporal-worker) and [Consume AMQP
 > messages](/how-to/consume-amqp-messages).
@@ -32,8 +32,8 @@ the idea: `spring-boot-starter-web` does not offer you a choice of servlet
 containers on day one, it brings Tomcat and a sane configuration, and you
 change what your deployment needs.
 
-Three transport starters ship — `@btravstack/http`, `@btravstack/temporal`,
-`@btravstack/amqp` — and they are deliberately the same shape.
+Three transport starters ship — `@btravstack/http-server`, `@btravstack/temporal-worker`,
+`@btravstack/amqp-worker` — and they are deliberately the same shape.
 
 A fourth, [`@btravstack/observability`](/reference/observability), is a starter
 in every sense but the runtime: `observability()` is a module that brings the
@@ -48,19 +48,19 @@ them answers the port the kernel resolves.
 
 ## One way, and why
 
-**oRPC is the one way HTTP is answered here.** `@btravstack/http` mounts an
+**oRPC is the one way HTTP is answered here.** `@btravstack/http-server` mounts an
 oRPC router through `@orpc/server/node`'s `RPCHandler` and offers no other
 router, no `handler` option, no listener port to provide yourself. That is not
 a gap awaiting a plugin system. oRPC shares this stack's convictions — a
 contract, typed errors, `Result` at the boundary through `@unthrown/orpc` — so
 it is enforced rather than offered among alternatives. There was once a
 separate `@btravstack/orpc` package sitting on a more general HTTP runtime; it
-was folded into `@btravstack/http` for exactly that reason, and the general
+was folded into `@btravstack/http-server` for exactly that reason, and the general
 runtime became an internal seam the package's own transport tests still drive.
 
-The same rule holds for the other two. `@btravstack/temporal` is a
+The same rule holds for the other two. `@btravstack/temporal-worker` is a
 `temporal-contract` worker and calls `declareActivitiesHandler` itself;
-`@btravstack/amqp` is an `amqp-contract` worker. Each is one library, chosen
+`@btravstack/amqp-worker` is an `amqp-contract` worker. Each is one library, chosen
 because its convictions match, and neither is a facade over a choice.
 
 Being opinionated is what lets a starter be small and lets an application be
@@ -172,7 +172,7 @@ goes unread.
 The reason is not tidiness. A port's service type is fixed at declaration, so
 a runtime with application-specific `resolves` — "I read whatever this
 application's router port is" — could not ship its port: `HttpRuntime` has to
-be one class in `@btravstack/http`, and its type cannot mention a port only
+be one class in `@btravstack/http-server`, and its type cannot mention a port only
 the application knows. Making the router a dependency of the runtime's
 provider moves that knowledge to where it exists — the composition root that
 provides the router — and the `Needs` channel checks it there: a root that
@@ -191,7 +191,7 @@ library's own, no second transport variant (HTTPS, HTTP/2 — terminate TLS at
 the ingress). Two things were removed on the way and are worth naming so a
 missing feature reads as a decision:
 
-- **Hono** was `@btravstack/http`'s router until a review found it routed
+- **Hono** was `@btravstack/http-server`'s router until a review found it routed
   exactly one pattern to oRPC's fetch adapter and `404`'d the rest — which
   `@orpc/server/node`'s `RPCHandler.handle(req, res, { prefix })` plus the
   runtime's own `404` do with two dependencies fewer, and no

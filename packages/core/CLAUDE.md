@@ -75,7 +75,7 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   carries; this is what makes a per-request scope transparent, so no handler
   ever calls `Module.forkScope` itself. Its error channel is pinned to `never`
   — a construction failure at unit scope has no modeled channel and rides the
-  unit's defect path, which every runtime already answers — `@btravstack/http`
+  unit's defect path, which every runtime already answers — `@btravstack/http-server`
   writes the `500` from its `recoverDefect`, precisely because that failure
   happens before the handler is reached. A unit finaliser that fails is
   emitted as a `teardownError` event only, never pushed into
@@ -254,7 +254,7 @@ that proves them, rather than duplicated).
    work callback is a library's `next()` still reaches it:
    `units.spec.ts` → _"carries the work's own AbortSignal on the ambient
    record"_ asserts identity (`record.signal === the parameter`) and the abort
-   together, and `@btravstack/temporal`'s and `@btravstack/amqp`'s own
+   together, and `@btravstack/temporal-worker`'s and `@btravstack/amqp-worker`'s own
    _"hands the activity/handler the unit's own AbortSignal, through the ambient
    record"_ prove it end to end through a real transport.
 5. **The application scope closes on every path.**
@@ -596,7 +596,7 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   `'error'` throws, which the kernel's own `uncaughtException` handler would
   turn into a whole-application teardown over a fault in the health endpoint.
   The socket is `unref`'d and dispose-only, so the replacement ignores rather
-  than reports. `@btravstack/http`'s `httpRuntime` carries the same pair
+  than reports. `@btravstack/http-server`'s `httpRuntime` carries the same pair
   for the same reason.
 
 - **`registry.closed()` is monotonic, and that is why the report is honest.**
@@ -608,8 +608,8 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   abort listener is visited by the same pass. The `Set` holds the
   `AbortController`s, and each one's `signal` is on both the work callback's
   parameter list **and** the unit's ambient record, so one `abort()` is seen by
-  a runtime that takes the parameter (`@btravstack/http`) and by one that
-  cannot (`@btravstack/temporal`, `@btravstack/amqp`, whose work callback is
+  a runtime that takes the parameter (`@btravstack/http-server`) and by one that
+  cannot (`@btravstack/temporal-worker`, `@btravstack/amqp-worker`, whose work callback is
   the library's `next()`). Do not mirror the record's `signal` onto a second
   controller: the identity is what the guard asserts.
 

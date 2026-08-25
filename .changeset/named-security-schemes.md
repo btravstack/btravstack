@@ -1,6 +1,6 @@
 ---
 "@btravstack/contract": minor
-"@btravstack/http": minor
+"@btravstack/http-server": minor
 ---
 
 Let a contract name **which security schemes** a procedure accepts and **which
@@ -25,7 +25,7 @@ registry is a `WeakMap` under `Symbol.for("@btravstack/contract/requirements")`
 fails closed rather than calling `.has()` on it and getting an accidentally
 correct answer.
 
-`@btravstack/http` gains **`defineHttp`**, the one door:
+`@btravstack/http-server` gains **`defineHttp`**, the one door:
 
 ```ts
 export const api = defineHttp({

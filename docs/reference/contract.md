@@ -10,7 +10,7 @@ description: The contract-level auth marker — authenticated(), Requirement, Re
 > carries and what reads it. For the task, see
 > [Protect a procedure](/how-to/protect-a-procedure); for how the HTTP starter
 > turns the marker into a typed `opts.context.principal`, see
-> [`@btravstack/http`](/reference/http). Generated signatures are under
+> [`@btravstack/http-server`](/reference/http-server). Generated signatures are under
 > [API reference](/api/contract/).
 
 A marker a contract puts on a node — a record of procedures, or a single
@@ -129,7 +129,7 @@ export const required: Requirements | undefined = isAuthenticated(quote);
 an empty array — when nobody marked it, so "public" cannot be confused with
 "protected by nothing satisfiable". Ancestry — a marked parent implying a
 marked child — is the caller's to carry: this package tracks nodes, not trees.
-`@btravstack/http`'s router walk carries the inherited requirements for exactly
+`@btravstack/http-server`'s router walk carries the inherited requirements for exactly
 that, mirroring what the types do when a marked record pushes its requirements
 onto each child that declares none of its own.
 
@@ -137,8 +137,8 @@ onto each child that declares none of its own.
 
 Nothing here names an identity type, so there is nothing in the contract to
 keep minimal and nothing in it to leak. What each scheme resolves to is stated
-once, server-side, by `@btravstack/http`'s
-[`defineHttp({ authenticators })`](/reference/http) — and a handler minted from
+once, server-side, by `@btravstack/http-server`'s
+[`defineHttp({ authenticators })`](/reference/http-server) — and a handler minted from
 that call sees it with no annotation of its own.
 
 Two things follow. Enriching what a deployment knows about its callers —
@@ -182,7 +182,7 @@ a bypass. No oRPC builder has to know the marker exists.
   not mandatory. Opt-in by construction; see
   [Protect a procedure](/how-to/protect-a-procedure).
 - **It does not authenticate, and it does not name a principal.** Turning a
-  request into a principal is `@btravstack/http`'s `HttpAuthenticator`, what
+  request into a principal is `@btravstack/http-server`'s `HttpAuthenticator`, what
   each scheme resolves to is `defineHttp({ authenticators })`, and what a token
   means is the application's.
 - **It does not check a scope either.** It declares one; comparing a
@@ -210,7 +210,7 @@ copy reads and writes one `WeakMap`.
 That asymmetry is deliberate. A module-private map would make a second copy
 silent: `isAuthenticated` `undefined` everywhere, no scheme dependency
 declared, and a marked route **served open**. Sharing the registry makes the two halves fail
-together, and the type half fails loudly. `@btravstack/http` peers on this
+together, and the type half fails loudly. `@btravstack/http-server` peers on this
 package so an application holds a single copy in the first place.
 
 `PRINCIPAL` is also never exported as a value, and must stay that way: a
@@ -225,7 +225,7 @@ See
 
 - [Protect a procedure](/how-to/protect-a-procedure) — mark, authenticate,
   compose.
-- [`@btravstack/http`](/reference/http) — `defineHttp`, `HttpAuthenticator`,
+- [`@btravstack/http-server`](/reference/http-server) — `defineHttp`, `HttpAuthenticator`,
   `Unauthenticated`, and what a marked leaf's handler receives.
 - [Order API (HTTP)](/examples/order-api) — a contract with one marked
   fragment, one public one, and a procedure that overrides its group's

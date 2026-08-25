@@ -1,13 +1,14 @@
 {
-  "name": "@btravstack/amqp",
+  "name": "@btravstack/http-server",
   "version": "0.2.0",
-  "description": "The AMQP starter for @btravstack/core: the handlers as a port, one unit per delivery, and a drain the kernel's deadline releases",
+  "description": "The HTTP starter for @btravstack/core: oRPC over node:http, one unit per request, and a drain that actually stops accepting",
   "keywords": [
-    "amqp",
     "graceful-shutdown",
+    "http",
     "lifecycle",
-    "rabbitmq",
+    "orpc",
     "runtime",
+    "starter",
     "typescript",
     "unthrown"
   ],
@@ -20,7 +21,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/btravstack/start.git",
-    "directory": "packages/amqp"
+    "directory": "packages/http-server"
   },
   "files": [
     "dist"
@@ -51,31 +52,32 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
   },
   "devDependencies": {
-    "@amqp-contract/contract": "catalog:",
-    "@amqp-contract/testing": "catalog:",
-    "@amqp-contract/worker": "catalog:",
     "@btravstack/config": "workspace:*",
+    "@btravstack/contract": "workspace:*",
     "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
-    "@btravstack/internal-test-infra": "workspace:*",
     "@btravstack/testing": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
-    "@opentelemetry/api": "catalog:",
+    "@orpc/client": "catalog:",
+    "@orpc/contract": "catalog:",
+    "@orpc/server": "catalog:",
     "@types/node": "catalog:",
+    "@unthrown/orpc": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unthrown": "catalog:",
-    "vitest": "catalog:",
-    "zod": "catalog:"
+    "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@amqp-contract/worker": "^3.0.0-beta.6",
     "@btravstack/config": "workspace:^",
+    "@btravstack/contract": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
-    "@opentelemetry/api": "^1",
+    "@orpc/contract": "^2.0.0-beta",
+    "@orpc/server": "^2.0.0-beta",
+    "@unthrown/orpc": "^0.1.0",
     "unthrown": "^5.0.0"
   },
   "engines": {

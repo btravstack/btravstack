@@ -8,7 +8,7 @@ description: Provide an amqp-contract's handlers as a di service, compose the co
 > **How-to.** Run an [`amqp-contract`](https://github.com/btravstack/amqp-contract)
 > worker under the kernel: handlers built from your own services, one unit per
 > delivery, and a drain with exactly one deadline. For the package's full
-> surface, see [`@btravstack/amqp`](/reference/amqp); for _why_ neither the
+> surface, see [`@btravstack/amqp-worker`](/reference/amqp-worker); for _why_ neither the
 > kernel nor the starter maps a `Result` to ack/nack, see
 > [The kernel maps nothing](/explanation/the-kernel-maps-nothing).
 
@@ -42,7 +42,7 @@ the one `orderChanged` event on their own queue:
 
 <!-- doctest: prelude
 import { Config } from "@btravstack/config";
-import { AmqpConfig } from "@btravstack/amqp";
+import { AmqpConfig } from "@btravstack/amqp-worker";
 import { Provider, type ServiceOf } from "@btravstack/di";
 import { Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
@@ -65,7 +65,7 @@ import { ErrAsync } from "unthrown";
 -->
 
 ```ts
-import { AmqpHandlers } from "@btravstack/amqp";
+import { AmqpHandlers } from "@btravstack/amqp-worker";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 
 import { OkAsync } from "unthrown";
@@ -129,7 +129,7 @@ a second provider next to it — the port is one, so one graph holds one
 handlers provider):
 
 ```ts
-import { AmqpHandlers } from "@btravstack/amqp";
+import { AmqpHandlers } from "@btravstack/amqp-worker";
 import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
 import { TenantId } from "@btravstack/example-order-domain";
 import { ErrAsync, OkAsync, P } from "unthrown";
@@ -177,7 +177,7 @@ retries), not the same number Temporal's `maximumAttempts: 3` names.
 
 ```ts
 import { Env } from "@btravstack/config";
-import { AmqpModule } from "@btravstack/amqp";
+import { AmqpModule } from "@btravstack/amqp-worker";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import {
   OrderApplicationModule,
@@ -357,7 +357,7 @@ another's.
 
 ## See also
 
-- [`@btravstack/amqp`](/reference/amqp) — options, ports, `AmqpInfo`.
+- [`@btravstack/amqp-worker`](/reference/amqp-worker) — options, ports, `AmqpInfo`.
 - [Split a worker into slices](/how-to/split-a-worker-into-slices) — several
   consumers, one handler per consumer, composed at the root.
 - [Order AMQP worker](/examples/order-amqp-worker) — the outbox pattern end to end, against a real RabbitMQ.

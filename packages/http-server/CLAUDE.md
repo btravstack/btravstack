@@ -1,8 +1,8 @@
-# packages/http
+# packages/http-server
 
 The HTTP starter's public surface. The root `CLAUDE.md` is the authoritative
 spec for the kernel and the conventions; this file holds what only matters when
-you are working under `packages/http/`. Keep it in sync with the code in
+you are working under `packages/http-server/`. Keep it in sync with the code in
 the same commit, and with `README.md` — the package ships no
 `docs-examples.test-d.ts`, so nothing else compiles these claims.
 
@@ -445,7 +445,7 @@ it": "order:export"`). `VocabFrom<A>` reads the vocabulary off the same
 
   For every scheme `schemesOf(contract)` found, that scheme's port joins the
   provider's deps record under the **namespaced**
-  key the `AUTHENTICATOR` constant builds — `"@btravstack/http/authenticator"`
+  key the `AUTHENTICATOR` constant builds — `"@btravstack/http-server/authenticator"`
   plus a trailing colon, then the scheme name — namespaced for the same reason
   `tapped`'s port id is, since every other key on that record is a name the
   caller chose and these must not be able to collide with a dependency

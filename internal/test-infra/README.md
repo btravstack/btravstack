@@ -9,8 +9,8 @@ rather than one per workspace.
 | Container                          | Who uses it                                                                 |
 | ---------------------------------- | --------------------------------------------------------------------------- |
 | `postgres:18.1`                    | Temporal's own persistence, and the example application's `orders` database |
-| `rabbitmq:4.2.1-management-alpine` | `packages/amqp`, `examples/order-amqp-worker`                               |
-| `temporalio/auto-setup:1.29.1`     | `packages/temporal`, `examples/order-temporal-worker`                       |
+| `rabbitmq:4.2.1-management-alpine` | `packages/amqp-worker`, `examples/order-amqp-worker`                        |
+| `temporalio/auto-setup:1.29.1`     | `packages/temporal-worker`, `examples/order-temporal-worker`                |
 | `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                      |
 | `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                             |
 | `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                          |

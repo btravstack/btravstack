@@ -57,8 +57,8 @@ you.
 
 **Not a framework.** There is no router, no ORM, no validation layer, no
 logger, no middleware chain **in the kernel**. Everything of that kind arrives
-as a [starter](/explanation/starters) — `@btravstack/http`,
-`@btravstack/temporal` and `@btravstack/amqp`, each a module that provides a
+as a [starter](/explanation/starters) — `@btravstack/http-server`,
+`@btravstack/temporal-worker` and `@btravstack/amqp-worker`, each a module that provides a
 runtime on a port the kernel resolves, and
 [`@btravstack/observability`](/reference/observability), which provides a
 `Logger` and no runtime at all. A starter is opinionated about its one concern
@@ -129,8 +129,8 @@ ordinary di modules is what keeps it from being a cage.
 - [`@btravstack/config`](/reference/config) — the environment as a port, and
   configuration as providers bound from it.
 - [`@btravstack/core`](/reference/core/start) — this kernel.
-- [`@btravstack/http`](/reference/http), [`@btravstack/temporal`](/reference/temporal),
-  [`@btravstack/amqp`](/reference/amqp) — the starters, one per transport.
+- [`@btravstack/http-server`](/reference/http-server), [`@btravstack/temporal-worker`](/reference/temporal-worker),
+  [`@btravstack/amqp-worker`](/reference/amqp-worker) — the starters, one per transport.
 - [`@btravstack/testing`](/reference/testing) — the test harness, a dev
   dependency: a fixture that boots and stops what a test starts, a tap into
   the running graph, an in-memory runtime and a fake clock.

@@ -47,7 +47,7 @@ composition root, and one call. The example itself composes that slice and a
 ```ts
 import { authenticated } from "@btravstack/contract";
 import { runMain } from "@btravstack/core";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { oc } from "@orpc/contract";
 import { P } from "unthrown";
 import { z } from "zod";
@@ -165,11 +165,11 @@ lines in [Packages and install](/reference/packages).
   starter: a logger stamped with the ambient unit's trace id, a
   dependency-free JSON sink, pino behind a subpath, OpenTelemetry behind
   another, and the kernel's own events as lines in the same stream.
-- **`@btravstack/http`** — the HTTP starter: an oRPC contract served over
+- **`@btravstack/http-server`** — the HTTP starter: an oRPC contract served over
   `node:http`, one unit per request, `defineHttp` and `HttpModule`.
-- **`@btravstack/temporal`** — the Temporal worker starter: one unit per
+- **`@btravstack/temporal-worker`** — the Temporal worker starter: one unit per
   activity attempt, `TemporalActivities` and `TemporalModule`.
-- **`@btravstack/amqp`** — the AMQP consumer starter: one unit per message,
+- **`@btravstack/amqp-worker`** — the AMQP consumer starter: one unit per message,
   `AmqpHandlers` and `AmqpModule`.
 - **`@btravstack/testing`** — the test harness, a dev dependency:
   `bootFixture` boots and stops applications inside a vitest fixture,

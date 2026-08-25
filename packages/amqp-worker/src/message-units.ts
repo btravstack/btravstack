@@ -67,7 +67,7 @@ const metaFor = (raw: {
  * `traceId` is a correlation id, not a span context, so the parent's span id
  * is dropped rather than half-carried. The all-zero id is the spec's own
  * "invalid" and is refused like a malformed header. The same sixteen lines
- * live in `@btravstack/http` — tracked with the other cross-starter
+ * live in `@btravstack/http-server` — tracked with the other cross-starter
  * duplication in issue #24.
  */
 const traceIdOfTraceparent = (header: string): string | undefined => {

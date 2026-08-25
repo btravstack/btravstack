@@ -1,5 +1,5 @@
 import { TypedAmqpClient } from "@amqp-contract/client";
-import { AmqpConfig } from "@btravstack/amqp";
+import { AmqpConfig } from "@btravstack/amqp-worker";
 import { Config } from "@btravstack/config";
 import { Logger, Meter } from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
@@ -73,7 +73,7 @@ const BATCH = 32;
  * → logged, left pending, retried next sweep.
  *
  * The client is created here rather than injected: a transport connection is
- * the transport's own — `@btravstack/amqp` creates its worker inside
+ * the transport's own — `@btravstack/amqp-worker` creates its worker inside
  * `Runtime.start` from the same `AmqpConfig` this reads. It is not a second
  * connection, either: `@amqp-contract/core`'s `ConnectionManagerSingleton`
  * pools by URL and reference-counts leases, so this client and the consumer's

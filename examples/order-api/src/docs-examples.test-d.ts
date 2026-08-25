@@ -37,7 +37,7 @@ import {
   CustomerPersistenceModule,
   OrderPersistenceModule,
 } from "@btravstack/example-order-infrastructure";
-import { HttpAuthenticator, HttpModule, Unauthenticated, granted } from "@btravstack/http";
+import { HttpAuthenticator, HttpModule, Unauthenticated, granted } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
@@ -167,7 +167,7 @@ const _DocsOrderApi = HttpModule("DocsOrderApi")({
 // ---------------------------------------------------------------------------
 // "Step 4 — lifting a slice into its own process" —
 // docs/how-to/split-a-router-into-controllers.md; the same call quoted in
-// docs/examples/order-api.md and docs/reference/http.md.
+// docs/examples/order-api.md and docs/reference/http-server.md.
 //
 // The do-not-break property: the slice, its module and its controller are the
 // very ones composed above — a new composition root and one fewer import, not
@@ -188,7 +188,7 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
 
 // ---------------------------------------------------------------------------
 // "Step 2 — the router, as a provider" — docs/how-to/serve-orpc-over-http.md;
-// "`HttpRouter(contract)({ name: Dep }, arm)`" — docs/reference/http.md; "At a
+// "`HttpRouter(contract)({ name: Dep }, arm)`" — docs/reference/http-server.md; "At a
 // glance" — docs/index.md. The deps form over the same marked fragment, with no
 // controller layer: the three pages that show a router rather than a
 // controller all reduce to this call.

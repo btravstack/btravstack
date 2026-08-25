@@ -79,7 +79,7 @@ What the instrumented form emits, per send:
 - **No attachments, no cc/bcc, no custom headers.** Each is a decision a
   provider's own options already model better than a port could.
 - **No bulk send and no queue.** Sending many is the caller's loop, and
-  scheduling one is `@btravstack/temporal`'s job — the transport role map is
+  scheduling one is `@btravstack/temporal-worker`'s job — the transport role map is
   a decision, not an inventory (root `CLAUDE.md`, thesis #1).
 - **No address validation.** The transport rejects what it will not take, and
   a second opinion in a port would be a different, worse one.

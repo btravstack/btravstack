@@ -1,5 +1,5 @@
 ---
-"@btravstack/http": minor
+"@btravstack/http-server": minor
 ---
 
 Add `HttpController(name, fragment)({ name: Dep }, { sync })` and a keyed

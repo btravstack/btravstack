@@ -6,7 +6,7 @@ description: Boot a module in a vitest fixture with bootFixture, reach a running
 <!-- doctest: prelude
 import { Logger } from "@btravstack/core";
 import { Env } from "@btravstack/config";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { observability, type Line } from "@btravstack/observability";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { expect, test } from "vitest";

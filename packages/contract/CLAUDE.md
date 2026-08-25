@@ -36,7 +36,7 @@ Authenticated<T, R>`. Call it with one or more `Requirement`s to get back a
   which scheme authenticated the caller, not juggle several at once. **The
   constraint is not documentation, because the discrepancy silently WEAKENS
   the rule**: OpenAPI reads `{ user: [], mtls: [] }` as AND, and
-  `@btravstack/http` walks the entries taking the first that satisfies, which
+  `@btravstack/http-server` walks the entries taking the first that satisfies, which
   is OR — so a requirement copied out of an OpenAPI document would have
   admitted a caller presenting either. `OneScheme` is
   `SeveralKeys<keyof Q> extends false ? Q : never`, over the standard
@@ -68,7 +68,7 @@ extends Requirements } ? R : never`. What this exact node's mark requires, at
 
 **The contract names no identity type at all.** A marked node names the
 schemes a caller may present and the scopes each must grant, and stops there;
-`@btravstack/http`'s `defineHttp({ authenticators })` is what says what each
+`@btravstack/http-server`'s `defineHttp({ authenticators })` is what says what each
 scheme resolves to, server-side, and a handler minted from that call sees
 those types. So nothing about the server's own view of a caller — roles, an
 org tier, an internal id — reaches a client, and enriching it is never a
@@ -97,7 +97,7 @@ in a `WeakMap`, keyed by identity, mapping each node to the `Requirements` it
 was marked with.
 
 Identity is exactly why a consumer takes this package as a **peer** rather
-than an ordinary dependency — `@btravstack/http` and
+than an ordinary dependency — `@btravstack/http-server` and
 `examples/order-api-contract` both do. Two copies in one install would each
 hold their own registry, a contract marked by one would read unmarked to the
 other, `HttpRouter` would declare no scheme dependency at all and the
@@ -114,7 +114,7 @@ different `unique symbol`s — rather than to a silently unprotected route.
 `PRINCIPAL` is `declare`d and **never exported as a value**, and must stay
 that way — but be precise about what that buys. It stops the mark being
 applied by accident or written literally; it does **not** make it unforgeable.
-`Authenticated<T, R>` is exported, because `@btravstack/http`'s `Inherit`
+`Authenticated<T, R>` is exported, because `@btravstack/http-server`'s `Inherit`
 needs it, so a deliberate
 `node as unknown as Authenticated<typeof node, [{ user: [] }]>` types as
 protected while the registry stays empty: `HasMark<C>` answers `true` and
@@ -123,7 +123,7 @@ protected while the registry stays empty: `HasMark<C>` answers `true` and
 takes a double cast to reach, which is the whole of the protection. Exporting
 the symbol would remove even that, which is why the TS2527 wart a consumer
 hits when re-exporting an inferred controller type is worth paying —
-`@btravstack/http` pays it by handing back **one** nameable object,
+`@btravstack/http-server` pays it by handing back **one** nameable object,
 `Http<A>`, from `defineHttp`: held whole rather than destructured, the
 inferred type never mentions this symbol and an application writes no
 annotation at all.
@@ -149,7 +149,7 @@ marked node and is `never` for an unmarked one.
 
 ## Deferred, deliberately
 
-**A transport other than HTTP reading the marker.** `@btravstack/http` is the
+**A transport other than HTTP reading the marker.** `@btravstack/http-server` is the
 only consumer today. Nothing here is HTTP-shaped — an AMQP or Temporal
 contract could mark a node with the same `authenticated` and its starter read
 `isAuthenticated` — but neither does, and this package does not anticipate

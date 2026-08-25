@@ -1,7 +1,7 @@
 ---
-"@btravstack/amqp": patch
-"@btravstack/temporal": patch
-"@btravstack/http": patch
+"@btravstack/amqp-worker": patch
+"@btravstack/temporal-worker": patch
+"@btravstack/http-server": patch
 "@btravstack/contract": patch
 "@btravstack/config": patch
 "@btravstack/observability": patch

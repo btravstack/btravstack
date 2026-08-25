@@ -26,7 +26,11 @@ import {
   StorageBackend,
   type StorageService,
 } from "@btravstack/storage";
-import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
+import {
+  TemporalModule,
+  type TemporalInfo,
+  type TemporalUnreachable,
+} from "@btravstack/temporal-worker";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
 import {

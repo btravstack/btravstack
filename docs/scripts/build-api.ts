@@ -34,9 +34,9 @@ const packages: readonly string[] = [
   "cache",
   "mailer",
   "storage",
-  "http",
-  "temporal",
-  "amqp",
+  "http-server",
+  "temporal-worker",
+  "amqp-worker",
 ];
 
 const results = await Promise.allSettled(

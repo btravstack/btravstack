@@ -1,5 +1,5 @@
 import { RetryableError } from "@amqp-contract/worker";
-import { AmqpHandler } from "@btravstack/amqp";
+import { AmqpHandler } from "@btravstack/amqp-worker";
 import { currentUnit, Logger } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Mailer } from "@btravstack/mailer";

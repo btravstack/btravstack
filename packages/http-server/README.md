@@ -1,17 +1,19 @@
-# @btravstack/http
+# @btravstack/http-server
 
-> The HTTP starter for [`@btravstack/core`](../core): oRPC over `node:http`,
-> one unit per request, and a drain that actually stops accepting. There is
+> The **serving half** of HTTP for [`@btravstack/core`](../core): oRPC over
+> `node:http`, one unit per request, and a drain that actually stops
+> accepting. A caller reaches this contract with `@orpc/client` and the
+> contract package, not with this one. There is
 > **one** way HTTP is answered here — an oRPC contract, implemented as a
 > `Result`-returning record — and it is enforced, not offered among
 > alternatives.
 
 📖 **[Documentation](https://btravstack.github.io/start/how-to/serve-orpc-over-http)** ·
-[Reference](https://btravstack.github.io/start/reference/http) ·
-[API Reference](https://btravstack.github.io/start/api/http/)
+[Reference](https://btravstack.github.io/start/reference/http-server) ·
+[API Reference](https://btravstack.github.io/start/api/http-server/)
 
 ```sh
-pnpm add @btravstack/http @btravstack/core @btravstack/config @btravstack/di \
+pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack/di \
   @btravstack/contract unthrown @orpc/server @orpc/contract @unthrown/orpc
 ```
 
@@ -64,7 +66,7 @@ declare const Application: Module<PlaceOrder | FindOrder, never, never>;
 
 ```ts
 import { runMain } from "@btravstack/core";
-import { HttpModule, defineHttp } from "@btravstack/http";
+import { HttpModule, defineHttp } from "@btravstack/http-server";
 import { P } from "unthrown";
 
 // One call mints every marker-typed entity this application uses. A public
@@ -169,7 +171,7 @@ class PlaceOrder extends Port("PlaceOrder")<{
 }> {}
 declare const Persistence: Module<never, never, never>;
 import { OkAsync, P } from "unthrown";
-import { defineHttp } from "@btravstack/http";
+import { defineHttp } from "@btravstack/http-server";
 const api = defineHttp();
 class FindOrder extends Port("FindOrder")<{
   readonly execute: (id: string) => AsyncResult<Order, OrderNotFound>;
@@ -277,7 +279,7 @@ registry to keep in step with the contract and nothing for a composition root
 to forget:
 
 <!-- doctest: isolate
-import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http";
+import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 -->
 
@@ -288,7 +290,7 @@ import {
   Unauthenticated,
   defineHttp,
   granted,
-} from "@btravstack/http";
+} from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 export type Identity = { readonly tenantId: string; readonly userId: string };
@@ -370,7 +372,7 @@ class PlaceOrder extends Port("PlaceOrder")<{
 }> {}
 declare const Persistence: Module<never, never, never>;
 import { OkAsync, P } from "unthrown";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { api } from "../../auth.js";
 class FindOrder extends Port("FindOrder")<{
   readonly execute: (tenantId: string, id: string) => AsyncResult<Order, OrderNotFound>;
@@ -380,7 +382,7 @@ declare const Application: Module<FindOrder, never, never>;
 
 ```ts
 import { authenticated } from "@btravstack/contract";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { oc, type } from "@orpc/contract";
 import { OkAsync, P } from "unthrown";
 
@@ -486,7 +488,7 @@ provider on its own port, which is how the composition root supplies it:
 | `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                 |
 
 The full table — required/optional, defaults, and the reasoning — lives on
-[the reference page](https://btravstack.github.io/start/reference/http),
+[the reference page](https://btravstack.github.io/start/reference/http-server),
 which is this list's one detailed home.
 
 ## What it guarantees
@@ -499,7 +501,7 @@ mapped to is oRPC's; a defect inside a procedure is oRPC's own
 `Result` → HTTP status is the router's `.result()` triage — this package maps
 nothing. The drain retires busy keep-alive connections; a client's
 `x-request-id` becomes the unit's `traceId`. The rest is on the
-[documentation site](https://btravstack.github.io/start/reference/http).
+[documentation site](https://btravstack.github.io/start/reference/http-server).
 
 ## What it does not do
 

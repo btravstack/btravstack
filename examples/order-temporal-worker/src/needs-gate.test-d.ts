@@ -16,7 +16,7 @@ import { start, Logger } from "@btravstack/core";
  * fails with THAT port unmet — `ActivitylessTemporal` below, coarse but
  * genuine. But `TemporalWorkflowActivities(contract, key)`'s own `deps` are
  * the REAL ports named in its `sync` call
- * (`packages/temporal/src/workflow-activities.ts`), not the piece's port —
+ * (`packages/temporal-worker/src/workflow-activities.ts`), not the piece's port —
  * that shielding is the composed provider's, one level up, and does NOT
  * apply inside a single slice. So a slice that forgets its own vertical
  * still surfaces its real ports as unmet needs the moment it is composed
@@ -39,7 +39,7 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { Storage } from "@btravstack/storage";
-import { TemporalModule, TemporalRuntime, temporal } from "@btravstack/temporal";
+import { TemporalModule, TemporalRuntime, temporal } from "@btravstack/temporal-worker";
 
 import { OrderTemporalWorker, orderActivities } from "./module.js";
 import { BillingSlice } from "./slices/billing/module.js";

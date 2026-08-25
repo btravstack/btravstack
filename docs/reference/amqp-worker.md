@@ -1,11 +1,11 @@
 ---
-title: "@btravstack/amqp"
+title: "@btravstack/amqp-worker"
 description: The AMQP starter — AmqpModule, AmqpHandlers, amqp(), AmqpRuntime, AmqpConfig and AmqpInfo, the unit per delivery, the drain with one deadline, and the three-way ack/nack/dead-letter split it declines to own.
 ---
 
 <!-- doctest: prelude
 import { Logger, Tracer } from "@btravstack/core";
-import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 import { Env } from "@btravstack/config";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
@@ -18,21 +18,21 @@ import { AuditSlice } from "../../slices/audit/module.js";
 import { NotificationsSlice } from "../../slices/notifications/module.js";
 -->
 
-# @btravstack/amqp
+# @btravstack/amqp-worker
 
 > **Reference.** A complete, structured description of the AMQP starter's
-> public surface: every export of `@btravstack/amqp`, its options and
+> public surface: every export of `@btravstack/amqp-worker`, its options and
 > defaults, what a delivery becomes, and how its drain meets the kernel's
 > deadline. For the task, see
 > [Consume AMQP messages](/how-to/consume-amqp-messages); for the reasoning,
 > [Starters](/explanation/starters) and
 > [The kernel maps nothing](/explanation/the-kernel-maps-nothing); for the
 > worked example, [Order AMQP worker](/examples/order-amqp-worker). Generated
-> signatures are under [API reference](/api/amqp/).
+> signatures are under [API reference](/api/amqp-worker/).
 
 ## Exports
 
-`packages/amqp/src/index.ts` exports exactly this:
+`packages/amqp-worker/src/index.ts` exports exactly this:
 
 | Export                  | Kind  | What it is                                                                                                                                                                                                                 |
 | ----------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -228,7 +228,7 @@ is on `AmqpHandlers(contract)`, and the provider carries its port as
 `provider.port` (`HandlerPortOf<C, K>`).
 
 <!-- doctest: isolate
-import { AmqpHandler, AmqpHandlers } from "@btravstack/amqp";
+import { AmqpHandler, AmqpHandlers } from "@btravstack/amqp-worker";
 import { Logger } from "@btravstack/core";
 import { OkAsync } from "unthrown";
 import { orderContract } from "@btravstack/example-order-amqp-contract";

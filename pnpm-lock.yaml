@@ -339,9 +339,9 @@ importers:
       '@amqp-contract/worker':
         specifier: 'catalog:'
         version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
-      '@btravstack/amqp':
+      '@btravstack/amqp-worker':
         specifier: workspace:*
-        version: link:../../packages/amqp
+        version: link:../../packages/amqp-worker
       '@btravstack/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -433,9 +433,9 @@ importers:
       '@btravstack/example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
-      '@btravstack/http':
+      '@btravstack/http-server':
         specifier: workspace:*
-        version: link:../../packages/http
+        version: link:../../packages/http-server
       '@btravstack/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -712,9 +712,9 @@ importers:
       '@btravstack/storage':
         specifier: workspace:*
         version: link:../../packages/storage
-      '@btravstack/temporal':
+      '@btravstack/temporal-worker':
         specifier: workspace:*
-        version: link:../../packages/temporal
+        version: link:../../packages/temporal-worker
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
@@ -814,7 +814,7 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
 
-  packages/amqp:
+  packages/amqp-worker:
     devDependencies:
       '@amqp-contract/contract':
         specifier: 'catalog:'
@@ -1042,7 +1042,7 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
 
-  packages/http:
+  packages/http-server:
     devDependencies:
       '@btravstack/config':
         specifier: workspace:*
@@ -1267,7 +1267,7 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
 
-  packages/temporal:
+  packages/temporal-worker:
     devDependencies:
       '@btravstack/config':
         specifier: workspace:*
