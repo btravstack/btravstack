@@ -1,5 +1,5 @@
 import { Port, type AnyPort, type Context, type PortClass, type ServiceOf } from "@btravstack/di";
-import { TaggedError, type AsyncResult } from "unthrown";
+import { OkAsync, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
 import type { UnitMeta, UnitWork } from "./units.js";
 
@@ -107,3 +107,41 @@ export type RuntimeResolvesOf<X> =
   RuntimeOf<X> extends Runtime<infer Resolves, unknown> ? Resolves : never;
 
 export type RuntimeInfoOf<X> = RuntimeOf<X> extends Runtime<AnyPort, infer Info> ? Info : never;
+
+/**
+ * `running`, but no later than the kernel's drain deadline — the primitive a
+ * `Serving.drain` needs when the work it awaits settles on somebody else's
+ * clock (Temporal's `shutdownForceTime`, a broker library's close) and so
+ * cannot honour `signal` itself.
+ *
+ * **The losing branch's `Result` is dropped**, which is the point rather than
+ * an oversight: once the deadline wins, the kernel has already moved on and
+ * the eventual outcome has no consumer left. What that costs is the runtime's
+ * own business — an un-acked AMQP delivery is redelivered, so abandoning one
+ * repeats work rather than losing it, while a Temporal activity is retried on
+ * another worker.
+ *
+ * Deliberately **`Clock`-agnostic**: there is no duration here, only a signal,
+ * so it behaves identically under `@btravstack/testing`'s fake clock. Racing
+ * work against a *timeout* is a different primitive and belongs on `Clock`
+ * (`drain.ts` uses `clock.sleep` for exactly that, so a fake clock can control
+ * it) — do not fold the two together.
+ */
+export const releasedBy = (
+  signal: AbortSignal,
+  running: AsyncResult<void, never>,
+): AsyncResult<void, never> =>
+  fromSafePromise(Promise.race([running, whenAborted(signal)])).flatMap((settled) => settled);
+
+// Not exported: `releasedBy` is the whole use case, and an unqualified "wait
+// for this signal" invites the `Clock`-shaped confusion the TSDoc above warns
+// off. The already-aborted arm matters — `addEventListener` on an aborted
+// signal never fires, so without it the race would hang forever.
+const whenAborted = (signal: AbortSignal): AsyncResult<void, never> =>
+  signal.aborted
+    ? OkAsync()
+    : fromSafePromise(
+        new Promise<void>((resolve) => {
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        }),
+      );

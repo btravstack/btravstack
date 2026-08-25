@@ -41,6 +41,25 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   `unknown` is the satisfied arm, and it has to be: intersecting `unknown`
   leaves the module type untouched, so a good call infers exactly as it
   would without the marker.
+- **`releasedBy(signal, running)`** — `running`, but no later than the kernel's
+  drain deadline: `race([running, whenAborted(signal)])`, for a `Serving.drain`
+  whose work settles on somebody else's clock (Temporal's `shutdownForceTime`,
+  a broker's `close()`) and so cannot honour `signal` itself. Hoisted here in
+  #24, where it was duplicated verbatim in `@btravstack/temporal-worker` and
+  `@btravstack/amqp-worker` with divergent TSDoc; it is runtime-author toolkit,
+  which is why it sits beside the `Runtime` contract rather than in a shared
+  internal. The losing branch's `Result` is **dropped** — once the deadline
+  wins the kernel has moved on and nothing consumes the outcome. `whenAborted`
+  stays private: `releasedBy` is the whole use case, and its already-aborted
+  arm is load-bearing, since `addEventListener` on an aborted signal never
+  fires and the race would hang.
+  It is **`Clock`-agnostic by construction** — no duration, only a signal — so
+  it behaves the same under the fake clock. That is the answer to #24's own
+  open question of whether this and `Clock.sleep` are one primitive: they are
+  not. `drain.ts` races work against `clock.sleep`, a **duration** on an
+  injected clock the harness can control; `releasedBy` races it against a
+  **signal**, which no clock owns. Folding them together would drag a clock
+  into a place that has no time in it.
 - **`RuntimePort`** — `Port("Runtime")`, exported **generic** (no fixed
   service): a runtime package declares its own concrete port over it —
   `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}`

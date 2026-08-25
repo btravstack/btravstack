@@ -7,6 +7,7 @@ import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
   RuntimePort,
   RuntimeStartFailed,
+  releasedBy,
   type Runtime,
   type RuntimeHost,
   type Serving,
@@ -19,7 +20,7 @@ import {
   type PortInstance,
   type ServiceOf,
 } from "@btravstack/di";
-import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { ErrAsync, type AsyncResult } from "unthrown";
 
 import { HANDLER_PREFIX, type HandlerKeyOf, type HandlerPortOf } from "./handler.js";
 import { messageUnits } from "./message-units.js";
@@ -275,27 +276,3 @@ const consume = (worker: TypedAmqpWorker<never>, queues: readonly string[]): Ser
     stop: () => stopped(),
   };
 };
-
-/**
- * `closing`, but no later than the kernel's drain deadline — which `close()`
- * cannot honour on its own, since it settles on the library's clock.
- *
- * The losing branch's `Result` is dropped, and it is the one drop in this
- * package: once the deadline wins, `exited` has settled and the eventual close
- * has no consumer left. An un-acked delivery is redelivered, so abandoning one
- * repeats work rather than losing it.
- */
-const releasedBy = (
-  signal: AbortSignal,
-  closing: AsyncResult<void, never>,
-): AsyncResult<void, never> =>
-  fromSafePromise(Promise.race([closing, whenAborted(signal)])).flatMap((settled) => settled);
-
-const whenAborted = (signal: AbortSignal): AsyncResult<void, never> =>
-  signal.aborted
-    ? OkAsync()
-    : fromSafePromise(
-        new Promise<void>((resolve) => {
-          signal.addEventListener("abort", () => resolve(), { once: true });
-        }),
-      );

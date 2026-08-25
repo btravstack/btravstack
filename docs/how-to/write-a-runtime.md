@@ -112,7 +112,18 @@ const ticker: Runtime<typeof Greeter> = {
 `drain` returns `void`, not a report: only the kernel can see the unit
 registry, so the kernel owns the accounting. The `AbortSignal` it receives
 fires when the kernel's deadline passes — a runtime never does arithmetic on
-time. `Serving.info` is optional and typed by `Info`; a runtime that binds an
+time. If the work your `drain` awaits settles on **somebody else's** clock —
+Temporal's `shutdownForceTime`, a broker library's `close()` — it cannot
+honour that signal on its own, and `releasedBy` is the primitive for it:
+
+<!-- doctest: skip — an object-property excerpt, not a statement: the compiled form is `@btravstack/amqp-worker`'s and `@btravstack/temporal-worker`'s own `drain`, which this fence quotes -->
+
+```ts
+drain: (signal) => releasedBy(signal, running);
+```
+
+See [`releasedBy`](/reference/core/runtime#releasedby) for what the dropped
+branch costs. `Serving.info` is optional and typed by `Info`; a runtime that binds an
 ephemeral port publishes `{ port }` there and the caller reads it back through
 `app.runtimeInfo()`.
 

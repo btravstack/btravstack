@@ -275,7 +275,8 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   clock. Redelivery is real, but only once the connection actually drops —
   when the **process** dies, not when the kernel's deadline does — which is
   why the package's own suite pins only the prompt release, not the eventual
-  disposition; see `releasedBy`'s TSDoc in `amqp-runtime.ts`.
+  disposition; see `releasedBy`'s TSDoc in `@btravstack/core`, which is where
+  it lives since #24 — this package imports it rather than carrying a copy.
 - **Not included, deliberately**: `Result` → ack / retry / DLQ, which is a
   **three-way** split rather than the library's alone. A modeled
   `RetryableError` / `NonRetryableError` is routed by `amqp-contract`'s own

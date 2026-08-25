@@ -127,6 +127,43 @@ The one error the kernel mints. A runtime answers it from `start`; the kernel
 answers it with `runtime: "probes"` when the probe server cannot bind or
 `PROBE_PORT` is malformed (its `cause` then a `ConfigInvalid`).
 
+## `releasedBy`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+const releasedBy: (
+  signal: AbortSignal,
+  running: AsyncResult<void, never>,
+) => AsyncResult<void, never>;
+```
+
+`running`, but no later than the kernel's drain deadline. Reach for it in
+`Serving.drain` when the work you await settles on **somebody else's clock** —
+Temporal's `shutdownForceTime`, a broker library's `close()` — and therefore
+cannot honour `signal` itself. Without it, `Serving.stop` can outlive
+`drainTimeoutMs` however long that other clock takes.
+
+<!-- doctest: skip — an object-property excerpt, not a statement: the compiled form is `@btravstack/amqp-worker`'s and `@btravstack/temporal-worker`'s own `drain`, which this fence quotes -->
+
+```ts
+drain: (signal) => releasedBy(signal, running);
+```
+
+**The losing branch's `Result` is dropped**, which is the point rather than an
+oversight: once the deadline wins, the kernel has already moved on and the
+eventual outcome has no consumer left. What that costs is the runtime's own
+business — an un-acked AMQP delivery is redelivered, so abandoning one repeats
+work rather than losing it, while a Temporal activity is retried on another
+worker.
+
+It is deliberately **`Clock`-agnostic**: there is no duration in it, only a
+signal, so it behaves identically under `@btravstack/testing`'s fake clock.
+Racing work against a **timeout** is a different primitive and belongs on
+[`Clock`](#clock-and-systemclock) — the kernel's own drain uses `clock.sleep`
+for exactly that, so a fake clock can control it. The two look alike and must
+not be folded together.
+
 ## Units of work
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
