@@ -1124,10 +1124,10 @@ importers:
         version: 8.0.1
       '@unthrown/vitest':
         specifier: 'catalog:'
-        version: 5.7.0(unthrown@5.7.0)(vitest@4.1.10)
+        version: 5.7.0(unthrown@5.7.0)(vitest@4.1.11)
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 4.1.10(vitest@4.1.10)
+        version: 4.1.11(vitest@4.1.11)
       nodemailer:
         specifier: 'catalog:'
         version: 9.0.5
@@ -1142,7 +1142,7 @@ importers:
         version: 5.7.0
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
 
   packages/observability:
     devDependencies:
