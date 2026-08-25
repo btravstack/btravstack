@@ -99,47 +99,9 @@ hook). User-facing changes need a changeset.
 ## Versioning: all twelve packages move as one
 
 The twelve published packages share **one version number**, enforced by a
-`fixed` group in `.changeset/config.json`. A release bumps every one of them,
-whether or not it changed — Spring Boot's model, and the reason is the same:
-an application installs a kernel and two or three starters together, and
-"which version of `@btravstack/http-server` goes with `@btravstack/core@0.4.1`" is a
-question nobody should have to answer.
-
-`@btravstack/di` is the only one with a published history (`0.1.0`, from its
-standalone repository, before the merge). The unified line therefore starts at
-**0.2.0**: above di's published version, and 0.x because the API still moves —
-this repo removed `Port.many` and `withApp` in a single afternoon.
-
-**A minor no longer forces 1.0.0 — `@changesets/cli@3.0.0` fixed it.** Every
-package here peer-depends on `@btravstack/di` and most on `@btravstack/config`
-and `@btravstack/core`, and changesets 2.x majored any package whose _peer_
-dependency was bumped by a minor or major; from 0.x a major is `1.0.0`, so one
-`minor` changeset took the whole group there. Re-measured on **3.0.0**, twice,
-against the four pending changesets:
-
-| From 0.2.0          | on 2.31.1                 | on 3.0.0    |
-| ------------------- | ------------------------- | ----------- |
-| a `patch` changeset | `0.2.1` — the whole group | `0.2.1`     |
-| a `minor` changeset | `1.0.0` — the whole group | **`0.3.0`** |
-
-Only the `minor` row moved, and it moved to what the repo wanted all along.
-The escape hatches the 2.x note prescribed are moot: both lived under
-`___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH`, **not** in the ordinary
-config, and neither was the `updateInternalDependencies` this repo's
-`.changeset/config.json` already sets — the names are close enough to mislead
-(`onlyUpdatePeerDependentsWhenOutOfRange: true`,
-`updateInternalDependents: "out-of-range"`, both read by
-`@changesets/assemble-release-plan`, both tried, neither changing the 2.x
-result). The internal peers still cannot become ordinary dependencies — the
-dual-copy hazard is what they exist to prevent.
-
-So the hand-override the `0.2.0` release performed — rewriting the eight
-`package.json` versions, the eight `CHANGELOG.md` headings **and the
-`Updated dependencies` blocks inside those changelogs** — is no longer needed
-for a feature release. Reaching `1.0.0` is a decision again rather than an
-accident. **Do not downgrade `@changesets/cli` below 3.0.0** without
-restoring this warning: on 2.x the next `pnpm run version` silently ships a
-major.
+`fixed` group in `.changeset/config.json`. **Do not downgrade `@changesets/cli`
+below 3.0.0** — on 2.x the next `pnpm run version` silently ships a major. The
+measurements behind both rules are in `.changeset/CLAUDE.md`.
 
 ## Thesis (do not drift from these)
 
@@ -470,54 +432,10 @@ unit open for the process lifetime.
 
 ## Cross-cutting concerns: configuration, not a middleware slot
 
-CORS, body limits, compression, CSRF, security headers and authentication all
-arrive at the same door, and the answer is the same for all of them: **they are
-handler configuration, not a middleware slot.** Thesis #3's refusal survives
-intact, narrowed to what it was always about. An oRPC plugin and the starter's
-own `principalMiddleware` act on the **request/response envelope** — bytes,
-headers, a principal resolved before dispatch. An application middleware would
-act on the handler's **`Result`**, and that is the only one `@btravstack/http-server`
-refuses, because it is the one that would put a use case's outcome in the
-transport's hands.
-
-- **`plugins` is an honest escape hatch, not a keyhole.** It forwards straight
-  to `new RPCHandler(service, { plugins })`, and an oRPC plugin can reach
-  oRPC's interceptors — so an application determined to see a procedure's
-  outcome can get there. Nothing pretends otherwise. What the option buys is
-  that the ordinary path is configuration a reader can see at the composition
-  root, and reaching past it is a visible act rather than the default shape.
-- **Security headers are set on the listener, not as a plugin.** A plugin only
-  runs for a request oRPC **matched**, so the runtime's own `404` would go out
-  bare — the opposite of what helmet-style headers are for.
-- **Rate limiting is a stated non-goal.** A per-process counter is the wrong
-  unit: an `api` deployment is N pods (thesis #1), so a per-process budget is
-  N independent budgets and none of them is the limit anybody meant. The
-  ingress or gateway is where a request count is counted once. An application
-  that wants one anyway writes a plugin and passes it through `plugins` —
-  which is the escape hatch doing its job, not a gap.
-- **An unmarked procedure is public, and nothing fails if the marker is
-  forgotten.** `@btravstack/contract`'s marker makes the requirement
-  **legible** in the contract and makes the principal's type reach the
-  handler; it does not detect a procedure that should have been marked. There
-  is no gate for "you forgot", and there cannot be one — the contract is the
-  only statement of intent there is. Do not describe an unmarked procedure as
-  checked.
-- **Authorization is deliberately not in the contract.** "May this caller do
-  this?" often depends on the resource — the order's owner, its state, the
-  row's tenant — which cannot be answered before the handler has run and
-  fetched it. Putting the caller-shaped half in the contract and leaving the
-  resource-shaped half in the handler splits one rule across two files, and
-  the half in the contract is the half that looks complete. Authentication —
-  "is there a principal, and what is it?" — is answerable before dispatch, and
-  is the only half the contract carries.
-
-  A **scope** is the exception that proves the rule, and it is admitted on the
-  same test: it is a property of the credential, answerable before dispatch,
-  which is exactly why authentication is in the contract already. What stays
-  out is resource-dependent authorization — the order's owner, the row's tenant
-  — which a scope was never going to answer. `@btravstack/http-server` checks a
-  credential's granted scopes against the endpoint's declared ones and answers
-  `403`, distinct from the `401` a caller with no valid credential gets.
+CORS, body limits, compression, CSRF, security headers and authentication are
+**handler configuration, not a middleware slot** — thesis #3's refusal, narrowed
+to what it was always about. Rate limiting is a stated non-goal. The full
+reasoning is in `packages/http-server/CLAUDE.md`.
 
 ## Public surface
 
@@ -529,20 +447,20 @@ while `logger.ts` shipped `(message, attributes?, cause?)` on all six methods
 _and argued for that ordering in its own TSDoc_. Five copies, one gate, and
 the copy with no gate is the one that lies.
 
-| Package                       | Surface lives in                     | Reference page               |
-| ----------------------------- | ------------------------------------ | ---------------------------- |
-| `@btravstack/contract`        | `packages/contract/CLAUDE.md`        | `/reference/contract`        |
-| `@btravstack/di`              | `packages/di/CLAUDE.md`              | `/reference/di/`             |
-| `@btravstack/config`          | `packages/config/CLAUDE.md`          | `/reference/config`          |
-| `@btravstack/core`            | `packages/core/CLAUDE.md`            | `/reference/core/`           |
-| `@btravstack/testing`         | `packages/testing/CLAUDE.md`         | `/reference/testing`         |
-| `@btravstack/observability`   | `packages/observability/CLAUDE.md`   | `/reference/observability`   |
-| `@btravstack/cache`           | `packages/cache/CLAUDE.md`           | `/reference/cache`           |
-| `@btravstack/mailer`          | `packages/mailer/CLAUDE.md`          | `/reference/mailer`          |
-| `@btravstack/storage`         | `packages/storage/CLAUDE.md`         | `/reference/storage`         |
-| `@btravstack/http-server`     | `packages/http-server/CLAUDE.md`     | `/reference/http-server`     |
-| `@btravstack/temporal-worker` | `packages/temporal-worker/CLAUDE.md` | `/reference/temporal-worker` |
-| `@btravstack/amqp-worker`     | `packages/amqp-worker/CLAUDE.md`     | `/reference/amqp-worker`     |
+| Package                       | Surface lives in                                                             | Reference page               |
+| ----------------------------- | ---------------------------------------------------------------------------- | ---------------------------- |
+| `@btravstack/contract`        | `packages/contract/CLAUDE.md`                                                | `/reference/contract`        |
+| `@btravstack/di`              | `packages/di/CLAUDE.md`                                                      | `/reference/di/`             |
+| `@btravstack/config`          | `packages/config/CLAUDE.md`                                                  | `/reference/config`          |
+| `@btravstack/core`            | `packages/core/CLAUDE.md`                                                    | `/reference/core/`           |
+| `@btravstack/testing`         | `packages/testing/CLAUDE.md`                                                 | `/reference/testing`         |
+| `@btravstack/observability`   | `packages/observability/CLAUDE.md`                                           | `/reference/observability`   |
+| `@btravstack/cache`           | `packages/cache/CLAUDE.md`                                                   | `/reference/cache`           |
+| `@btravstack/mailer`          | `packages/mailer/CLAUDE.md`                                                  | `/reference/mailer`          |
+| `@btravstack/storage`         | `packages/storage/CLAUDE.md`                                                 | `/reference/storage`         |
+| `@btravstack/http-server`     | `packages/http-server/CLAUDE.md` (auth half: `packages/http-server/AUTH.md`) | `/reference/http-server`     |
+| `@btravstack/temporal-worker` | `packages/temporal-worker/CLAUDE.md`                                         | `/reference/temporal-worker` |
+| `@btravstack/amqp-worker`     | `packages/amqp-worker/CLAUDE.md`                                             | `/reference/amqp-worker`     |
 
 **Three ports are declared in `@btravstack/core` and implemented elsewhere:
 `Logger`, `Tracer` and `Meter`.** That is the one place the table's
@@ -617,107 +535,10 @@ in its place.
   the hop out of `__tests__/` rides the name (`"../workflows"`) rather than
   the URL.
 
-- **`examples/` is part of the gate, not a folder of illustrations.** All
-  ten workspaces run under the same six commands as the kernel — their specs
-  plus four `needs-gate.test-d.ts` files, four `layering.test-d.ts` ones and
-  `hexagonal-order-api`'s `index.test-d.ts` —
-  so an example that stops compiling, stops linting or stops passing fails CI
-  exactly as `packages/core` would. Three of the four needs-gate files pin
-  **`start`'s** gate (`order-api`, `order-temporal-worker`,
-  `order-amqp-worker` — its `NO RUNTIME` arm, since no starter's runtime
-  resolves anything any more; `order-api`'s also pins the `unit` halves) and
-  the **unmet need** on the starter's port (a composition importing `http()` /
-  `temporal({ contract, workflows })` / `amqp({ contract })` without providing
-  the router / activities / handlers carries the starter's port in `Needs`, and
-  `start`'s `module` parameter takes only `Scope | Env`, so it fails to assign —
-  the starter is an IMPORT, and an import's needs travel without the importer
-  re-declaring them, so di's declaration gate has nothing to say and this stays
-  the kernel's); the fourth, `order-application`'s, pins **di's**
-  `UNSATISFIED DEPENDENCIES` gate on `Module.scoped` — `DependencyGate`, a
-  marker on the `module` parameter since issue #93, whose message ends on the
-  missing ports:
-  `'{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository; }'`
-  (it was a rest-tuple arity error printing `Expected 5 arguments, but got 2`
-  and nothing else).
-  A **fourth** mechanism joined them in #50 and is pinned beside the third:
-  di's `NeedsGate`, which fires when a module's OWN provider reads a port
-  nothing local satisfies and `needs` does not name it —
-  `order-temporal-worker`'s `FulfillmentlessSlice`, printing
-  `'{ readonly "UNDECLARED NEEDS — name it in `needs`": StockService | ShippingService; }'`.
-  **Four** mechanisms, easy to conflate — and since #93 every one of them
-  prints a name. Do not call the second "di's `UNSATISFIED DEPENDENCIES` gate": an
-  earlier revision of this file did, and it is wrong in both halves. `start`'s
-  `UNSATISFIED RUNTIME PORTS` arm is pinned only by `packages/core`'s own
-  `start.test-d.ts`, since every shipped runtime declares `resolves: []`.
-  `examples/` is not the only place the gate is pinned by a **type test**:
-  `packages/amqp-worker/src/amqp-runtime.test-d.ts` pins the handlers-port half of
-  `amqp`'s own gate, and its sibling `packages/amqp-worker/src/handler.test-d.ts` pins
-  the composing form's — a piece typed by the one key it names, and the root's
-  array refused when it misses a declared key. `packages/temporal-worker/src/workflow-activities.test-d.ts`
-  pins the same shape for `temporal`'s composing form and is that package's
-  **first** type test — `packages/temporal-worker` had no `*.test-d.ts` file, and no
-  `tsconfig.test-d.json` or `test:types` script, before it. `packages/http-server/src/controller.test-d.ts`
-  pins the
-  five compile-time gates the composing `HttpRouter(contract)([...])` form
-  owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s 57 specs, across
-  `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
-  `auth.spec.ts`, drive the
-  transport through the internal `httpModule` with a bare listener, the
-  starter proper through `HttpModule`, the composing router form through the
-  `rpcSliced` fixture, and the contract marker's runtime half — the per-scheme
-  authenticator ports and the one middleware they install — through
-  `rpcAuthed`. **The contract says WHICH SCHEMES protect a route, and which
-  scopes each must grant; the application's `defineHttp({ authenticators })`
-  says WHAT each scheme resolves to.**
-  `@btravstack/contract` names no identity type at all — `authenticated` takes
-  OpenAPI requirements and no type parameter — so nothing about a server's
-  view of a caller reaches a client, and a marked fragment reached through
-  anything but that one call types `principal: never`, which makes every read a
-  compile error and is the signal to use the factory.
-  `examples/order-api/src/auth.ts` is the one file per application that names
-  its identities, and there is no identity comparison left to make: declaring a
-  scheme and implementing it are the same act, so a scheme the contract names
-  with no authenticator behind it is di's own unmet need on
-  `HttpAuthenticator:<scheme>`. The one call's result is held as **one
-  binding and never destructured** — each destructured member expands to a type
-  mentioning `@btravstack/contract`'s inaccessible `unique symbol` (TS2527),
-  while held whole it collapses to the nameable `Http<A>`, which is why the
-  application writes no type annotation at all.
-- **The local loop is `pnpm dev`, and it is the production shape** (issue
-  #67): `turbo run dev --filter=./examples/*`, one process per deployment,
-  each `tsx watch --env-file=../../.env.dev src/main.ts`, output prefixed by
-  workspace. The reasoning against a one-process runner is in thesis #1; what
-  lives here is the mechanics.
-  - **`tsx`, because Node alone cannot run these files.** Relative imports
-    carry `.js` (`moduleResolution: NodeNext`) and Node's own type stripping
-    does not remap `./module.js` to `./module.ts` — measured, it is an
-    `ERR_MODULE_NOT_FOUND`. `tsx` was already in the catalog for `docs`; it is
-    a devDependency of the three example workspaces, and no new dependency.
-  - **`.env.dev` is generated, never committed.** The `dev` task depends on
-    `@btravstack/internal-test-infra#dev:env`, which attaches to the **same
-    six shared containers the specs use** (`withReuse()` — a second set
-    would be issue #52's duplication in another hat), runs
-    `prisma migrate deploy` under the same lock as the example's own
-    `globalSetup`, and writes `DATABASE_URL` / `AMQP_URL` /
-    `TEMPORAL_ADDRESS` / `REDIS_URL` / `SMTP_URL` / the four `STORAGE_S3_*`. They are written to a file rather than defaulted
-    because the ports are whatever Docker mapped, and an ephemeral mapped
-    port cannot be a default. `--env-file` is Node's own; no `dotenv`.
-  - **`PROBE_PORT` is per app, inline in each `dev` script** (`9000`, `9001`,
-    `9002`): it defaults to `9000` for every application, so on one machine
-    two of the three fail with `RuntimeStartFailed` for `"probes"`. That is
-    the kernel reporting an `EADDRINUSE` correctly — in production each pod
-    has the port to itself — and it is why per-app values live in the per-app
-    script while shared ones live in `.env.dev`.
-  - **`tsx watch` force-kills its child 5 s after a signal**, so a Ctrl-C
-    under the watcher can cut beat 3 short — the kernel's own defaults are
-    `preDrainDelayMs: 5_000` then up to `drainTimeoutMs: 20_000`. To watch a
-    real drain, run the entry point without `watch`. Measured end to end:
-    `draining` → `drained` exactly 5.002 s later → `stopping` → `exited 0`.
-  - **The root `dev` script is filtered for a reason.** Sixteen workspaces
-    have a `dev` script (twelve packages' watch-builds, `docs`, three examples),
-    and turbo refuses more persistent tasks than its concurrency — so the
-    unfiltered `turbo run dev` the root carried was **already broken** before
-    this, failing on ten persistent tasks against a concurrency of ten.
+- **`examples/` is part of the gate, not a folder of illustrations.** All ten
+  workspaces run under the same six commands as the kernel, and an example that
+  stops compiling fails CI exactly as `packages/core` would. The type-level gates
+  they pin, and the `pnpm dev` local loop, are in `examples/CLAUDE.md`.
 - **The whole gate runs on SIX containers, shared, and `internal/test-infra`
   owns them.** One `postgres:18.1`, one `rabbitmq:4.2.1-management-alpine`,
   one `temporalio/auto-setup:1.29.1`, one `redis:8.8.2-alpine`, one
@@ -779,116 +600,9 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   a cold cache, and the CI cache gap that came with it.
 
 - **The example application is multi-tenant, and that is why one database
-  serves the whole gate.** `examples/order-infrastructure` is PostgreSQL on
-  the shared server — a database of its own next to Temporal's — migrated once
-  per run by `src/global-setup.ts` with **`prisma migrate deploy`**, the
-  command a deployment runs, under the same cross-process lock. Nothing is
-  truncated or dropped between tests: each test declares a **tenant** of its
-  own (a UUID), so a shared database costs one migration for the whole gate
-  instead of one per test, and no test can see another's rows whatever order
-  they run in.
-
-  It replaced SQLite **in memory**, which was the right call while every test
-  built its own database and stopped being one the moment the gate needed a
-  PostgreSQL for Temporal anyway.
-
-  **The tenancy is the APPLICATION's, and the framework has no concept of
-  one.** Every port names its tenant — `OrderRepository.find(tenantId, id)`,
-  `PlaceOrder.execute(tenantId, id, quantity)` — and each transport supplies it
-  from its own **contract**: an input field on `order-api`'s **unmarked**
-  `customers` procedures — the marked `orders` half names none, because an
-  authenticated caller's own principal establishes it — a field on the AMQP
-  envelope, and a field on every Temporal workflow and activity input. No
-  starter reads a tenant off anything.
-
-  That line was drawn deliberately, and an earlier revision of this file
-  described the opposite. A tenant is _context_, and what establishes it — a
-  header, a subdomain, an authenticated subject — is a decision about a
-  specific system, as is what happens when it is missing. A starter with a
-  `tenantOf` hook decides both on the application's behalf and is the first
-  step of a framework tenancy model that owes many more answers than that one.
-  `UnitRecord.tenantId` stays what it always was: a field for a **hand-rolled**
-  runtime whose author has already answered them, set by no shipped starter.
-
-  **The tenant is branded, and the ids beside it are branded on the answer
-  side only** (`TenantId` in
-  `examples/order-domain/src/tenant.ts`, a `z.uuidv7().brand("TenantId")`).
-  Two strings in a fixed order are what the compiler has nothing to say about,
-  so `find(id, tenantId)` compiled and queried the wrong tenant; a pair need
-  differ in ONE position to become unswappable, which is why branding every id
-  was a separate question — answered separately, in issue #80: **error
-  payloads and outputs carry the id's brand, inputs never do.** The domain's
-  errors declare `id: OrderId` / `CustomerId` (except the two "as received"
-  ids — `InvalidOrderId`'s, which by definition is not one, and the
-  contracts' `malformedRef`), and the contracts' refs and views brand their
-  `id` slots with the same brand keys, so a customers ref in an orders slot —
-  shipped twice in one day, #76 and #77 — is a compile error at the
-  controller now. A caller's ergonomics are untouched: the fiction is asked
-  only of the server, and a port's `id: string` parameters stay bare, claimed
-  by a cast where the error is minted — the same once-per-boundary rule the
-  tenant follows. The constructor is a **cast, not a
-  parse** — `.parse()` throws, and the value arrived through a contract that
-  already validated it — so each path claims the brand exactly once, where an
-  outside value becomes the application's vocabulary: the API's
-  `bearerAuthenticator` (from there the `Identity` carries it and neither
-  controller casts), the customers controller's `TenantId(input.tenantId)`,
-  each Temporal activity's `TenantId(args.tenantId)`, and the relay's
-  `tenantsOf`, which brands the `OUTBOX_TENANTS` list once at the config
-  boundary. The AMQP handlers cast nothing: neither calls a port that names a
-  tenant, so there is no boundary there to claim. `prisma-outbox.ts` is the
-  one **read-back** — a row becoming an `OrderEvent` — and so the one place
-  the brand is re-applied rather than carried.
-
-  **Every id beside it is a UUIDv7**, declared once on the entity
-  (`OrderId`, `CustomerId`) and again on each contract's own schema, so a
-  malformed id is refused at the transport before a use case sees it. That
-  format is what gave `placeOrder` a **second** way to fail: while the id was
-  an unconstrained string the quantity was the only field a typed caller could
-  get wrong, so collapsing `Order.make`'s `InvalidEntity` to `InvalidQuantity`
-  was sound; with a format it became a mislabelling, and `InvalidOrderId` is
-  the arm that fixes it. The two are told apart by **which field** the entity
-  named — `Entity.keysOf` over the issue's path — never by the message text,
-  and each transport now carries a third arm for it: `BAD_REQUEST` over HTTP,
-  a `nonRetryable` `InvalidOrderId` on Temporal, a `NonRetryableError` on the
-  queue.
-
-  Two things fall out of making it an argument, and they are the reason rather
-  than the price. A caller that forgets its tenant **does not compile**, where
-  an ambient one fails at runtime or silently reads another tenant's rows —
-  and because the tenant is branded and the id beside it is not, neither does
-  a caller that **swaps** them, which is the failure issue #81 named:
-  `find(id, tenantId)` type-checked and queried the wrong tenant. And
-  a test needs no machinery at all — no fixture that "enters" a tenant, no
-  store to set — which is why the persistence specs read
-  `repository.find(tenant, "0199a1e0-0000-7000-8000-000000000001")`.
-
-  **A cache key carries the tenant, and that is the same rule one layer
-  out.** `@btravstack/cache`'s `Cache` takes plain string keys — no namespace
-  parameter, no tenant slot — because a cache is an application service and
-  the framework has no concept of a tenant to put there. So
-  `examples/order-api`'s customers controller composes
-  `customers:{tenantId}:{id}` by hand, which is the one place the discipline
-  is spelled rather than typed: a port states it in its signature, a string
-  key cannot, and the test that proves the read-through reads under a tenant
-  of its own for exactly that reason.
-
-  `Outbox.pending(tenantId, limit)` is the case that shows ambient could not
-  have covered this anyway: the relay reading it is a background sweep with no
-  request, delivery or activity behind it, so there is nothing to read a tenant
-  from. Which tenants it serves is deployment configuration
-  (`OUTBOX_TENANTS`), and it sweeps tenant by tenant so one tenant's backlog
-  cannot starve another's.
-
-- **The Prisma client is generated at test time, and there is nothing to
-  install.** `@btravstack/example-order-infrastructure`'s `generate`
-  script writes a gitignored client into `src/generated`, and turbo's `test` /
-  `typecheck` / `test:types` tasks carry **both** a `generate` and a
-  `^generate` edge — the first so the workspace's own client exists, the second
-  so a dependent workspace gets one too. The scripts themselves do **not** call
-  `prisma generate`: they did until 2026-08-13, and on a cold cache turbo ran
-  the `generate` task and the script's inline copy **concurrently**, which
-  fails with `EEXIST: mkdir …/generated/prisma/models`. One generator, ordered
-  by the task graph, is what makes that impossible rather than rare.
+  serves the whole gate.** The tenancy is the APPLICATION's — every port names
+  its tenant and no starter reads one off anything. The full rule, the id
+  branding and the Prisma generation step are in `examples/CLAUDE.md`.
 - **An integration test may boot its real dependency with Docker and
   testcontainers.** A suite that needs a broker, a database or a service starts
   one; there is no rule against a daemon, and a hand-written double that fakes
@@ -899,53 +613,6 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   boundary than a server, and it is the boundary the system under test
   actually has. State the cost in the workspace's README, since a suite that
   needs a daemon is a fact a contributor discovers the hard way otherwise.
-- **`examples/order-temporal-worker` consumes `@btravstack/temporal-worker`**, the same
-  way `order-api` consumes `@btravstack/http-server`: it supplies the contract, the
-  activities provider and the `mapErrCases` triage, and reads `{ taskQueue,
-namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
-  attempt and the deadline race are the package's. It is a **two-slice
-  modulith**: `FulfillmentSlice`'s `fulfillOrder = TemporalWorkflowActivities(orderContract,
-"fulfillOrder")({ place: PlaceOrder, repository: OrderRepository, stock: StockService,
-shipping: ShippingService }, { sync })` and `BillingSlice`'s `chargeOrder = TemporalWorkflowActivities(orderContract,
-"chargeOrder")({ payments: PaymentService }, { sync })` are each a **piece** — a provider
-  on the port its own contract key mints, closing over only the services its
-  own saga calls, no context read at call time — and the root composes them,
-  `orderActivities = TemporalActivities(orderContract)([fulfillOrder,
-chargeOrder])`, into the composition root
-  `TemporalModule("OrderTemporalWorker")({ contract, activities:
-orderActivities, workflows, imports: [FulfillmentSlice, BillingSlice,
-observability(), otel()], exports: [Tracer] })`, the sugar importing the starter. `FulfillmentSlice`
-  imports the orders vertical (`OrderApplicationModule` +
-  `OrderPersistenceModule`) plus `FulfillmentModule`; `BillingSlice` imports
-  `BillingModule` alone — the two verticals meet only in that `imports` list,
-  never inside either slice's own graph. The connection and `TEMPORAL_*` come
-  from the starter, and `LOG_LEVEL` and the `Logger` the sagas' stand-in
-  services write to come from `observability()`. `order-amqp-worker` is the
-  same shape — `NotificationsSlice`'s `orderNotifications = AmqpHandler(orderContract,
-"orderNotifications")({ logger: Logger }, { sync })` and `AuditSlice`'s `orderAudit =
-AmqpHandler(orderContract, "orderAudit")({ logger: Logger }, { sync })`, composed as
-  `orderHandlers = AmqpHandlers(orderContract)([orderNotifications,
-orderAudit])` — but **neither** slice imports a vertical: a subscriber reacts
-  to a fact somebody else already committed, so the orders vertical stays at
-  the root, next to the outbox relay that writes it
-  (`AmqpModule("OrderAmqpWorker")({ contract, handlers: orderHandlers,
-imports: [OrderApplicationModule, OrderPersistenceModule, NotificationsSlice,
-AuditSlice, observability(), otel()], … })`),
-  with its outbox relay a resourceful provider of its own rather than
-  something layered onto the runtime — the relay is also the one place in the
-  examples that logs a **failure**, `logger.error(message, cause, { eventId })`
-  down each of its three arms. Both are also where **honouring the
-  kernel's deadline through the ambient record** is worked: neither middleware
-  injects anything into the call — `next()` unchanged — so
-  `currentUnit()?.signal` is the only route to it, and what each piece answers
-  when it is aborted is that **slice's own** business now: `order-amqp-worker`'s
-  `orderNotifications` returns a `RetryableError`, leaving the delivery
-  un-acked so the broker hands it to the next worker, while `orderAudit` keeps
-  writing through the drain window rather than leaving a delivery un-acked;
-  `order-temporal-worker`'s `ShippingService.arrange` fails as a **defect**,
-  which the platform retries on another worker — the contract's
-  `ShippingUnavailable` is a permanent no and would be the wrong error for "we
-  ran out of time".
 - **A piece is a provider; a slice is a module; a modulith is several slice
   modules in one root — one shape, all three transports.** No new concept: a
   slice owns its own piece of the surface — an HTTP fragment and controller, a
@@ -1009,72 +676,10 @@ AuditSlice, observability(), otel()], … })`),
   exist on the worker side: a worker's array has no lifted-fragment form to
   preserve, since a piece already IS one contract key on its own.
 
-- **`examples/order-api` consumes `@btravstack/http-server` rather than
-  hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
-  over its own node adapter, `@unthrown/orpc` at the boundary.** It is a
-  two-slice modulith on the shape above: `slices/orders/` and
-  `slices/customers/`, each its own contract fragment, its own
-  `HttpController` and its own di module — which **imports the vertical it
-  needs** (`OrderApplicationModule` + `OrderPersistenceModule`,
-  `CustomerApplicationModule` + `CustomerPersistenceModule`) and exports only
-  its controller, in di's provider form (`exports: [ordersController]`, since
-  `HttpController` mints the port and there is no class to name; the two
-  slices are that form's first call sites). One module per vertical in **both**
-  layers, not one per layer: a slice, and each worker, carries its own
-  vertical and none of the other's. What the slices still share is the
-  internal `DatabaseModule` both persistence modules import: a diamond, not
-  duplication, since `build.ts`'s `flatten` collapses the tree into a `Set`
-  keyed by provider **reference** — measured on this composition, a naive walk
-  visits 16 provider slots and di keeps 15, one `OrderDatabase` among them
-  (the same walk over the pre-split modules visited 22 for the same 15, and
-  the difference is the over-inclusion the split removed). The root composes them —
-  `orderRouter = api.HttpRouter(contract)([ordersController,
-customersController])`, the composing array form — and
-  **`HttpModule("OrderApi")({ router: orderRouter, imports: [OrdersSlice,
-CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`** is the whole
-  composition root, a list of slices plus what no slice owns — the
-  sugar imports `http()`, provides the router on the starter's
-  `HttpRouterPort` and
-  exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST`, `DATABASE_URL` and `REDIS_URL` come from the
-  environment inside the graph, and the router is mounted under `/rpc`. The
-  two authenticators are **not** in that list: they ride the router, which is
-  what needs them, and `HttpModule` puts them in `provides` itself. The
-  **unmarked** `customers` fragment declares `tenantId` on its input, so a
-  procedure hands it to the use case and the use case to the repository; the
-  **marked** `orders` fragment declares none and its handlers read
-  `context.principal.tenantId` instead — a caller does not name the tenant it
-  is served, and a required field the handler ignores would be a confused
-  deputy in contract form. Either way the transport reads nothing about
-  tenancy.
-  `observability()` is what provides the `Logger` the interactors and the
-  request scope write to, and `Logger` is in `exports` because `RequestModule`
-  reads it out of the application scope. `RequestModule` rides
-  `StartOptions.unit` so
-  the per-request fork is the kernel's. There is no `runtime`, `resolves`,
-  `handler`, `port` or env-reading to spell anywhere. Its `main.ts` passes
-  `onEvent: kernelEvents(createLogger(jsonSink()))` so the kernel's nine events
-  land in the application's own stream, with the logger built by hand because
-  `building` is emitted while the graph still is — the kernel's stderr sink
-  is a fine default and this is the upgrade, not the requirement. All three
-  `main.ts` files pass a unit module since the examples were instrumented
-  with the trio: `RequestModule` here (which imports `UnitSpanModule` and
-  records a request-duration histogram beside the finish line it logs), bare
-  `UnitSpanModule` on the two workers — so every unit, request or delivery
-  or activity attempt, opens an OTel span carrying the same ids the logger
-  stamps, and the roots compose `otel()` beside `observability()` and export
-  its ports for the fork to read. Each metric sits at an adapter seam, never
-  in the application layer: the request span's histogram, the outbox relay's
-  per-tenant `relayed` counter, the billing stand-in's `authorized` counter. Each procedure is a plain
-  `Result`-returning function typed by its slice's fragment (`@unthrown/orpc`'s
-  `.result()` handler, wrapped by the router's walk at composition). It reads
-  `port` back off
-  `Serving.info`; binding, the drain and the trace-id policy are the
-  package's. Two gates keep the composition honest at compile time: a root
-  that forgets `http()` is refused against
-  `"NO RUNTIME — the module exports no port declared over RuntimePort"`, the
-  sentence intersected onto `start`'s `module` parameter, and one that imports
-  it without providing `orderRouter` leaves `HttpRouterPort` in `Needs`, which
-  the same parameter refuses by assignability — not di's dependency gate.
+- **`examples/order-api` consumes `@btravstack/http-server`**, `order-temporal-worker`
+  consumes `@btravstack/temporal-worker` and `order-amqp-worker` consumes
+  `@btravstack/amqp-worker` — each supplying its own contract, pieces and triage.
+  What each composition root looks like is in `examples/CLAUDE.md`.
 - **oRPC is pinned to an exact beta.** `@orpc/{client,contract,server}` sit at
   `2.0.0-beta.28` in the catalog because oRPC v2's `latest` dist-tag is still
   the **1.x** line, while `@unthrown/orpc` peers on `^2.0.0-beta`: an unpinned
@@ -1302,87 +907,8 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
 ## Documentation site
 
 `docs/` is `@btravstack/docs`, the VitePress site published to
-`https://btravstack.github.io/btravstack/` — the same tooling and shape as
-`unthrown`'s: `@btravstack/theme`, one shared sidebar over the four Diátaxis
-modes (`tutorial/`, `how-to/`, `reference/`, `explanation/`), `examples/`
-walkthroughs of the ten example workspaces, and a TypeDoc-generated
-`api/<pkg>/` per published package. `@btravstack/di`'s former standalone site
-was folded in here when the container was merged; nothing under
-`docs/reference/di/` should be edited in the old repository.
-
-- **TypeDoc runs from `docs/`, not from the packages** — it needs its own
-  TypeScript (`catalog:typedoc` pins 6.0.3; 7.x is the native port and ships
-  no `typescript.js`). One `typedoc.<name>.json` per package — twelve — points
-  at that package's `src/index.ts` (core's one entry point; the doubles are
-  `typedoc.testing.json`'s, and `typedoc.observability.json` names two entry
-  points, `src/index.ts` and `src/pino.ts`) and writes straight into
-  `api/<name>/` (gitignored; `docs/api/index.md` is the one committed file
-  there); `scripts/build-api.ts` runs the twelve concurrently.
-  The package list is repeated in four places that must stay in sync: the
-  configs, `build-api.ts`, `@btravstack/docs#build`'s `dependsOn` in
-  `turbo.json` (explicit `<pkg>#build` edges — the site does not _depend_ on
-  the packages, but a cross-package import inside a documented source must
-  resolve), and the `/api/` sidebar in `.vitepress/config.ts`. Each config's
-  `intentionallyNotExported` lists the internal helper types TypeDoc would
-  otherwise warn about; a new unexported-but-referenced type goes there.
-- **Deployed by `.github/workflows/deploy-docs.yml`**, chained off a green CI
-  run on `main` (`workflow_run`, checking out the exact `head_sha` CI
-  measured) or by `workflow_dispatch`. Unversioned: `main` deploys alone to
-  the root. `unthrown`'s stable/beta split (`DOCS_BASE`, `DOCS_VERSIONS`) is
-  the shape to adopt once a stable tag exists.
-- **Every `ts` fence on the site, in the root README and in the package
-  READMEs is compiled by `pnpm typecheck`, continuously.**
-  `docs/scripts/extract-doc-samples.ts` extracts them into generated
-  `.test-d.ts` modules under four workspaces' `src/generated/doc-samples/`
-  (gitignored; regenerated by each workspace's `generate` script, ordered by
-  turbo's existing `generate`/`^generate` edges): `packages/core` for
-  kernel/di/config/testing pages, `examples/order-api` for HTTP and
-  observability, and the two worker examples for Temporal and AMQP. A page's
-  workspace is classified from its imports, or pinned with
-  `<!-- doctest: group=<name> -->`. Because a fence is a narrative excerpt, a
-  page carries hidden TypeScript context in HTML comments the site never
-  renders — the Rust hidden-`#`-lines analog: `<!-- doctest: prelude … -->`
-  (page-level context; a prelude may import the REAL artifact a page
-  describes, since the generated module lives inside the workspace's `src/`),
-  `<!-- doctest: skip — <reason> -->` (reason mandatory, printed at generate
-  time), `<!-- doctest: defer -->` (same module, emitted after the unmarked
-  fences, for a composition root shown before its parts), and
-  `<!-- doctest: isolate … -->` (own module; a body after `isolate` is that
-  fence's private prelude and makes it fully self-contained). A marker not
-  directly above a ` ```ts ` fence fails the generate task. `@ts-expect-error`
-  fences are the negative samples, exactly as in the `needs-gate` files. The
-  one sample that cannot compile anywhere is `pinoSink`'s — no example
-  workspace installs `pino` — held by `packages/observability/src/pino.spec.ts`
-  and skipped with that reason. The kernel-only README samples are
-  additionally held by `packages/core/src/docs-examples.test-d.ts`, and
-  `examples/order-api/src/docs-examples.test-d.ts` still pins the
-  application-reality coupling the extraction cannot (its samples call the
-  real use cases through the real `auth.ts` by hand).
-- **The same script resolves every RELATIVE link in those files, and a link
-  that resolves to nothing fails the generate task.** It reports the count it
-  checked, so a silent no-op is visible. Root-relative links
-  (`/reference/core/start`) are deliberately left alone — VitePress fails its
-  own build on those, and a second opinion here could disagree with the one
-  that ships — and links inside fences are stripped first, since `](../x)` in
-  a sample is code rather than a link.
-
-  It exists because the transport rename broke `packages/core/README.md`'s
-  `](../http)` and **nothing noticed**: the site's own routes are checked by
-  VitePress, but a package README is not part of the site, and this script
-  read every README already without ever looking at a link. A rename has four
-  shapes to sweep — the specifier, the workspace path, and the two
-  documentation routes — and a relative sibling link is none of them, so the
-  one form no gate covered was also the one a regex was most likely to miss.
-  Regression-proved: restoring `](../http)` fails `generate` with
-  `packages/core/README.md:27 → ../http`.
-
-- Pages carry frontmatter `title` and `description`, open with the quadrant
-  blockquote (`> **How-to.** …`), and link root-relative (`/reference/core/start`).
-  The house style is `unthrown`'s; read a page there before writing one here.
-- `pnpm --filter @btravstack/docs build` builds the site (TypeDoc, then
-  VitePress); `pnpm --filter @btravstack/docs dev` serves it. Neither is in
-  the six-command gate — `knip` covers `docs/scripts`, and the deploy
-  workflow is what fails on a dead link.
+<https://btravstack.github.io/btravstack/>. Its build, the TypeDoc wiring, the
+doc-samples gate and the link checker are documented in `docs/CLAUDE.md`.
 
 ## Test conventions
 
@@ -1532,11 +1058,6 @@ And a seventh, about the infrastructure a suite runs against:
 
 ## Deferred, deliberately
 
-- ~~Caching the Temporal test-server binary in CI.~~ **Closed by deletion**:
-  there is no binary any more. The Temporal suites run against the shared
-  `temporalio/auto-setup` container, so what CI pays for is a Docker image
-  pull its own layer cache handles, not a 64 MB download into a directory a
-  reusable workflow could not be told to cache.
 - **Reaping the shared containers.** `withReuse()` deliberately keeps them out
   of Ryuk's hands, so they outlive the run — which is the whole point locally
   and pure waste on an ephemeral CI runner that discards the machine anyway.
@@ -1595,18 +1116,3 @@ dependencies by name`; a positional array is refused as
   a fragment is compiled where it lives — though a marker removed from it
   still fails this file, since the controllers are typed by it. No config
   change was needed; the workspace already wires `test:types`.
-
-- ~~Bringing `packages/core`'s 13 spec files under the Test conventions.~~
-  **Closed by decision, not by doing it** (three of the 13 — `test-runtime`,
-  `fake-clock`, `with-app` — have since moved to `packages/testing`, on the
-  same terms). An audit of the 93 tests found the
-  substantive rules (4 and 5) already kept — one conditional assertion, since
-  deleted, and zero optional-chained ones — so the sweep would have been
-  structural only: GIVEN/WHEN/THEN markers on all 13, a helper preamble to lift
-  in 9 (`drain` 82 lines, `invariants` 74, `with-app` 37, `probes` 30,
-  `run-main` 28, `test-runtime` 21, `start` 17, `units` 12,
-  `process-handlers` 7), and one `try`/`finally` to move. Churning
-  mutation-verified tests that hold the package at 100% coverage, for
-  consistency alone, risks the very weakening those rules exist to prevent. The
-  scope split is recorded in Test conventions above; a new or rewritten kernel
-  spec still follows all five.
