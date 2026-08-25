@@ -658,12 +658,12 @@ in its place.
   **first** type test — `packages/temporal-worker` had no `*.test-d.ts` file, and no
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http-server/src/controller.test-d.ts`
   pins the
-  five compile-time gates the keyed `HttpRouter(contract)(controllers)` form
-  owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s 50 specs, across
+  five compile-time gates the composing `HttpRouter(contract)([...])` form
+  owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s 57 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
   `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the
-  starter proper through `HttpModule`, the keyed router form through the
+  starter proper through `HttpModule`, the composing router form through the
   `rpcSliced` fixture, and the contract marker's runtime half — the per-scheme
   authenticator ports and the one middleware they install — through
   `rpcAuthed`. **The contract says WHICH SCHEMES protect a route, and which
@@ -962,11 +962,12 @@ AuditSlice, observability(), otel()], … })`),
   so there. That is what makes a slice directory readable on its own — which
   ports come from outside, without naming who supplies them — and what keeps a
   `needs` list one line per feature instead of one per hop. `@btravstack/http-server`'s
-  `api.HttpController(name, fragment)({ name: Dep }, { sync })` mints the controller's
-  port — `api` being the application's one `defineHttp(...)` binding; the root
-  composes every slice's controller into one router with the
-  keyed `api.HttpRouter(contract)(controllers)` form, exact against the contract
-  (see `packages/http-server/CLAUDE.md`). **A fragment is itself a valid contract**,
+  `api.HttpController(contract, path)({ name: Dep }, { sync })` mints a piece
+  from the contract path it serves — `api` being the application's one
+  `defineHttp(...)` binding; the root composes every slice's piece into one
+  router with `api.HttpRouter(contract)([...])`, an array whose paths must
+  partition the contract's procedures (see `packages/http-server/CLAUDE.md`).
+  **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
   controller changing at all: the lifted root is
   `api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
@@ -978,30 +979,34 @@ AuditSlice, observability(), otel()], … })`),
   makes composing several slices into one router a starting point rather than a
   trap, and it is the one property marked do-not-break in the design.
 
-  A worker's record is not nested by fragment the way HTTP's contract is —
-  there is nothing shaped like `HttpRouter`'s record to key a composition by —
-  so its starter composes an **array** of pieces instead. `@btravstack/amqp-worker`'s
-  `AmqpHandler(contract, key)` and `@btravstack/temporal-worker`'s
-  `TemporalWorkflowActivities(contract, key)` each mint one piece straight
-  from the contract key — a consumer or a workflow, with the key carried on
-  the piece's own port id rather than on a record position — and
-  `AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])`
-  compose them: every key the contract declares must be covered (an uncovered
-  one is refused at the call, against an `"UNCOVERED HANDLERS — …"` /
+  **All three starters share one shape**: mint a piece straight from a
+  contract key — HTTP's `api.HttpController(contract, path)`,
+  `@btravstack/amqp-worker`'s `AmqpHandler(contract, key)`,
+  `@btravstack/temporal-worker`'s `TemporalWorkflowActivities(contract, key)` —
+  each with the key carried on the piece's own port id rather than on a record
+  position, and compose an **array** of them:
+  `api.HttpRouter(contract)([...])`, `AmqpHandlers(contract)([...])`,
+  `TemporalActivities(contract)([...])`. Every leaf the contract declares must
+  be covered (an uncovered one is refused at the call, against an
+  `"UNCOVERED CONTROLLERS — …"` / `"UNCOVERED HANDLERS — …"` /
   `"UNCOVERED ACTIVITIES — …"` marker — at the **tail of the third line** of a
   `TS2769`, past three hundred characters of the caller's own contract, which
-  is not shortenable from inside either package because the width is in the
-  type arguments rather than in a name; the missing key is named too once the
-  array's length matches the marker tuple's own length of 2, as a **separate**
-  diagnostic on the trailing element whose target is the bare key), and two slices
-  both discharged for one key are di's duplicate-provider defect at build —
-  the same exactness the keyed HTTP
-  form gets from the shape of the record it composes, reached here through the
-  port id instead, because there is no record to be exact against. See
-  `packages/amqp-worker/CLAUDE.md` and `packages/temporal-worker/CLAUDE.md` for the full
-  surface, and `docs/how-to/split-a-worker-into-slices.md` for the task — the
+  is not shortenable from inside any of the three packages because the width
+  is in the type arguments rather than in a name; the missing key is named too
+  once the array's length matches the marker tuple's own length of 2, as a
+  **separate** diagnostic on the trailing element whose target is the bare
+  key), and two slices both discharged for one key are di's duplicate-provider
+  defect at build — the exactness comes from the port id every piece carries,
+  not from a record shape. HTTP's key space is the one that nests — `"v1"` and
+  `"v1.orders"` are different paths into the same contract — so it alone
+  carries a **second** gate: `"OVERLAPPING CONTROLLERS — …"`, refusing an
+  array where one piece's path sits inside another's, which the flat worker
+  key spaces have no way to construct in the first place. See
+  `packages/http-server/CLAUDE.md`, `packages/amqp-worker/CLAUDE.md` and
+  `packages/temporal-worker/CLAUDE.md` for the full surface, and
+  `docs/how-to/split-a-worker-into-slices.md` for the worker-side task — the
   sibling of `controller.test-d.ts`'s do-not-break property above does not
-  exist on this side: a worker's array has no lifted-fragment form to
+  exist on the worker side: a worker's array has no lifted-fragment form to
   preserve, since a piece already IS one contract key on its own.
 
 - **`examples/order-api` consumes `@btravstack/http-server` rather than
@@ -1023,8 +1028,8 @@ AuditSlice, observability(), otel()], … })`),
   visits 16 provider slots and di keeps 15, one `OrderDatabase` among them
   (the same walk over the pre-split modules visited 22 for the same 15, and
   the difference is the over-inclusion the split removed). The root composes them —
-  `orderRouter = api.HttpRouter(contract)({ orders: ordersController,
-customers: customersController })`, the keyed form — and
+  `orderRouter = api.HttpRouter(contract)([ordersController,
+customersController])`, the composing array form — and
   **`HttpModule("OrderApi")({ router: orderRouter, imports: [OrdersSlice,
 CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`** is the whole
   composition root, a list of slices plus what no slice owns — the
@@ -1061,7 +1066,7 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   in the application layer: the request span's histogram, the outbox relay's
   per-tenant `relayed` counter, the billing stand-in's `authorized` counter. Each procedure is a plain
   `Result`-returning function typed by its slice's fragment (`@unthrown/orpc`'s
-  `.result()` handler, attached inside each `HttpController`). It reads
+  `.result()` handler, wrapped by the router's walk at composition). It reads
   `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the
   package's. Two gates keep the composition honest at compile time: a root
@@ -1566,7 +1571,7 @@ And a seventh, about the infrastructure a suite runs against:
   `FindCustomer` against the real `contract` through the application's own
   `src/auth.ts`, and a stub would have accepted every broken call — passing an
   order id where a tenant goes was exactly the drift. It covers both
-  controllers, the keyed router, the `HttpModule` root whose authenticators
+  controllers, the composed router, the `HttpModule` root whose authenticators
   ride the router,
   the lifted single-slice root and the bare `api.HttpRouter(contract)(deps, arm)`
   form the three router-shaped pages share — `docs/index.md`,

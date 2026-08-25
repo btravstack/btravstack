@@ -10,13 +10,13 @@ its own package, because a client needs it and needs none of this.
 
 ```
 src/auth.ts                           the two schemes (user, service), their authenticators, and the one api = defineHttp({ authenticators }) call
-src/slices/orders/controller.ts       api.HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync }) — where the orders slice's own domain error becomes an ORPCError
+src/slices/orders/controller.ts       api.HttpController(contract, "orders")({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it
-src/slices/customers/controller.ts    api.HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync }) — same shape, for the customers slice's own domain error
+src/slices/customers/controller.ts    api.HttpController(contract, "customers")({ find: FindCustomer }, { sync }) — same shape, for the customers slice's own domain error
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 src/request-scope.ts                  RequestModule — passed as StartOptions.unit; the kernel forks it per request
 src/client.ts                         an AsyncResult client for the same contract
-src/module.ts                         OrderApi — the composition root: orderRouter = api.HttpRouter(contract)({ orders, customers }), then HttpModule("OrderApi")({
+src/module.ts                         OrderApi — the composition root: orderRouter = api.HttpRouter(contract)([ordersController, customersController]), then HttpModule("OrderApi")({
   needs: [Env], router: orderRouter, … })
 src/main.ts                           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
 src/__tests__/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
@@ -88,11 +88,13 @@ Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
 `/rpc` all live in [`@btravstack/http-server`](../../packages/http-server) —
 see its README for the guarantee it makes and the one way it answers HTTP.
-What this example writes is two slices, each an `api.HttpController(name, fragment)({ name: Dep }, { sync })`
-over its own contract fragment, and a root router composed by the **keyed**
-`api.HttpRouter(contract)({ orders: ordersController, customers:
-customersController })` — contract-first, exact (a missing slice, a stray
-key or a controller under the wrong key are all compile errors at that call)
+What this example writes is two slices, each an `api.HttpController(contract, path)({ name: Dep }, { sync })`
+over its own contract fragment, and a root router composed by the **array**
+`api.HttpRouter(contract)([ordersController, customersController])` —
+contract-first, exact over the contract's procedures (a missing slice, a path
+the contract does not declare, or a piece under the wrong path — impossible by
+construction, since the path rides its own port id — are all compile errors,
+the last two at the piece's own mint)
 — each procedure a plain `Result`-returning function typed by the fragment,
 built from the use cases its own controller declares — and a composition
 root that is a `Module(...)` which also knows about it:
@@ -263,7 +265,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-api test  # 26 api specs
+pnpm --filter @btravstack/example-order-api test  # 28 api specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON

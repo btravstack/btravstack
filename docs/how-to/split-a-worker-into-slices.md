@@ -42,22 +42,22 @@ contract key, composed by the root into an array. Everything below is lifted
 from `examples/order-amqp-worker` (two subscriber slices) and
 `examples/order-temporal-worker` (two saga slices).
 
-## Why a worker's record is not nested like a router's
+## Why a worker's array has no nested paths
 
 [Split a router into controllers](/how-to/split-a-router-into-controllers)
 starts from a contract that is already nested — `{ orders: {...}, customers:
-{...} }` — so a slice's fragment is a sub-object and the root composes a
-**record**, one controller per top-level key, with `api.HttpRouter(contract)({
-orders: ordersController, customers: customersController })`. An
-`amqp-contract` or `temporal-contract` contract has no such nesting: its
+{...} }` — and mints each piece from the **path** it serves, `"orders"` or a
+nested `"v1.orders"`, composing them with `api.HttpRouter(contract)([...])`.
+An `amqp-contract` or `temporal-contract` contract has no such nesting: its
 consumers and its workflows are already flat top-level keys of one contract,
-not fragments of it. There is nothing to key a nested composition by, so the
-worker starters compose an **array** instead — `AmqpHandlers(contract)([...])`
-/ `TemporalActivities(contract)([...])` — and reach the same exactness a
-different way: each piece's port id carries the contract key it targets, so
-the array itself needs no keys at all. Two forms, one property: a slice owns
-exactly one key, and the composing call is exact against every key the
-contract declares.
+not fragments of it, so a worker piece owns exactly one key and the key space
+never nests. Both starters mint the same way —
+`AmqpHandler(contract, key)` / `TemporalWorkflowActivities(contract, key)` —
+and compose an **array** the same way —
+`AmqpHandlers(contract)([...])` / `TemporalActivities(contract)([...])` —
+reaching the same exactness HTTP's array does: each piece's port id carries
+the key it targets, so the array itself needs no keys at all. One shape, all
+three transports; the one degree of freedom HTTP alone has is depth.
 
 ## Step 1 — a piece per consumer or per workflow
 
@@ -350,8 +350,8 @@ transport gives it to own.
 ## See also
 
 - [Split a router into controllers](/how-to/split-a-router-into-controllers) —
-  the same idea over a nested contract, composing a keyed record instead of
-  an array.
+  the same idea over a nested contract, where a piece's path can go more than
+  one level deep.
 - [`@btravstack/amqp-worker`](/reference/amqp-worker) — `AmqpHandler`'s and
   `AmqpHandlers`'s full signatures.
 - [`@btravstack/temporal-worker`](/reference/temporal-worker) —

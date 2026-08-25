@@ -1,4 +1,4 @@
-// The five compile gates the keyed router form exists to provide, the
+// The five compile gates the composing router form exists to provide, the
 // inheritance rule the contract's requirements follow, and the scheme ports a
 // router declares from them. Each `@ts-expect-error` is an assertion: if one
 // stops erroring, the gate is gone.
@@ -19,57 +19,65 @@ const publicApi = defineHttp();
 
 const contract = { orders: { place: oc }, users: { find: oc } };
 
-const orders = publicApi.HttpController(
-  "GateOrders",
-  contract.orders,
+const ordersPiece = publicApi.HttpController(
+  contract,
+  "orders",
 )({
   sync: () => ({ place: () => OkAsync("placed") }),
 });
-const users = publicApi.HttpController(
-  "GateUsers",
-  contract.users,
+const usersPiece = publicApi.HttpController(
+  contract,
+  "users",
 )({
   sync: () => ({ find: () => OkAsync("found") }),
 });
 
-// 1. Every contract key must be covered.
-// @ts-expect-error — `users` is missing from the record
-void publicApi.HttpRouter(contract)({ orders });
+// 1. Every contract key must be covered. This array is ONE element long, so the
+//    diagnostic reports the "UNCOVERED CONTROLLERS — …" marker alone; the
+//    missing leaf itself is named only once the array's length matches the
+//    marker tuple's own length of 2.
+// @ts-expect-error — the `users` fragment is uncovered
+void publicApi.HttpRouter(contract)([ordersPiece]);
 
-// 2. A key the contract does not declare is rejected.
+// 2. A key the contract does not declare is refused at the MINT — there is
+//    nothing to type it by. (The retired keyed record's "UNDECLARED KEY" gate
+//    moved here with the key.)
 // @ts-expect-error — `billing` is not in the contract
-void publicApi.HttpRouter(contract)({ orders, users, billing: orders });
+void publicApi.HttpController(contract, "billing");
 
-// 3. A controller wired under the wrong key is rejected.
-// @ts-expect-error — `users`'s fragment is not `orders`'s
-void publicApi.HttpRouter(contract)({ orders: users, users: orders });
+// 3. A piece cannot sit under the wrong key — by construction, since its key
+//    rides its port id. What the retired "controller under the wrong key" gate
+//    refused is now an array that leaves a fragment uncovered; two elements
+//    match the marker tuple's length, so — coverage being over the leaves —
+//    this diagnostic names the missing PROCEDURE itself: `users.find`.
+// @ts-expect-error — two pieces for `orders` leave `users` uncovered
+void publicApi.HttpRouter(contract)([ordersPiece, ordersPiece]);
 
-// 4. A procedure the fragment does not declare is rejected inside the controller.
+// 4. A procedure the fragment does not declare is rejected inside the piece.
 void publicApi.HttpController(
-  "GateTypo",
-  contract.orders,
+  contract,
+  "orders",
 )({
   // @ts-expect-error — the fragment declares `place`, not `plce`
   sync: () => ({ plce: () => OkAsync("placed") }),
 });
 
-// 5. A slice lifts out into its own process with its controller UNCHANGED: a
-//    fragment is a valid contract in its own right, and the lifted root takes
-//    the very controller the modulith composed as its only dep and returns what
-//    that controller built. Strictly stronger than re-implementing the fragment
-//    with a fresh `sync`, which would prove nothing about the controller. The
-//    spec marks this "do not break"; this is what would catch breaking it.
+// 5. The do-not-break property: a slice lifts out of the composed router with
+//    its PIECE UNCHANGED — the lifted root declares the very provider the
+//    modulith composed and hands back what it built. Naming the piece is
+//    deliberate: a fresh `sync` over the fragment would pin only that a
+//    fragment is a valid contract, which says nothing about the piece
+//    surviving the lift.
 void publicApi.HttpRouter(contract.orders)(
-  { implementation: orders.port },
+  { implementation: ordersPiece.port },
   { sync: ({ implementation }) => implementation },
 );
 
 // The correct composition and the ARM-ONLY form, over the same contract, both
-// still compile. This pair is `HttpRouter`'s discrimination gate: it is the one
-// helper in the family with three forms and two arguments' worth of arity, so
-// these two one-argument calls are told apart by whether `sync` holds a
-// function (orpc.ts). Break that and one of these two lines stops compiling.
-const composed = publicApi.HttpRouter(contract)({ orders, users });
+// still compile. An array is never a record, so `Array.isArray` alone tells the
+// composing arm from the arm-only one (orpc.ts) — the sync-key ambiguity the
+// retired keyed record needed a discriminator for is gone with it.
+const composed = publicApi.HttpRouter(contract)([ordersPiece, usersPiece]);
 void publicApi.HttpRouter(contract)({
   sync: () => ({
     orders: { place: () => OkAsync("placed") },
@@ -77,18 +85,18 @@ void publicApi.HttpRouter(contract)({
   }),
 });
 
-// The composed provider must DECLARE its controllers as needs — if the
-// exactness intersection on the keyed `build` overload (orpc.ts) ever
-// pollutes the inferred `M`, this collapses to `never` and di stops ordering
-// the controllers before the router, silently.
+// The composed provider must DECLARE its pieces as needs — if the composing
+// overload (orpc.ts) ever stops carrying `InstanceType<T[number]["port"]>`,
+// this collapses to `never` and di stops ordering the pieces before the
+// router, silently.
 type NeedsOf<T> = T extends Provider<infer _P, infer _E, infer N> ? N : never;
 type _ComposedNeedsAreDeclared = Expect<[NeedsOf<typeof composed>] extends [never] ? false : true>;
 
 // All five again, against a contract whose `orders` fragment is MARKED. The
 // marker is a phantom key on the fragment, so every gate above has to survive
 // it — the fifth especially: a marked slice must still lift out of the composed
-// router with its controller unchanged. The contract names no principal, so the
-// controllers here come from `defineHttp`, which is what types one.
+// router with its piece unchanged. The contract names no principal, so the
+// pieces here come from `defineHttp`, which is what types one.
 const api = defineHttp({
   authenticators: {
     user: HttpAuthenticator<{ readonly userId: string }>()({
@@ -106,38 +114,35 @@ const markedContract = {
 };
 
 const markedOrders = api.HttpController(
-  "GateMarkedOrders",
-  markedContract.orders,
+  markedContract,
+  "orders",
 )({
   sync: () => ({ place: (opts) => OkAsync(opts.context.principal.userId) }),
 });
 const markedUsers = api.HttpController(
-  "GateMarkedUsers",
-  markedContract.users,
+  markedContract,
+  "users",
 )({
   sync: () => ({ find: () => OkAsync("found") }),
 });
 
 // 1. Every contract key must be covered.
-// @ts-expect-error — `users` is missing from the record
-void api.HttpRouter(markedContract)({ orders: markedOrders });
+// @ts-expect-error — the `users` fragment is uncovered
+void api.HttpRouter(markedContract)([markedOrders]);
 
-// 2. A key the contract does not declare is rejected.
-void api.HttpRouter(markedContract)({
-  orders: markedOrders,
-  users: markedUsers,
-  // @ts-expect-error — `billing` is not in the contract
-  billing: markedOrders,
-});
+// 2. A key the contract does not declare is refused at the mint.
+// @ts-expect-error — `billing` is not in the contract
+void api.HttpController(markedContract, "billing");
 
-// 3. A controller wired under the wrong key is rejected.
-// @ts-expect-error — `users`'s fragment is not the marked `orders`'s
-void api.HttpRouter(markedContract)({ orders: markedUsers, users: markedOrders });
+// 3. The wrong-key gate, by construction, for a marked fragment — same as
+//    above, this diagnostic names `users.find`, not the fragment.
+// @ts-expect-error — two pieces for `orders` leave `users` uncovered
+void api.HttpRouter(markedContract)([markedOrders, markedOrders]);
 
-// 4. A procedure the fragment does not declare is rejected inside the controller.
+// 4. A procedure the fragment does not declare is rejected inside the piece.
 void api.HttpController(
-  "GateMarkedTypo",
-  markedContract.orders,
+  markedContract,
+  "orders",
 )({
   // @ts-expect-error — the fragment declares `place`, not `plce`
   sync: () => ({ plce: () => OkAsync("placed") }),
@@ -149,17 +154,15 @@ void api.HttpRouter(markedContract.orders)(
   { sync: ({ implementation }) => implementation },
 );
 
-// The correct composition still compiles. The other direction is what has to
-// be refused: a controller whose handler READS a principal cannot be mounted
-// under an unmarked contract key, where nothing would inject one. (The reverse
-// — an unmarked controller under a marked key — is accepted, and correctly so:
-// a handler that ignores `opts.context.principal` is contravariantly fine.)
-const markedComposed = api.HttpRouter(markedContract)({
-  orders: markedOrders,
-  users: markedUsers,
-});
+// The correct composition still compiles — `markedUsers` is a piece over an
+// unmarked fragment inside a contract that marks another, which is the
+// accepted direction: a handler that reads no principal is contravariantly
+// fine. The other direction is what has to be refused: a piece whose handler
+// READS a principal cannot be composed under the unmarked contract, where
+// nothing would inject one.
+const markedComposed = api.HttpRouter(markedContract)([markedOrders, markedUsers]);
 // @ts-expect-error — `markedOrders` needs a principal the unmarked contract declares nowhere
-void api.HttpRouter(contract)({ orders: markedOrders, users: markedUsers });
+void api.HttpRouter(contract)([markedOrders, markedUsers]);
 
 // The inheritance half: a record's requirements are the default for every
 // procedure beneath it, and a procedure's own REPLACE that default rather than
@@ -225,3 +228,83 @@ type _OneSchemeNeeds = Expect<
 type _NoSchemeNeeds = Expect<
   [Extract<NeedsOf<typeof composed>, SchemePort<string>>] extends [never] ? true : false
 >;
+
+// ── What a contract's DEPTH means for slicing ──────────────────────────────
+// A worker's contract is flat — a consumer name, a workflow name — so a piece
+// per key partitions its whole surface. An HTTP contract is a TREE, so these
+// arms pin where a piece may sit, the one degree of freedom the three starters
+// do not share.
+
+// A FLAT contract slices: its top-level keys are procedures rather than
+// fragments, so a piece owns one procedure and the coverage gate still fires.
+const flat = { place: oc, find: oc };
+const flatPlace = publicApi.HttpController(flat, "place")({ sync: () => () => OkAsync("placed") });
+const flatFind = publicApi.HttpController(flat, "find")({ sync: () => () => OkAsync("found") });
+void publicApi.HttpRouter(flat)([flatPlace, flatFind]);
+// @ts-expect-error — `find` is uncovered, exactly as for a contract of fragments
+void publicApi.HttpRouter(flat)([flatPlace]);
+
+// A DEEP contract slices at ANY depth: a piece may own any node of the tree,
+// named by a dotted path, and the coverage gate is over the LEAVES — an array
+// composes when its paths partition the procedures, at any mix of depths.
+const deep = { v1: { orders: { place: oc, find: oc }, customers: { find: oc } }, health: oc };
+const v1Orders = publicApi.HttpController(
+  deep,
+  "v1.orders",
+)({
+  sync: () => ({ place: () => OkAsync("placed"), find: () => OkAsync("found") }),
+});
+const v1Customers = publicApi.HttpController(
+  deep,
+  "v1.customers",
+)({
+  sync: () => ({ find: () => OkAsync("found") }),
+});
+const health = publicApi.HttpController(deep, "health")({ sync: () => () => OkAsync("ok") });
+const v1 = publicApi.HttpController(
+  deep,
+  "v1",
+)({
+  sync: () => ({
+    orders: { place: () => OkAsync("placed"), find: () => OkAsync("found") },
+    customers: { find: () => OkAsync("found") },
+  }),
+});
+
+// Pieces that PARTITION the leaves compose, at any mix of depths.
+void publicApi.HttpRouter(deep)([v1Orders, v1Customers, health]);
+void publicApi.HttpRouter(deep)([v1, health]);
+
+// Coverage is over the LEAVES, so what `Uncovered` computes is procedure paths.
+// @ts-expect-error — the `health` procedure is uncovered
+void publicApi.HttpRouter(deep)([v1]);
+
+// Two elements match the marker tuple's length, so this diagnostic names the
+// missing PROCEDURE itself: `v1.customers.find`.
+// @ts-expect-error — `v1.customers.find` is uncovered
+void publicApi.HttpRouter(deep)([v1Orders, health]);
+
+// @ts-expect-error — `v1.orders` sits inside `v1`: two pieces implementing one procedure
+void publicApi.HttpRouter(deep)([v1, v1Orders, v1Customers, health]);
+
+// @ts-expect-error — a path the contract does not declare
+void publicApi.HttpController(deep, "v1.billing");
+
+// The port id carries the whole path.
+type _PathPortId = Expect<
+  typeof v1Orders.port.portId extends "HttpController:v1.orders" ? true : false
+>;
+
+// The requirements fold down a dotted path: a mark on `v1` reaches a piece
+// minted at `v1.orders`, exactly as `routerOf`'s `inherited` walk pushes it at
+// runtime — a handler there reads the principal the ancestor's mark typed.
+const markedDeep = { v1: authenticated({ user: [] })(deep.v1), health: oc };
+void api.HttpController(
+  markedDeep,
+  "v1.orders",
+)({
+  sync: () => ({
+    place: (opts) => OkAsync(opts.context.principal.userId),
+    find: () => OkAsync("found"),
+  }),
+});

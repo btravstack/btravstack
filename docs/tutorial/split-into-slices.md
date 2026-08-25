@@ -1,6 +1,6 @@
 ---
 title: Split into slices
-description: Two contract fragments, two controllers, two modules that own their piece — composed by a keyed router that refuses a key the contract never declared.
+description: Two contract fragments, two controllers, two modules that own their piece — composed by a router array that refuses a path the contract never declared.
 ---
 
 # Split into slices
@@ -12,10 +12,11 @@ description: Two contract fragments, two controllers, two modules that own their
 
 By the end, the service will have two verticals — greetings and farewells —
 each owning its piece of the contract, its controller and its dependencies,
-composed by a root that is a list of slices. The router becomes **keyed**: one
-entry per contract fragment, and a key the contract does not declare refuses
-to compile. This is the shape an application keeps as it grows, and the reason
-composing slices is a starting point rather than a trap.
+composed by a root that is a list of slices. The router becomes an **array**:
+one piece per contract fragment, minted from the path it serves, and a path
+the contract does not declare refuses to compile — at the piece's own mint.
+This is the shape an application keeps as it grows, and the reason composing
+slices is a starting point rather than a trap.
 
 ## Step 1 — Split the contract into fragments
 
@@ -90,9 +91,10 @@ its controller changing ([the property](/reference/http-server)).
 
 ## Step 2 — A controller per fragment
 
-`api.HttpController(name, fragment)` is `api.HttpRouter`'s slice-sized form:
-the same deps record, the same `sync` arm, typed by **one fragment** — and it
-mints a port for the piece it builds, so there is no class to name:
+`api.HttpController(contract, path)` is `api.HttpRouter`'s slice-sized form:
+the same deps record, the same `sync` arm, typed by **one node** of the
+contract tree — and it mints a port from the path itself, so there is no
+class to name:
 
 ```ts
 // slices/greetings/controller.ts
@@ -102,10 +104,7 @@ import { api } from "../../auth.js";
 import { contract } from "../../contract.js";
 import { Greeter } from "../../greeter.js";
 
-export const greetingsController = api.HttpController(
-  "GreetingsController",
-  contract.greetings,
-)(
+export const greetingsController = api.HttpController(contract, "greetings")(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({
@@ -126,10 +125,7 @@ import { api } from "../../auth.js";
 import { contract } from "../../contract.js";
 import { Greeter } from "../../greeter.js";
 
-export const farewellsController = api.HttpController(
-  "FarewellsController",
-  contract.farewells,
-)(
+export const farewellsController = api.HttpController(contract, "farewells")(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({
@@ -186,10 +182,11 @@ and the `Module(...)` call refuses to compile, naming the port
 readable on its own: which ports come from outside, without naming who
 supplies them.
 
-## Step 4 — The keyed router and the new root
+## Step 4 — The composed router and the new root
 
-The router composes the controllers under the **contract's own keys**, exact
-against it. The root becomes a list of slices, plus what no slice owns:
+The router composes the controllers from an **array**, each already carrying
+its own path — exact against the contract's procedures. The root becomes a
+list of slices, plus what no slice owns:
 
 ```ts
 // app.ts
@@ -203,10 +200,10 @@ import { FarewellsSlice } from "./slices/farewells/module.js";
 import { greetingsController } from "./slices/greetings/controller.js";
 import { GreetingsSlice } from "./slices/greetings/module.js";
 
-export const greetingRouter = api.HttpRouter(contract)({
-  greetings: greetingsController,
-  farewells: farewellsController,
-});
+export const greetingRouter = api.HttpRouter(contract)([
+  greetingsController,
+  farewellsController,
+]);
 
 export const App = HttpModule("App")({
   router: greetingRouter,
@@ -221,16 +218,13 @@ export const App = HttpModule("App")({
 Delete `router.ts` — its job moved into the slices. `main.ts` has not changed
 since lesson one.
 
-The keyed form is exact both ways. Every fragment must be covered, and a key
-the contract never declared is refused **by name**:
+The composing form is exact both ways. Every procedure must be covered by
+some piece's path, and a path the contract never declared is refused **at the
+mint** — there is nothing to type the key by:
 
 ```ts
-api.HttpRouter(contract)({
-  greetings: greetingsController,
-  farewells: farewellsController,
-  // @ts-expect-error — UNDECLARED KEY: the contract declares no fragment under `ceremonies`.
-  ceremonies: farewellsController,
-});
+// @ts-expect-error — the contract declares no fragment under `ceremonies`
+api.HttpController(contract, "ceremonies");
 ```
 
 ## Step 5 — Run it
@@ -258,7 +252,7 @@ src/slices/greetings/controller.ts  the fragment's implementation
 src/slices/greetings/module.ts      imports its vertical
 src/slices/farewells/controller.ts  the other fragment's implementation
 src/slices/farewells/module.ts      declares its need instead
-src/app.ts                          keyed router + a list of slices
+src/app.ts                          composed router + a list of slices
 ```
 
 Growing the application is now additive: a new vertical is a new fragment, a

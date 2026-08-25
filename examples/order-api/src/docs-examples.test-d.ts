@@ -55,7 +55,7 @@ const customerViewOf = (customer: Customer): CustomerView => ({
 // read the identity bare — one scheme — while `export` narrows a tagged union,
 // which is the contrast every page draws.
 
-const ordersController = api.HttpController("DocsOrdersController", contract.orders)(
+const ordersController = api.HttpController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -106,7 +106,7 @@ const ordersController = api.HttpController("DocsOrdersController", contract.ord
 
 // The unmarked half, and the contrast every page draws: no `principal` on the
 // context at all, the tenant off the input instead.
-const customersController = api.HttpController("DocsCustomersController", contract.customers)(
+const customersController = api.HttpController(contract, "customers")(
   { find: FindCustomer },
   {
     sync: ({ find }) => ({
@@ -137,13 +137,10 @@ const DocsCustomersSlice = Module("DocsCustomersSlice")({
   exports: [customersController],
 });
 
-// "Step 3 — the keyed root" — docs/how-to/split-a-router-into-controllers.md;
+// "Step 3 — the composed root" — docs/how-to/split-a-router-into-controllers.md;
 // "The router" and "The composition root" — docs/examples/order-api.md.
 
-const docsRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+const docsRouter = api.HttpRouter(contract)([ordersController, customersController]);
 
 const _DocsOrderApi = HttpModule("DocsOrderApi")({
   needs: [Env],
