@@ -10,6 +10,21 @@ pnpm --filter @btravstack/example-hexagonal-order-api test
 pnpm --filter @btravstack/example-hexagonal-order-api typecheck
 ```
 
+> **This workspace is also a gate, and that half is not optional.**
+> `src/emit-guards.ts` and `tsconfig.emit.json` are the repository's only
+> check that a consumer exporting a port can emit its own declarations.
+> `typecheck` above is five passes, not one: the ordinary check, the type
+> tests, a real declaration **emit** under this repo's TypeScript, the same
+> emit under `typescript-consumer` (the version a consumer realistically has),
+> and a re-check of the emitted `.d.ts` under that second compiler. It is the
+> only workspace here that compiles twice.
+>
+> It exists because the `TS4020` class of bug had already shipped: every
+> consumer exporting a port failed to emit its declarations, and the repo
+> stayed green because the examples carried `declaration: false`. If you are
+> reading this because the example half looks redundant with
+> `examples/order-api`, that is the half to keep.
+
 ## What it shows
 
 `src/index.ts`, top to bottom:
