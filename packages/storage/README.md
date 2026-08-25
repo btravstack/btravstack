@@ -13,10 +13,10 @@ pnpm add @btravstack/storage @btravstack/core @btravstack/config @btravstack/di 
 
 Four peer dependencies, plus `@aws-sdk/client-s3` and
 `@aws-sdk/s3-request-presigner` — optional, and needed only if you compose the
-S3 adapter. Instrumentation needs no peer of its own: the `Logger`, `Tracer`
-and `Meter` it depends on are
-[the kernel's ports](https://btravstack.github.io/btravstack/reference/core/observability).
-Node `>=20`. Not yet published: this repository has not cut a release yet.
+S3 adapter. Instrumentation needs no peer of its own: the `Logger`, `Tracer` and
+`Meter` it depends on are [the kernel's
+ports](https://btravstack.github.io/btravstack/reference/core/observability).
+Node `>=20`.
 
 ## A worked example
 

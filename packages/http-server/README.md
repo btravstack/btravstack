@@ -17,9 +17,8 @@ pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack
   @btravstack/contract unthrown @orpc/server @orpc/contract @unthrown/orpc
 ```
 
-All of those are peer dependencies — install every one, so the application
-holds a single copy of each. Node `>=20`. Not yet published: this repository
-has not cut a release yet.
+All of those are peer dependencies — install every one, so the application holds
+a single copy of each. Node `>=20`.
 
 ## A worked example
 

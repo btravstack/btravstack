@@ -14,10 +14,9 @@
 pnpm add @btravstack/core @btravstack/config @btravstack/di unthrown
 ```
 
-`@btravstack/config`, `@btravstack/di` and `unthrown` are **peer
-dependencies** — install all four. The kernel itself depends on `node:`
-builtins only. Node `>=20`. Not yet published: this repository has not cut a
-release yet.
+`@btravstack/config`, `@btravstack/di` and `unthrown` are **peer dependencies**
+— install all four. The kernel itself depends on `node:` builtins only. Node
+`>=20`.
 
 ## A worked example
 

@@ -36,8 +36,7 @@ pnpm add @btravstack/observability @btravstack/core @btravstack/config @btravsta
 ```
 
 Those four are peers. `pino` is an **optional** peer, needed only if you import
-`@btravstack/observability/pino`. Node `>=20`. Not yet published: this
-repository has not cut a release yet.
+`@btravstack/observability/pino`. Node `>=20`.
 
 ## A worked example
 

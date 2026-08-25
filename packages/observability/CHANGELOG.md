@@ -1,5 +1,240 @@
 # @btravstack/observability
 
+## 0.3.0
+
+### Minor Changes
+
+- 6f964fa: A module declares what its own providers expect from outside
+
+  `Module(name)({ … })` takes a fourth list, `needs`. A port **this module's own
+  providers** read, and that nothing here satisfies, must be named there; anything
+  they owe and it does not name is refused at that call, with the port in the
+  message:
+
+  ```
+  Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
+    '{ provides: [...]; exports: [...]; }' but required in type
+    '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.
+  ```
+
+  Before this, a need nothing local satisfied simply travelled to whoever
+  composed the module, and a composition root could satisfy an imported module's
+  dependency without that module ever mentioning it — measured: a slice's
+  provider received the root's service while importing nothing at all. A slice
+  directory could not be read on its own.
+
+  `needs` is the explicit stand-in for NestJS's `@Global`, which this container
+  does not have and now does not need: the port is named, the supplier is not, so
+  the slice still composes into any root that answers it.
+
+  **An import's own needs are not the importer's to re-declare.** They are already
+  published in the import's type, and the entry point still refuses a root that
+  has not discharged them — so the declaration lands on the feature that reads the
+  port, once, rather than on every module between it and the root. That is
+  `ConfigModule.forFeature`'s shape reached without a global: `DatabaseModule`
+  says `needs: [Env]` because it reads `DATABASE_URL`, and the persistence modules
+  and slices that import it say nothing.
+
+  `Scope` is exempt — nothing can provide it, and the entry point discharges it.
+
+  The three starter sugars — `HttpModule`, `AmqpModule`, `TemporalModule` — take
+  `needs` too and re-declare the gate over their augmented tuples, so a
+  composition root written with a sugar is checked exactly like a bare
+  `Module(name)`.
+
+  `@btravstack/di` additionally exports `NeedsGate` and `Unmet`, which a package
+  offering its own shaped module needs in order to re-declare the gate.
+
+- 82579e8: **Breaking.** `Logger`, `Tracer` and `Meter` — and `LoggerService`, `Level`,
+  `LEVELS` and `Attributes` with them — are now declared by `@btravstack/core`
+  and imported from there. `@btravstack/observability` keeps every
+  implementation (`createLogger`, `jsonSink`, `pinoSink`, `observability()`,
+  `otel()`, `UnitSpanModule`) and no longer exports the ports; there is no
+  re-export, so one contract has exactly one import path.
+
+  A contract that other framework packages depend on has to be reachable
+  without installing an implementation, and the kernel is the package all of
+  them already peer on. The tracing pair is also declared **without naming
+  OpenTelemetry** now — each is a narrowing that a real OTel `Span`, `Tracer`
+  and `Meter` satisfies structurally, so the vendor's types stop at the
+  `@btravstack/observability/otel` subpath and a port no longer points at an
+  implementation.
+
+  To migrate: change the import, not the code.
+
+  ```diff
+  -import { Logger } from "@btravstack/observability";
+  -import { Meter, Tracer } from "@btravstack/observability/otel";
+  +import { Logger, Meter, Tracer } from "@btravstack/core";
+   import { observability } from "@btravstack/observability";
+   import { otel } from "@btravstack/observability/otel";
+  ```
+
+- 4bc4669: The traces-and-metrics half of observability ships, as the deferred design
+  prescribed. `@btravstack/observability/otel` — with `@opentelemetry/api` and
+  `@opentelemetry/sdk-node` as optional peers, the `pino` protocol — exports
+  `Tracer` and `Meter` ports over a `NodeSDK` held as a resourceful provider
+  whose `release` flushes (a lost flush is a `teardownError` and exit `2`,
+  never silence), and `UnitSpanModule`, a `StartOptions.unit` module opening a
+  span per kernel unit with the ambient record's `unitId`/`traceId`/`tenantId`
+  as attributes. Configuration is the SDK's own `OTEL_*` conventions — no
+  config slice. Inbound, `@btravstack/http-server` and `@btravstack/amqp-worker` honour a
+  W3C `traceparent` (trace-id field only, outranking `x-request-id` and
+  `messageId`); `@btravstack/temporal-worker` deliberately keeps the workflow id as
+  its correlation.
+- b8fdee9: The `Unmet` type is gone from `@btravstack/di`
+
+  Its documented purpose — a shaped module re-declaring the gates with it — was
+  impossible to serve: declaration emit keeps the alias unreduced, and the
+  unreduced form names imported modules' internal ports (TS2883 on the first
+  consumer that exports a composition root), which is why every in-repo sugar
+  already inlined the computation instead. Inline it; `NeedsGate` is unchanged
+  and still exported.
+
+  Internal trims alongside, none of them surface: `@btravstack/http-server` no longer
+  memoises scheme ports (di resolves by id, so a fresh class per call is the same
+  lookup — measured), and `HasMark`, `authenticatorPort` and `Http.authenticators`
+  now carry TSDoc naming the external consumer each exists for, so their lack of
+  an in-repo caller stops reading as dead surface.
+
+- d5be140: `Runtime.needs` is `Runtime.resolves`
+
+  Two different `needs` in one framework was one too many. di's `Module` has a
+  `needs` — what a composition root supplies it — and the kernel's `Runtime` had
+  one too, meaning something else entirely: the ports the runtime reads back out
+  of the built application context. They never appear in the same object, which
+  is exactly why the collision was easy to miss and easy to misread.
+
+  ```ts
+  const runtime: Runtime<typeof Clock> = {
+    name: "ticker",
+    resolves: [Clock],
+    start: (host) => OkAsync(serving),
+  };
+  ```
+
+  The type parameter is `Resolves` rather than `Needs` throughout —
+  `Runtime<Resolves, Info>`, `RuntimeHost<Resolves>`, `RunUnit<Resolves>` — and
+  `start`'s gate sentence follows:
+  `"UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"`.
+
+  Every shipped runtime declares `resolves: []`, so an application that composes
+  `http()` / `temporal()` / `amqp()` and never writes a runtime by hand is
+  unaffected. A **hand-rolled** runtime renames one field.
+
+  The array is still never read at run time — it exists so `Resolves` is
+  inferable from the value, and `start`'s gate checks it against the module's
+  exports.
+
+- 3bf4036: A contract may name a scope only if its scheme can grant it
+
+  `HttpRouter(contract)` now refuses a contract declaring a scope outside the
+  vocabulary its scheme's authenticator was minted with, and the diagnostic ends
+  on the offending scope:
+
+  ```
+  Property '"UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it"' is
+    missing in type 'Authenticated<…, [{ user: ["order:export"] }]>' but required
+    in type '{ readonly "UNGRANTABLE SCOPE — …": "order:export"; }'
+  ```
+
+  Before this, nothing tied a contract's scope **strings** to what a scheme could
+  actually grant. A typo — or a scope asked of a scheme declared with no
+  vocabulary at all — compiled, passed every check, and then refused every caller
+  on that route with a permanent `403` and no diagnostic anywhere.
+
+  A requirement naming no scopes costs nothing, which is the common case. The
+  check is the sibling of the scheme-**name** check di already performs by leaving
+  an unknown scheme's port unmet.
+
+### Patch Changes
+
+- 4499df1: A comment earns its line, or it goes
+
+  A quarter of the TypeScript in this repository was comment, and one line in ten
+  an inline essay — so a reader looking for the code had to skim past the reasons
+  for it. `CLAUDE.md`'s "comment density: sparse" bullet now carries a test: a
+  comment earns its line only if it guards a specific line against a plausible
+  "simplification", states a symbol's contract as TSDoc, is a directive with a
+  reason, or is a `GIVEN`/`WHEN`/`THEN` marker.
+
+  No API changes. What consumers see is the TSDoc these packages ship in their
+  declarations: shorter, and stating each symbol's contract rather than the
+  history behind it, which lives in the repository and on the documentation site.
+
+- fc38b9a: The README samples compile again — and now cannot stop. Every `ts` fence in
+  the package READMEs, the root README and the documentation site is extracted
+  into generated type-test modules and compiled by `pnpm typecheck`. The sweep
+  that built the gate fixed the drift it found: the amqp and temporal READMEs'
+  two-argument `execute` from before the branded tenant, a wrong consumer key,
+  a missing error-triage arm, and the pre-`defineHttp` router spelling in the
+  root README.
+- 31f70f7: The repository is `btravstack/btravstack`, so every package's `homepage`,
+  `bugs.url` and `repository.url` points there. GitHub redirects the old slug, so
+  nothing was broken — but published metadata that names a repository should name
+  the one it lives in.
+- 74621a1: Say what the runtime bound. The `serving` event now carries `info` and
+  `probePort`.
+
+  The kernel knew every bound port and never said one out loud. `probePort()` and
+  `runtimeInfo()` resolved them, both were tested, and neither had a single
+  production consumer — an application booted, said `serving`, and did not say
+  what it was serving on. So `PORT=0` and `PROBE_PORT=0` were supported and
+  unusable: the ephemeral bind is deliberate, but a human running the process had
+  no way to learn which port they got, and the feature was reachable only from a
+  test holding the `RunningApp`.
+
+  ```ts
+  | { readonly type: "serving"
+      readonly runtime: string
+      readonly info: unknown
+      readonly probePort: number | undefined }
+  ```
+
+  Additive, so an exhaustive `EventSink` keeps compiling. `info` is `unknown`
+  because the kernel does not know a runtime's `Info` at the event union —
+  `RuntimeInfoOf<X>` is read off the module at `start`'s call site — and a sink
+  is serialising it anyway; a generic `KernelEvent<Info>` would infect
+  `EventSink`, `stderrSink` and every adapter for one field none of them reads
+  structurally. `probePort` is its own field rather than part of `info`, because
+  the probe server is the **kernel's** listener and publishing it as something
+  the runtime said would be a small lie.
+
+  `@btravstack/observability`'s `kernelEvents` spreads `info` into the line's
+  attributes when it is a plain record, so the three runtimes get `port`,
+  `taskQueue` + `namespace` and `queues` on their `serving` line with no
+  per-runtime logging code — the point of putting it on the event. The record
+  guard is also what keeps a hand-rolled runtime publishing a string from
+  costing the line.
+
+  `examples/` drops its hardcoded dev ports for `0`. Pinning `3000` and
+  `9000`/`9001`/`9002` was the workaround for this gap, and it broke on parallel
+  worktrees — two checkouts running `pnpm dev` collided on all four ports.
+
+  Not included, and declined for the record: auto-increment on a busy port. The
+  probe port is a contract with the kubelet, so quietly binding `9001` when
+  `9000` is taken means the probe hits nothing and the pod flaps. An occupied
+  `PROBE_PORT` is a real misconfiguration and `RuntimeStartFailed` naming
+  `"probes"` stays the right answer.
+
+- Updated dependencies [4499df1]
+- Updated dependencies [6f964fa]
+- Updated dependencies [76f58c4]
+- Updated dependencies [41aa1fb]
+- Updated dependencies [fc38b9a]
+- Updated dependencies [9af980d]
+- Updated dependencies [ccdcc32]
+- Updated dependencies [82579e8]
+- Updated dependencies [f615282]
+- Updated dependencies [b8fdee9]
+- Updated dependencies [31f70f7]
+- Updated dependencies [d5be140]
+- Updated dependencies [3bf4036]
+- Updated dependencies [74621a1]
+  - @btravstack/di@0.3.0
+  - @btravstack/config@0.3.0
+  - @btravstack/core@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

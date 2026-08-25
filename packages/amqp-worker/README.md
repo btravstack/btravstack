@@ -17,8 +17,7 @@ pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack
 ```
 
 All six are peer dependencies — install them (`@opentelemetry/api` because
-`@amqp-contract/worker` itself peers on it). Node `>=20`. Not yet published:
-this repository has not cut a release yet.
+`@amqp-contract/worker` itself peers on it). Node `>=20`.
 
 ## A worked example
 

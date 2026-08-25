@@ -151,11 +151,6 @@ Every published package claims `engines: { node: ">=20" }`. The repository's
 own development floor is higher (`>=22.22`); that is the toolchain's floor,
 not a promise made to consumers.
 
-::: info Not yet published
-This repository has not cut a release, so there is nothing on npm to install
-yet. The commands above are what they will be once it has.
-:::
-
 ## Entry points
 
 | Specifier                        | Contents                                                                                                                                                                                                                                                                         |
