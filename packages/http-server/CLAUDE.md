@@ -262,12 +262,12 @@ not cover"` marker, and what the marker names is a procedure path
   `amqp-runtime.ts`.
 - **Authentication — the contract marker, `Principal`/`SchemesOf`,
   `HttpAuthenticator`, `defineHttp`, `principalMiddleware`, the scope rule and
-  the scheme-dependency wiring — is stated in full in
-  `packages/http-server/AUTH.md`.** Read that file before changing `auth.ts`,
-  `principal.ts`, `define-http.ts` or the contract marker. In short: the
-  contract says WHICH SCHEMES protect a route and which scopes each must grant,
-  `defineHttp({ authenticators })` says WHAT each scheme resolves to, and an
-  unmarked procedure is public with nothing failing if the marker is forgotten.
+  the scheme-dependency wiring — is stated in full in `AUTH.md`.** Read it
+  before changing `auth.ts`, `principal.ts`, `define-http.ts` or the contract
+  marker. In short: the contract says WHICH SCHEMES protect a route and which
+  scopes each must grant, `defineHttp({ authenticators })` says WHAT each
+  scheme resolves to, and an unmarked procedure is public with nothing failing
+  if the marker is forgotten.
 
 - **`http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
