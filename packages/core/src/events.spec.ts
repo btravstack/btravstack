@@ -7,9 +7,15 @@ describe("safeSink", () => {
     const calls: unknown[] = [];
     const sink = safeSink((event) => calls.push(event));
 
-    sink({ type: "serving", runtime: "test" });
+    const event = {
+      type: "serving",
+      runtime: "test",
+      info: { port: 3000 },
+      probePort: 9000,
+    } as const;
+    sink(event);
 
-    expect(calls).toEqual([{ type: "serving", runtime: "test" }]);
+    expect(calls).toEqual([event]);
   });
 
   it("swallows a throwing sink", () => {

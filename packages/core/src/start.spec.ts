@@ -173,6 +173,37 @@ describe("start", () => {
     expect(events).toEqual(["building", "startFailed", "stopping", "exited"]);
   });
 
+  it("says on the serving event what the runtime published and what the probe server bound", async () => {
+    // GIVEN an application booting with an ephemeral probe port, watching only
+    // the `serving` event
+    const served: KernelEvent[] = [];
+    const runtime = testRuntime();
+    const app = start(runtime.module, {
+      signals: false,
+      probes: { port: 0 },
+      onEvent: (event) => {
+        if (event.type === "serving") served.push(event);
+      },
+    });
+
+    // WHEN it reaches serving
+    await runtime.untilStarted();
+    app.stop();
+    await app.exited;
+
+    // THEN the one event names the runtime, what it published, and the port the
+    // kernel's own probe listener actually bound — the whole point being that a
+    // `PORT=0` boot is otherwise unreadable
+    expect(served).toEqual([
+      {
+        type: "serving",
+        runtime: "test",
+        info: { name: "test" },
+        probePort: expect.any(Number),
+      },
+    ]);
+  });
+
   it("does not report a shutdown defect as startFailed", async () => {
     // GIVEN a runtime that serves, then defects in `stop()`
     const events: KernelEvent["type"][] = [];

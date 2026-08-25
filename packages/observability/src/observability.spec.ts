@@ -100,6 +100,24 @@ describe("the kernel's events as log lines", () => {
     ]);
   });
 
+  it("spreads what the runtime published onto the serving line", ({ loggerAt, recorder }) => {
+    // GIVEN the adapter over a recording logger
+
+    // WHEN a `serving` event carrying a runtime's info and the probe port reaches it
+    kernelEvents(loggerAt("trace"))({
+      type: "serving",
+      runtime: "http",
+      info: { port: 3000 },
+      probePort: 9000,
+    });
+
+    // THEN the published fields are attributes of their own, so a bound port is
+    // queryable rather than buried in a nested blob
+    expect(recorder.lines()[0]?.attributes).toEqual(
+      expect.objectContaining({ event: "serving", runtime: "http", port: 3000, probePort: 9000 }),
+    );
+  });
+
   it("logs a startup failure as an error, carrying its cause", ({ loggerAt, recorder }) => {
     // GIVEN the adapter over a recording logger
     const cause = new Error("port in use");

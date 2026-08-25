@@ -125,8 +125,15 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   const emit = safeSink(options.onEvent ?? stderrSink);
   // Known only once the graph is built — the runtime is one of its services.
   let runtimeName = "";
+  // Both are on the `serving` event so a `PORT=0` / `PROBE_PORT=0` boot says
+  // what it bound. Mirrored into a `let` rather than read off the deferreds
+  // because the tracker's callback is synchronous and neither promise has
+  // settled by the time it runs.
+  let servingInfo: unknown = undefined;
+  let probeBoundPort: number | undefined = undefined;
   const tracker = createPhaseTracker((phase) => {
-    if (phase === "serving") emit({ type: "serving", runtime: runtimeName });
+    if (phase === "serving")
+      emit({ type: "serving", runtime: runtimeName, info: servingInfo, probePort: probeBoundPort });
     if (phase === "stopping") emit({ type: "stopping" });
     if (phase === "exited") emit({ type: "exited" });
   });
@@ -206,6 +213,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
         ? OkAsync()
         : startProbeServer({ port: probes.port, live, ready })
             .tap((server) => {
+              probeBoundPort = server.port;
               probeBound.resolve(server.port);
               disposeProbes = () => {
                 // Never awaited: `close` waits out live keep-alive connections,
@@ -329,6 +337,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
         const host = { ctx: runtimeCtx, run };
 
         return runtime.start(host).flatMap((serving: Serving<Info>) => {
+          servingInfo = serving.info;
           tracker.advanceTo("serving");
           runtimePublished.resolve(serving.info);
 
