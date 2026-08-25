@@ -1,10 +1,10 @@
 import { Module } from "@btravstack/di";
 import { describe, expect } from "vitest";
 
+import { aDocument, it } from "./__tests__/test-fixtures.js";
 import { memoryStorage } from "./memory.js";
 import { storage } from "./module.js";
 import { Storage } from "./storage.js";
-import { aDocument, it } from "./test-fixtures.js";
 
 describe("storage", () => {
   it("provides Storage from the adapter's backend when instrumentation is off", async () => {

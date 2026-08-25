@@ -1,8 +1,8 @@
 import { Ok } from "unthrown";
 import { describe, expect } from "vitest";
 
+import { it, settingsSchema } from "./__tests__/test-fixtures.js";
 import { Config, ConfigInvalid, type ConfigField } from "./config.js";
-import { it, settingsSchema } from "./test-fixtures.js";
 
 const validate = (env: Record<string, string | undefined>) =>
   settingsSchema["~standard"].validate(env);

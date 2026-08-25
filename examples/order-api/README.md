@@ -19,7 +19,7 @@ src/client.ts                         an AsyncResult client for the same contrac
 src/module.ts                         OrderApi — the composition root: orderRouter = api.HttpRouter(contract)({ orders, customers }), then HttpModule("OrderApi")({
   needs: [Env], router: orderRouter, … })
 src/main.ts                           the process: runMain(OrderApi, { unit: RequestModule, onEvent: kernelEvents(…) })
-src/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
+src/__tests__/test-fixtures.ts                  boot / serve / clientFor / gate / recording, as Vitest fixtures — boot from @btravstack/testing
 ```
 
 Each slice owns its contract fragment and its controller, and both are backed
@@ -270,7 +270,7 @@ The specs run against a real HTTP server and a real oRPC client — genuine JSON
 serialization, which is where the defect collapse to `INTERNAL_SERVER_ERROR`
 actually happens. No Docker, nothing to install.
 
-Every helper they need is a Vitest fixture in `src/test-fixtures.ts`, so the spec
+Every helper they need is a Vitest fixture in `src/__tests__/test-fixtures.ts`, so the spec
 opens on `describe` and each test names its dependencies in its own parameter
 list. Shutting an app down is the `boot` fixture's job —
 [`@btravstack/testing`](../../packages/testing)'s `bootFixture({ env: { PORT:

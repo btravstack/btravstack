@@ -9,7 +9,7 @@ dead-letter exchange and retry policy — in a package of its own, depending on
 ```
 src/contract.ts        the contract: exchange, queue, retry/dead-letter policy, message, publisher, consumer
 src/layering.test-d.ts the dependency rule, as a compile error
-src/test-fixtures.ts   the contract itself, and its message schema as a validator returning a Result
+src/__tests__/test-fixtures.ts   the contract itself, and its message schema as a validator returning a Result
 ```
 
 ## Two consumers of one publisher

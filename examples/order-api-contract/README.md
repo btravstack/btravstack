@@ -6,7 +6,7 @@ of its own, depending on `@orpc/contract` and nothing else.
 ```
 src/contract.ts        the contract: inputs, outputs, and the errors a client may branch on
 src/layering.test-d.ts the dependency rule, as a compile error
-src/test-fixtures.ts   a client built from this package alone, over a stub `fetch`
+src/__tests__/test-fixtures.ts   a client built from this package alone, over a stub `fetch`
 ```
 
 ## Why it is not part of `order-api`

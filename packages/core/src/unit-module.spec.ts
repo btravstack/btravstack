@@ -1,7 +1,7 @@
 import { Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("the unit module", () => {
   it("is forked per unit over a parent built once", async ({ unitApp }) => {

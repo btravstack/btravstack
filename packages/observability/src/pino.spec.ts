@@ -1,8 +1,8 @@
 import pino from "pino";
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { pinoSink } from "./pino.js";
-import { it } from "./test-fixtures.js";
 
 describe("the pino sink", () => {
   it("writes the message and the correlation as fields pino can index", ({ written }) => {

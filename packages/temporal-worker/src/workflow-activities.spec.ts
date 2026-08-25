@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("temporal workflow slices", () => {
   it("serves a record composed from one piece per workflow", async ({ serveSliced, slices }) => {

@@ -3,7 +3,7 @@ import request from "supertest";
 import { Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("order-api", () => {
   it("carries a real oRPC call through to the DI-wired use case", async ({

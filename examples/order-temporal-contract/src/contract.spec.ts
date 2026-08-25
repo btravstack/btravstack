@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("orderContract", () => {
   it("validates a workflow input from the contract alone", ({ validate }) => {

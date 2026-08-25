@@ -2,8 +2,8 @@ import { Module } from "@btravstack/di";
 import { TenantId } from "@btravstack/example-order-domain";
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { FindOrder, PlaceOrder } from "./index.js";
-import { it } from "./test-fixtures.js";
 
 describe("PlaceOrder", () => {
   it("persists a placed order, readable through FindOrder", async ({ testModule }) => {

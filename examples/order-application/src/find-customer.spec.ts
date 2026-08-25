@@ -2,8 +2,8 @@ import { Module } from "@btravstack/di";
 import { TenantId } from "@btravstack/example-order-domain";
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { FindCustomer } from "./index.js";
-import { it } from "./test-fixtures.js";
 
 describe("FindCustomer", () => {
   it("returns the entity the repository holds, never a wire shape", async ({ testModule }) => {

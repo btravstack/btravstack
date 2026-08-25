@@ -1,6 +1,6 @@
 import { describe, expect, vi } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("amqp", () => {
   it("publishes the queues it drains", async ({ serve }) => {

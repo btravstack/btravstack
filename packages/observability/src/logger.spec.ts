@@ -1,8 +1,8 @@
 import { Ok } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { createLogger } from "./logger.js";
-import { it } from "./test-fixtures.js";
 
 describe("the logger", () => {
   it("writes the level, the message and the caller's attributes", ({ loggerAt, recorder }) => {

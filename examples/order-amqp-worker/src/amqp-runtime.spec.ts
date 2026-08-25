@@ -2,7 +2,7 @@ import type { OrderEvent } from "@btravstack/example-order-application";
 import type { Line } from "@btravstack/observability";
 import { describe, expect, vi } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 /**
  * The notification lines as `{ message, ...attributes }` — what the consumer

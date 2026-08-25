@@ -1,7 +1,7 @@
 import { ORPCError } from "@orpc/client";
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("contract", () => {
   it("types and carries a call made by a client built from the contract alone", async ({

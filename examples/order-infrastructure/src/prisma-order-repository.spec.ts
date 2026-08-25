@@ -5,8 +5,8 @@ import { TenantId } from "@btravstack/example-order-domain";
 import { fromSafePromise } from "unthrown";
 import { describe, expect, inject, vi } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { OrderPersistenceModule } from "./index.js";
-import { it } from "./test-fixtures.js";
 
 /**
  * The persistence module plus the one thing only the kernel would otherwise

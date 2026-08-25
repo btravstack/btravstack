@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 
+import { Greeting, greetingApp, it } from "./__tests__/test-fixtures.js";
 import { tapped } from "./tapped.js";
-import { Greeting, greetingApp, it } from "./test-fixtures.js";
 
 describe("tapped", () => {
   it("hands back the very service the booted graph was built with", async ({ boot }) => {

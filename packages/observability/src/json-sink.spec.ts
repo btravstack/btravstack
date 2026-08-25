@@ -1,7 +1,7 @@
 import { describe, expect, vi } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { jsonSink } from "./json-sink.js";
-import { it } from "./test-fixtures.js";
 
 const lineOf = (written: { readonly chunks: () => readonly string[] }): Record<string, unknown> =>
   JSON.parse(written.chunks().join("")) as Record<string, unknown>;

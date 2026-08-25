@@ -2,8 +2,8 @@ import { RuntimeStartFailed } from "@btravstack/core";
 import { ErrAsync, fromSafePromise } from "unthrown";
 import { describe, expect, it as bare } from "vitest";
 
+import { greetingApp, it, runtimeModule } from "./__tests__/test-fixtures.js";
 import { bootFixture } from "./boot-fixture.js";
-import { greetingApp, it, runtimeModule } from "./test-fixtures.js";
 import { testRuntime } from "./test-runtime.js";
 
 describe("bootFixture", () => {

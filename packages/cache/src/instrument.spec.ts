@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 
+import { defectiveCache, failingCache, it } from "./__tests__/test-fixtures.js";
 import { memoryCache } from "./memory.js";
-import { defectiveCache, failingCache, it } from "./test-fixtures.js";
 
 describe("cache, instrumented", () => {
   it("opens a span per call, named for the operation and carrying the key", async ({

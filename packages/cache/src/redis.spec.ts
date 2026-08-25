@@ -3,7 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("redisCache", () => {
   it("answers a stored value", async ({ redis, keyPrefix }) => {

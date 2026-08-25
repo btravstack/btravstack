@@ -1,10 +1,10 @@
 import { Module } from "@btravstack/di";
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { Cache } from "./cache.js";
 import { memoryCache } from "./memory.js";
 import { cache } from "./module.js";
-import { it } from "./test-fixtures.js";
 
 describe("cache", () => {
   it("provides Cache from the adapter's backend when instrumentation is off", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { Customer, CustomerNotFound, type CustomerId } from "./index.js";
-import { it } from "./test-fixtures.js";
 
 describe("Customer", () => {
   it("constructs a real entity, not the wire shape under another name", ({ customer }) => {

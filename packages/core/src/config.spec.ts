@@ -1,8 +1,8 @@
 import { ConfigInvalid } from "@btravstack/config";
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { RuntimeStartFailed } from "./runtime.js";
-import { it } from "./test-fixtures.js";
 
 describe("Config.provider", () => {
   it("fails startup with ConfigInvalid, naming the port and the variables", async ({

@@ -7,9 +7,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    // `tests/` is where a workspace's specs live once its tests are out of
-    // `src`; both are matched while that sweep is partial.
-    include: ["{src,tests}/**/*.spec.ts"],
+    include: ["src/**/*.spec.ts"],
     setupFiles: ["@unthrown/vitest"],
   },
 });

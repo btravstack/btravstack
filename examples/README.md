@@ -316,7 +316,7 @@ observe. See
 
 The three deployment suites test through
 [`@btravstack/testing`](../packages/testing), the way an application would:
-each `src/test-fixtures.ts` has a `boot` fixture — `bootFixture(...)`, which
+each `src/__tests__/test-fixtures.ts` has a `boot` fixture — `bootFixture(...)`, which
 its `serve` builds on — so every app a test starts is stopped when the test
 ends, on every exit path, and `tapped(module, [OrderRepository, …])` hands back
 the very services the running app was built with (the repository the

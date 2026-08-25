@@ -291,7 +291,7 @@ queue and a workflow bundle memoised per spec file — and composes
 `BillingModule` beside whichever fulfillment module the test hands it, since
 billing is never swapped:
 
-<!-- doctest: skip — an excerpt of src/test-fixtures.ts, which the gate compiles and runs -->
+<!-- doctest: skip — an excerpt of src/__tests__/test-fixtures.ts, which the gate compiles and runs -->
 
 ```ts
 const worker = TemporalModule("StubTemporalWorker")({

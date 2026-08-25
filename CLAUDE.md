@@ -583,29 +583,38 @@ in its place.
 
 ## Toolchain & conventions
 
-- **`src/` ships, `tests/` does not, `generated/` is written by a script.**
-  Three directories, one meaning each, so `ls src` answers "what does this
-  package contain" without the reader filtering. `packages/di` is the first
-  workspace on it — 26 files in `src`, of which 9 shipped, is what prompted
-  the move — and the rest follow one at a time.
+- **A spec lives beside what it tests; a test artifact lives in
+  `src/__tests__/`.** Co-location is the point — `build.spec.ts` and
+  `build.test-d.ts` sit next to `build.ts`, so renaming a source moves its
+  tests in the same listing and nothing has to be looked up. What moves out is
+  the code with **no subject**: `test-fixtures.ts` (the extended `it`) and
+  `di`'s `type-assert.ts`. Those are helpers a spec imports, not tests of
+  anything, and they are the files that made a package's directory read as
+  half scaffolding.
 
-  It is not only tidiness: with tests inside `src`, every `vitest.config.ts`
-  needs `exclude: ["src/**/*.spec.ts", "src/**/*.test-d.ts",
-"src/test-fixtures.ts"]` for coverage to mean anything, and that list is a
-  hand-kept copy in every workspace. `@btravstack/cache` shipped with it one
-  entry short and counted a type test as uncovered source. Outside `src`, the
-  rule is structural: `include: ["src/**/*.ts"]` is true by construction and
-  the exclusions disappear.
+  **`vitest.d.ts` stays in `src/`, and that is measured rather than
+  preference**: moving it into `src/__tests__/` silently drops the
+  `ProvidedContext` augmentation it exists to carry, and every `inject("…")`
+  in the workspace becomes `never`. The file is in the program either way —
+  `tsc --listFiles` shows it — so the mechanism is not simply inclusion; the
+  behaviour is what is recorded, not an explanation of it. It is an ambient
+  declaration for the workspace's type environment, not a test helper, which
+  is the reason it reads as belonging in `src` anyway.
 
-  What that costs a workspace is a **second tsconfig**, the split
-  `packages/core` already had: `tsconfig.json` sees `src` and `tests` and
-  emits nothing, `tsconfig.build.json` carries `rootDir`/`outDir` and sees
-  `src` alone, and the build says `--tsconfig tsconfig.build.json`. Verified
-  on di: the emitted `dist` is byte-identical either way.
+  Coverage exclusions become one entry per workspace, `"src/__tests__/**"`,
+  in place of naming each artifact — which is worth having, because
+  `@btravstack/cache` shipped with that list one entry short and counted a
+  type test as uncovered source.
 
-  `__tests__` was considered and declined — it is Jest's word in a vitest
-  repository, and being _inside_ `src/**` it would keep every exclusion list
-  alive, which is the half of the problem worth fixing.
+  **Three import forms break when one of these files moves, and only the
+  first is caught by the compiler**: a static `from "./x.js"`, a dynamic
+  `await import("./x.js")` (a string — `di`'s `scoped.spec.ts` and
+  `http-server`'s `controller.spec.ts` each have one, both deliberate), and an
+  `import.meta.url` anchor, which no type checker can see at all and which
+  only the test run reports. The temporal fixtures carry two of the third
+  kind; `fixturePath(callerUrl, name)` appends the **caller's** extension, so
+  the hop out of `__tests__/` rides the name (`"../workflows"`) rather than
+  the URL.
 
 - **`examples/` is part of the gate, not a folder of illustrations.** All
   ten workspaces run under the same six commands as the kernel — their specs

@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("memoryCacheBackend", () => {
   it("answers a stored value", async ({ backend }) => {

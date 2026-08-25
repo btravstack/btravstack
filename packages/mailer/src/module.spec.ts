@@ -1,10 +1,10 @@
 import { Module } from "@btravstack/di";
 import { describe, expect } from "vitest";
 
+import { aMail, it } from "./__tests__/test-fixtures.js";
 import { Mailer } from "./mailer.js";
 import { mailer } from "./module.js";
 import { mailRecorder, recordingMailer } from "./recording.js";
-import { aMail, it } from "./test-fixtures.js";
 
 describe("mailer", () => {
   it("provides Mailer from the adapter's backend when instrumentation is off", async () => {

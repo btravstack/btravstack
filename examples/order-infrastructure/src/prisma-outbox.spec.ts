@@ -2,7 +2,7 @@ import { TenantId } from "@btravstack/example-order-domain";
 import { P } from "unthrown";
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("the transactional outbox", () => {
   it("appends an event in the same write as the order", async ({

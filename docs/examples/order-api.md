@@ -581,7 +581,7 @@ request's own trace id — and no handler code manages the fork. See
 `test-fixtures.ts` starts from `@btravstack/testing`'s `bootFixture` and
 wraps it in `serve`, where every spec starts, real composition root included:
 
-<!-- doctest: skip — an excerpt of src/test-fixtures.ts, which the gate compiles and runs -->
+<!-- doctest: skip — an excerpt of src/__tests__/test-fixtures.ts, which the gate compiles and runs -->
 
 ```ts
 export const it = test.extend<ApiFixtures>({

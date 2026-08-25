@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("http, over a router", () => {
   it("serves the router the port provides, with its dependencies injected", async ({ rpc }) => {
