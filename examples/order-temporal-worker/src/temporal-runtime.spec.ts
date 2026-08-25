@@ -46,6 +46,37 @@ describe("the fulfillment saga", () => {
     );
   });
 
+  it("stores a confirmation once the shipping is arranged", async ({
+    tenant,
+    serve,
+    fulfilling,
+  }) => {
+    // GIVEN the same composition, whose root composes a store
+    const { client, confirmations } = await serve(fulfilling.module);
+
+    // WHEN an order is fulfilled
+    await expect(
+      client.executeWorkflow("fulfillOrder", {
+        workflowId: "wf-confirmation-1",
+        args: { tenantId: tenant, orderId: "0199a1e0-0000-7000-8000-00000000000a", quantity: 1 },
+      }),
+    ).toBeOk();
+
+    // THEN the confirmation is in the store, under a key carrying the tenant
+    // the port has no slot for — and it is JSON, because the adapter was told
+    // what the bytes are
+    await expect(
+      confirmations.get(`orders/${tenant}/0199a1e0-0000-7000-8000-00000000000a/confirmation.json`),
+    ).toBeOkWith(
+      expect.objectContaining({
+        contentType: "application/json",
+        bytes: new TextEncoder().encode(
+          JSON.stringify({ orderId: "0199a1e0-0000-7000-8000-00000000000a", shipped: true }),
+        ),
+      }),
+    );
+  });
+
   it("compensates a stock refusal: the placement is walked back", async ({
     tenant,
     serve,

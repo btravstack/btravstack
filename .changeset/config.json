@@ -16,6 +16,7 @@
       "@btravstack/observability",
       "@btravstack/cache",
       "@btravstack/mailer",
+      "@btravstack/storage",
       "@btravstack/http",
       "@btravstack/temporal",
       "@btravstack/amqp"

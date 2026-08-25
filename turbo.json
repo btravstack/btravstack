@@ -51,6 +51,7 @@
         "@btravstack/observability#build",
         "@btravstack/cache#build",
         "@btravstack/mailer#build",
+        "@btravstack/storage#build",
         "@btravstack/http#build",
         "@btravstack/temporal#build",
         "@btravstack/amqp#build"
