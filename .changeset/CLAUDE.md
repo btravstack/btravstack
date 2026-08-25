@@ -84,15 +84,21 @@ It is **triggered by** a green CI run on `main`, and changesets' two-step does
 the rest: a push carrying changesets opens a release PR with the bumps and the
 rendered CHANGELOGs, and merging that PR publishes.
 
-Triggered by, not pinned to — and the difference is a real gap.
-`deploy-docs.yml` checks out `github.event.workflow_run.head_sha` precisely
-because a `workflow_run` checkout otherwise takes the default branch's current
-tip, which a push landing after CI went green can have moved. The reusable
-release workflow checks out without a `ref` and offers no input for one, so a
-publish can carry a commit no CI run validated. The window is small and the
-newer commit gets its own CI run; the artifact is a permanent tarball, which is
-why it is filed upstream (btravstack/tools#5) rather than accepted. Do not
-describe this workflow as publishing only validated commits until that lands.
+It is **pinned** to that run's commit, not merely triggered by it: the caller
+passes `github.event.workflow_run.head_sha`, because a `workflow_run` checkout
+otherwise takes the default branch's current tip, which a push landing after CI
+went green can have moved. The `ref` input for that landed in
+btravstack/tools#6.
+
+**`changesets/action` must stay on v2 or newer.** v1 bundles
+`@changesets/read@^0.6.7`, which parses every `.changeset/*.md` as a changeset —
+**including this file** — and fails the release with
+`could not parse changeset - missing or invalid frontmatter`. That is not a
+hypothetical: it is what this repository's first automated release run did.
+`@changesets/read@1.0.0` ignores `README.md`, `AGENTS.md`, `CLAUDE.md` and
+`GEMINI.md`. A local `pnpm run version` never showed it, because a repository
+installs a current reader and only the action's bundled copy was old — so the
+failure existed in CI and nowhere else.
 
 Two things live outside the file and the workflow is inert without them:
 
