@@ -22,11 +22,25 @@ kernel.
 
 ## A worked example
 
+<!-- doctest: group=order-api -->
+<!-- doctest: prelude
+import { Env } from "@btravstack/config";
+import { Module } from "@btravstack/di";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+// The stand-in for the client YOUR schema generates, and the extension you
+// apply to it. Neither exists in this package — that is what the `client`
+// arrow is for.
+declare class PrismaClient {
+  constructor(options: { readonly adapter: PrismaPg });
+  $disconnect(): Promise<void>;
+  $extends(extension: unknown): this;
+}
+declare const unthrownPrisma: unknown;
+-->
+
 ```ts
 import { prismaDatabase } from "@btravstack/prisma";
-import { unthrownPrisma } from "@unthrown/prisma";
-
-import { PrismaClient } from "./generated/prisma/client.js";
 
 const database = prismaDatabase("OrderDatabase")({
   client: (adapter) => new PrismaClient({ adapter }).$extends(unthrownPrisma),
