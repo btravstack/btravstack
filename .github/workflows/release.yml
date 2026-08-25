@@ -1,25 +1,18 @@
 name: Release
 
-# Publish the twelve packages once CI is green on main, through the same
+# Publish the thirteen packages once CI is green on main, through the same
 # reusable workflow the sibling repositories call. Chaining off CI rather than
-# off the push is `deploy-docs.yml`'s rule.
-#
-# KNOWN GAP, and it is not closable from this file. `deploy-docs.yml` pins its
-# checkout to `github.event.workflow_run.head_sha` — the exact commit the green
-# run measured — because a `workflow_run` checkout otherwise takes the default
-# branch's CURRENT tip, which a push landing after CI went green can have moved.
-# The reusable workflow below checks out without a `ref` and exposes no input
-# for one, so a release IS exposed to that window: if `main` advances between CI
-# going green and this job starting, the publish takes the newer tip. The window
-# is seconds to minutes and the newer commit gets its own CI run, but the
-# artifact here is a permanent tarball rather than a redeployable site, so this
-# is worth closing upstream rather than living with — btravstack/tools#5.
-# `unthrown` has the same gap, being the same call.
+# off the push is `deploy-docs.yml`'s rule, and the checkout is pinned to the
+# commit that run measured — so a version is never cut from one CI did not
+# validate. It matters more here than for the docs: a tarball is permanent.
+# The `ref` input that makes the pinning possible landed in
+# btravstack/tools#6, together with the `changesets/action@v2` bump that file
+# needed.
 #
 # The flow is changesets' own two-step. A push to main carrying changesets opens
 # (or updates) a release PR with the version bumps and rendered CHANGELOGs;
 # merging it is what publishes. That PR is the review gate, and it is
-# load-bearing rather than ceremonial: the twelve move as one `fixed` group, so
+# load-bearing rather than ceremonial: the thirteen move as one `fixed` group, so
 # the bump it shows is the whole family's, and `1.0.0` must stay a decision
 # rather than somewhere a stray `major` changeset arrives on its own.
 #
@@ -30,7 +23,7 @@ name: Release
 #      `GITHUB_TOKEN` cannot be used: events it triggers do not start new
 #      workflow runs, so the release PR would skip CI — the one thing this
 #      workflow exists to guarantee.
-#   2. A Trusted Publisher on npmjs.com for EACH of the twelve packages,
+#   2. A Trusted Publisher on npmjs.com for EACH of the thirteen packages,
 #      pointing at this repository and this workflow file. Publishing rides the
 #      OIDC token `id-token: write` mints; there is no `NPM_TOKEN`. A package
 #      must already exist on npm before a Trusted Publisher can be configured
@@ -55,5 +48,10 @@ jobs:
       pull-requests: write # open and update the release PR
       id-token: write # the OIDC token npm Trusted Publishing rides
     uses: btravstack/tools/.github/workflows/release-reusable.yml@workflows-v1
+    with:
+      # The exact commit the green CI run measured. Without it a `workflow_run`
+      # checkout takes the default branch's CURRENT tip, which a push landing
+      # after CI went green can have moved.
+      ref: ${{ github.event.workflow_run.head_sha }}
     secrets:
       RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
