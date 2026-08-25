@@ -1,11 +1,16 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// The exact marker the landing page's demo quotes. It is pinned by
-// `examples/order-application/src/needs-gate.test-d.ts`, whose `@ts-expect-error`
-// fires only while di's `DependencyGate` still prints it.
+// The exact marker the landing page's demo quotes.
 const MARKER = "UNSATISFIED DEPENDENCIES — nothing provides";
 
+// `DependencyGate`'s own marker type — the string the compiler actually prints,
+// and the only one of the three that is not prose about it. A rename here is
+// what the other two would otherwise drift away from silently: the type test's
+// `@ts-expect-error` fires on ANY error on that line, so it would keep passing
+// with a stale comment beside it while the landing page quoted a diagnostic
+// TypeScript no longer emits.
+const source = fileURLToPath(new URL("../../packages/di/src/module.ts", import.meta.url));
 const pinned = fileURLToPath(
   new URL("../../examples/order-application/src/needs-gate.test-d.ts", import.meta.url),
 );
@@ -18,6 +23,7 @@ const demo = fileURLToPath(new URL("../.vitepress/theme/CompileErrorDemo.vue", i
 const normalize = (text: string) => text.replace(/^\s*\/\/ ?/gm, " ").replace(/\s+/g, " ");
 
 for (const [what, path] of [
+  ["di's `DependencyGate` marker", source],
   ["the pinned type test", pinned],
   ["the landing page demo", demo],
 ] as const) {
