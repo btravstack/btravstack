@@ -2,6 +2,8 @@ import { Tracer } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
+import { storage } from "@btravstack/storage";
+import { s3Storage } from "@btravstack/storage/s3";
 import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
@@ -65,7 +67,13 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: workflowsPathFromURL(import.meta.url, "./workflows.ts") },
-  imports: [FulfillmentSlice, BillingSlice, observability(), otel()],
+  imports: [
+    FulfillmentSlice,
+    BillingSlice,
+    storage({ adapter: s3Storage() }),
+    observability(),
+    otel(),
+  ],
   // `UnitSpanModule`, passed as `StartOptions.unit` in `main.ts`, reads
   // `Tracer` out of the application scope.
   exports: [Tracer],

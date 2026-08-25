@@ -15,6 +15,12 @@ catalog:
   # `latest` dist-tag is the 2.4.0 line, which peers on `unthrown@^4` while
   # this repo pins 5.7.0. The exact beta is the contract until v3 goes stable;
   # raise it deliberately, not on a bot bump.
+  # RustFS is pre-1.0 and its `latest` tag moves; the gate pins the exact
+  # release candidate it was measured against (put, get with content type,
+  # presigned GET, idempotent delete — all verified before the port was
+  # written). Raise it deliberately, not on a bot bump.
+  "@aws-sdk/client-s3": 3.1117.0
+  "@aws-sdk/s3-request-presigner": 3.1117.0
   "@amqp-contract/client": 3.0.0-beta.6
   "@amqp-contract/contract": 3.0.0-beta.6
   "@amqp-contract/testing": 3.0.0-beta.6
@@ -164,3 +170,5 @@ minimumReleaseAgeExclude:
   - "@unthrown/standard-schema@5.7.0"
   - "@unthrown/vitest@5.7.0"
   - "unthrown@5.7.0"
+  - "@aws-sdk/client-s3@3.1117.0"
+  - "@aws-sdk/s3-request-presigner@3.1117.0"

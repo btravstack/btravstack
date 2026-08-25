@@ -6,6 +6,7 @@ import {
 } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { Storage } from "@btravstack/storage";
 import { TemporalWorkflowActivities } from "@btravstack/temporal";
 import { P } from "unthrown";
 
@@ -63,15 +64,26 @@ import { P } from "unthrown";
  * placement that never landed is the no-op a *repeated* compensation performs,
  * and an activity Temporal may re-run has to answer the same both times.
  */
+/**
+ * Where a confirmation lives.
+ *
+ * The tenant is in the key because the port has no slot for one — the same
+ * rule the cache key follows, and the same reason: a store is an application
+ * service and the framework has no concept of a tenant to put there.
+ */
+const confirmationKey = (tenantId: string, orderId: string): string =>
+  `orders/${tenantId}/${orderId}/confirmation.json`;
+
 export const fulfillOrder = TemporalWorkflowActivities(orderContract, "fulfillOrder")(
   {
     place: PlaceOrder,
     repository: OrderRepository,
     stock: StockService,
     shipping: ShippingService,
+    storage: Storage,
   },
   {
-    sync: ({ place, repository, stock, shipping }) => ({
+    sync: ({ place, repository, stock, shipping, storage }) => ({
       place: (args, { errors }) =>
         place
           .execute(TenantId(args.tenantId), args.orderId, args.quantity)
@@ -93,6 +105,26 @@ export const fulfillOrder = TemporalWorkflowActivities(orderContract, "fulfillOr
       arrangeShipping: (args, { errors }) =>
         shipping
           .arrange(args.orderId)
+          // The confirmation is stored AFTER the shipment is arranged, as a
+          // `flatTap` step — the sequencing discipline this repository states
+          // for sagas, and the reason it is not a sibling `const`: an
+          // `AsyncResult` is eager, so two constructions would race.
+          .flatTap(() =>
+            storage
+              .put(
+                confirmationKey(args.tenantId, args.orderId),
+                new TextEncoder().encode(JSON.stringify({ orderId: args.orderId, shipped: true })),
+                { contentType: "application/json" },
+              )
+              // A document that failed to store must not un-ship an order, so
+              // the failure is recovered right here — and recovering it is
+              // safe rather than silent BECAUSE the store is composed
+              // instrumented: the error line and the counter still happen,
+              // one layer down, without this activity carrying a logger.
+              .recoverErrCases((matcher) =>
+                matcher.with(P.tag("StorageUnavailable"), () => undefined),
+              ),
+          )
           .mapErrCases((matcher) =>
             matcher.with(P.tag("ShippingUnavailable"), (error) =>
               errors.ShippingUnavailable({ id: error.id }),

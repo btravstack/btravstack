@@ -137,6 +137,65 @@ export const sharedMailpit = (): Promise<StartedTestContainer> =>
       .withWaitStrategy(Wait.forListeningPorts()),
   );
 
+/** What every S3 suite signs with. A test fixture nothing outside this repository reaches, so a constant rather than configuration. */
+export const RUSTFS_ACCESS_KEY = "rustfsadmin";
+export const RUSTFS_SECRET_KEY = "rustfsadmin";
+/** The one bucket, created by {@link sharedRustFs}. Tests separate by key prefix inside it. */
+export const RUSTFS_BUCKET = "btravstack";
+
+/**
+ * The S3-compatible object store `@btravstack/storage`'s adapter is tested
+ * against.
+ *
+ * RustFS rather than MinIO, and pinned to an exact release candidate: the tag
+ * is pre-1.0 and `latest` moves. Every operation the port needs was measured
+ * against this image before the port was written — put with a content type,
+ * get returning it, a presigned GET answering `200`, and a delete of a key
+ * nobody stored answering ok.
+ *
+ * One bucket for the whole gate, with a **key prefix per test**: a bucket per
+ * test would be a create-and-delete round trip bought for an isolation a
+ * UUID prefix already gives for nothing.
+ */
+export const sharedRustFs = async (): Promise<StartedTestContainer> => {
+  const rustfs = await shared("rustfs", () =>
+    new GenericContainer("rustfs/rustfs:1.0.0-rc.3")
+      .withExposedPorts(9000)
+      .withEnvironment({
+        RUSTFS_ACCESS_KEY,
+        RUSTFS_SECRET_KEY,
+      })
+      .withWaitStrategy(Wait.forListeningPorts()),
+  );
+
+  // S3 has no "create if absent", and a reused container already has the
+  // bucket — so the conflict IS the guard, the same shape as the `orders`
+  // database above.
+  await withLock(`rustfs-${RUSTFS_BUCKET}`, async () => {
+    const endpoint = `http://${rustfs.getHost()}:${rustfs.getMappedPort(9000)}`;
+    const { CreateBucketCommand, S3Client } = await import("@aws-sdk/client-s3");
+    const client = new S3Client({
+      endpoint,
+      region: "us-east-1",
+      forcePathStyle: true,
+      credentials: { accessKeyId: RUSTFS_ACCESS_KEY, secretAccessKey: RUSTFS_SECRET_KEY },
+    });
+    try {
+      await client.send(new CreateBucketCommand({ Bucket: RUSTFS_BUCKET }));
+    } catch (cause) {
+      const name = cause instanceof Error ? cause.name : "";
+      if (name !== "BucketAlreadyOwnedByYou" && name !== "BucketAlreadyExists") {
+        // oxlint-disable-next-line unthrown/no-throw -- a vitest `globalSetup` reports failure by rejecting; there is no Result channel here
+        throw cause;
+      }
+    } finally {
+      client.destroy();
+    }
+  });
+
+  return rustfs;
+};
+
 /**
  * The Temporal server, backed by {@link sharedPostgres}.
  *

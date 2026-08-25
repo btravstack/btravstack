@@ -11,6 +11,7 @@
     "./mailpit": "./src/mailpit.ts",
     "./namespace": "./src/namespace.ts",
     "./rabbitmq": "./src/rabbitmq.ts",
+    "./rustfs": "./src/rustfs.ts",
     "./redis": "./src/redis.ts",
     "./temporal": "./src/temporal.ts",
     "./uuid": "./src/uuid.ts"
@@ -21,6 +22,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "catalog:",
     "@temporalio/client": "catalog:",
     "@temporalio/common": "catalog:",
     "testcontainers": "catalog:"

@@ -8,8 +8,12 @@ import {
   postgresUrl,
   sharedPostgres,
   sharedRabbitMq,
+  RUSTFS_ACCESS_KEY,
+  RUSTFS_BUCKET,
+  RUSTFS_SECRET_KEY,
   sharedMailpit,
   sharedRedis,
+  sharedRustFs,
   sharedTemporal,
 } from "./containers.js";
 import { withLock } from "./lock.js";
@@ -35,7 +39,7 @@ const infrastructure = fileURLToPath(
 );
 
 /**
- * Brings up the five shared containers and writes the repository root's
+ * Brings up the six shared containers and writes the repository root's
  * `.env.dev` — what `turbo run dev` loads into each example process.
  *
  * These are the **same** containers the test suites use, attached to rather
@@ -52,11 +56,12 @@ const main = async (): Promise<void> => {
   const postgres = await sharedPostgres();
   const databaseUrl = postgresUrl(postgres, ORDERS_DATABASE);
 
-  const [rabbitmq, temporal, redis, mailpit] = await Promise.all([
+  const [rabbitmq, temporal, redis, mailpit, rustfs] = await Promise.all([
     sharedRabbitMq(),
     sharedTemporal(postgres),
     sharedRedis(),
     sharedMailpit(),
+    sharedRustFs(),
   ]);
 
   await withLock("orders-migrate", () =>
@@ -82,6 +87,13 @@ const main = async (): Promise<void> => {
     // Mailpit delivers nowhere and keeps everything, which is what a local
     // loop wants: http://localhost:<mapped 8025> is the mailbox.
     `SMTP_URL=smtp://${mailpit.getHost()}:${mailpit.getMappedPort(1025)}`,
+    // `order-temporal-worker`'s saga stores a confirmation, so a dev run
+    // without these would exit 78 on a `ConfigInvalid` naming the first one
+    // it reached. The bucket is created by `sharedRustFs` itself.
+    `STORAGE_S3_ENDPOINT=http://${rustfs.getHost()}:${rustfs.getMappedPort(9000)}`,
+    `STORAGE_S3_BUCKET=${RUSTFS_BUCKET}`,
+    `STORAGE_S3_ACCESS_KEY_ID=${RUSTFS_ACCESS_KEY}`,
+    `STORAGE_S3_SECRET_ACCESS_KEY=${RUSTFS_SECRET_KEY}`,
     "OUTBOX_TENANTS=0199a1e0-0000-7000-8000-000000000001",
     "LOG_LEVEL=debug",
     "",

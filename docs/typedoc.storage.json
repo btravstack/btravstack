@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/storage",
+  "entryPoints": ["../packages/storage/src/index.ts", "../packages/storage/src/s3.ts"],
+  "tsconfig": "../packages/storage/tsconfig.json",
+  "out": "api/storage"
+}

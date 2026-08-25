@@ -38,6 +38,7 @@ import {
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
+import { Storage } from "@btravstack/storage";
 import { TemporalModule, TemporalRuntime, temporal } from "@btravstack/temporal";
 
 import { OrderTemporalWorker, orderActivities } from "./module.js";
@@ -94,8 +95,9 @@ const _missingActivities = start(ActivitylessTemporal, options);
 // only the first two are met here.
 // The slice's OWN provider is what reads them, so this one IS di's declaration
 // gate — the distinction the two negatives above draw.
-// @ts-expect-error — UNDECLARED NEEDS: StockService | ShippingService, which
-// `FulfillmentModule` would have provided.
+// @ts-expect-error — UNDECLARED NEEDS: StockService | ShippingService (which
+// `FulfillmentModule` would have provided) and Storage (which the root
+// composes), all three read by the slice's own activities provider.
 const FulfillmentlessSlice = Module("FulfillmentlessSlice")({
   needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
@@ -109,14 +111,14 @@ void FulfillmentlessSlice;
 // which is the whole distinction the two gates draw: declaring moves the
 // obligation to whoever composes it, it does not discharge it.
 const DeclaredFulfillmentless = Module("DeclaredFulfillmentless")({
-  needs: [Env, Logger, StockService, ShippingService],
+  needs: [Env, Logger, StockService, ShippingService, Storage],
   imports: [OrderApplicationModule, OrderPersistenceModule],
   provides: [fulfillOrder],
   exports: [fulfillOrder],
 });
 
 const FulfillmentlessTemporal = TemporalModule("FulfillmentlessTemporal")({
-  needs: [Env, Logger, StockService, ShippingService],
+  needs: [Env, Logger, StockService, ShippingService, Storage],
   contract: orderContract,
   activities: orderActivities,
   workflows: { workflowsPath: "./workflows.js" },

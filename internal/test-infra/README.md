@@ -13,8 +13,9 @@ rather than one per workspace.
 | `temporalio/auto-setup:1.29.1`     | `packages/temporal`, `examples/order-temporal-worker`                       |
 | `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                      |
 | `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                             |
+| `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                          |
 
-Five containers for nine workspaces. Before this existed there were five
+Six containers for ten workspaces. Before this existed there were five
 servers for those six — two RabbitMQ containers and up to three Temporal
 time-skipping servers — and `pnpm test` was intermittently red at turbo's
 default concurrency because the 60s testcontainers startup wait was what gave
@@ -42,6 +43,9 @@ finer than "a server of my own":
 - **A recipient per test.** Mailpit delivers nowhere and keeps everything, so
   a UUID localpart is a mailbox nobody else reads — and one nobody has to
   purge.
+- **A key prefix per test** in object storage too, inside one bucket: a bucket
+  per test would be a create-and-delete round trip bought for an isolation a
+  UUID prefix already gives for nothing.
 
 ## Reuse, and what it costs
 

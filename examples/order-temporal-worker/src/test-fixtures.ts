@@ -20,6 +20,12 @@ import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { observability, type Line, type Sink } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
+import {
+  memoryStorageBackend,
+  storage,
+  StorageBackend,
+  type StorageService,
+} from "@btravstack/storage";
 import { TemporalModule, type TemporalInfo, type TemporalUnreachable } from "@btravstack/temporal";
 import { bootFixture, tapped, type Boot } from "@btravstack/testing";
 import { TypedClient, type ContractClient } from "@temporal-contract/client";
@@ -54,10 +60,16 @@ type Server = { readonly address: string; readonly namespace: string };
 // that will not answer.
 type App<E> = RunningApp<E | ConfigInvalid | TemporalUnreachable, TemporalInfo>;
 
-/** One booted deployment: the kernel's handle, and a client that can reach it. */
+/** One booted deployment: the kernel's handle, a client that can reach it, and the store its saga writes to. */
 type Deployment<E> = {
   readonly app: App<E>;
   readonly client: ContractClient<OrderContract>;
+  /**
+   * The confirmation store this deployment was composed with, so a spec can
+   * read back what the saga wrote — the assertion that the last forward step
+   * did more than log.
+   */
+  readonly confirmations: StorageService;
 };
 
 /**
@@ -262,11 +274,27 @@ export const it = test.extend<TemporalFixtures>({
       // for the reason `module.ts`'s own TSDoc gives — the composed
       // `orderActivities`'s `deps` are the two pieces' PORTS, and nothing
       // discharges them unless something in this tree does.
+      // The store the saga writes its confirmation to: in memory, and handed
+      // to the test as a service so a spec can read the document back. The
+      // real root composes `s3Storage()`; what this suite is about is that
+      // the saga WRITES, which needs no container of its own — the S3 adapter
+      // itself is proved against RustFS in `packages/storage`.
+      const confirmations = memoryStorageBackend();
       const worker = TemporalModule("StubTemporalWorker")({
         contract,
         activities: orderActivities,
         workflows: { workflowBundle },
-        imports: [module, BillingModule],
+        imports: [
+          module,
+          BillingModule,
+          storage({
+            adapter: Module("FixtureStorage")({
+              provides: [Provider(StorageBackend)({ value: confirmations })],
+              exports: [StorageBackend],
+            }),
+            instrumented: false,
+          }),
+        ],
         provides: [fulfillOrder, chargeOrder],
       });
 
@@ -294,7 +322,7 @@ export const it = test.extend<TemporalFixtures>({
         }).get()
       ).for(contract);
 
-      return { app, client };
+      return { app, client, confirmations };
     };
 
     await use(serve);
