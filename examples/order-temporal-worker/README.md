@@ -91,14 +91,16 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 });
 ```
 
-A wiring rule worth stating because it fails at runtime, not at compile time:
+A wiring rule worth stating because the reason isn't obvious:
 `orderActivities`'s own `deps` are the two pieces' **ports**, and di's
 `flatten` discovers providers only from a module's `imports` and `provides` —
 never from a provider's own `deps`. So the root **must** import both
 `FulfillmentSlice` and `BillingSlice`, even though nothing in the root ever
-names `fulfillOrder` or `chargeOrder` directly; dropping either import leaves
-that piece's port unmet, and `start` fails with a `WiringDefect` naming it —
-not a compile error.
+names `fulfillOrder` or `chargeOrder` directly. But `TemporalActivities`
+itself declares each piece's port as one of its own `deps`, so dropping
+either import is an undeclared need at the `TemporalModule(...)` call, and
+`pnpm typecheck` refuses it, naming the exact port — a compile error, not a
+runtime surprise.
 
 ## The fulfillment saga
 

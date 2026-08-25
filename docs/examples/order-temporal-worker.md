@@ -115,14 +115,16 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 });
 ```
 
-A wiring rule worth stating because it fails at runtime, not at compile time:
+A wiring rule worth stating because the reason isn't obvious:
 `orderActivities`'s own `deps` are the two pieces' **ports**, and di's
 `flatten` discovers providers only from a module's `imports` and `provides` —
 never from a provider's own `deps`. The root **must** import both
 `FulfillmentSlice` and `BillingSlice`, even though nothing in it names
-`fulfillOrder` or `chargeOrder` directly; dropping either import leaves that
-piece's port unmet, and `start` fails with a `WiringDefect` naming it — not a
-compile error.
+`fulfillOrder` or `chargeOrder` directly. Forgetting one still fails to
+compile: `TemporalActivities` declares each piece's port as one of its own
+`deps`, so a missing import is an undeclared need at the
+`TemporalModule(...)` call, refused with the exact port named — `pnpm
+typecheck` catches it, not a runtime `WiringDefect`.
 
 ## The fulfillment saga
 
@@ -365,10 +367,12 @@ outstanding, so the activities port fails to assign and the diagnostic ends on
 `Type '"TemporalActivities"' is not assignable to type '"@di/Scope"'` — the
 port named, after several lines of the contract expanding.
 
-Dropping one slice's import while still providing the composed activities is
-a different failure — the runtime `WiringDefect` the wiring rule above
-describes — and is not something a compile-time gate can catch, so it is
-pinned by the specs instead.
+Dropping one slice's import while still providing the composed activities
+fails the same way: `TemporalActivities` carries each piece's port as one
+of its own `deps`, so the missing import is an undeclared need at the
+`TemporalModule(...)` call — the wiring rule above — refused by di's
+`NeedsGate` and, again, by `start`'s `module` parameter. No spec needs to
+pin it; `pnpm typecheck` already does.
 
 ## Where to go next
 

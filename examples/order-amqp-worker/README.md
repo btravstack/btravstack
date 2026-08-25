@@ -50,14 +50,15 @@ belongs to the **relay**, the publishing half, not to either subscriber; it
 sits in the root's own `imports` for that reason, next to the two slices
 rather than inside one of them.
 
-A wiring rule worth stating because it fails at runtime, not at compile
-time: `orderHandlers`'s pieces are the composed provider's `deps`, and di's
-`flatten` discovers providers only from a module's `imports` and `provides`
-— never from a provider's own `deps`. So the root **must** import both
-`NotificationsSlice` and `AuditSlice`, even though nothing in the root ever
-names `orderNotifications` or `orderAudit` directly; dropping either import
-leaves that piece's port unmet, and `start` fails with a `WiringDefect`
-naming it — not a compile error.
+A wiring rule worth stating because the reason isn't obvious: `orderHandlers`'s
+pieces are the composed provider's `deps`, and di's `flatten` discovers
+providers only from a module's `imports` and `provides` — never from a
+provider's own `deps`. So the root **must** import both `NotificationsSlice`
+and `AuditSlice`, even though nothing in the root ever names
+`orderNotifications` or `orderAudit` directly. But `AmqpHandlers` itself
+declares each piece's port as one of its own `deps`, so dropping either import
+is an undeclared need at the `AmqpModule(...)` call, and `pnpm typecheck`
+refuses it, naming the exact port — a compile error, not a runtime surprise.
 
 ## The pattern, in three places
 

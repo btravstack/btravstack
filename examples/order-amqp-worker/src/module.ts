@@ -36,7 +36,9 @@ export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, or
  *
  * Both slices are imported because `orderHandlers`'s pieces are di-discovered
  * through `imports` / `provides` only, never through a provider's own `deps` —
- * dropping either leaves its port unmet and `start` fails with a `WiringDefect`.
+ * but `AmqpHandlers`' composing call above declares each piece's port as one
+ * of ITS OWN `deps`, so a dropped import is an undeclared need at THIS call,
+ * refused by di's `NeedsGate` naming the exact port, not a runtime surprise.
  *
  * The exports are the writer's surface: what a writer in the same process
  * places and cancels orders through, and what the specs tap. Both write paths
