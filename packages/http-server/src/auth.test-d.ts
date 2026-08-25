@@ -157,7 +157,7 @@ const rootOrders = api.HttpController(
 )({
   sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
 });
-const _rootKeyed = HttpModule("RootKeyed")({
+const _rootComposed = HttpModule("RootComposed")({
   needs: [Env],
   router: api.HttpRouter(rootMarkedContract)([rootOrders]),
   // The piece is provided too: the composed router depends on its PORT, and
@@ -165,7 +165,7 @@ const _rootKeyed = HttpModule("RootKeyed")({
   provides: [rootOrders],
 });
 
-void _rootKeyed;
+void _rootComposed;
 
 // 11. An authenticator that DECLARES DEPENDENCIES carries its own need into
 //     `provides`, so a root satisfying none is refused at THIS call by di's

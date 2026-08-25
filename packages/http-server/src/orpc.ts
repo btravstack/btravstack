@@ -256,17 +256,18 @@ const nest = (flat: Record<string, unknown>): Record<string, unknown> => {
 
 /**
  * One piece of the router — what `HttpController(contract, key)(…)` returns, as
- * the composing form consumes it. The port is spelled INLINE rather than as
- * `ControllerPortOf<C, K, Schemes>`, and that is load-bearing: two
- * instantiations of one alias are compared by TypeScript's alias-variance fast
- * path, which measures `C` covariant here — and a marked contract IS a
- * structural subtype of the same contract unmarked (the marker is an
- * intersection), so a piece whose handler reads a principal slipped under the
- * unmarked contract without the handler types ever being compared (measured:
- * the refused direction in `controller.test-d.ts` stopped erroring). The
- * anonymous spelling has no alias for the fast path to match, so the construct
- * signatures are compared structurally and the contravariant handler check
- * runs.
+ * the composing form consumes it. The port stays spelled INLINE rather than as
+ * `ControllerPortOf<C, K, Schemes>` — kept as a regression guard, not for a hole
+ * open today. On #116's flat `ControllerKeyOf` the alias spelling let TypeScript's
+ * alias-variance fast path skip the contravariant handler check, so a marked
+ * piece slipped under the unmarked contract. On the current recursive-path
+ * `ControllerKeyOf` both spellings refuse that direction (re-measured
+ * 2026-08-25, TS 7.0.2, same version as #116). The fast path is a compiler
+ * heuristic that has already changed behaviour across one key-shape refactor,
+ * so a future one could reopen it with no test failing; the inline spelling
+ * costs one type literal and closes that off. The gate itself is
+ * `controller.test-d.ts`'s refused
+ * `api.HttpRouter(contract)([markedOrders, markedUsers])`.
  */
 type PieceOf<C extends Record<string, RouterContract>, Schemes> = {
   readonly [K in ControllerKeyOf<C>]: {

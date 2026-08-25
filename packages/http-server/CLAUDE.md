@@ -122,12 +122,13 @@ not cover"` marker, and what the marker names is a procedure path
   `Uncovered` reads each piece's path by stripping `CONTROLLER_PREFIX` back
   off its port id (`KeyOfPiece`), so the path is never spelled twice; and
   `PieceOf`'s port type is spelled **inline**, not as
-  `ControllerPortOf<C, K, Schemes>` — a regression guard, see `PieceOf`'s own
-  TSDoc: two instantiations of one alias are compared by TypeScript's
-  alias-variance fast path, `C` measures covariant there, and a marked
-  contract is a structural **subtype** of the same contract unmarked, so a
-  piece whose handler reads a principal slipped under the unmarked contract
-  without the handler types ever being compared. At runtime `Array.isArray`
+  `ControllerPortOf<C, K, Schemes>` — a regression guard against a hole that
+  held only on #116's flat `ControllerKeyOf`; on the current recursive-path
+  shape both spellings refuse the marked-piece-under-unmarked-contract
+  direction (re-measured 2026-08-25, same TS version as #116). Kept anyway
+  because the alias route rides a compiler heuristic that has already changed
+  behaviour across one key-shape refactor — see `PieceOf`'s own TSDoc. At
+  runtime `Array.isArray`
   alone identifies this arm — an array is never a valid `(deps, arm)` or
   `(arm)` call — so the retired keyed record's three-form
   `sync`-holds-a-function discrimination is gone, and the remaining
