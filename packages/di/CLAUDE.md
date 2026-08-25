@@ -92,7 +92,7 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   `exports` array stays `readonly (AnyPort | AnyModule)[]`, and yielding the
   identical `Exports` channel either way), or an imported module. The provider
   arm is what the port-minting helpers need — `Config.provider(name)(schema)`,
-  `HttpController(name, fragment)` — where there is no class to name.
+  `HttpController(contract, path)` — where there is no class to name.
 - **`build.ts`** — `flatten` (dedupe by provider reference), `plan` (levels
   providers for concurrent construction; detects cycles, duplicate providers,
   providers for `Scope`, missing providers — all

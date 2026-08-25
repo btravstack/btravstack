@@ -33,7 +33,7 @@ const keyFor = (tenantId: string, id: string): string => `customers:${tenantId}:
  * `unknown`, so a hit claims `CustomerView` by cast at the boundary where it
  * re-enters this application's vocabulary.
  */
-export const customersController = api.HttpController("CustomersController", contract.customers)(
+export const customersController = api.HttpController(contract, "customers")(
   { find: FindCustomer, cache: Cache },
   {
     sync: ({ find, cache }) => ({

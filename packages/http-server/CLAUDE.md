@@ -87,104 +87,179 @@ PortInstance<…> }`) rather than the class's own type because a class
   `greetingRouter` (a bare-procedure `oc.router`, one nested) and the stray-key
   guard by `strayRouter` (the same implementation with an undeclared key,
   cast past the types).
-- **`api.HttpRouter(contract)(controllers)` — the keyed form** (`orpc.ts`, a
-  third overload of `build`) — for `contract: Record<string, RouterContract>`,
-  a record keyed by the contract's own top-level keys, one
-  `HttpController` per key, instead of `(deps, { sync })`. `M` is constrained
-  `{ readonly [K in Exclude<keyof C, PrincipalKey>]: ControllerFor<Inherit<C[K],
-RequirementsOf<C>>, Schemes> }`, and the `controllers`
-  **parameter** is typed ``M & { readonly [K in Exclude<keyof M, Exclude<keyof C,
-PrincipalKey>>]: `UNDECLARED KEY — the contract declares no fragment under
-${K & string}` }`` — the same `Exclude` and the same `Inherit` the
-  deps arm's `Implementation<C, Schemes>` carries, so a **root-marked** contract
-  composes here at all (the phantom key is not a controller to supply) and each
-  fragment inherits the root's requirements (a controller under it types
-  `context.principal`). Both were missing until `auth.test-d.ts`'s tenth arm
-  went in; the marked fixtures in `controller.test-d.ts` mark a **key**, which
-  is why neither showed there. The exactness intersection is on the parameter, not on `M`: a key
-  `M` has that `C` does not declare types as a sentence **naming that key** —
-  `"UNDECLARED KEY — the contract declares no fragment under billing"` — so the
-  call fails to compile rather than silently
-  dropping the key, without the intersection leaking into `M` and collapsing
-  the needs channel di orders the controllers by (the failure mode
-  `controller.test-d.ts`'s `_ComposedNeedsAreDeclared` check exists to catch).
-  It was a bare `never` until the diagnostics pass: `never` made the
-  intersection **reduce**, so the whole complaint printed as
-  `Type 'Minted<…>' is not assignable to type 'never'` — one short line that
-  named neither the key nor the rule. The sentence does not reduce, so the
-  reader pays one wide intersection line (the shape four other gates in
-  `controller.test-d.ts` already print) and the message **ends** on the rule in
-  English, with the offending key in it. `${K & string}` is what carries the
-  key: the mapped type is keyed by `K`, so the key is in scope at the value
-  position and costs a template literal to reach. The wide-line trade and the
-  named key were both **measured** — all five gates still fire, `tsc` clean, no
-  widening of `M`. A **symbol** key would intersect to `never` and collapse the
-  whole template to `never`, back to the old terse error: that one is
-  **reasoned from `K & string`, not measured**, and it is inert anyway, since a
-  contract's fragment keys are strings and no call of the keyed form can carry
-  a symbol. Do not upgrade it to a measured claim without measuring it.
-  **`HttpRouter` is the one helper in the family with THREE forms and only two
-  arguments' worth of arity**, so it is the one place arity alone cannot
-  decide. `(deps, arm)` is settled by arity as everywhere else; the two
-  one-argument forms — an arm, and a controllers record — are told apart by
-  whether **`sync` holds a function**. That is total rather than a heuristic:
-  this helper accepts no arm but `sync`, so a contract free to declare a key
-  called `sync` would put a _controller_ there, and a controller is an object
-  carrying a `.port`, never a function. `deps` for the underlying
-  `Provider(HttpRouterPort)(...)` is the controllers record with each value
-  replaced by its `.port`, so di builds every controller before the router —
-  and the services record comes back keyed by the SAME contract keys, so the
-  implementation record needs no reassembling before the `routerOf` walk the
-  deps form uses.
-  Five compile-time gates are pinned by `controller.test-d.ts`: every contract
-  key covered, an undeclared key rejected, a controller under the wrong key
-  rejected, a procedure a controller's fragment does not declare rejected
-  inside the controller, and — the fifth, marked "do not break" — a slice
-  lifting out of the composed router **with its controller unchanged**:
-  `api.HttpRouter(contract.orders)({ implementation: orders.port }, { sync: ({ implementation }) => implementation })`
-  compiles, so the lifted root declares the very controller the modulith
-  composed and hands back what it built. The gate names the controller
+- **`api.HttpRouter(contract)([piece, …])` — the composing form** (`orpc.ts`, a
+  third overload of `build`, declared **last**) — for
+  `contract: Record<string, RouterContract>`, an **array of pieces** instead of
+  `(deps, { sync })`, each an `HttpController(contract, path)` over one node
+  of the contract tree, at any depth — the same shape as
+  `AmqpHandlers(contract)([...])` and `TemporalActivities(contract)([...])`,
+  with the paths as HTTP's extra degree of freedom. Coverage is **leaf-based**:
+  the paths must partition the contract's PROCEDURES (`LeafPathsOf`, each leaf
+  covered when it sits at or under a piece's path — `CoveredBy`), so any mix
+  of depths composes — `[v1Orders, v1Customers, health]` and `[v1, health]`
+  alike. An uncovered leaf is refused against the
+  `"UNCOVERED CONTROLLERS — the contract declares a procedure this array does
+not cover"` marker, and what the marker names is a procedure path
+  (`"v1.customers.find"`), not a fragment. Declared last is load-bearing
+  (measured in `packages/amqp-worker`, same mechanism): TypeScript reports the
+  last overload's failure, so a non-covering array fails against the marker
+  rather than degrading to di's `Qualification`, which names nothing; the
+  marker is a **sentence** because it is the only actionable part of the
+  diagnostic and it prints last, past the caller's own wide piece type. The
+  missing leaf itself is named only when the array's length matches the marker
+  tuple's own length of 2, as a separate diagnostic on the trailing element
+  whose target is the bare path.
+  A **second gate** rides the same overload: `Overlapping<Paths>` — a piece
+  path nested inside another piece's path
+  (`Overlapping<"v1" | "v1.orders" | "health">` is `"v1.orders"`), refused
+  against
+  `"OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment"`.
+  It must exist because the two pieces would implement the same procedures on
+  **two distinct port ids** — unlike two pieces at ONE path, which share an id
+  and are di's duplicate-provider defect — so di cannot see them conflicting,
+  and the `nest` rebuild below would silently let one win. This gate is the
+  only thing standing between a dotted path and that silent overwrite.
+  `Uncovered` reads each piece's path by stripping `CONTROLLER_PREFIX` back
+  off its port id (`KeyOfPiece`), so the path is never spelled twice; and
+  `PieceOf`'s port type is spelled **inline**, not as
+  `ControllerPortOf<C, K, Schemes>` — a regression guard against a hole that
+  held only on #116's flat `ControllerKeyOf`; on the current recursive-path
+  shape both spellings refuse the marked-piece-under-unmarked-contract
+  direction (re-measured 2026-08-25, same TS version as #116). Kept anyway
+  because the alias route rides a compiler heuristic that has already changed
+  behaviour across one key-shape refactor — see `PieceOf`'s own TSDoc. At
+  runtime `Array.isArray`
+  alone identifies this arm — an array is never a valid `(deps, arm)` or
+  `(arm)` call — so the retired keyed record's three-form
+  `sync`-holds-a-function discrimination is gone, and the remaining
+  `(deps, arm)` / `(arm)` pair is settled by plain arity as everywhere else
+  (the arm-only `sync` is still handed **no** arguments, pinned by
+  `controller.spec.ts`). The composed provider's `deps` are the piece
+  **ports**, keyed by the very dotted path each port id carries — so di
+  builds every piece before the router, and `nest` folds the flat path-keyed
+  services record back into the nesting the contract already has before
+  `routerFrom`: `routerOf` walks the same tree it always did, marks,
+  inheritance and the stray-key drop included. The walk itself is untouched —
+  `nest` lives in the composing arm because the walk is shared with the
+  `(deps, arm)` form, which never nests. The pieces themselves still need
+  discharging — listed in `provides` alongside the router, or exported by a
+  slice module imported in — exactly as in `packages/amqp-worker`. Coverage
+  is not uniqueness, but with paths the split moved: a piece **inside**
+  another piece's fragment is caught at the call (the
+  `OVERLAPPING CONTROLLERS` gate above), while two pieces at the **same**
+  path remain one port id and therefore di's duplicate-provider defect — and
+  only when **both** end up discharged as providers in the same graph; wire
+  in only one and the other's implementation is simply never registered, no
+  diagnostic marking the conflict.
+  **A ceiling in the dot encoding itself, not a bug in the mechanism**: `nest`
+  rebuilds a piece's path by splitting on `.`, so it cannot tell a path
+  separator from a literal dot inside one contract key — a contract keyed
+  `{ "a.b": oc }` mints a piece at path `"a.b"`, passes coverage, and `nest`
+  then splits it into `{ a: { b: fn } }`, which `routerOf`'s stray-key drop
+  silently discards: a fully green compile and a 404 at runtime. The escape
+  is the `(deps, arm)` form, which never splits anything. No guard exists
+  today; `orpc.ts`'s `nest` carries a `ponytail:` comment naming the two
+  upgrade paths (a runtime guard, or excluding dotted keys from
+  `ControllerKeyOf` so a literal-dot key is never mintable as a piece path).
+  The return is the same `Built<Auth, N>` as the other arms, with
+  `N = InstanceType<T[number]["port"]> | SchemePortsOf<C>`.
+  Five compile-time gates are pinned by `controller.test-d.ts`: every
+  procedure covered (the marker above); an undeclared path refused **at the
+  mint** (`HttpController(contract, "billing")` and `(deep, "v1.billing")`
+  have nothing to type the key by — the keyed record's `"UNDECLARED KEY — …"`
+  gate collapsed into it); a piece under the wrong key impossible **by
+  construction** (its path rides its port id, so what that gate refused is
+  now an array leaving a leaf uncovered — the same marker, pinned as its own
+  arm); a procedure the fragment does not declare rejected inside the piece;
+  and — the fifth, marked "do not break" — a slice lifting out of the
+  composed router **with its piece unchanged**:
+  `api.HttpRouter(contract.orders)({ implementation: ordersPiece.port }, { sync: ({ implementation }) => implementation })`
+  compiles, so the lifted root declares the very provider the modulith
+  composed and hands back what it built. The gate names the piece
   deliberately — a fresh `sync` literal over the fragment would pin only that
   a fragment is a valid contract, the weaker half, which says nothing about
-  the controller surviving the lift. All five are pinned **twice**: once
-  against a plain contract and once against one whose `orders` fragment is
-  `authenticated({ user: [] })(...)`, so the marker's phantom key cannot quietly break any of
-  them — the fifth least of all. The same block pins the one direction that
-  must be refused: a controller whose handler reads `opts.context.principal`
-  cannot be mounted under an **unmarked** contract key, where nothing would
-  inject one. The reverse is accepted and correctly so — an unmarked
-  controller under a marked key is a handler that ignores the principal, which
-  is contravariantly fine.
+  the piece surviving the lift. All five are pinned **twice**: once against a
+  plain contract and once against one whose `orders` fragment is
+  `authenticated({ user: [] })(...)`, so the marker's phantom key cannot
+  quietly break any of them — the fifth least of all. The same block pins the
+  one direction that must be refused: a piece whose handler reads
+  `opts.context.principal` cannot be composed under the **unmarked**
+  contract, where nothing would inject one (the arm the inline `PieceOf`
+  spelling exists to keep firing). The reverse is accepted and correctly so —
+  a piece over an unmarked fragment inside a contract that marks another is a
+  handler that ignores the principal, which is contravariantly fine.
   Three further arms pin what the requirements themselves do: a procedure
   under a marked record inherits that record's requirement, a procedure with
   its own mark **replaces** it rather than adding to it, and the router's needs
   channel carries one `HttpAuthenticator:<scheme>` port per scheme the contract
   names anywhere — two schemes, one scheme, and none at all, each asserted in
   **both** directions, since a one-way check passes on a collapsed `never`.
-  Covered at runtime by the `rpcSliced` fixture, composing
-  `helloController` and `echoesController` over `slicedContract`'s two
-  fragments.
-- **`api.HttpController(name, fragment)({ name: Dep }, { sync })`, or `({ sync })`
-  with no deps** (`controller.ts`, minted by `defineHttp`) —
-  one slice of a contract, as a provider on a port minted for it. The first
-  call fixes `fragment`'s type — read for its type only, so a procedure the
-  fragment does not declare or a handler whose input or output has drifted is
-  a compile error inside the controller rather than at the root — and mints
-  `class extends Port(name)<Implementation<C, Schemes>> {}`; the second is di's
-  `Provider(port)({ name: Dep }, { sync })`, unchanged — **including its
-  no-deps arm**, which this helper mirrors by arity for the same reason di
-  has one: a controller that calls no use case is the common shape here, not
-  an edge case, and `({}, { sync })` is what it would otherwise spell. Returns
-  `Provider<PortInstance<Name, Implementation<C, Schemes>>, never,
-InstanceType<D[keyof D]>> & { readonly port: PortClassOf<Name, Implementation<C, Schemes>> }` —
-  the same `PortInstance`/`PortClassOf` spelling `HttpRouter` uses and for the
-  same reason (TS4023 on a class expression's own type). The controller does
-  no oRPC work: it is a plain record; `HttpRouter`'s `routerOf` walk is what
-  wraps a leaf in `.result(...)`, at composition. A slice's module exports
-  `controller.port` rather than naming a port of its own — the shape
-  `Config.provider("RelayConfig")(schema)` already uses in this repo. Covered
-  by `controller.spec.ts`'s `controllers` fixture (the port and declared deps
-  a controller carries) and by every gate in `controller.test-d.ts` above.
+  The depth block at the file's tail pins the dotted paths themselves: pieces
+  at mixed depths partitioning the leaves compose, an uncovered procedure and
+  a nested piece are each refused against their marker, and the port id
+  carries the whole path (`"HttpController:v1.orders"`).
+  Covered at runtime by the `rpcSliced` fixture — `helloController` over
+  `slicedContract`'s `greetings` fragment and `echoesController` minted by
+  the DOTTED path `"echoes.ping"`, so `nest`'s rebuild answers a real
+  request — and by `rpcDeep`, two pieces sharing the nested `"v1"` parent
+  plus one at the bare procedure path `"health"`.
+- **`api.HttpController(contract, key)({ name: Dep }, { sync })`, or
+  `({ sync })` with no deps** (`controller.ts`, minted by `defineHttp`) — one
+  node of a contract, at any depth, as a provider on a port of its own. There
+  is no name to give: the dotted path IS the port's name, minted as
+  `` `${CONTROLLER_PREFIX}${key}` `` (`CONTROLLER_PREFIX = "HttpController:"`,
+  exported from `controller.ts` only) — the move `AmqpHandler(contract, key)`
+  and `authenticatorPort(scheme)` both make. The port id carrying the path is
+  what makes two slices claiming one node di's duplicate-provider defect
+  rather than a silent merge, and what lets the composing form recover each
+  piece's path without it being spelled again. The first call fixes the
+  contract's type — read for its **type** only, so a path the contract does
+  not declare is refused at the call (`ControllerKeyOf<C>`, the union of
+  **every path** into the contract tree — a fragment or a procedure, dotted
+  at each level, less the marker's phantom key; the former top-level keys are
+  its depth-1 subset). Two guards inside are measured, not stylistic: an
+  index-signature record short-circuits to `string` — that shape is only ever
+  a GENERIC's constraint (`RouterContract` is recursive), and recursing over
+  `string` keys was TS2589 at every generic declaration whose constraint
+  mentions the type — and `Implementation`'s first parameter is **unbounded**
+  for the sibling reason: it is instantiated with the deferred
+  `FragmentAt<C, K>`, whose branches TypeScript cannot prove `RouterContract`
+  for a generic contract, while the mapped arm already guards each child with
+  `C[K] extends RouterContract`. A procedure the fragment does not declare or
+  a handler whose input or output has drifted is a compile error inside the
+  piece rather than at the root. The fragment's type is `FragmentAt<C, K>`,
+  applied **at the mint**: it folds `Effective` down the path — nearest mark
+  wins at each level, exactly the step `routerOf`'s `inherited` argument
+  takes at runtime, so the types and the walk cannot part — and ends on
+  `Inherit<node, folded>`, which is how a marked ancestor types
+  `context.principal` in a piece minted from below it — the check the retired
+  keyed form performed at the root, now performed where the handler is
+  written. The second call is di's `Provider(port)({ name: Dep }, { sync })`,
+  unchanged — **including its no-deps arm**, mirrored by arity for the same
+  reason di has one: a piece that calls no use case is the common shape here,
+  not an edge case, and `({}, { sync })` is what it would otherwise spell.
+  Returns
+  `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes> }` —
+  `ControllerPortOf<C, K, Schemes>` being `PortClassOf` over the prefixed
+  path and `Implementation<FragmentAt<C, K>, Schemes>`, the same
+  `PortInstance`/`PortClassOf` spelling `HttpRouter` uses and for the same
+  reason (TS4023 on a class expression's own type). `ControllerKeyOf<C>` and
+  `ControllerPortOf<C, K, Schemes>` are **types**, exported from `index.ts`
+  for the same declaration-emit reason `@btravstack/amqp-worker` exports
+  `HandlerPortOf<C, K>`: a slice module that exports its piece by name needs
+  the port type printable. The piece does no oRPC work: it is a plain record;
+  `HttpRouter`'s `routerOf` walk is what wraps a leaf in `.result(...)`, at
+  composition. A slice's module exports `controller.port` rather than naming
+  a port of its own — the shape `Config.provider("RelayConfig")(schema)`
+  already uses in this repo. Covered by `controller.spec.ts`'s `controllers`
+  fixture (the key-minted port and declared deps a piece carries) and by
+  every gate in `controller.test-d.ts` above. `controller.ts` imports
+  `Effective`/`Implementation`/`Inherit` from `orpc.ts` with `import type` —
+  erased by `verbatimModuleSyntax` — while `orpc.ts` imports
+  `CONTROLLER_PREFIX` from `controller.ts` as a value, so the two files
+  reference each other in the type graph with **no runtime cycle**, the same
+  arrangement `packages/amqp-worker` documents between `handler.ts` and
+  `amqp-runtime.ts`.
 - **`@btravstack/contract`'s marker, in the types and at runtime.**
   `authenticated(...requirements)(node)` brands a contract node
   `Authenticated<T, R>` — an
@@ -613,12 +688,12 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **50 specs, 100% lines/functions.** Every app boots through the `boot`
+- **57 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
   failure (`configured`'s `ConfigInvalid`, `occupied`'s port in use) is the
-  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 21,
+  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 23,
   through `test-fixtures.ts`'s `appOf` — `httpModule({ port: 0, hostname:
 "127.0.0.1" }, Provider(HttpHandler)({ value: handler }))` — so the
   guarantees (`404`/`500` fallbacks, the unit open until `'close'`, the drain,
@@ -644,20 +719,33 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   a `greet`-only router configured with oRPC's own `CORSHandlerPlugin`, proving
   `plugins` reaches `RPCHandler` rather than being silently accepted and
   dropped: the plugin, not this package, decided the response's
-  `access-control-allow-origin`. `controller.spec.ts` carries 4,
-  through the `controllers` and `rpcSliced` fixtures: a
-  `HttpController` carries the port it was minted under and the deps it
-  declared, `api.HttpRouter(contract)({...})` serves a router composed from
-  two controllers — `helloController` and `echoesController`, each over its
-  own fragment of `slicedContract` — with a procedure from each answering
-  through one client, proving every controller's slice was mounted under its
-  own contract key, and two pin the three-form discrimination at runtime: a
-  contract declaring a key literally called `sync` still resolves to the keyed
-  form, and an arm-only router's `sync` is handed **no arguments** at all.
-  A process still serves one router (thesis #1); the keyed
+  `access-control-allow-origin`. `controller.spec.ts` carries 6, through the
+  `controllers`, `rpcSliced` and `rpcDeep` fixtures: a piece carries the port
+  its contract key minted (`HttpController:greetings`) and the deps it
+  declared; `api.HttpRouter(contract)([...])` serves a router composed from
+  two pieces — `helloController` over the `greetings` fragment and
+  `echoesController` minted by the dotted path `"echoes.ping"` — with a
+  procedure from each answering through one client, proving every piece's
+  slice was mounted under the path its port id carries, `nest`'s rebuild
+  included; one pins that an arm-only router's `sync` is handed **no
+  arguments** at all (the former sync-key discrimination spec is deleted with
+  the record form: there is no record for a `sync` key to be confused with,
+  `Array.isArray` decides); and two are `rpcDeep`, over a contract with two
+  pieces sharing the nested `"v1"` parent (`"v1.orders"` and
+  `"v1.customers"`) plus one minted at the bare procedure path `"health"` —
+  the shared parent is what forces `nest`'s `node[segment] ??=` to find a
+  node the first piece already created rather than only ever creating one,
+  and `"health"` is the depth-N leaf case, a piece with no fragment around it
+  at all. A sixth pins that the rebuild reaches **no prototype**: `nest` builds
+  with `Object.create(null)`, because on a plain `{}` a `"__proto__"` segment
+  reads `Object.prototype` — not nullish, so `??=` assigns nothing — and the
+  walk then writes the piece onto `Object.prototype` itself, corrupting every
+  object in the process (measured). `routerOf` only ever `Object.entries` what
+  it is handed, so nothing downstream wants the prototype.
+  A process still serves one router (thesis #1); the composing
   form changes how many providers build it, not that fact. `auth.spec.ts`
-  carries the last 16, through the `rpcAuthed`, `rpcRootMarked`,
-  `controllers` and `headers` fixtures — every router, controller and
+  carries the last 20, through the `rpcAuthed`, `rpcRootMarked`,
+  `rpcRootMarkedDeep`, `controllers` and `headers` fixtures — every router, controller and
   authenticator in them minted by ONE `defineHttp({ authenticators })`,
   since a contract naming no principal leaves the factory as the only way a
   handler gets a readable one. Four are over
@@ -669,16 +757,27 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   with no credentials at all. One more is over the authenticator that
   **declares a dependency** — a `Verifier` port, the arm `defineHttp` binds
   through `Provider(port)(deps, arm)` — proving its need travelled with it into
-  the graph. Two are over `rootMarkedContract` —
+  the graph, and one more is `rpcSubstituted` — the same router with the
+  scheme's authenticator replaced on its port, the substitution seam
+  `authenticatorPort` exists for. Two are over `rootMarkedContract` —
   `authenticated({ user: [] })({ orders: { whoami } })`, the mark on the **root**, where
   there is no `contract[key]` to read it from: every leaf beneath it is
   protected, and an accepted caller still reaches the
-  handler with its principal. Two are composition-time — the scheme's own port
+  handler with its principal. Two more are over `rootMarkedDeepContract` — the
+  same root mark served through a piece minted **two levels below it**
+  (`"v1.orders"`) — the fold-vs-walk proof: an accepted caller reaches the
+  piece with its principal and a refused one never enters it, evidence that
+  `FragmentAt`'s compile-time fold (applied where the piece is minted) and
+  `routerOf`'s runtime `inherited` walk (seeded from the router's own root,
+  regardless of how many pieces compose it) type and protect the same leaf.
+  Two are composition-time — the scheme's own port
   declared alongside the dependencies the caller wrote, and no scheme port at
-  all when the contract marks nothing. The last seven drive
+  all when the contract marks nothing. The last eight drive
   `principalMiddleware` directly, over the `headers` fixture, and are where the
   feature's own rules are pinned: the first requirement a caller satisfies
-  wins, `UNAUTHORIZED` when none is, a granted scope admits, `FORBIDDEN` when
+  wins, `UNAUTHORIZED` when none is, a granted scope admits, a bare identity
+  carrying a `scopes` field injected whole rather than mistaken for a scoped
+  grant, `FORBIDDEN` when
   the scheme grants no scopes at all, `FORBIDDEN` when the credential is valid
   but under-scoped, the principal tagged when **one** requirement names two
   schemes, and a defect stopping the walk instead of falling through to the
