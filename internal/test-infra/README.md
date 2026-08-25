@@ -12,8 +12,9 @@ rather than one per workspace.
 | `rabbitmq:4.2.1-management-alpine` | `packages/amqp`, `examples/order-amqp-worker`                               |
 | `temporalio/auto-setup:1.29.1`     | `packages/temporal`, `examples/order-temporal-worker`                       |
 | `redis:8.8.2-alpine`               | `packages/cache`, `examples/order-api`                                      |
+| `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                             |
 
-Four containers for eight workspaces. Before this existed there were five
+Five containers for nine workspaces. Before this existed there were five
 servers for those six — two RabbitMQ containers and up to three Temporal
 time-skipping servers — and `pnpm test` was intermittently red at turbo's
 default concurrency because the 60s testcontainers startup wait was what gave
@@ -38,6 +39,9 @@ finer than "a server of my own":
 - **A key prefix per test.** A Redis test mints `test:<uuid>:` and writes
   under it, which is finer than a database index and, like every boundary
   here, needs no cleanup.
+- **A recipient per test.** Mailpit delivers nowhere and keeps everything, so
+  a UUID localpart is a mailbox nobody else reads — and one nobody has to
+  purge.
 
 ## Reuse, and what it costs
 

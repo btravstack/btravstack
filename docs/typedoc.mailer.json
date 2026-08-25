@@ -1,0 +1,7 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/mailer",
+  "entryPoints": ["../packages/mailer/src/index.ts", "../packages/mailer/src/smtp.ts"],
+  "tsconfig": "../packages/mailer/tsconfig.json",
+  "out": "api/mailer"
+}

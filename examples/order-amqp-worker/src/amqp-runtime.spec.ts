@@ -160,6 +160,33 @@ describe("the broadcast deployment", () => {
     });
   });
 
+  it("sends the notification out through a real relay", async ({
+    tenant,
+    serve,
+    tapped,
+    delivered,
+  }) => {
+    // GIVEN the worker serving, with its notifications slice on the shared
+    // SMTP server
+    await serve(tapped.module);
+    const { placeOrder } = tapped.services();
+
+    // WHEN one order is placed, so the relay publishes and the subscriber
+    // notifies
+    await expect(placeOrder.execute(tenant, "0199a1e0-0000-7000-8000-000000000009", 3)).toBeOk();
+
+    // THEN a mail for this tenant reached the server — the proof the port is
+    // wired to a transport and not to a stub, which no recording adapter
+    // could give
+    await vi.waitUntil(async () => (await delivered(tenant)).length === 1, { timeout: 10_000 });
+    expect((await delivered(tenant))[0]).toEqual(
+      expect.objectContaining({
+        To: [expect.objectContaining({ Address: `tenant-${tenant}@example.test` })],
+        Subject: "order 0199a1e0-0000-7000-8000-000000000009 placed",
+      }),
+    );
+  });
+
   it("delivers one committed fact to every subscriber", async ({ tenant, serve, tapped }) => {
     // GIVEN a worker whose two slices each drain their own queue off the one
     // orders exchange
@@ -173,16 +200,18 @@ describe("the broadcast deployment", () => {
     // writer's own line is named rather than filtered out by "has no kernel
     // unit": a multi-tenant write runs inside a unit too (that is where its
     // tenant comes from), so carrying a `unit` no longer tells a subscriber's
-    // line from the placement's.
+    // line from the placement's. The third line is the mailer's own: the
+    // notifying subscriber sends, and an instrumented mailer says so inside
+    // the same unit.
     const subscriberLines = () =>
       tapped
         .lines()
         .filter((line) => line.unit !== undefined && line.message !== "placing an order");
-    await vi.waitUntil(() => subscriberLines().length === 2, { timeout: 5_000 });
+    await vi.waitUntil(() => subscriberLines().length === 3, { timeout: 5_000 });
     expect(
       subscriberLines()
         .map((line) => line.message)
         .sort(),
-    ).toEqual(["order placed — notifying", "recording an order change"]);
+    ).toEqual(["mail sent", "order placed — notifying", "recording an order change"]);
   });
 });

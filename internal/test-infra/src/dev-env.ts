@@ -8,6 +8,7 @@ import {
   postgresUrl,
   sharedPostgres,
   sharedRabbitMq,
+  sharedMailpit,
   sharedRedis,
   sharedTemporal,
 } from "./containers.js";
@@ -34,7 +35,7 @@ const infrastructure = fileURLToPath(
 );
 
 /**
- * Brings up the four shared containers and writes the repository root's
+ * Brings up the five shared containers and writes the repository root's
  * `.env.dev` — what `turbo run dev` loads into each example process.
  *
  * These are the **same** containers the test suites use, attached to rather
@@ -51,10 +52,11 @@ const main = async (): Promise<void> => {
   const postgres = await sharedPostgres();
   const databaseUrl = postgresUrl(postgres, ORDERS_DATABASE);
 
-  const [rabbitmq, temporal, redis] = await Promise.all([
+  const [rabbitmq, temporal, redis, mailpit] = await Promise.all([
     sharedRabbitMq(),
     sharedTemporal(postgres),
     sharedRedis(),
+    sharedMailpit(),
   ]);
 
   await withLock("orders-migrate", () =>
@@ -75,6 +77,11 @@ const main = async (): Promise<void> => {
     // would exit 78 on a `ConfigInvalid` naming the variable — the config
     // gate doing its job, and a broken `pnpm dev` all the same.
     `REDIS_URL=redis://${redis.getHost()}:${redis.getMappedPort(6379)}`,
+    // `order-amqp-worker`'s notifications slice sends mail, so a dev run
+    // without this would exit 78 on a `ConfigInvalid` naming the variable.
+    // Mailpit delivers nowhere and keeps everything, which is what a local
+    // loop wants: http://localhost:<mapped 8025> is the mailbox.
+    `SMTP_URL=smtp://${mailpit.getHost()}:${mailpit.getMappedPort(1025)}`,
     "OUTBOX_TENANTS=0199a1e0-0000-7000-8000-000000000001",
     "LOG_LEVEL=debug",
     "",

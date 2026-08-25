@@ -32,6 +32,7 @@ const packages: readonly string[] = [
   "testing",
   "observability",
   "cache",
+  "mailer",
   "http",
   "temporal",
   "amqp",

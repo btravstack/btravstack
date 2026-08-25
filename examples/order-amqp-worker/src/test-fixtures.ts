@@ -67,7 +67,15 @@ const tappedAmqp = () => {
   };
 };
 
+/** What a Mailpit message looks like, narrowed to what this suite reads. */
+type Delivered = { readonly To: readonly { readonly Address: string }[]; readonly Subject: string };
+
 export type AmqpFixtures = {
+  /**
+   * What the shared Mailpit received for a tenant, so a spec can prove the
+   * notification LEFT the process rather than that a stub was called.
+   */
+  readonly delivered: (tenantId: string) => Promise<readonly Delivered[]>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
@@ -93,6 +101,16 @@ export type AmqpFixtures = {
 // since `AmqpTestFixtures` reaches back into amqplib's `Channel` /
 // `ChannelModel` / `ConsumeMessage` / `Options.Publish`.
 export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFixtures>({
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  delivered: async ({}, use) => {
+    const api = inject("__TESTCONTAINERS_MAILPIT_API__");
+    await use(async (tenantId) => {
+      const to = `tenant-${tenantId}@example.test`;
+      const response = await fetch(`${api}/api/v1/search?query=${encodeURIComponent(`to:${to}`)}`);
+      const body = (await response.json()) as { readonly messages: readonly Delivered[] };
+      return body.messages;
+    });
+  },
   boot: bootFixture(),
 
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
@@ -108,6 +126,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     const env = {
       AMQP_URL: amqpConnectionUrl,
       DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
+      SMTP_URL: inject("__TESTCONTAINERS_SMTP_URL__"),
       OUTBOX_POLL_MS: "25",
       OUTBOX_TENANTS: tenant,
       // The real root composes otel(); a spec run stands up no collector, so

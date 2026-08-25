@@ -1,6 +1,6 @@
 /**
  * The compile-time half of `instrumented`: the flag defaults to `true`, so a
- * root that composes a cache and no observability fails di's declared-
+ * root that composes a mailer and no observability fails di's declared-
  * dependency gate naming `Logger`, `Meter` and `Tracer` — never a quiet
  * absence of spans. `false` is the opt-out, and it owes nothing.
  *
@@ -17,47 +17,51 @@ import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { OkAsync } from "unthrown";
 
-import { Cache } from "./cache.js";
-import { memoryCache } from "./memory.js";
-import { cache } from "./module.js";
+import { Mailer } from "./mailer.js";
+import { mailer } from "./module.js";
+import { mailRecorder, recordingMailer } from "./recording.js";
 
 // Positive: the default instruments, and with `observability()` and `otel()`
 // beside it nothing is left owing.
 const Instrumented = Module("Instrumented")({
-  imports: [cache({ adapter: memoryCache() }), observability(), otel()],
+  imports: [mailer({ adapter: recordingMailer(mailRecorder()) }), observability(), otel()],
   // `observability()` reads `LOG_LEVEL`, which `start` supplies at the root
   // of a real application; here the root is this file.
   provides: [Provider(Env)({ value: {} })],
-  exports: [Cache],
+  exports: [Mailer],
 });
-const _instrumented = Module.scoped(Instrumented, (ctx) => OkAsync(ctx.get(Cache)));
+const _instrumented = Module.scoped(Instrumented, (ctx) => OkAsync(ctx.get(Mailer)));
 
 // The default, with the three ports nowhere in the graph.
 const Unobserved = Module("Unobserved")({
-  imports: [cache({ adapter: memoryCache() })],
-  exports: [Cache],
+  imports: [mailer({ adapter: recordingMailer(mailRecorder()) })],
+  exports: [Mailer],
 });
 
 // Negative, and the reason the default is `true`: forgetting the observability
-// modules is a compile error naming the ports, not a cache that silently
+// modules is a compile error naming the ports, not a mailer that silently
 // counts nothing.
 // @ts-expect-error — UNSATISFIED DEPENDENCIES: nothing provides Logger, Meter or Tracer.
-const _unobserved = Module.scoped(Unobserved, (ctx) => OkAsync(ctx.get(Cache)));
+const _unobserved = Module.scoped(Unobserved, (ctx) => OkAsync(ctx.get(Mailer)));
 
 // The opt-out needs nothing and installs nothing.
 const Plain = Module("Plain")({
-  imports: [cache({ adapter: memoryCache(), instrumented: false })],
-  exports: [Cache],
+  imports: [mailer({ adapter: recordingMailer(mailRecorder()), instrumented: false })],
+  exports: [Mailer],
 });
-const _plain = Module.scoped(Plain, (ctx) => OkAsync(ctx.get(Cache)));
+const _plain = Module.scoped(Plain, (ctx) => OkAsync(ctx.get(Mailer)));
 
 // Spelling the default out reaches the same arm as leaving it off.
 const Explicit = Module("Explicit")({
-  imports: [cache({ adapter: memoryCache(), instrumented: true }), observability(), otel()],
+  imports: [
+    mailer({ adapter: recordingMailer(mailRecorder()), instrumented: true }),
+    observability(),
+    otel(),
+  ],
   provides: [Provider(Env)({ value: {} })],
-  exports: [Cache],
+  exports: [Mailer],
 });
-const _explicit = Module.scoped(Explicit, (ctx) => OkAsync(ctx.get(Cache)));
+const _explicit = Module.scoped(Explicit, (ctx) => OkAsync(ctx.get(Mailer)));
 
 // A flag computed at runtime is not a literal, so `Instrumented` infers
 // `boolean` and the conditional distributes over both arms — which lands on
@@ -65,12 +69,12 @@ const _explicit = Module.scoped(Explicit, (ctx) => OkAsync(ctx.get(Cache)));
 // way: a graph that might instrument must have provided for it.
 declare const decided: boolean;
 const Dynamic = Module("Dynamic")({
-  imports: [cache({ adapter: memoryCache(), instrumented: decided })],
-  exports: [Cache],
+  imports: [mailer({ adapter: recordingMailer(mailRecorder()), instrumented: decided })],
+  exports: [Mailer],
 });
 
-// @ts-expect-error — UNSATISFIED DEPENDENCIES: a maybe-instrumented cache owes the three ports.
-const _dynamic = Module.scoped(Dynamic, (ctx) => OkAsync(ctx.get(Cache)));
+// @ts-expect-error — UNSATISFIED DEPENDENCIES: a maybe-instrumented mailer owes the three ports.
+const _dynamic = Module.scoped(Dynamic, (ctx) => OkAsync(ctx.get(Mailer)));
 
 void _instrumented;
 void _unobserved;
