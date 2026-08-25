@@ -29,6 +29,8 @@ features:
     details: SIGTERM flips readiness, waits for endpoint removal to catch up, then stops accepting and gives in-flight work a deadline. Whatever is still open is reported abandoned, not lost silently.
 ---
 
+<CompileErrorDemo />
+
 <!-- doctest: prelude
 import { observability } from "@btravstack/observability";
 import { OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
