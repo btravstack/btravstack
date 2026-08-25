@@ -1,7 +1,7 @@
 import { Err, Ok, TaggedError } from "unthrown";
 import { describe, test } from "vitest";
 
-import { Module, Port, Provider } from "./index.js";
+import { Module, Port, Provider } from "../src/index.js";
 import { type Equal } from "./type-assert.js";
 
 class ConfigError extends TaggedError("MConfigError")<{ readonly reason: string }> {}

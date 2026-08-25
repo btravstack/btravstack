@@ -1,6 +1,6 @@
 import { describe, test } from "vitest";
 
-import { Port, type ServiceOf } from "./index.js";
+import { Port, type ServiceOf } from "../src/index.js";
 
 interface Clock {
   readonly now: () => string;

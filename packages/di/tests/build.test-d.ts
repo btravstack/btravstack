@@ -1,7 +1,7 @@
 import { Err, Ok, TaggedError, type AsyncResult } from "unthrown";
 import { describe, test } from "vitest";
 
-import { Module, Port, Provider, type Context } from "./index.js";
+import { Module, Port, Provider, type Context } from "../src/index.js";
 import { type Equal } from "./type-assert.js";
 
 class CfgError extends TaggedError("BDCfgError")<{ readonly reason: string }> {}

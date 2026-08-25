@@ -9,7 +9,7 @@ import {
   type Scope,
   type ScopedOptions,
   type ServiceOf,
-} from "./index.js";
+} from "../src/index.js";
 
 /**
  * A worked hexagonal example: ports named by the application (`OrderRepository`,

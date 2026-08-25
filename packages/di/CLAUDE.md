@@ -154,12 +154,28 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
 ### Type-level tests
 
 Behaviour that exists only at the type level (phantom-channel variance, arm
-exclusivity, `Scope` gating) is pinned in `src/*.test-d.ts` via
+exclusivity, `Scope` gating) is pinned in `tests/*.test-d.ts` via
 `@ts-expect-error`, checked by `tsc --noEmit -p tsconfig.test-d.json` (part of
 `pnpm typecheck`). These files are excluded from the main tsc pass, from oxlint,
 and from lefthook's pre-commit lint. If you change a type-level guarantee, update
-the matching assertion. `src/type-assert.ts` (`Equal<A, B>`) is a test-only
+the matching assertion. `tests/type-assert.ts` (`Equal<A, B>`) is a test-only
 helper, excluded from knip.
+
+### `src/` ships, `tests/` does not
+
+This is the **first** workspace on the layout the root `CLAUDE.md` states, and
+the reason it went first: 26 files in `src`, of which nine shipped, so every
+source sat between its `.spec.ts` and its `.test-d.ts`. `src` is those nine
+now, and `tests/` holds the seventeen plus the `Equal` helper.
+
+The cost is the second tsconfig, and it is worth naming because a workspace
+that copies this needs both halves. `tsconfig.json` sees `src` and `tests` and
+carries no `rootDir`/`outDir` — a checking pass must be able to see files
+outside the emit root. `tsconfig.build.json` carries them, sees `src` alone,
+and is what `build`/`dev` pass to tsdown with `--tsconfig`. Verified rather
+than assumed: the emitted `dist` hashes identically before and after the
+split, and `test:types` still fails when a single `@ts-expect-error` is
+removed.
 
 ### Two TypeScript versions
 

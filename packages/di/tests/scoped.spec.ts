@@ -1,13 +1,13 @@
 import { Err, Ok, TaggedError } from "unthrown";
 import { expect, test, vi } from "vitest";
 
-import { Module, Port, Provider, type AnyPort } from "./index.js";
+import { Module, Port, Provider, type AnyPort } from "../src/index.js";
 // Deliberately not from `./index.js`: the package deliberately exports `Scope`
 // as a type only, so the class *value* these two defect tests need is not on
 // the public surface at all. Importing it straight from the module that
 // declares it is what lets them keep proving `plan()`'s runtime `portId`
 // check fires — the defence in depth behind the type-only export.
-import { Scope } from "./port.js";
+import { Scope } from "../src/port.js";
 
 class OpenError extends TaggedError("OpenError")<{ readonly which: string }> {}
 
@@ -147,7 +147,7 @@ test("Scope is not on the package's runtime export surface", async () => {
   // is precisely one that leaves no trace in the type of the import — the
   // erasure *is* the property under test, and only the runtime surface can
   // observe it. If someone re-adds `Scope` to the value exports, this fails.
-  const index: Record<string, unknown> = await import("./index.js");
+  const index: Record<string, unknown> = await import("../src/index.js");
   expect(Object.keys(index)).not.toContain("Scope");
   // Control: the value exports that are supposed to be there still are, so
   // this cannot pass by the import silently resolving to nothing.

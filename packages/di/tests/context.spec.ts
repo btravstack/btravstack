@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
-import { unsafeAdd } from "./context.js";
-import { Context, Port } from "./index.js";
+import { unsafeAdd } from "../src/context.js";
+import { Context, Port } from "../src/index.js";
 
 class Logger extends Port("CtxLogger")<{ readonly log: () => string }> {}
 

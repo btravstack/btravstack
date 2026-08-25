@@ -1,7 +1,7 @@
 import { Err, Ok, TaggedError, fromSafePromise } from "unthrown";
 import { expect, test, vi } from "vitest";
 
-import { Module, Port, Provider, overrideProvider } from "./index.js";
+import { Module, Port, Provider, overrideProvider } from "../src/index.js";
 
 class AError extends TaggedError("AError")<{ readonly why: string }> {}
 class BError extends TaggedError("BError")<{ readonly why: string }> {}

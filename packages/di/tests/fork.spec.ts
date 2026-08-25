@@ -1,7 +1,7 @@
 import { Ok } from "unthrown";
 import { expect, test } from "vitest";
 
-import { Module, Port, Provider } from "./index.js";
+import { Module, Port, Provider } from "../src/index.js";
 
 class Pool extends Port("FPool")<{ readonly id: string }> {}
 class Txn extends Port("FTxn")<{ readonly id: string }> {}

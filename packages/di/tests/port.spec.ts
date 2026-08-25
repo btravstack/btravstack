@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { Port } from "./index.js";
+import { Port } from "../src/index.js";
 
 beforeEach(() => void vi.spyOn(console, "warn").mockImplementation(() => {}));
 afterEach(() => void vi.restoreAllMocks());

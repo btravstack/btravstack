@@ -8,7 +8,7 @@ import { expect, test } from "vitest";
 // oxlint-disable-next-line import/no-unassigned-import
 import "@unthrown/vitest";
 
-import { Port, Provider } from "./index.js";
+import { Port, Provider } from "../src/index.js";
 
 class BoomError extends TaggedError("BoomError")<{ readonly why: string }> {}
 class Value extends Port("PValue")<{ readonly n: number }> {}

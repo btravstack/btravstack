@@ -583,6 +583,30 @@ in its place.
 
 ## Toolchain & conventions
 
+- **`src/` ships, `tests/` does not, `generated/` is written by a script.**
+  Three directories, one meaning each, so `ls src` answers "what does this
+  package contain" without the reader filtering. `packages/di` is the first
+  workspace on it — 26 files in `src`, of which 9 shipped, is what prompted
+  the move — and the rest follow one at a time.
+
+  It is not only tidiness: with tests inside `src`, every `vitest.config.ts`
+  needs `exclude: ["src/**/*.spec.ts", "src/**/*.test-d.ts",
+"src/test-fixtures.ts"]` for coverage to mean anything, and that list is a
+  hand-kept copy in every workspace. `@btravstack/cache` shipped with it one
+  entry short and counted a type test as uncovered source. Outside `src`, the
+  rule is structural: `include: ["src/**/*.ts"]` is true by construction and
+  the exclusions disappear.
+
+  What that costs a workspace is a **second tsconfig**, the split
+  `packages/core` already had: `tsconfig.json` sees `src` and `tests` and
+  emits nothing, `tsconfig.build.json` carries `rootDir`/`outDir` and sees
+  `src` alone, and the build says `--tsconfig tsconfig.build.json`. Verified
+  on di: the emitted `dist` is byte-identical either way.
+
+  `__tests__` was considered and declined — it is Jest's word in a vitest
+  repository, and being _inside_ `src/**` it would keep every exclusion list
+  alive, which is the half of the problem worth fixing.
+
 - **`examples/` is part of the gate, not a folder of illustrations.** All
   ten workspaces run under the same six commands as the kernel — their specs
   plus four `needs-gate.test-d.ts` files, four `layering.test-d.ts` ones and
@@ -1374,8 +1398,10 @@ kept; only the structural ones differ.
    those helpers is invisible state a test silently depends on. What a test needs
    should arrive **through its own parameter list**, so the dependency is written
    down at the point of use.
-2. **Helpers are Vitest fixtures, injected via `test.extend`, and they live in a
-   sibling `src/test-fixtures.ts`.** The module exports an extended `it`, which
+2. **Helpers are Vitest fixtures, injected via `test.extend`, and they live in
+   one `test-fixtures.ts` beside the specs** — `tests/` in a workspace whose
+   tests have moved out of `src`, `src/` in one where they have not yet. The
+   module exports an extended `it`, which
    every spec in that package imports instead of vitest's own. Keeping the
    `test.extend` block out of the spec is what makes rule 1 achievable — the
    fixture bodies are themselves helpers, so leaving them above `describe` only

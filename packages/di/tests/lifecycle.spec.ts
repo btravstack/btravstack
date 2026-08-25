@@ -1,7 +1,7 @@
 import { Ok, fromSafePromise } from "unthrown";
 import { expect, test, vi } from "vitest";
 
-import { Module, Port, Provider } from "./index.js";
+import { Module, Port, Provider } from "../src/index.js";
 
 class Server extends Port("LServer")<{ readonly port: number }> {}
 class Worker extends Port("LWorker")<{ readonly name: string }> {}

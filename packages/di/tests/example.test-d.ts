@@ -1,6 +1,6 @@
 import { test } from "vitest";
 
-import { Module, Port, Provider, type Context } from "./index.js";
+import { Module, Port, Provider, type Context } from "../src/index.js";
 
 /**
  * The type-level half of the hexagonal example in `example.spec.ts`: an

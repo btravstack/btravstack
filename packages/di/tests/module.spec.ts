@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { Module, Port, Provider } from "./index.js";
+import { Module, Port, Provider } from "../src/index.js";
 
 describe("Module exports", () => {
   test("a provider export is normalised to its port class", () => {

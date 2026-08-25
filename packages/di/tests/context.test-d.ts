@@ -1,6 +1,6 @@
 import { describe, test } from "vitest";
 
-import { type Context, Port } from "./index.js";
+import { type Context, Port } from "../src/index.js";
 
 class Logger extends Port("Logger")<{ readonly log: (msg: string) => void }> {}
 class Clock extends Port("Clock")<{ readonly now: () => string }> {}
