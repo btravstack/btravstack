@@ -16,8 +16,12 @@ jobs:
   ci:
     uses: btravstack/tools/.github/workflows/ci-reusable.yml@workflows-v1
     with:
-      # "" uses .node-version (the dev version). 22.19 is the ROOT package's
-      # engines floor. 24 and 26 cover the current LTS and the live release
+      # "" uses .node-version (the dev version). 22.22 is the ROOT package's
+      # engines floor — raised from 22.19 with `testcontainers@12.1.0`, which
+      # declares `>= 22.22`; under `engineStrict: true` the floor is whatever
+      # the dev toolchain's highest demand is, so this row and the root
+      # `engines` move together or the install fails here. 24 and 26 cover the
+      # current LTS and the live release
       # line; 24 overlaps "" while .node-version stays on 24.x and is listed
       # explicitly so bumping that file does not silently drop 24 coverage.
       #
@@ -25,7 +29,7 @@ jobs:
       # and cannot be by this matrix: these jobs run the dev toolchain, and
       # pnpm 11 needs `node:sqlite`, which Node 20 does not have. That floor is
       # declared, not proven.
-      node-versions: '["", "22.19", "24", "26"]'
+      node-versions: '["", "22.22", "24", "26"]'
       # The reusable default appends `--coverage`; packages/core already runs
       # `vitest run --coverage` (with 100% thresholds), and the root script is
       # `turbo run test`, which would take the extra flags as its own.

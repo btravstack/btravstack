@@ -118,7 +118,7 @@ pnpm add @btravstack/di unthrown
 :::
 
 Every published package claims `engines: { node: ">=20" }`. The repository's
-own development floor is higher (`>=22.19`); that is the toolchain's floor,
+own development floor is higher (`>=22.22`); that is the toolchain's floor,
 not a promise made to consumers.
 
 ::: info Not yet published

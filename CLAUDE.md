@@ -1050,9 +1050,14 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
 - All ten published packages claim `engines: { node: ">=20" }` while the root
-  claims `>=22.19`. The divergence is **deliberate**: the root floor is the dev
+  claims `>=22.22`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
-  align them for tidiness — raising a published floor is a breaking change.
+  align them for tidiness — raising a published floor is a breaking change,
+  where raising the root's is a maintenance decision the toolchain forces:
+  `engineStrict: true` makes the root floor the highest floor any dev
+  dependency declares, so a bump that raises one (`testcontainers@12.1.0`
+  wanting `>= 22.22`) moves the root `engines` **and** CI's floor row in the
+  same commit, or the install fails on that row.
 - **oxlint rules are binding: no `interface` (use `type`), no `any` (use
   `unknown`).** Genuine exceptions carry a targeted `oxlint-disable` **with a
   reason**. Two are structural: `units.ts`'s `UnitWork` return union
