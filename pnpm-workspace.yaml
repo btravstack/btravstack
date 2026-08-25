@@ -26,7 +26,7 @@ catalog:
   "@btravstack/theme": 2.0.0
   "@btravstack/tsconfig": 0.2.0
   "@btravstack/typedoc": 0.1.0
-  "@changesets/cli": 3.0.0
+  "@changesets/cli": 3.0.1
   "@commitlint/cli": 21.2.2
   # `@amqp-contract/core`'s telemetry module (pulled in by
   # `@amqp-contract/worker`) has a static, unconditional `import
@@ -70,17 +70,17 @@ catalog:
   "@unthrown/vitest": 5.7.0
   knip: 6.32.2
   lefthook: 2.1.10
-  oxfmt: 0.63.0
-  oxlint: 1.78.0
+  oxfmt: 0.64.0
+  oxlint: 1.79.0
   pino: 10.3.1
   prisma: 7.9.1
   redis: 6.2.1
   tsdown: 0.22.14
   tsx: 4.23.12
-  turbo: 2.10.10
+  turbo: 2.10.11
   typedoc: 0.28.20
   typedoc-plugin-markdown: 4.12.0
-  testcontainers: 12.0.4
+  testcontainers: 12.1.0
   typescript: 7.0.2
   # The TypeScript a *consumer* is realistically on, for the second
   # declaration-emit pass in `examples/hexagonal-order-api`
@@ -91,10 +91,10 @@ catalog:
   # twice.
   typescript-consumer: "npm:typescript@5.9.3"
   unthrown: 5.7.0
-  "@vitest/coverage-v8": 4.1.10
+  "@vitest/coverage-v8": 4.1.11
   vitepress: 1.6.4
   supertest: 7.2.2
-  vitest: 4.1.10
+  vitest: 4.1.11
   zod: 4.4.3
 
 catalogs:
@@ -118,10 +118,12 @@ overrides:
   # GHSA-ggr8-5vv4-36mx: deepmerge-ts stack exhaustion when merging recursive
   # object graphs. Reaches us via examples/order-infrastructure > prisma >
   # @prisma/config > deepmerge-ts — the CLI at `generate` time, never a
-  # published package's runtime deps. prisma@7.9.1 is already latest and
-  # @prisma/config still pins ^7, so there is nothing upstream to take; lift
-  # any pre-8 line to 8.0.1. Drop this the moment @prisma/config ships ^8.
-  "deepmerge-ts@<8.0.0": "8.0.1"
+  # published package's runtime deps. Re-measured 2026-08-25: prisma@7.9.1 is
+  # still latest and @prisma/config@7.9.1 pins deepmerge-ts at an exact 7.1.5,
+  # so there is nothing upstream to take (7.1.6 exists and is still under the
+  # advisory's first patched 8.0.0); lift any pre-8 line to 8.0.2. Dropping it
+  # brings the advisory straight back — verified. Issue #54 holds it.
+  "deepmerge-ts@<8.0.0": "8.0.2"
 
 allowBuilds:
   # Prisma 7 is engine-less (WASM query compiler); nothing to build or download.
