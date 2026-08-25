@@ -55,7 +55,7 @@ The generated pages document _signatures_. For what each package is **for**,
 with its install line and worked examples, read
 [Packages and install](/reference/packages) and the hand-written reference
 under it; for _why_ the surface is shaped this way, read
-[Why start?](/explanation/why-start).
+[Why btravstack?](/explanation/why-btravstack).
 :::
 
 ## The shape of the surface

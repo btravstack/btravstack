@@ -1,9 +1,9 @@
 ---
-title: Why start?
+title: Why btravstack?
 description: What the kernel is, what it deliberately is not, and what it gets right that a hand-written main.ts gets wrong.
 ---
 
-# Why start?
+# Why btravstack?
 
 > **Explanation.** This page is about _understanding_ — why the kernel exists,
 > where its edges are, and what was rejected. To get your hands on it first,
@@ -21,7 +21,7 @@ HTTP, AMQP or Temporal.
 That sentence is the whole design. Everything below is what follows from
 holding it.
 
-## `di` proves the graph; `start` owns _when_
+## `di` proves the graph; `btravstack` owns _when_
 
 `di` answers "does this composition hold together?" before the process
 exists: a missing provider, a private port reached across a module boundary, a
@@ -30,7 +30,7 @@ call site (see [Compile errors, not
 surprises](/explanation/compile-time-wiring)). By the time `start` sees a
 module there is nothing left to discover about it.
 
-So **`start` does not wire**. It decides when the already-proven graph is
+So **`btravstack` does not wire**. It decides when the already-proven graph is
 constructed and when it is torn down. Construction is `Module.scoped`; teardown
 is the scope closing; between the two sits the runtime, serving. The kernel is
 DI initialisation plus lifecycle, and it deliberately stops there.
@@ -49,7 +49,7 @@ array is what buys the compile-time checking.
 
 **Not Effect's runtime.** Effect owns how your code _runs_: fibers,
 interruption, `Layer`, a program written as `Effect` values and interpreted by
-a runtime. `start` owns none of that. A use case here is a plain function
+a runtime. `btravstack` owns none of that. A use case here is a plain function
 returning an `unthrown` `Result`; the kernel never sees inside it. What the
 kernel owns is the _process_ around your code — signals, readiness, the
 drain, the exit code — which is precisely the part an effect system leaves to
@@ -119,7 +119,7 @@ ordinary di modules is what keeps it from being a cage.
 
 ## The family
 
-`start` sits on three packages and under four more.
+`btravstack` sits on three packages and under four more.
 
 - [`unthrown`](https://github.com/btravstack/unthrown) — errors as values, with a
   separate defect channel. Every fallible surface here returns its `Result`;
@@ -142,7 +142,7 @@ see [Peer dependencies](/explanation/peer-dependencies).
 
 ## Side by side
 
-|                    | NestJS                                       | Effect                                 | hand-rolled `main.ts`    | `di` + `start`                                            |
+|                    | NestJS                                       | Effect                                 | hand-rolled `main.ts`    | `di` + `btravstack`                                       |
 | ------------------ | -------------------------------------------- | -------------------------------------- | ------------------------ | --------------------------------------------------------- |
 | Wiring checked     | at boot, from decorator metadata             | at compile time, through `Layer` types | not at all               | at compile time, at the `Module` and `start` call         |
 | Missing dependency | boot-time exception                          | compile error                          | `undefined` at call time | compile error                                             |

@@ -18,7 +18,7 @@ declare const run: (ctx: Context<Greeter>) => AsyncResult<string, never>;
 
 > **Explanation.** This page explains how `di` makes forgetting teardown a
 > compile error without a scope object in your code, which failures travel on
-> which channel, and how `start` turns the same scope into a process. For the
+> which channel, and how `btravstack` turns the same scope into a process. For the
 > tasks, see [Manage a resource's lifetime](/how-to/manage-a-resource) and
 > [Open a per-request scope](/how-to/open-a-per-request-scope).
 

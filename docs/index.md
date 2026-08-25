@@ -13,7 +13,7 @@ hero:
       link: /tutorial/getting-started
     - theme: alt
       text: Why start?
-      link: /explanation/why-start
+      link: /explanation/why-btravstack
     - theme: alt
       text: GitHub
       link: https://github.com/btravstack/start

@@ -1,7 +1,7 @@
 import { defineConfig } from "vitepress";
 
 const SITE_DESCRIPTION =
-  "The application kernel for TypeScript: boot a dependency-injection module into a running process — HTTP, Temporal or AMQP — with a drain that survives Kubernetes, and stop it again without losing work.";
+  "btravstack is the TypeScript backend framework whose dependency injection is checked by the compiler: modules and DI without decorators or reflect-metadata, errors as values, and a drain that survives Kubernetes.";
 
 const BASE = "/start/";
 const SITE_URL = `https://btravstack.github.io${BASE}`;
@@ -93,7 +93,7 @@ const GUIDE_SIDEBAR = [
   {
     text: "Explanation",
     items: [
-      { text: "Why start?", link: "/explanation/why-start" },
+      { text: "Why btravstack?", link: "/explanation/why-btravstack" },
       { text: "One process, one runtime", link: "/explanation/one-process-one-runtime" },
       { text: "Compile errors, not surprises", link: "/explanation/compile-time-wiring" },
       { text: "Modules and privacy", link: "/explanation/modules-and-privacy" },
@@ -125,7 +125,7 @@ const EXAMPLES_SIDEBAR = [
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "start",
+  title: "btravstack",
   description: SITE_DESCRIPTION,
   base: BASE,
   lang: "en-US",
@@ -169,7 +169,7 @@ export default defineConfig({
 
     pageData.frontmatter.head.push(["link", { rel: "canonical", href: canonicalUrl }]);
 
-    const pageTitle = pageData.title || pageData.frontmatter.title || "start";
+    const pageTitle = pageData.title || pageData.frontmatter.title || "btravstack";
     const pageDescription =
       pageData.description || pageData.frontmatter.description || SITE_DESCRIPTION;
 
@@ -192,7 +192,7 @@ export default defineConfig({
           { text: "Tutorial", link: "/tutorial/getting-started" },
           { text: "How-to guides", link: "/how-to/configure-from-the-environment" },
           { text: "Reference", link: "/reference/packages" },
-          { text: "Explanation", link: "/explanation/why-start" },
+          { text: "Explanation", link: "/explanation/why-btravstack" },
         ],
       },
       { text: "API", link: "/api/" },
@@ -272,7 +272,7 @@ export default defineConfig({
   head: [
     ["meta", { name: "author", content: "Benoit TRAVERS" }],
     ["meta", { name: "robots", content: "index, follow" }],
-    ["meta", { name: "application-name", content: "start" }],
+    ["meta", { name: "application-name", content: "btravstack" }],
     [
       "meta",
       {
@@ -282,7 +282,7 @@ export default defineConfig({
       },
     ],
     ["meta", { property: "og:type", content: "website" }],
-    ["meta", { property: "og:site_name", content: "start" }],
+    ["meta", { property: "og:site_name", content: "btravstack" }],
     ["meta", { property: "og:locale", content: "en_US" }],
     ["meta", { name: "twitter:card", content: "summary" }],
   ],
