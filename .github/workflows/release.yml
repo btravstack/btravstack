@@ -2,9 +2,19 @@ name: Release
 
 # Publish the twelve packages once CI is green on main, through the same
 # reusable workflow the sibling repositories call. Chaining off CI rather than
-# off the push is `deploy-docs.yml`'s rule, and it matters more here: a tarball
-# is permanent, so a version must never be cut from a commit that does not
-# compile.
+# off the push is `deploy-docs.yml`'s rule.
+#
+# KNOWN GAP, and it is not closable from this file. `deploy-docs.yml` pins its
+# checkout to `github.event.workflow_run.head_sha` — the exact commit the green
+# run measured — because a `workflow_run` checkout otherwise takes the default
+# branch's CURRENT tip, which a push landing after CI went green can have moved.
+# The reusable workflow below checks out without a `ref` and exposes no input
+# for one, so a release IS exposed to that window: if `main` advances between CI
+# going green and this job starting, the publish takes the newer tip. The window
+# is seconds to minutes and the newer commit gets its own CI run, but the
+# artifact here is a permanent tarball rather than a redeployable site, so this
+# is worth closing upstream rather than living with — btravstack/tools#5.
+# `unthrown` has the same gap, being the same call.
 #
 # The flow is changesets' own two-step. A push to main carrying changesets opens
 # (or updates) a release PR with the version bumps and rendered CHANGELOGs;
