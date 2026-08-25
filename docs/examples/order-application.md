@@ -40,15 +40,15 @@ declare const findCustomerProvider: Provider<FindCustomer, never, CustomerReposi
 
 # The order application
 
-[`examples/order-domain`](https://github.com/btravstack/start/tree/main/examples/order-domain),
-[`examples/order-application`](https://github.com/btravstack/start/tree/main/examples/order-application),
-[`examples/order-infrastructure`](https://github.com/btravstack/start/tree/main/examples/order-infrastructure)
+[`examples/order-domain`](https://github.com/btravstack/btravstack/tree/main/examples/order-domain),
+[`examples/order-application`](https://github.com/btravstack/btravstack/tree/main/examples/order-application),
+[`examples/order-infrastructure`](https://github.com/btravstack/btravstack/tree/main/examples/order-infrastructure)
 — the three layers every deployment on the following pages boots unchanged —
 plus
-[`order-api-contract`](https://github.com/btravstack/start/tree/main/examples/order-api-contract),
-[`order-temporal-contract`](https://github.com/btravstack/start/tree/main/examples/order-temporal-contract)
+[`order-api-contract`](https://github.com/btravstack/btravstack/tree/main/examples/order-api-contract),
+[`order-temporal-contract`](https://github.com/btravstack/btravstack/tree/main/examples/order-temporal-contract)
 and
-[`order-amqp-contract`](https://github.com/btravstack/start/tree/main/examples/order-amqp-contract),
+[`order-amqp-contract`](https://github.com/btravstack/btravstack/tree/main/examples/order-amqp-contract),
 the shared artifacts a client takes without the server.
 
 ```sh

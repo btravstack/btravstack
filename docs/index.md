@@ -1,33 +1,35 @@
 ---
 layout: home
-title: start — the application kernel for TypeScript
-description: Boot a dependency-injection module into a running process — HTTP, Temporal or AMQP — with wiring proven at compile time, a drain that survives Kubernetes, and nothing that throws.
+title: btravstack — dependency injection TypeScript can actually check
+description: A TypeScript backend framework whose wiring is proven by the compiler — modules and DI without decorators or reflect-metadata, errors as values, and a drain that survives Kubernetes.
 
 hero:
-  name: "start"
-  text: "The application kernel for TypeScript"
-  tagline: Boot one proven module into one runtime, drain in-flight work on SIGTERM, and close every scope on every path — with the wiring checked before the process exists.
+  name: "btravstack"
+  text: "Dependency injection TypeScript can actually check"
+  tagline: Modules and DI without decorators or reflect-metadata — a missing provider is a compile error at the call site, not a stack trace at boot. Nothing throws. SIGTERM drains in-flight work the way Kubernetes needs.
   actions:
     - theme: brand
       text: Get Started
       link: /tutorial/getting-started
     - theme: alt
-      text: Why start?
-      link: /explanation/why-start
+      text: Coming from NestJS →
+      link: /explanation/coming-from-nestjs
     - theme: alt
       text: GitHub
-      link: https://github.com/btravstack/start
+      link: https://github.com/btravstack/btravstack
 
 features:
+  - title: Wiring proven at compile time
+    details: A module that forgets a provider is a compile error naming the missing ports; a root with no runtime, or a runtime resolving a port the root does not export, fails at the start call. No decorators, no reflect-metadata, no missing provider discovered at boot.
+  - title: Nothing throws
+    details: Every async surface returns an unthrown AsyncResult, the startup error channel stays the application's own, and one place — runMain — decides the process exit code.
   - title: One process, one runtime
     details: An API, a Temporal worker and an AMQP consumer are three processes booting the same module under a different composition root. The runtime is a service of the module, and a graph holds exactly one.
-  - title: Wiring proven at compile time
-    details: A module that forgets a provider, a runtime whose ports are not exported, a root with no runtime — each is a compile error at the call site, before anything runs. That is @btravstack/di, and start builds on it.
   - title: A drain that survives Kubernetes
     details: SIGTERM flips readiness, waits for endpoint removal to catch up, then stops accepting and gives in-flight work a deadline. Whatever is still open is reported abandoned, not lost silently.
-  - title: Nothing throws
-    details: Every async surface is an unthrown AsyncResult, the startup error channel is the application's own, and the process exit code is decided in exactly one place — runMain.
 ---
+
+<CompileErrorDemo />
 
 <!-- doctest: prelude
 import { observability } from "@btravstack/observability";
@@ -150,28 +152,6 @@ Beat two is the whole point — see [Draining, in three beats](/explanation/drai
 
 ## Packages
 
-Eight packages, one dependency direction — `core` → `config` → `di`, every
-starter on top of `core`, and a test harness beside them. Details and install
-lines in [Packages and install](/reference/packages).
-
-- **`@btravstack/di`** — the container: `Port`, `Provider`, `Module`, `Context`.
-  Proves the wiring before the process exists.
-- **`@btravstack/config`** — configuration from the environment, as providers:
-  `Config.object`, `Config.provider`, the `Env` port, `ConfigInvalid`.
-- **`@btravstack/core`** — the kernel: `start`, `runMain`, the lifecycle state
-  machine, the unit registry, the `Runtime` contract — and the `Logger`,
-  `Tracer` and `Meter` ports every other package depends on.
-- **`@btravstack/observability`** — those three ports implemented, as a
-  starter: a logger stamped with the ambient unit's trace id, a
-  dependency-free JSON sink, pino behind a subpath, OpenTelemetry behind
-  another, and the kernel's own events as lines in the same stream.
-- **`@btravstack/http-server`** — the HTTP starter: an oRPC contract served over
-  `node:http`, one unit per request, `defineHttp` and `HttpModule`.
-- **`@btravstack/temporal-worker`** — the Temporal worker starter: one unit per
-  activity attempt, `TemporalActivities` and `TemporalModule`.
-- **`@btravstack/amqp-worker`** — the AMQP consumer starter: one unit per message,
-  `AmqpHandlers` and `AmqpModule`.
-- **`@btravstack/testing`** — the test harness, a dev dependency:
-  `bootFixture` boots and stops applications inside a vitest fixture,
-  `tapped` reaches a service of the running graph, `testRuntime` and
-  `createFakeClock` stand in for a transport and a clock.
+Twelve published packages in four groups — the kernel and its plumbing, one
+server per transport, capability ports, and the harness. Every one of them is
+listed with its install command on [Packages and install](/reference/packages).

@@ -259,5 +259,5 @@ numbers are `preDrainDelayMs` and `drainTimeoutMs` on
   a booted test.
 - [Log and correlate](/how-to/log-and-correlate) — `observability()` next to
   the starter, and the kernel events above as lines in the same stream.
-- [Why start?](/explanation/why-start) — the theses this lesson quietly
+- [Why btravstack?](/explanation/why-btravstack) — the theses this lesson quietly
   followed.

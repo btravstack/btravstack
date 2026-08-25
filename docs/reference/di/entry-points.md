@@ -1,6 +1,6 @@
 ---
 title: Entry points
-description: "Module.build, Module.scoped and Module.forkScope — signatures, the UNSATISFIED DEPENDENCIES marker, ScopedOptions and Context, precisely — and where start takes over for a whole process."
+description: "Module.build, Module.scoped and Module.forkScope — signatures, the UNSATISFIED DEPENDENCIES marker, ScopedOptions and Context, precisely — and where btravstack takes over for a whole process."
 ---
 
 <!-- doctest: prelude

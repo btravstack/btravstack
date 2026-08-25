@@ -4,8 +4,8 @@
 > application depends on, an in-memory adapter, an S3-compatible one with
 > presigned reads, and a span, a count and a log line per operation.
 
-📖 **[Documentation](https://btravstack.github.io/start/reference/storage)** ·
-[API Reference](https://btravstack.github.io/start/api/storage/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/reference/storage)** ·
+[API Reference](https://btravstack.github.io/btravstack/api/storage/)
 
 ```sh
 pnpm add @btravstack/storage @btravstack/core @btravstack/config @btravstack/di unthrown
@@ -15,7 +15,7 @@ Four peer dependencies, plus `@aws-sdk/client-s3` and
 `@aws-sdk/s3-request-presigner` — optional, and needed only if you compose the
 S3 adapter. Instrumentation needs no peer of its own: the `Logger`, `Tracer`
 and `Meter` it depends on are
-[the kernel's ports](https://btravstack.github.io/start/reference/core/observability).
+[the kernel's ports](https://btravstack.github.io/btravstack/reference/core/observability).
 Node `>=20`. Not yet published: this repository has not cut a release yet.
 
 ## A worked example
@@ -117,7 +117,7 @@ export const InvoicesApp = Module("InvoicesApp")({
 | `STORAGE_S3_REGION`                                         | environment                        | default `us-east-1`                                                    |
 
 The full table — defaults, semantics and the reasoning — lives on
-[the reference page](https://btravstack.github.io/start/reference/storage),
+[the reference page](https://btravstack.github.io/btravstack/reference/storage),
 which is this list's one detailed home.
 
 ## What it decides, and what it does not

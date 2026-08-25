@@ -4,8 +4,8 @@
 > depends on, an in-memory and a Redis adapter behind it, and an opt-in
 > composition that spans, counts and logs every call.
 
-📖 **[Documentation](https://btravstack.github.io/start/reference/cache)** ·
-[API Reference](https://btravstack.github.io/start/api/cache/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/reference/cache)** ·
+[API Reference](https://btravstack.github.io/btravstack/api/cache/)
 
 ```sh
 pnpm add @btravstack/cache @btravstack/core @btravstack/config @btravstack/di unthrown
@@ -14,7 +14,7 @@ pnpm add @btravstack/cache @btravstack/core @btravstack/config @btravstack/di un
 Four peer dependencies, plus `redis` — optional, and needed only if you
 compose the Redis adapter. Instrumentation needs no peer of its own: the
 `Logger`, `Tracer` and `Meter` it depends on are
-[the kernel's ports](https://btravstack.github.io/start/reference/core/observability),
+[the kernel's ports](https://btravstack.github.io/btravstack/reference/core/observability),
 and `@btravstack/observability` is what an application composes to satisfy
 them. Node `>=20`. Not yet published: this repository has not cut a release
 yet.
@@ -128,7 +128,7 @@ export const CustomersApp = Module("CustomersApp")({
 | `ttlMs`        | `cache.set(key, value, { … })`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted)                             |
 
 The full table — defaults, semantics and the reasoning — lives on
-[the reference page](https://btravstack.github.io/start/reference/cache),
+[the reference page](https://btravstack.github.io/btravstack/reference/cache),
 which is this list's one detailed home.
 
 ## What it decides, and what it does not

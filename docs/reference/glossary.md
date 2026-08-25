@@ -1,6 +1,6 @@
 ---
 title: Glossary
-description: Short definitions of the terms used throughout the start documentation, each linking to the page that treats it.
+description: Short definitions of the terms used throughout the btravstack documentation, each linking to the page that treats it.
 ---
 
 # Glossary

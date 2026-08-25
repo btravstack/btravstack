@@ -7,9 +7,9 @@
 > [`@btravstack/core`](../core)'s `runMain` reports as a `startFailed` event and
 > exit code `78`.
 
-📖 **[Documentation](https://btravstack.github.io/start/how-to/configure-from-the-environment)** ·
-[Reference](https://btravstack.github.io/start/reference/config) ·
-[API Reference](https://btravstack.github.io/start/api/config/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/how-to/configure-from-the-environment)** ·
+[Reference](https://btravstack.github.io/btravstack/reference/config) ·
+[API Reference](https://btravstack.github.io/btravstack/api/config/)
 
 ```sh
 pnpm add @btravstack/config @btravstack/di unthrown
@@ -86,7 +86,7 @@ names every fault at once. `Config.pinned(value, field)` is how a starter's
 option beats the environment, per field. Any Standard Schema (`zod`,
 `valibot`, `arktype`) is accepted in place of `Config.object`. The full
 semantics, `ConfigInvalid`'s message and `ConfigFieldInvalid` are on the
-[documentation site](https://btravstack.github.io/start/reference/config).
+[documentation site](https://btravstack.github.io/btravstack/reference/config).
 
 ## License
 

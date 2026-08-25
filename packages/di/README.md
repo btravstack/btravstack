@@ -6,9 +6,9 @@
 > outside sees — and every wiring mistake the compiler can catch is a compile
 > error, not a runtime surprise.
 
-📖 **[Documentation](https://btravstack.github.io/start/reference/di/ports)** ·
-[Getting started](https://btravstack.github.io/start/tutorial/getting-started) ·
-[API Reference](https://btravstack.github.io/start/api/di/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/reference/di/ports)** ·
+[Getting started](https://btravstack.github.io/btravstack/tutorial/getting-started) ·
+[API Reference](https://btravstack.github.io/btravstack/api/di/)
 
 ```sh
 pnpm add @btravstack/di unthrown
@@ -81,8 +81,8 @@ The five provider arms — `value`, `sync`, `make` (may fail, with a modeled
 error), `class`, `acquire`/`release` (a resource, released when the scope
 closes) — the private-by-default modules,
 `Module.forkScope` for a per-request scope, and the compile-time gates that
-carry what is missing are on the [documentation site](https://btravstack.github.io/start/reference/di/ports).
-Under [`@btravstack/core`](https://btravstack.github.io/start/reference/core/start), `start(module)` is the
+carry what is missing are on the [documentation site](https://btravstack.github.io/btravstack/reference/di/ports).
+Under [`@btravstack/core`](https://btravstack.github.io/btravstack/reference/core/start), `start(module)` is the
 one `Module.scoped` call a process makes.
 
 ## License

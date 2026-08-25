@@ -27,9 +27,9 @@ class OrderRepository extends Port("OrderRepository")<{
 > unit's trace id, a dependency-free JSON sink, pino behind a subpath, and the
 > kernel's nine lifecycle events as log lines in the same stream.
 
-📖 **[Documentation](https://btravstack.github.io/start/reference/observability)** ·
-[How-to](https://btravstack.github.io/start/how-to/log-and-correlate) ·
-[API Reference](https://btravstack.github.io/start/api/observability/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/reference/observability)** ·
+[How-to](https://btravstack.github.io/btravstack/how-to/log-and-correlate) ·
+[API Reference](https://btravstack.github.io/btravstack/api/observability/)
 
 ```sh
 pnpm add @btravstack/observability @btravstack/core @btravstack/config @btravstack/di unthrown
@@ -158,7 +158,7 @@ Inbound W3C `traceparent` feeds the unit's trace id in `@btravstack/http-server`
 (`node --import @opentelemetry/auto-instrumentations-node/register`) — it
 cannot be a provider, and the package does not pretend otherwise. Full
 semantics on
-[the reference page](https://btravstack.github.io/start/reference/observability).
+[the reference page](https://btravstack.github.io/btravstack/reference/observability).
 
 ## License
 

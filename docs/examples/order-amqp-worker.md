@@ -36,7 +36,7 @@ import type { AsyncResult } from "unthrown";
 
 # Order AMQP worker
 
-[`examples/order-amqp-worker`](https://github.com/btravstack/start/tree/main/examples/order-amqp-worker)
+[`examples/order-amqp-worker`](https://github.com/btravstack/btravstack/tree/main/examples/order-amqp-worker)
 — the broadcast deployment: [the order application](/examples/order-application)
 telling everyone what happened, served by [`@btravstack/amqp-worker`](/reference/amqp-worker).
 

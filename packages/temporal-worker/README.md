@@ -6,9 +6,9 @@
 > activity attempt; and a drain that releases the kernel at the **kernel's**
 > deadline, not Temporal's `shutdownForceTime`.
 
-📖 **[Documentation](https://btravstack.github.io/start/how-to/run-a-temporal-worker)** ·
-[Reference](https://btravstack.github.io/start/reference/temporal-worker) ·
-[API Reference](https://btravstack.github.io/start/api/temporal-worker/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/how-to/run-a-temporal-worker)** ·
+[Reference](https://btravstack.github.io/btravstack/reference/temporal-worker) ·
+[API Reference](https://btravstack.github.io/btravstack/api/temporal-worker/)
 
 ```sh
 pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
@@ -153,7 +153,7 @@ supplies it:
 | `forceAfter`  | Temporal's `shutdownForceTime`, a `Duration` (default `"15 seconds"`) — keep it under `drainTimeoutMs` |
 
 The full table — required/optional, defaults, and the reasoning — lives on
-[the reference page](https://btravstack.github.io/start/reference/temporal-worker),
+[the reference page](https://btravstack.github.io/btravstack/reference/temporal-worker),
 which is this list's one detailed home.
 
 ## The drain
@@ -166,7 +166,7 @@ work is reported `abandoned`, and the worker keeps winding down on Temporal's
 clock until the process exits. `@temporalio/worker` exposes no public forced
 shutdown, so "stop waiting" is the escalation. `Result` → activity failure is
 `declareActivitiesHandler`'s and is deliberately not duplicated here. The rest
-is on the [documentation site](https://btravstack.github.io/start/reference/temporal-worker).
+is on the [documentation site](https://btravstack.github.io/btravstack/reference/temporal-worker).
 
 ## License
 

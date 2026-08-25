@@ -14,7 +14,8 @@ application scope on every path. It owns three things — the lifecycle state
 machine, the unit-of-work registry, and the `Runtime` contract — and knows
 nothing about HTTP, AMQP or Temporal.
 
-`di` proves the wiring before the process exists. `start` owns **when** an
+`di` proves the wiring before the process exists. `@btravstack/core` owns
+**when** an
 already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
@@ -1116,10 +1117,17 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   that never imports `@btravstack/observability/pino` never installs it, and
   the package's own `tsdown` build emits `src/pino.ts` as a second entry
   point for exactly that. `@btravstack/observability/otel` follows it, and
-  `@btravstack/cache` now has three subpaths on the same protocol — `redis`
-  behind `/redis`, and `@btravstack/observability` + `@opentelemetry/api`
-  behind `/instrumented`, so a graph composing the plain `cache()` over the
+  each of the three application-service ports carries exactly one more:
+  `redis` behind `@btravstack/cache/redis`, `nodemailer` behind
+  `@btravstack/mailer/smtp`, and the two `@aws-sdk` packages behind
+  `@btravstack/storage/s3` — every one of them `optional: true` in
+  `peerDependenciesMeta`, so a graph composing the plain `cache()` over the
   memory adapter installs none of them.
+  **Instrumentation is not one of these, and needs no subpath**: `instrument.ts`
+  imports `Logger` and `Meter` from `@btravstack/core`, which is where those
+  ports are declared, so the `instrumented` flag costs a consumer no dependency
+  at all. That is the reason the trio lives in `core` rather than in
+  `@btravstack/observability`.
 - **`packages/core`'s specs use `@btravstack/testing`, which peers on core —
   and it is NOT a devDependency of core**, because that would be a
   package-graph cycle turbo refuses. Instead: `packages/core/tsconfig.json`
@@ -1294,7 +1302,7 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
 ## Documentation site
 
 `docs/` is `@btravstack/docs`, the VitePress site published to
-`https://btravstack.github.io/start/` — the same tooling and shape as
+`https://btravstack.github.io/btravstack/` — the same tooling and shape as
 `unthrown`'s: `@btravstack/theme`, one shared sidebar over the four Diátaxis
 modes (`tutorial/`, `how-to/`, `reference/`, `explanation/`), `examples/`
 walkthroughs of the ten example workspaces, and a TypeDoc-generated

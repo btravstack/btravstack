@@ -1,13 +1,13 @@
 {
   "name": "@btravstack/docs",
   "private": true,
-  "description": "Documentation website for start",
+  "description": "Documentation website for btravstack",
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "type": "module",
   "scripts": {
-    "build": "tsx scripts/build-api.ts && vitepress build .",
-    "dev": "tsx scripts/build-api.ts && vitepress dev .",
+    "build": "tsx scripts/check-demo-fidelity.ts && tsx scripts/build-api.ts && vitepress build .",
+    "dev": "tsx scripts/check-demo-fidelity.ts && tsx scripts/build-api.ts && vitepress dev .",
     "preview": "vitepress preview ."
   },
   "devDependencies": {

@@ -168,6 +168,9 @@ yet. The commands above are what they will be once it has.
 | `@btravstack/observability`      | `createLogger`, `jsonSink`, `observability`, `LoggerConfig`, `logLevel`, `kernelEvents`, `Line`, `Sink` — and `pinoSink` / `otel` / `UnitSpanModule` behind their subpaths. The ports it implements are the kernel's — see [@btravstack/observability](/reference/observability) |
 | `@btravstack/observability/pino` | `pinoSink` alone, so `pino` stays an optional peer a consumer that never imports this never installs                                                                                                                                                                             |
 
-All nine packages ship dual CJS/ESM builds with `.d.ts` files and no source
-maps (the tarball carries no `src/`, so a map would be a dead end).
-`@btravstack/observability` is the only one with a second entry point.
+All twelve packages ship dual CJS/ESM builds with `.d.ts` files and no source
+maps (the tarball carries no `src/`, so a map would be a dead end). Four of them
+carry extra entry points, all on the optional-peer protocol:
+`@btravstack/observability` behind `/pino` and `/otel`, `@btravstack/cache`
+behind `/redis`, `@btravstack/mailer` behind `/smtp`, and `@btravstack/storage`
+behind `/s3`.

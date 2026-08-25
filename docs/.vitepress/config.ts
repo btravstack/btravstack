@@ -1,9 +1,9 @@
 import { defineConfig } from "vitepress";
 
 const SITE_DESCRIPTION =
-  "The application kernel for TypeScript: boot a dependency-injection module into a running process — HTTP, Temporal or AMQP — with a drain that survives Kubernetes, and stop it again without losing work.";
+  "btravstack is the TypeScript backend framework whose dependency injection is checked by the compiler: modules and DI without decorators or reflect-metadata, errors as values, and a drain that survives Kubernetes.";
 
-const BASE = "/start/";
+const BASE = "/btravstack/";
 const SITE_URL = `https://btravstack.github.io${BASE}`;
 
 // The guide is structured by the four Diátaxis modes (https://diataxis.fr/): a
@@ -24,68 +24,129 @@ const GUIDE_SIDEBAR = [
   {
     text: "How-to guides",
     items: [
-      { text: "Configure from the environment", link: "/how-to/configure-from-the-environment" },
-      { text: "Log and correlate", link: "/how-to/log-and-correlate" },
-      { text: "Serve an oRPC contract over HTTP", link: "/how-to/serve-orpc-over-http" },
-      { text: "Split a router into controllers", link: "/how-to/split-a-router-into-controllers" },
-      { text: "Protect a procedure", link: "/how-to/protect-a-procedure" },
-      { text: "Split a worker into slices", link: "/how-to/split-a-worker-into-slices" },
-      { text: "Run a Temporal worker", link: "/how-to/run-a-temporal-worker" },
-      { text: "Consume AMQP messages", link: "/how-to/consume-amqp-messages" },
-      { text: "Open a per-request scope", link: "/how-to/open-a-per-request-scope" },
-      { text: "Manage a resource's lifetime", link: "/how-to/manage-a-resource" },
-      { text: "Swap an adapter for tests", link: "/how-to/swap-an-adapter" },
-      { text: "Test an application", link: "/how-to/test-an-application" },
       {
-        text: "Run several deployments locally",
-        link: "/how-to/run-several-deployments-locally",
+        text: "Foundations",
+        collapsed: false,
+        items: [
+          {
+            text: "Configure from the environment",
+            link: "/how-to/configure-from-the-environment",
+          },
+          { text: "Log and correlate", link: "/how-to/log-and-correlate" },
+          { text: "Open a per-request scope", link: "/how-to/open-a-per-request-scope" },
+          { text: "Manage a resource's lifetime", link: "/how-to/manage-a-resource" },
+          { text: "Keep a port private", link: "/how-to/keep-a-port-private" },
+          {
+            text: "Read the ambient unit from an adapter",
+            link: "/how-to/read-the-ambient-unit",
+          },
+        ],
       },
-      { text: "Tune the drain for Kubernetes", link: "/how-to/tune-the-drain-for-kubernetes" },
-      { text: "Embed without runMain", link: "/how-to/embed-without-run-main" },
-      { text: "Write a runtime", link: "/how-to/write-a-runtime" },
-      { text: "Read the ambient unit from an adapter", link: "/how-to/read-the-ambient-unit" },
-      { text: "Keep a port private", link: "/how-to/keep-a-port-private" },
+      {
+        text: "HTTP",
+        collapsed: false,
+        items: [
+          { text: "Serve an oRPC contract over HTTP", link: "/how-to/serve-orpc-over-http" },
+          {
+            text: "Split a router into controllers",
+            link: "/how-to/split-a-router-into-controllers",
+          },
+          { text: "Protect a procedure", link: "/how-to/protect-a-procedure" },
+        ],
+      },
+      {
+        text: "Workers",
+        collapsed: false,
+        items: [
+          { text: "Run a Temporal worker", link: "/how-to/run-a-temporal-worker" },
+          { text: "Consume AMQP messages", link: "/how-to/consume-amqp-messages" },
+          { text: "Split a worker into slices", link: "/how-to/split-a-worker-into-slices" },
+        ],
+      },
+      {
+        text: "Testing",
+        collapsed: false,
+        items: [
+          { text: "Test an application", link: "/how-to/test-an-application" },
+          { text: "Swap an adapter for tests", link: "/how-to/swap-an-adapter" },
+        ],
+      },
+      {
+        text: "Operations",
+        collapsed: false,
+        items: [
+          { text: "Tune the drain for Kubernetes", link: "/how-to/tune-the-drain-for-kubernetes" },
+          { text: "Embed without runMain", link: "/how-to/embed-without-run-main" },
+          {
+            text: "Run several deployments locally",
+            link: "/how-to/run-several-deployments-locally",
+          },
+          { text: "Write a runtime", link: "/how-to/write-a-runtime" },
+        ],
+      },
     ],
   },
   {
     text: "Reference",
     items: [
       { text: "Packages and install", link: "/reference/packages" },
-      { text: "@btravstack/contract", link: "/reference/contract" },
       {
-        text: "@btravstack/di",
+        text: "The kernel and its plumbing",
         collapsed: false,
         items: [
-          { text: "Ports", link: "/reference/di/ports" },
-          { text: "Providers", link: "/reference/di/providers" },
-          { text: "Modules", link: "/reference/di/modules" },
-          { text: "Entry points", link: "/reference/di/entry-points" },
-          { text: "Wiring defects", link: "/reference/di/wiring-defects" },
+          { text: "@btravstack/contract", link: "/reference/contract" },
+          {
+            text: "@btravstack/di",
+            collapsed: false,
+            items: [
+              { text: "Ports", link: "/reference/di/ports" },
+              { text: "Providers", link: "/reference/di/providers" },
+              { text: "Modules", link: "/reference/di/modules" },
+              { text: "Entry points", link: "/reference/di/entry-points" },
+              { text: "Wiring defects", link: "/reference/di/wiring-defects" },
+            ],
+          },
+          { text: "@btravstack/config", link: "/reference/config" },
+          {
+            text: "@btravstack/core",
+            collapsed: false,
+            items: [
+              { text: "start and StartOptions", link: "/reference/core/start" },
+              { text: "RunningApp", link: "/reference/core/running-app" },
+              { text: "The Runtime contract", link: "/reference/core/runtime" },
+              { text: "ExitReport and DrainReport", link: "/reference/core/exit-report" },
+              { text: "Kernel events", link: "/reference/core/events" },
+              { text: "Observability contracts", link: "/reference/core/observability" },
+              { text: "runMain and exit codes", link: "/reference/core/exit-codes" },
+              { text: "Probes", link: "/reference/core/probes" },
+            ],
+          },
         ],
       },
-      { text: "@btravstack/config", link: "/reference/config" },
       {
-        text: "@btravstack/core",
+        text: "Servers",
         collapsed: false,
         items: [
-          { text: "start and StartOptions", link: "/reference/core/start" },
-          { text: "RunningApp", link: "/reference/core/running-app" },
-          { text: "The Runtime contract", link: "/reference/core/runtime" },
-          { text: "ExitReport and DrainReport", link: "/reference/core/exit-report" },
-          { text: "Kernel events", link: "/reference/core/events" },
-          { text: "Observability contracts", link: "/reference/core/observability" },
-          { text: "runMain and exit codes", link: "/reference/core/exit-codes" },
-          { text: "Probes", link: "/reference/core/probes" },
+          { text: "@btravstack/http-server", link: "/reference/http-server" },
+          { text: "@btravstack/temporal-worker", link: "/reference/temporal-worker" },
+          { text: "@btravstack/amqp-worker", link: "/reference/amqp-worker" },
         ],
       },
-      { text: "@btravstack/observability", link: "/reference/observability" },
-      { text: "@btravstack/cache", link: "/reference/cache" },
-      { text: "@btravstack/mailer", link: "/reference/mailer" },
-      { text: "@btravstack/storage", link: "/reference/storage" },
-      { text: "@btravstack/testing", link: "/reference/testing" },
-      { text: "@btravstack/http-server", link: "/reference/http-server" },
-      { text: "@btravstack/temporal-worker", link: "/reference/temporal-worker" },
-      { text: "@btravstack/amqp-worker", link: "/reference/amqp-worker" },
+      {
+        text: "Capability ports",
+        collapsed: false,
+        items: [
+          { text: "@btravstack/observability", link: "/reference/observability" },
+          { text: "@btravstack/cache", link: "/reference/cache" },
+          { text: "@btravstack/mailer", link: "/reference/mailer" },
+          { text: "@btravstack/storage", link: "/reference/storage" },
+        ],
+      },
+      {
+        text: "The harness",
+        collapsed: false,
+        items: [{ text: "@btravstack/testing", link: "/reference/testing" }],
+      },
       { text: "Glossary", link: "/reference/glossary" },
       { text: "API reference", link: "/api/" },
     ],
@@ -93,18 +154,31 @@ const GUIDE_SIDEBAR = [
   {
     text: "Explanation",
     items: [
-      { text: "Why start?", link: "/explanation/why-start" },
-      { text: "One process, one runtime", link: "/explanation/one-process-one-runtime" },
-      { text: "Compile errors, not surprises", link: "/explanation/compile-time-wiring" },
-      { text: "Modules and privacy", link: "/explanation/modules-and-privacy" },
-      { text: "Scopes and resource safety", link: "/explanation/scopes-and-resources" },
-      { text: "Ambient data, injected capabilities", link: "/explanation/ambient-vs-context" },
-      { text: "Draining, in three beats", link: "/explanation/draining-in-three-beats" },
-      { text: "The kernel maps nothing", link: "/explanation/the-kernel-maps-nothing" },
-      { text: "Nothing throws", link: "/explanation/nothing-throws" },
-      { text: "Starters", link: "/explanation/starters" },
-      { text: "Peer dependencies", link: "/explanation/peer-dependencies" },
-      { text: "Design decisions", link: "/explanation/design-decisions" },
+      {
+        text: "Theses",
+        collapsed: false,
+        items: [
+          { text: "Why btravstack?", link: "/explanation/why-btravstack" },
+          { text: "Coming from NestJS", link: "/explanation/coming-from-nestjs" },
+          { text: "One process, one runtime", link: "/explanation/one-process-one-runtime" },
+          { text: "Compile errors, not surprises", link: "/explanation/compile-time-wiring" },
+          { text: "Nothing throws", link: "/explanation/nothing-throws" },
+          { text: "The kernel maps nothing", link: "/explanation/the-kernel-maps-nothing" },
+          { text: "Draining, in three beats", link: "/explanation/draining-in-three-beats" },
+        ],
+      },
+      {
+        text: "Mechanics",
+        collapsed: false,
+        items: [
+          { text: "Modules and privacy", link: "/explanation/modules-and-privacy" },
+          { text: "Scopes and resource safety", link: "/explanation/scopes-and-resources" },
+          { text: "Ambient data, injected capabilities", link: "/explanation/ambient-vs-context" },
+          { text: "Starters", link: "/explanation/starters" },
+          { text: "Peer dependencies", link: "/explanation/peer-dependencies" },
+          { text: "Design decisions", link: "/explanation/design-decisions" },
+        ],
+      },
     ],
   },
 ];
@@ -125,7 +199,7 @@ const EXAMPLES_SIDEBAR = [
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "start",
+  title: "btravstack",
   description: SITE_DESCRIPTION,
   base: BASE,
   lang: "en-US",
@@ -169,7 +243,7 @@ export default defineConfig({
 
     pageData.frontmatter.head.push(["link", { rel: "canonical", href: canonicalUrl }]);
 
-    const pageTitle = pageData.title || pageData.frontmatter.title || "start";
+    const pageTitle = pageData.title || pageData.frontmatter.title || "btravstack";
     const pageDescription =
       pageData.description || pageData.frontmatter.description || SITE_DESCRIPTION;
 
@@ -192,14 +266,15 @@ export default defineConfig({
           { text: "Tutorial", link: "/tutorial/getting-started" },
           { text: "How-to guides", link: "/how-to/configure-from-the-environment" },
           { text: "Reference", link: "/reference/packages" },
-          { text: "Explanation", link: "/explanation/why-start" },
+          { text: "Explanation", link: "/explanation/why-btravstack" },
         ],
       },
+      { text: "Packages", link: "/reference/packages" },
       { text: "API", link: "/api/" },
       { text: "Examples", link: "/examples/" },
       {
         text: "Changelog",
-        link: "https://github.com/btravstack/start/releases",
+        link: "https://github.com/btravstack/btravstack/releases",
       },
       // Back to the btravstack hub (links the docs up to the landing page).
       { text: "btravstack", link: "https://btravstack.github.io/" },
@@ -238,7 +313,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: "github", link: "https://github.com/btravstack/start" },
+      { icon: "github", link: "https://github.com/btravstack/btravstack" },
       { icon: "npm", link: "https://www.npmjs.com/package/@btravstack/core" },
     ],
 
@@ -256,7 +331,7 @@ export default defineConfig({
     outline: { level: [2, 3] },
 
     editLink: {
-      pattern: "https://github.com/btravstack/start/edit/main/docs/:path",
+      pattern: "https://github.com/btravstack/btravstack/edit/main/docs/:path",
       text: "Edit this page on GitHub",
     },
   },
@@ -272,7 +347,7 @@ export default defineConfig({
   head: [
     ["meta", { name: "author", content: "Benoit TRAVERS" }],
     ["meta", { name: "robots", content: "index, follow" }],
-    ["meta", { name: "application-name", content: "start" }],
+    ["meta", { name: "application-name", content: "btravstack" }],
     [
       "meta",
       {
@@ -282,7 +357,7 @@ export default defineConfig({
       },
     ],
     ["meta", { property: "og:type", content: "website" }],
-    ["meta", { property: "og:site_name", content: "start" }],
+    ["meta", { property: "og:site_name", content: "btravstack" }],
     ["meta", { property: "og:locale", content: "en_US" }],
     ["meta", { name: "twitter:card", content: "summary" }],
   ],

@@ -12,7 +12,7 @@ reporting.
 
 Report privately through one of:
 
-- **GitHub Security Advisories** — [open a private report](https://github.com/btravstack/start/security/advisories/new)
+- **GitHub Security Advisories** — [open a private report](https://github.com/btravstack/btravstack/security/advisories/new)
   (preferred; keeps the discussion and fix coordination in one place).
 - **Email** — `btravers.pro@gmail.com`.
 
