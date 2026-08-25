@@ -1,16 +1,16 @@
 import Theme from "@btravstack/theme";
-
-import CompileErrorDemo from "./CompileErrorDemo.vue";
+import type { EnhanceAppContext, Theme as VitePressTheme } from "vitepress";
 
 import "./custom.css";
 
+import CompileErrorDemo from "./CompileErrorDemo.vue";
+
 export default {
   ...Theme,
-  // Spreading `Theme` and defining `enhanceApp` REPLACES the theme's own, so
-  // the whole context is forwarded — not just `app`, which would silently drop
-  // `router` and `siteData` the day the theme starts reading them.
-  enhanceApp(ctx: { app: { component: (name: string, c: unknown) => void } }) {
-    Theme.enhanceApp?.(ctx as never);
+  // Spreading `Theme` and defining `enhanceApp` replaces the theme's own, so
+  // the context is forwarded to it whole rather than dropped.
+  enhanceApp(ctx: EnhanceAppContext) {
+    Theme.enhanceApp?.(ctx);
     ctx.app.component("CompileErrorDemo", CompileErrorDemo);
   },
-};
+} satisfies VitePressTheme;
