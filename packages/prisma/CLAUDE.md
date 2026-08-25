@@ -63,14 +63,23 @@ span here would sit beside it on every query carrying strictly less. What the
 wrapper keeps is the pair Prisma's instrumentation does not do at all: a metric,
 and an error line correlated with the ambient unit.
 
-`prismaTracing()` can be a provider at all because `@prisma/instrumentation`
-does **not** patch modules: `enable()` sets a helper on `globalThis` under a
-versioned key and a client looks it up per query, so registration order is free.
-The `--import` preload rule in `packages/observability/CLAUDE.md` governs
-patching instrumentations and does not reach this one — a distinction worth
-keeping straight, since an earlier revision applied that rule here without
-checking whether it belonged. Its `Tracer` dependency is for ORDERING, not
-value: it is what forces `otel()`'s SDK up first.
+**Engine tracing turns itself on**, with no wiring at a composition root: the
+instrumented arm calls `enableTracing`, which **dynamically imports**
+`@prisma/instrumentation` and enables it. The import has to be dynamic — the
+package is an OPTIONAL peer, and a static import would make every consumer
+install it. A failure to resolve is an ordinary answer, logged at `debug`; the
+skip is never silent, because telemetry you believe you have and do not is
+worse than none. `tracing.ts` takes its loader as a parameter so both arms are
+testable.
+
+It can be a provider at all because `@prisma/instrumentation` does **not** patch
+modules: `enable()` sets a helper on `globalThis` under a versioned key and a
+client looks it up per query, so registration order is free. The `--import`
+preload rule in `packages/observability/CLAUDE.md` governs patching
+instrumentations and does not reach this one — a distinction worth keeping
+straight, since an earlier revision applied that rule here without checking
+whether it belonged. The `Tracer` dependency is for ORDERING, not value: it is
+what forces `otel()`'s SDK up first.
 
 **A generated client can be instrumented, and an earlier revision of this file
 said it could not.** That claim — repeated in issue #135's decision comment —

@@ -1,5 +1,5 @@
 import { Env } from "@btravstack/config";
-import { Logger, Meter } from "@btravstack/core";
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
@@ -80,6 +80,7 @@ describe("prismaDatabase", () => {
         Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
         Provider(Logger)({ value: telemetry.logger }),
         Provider(Meter)({ value: telemetry.meter }),
+        Provider(Tracer)({ value: telemetry.tracer }),
       ],
       exports: [db.port],
     });

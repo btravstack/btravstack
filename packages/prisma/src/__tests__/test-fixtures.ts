@@ -28,6 +28,7 @@ export type Recorded = {
   readonly spans: readonly { name: string; attributes: Attributes; failed: boolean }[];
   readonly counts: readonly { value: number; attributes: Attributes }[];
   readonly errors: readonly { message: string; attributes: Attributes }[];
+  readonly debug: readonly { message: string }[];
 };
 
 export type Telemetry = {
@@ -78,6 +79,7 @@ export const it = test.extend<{ stub: Stub; telemetry: Telemetry }>({
     const spans: { name: string; attributes: Attributes; failed: boolean }[] = [];
     const counts: { value: number; attributes: Attributes }[] = [];
     const errors: { message: string; attributes: Attributes }[] = [];
+    const debug: { message: string }[] = [];
 
     const counter: Counter = {
       add: (value, attributes) => counts.push({ value, attributes: attributes ?? {} }),
@@ -86,7 +88,7 @@ export const it = test.extend<{ stub: Stub; telemetry: Telemetry }>({
     await use({
       logger: {
         trace: noop,
-        debug: noop,
+        debug: (message: string) => debug.push({ message }),
         info: noop,
         warn: noop,
         error: (message: string, attributes?: Attributes) =>
@@ -109,7 +111,7 @@ export const it = test.extend<{ stub: Stub; telemetry: Telemetry }>({
         },
       } as unknown as TracerService,
       meter: { createCounter: () => counter } as unknown as MeterService,
-      recorded: () => ({ spans, counts, errors }),
+      recorded: () => ({ spans, counts, errors, debug }),
     });
   },
 });

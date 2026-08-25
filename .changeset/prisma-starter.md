@@ -36,25 +36,32 @@ package.
 the schema of because `$extends` takes a `query` component and
 `$allModels.$allOperations` intercepts every operation on every model.
 
-**Tracing is a separate opt-in, `@btravstack/prisma/otel`**, and it is Prisma's
-own instrumentation rather than ours:
+**Engine-level tracing turns itself on**, with nothing to wire at a composition
+root. When `instrumented` is on and `@prisma/instrumentation` is installed, the
+starter enables Prisma's own OpenTelemetry instrumentation:
 
-```ts
-imports: [database, observability(), otel(), prismaTracing()];
+```sh
+pnpm add @prisma/instrumentation
 ```
 
-`prismaTracing()` enables `@prisma/instrumentation`, which traces at the
-**engine** level — the real SQL, the connection acquisition, the serialisation
-— below anything a client-level wrapper can reach. So the wrapper above emits
-**no span**: a client-level one would sit beside Prisma's on every query
+That traces the **engine** — the real SQL, the connection acquisition, the
+serialisation — below anything a client-level wrapper can reach. So the wrapper
+emits **no span**: a client-level one would sit beside Prisma's on every query
 carrying strictly less. What it keeps is the pair Prisma's instrumentation does
 not do at all, a metric and an error line.
+
+`@prisma/instrumentation` is an **optional peer**, loaded by dynamic import — a
+static one would make every consumer install it. An application without it keeps
+the counter and the error line, and the skip is logged at `debug` rather than
+left silent, because telemetry you believe you have and do not is worse than
+none.
 
 It can be a provider rather than an `--import` preload because
 `@prisma/instrumentation` does not patch modules: `enable()` sets a helper on
 `globalThis` under a versioned key and a client reads it per query, so
-registration order is free. `@prisma/instrumentation` is an **optional peer**
-behind the subpath, so an application that does not import it installs nothing.
+registration order is free. `Tracer` is depended on for its ordering rather than
+its value — `otel()` sets the global tracer provider while building that port,
+so naming it is what puts the SDK up first.
 
 Not included, deliberately: migrations (a deployment runs `prisma migrate
 deploy` before the process starts; an application that migrates at boot races

@@ -126,38 +126,35 @@ statement, not here.
 dials again lazily on the next statement, which is why no test asserts that a
 released client refuses to query.
 
-## `prismaTracing()` — from `@btravstack/prisma/otel`
+## Engine-level tracing, with no wiring
 
-<!-- doctest: skip — an imports-list excerpt, not a statement -->
+When `instrumented` is on and **`@prisma/instrumentation` is installed**, the
+starter turns on Prisma's own OpenTelemetry instrumentation itself. There is
+nothing to import and nothing to compose:
 
-```ts
-imports: [database, observability(), otel(), prismaTracing()];
+```sh
+pnpm add @prisma/instrumentation
 ```
 
-Prisma's own `@prisma/instrumentation`, as a module. It traces at the **engine**
-level — the real SQL, the connection acquisition, the serialisation — all of it
-below what a client-level wrapper can reach.
+That traces at the **engine** level — the real SQL, the connection acquisition,
+the serialisation — below what a client-level wrapper can reach, which is why
+this package emits no span of its own.
 
-`@prisma/instrumentation` is an **optional peer** behind this subpath, so an
-application that does not import it installs nothing.
+`@prisma/instrumentation` is an **optional peer**. An application that does not
+install it still gets the counter and the error line, and the skip is stated at
+`debug` rather than left silent: telemetry you believe you have and do not is
+worse than none.
 
-**`Tracer` is a dependency for its ordering, not its value.** Nothing reads it.
-`PrismaInstrumentation` resolves the global tracer provider when `enable()`
-runs, and `otel()` sets that global while building the very port named here — so
-depending on it is what guarantees the SDK is up first. A root without `otel()`
-gets a compile error instead of tracing into nothing.
+**`Tracer` is depended on for its ordering, not its value.** Nothing reads it,
+but `otel()` sets the global tracer provider while building that very port, so
+naming it is what guarantees the SDK is up first. A root without `otel()` gets a
+compile error instead of tracing into nothing.
 
-**Registration order is otherwise free**, which is why this can be a provider at
-all rather than an `--import` preload. `@prisma/instrumentation` does not patch
-modules the way `@opentelemetry/auto-instrumentations-node` does: `enable()`
-sets a helper on `globalThis` under a versioned key, and a Prisma client looks
-it up **per query**. So it works after `@prisma/client` is imported and after
-clients are built. The preload rule in
-[observability](/reference/observability) governs patching instrumentations and
-does not apply to this one.
-
-Importing the module is enough — di builds a scope's providers eagerly, so
-nothing has to resolve the port. Tracing goes off again when the scope closes.
+**It can be a provider at all** because `@prisma/instrumentation` patches no
+modules: `enable()` sets a helper on `globalThis` under a versioned key and a
+client reads it **per query**, so registration order is free. The `--import`
+preload rule in [observability](/reference/observability) governs
+instrumentations that patch, and does not reach this one.
 
 ## Not included, deliberately
 

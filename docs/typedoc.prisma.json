@@ -1,7 +1,7 @@
 {
   "extends": "@btravstack/typedoc/base.json",
   "name": "@btravstack/prisma",
-  "entryPoints": ["../packages/prisma/src/index.ts", "../packages/prisma/src/otel.ts"],
+  "entryPoints": ["../packages/prisma/src/index.ts"],
   "tsconfig": "../packages/prisma/tsconfig.json",
   "out": "api/prisma"
 }

@@ -1,10 +1,11 @@
 import { Config, Env } from "@btravstack/config";
-import { Logger, Meter } from "@btravstack/core";
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { OkAsync, type AsyncResult } from "unthrown";
+import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { instrument } from "./instrument.js";
+import { enableTracing } from "./tracing.js";
 
 /**
  * All this starter needs of a client: a pool it can close. A generated Prisma
@@ -38,7 +39,8 @@ export type PrismaOptions<C extends PrismaLike, Instrumented extends boolean> = 
    * incident. The cost is stated rather than hidden: instrumenting puts
    * `Logger`, `Meter` and `Tracer` in the provider's dependencies, so a root
    * without `observability()` and `otel()` gets a compile error naming all
-   * three.
+   * three. It also turns on Prisma's own engine-level tracing when
+   * `@prisma/instrumentation` is installed — no wiring at the root.
    */
   readonly instrumented?: Instrumented;
 };
@@ -94,10 +96,22 @@ export const prismaDatabase =
     // per port per graph. Here a `query` extension wraps the client at
     // construction, so one port suffices and the branch lives inside `acquire`.
     const instrumentedProvider = Provider(port)(
-      { settings: config.port, logger: Logger, meter: Meter },
+      { settings: config.port, logger: Logger, tracer: Tracer, meter: Meter },
       {
-        acquire: ({ settings, logger, meter }): AsyncResult<C, never> =>
-          OkAsync(instrument(open(settings.url), logger, meter)),
+        // `Tracer` is depended on for its ORDERING, not its value: nothing
+        // reads it, but `otel()` sets the global tracer provider while building
+        // that very port, so naming it is what guarantees the SDK is up before
+        // `enableTracing` asks for it. A root without `otel()` gets a compile
+        // error instead of tracing into nothing.
+        acquire: ({ settings, logger, tracer, meter }): AsyncResult<C, never> => {
+          void tracer;
+          // Cast because `C` is only constrained by `PrismaLike`, so unthrown's
+          // `NotThenable` guard cannot prove a client is not a promise. It is
+          // whatever the application's `client` arrow returned.
+          return fromSafePromise(
+            enableTracing(logger).then(() => instrument(open(settings.url), logger, meter)),
+          ) as AsyncResult<C, never>;
+        },
         release: (db: C) => db.$disconnect(),
       },
     );
@@ -123,7 +137,7 @@ export const prismaDatabase =
     // `cache({ adapter })` already makes. `needs` differs per arm because the
     // instrumented provider reads three more ports.
     const instrumentedModule = Module(name)({
-      needs: [Env, Logger, Meter],
+      needs: [Env, Logger, Meter, Tracer],
       provides: [config, instrumentedProvider],
       exports: [DatabasePort],
     });
