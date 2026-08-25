@@ -293,12 +293,14 @@ ends on, which is the payload of the whole message.
 | http's composer — `UNCOVERED CONTROLLERS`                                | `api.HttpRouter(contract)([...])` missing a procedure                                 | — (this row named the keyed router's `UNDECLARED KEY` until #112 retired that form)                    | ends on `'"UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover"'`; the missing key prints too, as a separate diagnostic on the trailing element, once the array is as long as the marker tuple, and names a full procedure path rather than a top-level key (measured: `'"v1.users.find"'`); a path the contract does not declare is refused at `HttpController(contract, key)`, as a `TS2345` whose message `tsc` now expands to the literal union of every path the contract declares, not the named `ControllerKeyOf<C>` alias it used to print (measured: `Argument of type '"v1.billing"' is not assignable to parameter of type '"v1" \| "v1.customers" \| "v1.customers.find" \| "v1.orders" \| "v1.orders.place" \| "v1.users" \| "v1.users.find"'`) |
 | http's composer — `OVERLAPPING CONTROLLERS`                              | `api.HttpRouter(contract)([...])` with a piece nested inside another piece's path     | — (no gate before this branch: a dotted path, and so two pieces that could overlap, did not exist yet) | ends on `'"OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment"'`; the overlapping piece's own path prints too, as a separate diagnostic on the trailing element, once the array is as long as the marker tuple (measured: `'"v1.orders"'`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
-No gate's behaviour moved in this branch: the same 82 `@ts-expect-error`
+No gate's behaviour moved in **#93's** branch: the same 82 `@ts-expect-error`
 directives fire as before it — none added or removed, and none now guards a
 different call. (Four in `packages/core/src/start.test-d.ts` shifted line —
 56→57, 66→67, 92→95, 129→131 — because the hand-spelled bypass calls below them
 became `expectTypeOf` assertions; each still sits above the call it always
-guarded. Issue #112 later moved two of HTTP's gates, which is the row above.)
+guarded. Issue #112 later moved two of HTTP's gates, which is the row above;
+the dot-paths branch this table's newer rows describe moved
+`controller.test-d.ts`'s own directive count again, past what #93 measured.)
 What changed is which of these target strings a reader sees.
 The row that did **not** change and is still the best diagnostic in the
 repo — the unmet need at `start` — is the one this branch's own documentation

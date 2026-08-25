@@ -48,7 +48,8 @@ void publicApi.HttpController(contract, "billing");
 // 3. A piece cannot sit under the wrong key — by construction, since its key
 //    rides its port id. What the retired "controller under the wrong key" gate
 //    refused is now an array that leaves a fragment uncovered; two elements
-//    match the marker tuple's length, so this diagnostic names `users` itself.
+//    match the marker tuple's length, so — coverage being over the leaves —
+//    this diagnostic names the missing PROCEDURE itself: `users.find`.
 // @ts-expect-error — two pieces for `orders` leave `users` uncovered
 void publicApi.HttpRouter(contract)([ordersPiece, ordersPiece]);
 
@@ -133,7 +134,8 @@ void api.HttpRouter(markedContract)([markedOrders]);
 // @ts-expect-error — `billing` is not in the contract
 void api.HttpController(markedContract, "billing");
 
-// 3. The wrong-key gate, by construction, for a marked fragment.
+// 3. The wrong-key gate, by construction, for a marked fragment — same as
+//    above, this diagnostic names `users.find`, not the fragment.
 // @ts-expect-error — two pieces for `orders` leave `users` uncovered
 void api.HttpRouter(markedContract)([markedOrders, markedOrders]);
 

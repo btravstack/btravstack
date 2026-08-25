@@ -746,16 +746,21 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   `node[segment] ??= {}` to find a node the first piece already created rather
   than only ever creating one, and `"health"` is the depth-N leaf case, a
   piece with no fragment around it at all. The last two are `rpcNestedMarked`,
-  over a contract marked one level BELOW the root — on `"v1"`, not the root
-  and not a top-level key — with a piece minted at `"v1.orders"` beneath it:
-  the runtime evidence that `FragmentAt`'s compile-time fold and `routerOf`'s
-  runtime `inherited` walk agree past a nesting level, in both directions —
-  an authenticated caller reaches the handler with the principal the
-  ancestor's mark typed, and an unauthenticated one is refused before the
-  handler runs. Neither `rootMarkedContract` (marked at the literal root) nor
-  `authedContract` (marked at a top-level key) exercises a mark reaching
-  THROUGH a nesting level to a piece minted below it, which is what made this
-  case worth a fixture of its own rather than folding it into either.
+  over a contract marked at the literal ROOT — `authenticated({ user: [] })({ v1: { orders: { whoami } } })`
+  — with a piece minted by `HttpController` TWO levels below the mark, at
+  `"v1.orders"`: the intervening `"v1"` node carries no mark of its own, so
+  `FragmentAt`'s recursive branch has to THREAD the root's requirements
+  through that unmarked step — a non-`never` `R` passed into the next
+  recursive call — rather than a terminal step picking them straight off a
+  local mark. Neither `rootMarkedContract` (mark and piece both at the root,
+  minted through a bare `sync` — no `HttpController`, so no `FragmentAt`
+  recursion at all) nor `authedContract` (mark and piece at the SAME
+  top-level key, one `FragmentAt` step, terminal from the start) exercises
+  that threading arm — `nestedMarkedContract` is the only fixture where `R`
+  is non-`never` across a recursive call, which is the runtime evidence that
+  `FragmentAt`'s compile-time fold agrees with `routerOf`'s runtime
+  `inherited` walk on the case Task 1's review named as the auth-bypass class
+  if the two ever disagreed.
   A process still serves one router (thesis #1); the composing
   form changes how many providers build it, not that fact. `auth.spec.ts`
   carries the last 18, through the `rpcAuthed`, `rpcRootMarked`,
