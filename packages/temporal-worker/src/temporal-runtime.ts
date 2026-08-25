@@ -2,6 +2,7 @@ import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
   RuntimePort,
   RuntimeStartFailed,
+  releasedBy,
   type Runtime,
   type RuntimeHost,
   type Serving,
@@ -23,7 +24,6 @@ import {
 import type { Duration } from "@temporalio/common";
 import { NativeConnection, Worker, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import {
-  OkAsync,
   TaggedError,
   fromPromise,
   fromSafePromise,
@@ -287,26 +287,3 @@ const poll = (worker: Worker, taskQueue: string, namespace: string): Serving<Tem
     },
   };
 };
-
-/**
- * `running`, but no later than the kernel's drain deadline — which `run()`
- * cannot honour on its own, since it settles on Temporal's clock.
- *
- * The losing branch's `Result` is dropped, and it is the one drop in this
- * package: once the deadline wins, `exited` has settled and the worker's
- * eventual outcome has no consumer left.
- */
-const releasedBy = (
-  signal: AbortSignal,
-  running: AsyncResult<void, never>,
-): AsyncResult<void, never> =>
-  fromSafePromise(Promise.race([running, whenAborted(signal)])).flatMap((settled) => settled);
-
-const whenAborted = (signal: AbortSignal): AsyncResult<void, never> =>
-  signal.aborted
-    ? OkAsync()
-    : fromSafePromise(
-        new Promise<void>((resolve) => {
-          signal.addEventListener("abort", () => resolve(), { once: true });
-        }),
-      );
