@@ -17,7 +17,6 @@ pnpm add @btravstack/config @btravstack/di unthrown
 
 `@btravstack/di` and `unthrown` are peer dependencies; the package depends on
 nothing else — `Config.object` is a hand-rolled Standard Schema. Node `>=20`.
-Not yet published: this repository has not cut a release yet.
 
 ## A slice of the environment, as a port
 

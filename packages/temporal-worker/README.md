@@ -16,8 +16,7 @@ pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravs
   @temporal-contract/worker @temporal-contract/contract
 ```
 
-All nine are peer dependencies — install them. Node `>=20`. Not yet published:
-this repository has not cut a release yet.
+All nine are peer dependencies — install them. Node `>=20`.
 
 ## A worked example
 

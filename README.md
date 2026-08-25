@@ -87,9 +87,6 @@ Everything is a **peer dependency** — the application holds one copy of each,
 which is what keeps port identity and `isResult` honest across packages. The
 kernel and `@btravstack/config` depend on `node:` builtins only. Node `>=20`.
 
-Not yet published: this repository has not cut a release, so there is nothing
-on npm to install yet. The commands above are what they will be once it has.
-
 ## Quick example
 
 An HTTP API is a contract, a router that implements it from the use cases it

@@ -37,11 +37,6 @@ application holds a single copy of each ([why](/explanation/peer-dependencies)).
 project needs `"type": "module"` in its `package.json` — `main.ts` ends in a
 top-level `await` — TypeScript in `strict` mode, and Node `>=20`.
 
-::: info Not yet published
-This repository has not cut a release, so there is nothing on npm to install
-yet. The commands above are what they will be once it has.
-:::
-
 ## Step 2 — Declare a service
 
 A service is a **port** — a name with a service type — and a **provider** that

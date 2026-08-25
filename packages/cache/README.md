@@ -16,8 +16,7 @@ compose the Redis adapter. Instrumentation needs no peer of its own: the
 `Logger`, `Tracer` and `Meter` it depends on are
 [the kernel's ports](https://btravstack.github.io/btravstack/reference/core/observability),
 and `@btravstack/observability` is what an application composes to satisfy
-them. Node `>=20`. Not yet published: this repository has not cut a release
-yet.
+them. Node `>=20`.
 
 ## A worked example
 

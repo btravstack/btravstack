@@ -10,7 +10,7 @@
 pnpm add @btravstack/contract
 ```
 
-Node `>=20`. Not yet published: this repository has not cut a release yet.
+Node `>=20`.
 
 ## Usage
 

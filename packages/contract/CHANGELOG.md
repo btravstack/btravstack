@@ -1,4 +1,4 @@
-# @btravstack/http-server
+# @btravstack/contract
 
 ## 0.3.0
 
@@ -79,41 +79,6 @@
 
   `@btravstack/di` additionally exports `NeedsGate` and `Unmet`, which a package
   offering its own shaped module needs in order to re-declare the gate.
-
-- 9af980d: The compile-time gates name what is missing. `start`'s markers rode a phantom
-  rest tuple, whose failure is an arity error — and arity errors never print
-  types, so `NO RUNTIME` never reached a reader and TypeScript's related info
-  pointed at the wrong fix. They ride the module parameter now.
-
-  `start`, `runMain` and `bootFixture` no longer take the trailing gate argument.
-  No production call site passed one; the documented hand-spelled bypass went
-  with it, so this is a signature change without a migration.
-
-  The same widening reached the composers: `AmqpHandlers`'s/`TemporalActivities`'s
-  `UNCOVERED HANDLERS`/`UNCOVERED ACTIVITIES` marker and `HttpRouter`'s
-  `UNDECLARED KEY` marker now say the rule in English and name the missing key,
-  where each used to end on a bare `"UNCOVERED HANDLERS"` or `never`.
-
-- a651493: Add `HttpController(contract, path)({ name: Dep }, { sync })` and a composing
-  `HttpRouter(contract)([piece, …])` form, so a large API can be split into
-  slices that each own one node of the contract tree — a fragment, a nested
-  fragment, or a bare procedure — and its implementation. Both come off
-  `defineHttp` — see the _named security schemes_ entry.
-
-  A controller is an ordinary di provider on a port minted straight from the
-  contract path it serves, with no name to give: the path **is** the port's
-  name. The root composes an array of them, exact over the contract's
-  procedures — a missing piece, a path the contract does not declare (refused
-  at the piece's own mint, not at the router), a piece under the wrong path
-  (impossible by construction, since the path rides its own port id), and two
-  pieces whose paths nest one inside the other are all compile errors. A
-  contract marked at any ancestor of a piece's path types that piece's
-  `context.principal`, exactly as `routerOf`'s runtime walk protects it. The
-  `HttpRouter(contract)(deps, { sync })` form is unchanged and still right for
-  a small API.
-
-  Because a fragment is itself a valid contract, a slice can be served as its
-  own process without changing its piece.
 
 - 54de3fa: Let a contract name **which security schemes** a procedure accepts and **which
   scopes** each must grant, and let an application say what each scheme resolves
@@ -197,18 +162,6 @@
   `bearerFormat`, an OAuth flow), which belongs beside the contract rather than
   in this factory.
 
-- 4bc4669: The traces-and-metrics half of observability ships, as the deferred design
-  prescribed. `@btravstack/observability/otel` — with `@opentelemetry/api` and
-  `@opentelemetry/sdk-node` as optional peers, the `pino` protocol — exports
-  `Tracer` and `Meter` ports over a `NodeSDK` held as a resourceful provider
-  whose `release` flushes (a lost flush is a `teardownError` and exit `2`,
-  never silence), and `UnitSpanModule`, a `StartOptions.unit` module opening a
-  span per kernel unit with the ambient record's `unitId`/`traceId`/`tenantId`
-  as attributes. Configuration is the SDK's own `OTEL_*` conventions — no
-  config slice. Inbound, `@btravstack/http-server` and `@btravstack/amqp-worker` honour a
-  W3C `traceparent` (trace-id field only, outranking `x-request-id` and
-  `messageId`); `@btravstack/temporal-worker` deliberately keeps the workflow id as
-  its correlation.
 - b8fdee9: The `Unmet` type is gone from `@btravstack/di`
 
   Its documented purpose — a shaped module re-declaring the gates with it — was
@@ -274,28 +227,6 @@
   check is the sibling of the scheme-**name** check di already performs by leaving
   an unknown scheme's port unmet.
 
-- e0c567b: **Renamed.** `@btravstack/http` → `@btravstack/http-server`,
-  `@btravstack/temporal` → `@btravstack/temporal-worker`, and
-  `@btravstack/amqp` → `@btravstack/amqp-worker`.
-
-  Each package claimed a whole transport and delivered the serving half of it:
-  the calling half is `@orpc/client`, `@temporal-contract/client` and
-  `@amqp-contract/client` today, and will be a `-client` package in this family
-  later. Qualifying the name now reserves that space and matches the neighbours,
-  which qualify both sides (`@orpc/server` / `@orpc/client`).
-
-  "worker" rather than a uniform `-server` because it is Temporal's and AMQP's
-  own word — and because `temporal-server` already means the Temporal Service
-  itself.
-
-  To migrate: change the specifier. Nothing else moved — no export was renamed,
-  added or removed.
-
-  ```diff
-  -import { HttpModule } from "@btravstack/http";
-  +import { HttpModule } from "@btravstack/http-server";
-  ```
-
 ### Patch Changes
 
 - 4499df1: A comment earns its line, or it goes
@@ -318,189 +249,7 @@
   two-argument `execute` from before the branded tenant, a wrong consumer key,
   a missing error-triage arm, and the pre-`defineHttp` router spelling in the
   root README.
-- 758c539: Each runtime README carries an `## Options` index: one line per option —
-  `connectionOptions`, `defaultConsumerOptions` and `connectTimeoutMs` were
-  documented nowhere an npm consumer could see — with the reference page as
-  the one detailed home for defaults and reasoning.
 - 31f70f7: The repository is `btravstack/btravstack`, so every package's `homepage`,
   `bugs.url` and `repository.url` points there. GitHub redirects the old slug, so
   nothing was broken — but published metadata that names a repository should name
   the one it lives in.
-- 65f022f: Refuse a contract key containing a literal dot, at compile time, instead of
-  serving it as a 404.
-
-  A piece's path is joined and split on `.`, so `nest` could not tell a path
-  **separator** from a dot **inside** one contract key. A contract keyed
-  `{ "a.b": oc }` therefore minted a piece at `"a.b"`, passed coverage, rebuilt
-  as `{ a: { b: fn } }`, and was then discarded by `routerOf`'s stray-key drop —
-  a fully green compile and a route that 404s, which is the failure class this
-  stack exists to delete rather than document.
-
-  Both ends are closed now. `ControllerKeyOf` drops dotted keys at **every**
-  level, so such a piece is never mintable; and `HttpRouter(contract)([...])`
-  refuses a contract whose **top** level carries one against
-  `"UNSLICEABLE CONTRACT KEY — …"`. That marker is reported ahead of
-  `"UNCOVERED CONTROLLERS — …"` deliberately: _no piece can name this_ is a
-  different fact from _no piece did_, and only the first one tells you the array
-  form is the wrong tool. The sentence points at the `(deps, arm)` form, which
-  splits nothing and serves such a contract correctly — the escape hatch is
-  real and stays open.
-
-  Only the **top** level is fatal. A piece minted at a dotted key's parent hands
-  its implementation record to `routerOf` whole, and that walk splits paths,
-  never the keys underneath them — so `{ v1: { "a.b": oc } }` still composes
-  from a piece at `"v1"`, and the gate does not over-reach onto it.
-
-- Updated dependencies [e8236b2]
-- Updated dependencies [4499df1]
-- Updated dependencies [6f964fa]
-- Updated dependencies [76f58c4]
-- Updated dependencies [41aa1fb]
-- Updated dependencies [fc38b9a]
-- Updated dependencies [9af980d]
-- Updated dependencies [ccdcc32]
-- Updated dependencies [54de3fa]
-- Updated dependencies [82579e8]
-- Updated dependencies [f615282]
-- Updated dependencies [b8fdee9]
-- Updated dependencies [31f70f7]
-- Updated dependencies [d5be140]
-- Updated dependencies [3bf4036]
-- Updated dependencies [74621a1]
-  - @btravstack/contract@0.3.0
-  - @btravstack/di@0.3.0
-  - @btravstack/config@0.3.0
-  - @btravstack/core@0.3.0
-
-## 0.2.0
-
-### Minor Changes
-
-- f133934: **Configuration, the twelve-factor way, in its own package.** `@btravstack/config`
-  exports `Env` — the environment as a port, which `@btravstack/core` provides to
-  every graph `start` boots (`process.env`, or `StartOptions.env` for a test) —
-  and `Config`:
-  `Config.string/integer/port(variable, { default?, min?, max? })` fields,
-  `Config.object({...})` composing them into a Standard Schema over the
-  environment (any other Standard Schema, a `zod` object over the raw variables
-  for instance, is accepted too), and `Config.provider(Port)(schema)` binding a
-  port from `Env` — a modeled `ConfigInvalid` naming every offending variable
-  when the environment is wrong, which `runMain` maps to sysexits(3)'s
-  `EX_CONFIG` (78) rather than the generic startup `1`. The kernel binds its own
-  `PROBE_PORT` the same way (default `9000`; `probes` still overrides), and a
-  startup failure of any kind is now reported as a `startFailed` kernel event
-  before `stopping`, so a bad environment is named on stderr instead of exiting
-  silently. An empty or blank variable is an error, never an absent one; `PORT=0`
-  stays expressible.
-
-  `@btravstack/http-server` becomes a starter: `http()` provides
-  `HttpRuntime` and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST`
-  (default `0.0.0.0`) unless pinned (`http({ port: 0 })` for a test —
-  explicit beats environment beats default, per field, through
-  `Config.pinned(value, field)`; a pinned field reads nothing from the
-  environment, and the module's declared `Env` need and `ConfigInvalid` stay
-  whatever is pinned). `RuntimeNeedsGate` is renamed `StartGate`, since it now
-  also states `NO RUNTIME`.
-
-  `Config.provider("Name")(schema)` — the name form — mints the port (its
-  service is the schema's output) and returns the provider carrying it typed
-  (`provider.port`), the shape for a slice that is one application's own; the
-  class form `Config.provider(Port)(schema)` stays for a slice that is public
-  API another package names. Config is the one sugar that takes a name — several
-  config slices per application is normal, and the name is what `ConfigInvalid`
-  prints; the starters' `HttpRouter` / `TemporalActivities` / `AmqpHandlers`
-  provide the starter's own fixed port and take none.
-
-- ee6c612: **Breaking.** `@btravstack/http-server` is the HTTP starter, and there is one way HTTP
-  is answered: **oRPC, over its own node adapter**. `http()` mounts the
-  application's router under `prefix` (default `/rpc`) and provides the runtime
-  on **`HttpRuntime`** (declared over core's `RuntimePort`, `Runtime<never,
-HttpInfo>` — no `needs`), which the composition root imports and exports so
-  `start` finds it. The router is not an option: it is a **provider on the
-  starter's own router port** — one id, `Port("HttpRouter")`, framework-owned
-  like `HttpConfig`, since a process serves one router as it boots one runtime —
-  whose service is a context-free oRPC router built from the use cases its
-  procedures call. The starter **needs** that port through di, so a composition
-  that imports it without providing a router is refused at `start`, at compile
-  time; two router providers in one graph are di's duplicate-provider defect at
-  build.
-
-  ```ts
-  const orderRouter = HttpRouter(orderContract)([PlaceOrder, FindOrder], {
-    sync: (place, find) => ({ orders: { place: …, find: … } }),
-  });
-
-  const OrderApi = Module("OrderApi")({
-    imports: [ApplicationModule, PersistenceModule, http()],
-    provides: [orderRouter],
-    exports: [HttpRuntime],
-  });
-  ```
-
-  `@btravstack/orpc` is folded into this package and no longer exists. `needs`,
-  `handler` and `router` are gone from `HttpOptions`; `httpRuntime` is no longer
-  exported; the node listener port `HttpHandler` is internal — an application
-  provides a router, never a handler, and a handler built per request by the
-  `StartOptions.unit` module is gone with it. An unmatched path is declined
-  unwritten by oRPC and answered by the runtime's own `404`, and a defect inside
-  a procedure is oRPC's own `INTERNAL_SERVER_ERROR`; `Result` → HTTP status
-  stays the router's `.result()` triage. `@orpc/server`, `@orpc/contract` and
-  `@unthrown/orpc` are peer dependencies — not `hono` or `@hono/node-server`,
-  which routed one pattern to oRPC's fetch adapter and are gone.
-
-  **`HttpModule(name)({ router, prefix?, port?, hostname?, imports?, provides?, exports? })`**
-  is the way an application declares an HTTP deployment: `Module(name)({...})`
-  plus the router **provider**. It imports the starter, provides the router,
-  exports `HttpRuntime`, and hands the augmented imports/provides/exports to
-  di's own `Module(name)({...})`, whose return type is the sugar's — sugar over
-  the same primitives, nothing new for the kernel or the gates. `router` is a
-  plain `Provider` on the starter's router port, which is what `HttpRouter`
-  returns. `http()` stays exported as the primitive it delegates to.
-
-  `HttpRouter(contract)(deps, { sync })` — contract-first: `sync` returns a
-  record shaped like the contract whose leaves are plain `Result`-returning
-  functions (the `.result()` handler `@unthrown/orpc` gives an implementer),
-  typed by the contract at the call; `implement`, `os.…`, `.result(...)` and
-  `os.router(...)` are done for you. It is di's own `Provider(port)` on the
-  starter's router port — no name to give, no class line — returning the
-  provider with the port typed (`orderRouter.port`, di's
-  `PortClassOf<"HttpRouter", Router<…>>`) for a hand-declared provider or a
-  type test; `HttpModule({ router: orderRouter })` takes it from there.
-  `@orpc/contract` and `@unthrown/orpc` join the peers.
-
-- 2f1974e: The HTTP runtime for `@btravstack/core`.
-
-  `httpRuntime({ port, needs, handler })` owns an HTTP server's lifecycle and
-  nothing else: it binds (publishing the real port on `Serving.info`, so
-  `port: 0` is usable), opens one kernel unit per request, drains by genuinely
-  refusing new work, and stops by destroying what is left.
-
-  Its guarantee is that every request produces exactly one completed response,
-  and the unit stays open until that response is on the wire — which makes the
-  kernel's least-checkable contract structural rather than documented. Routing,
-  middleware and `Result` → HTTP status are deliberately not included: bring an
-  oRPC router (see the starter entry below).
-
-### Patch Changes
-
-- d3564a9: Two consequences of the kernel's new `StartOptions.unit`. A unit whose work
-  begins after its response has already closed — a client that hung up during a
-  slow per-request build — now settles at once instead of waiting for a `'close'`
-  event that already fired, which held the unit open for the process lifetime.
-  And a defect that never reaches the handler's promise — a synchronous throw, or
-  a unit provider that failed to build — now answers `500` when no headers are
-  out, rather than only resetting the connection.
-- Updated dependencies [f133934]
-- Updated dependencies [9ca73c5]
-- Updated dependencies [ba815e4]
-- Updated dependencies [38d7cd5]
-- Updated dependencies [4fa693c]
-- Updated dependencies [b56501f]
-- Updated dependencies [e616e23]
-- Updated dependencies [5a271c0]
-- Updated dependencies [72b8fbd]
-- Updated dependencies [e950473]
-- Updated dependencies [068399d]
-  - @btravstack/config@0.2.0
-  - @btravstack/core@0.2.0
-  - @btravstack/di@0.2.0

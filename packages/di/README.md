@@ -15,7 +15,7 @@ pnpm add @btravstack/di unthrown
 ```
 
 `unthrown` is a peer dependency. `@btravstack/di` depends on nothing else. Node
-`>=20`. Not yet published: this repository has not cut a release yet.
+`>=20`.
 
 ## Ports, providers, modules
 
