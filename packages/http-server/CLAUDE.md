@@ -151,19 +151,30 @@ not cover"` marker, and what the marker names is a procedure path
   only when **both** end up discharged as providers in the same graph; wire
   in only one and the other's implementation is simply never registered, no
   diagnostic marking the conflict.
-  **A ceiling in the dot encoding itself, not a bug in the mechanism**: `nest`
-  rebuilds a piece's path by splitting on `.`, so it cannot tell a path
-  separator from a literal dot inside one contract key — a contract keyed
-  `{ "a.b": oc }` mints a piece at path `"a.b"`, passes coverage, and `nest`
-  then splits it into `{ a: { b: fn } }`, which `routerOf`'s stray-key drop
-  silently discards: a fully green compile and a 404 at runtime. The escape
-  is the `(deps, arm)` form, which never splits anything. No guard exists
-  today; `orpc.ts`'s `nest` carries a `ponytail:` comment naming the two
-  upgrade paths (a runtime guard, or excluding dotted keys from
-  `ControllerKeyOf` so a literal-dot key is never mintable as a piece path).
+  **A literal dot in a contract key is refused, at both ends** (issue #121,
+  where it was a green compile and a 404): `nest` rebuilds a piece's path by
+  splitting on `.`, so it cannot tell a path separator from a dot inside one
+  key. `ControllerKeyOf` therefore drops dotted keys at **every** level, so
+  no port can carry one — but the **mint** is constrained by `AnyKeyOf`, the
+  same walk without the refusal, with `SliceableGate<C, K>` intersected onto
+  `key` the way `ScopeGate` rides `contract`. That is the difference between
+  a diagnostic that says why and one that misleads: constraining `key` by
+  `ControllerKeyOf` refuses `"a.b"` too, but as
+  `not assignable to parameter of type '"plain"'` — a typo hint pointing at
+  the wrong problem. The gate binds the bad path instead and names it in a
+  sentence. On the array, `Unsliceable<C>` refuses a contract whose **top**
+  level carries one, against `"UNSLICEABLE CONTRACT KEY — …"` reported ahead
+  of `Uncovered`, because "no piece can name this" is a different fact from
+  "no piece did" and only the first says the array form is the wrong tool.
+  Both sentences point at the `(deps, arm)` form, which splits nothing and
+  serves such a contract correctly. Only the **top** level is fatal: a piece
+  at a dotted key's parent hands its implementation record to `routerOf`
+  whole, and that walk splits paths, never the keys underneath them — so
+  `{ v1: { "a.b": oc } }` still composes from a piece at `"v1"`, and the gate
+  must not over-reach onto it.
   The return is the same `Built<Auth, N>` as the other arms, with
   `N = InstanceType<T[number]["port"]> | SchemePortsOf<C>`.
-  Five compile-time gates are pinned by `controller.test-d.ts`: every
+  Six compile-time gates are pinned by `controller.test-d.ts`: every
   procedure covered (the marker above); an undeclared path refused **at the
   mint** (`HttpController(contract, "billing")` and `(deep, "v1.billing")`
   have nothing to type the key by — the keyed record's `"UNDECLARED KEY — …"`
@@ -175,7 +186,9 @@ not cover"` marker, and what the marker names is a procedure path
   composed router **with its piece unchanged**:
   `api.HttpRouter(contract.orders)({ implementation: ordersPiece.port }, { sync: ({ implementation }) => implementation })`
   compiles, so the lifted root declares the very provider the modulith
-  composed and hands back what it built. The gate names the piece
+  composed and hands back what it built; and the sixth, a top-level key
+  carrying a literal dot, refused at the mint and again at the array. The
+  gate names the piece
   deliberately — a fresh `sync` literal over the fragment would pin only that
   a fragment is a valid contract, the weaker half, which says nothing about
   the piece surviving the lift. All five are pinned **twice**: once against a
