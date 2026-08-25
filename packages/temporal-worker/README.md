@@ -28,6 +28,7 @@ import { PlaceOrder, OrderRepository, Outbox, OrderApplicationModule } from "@bt
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { TenantId } from "@btravstack/example-order-domain";
 import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { z } from "zod";
 
 // The contract this README's worker serves — one workflow, one activity, one
@@ -56,7 +57,7 @@ const contract = defineContract({
 });
 
 const AppModule = Module("App")({
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability(), otel()],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
 -->

@@ -33,6 +33,7 @@ features:
 
 <!-- doctest: prelude
 import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { api } from "../../auth.js";
@@ -120,7 +121,12 @@ const ordersRouter = api.HttpRouter(ordersContract)(
 // The composition root. The runtime is a service of this module.
 const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [
+    OrderApplicationModule,
+    OrderPersistenceModule,
+    observability(),
+    otel(),
+  ],
 });
 
 // main.ts — the whole process.

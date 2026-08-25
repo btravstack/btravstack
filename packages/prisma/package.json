@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "@btravstack/config": "workspace:*",
+    "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@prisma/adapter-pg": "catalog:",
@@ -64,6 +65,7 @@
   },
   "peerDependencies": {
     "@btravstack/config": "workspace:^",
+    "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@prisma/adapter-pg": "^7.0.0",
     "unthrown": "^5.0.0"

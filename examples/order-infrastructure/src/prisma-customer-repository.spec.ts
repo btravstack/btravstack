@@ -1,6 +1,8 @@
 import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { CustomerRepository } from "@btravstack/example-order-application";
+import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { describe, expect, inject } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -9,7 +11,7 @@ import { CustomerPersistenceModule } from "./index.js";
 /** The persistence module plus the environment the kernel would otherwise provide — see `prisma-order-repository.spec.ts`. */
 const scopedCustomers = () =>
   Module("ScopedCustomers")({
-    imports: [CustomerPersistenceModule],
+    imports: [CustomerPersistenceModule, observability(), otel()],
     provides: [Provider(Env)({ value: { DATABASE_URL: inject("__ORDERS_DATABASE_URL__") } })],
     exports: [CustomerRepository],
   });

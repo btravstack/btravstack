@@ -8,23 +8,21 @@
 [API Reference](https://btravstack.github.io/btravstack/api/prisma/)
 
 ```sh
-pnpm add @btravstack/prisma @btravstack/config @btravstack/di unthrown @prisma/adapter-pg
+pnpm add @btravstack/prisma @btravstack/core @btravstack/config @btravstack/di unthrown \
+  @prisma/adapter-pg
 ```
 
-Four peer dependencies — install every one, so the application holds a single
+Five peer dependencies — install every one, so the application holds a single
 copy of each. Your own `@prisma/client`, `prisma` and (if you want the `try*`
 twins) `@unthrown/prisma` are yours, not this package's: the client is
 generated from your schema. Node `>=20`.
-
-**No peer on `@btravstack/core`**, unlike the other application-service
-starters — this one ships no instrumentation, so it imports nothing from the
-kernel.
 
 ## A worked example
 
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
 import { Env } from "@btravstack/config";
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -54,7 +52,7 @@ root wants all three:
 export const DatabaseModule = Module("Database")({
   provides: [database.config, database.provider],
   exports: [database.port],
-  needs: [Env],
+  needs: [Env, Logger, Meter, Tracer],
 });
 ```
 

@@ -1,4 +1,5 @@
 import { Env } from "@btravstack/config";
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { CustomerRepository, OrderRepository, Outbox } from "@btravstack/example-order-application";
 
@@ -16,9 +17,14 @@ import { outboxProvider } from "./prisma-outbox.js";
  * `Scope` need only `Module.scoped` discharges. The feature that reads the
  * environment is the one that declares it, and the only one — importers inherit
  * the obligation without restating it.
+ *
+ * `Logger`, `Meter` and `Tracer` are needed because the starter instruments
+ * every query by default. `observability()` and `otel()` at the composition
+ * root answer all three; `instrumented: false` in `database.ts` would drop
+ * them, at the cost of a database nobody can see into during an incident.
  */
 const DatabaseModule = Module("Database")({
-  needs: [Env],
+  needs: [Env, Logger, Meter, Tracer],
   provides: [databaseConfig, orderDatabaseProvider],
   exports: [OrderDatabase],
 });

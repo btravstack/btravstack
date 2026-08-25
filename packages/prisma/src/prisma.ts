@@ -1,7 +1,10 @@
 import { Config } from "@btravstack/config";
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { Port, Provider, type PortClassOf } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { OkAsync, type AsyncResult } from "unthrown";
+
+import { instrument } from "./instrument.js";
 
 /**
  * All this starter needs of a client: a pool it can close. A generated Prisma
@@ -12,7 +15,7 @@ import { OkAsync, type AsyncResult } from "unthrown";
 export type PrismaLike = { readonly $disconnect: () => Promise<void> };
 
 /** What {@link prismaDatabase} is handed. */
-export type PrismaOptions<C extends PrismaLike> = {
+export type PrismaOptions<C extends PrismaLike, Instrumented extends boolean> = {
   /**
    * Builds the client. The driver adapter is already constructed from the
    * environment's URL; the second argument is that URL, for a client that wants
@@ -26,6 +29,18 @@ export type PrismaOptions<C extends PrismaLike> = {
   readonly client: (adapter: PrismaPg, url: string) => C;
   /** The variable the connection string is read from. `DATABASE_URL` by 12-factor convention. */
   readonly urlVar?: string;
+  /**
+   * Span, count and log every query. **Default `true`**, `false` opts out — the
+   * same shape as `cache`, `mailer` and `storage`, and as `StartOptions`'
+   * `signals` and `probes`.
+   *
+   * On by default because telemetry that is missing is discovered during an
+   * incident. The cost is stated rather than hidden: instrumenting puts
+   * `Logger`, `Meter` and `Tracer` in the provider's dependencies, so a root
+   * without `observability()` and `otel()` gets a compile error naming all
+   * three.
+   */
+  readonly instrumented?: Instrumented;
 };
 
 /**
@@ -48,7 +63,11 @@ export type PrismaOptions<C extends PrismaLike> = {
  */
 export const prismaDatabase =
   <const N extends string>(name: N) =>
-  <C extends PrismaLike>({ client, urlVar = "DATABASE_URL" }: PrismaOptions<C>) => {
+  <C extends PrismaLike, Instrumented extends boolean = true>({
+    client,
+    urlVar = "DATABASE_URL",
+    instrumented,
+  }: PrismaOptions<C, Instrumented>) => {
     const config = Config.provider(`${name}Config`)(Config.object({ url: Config.string(urlVar) }));
 
     // A CAST, not a class expression, and this is the same TS4023 that shapes
@@ -63,22 +82,44 @@ export const prismaDatabase =
     // generic parameter that inference defers and `S` lands on `never`. The
     // returned `port` keeps the literal `N`, so a consumer still sees its own
     // port id.
-    const provider = Provider(DatabasePort as PortClassOf<string, C>)(
-      { settings: config.port },
+    const open = (url: string): C => client(new PrismaPg({ connectionString: url }), url);
+    const port = DatabasePort as PortClassOf<string, C>;
+
+    // Both arms are built and one is chosen, so the conditional return type is
+    // spelled by the arms themselves rather than by naming di's provider type.
+    // Building the unused one costs a descriptor; `Provider` constructs nothing.
+    //
+    // The seam differs from `cache`'s deliberately: there, instrumentation is a
+    // second port layering over the adapter's, because di allows one provider
+    // per port per graph. Here a `query` extension wraps the client at
+    // construction, so one port suffices and the branch lives inside `acquire`.
+    const instrumentedProvider = Provider(port)(
+      { settings: config.port, logger: Logger, tracer: Tracer, meter: Meter },
       {
-        // Both callbacks are annotated, and that is load-bearing rather than
-        // decoration: `PortClassOf<N, C>` leaves the service type a conditional
-        // TypeScript cannot resolve while `N` and `C` are still generic, so
-        // without these the inferred parameter is `never` and neither arm
-        // assigns.
-        //
-        // Opening cannot fail in the application's terms — Prisma dials on the
-        // first statement, not here — which is why the error channel is empty.
-        acquire: ({ settings }): AsyncResult<C, never> =>
-          OkAsync(client(new PrismaPg({ connectionString: settings.url }), settings.url)),
+        acquire: ({ settings, logger, tracer, meter }): AsyncResult<C, never> =>
+          OkAsync(instrument(open(settings.url), logger, tracer, meter)),
         release: (db: C) => db.$disconnect(),
       },
     );
+
+    // Both callbacks are annotated, and that is load-bearing rather than
+    // decoration: `PortClassOf<N, C>` leaves the service type a conditional
+    // TypeScript cannot resolve while `N` and `C` are still generic, so without
+    // these the inferred parameter is `never` and neither arm assigns.
+    //
+    // Opening cannot fail in the application's terms — Prisma dials on the
+    // first statement, not here — which is why the error channel is empty.
+    const plainProvider = Provider(port)(
+      { settings: config.port },
+      {
+        acquire: ({ settings }): AsyncResult<C, never> => OkAsync(open(settings.url)),
+        release: (db: C) => db.$disconnect(),
+      },
+    );
+
+    const provider = (
+      instrumented !== false ? instrumentedProvider : plainProvider
+    ) as Instrumented extends true ? typeof instrumentedProvider : typeof plainProvider;
 
     return { port: DatabasePort, config, provider };
   };

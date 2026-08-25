@@ -49,20 +49,38 @@ to — adding one is a kernel change and a contested one, since a pod that canno
 reach its database arguably should stay ready and fail requests rather than flap
 out of the endpoint list.
 
-## No peer on `@btravstack/core`, and no instrumentation
+## Instrumentation, on the family's shape
 
-The other three application-service ports — `cache`, `mailer`, `storage` — each
-peer on `@btravstack/core` because their `instrumented` flag reads `Logger`,
-`Tracer` and `Meter` from it. This one imports nothing from `core` and so does
-not declare it, which knip enforces.
+`instrumented` defaults to **`true`**, as it does on `cache`, `mailer` and
+`storage`. Per query: a span named `db.<model>.<operation>`, one
+`btravstack.database.operations` counter whose `outcome` separates `ok` from
+`error`, and an `error` line when a query rejects. Turning it off drops
+`Logger`, `Meter` and `Tracer` from the provider's dependencies, so a root
+without `observability()` and `otel()` opts out rather than failing to compile.
 
-That follows from having no instrumentation, and **that** follows from the same
-fact as the missing adapter seam: the surface is a generated client, not a
-four-method port. Wrapping every model method of a schema this package cannot
-see is not something it can do, and a span around `acquire` would time the
-constructor rather than a query. Instrumentation belongs where the queries are
-written — the repository adapters — where `@unthrown/prisma` already returns a
-`Result` to hang it on.
+**A generated client can be instrumented, and an earlier revision of this file
+said it could not.** That claim — repeated in issue #135's decision comment —
+missed Prisma's own mechanism: `$extends` takes a `query` component, and
+`$allModels.$allOperations` intercepts every operation on every model. The
+wrapper therefore never needs to know the schema, which is the one thing this
+package cannot see. The seam that genuinely does not exist is the _adapter_
+one; instrumentation was never blocked by it, and the two were wrongly argued
+together.
+
+**The branch is inside `acquire`, not between two ports.** `cache` needs
+`Cache` and `CacheBackend` because di allows one provider per port per graph, so
+its instrumented form has to layer over the plain one. Here the extension wraps
+the client at construction, so one port suffices. Both provider arms are built
+and one is chosen, which is how the conditional return type gets spelled by the
+arms themselves instead of by naming di's provider type.
+
+`instrument` re-raises with **`Promise.reject`, never `throw`** — the rejection
+must reach `@unthrown/prisma`'s `try*` twin unchanged, and rejecting does that
+without the file needing a `no-throw` exemption.
+
+The extended client is cast back to `C`: a `query`-only extension intercepts
+calls without adding or removing model surface, which `$extends`'s own return
+type — built for extensions that DO add surface — cannot express.
 
 ## Tests need no container
 

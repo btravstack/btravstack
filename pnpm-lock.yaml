@@ -614,6 +614,9 @@ importers:
       '@btravstack/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@btravstack/di':
         specifier: workspace:*
         version: link:../../packages/di
@@ -623,6 +626,9 @@ importers:
       '@btravstack/example-order-domain':
         specifier: workspace:*
         version: link:../order-domain
+      '@btravstack/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@btravstack/prisma':
         specifier: workspace:*
         version: link:../../packages/prisma
@@ -1221,6 +1227,9 @@ importers:
       '@btravstack/config':
         specifier: workspace:*
         version: link:../config
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
       '@btravstack/di':
         specifier: workspace:*
         version: link:../di

@@ -29,13 +29,17 @@ The transports are named for their role — `http-server`, `temporal-worker`,
 is the ORM, and pretending otherwise ships thirteen lines of wiring behind a
 package.
 
-It is also the first application-service starter with **no peer on
-`@btravstack/core`**. The other three peer on it because their `instrumented`
-flag reads `Logger`, `Tracer` and `Meter`; this one ships no instrumentation,
-because wrapping every model method of a schema it cannot see is not something
-it can do, and a span around `acquire` would time a constructor rather than a
-query. Instrumentation belongs in the repository adapters, where
-`@unthrown/prisma` already returns a `Result` to hang it on.
+**Instrumented by default**, on the same shape as `cache`, `mailer` and
+`storage`: a span named `db.<model>.<operation>`, a
+`btravstack.database.operations` counter whose `outcome` separates `ok` from
+`error`, and an `error` line when a query rejects. `instrumented: false` opts
+out and drops `Logger`, `Meter` and `Tracer` from what the graph must supply.
+
+A generated client can be instrumented because Prisma's `$extends` takes a
+`query` component and `$allModels.$allOperations` intercepts every operation on
+every model — the wrapper never needs the schema. The branch lives inside
+`acquire` rather than between two ports, as `cache` needs: an extension wraps
+the client at construction, so one port suffices.
 
 Not included, deliberately: migrations (a deployment runs `prisma migrate
 deploy` before the process starts; an application that migrates at boot races

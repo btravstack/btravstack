@@ -6,6 +6,7 @@ description: The complete surface of @btravstack/prisma — prismaDatabase, the 
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
 import { Env } from "@btravstack/config";
+import { Logger, Meter, Tracer } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { prismaDatabase, type PrismaLike } from "@btravstack/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -45,7 +46,7 @@ Returns three pieces, and a composition root wants all three:
 export const DatabaseModule = Module("Database")({
   provides: [database.config, database.provider],
   exports: [database.port],
-  needs: [Env],
+  needs: [Env, Logger, Meter, Tracer],
 });
 ```
 
@@ -66,6 +67,31 @@ service type, a memory adapter and a real one — does not apply. `CacheService`
 is four methods that two adapters can both satisfy; a database client is
 whatever your schema generated, and an "in-memory adapter" for arbitrary SQL is
 not something anyone can write.
+
+### `instrumented`
+
+Defaults to **`true`**, as on [`cache`](/reference/cache), `mailer` and
+`storage`. Per query: a span named `db.<model>.<operation>`, one
+`btravstack.database.operations` counter whose `outcome` separates `ok` from
+`error`, and an `error` line when a query rejects.
+
+```ts
+prismaDatabase("OrderDatabase")({
+  client: (adapter) => new PrismaClient({ adapter }),
+  instrumented: false,
+});
+```
+
+This works on a client the package cannot see the schema of because Prisma's
+`$extends` takes a **`query` component**, and `$allModels.$allOperations`
+intercepts every operation on every model. The wrapper is transparent: whatever
+the query resolves or rejects with is what the caller receives.
+
+Opting out drops `Logger`, `Meter` and `Tracer` from the provider's
+dependencies. Leaving it on means a root without
+[`observability()`](/reference/observability) and `otel()` gets a compile error
+naming all three — telemetry that is missing is discovered during an incident,
+so the default is on and the cost is stated rather than hidden.
 
 ### `urlVar`
 
@@ -117,3 +143,7 @@ package's.
 is no hook to contribute to. Adding one is a kernel change and a contested one:
 a pod that cannot reach its database arguably should stay ready and fail
 requests rather than flap out of the endpoint list.
+
+**Per-query timing as a histogram.** The counter records how a query came out,
+not how long it took; the span carries the duration. A histogram would be the
+natural next thing to want and is not here yet.
