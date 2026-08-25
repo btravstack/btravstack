@@ -23,41 +23,25 @@ export const orderRouter = api.HttpRouter(contract)({
 });
 
 /**
- * The composition root, and a list of **slices**: each one imports the vertical
- * it needs, so this file names what the process serves rather than everything
- * every slice happens to depend on. The verticals meet only at the database
- * module both persistence halves import; di flattens the module tree into a
- * `Set` keyed by provider reference, so the diamond builds one connection.
+ * The composition root, and a list of **slices**: each imports the vertical it
+ * needs, so this file names what the process serves rather than everything every
+ * slice depends on. The verticals meet only at the database module both
+ * persistence halves import — a diamond di flattens by provider reference, so
+ * one connection is built.
  *
- * What is left here is what no slice owns: `observability()`, whose `Logger`
- * every layer writes to and which is exported because the per-request
- * `RequestModule` reads it out of the application scope, and the `Cache` the
- * customers slice reads through — composed INSTRUMENTED, so every cache call
- * lands in the same span tree and the same metric stream as everything else
- * here, and the slice that uses it declares nothing about observability. The two
- * authenticators are **not** listed: they ride the router, which is what needs
- * them, and `HttpModule` puts them in `provides` itself — a scheme the
- * contract names with no authenticator behind it is di's own unmet need on
- * `HttpAuthenticator:<scheme>`, not a line this file could forget.
- * Importing the router
- * and the starter is what empties the needs channel (a composition without the
- * router provider does not compile — the starter's provider depends on it, so
- * `HttpRouterPort` survives into `Needs` and `start`'s `module` parameter,
- * which takes only `Scope | Env`, refuses it by name), and `HttpRuntime`,
- * which the sugar exports, is what satisfies the kernel's own marker.
+ * What is left is what no slice owns: `observability()`, and the `Cache` the
+ * customers slice reads through, composed INSTRUMENTED so every cache call lands
+ * in the same span tree as everything else and the slice using it declares
+ * nothing about observability. The two authenticators are **not** listed — they
+ * ride the router, and `HttpModule` puts them in `provides` itself.
  *
- * A constant, not a function: configuration is read inside the graph, from the
- * `Env` port the kernel provides, so nothing has to be passed in from
- * `main.ts` — and a spec boots this very module with `env: { PORT: "0" }`.
- *
- * The database provider under both slices is resourceful, so this module
- * carries a `Scope` need that only `Module.scoped` discharges — which is what
- * `start` does, once, for the whole process.
+ * A constant, not a function: configuration is read inside the graph, so a spec
+ * boots this very module with `env: { PORT: "0" }`.
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
   imports: [OrdersSlice, CustomersSlice, cache({ adapter: redisCache() }), observability(), otel()],
-  // `Tracer` and `Meter` join `Logger` in the exports for the same reason it
-  // is there: `RequestModule` reads them out of the application scope.
+  // All three are exported because `RequestModule`, the per-request fork, reads
+  // them out of the application scope.
   exports: [Logger, Tracer, Meter],
 });

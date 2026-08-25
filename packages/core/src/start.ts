@@ -43,34 +43,20 @@ export type ExitReport = {
 
 export type StartOptions<UnitX = never, UnitNeeds = never> = {
   /**
-   * The environment the graph is configured from — provided to it as the
-   * `Env` port, and what the kernel reads its own `PROBE_PORT` from. Defaults
-   * to `process.env`; a test hands in the record it wants.
+   * The environment the graph is configured from, provided to it as the `Env`
+   * port and read for the kernel's own `PROBE_PORT`. Defaults to
+   * `process.env`.
    */
   readonly env?: Environment;
   /**
-   * A module forked around **every unit**: its providers are constructed when
-   * a unit opens and torn down when it closes, reading anything the
-   * application context already carries. This is what makes a per-request
-   * scope transparent — the runtime's unit work simply receives the forked
-   * context, and no handler ever calls `Module.forkScope` itself.
+   * A module forked around **every unit**: built as the unit opens, torn down
+   * as it closes — while the unit's ambient record is still open — reading
+   * anything the application context carries.
    *
-   * The error channel is pinned to `never`: a unit is already inside the
-   * running application, so a construction failure here has no modeled
-   * channel to land in — it becomes the unit's defect, which each runtime
-   * already answers (an HTTP 500, a dead-letter). Its unmet needs must be
-   * covered by the module's exports (or `Scope`, which the fork opens);
-   * `start`'s gate checks that at the call site.
-   *
-   * Teardown runs while the unit is still open, so a finaliser that logs does
-   * it under the unit's own trace id. A finaliser that fails is reported as a
-   * `teardownError` event and nowhere else — not in `ExitReport.teardownErrors`,
-   * which is the application scope's.
-   *
-   * With this option the unit's work runs only once the fork is built — after
-   * an `await` when a unit provider is async — rather than synchronously
-   * inside `host.run`; a runtime that attaches a listener from inside its
-   * work must be ready for the event to have already fired.
+   * A failing unit finaliser is reported as a `teardownError` event and never
+   * in `ExitReport.teardownErrors`. With this option the unit's work runs only
+   * once the fork is built, so a runtime that subscribes to an event from
+   * inside its work must be ready for it to have already fired.
    */
   readonly unit?: Module<UnitX, never, UnitNeeds>;
   readonly clock?: Clock;
@@ -92,32 +78,18 @@ export type RunningApp<E, Info = never> = {
   readonly phase: () => Phase;
   /**
    * The predicate `/readyz` answers from — serving, and not forced unready by
-   * a drain or an uncaught exception.
-   *
-   * Readable synchronously, which the probe endpoint is not: the uncaught path
-   * forces it false while the phase is still `"serving"`, a window no HTTP
-   * round trip can observe. Also what an embedder wires into a health endpoint
-   * of its own when `probes` is `false`.
+   * a drain or an uncaught exception — read synchronously, which the probe
+   * endpoint is not.
    */
   readonly ready: () => boolean;
   /**
    * The port the probe server actually bound, once the bind attempt has
-   * settled — `undefined` when probes are disabled or the bind failed.
-   *
-   * Resolves before the graph is built, since the probe server is up first.
-   * The point of it is `probes: { port: 0 }`: the OS picks the port, and this
-   * is how the caller learns which one.
+   * settled; `undefined` when probes are disabled or the bind failed.
    */
   readonly probePort: () => AsyncResult<number | undefined, never>;
   /**
-   * Whatever the runtime published about itself on `Serving.info`, once it is
-   * serving — `undefined` when the runtime publishes nothing, or when it never
-   * reached `serving` at all.
-   *
-   * The same deferred shape as `probePort()`, one layer up: `probePort` answers
-   * for the kernel's own probe server, this answers for the runtime. It is what
-   * a runtime binding an ephemeral port uses to tell the caller which port it
-   * got, instead of every such runtime inventing an `onListening` hook.
+   * Whatever the runtime published on `Serving.info` once it is serving;
+   * `undefined` when it publishes nothing or never reached `serving`.
    */
   readonly runtimeInfo: () => AsyncResult<Info | undefined, never>;
 };
@@ -125,29 +97,14 @@ export type RunningApp<E, Info = never> = {
 /**
  * The phantom marker `start`, `runMain` and `Boot` all intersect onto their
  * `module` parameter: `unknown` — and invisible — when the module exports a
- * runtime and its exports cover what that runtime resolves, a sentence
- * otherwise, so a missing runtime or an unresolvable port fails to typecheck at the
- * call site.
+ * runtime, its exports cover what that runtime resolves and they cover the
+ * unit module's needs; one of three sentences otherwise, printed at the call
+ * site as the parameter type the argument did not match.
  *
- * It rides the `module` parameter rather than a trailing rest tuple because a
- * rest tuple fails as an **arity** error, and an arity error never prints a
- * type: `NO RUNTIME` never reached a reader, and tsc's related info pointed at
- * the wrong fix ("an argument for 'options' was not provided"). Intersected,
- * the sentence prints in full as the parameter type the argument did not
- * match. `X` still infers from `Module<X, …>` alongside the marker — measured,
- * since a conditional type in an inference-bearing position can otherwise
- * collapse `X` or `E` to `unknown`, which is what the rest tuple was avoiding
- * and is why `unknown`, not `{}` or `never`, is the satisfied case: it leaves
- * the module type untouched.
- *
- * With a `unit` module in play it also checks the fork's own direction: the
- * unit module's needs must be covered by the module's exports, `Scope` or
- * `Env` — `forkScope`'s gate stated at `start`'s call site, where the parent
- * is actually known. What a runtime resolves is checked against the module's
- * exports ONLY, never the unit's: `RuntimeHost.ctx` is the application
- * context, and a runtime that resolved a unit-only port at start would find
- * nothing there — so the gate rejects it rather than letting it type-check
- * into a startup defect.
+ * `unknown` is the satisfied arm because intersecting it leaves the module
+ * type untouched. A runtime's `resolves` is checked against the module's
+ * exports only, never the unit module's: `RuntimeHost.ctx` is the application
+ * context, so a unit-only port would resolve to nothing there.
  */
 export type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [never]
   ? "NO RUNTIME — the module exports no port declared over RuntimePort"
@@ -157,14 +114,6 @@ export type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] exte
       : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
     : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export";
 
-// `Module<X, E, Scope | Env>`, not `Module<X, E, never>`: `Needs` sits in
-// covariant position on `Module`, so this accepts a module with no needs at
-// all, the resourceful one whose `acquire`/`release` provider adds `Scope` —
-// the single need `Module.scoped` discharges by opening the scope itself — and
-// one whose configuration providers read `Env`, which the kernel provides. A
-// module with a genuine unmet dependency is rejected here, as di's own gate
-// would reject it. The intersected `StartGate` is a phantom: it is `unknown`
-// whenever the gate is satisfied, so no argument ever carries it.
 export const start = <X, E, UnitX = never, UnitNeeds = never>(
   module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
   options: StartOptions<UnitX, UnitNeeds> = {},
@@ -188,13 +137,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   const startedAt = clock.now();
   const preDrainDelayMs = options.preDrainDelayMs ?? 5_000;
   const drainTimeoutMs = options.drainTimeoutMs ?? 20_000;
-  // The second signal aborts this, cutting short whichever `drainApp` sleep
-  // (pre-drain delay or drain timeout) is currently pending.
   const skipDrain = new AbortController();
-  // Stamped at the FIRST request, not when the kernel notices: a signal landing
-  // mid-build is buffered until the runtime is serving, and paying the pre-drain
-  // delay in full afterwards charges twice for a window the build already spent
-  // — enough to push the shutdown past `terminationGracePeriodSeconds`.
   let shutdownRequestedAt = startedAt;
   let shutdownRequested = false;
   const sinceShutdownRequested = (): number => clock.now() - shutdownRequestedAt;
@@ -205,18 +148,13 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
     }
     shutdown.resolve(reason);
   };
-  // Never reset back to `true`, which is why the setter takes no argument.
   let forcedUnready = false;
   const onUnready = (): void => {
     forcedUnready = true;
   };
   const live = (): boolean => tracker.current() !== "exited";
-  // Do NOT delete `!forcedUnready` because the drain tests still pass without
-  // it — on that path the phase term alone answers false. It is load-bearing
-  // on the uncaught path only, where the handler flips it while the phase is
-  // still `"serving"`, and exactly one assertion catches its removal:
-  // `invariants.spec.ts`'s "an uncaught exception forces readiness false while
-  // the phase is still serving".
+  // `!forcedUnready` is load-bearing on the uncaught path alone — every drain
+  // test passes without it, since there the phase term already answers false.
   const ready = (): boolean => tracker.current() === "serving" && !forcedUnready;
   const disposeSignals =
     options.signals === false
@@ -234,24 +172,12 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
           skipDrain.abort();
           requestShutdown("uncaught");
         });
-  // Reassigned once the probe server actually binds (see `probesStarted`
-  // below); stays a no-op when probes are disabled or the bind never
-  // succeeds, so both dispose sites can call it unconditionally.
   let disposeProbes = (): void => {};
-  // Settled exactly once, on every route out of the bind attempt — bound,
-  // disabled, or failed — so `probePort()` can never hang.
   const probeBound = createDeferred<number | undefined>();
-  // The same shape one layer up, for the runtime: settled with `Serving.info`
-  // the moment the runtime is serving, and with `undefined` at both the
-  // failure sites below — so `runtimeInfo()` can never hang either.
   const runtimePublished = createDeferred<Info | undefined>();
 
   emit({ type: "building" });
 
-  // Bound before `Module.scoped` runs, so `/livez` answers while the graph is
-  // still building. A bind failure is a startup failure of its own, which is
-  // why the `tapFailure` below repeats `Module.scoped`'s cleanup: a failed
-  // `probesStarted` short-circuits the `flatMap` that would reach it.
   const probesOptions: Result<{ readonly port: number } | false, RuntimeStartFailed> =
     options.probes === undefined
       ? Config.port("PROBE_PORT", { default: 9000 })
@@ -282,11 +208,8 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
             .tap((server) => {
               probeBound.resolve(server.port);
               disposeProbes = () => {
-                // Dropped, and NOT awaited: the socket is `unref`'d and `close`
-                // waits out live keep-alive connections, so threading it would
-                // delay the exit report behind a probe agent or strand it. The
-                // outcome is unactionable during exit, so even a `Defect` here
-                // is correctly discarded.
+                // Never awaited: `close` waits out live keep-alive connections,
+                // which would delay or strand the exit report.
                 void server.close();
               };
             })
@@ -302,13 +225,6 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
       tracker.advanceTo("exited");
     });
 
-  // The environment is a service of every graph the kernel boots — the one
-  // twelve-factor source of configuration, provided here so nothing below
-  // reaches for `process.env` and a test can hand in a record of its own.
-  // Unless the module already provides `Env` itself (a test, an embedder that
-  // owns its environment): di refuses two providers for one port, and the
-  // module's is the deliberate one. Re-exporting `module` keeps `X` exactly
-  // what the caller composed.
   const root = Module("Kernel")({
     imports: providesEnv(module)
       ? [module]
@@ -317,18 +233,12 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
           Module("Environment")({ provides: [Provider(Env)({ value: env })], exports: [Env] }),
         ],
     exports: [module],
-    // `as never` on the options, and the discharged-signature cast on the
-    // result: di's `needs` gate cannot be computed while `X` is still a type
-    // parameter — it defers, and no object literal satisfies a deferred
-    // conditional — which is the same reason `runMain` casts `start` inside
-    // its own body. The gate is discharged here in fact: `Env` is what this
-    // wrapper exists to provide, and `Scope` is what the entry point opens.
+    // Both casts: di's `needs` gate defers while `X` is a type parameter, and
+    // no object literal satisfies a deferred conditional. It is discharged in
+    // fact — `Env` is what this wrapper provides, `Scope` what the entry point
+    // opens.
   } as never) as unknown as Module<X, E, Scope>;
 
-  // Only a `"signal"` shutdown reason drains. `"runtimeStopped"` (plain
-  // `stop()`) and `"uncaught"` go straight to `stopping`, leaving
-  // `ExitReport.drain` `undefined` — draining after an uncaught exception
-  // risks completing in-flight work against corrupted state.
   const runDrain = (serving: Serving<Info>): AsyncResult<DrainReport, never> => {
     tracker.advanceTo("draining");
     emit({ type: "draining", inFlight: registry.inFlight() });
@@ -348,15 +258,8 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
     serving: Serving<Info>,
     reason: ExitReport["reason"],
   ): AsyncResult<ExitReport, never> => {
-    // Skipping the drain is a decision not to WAIT for in-flight work, not a
-    // decision to leave it running unsupervised. `drainApp` aborts whatever is
-    // still open once its deadline passes; these two paths have no deadline, so
-    // they abort at once. `"uncaught"` needs it most — its whole reason for
-    // skipping the drain is that in-flight work may be completing against
-    // corrupted state, which not signalling that work would do nothing to stop.
-    // It is also what stops a unit holding a ref'd socket from keeping the event
-    // loop alive after the exit report, since `runMain` never calls
-    // `process.exit()`.
+    // Skipping the drain means not WAITING for in-flight work, not leaving it
+    // running unsignalled: these paths have no deadline, so they abort at once.
     if (reason !== "signal") registry.abortAll();
 
     const drained: AsyncResult<DrainReport | undefined, never> =
@@ -373,12 +276,8 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
         return {
           reason,
           drain: report,
-          // The aliasing is LOAD-BEARING: this is the same mutable array
-          // `onTeardownError` pushes into, and di closes the scope *after* `use`
-          // settles but *before* its own result settles — so every finaliser
-          // failure lands in the array after this object is built and before the
-          // caller can observe it. A defensive copy here (or anywhere on this
-          // path) would silently drop every teardown error.
+          // The aliasing is LOAD-BEARING: di closes the scope after this object
+          // is built, so a defensive copy would drop every teardown error.
           teardownErrors,
           uptimeMs: clock.now() - startedAt,
         };
@@ -392,31 +291,18 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
       (ctx: Context<X>): AsyncResult<ExitReport, RuntimeStartFailed> => {
         tracker.advanceTo("starting");
 
-        // The runtime is a service of the graph, resolved through the one port
-        // every runtime package declares its own over. `RuntimePort` is the
-        // generic base — its construct signature is `new <Service>()` — so it
-        // is not itself in `X`, and the gate has already proven, at the call
-        // site, that a port with its id is; the assertion restates that proof
-        // where the checker cannot see it.
+        // Both casts restate, where the checker cannot see it, what the
+        // `StartGate` proved at the call site: a port with `RuntimePort`'s id
+        // is exported, and the exports cover what the runtime resolves.
         const runtime = (ctx as unknown as Context<RuntimeInstance>).get(
           RuntimePort as unknown as abstract new () => RuntimeInstance,
         ) as Runtime<Resolves, Info>;
         runtimeName = runtime.name;
 
-        // `Context<in R>` is contravariant, so an application context whose
-        // exports cover what the runtime resolves is assignable here. The assertion is
-        // needed only because the `StartGate` intersected onto `module` proves
-        // `InstanceType<Resolves> extends X` at the *call site*, and that proof is
-        // not visible to the checker inside this body, where `X` and `Resolves` are
-        // still unresolved type parameters.
         const runtimeCtx = ctx as unknown as Context<InstanceType<Resolves>>;
 
-        // The registry counts and aborts; it knows nothing about contexts. The
-        // An ANNOTATION, not an assertion: a future divergence between this
-        // adapter and `RunUnit` is reported here rather than absorbed. The
-        // fork sits INSIDE `registry.run` so unit teardown still sees the
-        // ambient record and the unit is not counted closed until the scope
-        // is (`unit-module.spec.ts` guards both halves).
+        // The fork sits INSIDE `registry.run` so unit teardown still sees the
+        // ambient record and the unit is not counted closed until the scope is.
         const unit = options.unit;
         const run: RunUnit<Resolves> = (meta, work) =>
           registry.run(meta, (signal) => {
@@ -429,9 +315,6 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
               options: ScopedOptions,
             ) => AsyncResult<T, Err>;
 
-            // Emitted, not pushed into `teardownErrors`: that array is the
-            // application scope's and rides the exit report; a per-unit
-            // finaliser failing on every request would grow it without bound.
             return fork(
               ctx,
               unit,
@@ -458,16 +341,8 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
           emit({ type: "teardownError", port, cause });
         },
       },
-      // Construction failed, or the runtime refused to start: `use` never
-      // reached `finish`, so nothing has moved the tracker off a live phase.
-      // The plan's state diagram says any failure short-circuits to `stopping`;
-      // without this the event stream just stops and `phase()` lies about an
-      // application that has already exited.
     ).tapFailure((failure) => {
-      // A failure that reaches here after `finish` moved the phase to
-      // `stopping` is a SHUTDOWN defect (`serving.stop()` blew up), not a
-      // startup one — it is already the exit report's business, and naming it
-      // `startFailed` would mislead an operator reading the stream.
+      // Reaching here past `stopping` is a shutdown defect, not a startup one.
       if (tracker.current() !== "stopping") {
         emit({ type: "startFailed", cause: failure.tag === "Err" ? failure.error : failure.cause });
       }

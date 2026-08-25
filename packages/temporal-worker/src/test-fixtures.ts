@@ -26,12 +26,9 @@ import {
 import { TemporalWorkflowActivities } from "./workflow-activities.js";
 
 /**
- * One Temporal server for the whole repository — see `internal/test-infra` —
- * and a namespace of this spec file's own on it. That replaces the
- * time-skipping test server this suite used to download and start per vitest
- * worker: a namespace is Temporal's own isolation boundary, and nothing here
- * ever advanced a clock, so the skippable one bought nothing that a shared
- * server plus a private namespace does not.
+ * One Temporal server for the whole repository, with a namespace of this spec
+ * file's own on it — Temporal's own isolation boundary, and enough here because
+ * nothing in this suite advances a clock.
  */
 type Server = { readonly address: string; readonly namespace: string };
 
@@ -59,7 +56,7 @@ const echoContract = defineContract({
   },
 });
 
-/** The activities provider builder the way a consumer gets it: `TemporalActivities(contract)`, di's own `Provider(port)` on the starter's activities port, typed for the contract. */
+/** The activities provider builder as a consumer gets it, typed for the contract. */
 const EchoActivities = TemporalActivities(echoContract);
 
 const echoing = EchoActivities({
@@ -77,11 +74,9 @@ const undeclaredEcho = {
 export const undeclared = EchoActivities({ value: undeclaredEcho });
 
 /**
- * The application's own module: a service, and the activities built from it —
- * the implementation closes over `Greeting` the way a provider does, and
- * records what it saw so the specs can assert on it. `seen` reads the ambient
- * record from inside the attempt: `undefined` outside a unit, so its length is
- * the unit count and its `traceId` the correlation id the runtime supplied.
+ * The activities built from a service they close over, recording what they saw.
+ * `seen` reads the ambient record from inside the attempt — `undefined` outside
+ * a unit, so its length is the unit count.
  */
 const contractSeamOf = () => {
   const seen: (UnitRecord | undefined)[] = [];
@@ -108,11 +103,9 @@ const contractSeamOf = () => {
 };
 
 /**
- * An activity that waits on the kernel's own per-unit signal — reached through
- * `currentUnit()`, since this runtime's work callback is Temporal's `next()`
- * and an activity has no parameter to receive one through — and reports what
- * it saw. `arrived` is the moment the attempt reached it, so a drain spec
- * knows the unit is genuinely in flight.
+ * An activity that waits on the kernel's per-unit signal, reached through
+ * `currentUnit()`, and reports what it saw. `arrived` is the moment the attempt
+ * reached it, so a drain spec knows the unit is genuinely in flight.
  */
 const deadlineOf = () => {
   let entered!: () => void;
@@ -130,19 +123,16 @@ const deadlineOf = () => {
             entered();
             return fromSafePromise(
               new Promise<string>((done) => {
-                // No record at all is the very regression this fixture exists
-                // to catch: settle at once so the spec fails on `sawAbort`
-                // rather than hanging until the suite's timeout, which would
-                // report a slow test instead of a missing signal.
+                // No record at all is the regression this fixture exists to
+                // catch: settle at once, so the spec fails on `sawAbort` rather
+                // than hanging until the suite's timeout.
                 if (signal === undefined) {
                   sawAbort = false;
                   done(value);
                   return;
                 }
-                // An already-aborted signal never fires `abort` again — the
-                // same arm `whenAborted` carries in `temporal-runtime.ts`,
-                // and the reason a drain deadline of `0` would otherwise
-                // strand this activity.
+                // An already-aborted signal never fires `abort` again, which is
+                // why a drain deadline of `0` would otherwise strand this.
                 if (signal.aborted) {
                   sawAbort = true;
                   done(value);
@@ -168,10 +158,9 @@ const deadlineOf = () => {
 };
 
 /**
- * The same wiring, but the activity resolves only once `release()` is called
- * and reports its arrival through `arrived`. The drain specs turn on knowing a
- * unit is genuinely in flight before the drain starts — polling a wall clock
- * instead would be the flake.
+ * The same wiring, but the activity resolves only once `release()` is called and
+ * reports its arrival through `arrived` — the drain specs turn on knowing a unit
+ * is genuinely in flight before the drain starts.
  */
 const gateOf = () => {
   let entered!: () => void;
@@ -257,14 +246,12 @@ const slicedContract = defineContract({
 
 /**
  * Two slices, composed. `runEcho`'s piece declares `Greeting` and `runShout`'s
- * declares nothing, so a spec can tell each piece was built from the ports its
- * OWN provider declared.
+ * declares nothing, so a spec can tell each was built from the ports its OWN
+ * provider declared.
  *
- * `pieces` is exposed alongside `activities`: the composed provider's own
- * `deps` are the pieces' PORTS, not what they close over, so something still
- * has to REGISTER `echo` and `shout` themselves — `flatten` (`build.ts`) only
- * collects providers a module's own `provides` names, never a provider's
- * `deps` transitively. `serveSliced` is what adds them.
+ * `pieces` is exposed alongside `activities` because the composed provider's
+ * `deps` are the pieces' PORTS: something still has to REGISTER them, since
+ * `flatten` never collects a provider's deps transitively.
  */
 const slicesOf = () => {
   let greeting = "";
@@ -298,12 +285,9 @@ let queueSeq = 0;
 const nextTaskQueue = (): string => `t-${(queueSeq += 1)}-${process.pid}`;
 
 /**
- * `contract` with a per-test `taskQueue`, typed as `C` rather than the
- * widened object literal an inline spread produces — a runtime `taskQueue`
- * can never be the contract's own literal type, so the cast is unavoidable
- * here. Keeping the static type at `C` is what lets `TemporalModule` infer
- * one `C` from `contract` and `activities` together instead of two
- * conflicting candidates.
+ * `contract` with a per-test `taskQueue`, typed as `C` rather than the widened
+ * literal an inline spread produces — which is what lets `TemporalModule` infer
+ * ONE `C` from `contract` and `activities` together.
  */
 const withTaskQueue = <C extends ContractDefinition>(contract: C, taskQueue: string): C =>
   ({ ...contract, taskQueue }) as C;
@@ -355,11 +339,9 @@ export type TemporalFixtures = {
 };
 
 /**
- * One booted application: the starter composed the way a composition root
- * composes it — `TemporalModule(name)({ contract, activities, workflows })`
- * over the application's providers — and started against this file's own
- * namespace on the shared server, so every test opens and closes a connection
- * of its own rather than sharing the client's.
+ * One booted application, composed the way a composition root composes it and
+ * started against this file's own namespace — so every test opens and closes a
+ * connection of its own.
  */
 const compose = (server: Server, boot: Boot, options: BootOptions) => {
   const taskQueue = nextTaskQueue();

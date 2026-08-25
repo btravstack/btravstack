@@ -16,22 +16,14 @@ export type PortClass<Id extends string> = {
   readonly portId: Id;
 };
 
-// `PortClass<Id>` has a *generic* construct signature (`new <Service>(): ...`).
-// A concrete port class — `class Logger extends Port("Logger")<Shape> {}` — has a
-// concrete constructor once `Shape` is fixed by the heritage clause, so `typeof
-// Logger` is not structurally assignable to `PortClass<string>`: it would need to
-// accept an explicit `Service` type argument at every call, which a fixed-shape
-// constructor cannot do. `AnyPort` instead demands only what a concrete port class
-// actually has — a `portId` and a (possibly abstract) no-arg constructor returning
-// some `PortInstance` — which every port, generic or concrete, satisfies. `abstract
-// new` rather than `new` is what makes a concrete class's constructor assignable
-// here at all: a plain `new` signature is invariant in "can this be called with
-// `new`", so a concrete class needs the weaker `abstract new` target.
-// `any` is the only bound that accepts every concrete port as a constraint; a
-// narrower one would reject ports whose service shape is itself generic. Kept
-// as its own alias so the disable comment survives reformatting — inlined into
-// `AnyPort` below, oxfmt wraps the type across lines and moves `any` off the
-// line the comment targets.
+// `AnyPort` demands only what a concrete port class has, since `typeof Logger`
+// is not assignable to `PortClass<string>`'s generic construct signature.
+// `abstract new` rather than `new` is what makes a concrete class's constructor
+// assignable at all — a plain `new` signature is invariant.
+//
+// `any` is the only bound that accepts every concrete port; a narrower one
+// rejects ports whose service shape is itself generic. Its own alias so the
+// disable survives reformatting: inlined, oxfmt moves `any` off this line.
 // oxlint-disable-next-line typescript/no-explicit-any
 type AnyPortInstance = PortInstance<string, any>;
 
@@ -40,13 +32,10 @@ export type AnyPort = {
 } & (abstract new () => AnyPortInstance);
 
 /**
- * A concrete port class with `Id` and `Service` fixed — what a helper that
- * hands a port to a caller (`Config.provider("RelayConfig")(schema)`, which
- * mints one; a starter's `HttpRouter(contract)(deps, arm)`, which targets its
- * own fixed one) returns as the type of `provider.port`. A class expression
- * (`class extends Port(id)<S> {}`) has an anonymous type declaration emit
- * cannot name across packages, and a `Port(id)` left generic and typed per
- * contract has none of its own; this is the nameable spelling of both.
+ * A concrete port class with `Id` and `Service` fixed — the type of
+ * `provider.port` for a helper that mints or targets a port the caller never
+ * spells. A class expression's type is anonymous and declaration emit cannot
+ * name it across packages; this is the nameable spelling.
  */
 export type PortClassOf<Id extends string, Service> = {
   readonly portId: Id;
@@ -79,30 +68,16 @@ function warnOnDuplicateId(id: string): void {
 }
 
 /**
- * A phantom requirement, not a real service — its shape is `never` because
- * nothing ever constructs one or reads it out of a `Context`. A resourceful
- * provider (the `acquire`/`release` qualification arm, `provider.ts`) adds
- * `Scope` to its `Needs`, so `Module.build` — which demands `Needs` be
- * `never` — refuses a graph that still owns an un-discharged resource. Only
- * `Module.scoped` strips `Scope` back out of `Needs` before checking for
- * unmet dependencies, because it is the one entry point that actually opens
- * a `createScope` and guarantees its `close`. Forgetting to route a
- * resourceful module through `Module.scoped` is a compile error, not a
- * runtime leak.
+ * A phantom requirement, not a real service: nothing constructs one or reads it
+ * out of a `Context`. A resourceful provider adds `Scope` to its `Needs`, so
+ * `Module.build` refuses a graph that still owns an un-discharged resource and
+ * only `Module.scoped` — which opens one — strips it back out.
  *
- * `Scope` being *providable* — `Provider(Scope)({ value: ... })` — is a
- * separate hazard from being unmet, and is deliberately **not** blocked by
- * the type system: a generic type-level guard keyed on `P`'s id (tried
- * first) turned out to be simultaneously bypassable (any `const widened:
- * AnyPort = Scope` before the call slips past a conditional that only ever
- * sees the widened structural type) and a false positive on ordinary
- * port-generic helpers (`function wrap<P extends AnyPort>(port: P) {
- * return Provider(port) }` couldn't typecheck, since the conditional can't
- * reduce for an unresolved `P`). `build.ts`'s `plan()` instead rejects a
- * provider registered for `Scope`'s `portId` as a `WiringDefect`, the same
- * class of pre-construction wiring bug a dependency cycle or a duplicate
- * provider already is — sound against any type-level alias or widening,
- * because it checks the runtime `portId` string, not a static type.
+ * Whether `Scope` can be PROVIDED is a separate hazard, checked at run time by
+ * `build.ts`'s `plan` rather than in the types. A type-level guard keyed on the
+ * id was tried and was both bypassable (a widening to `AnyPort` before the call
+ * slips past it) and a false positive on any port-generic helper, since the
+ * conditional cannot reduce for an unresolved `P`.
  */
 export class Scope extends Port("@di/Scope")<never> {}
 
@@ -112,11 +87,8 @@ export class Scope extends Port("@di/Scope")<never> {}
  */
 export function Port<const Id extends string>(id: Id): PortClass<Id> {
   warnOnDuplicateId(id);
-  // A class, not a plain object, is required here: `extends Port("X")<Shape>`
-  // needs a construct signature, and only a class expression provides one.
-  // Two classes in this file are deliberate: `Scope` above is a concrete port
-  // that must live here (see its own doc comment), and this one is the factory
-  // `Port()` itself returns.
+  // A class, not a plain object: `extends Port("X")<Shape>` needs a construct
+  // signature, and only a class expression provides one.
   // oxlint-disable-next-line typescript/no-extraneous-class max-classes-per-file
   return class {
     static readonly portId = id;

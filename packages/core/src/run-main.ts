@@ -11,26 +11,17 @@ import {
   type StartOptions,
 } from "./start.js";
 
-// sysexits(3)'s `EX_SOFTWARE`: an internal software error. A defect is exactly
-// that — a failure nobody modelled — so it gets its own code rather than
-// sharing `1` with a startup failure the operator can act on.
+// sysexits(3): an internal software error, and a deployment that is wrong
+// rather than code that is.
 const EX_SOFTWARE = 70;
-// sysexits(3)'s `EX_CONFIG`: the deployment is wrong, not the code. A
-// configuration port that could not be bound — or the kernel's own
-// `PROBE_PORT`, which arrives as a `RuntimeStartFailed` for `"probes"` with
-// the `ConfigInvalid` as its cause — is the one startup failure an operator
-// fixes without a rebuild, and the code says so.
 const EX_CONFIG = 78;
 
 const isConfig = (error: unknown): boolean =>
   error instanceof ConfigInvalid ||
   (error instanceof RuntimeStartFailed && error.cause instanceof ConfigInvalid);
 
-// The `uncaught` arm must come FIRST: a crash outranks abandoned work, both
-// can be true of one report, and ordering it second would report `2` for a
-// process that died. A failed finaliser earns the `2` as much as abandoned
-// work does — the kernel goes to real trouble to keep those observable
-// (`start.ts`'s array aliasing), which reporting `0` over them would waste.
+// The `uncaught` arm must come FIRST: both can be true of one report, and
+// ordering it second reports `2` for a process that died.
 const codeFor = (report: ExitReport): number => {
   if (report.reason === "uncaught") return EX_SOFTWARE;
   const unclean = (report.drain?.abandoned ?? 0) > 0 || report.teardownErrors.length > 0;
@@ -38,17 +29,12 @@ const codeFor = (report: ExitReport): number => {
 };
 
 /**
- * The exit-code half of `runMain`, on its own so the code table can be
- * asserted against hand-built reports without booting a kernel. Exported for
- * `run-main.spec.ts` only — not part of the public surface (`index.ts` does
- * not re-export it). An embedder that will not use `runMain` folds
- * `ExitReport` into a code itself; this is not the API for that, the README's
- * embedding section is.
+ * The exit-code half of `runMain`, on its own so the code table can be asserted
+ * against hand-built reports without booting a kernel. Exported for
+ * `run-main.spec.ts` only, not from `index.ts`.
  */
 export const awaitExit = async <E>(
-  // `RunningApp<E, unknown>`, not `RunningApp<E>`: only `exited` is read, and
-  // `Info` is covariant, so this accepts an app whose runtime publishes
-  // anything at all.
+  // `RunningApp<E, unknown>`: only `exited` is read, and `Info` is covariant.
   app: RunningApp<E, unknown>,
   exit: (code: number) => void,
 ): Promise<void> => {
@@ -57,12 +43,9 @@ export const awaitExit = async <E>(
   exit(
     result.match({
       ok: codeFor,
-      // `E` is the application's own error type, still unresolved here, so no
-      // arm list can prove exhaustiveness against it and the catch-all is the
-      // only arm that can terminate the match — the generic-`E` case the
-      // wildcard is kept for. Every modeled startup failure means the same
-      // thing to the operating system anyway — the process never came up —
-      // except the one the operator can fix in the deployment.
+      // Every modeled startup failure means the same thing to the operating
+      // system — the process never came up — except the one the operator can
+      // fix in the deployment.
       // oxlint-disable-next-line unthrown/no-catch-all-pattern -- generic `E`: the catch-all is the only arm that can terminate a match over an unresolved type parameter
       errCases: (matcher) => matcher.with(P._, (error) => (isConfig(error) ? EX_CONFIG : 1)),
       defect: () => EX_SOFTWARE,
@@ -92,35 +75,27 @@ export const awaitExit = async <E>(
  * | stopped by an uncaught exception or unhandled rejection | `70` |
  * | a defect | `70` |
  *
- * The two `70`s are the same statement — sysexits(3)'s `EX_SOFTWARE`, an
- * internal software error — reached through the two channels a bug can take.
- * A crash takes precedence over abandoned work. `78` is `EX_CONFIG`: the
- * deployment is wrong, not the code.
+ * The two `70`s are the same statement reached through the two channels a bug
+ * can take. A crash takes precedence over abandoned work.
  *
  * @example
  * ```ts
- * // `OrderApi` imports the application next to `@btravstack/http-server`'s `http()`
- * // starter and exports `HttpRuntime` — the port `start` resolves the runtime
- * // from. `PORT`, `HOST` and `PROBE_PORT` are read inside the graph.
+ * // `OrderApi` imports the application next to `http()` and exports
+ * // `HttpRuntime`. `PORT`, `HOST` and `PROBE_PORT` are read inside the graph.
  * await runMain(OrderApi);
  * ```
  */
-// The one async surface in this package that returns a bare `Promise<void>`
-// rather than an `AsyncResult`, deliberately: its whole job is to LEAVE the
-// Result world and become a process exit code. It is the boundary, and a
-// top-level `await runMain(...)` in an entry point is the intended shape.
+// The one async surface here returning a bare `Promise<void>`: its whole job is
+// to leave the Result world and become a process exit code.
 export const runMain = async <X, E, UnitX = never, UnitNeeds = never>(
-  // The same phantom gate `start` carries, for the same reason: it makes the
-  // runtime's declared `resolves` a compile-time check at *this* call site.
   module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
   options: StartOptions<UnitX, UnitNeeds> = {},
   exit: (code: number) => void = (code) => {
     process.exitCode = code;
   },
 ): Promise<void> => {
-  // The gate above proves the needs at the call site, but that proof is not
-  // visible inside a body where `X` is still an unresolved type parameter —
-  // the same discharged-signature cast `bootFixture` makes, for the same reason.
+  // The gate proves the needs at the call site, and that proof is not visible
+  // in a body where `X` is still a type parameter.
   const boot = start as (
     module: Module<X, E, Scope | Env>,
     options: StartOptions<UnitX, UnitNeeds>,

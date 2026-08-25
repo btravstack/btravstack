@@ -4,18 +4,13 @@ import { OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrow
 
 /**
  * What the kernel opens per unit and `currentUnit()` reads: a small, fixed
- * record of **data about this unit**, and never a service. See the root
- * `CLAUDE.md`'s thesis 2 for the line that draws.
+ * record of **data about this unit**, and never a service.
  *
  * `signal` is the same `AbortSignal` the work callback receives — aborted at
  * the drain deadline, or at once on a path that skips the drain. It is here
  * because the callback is not always where the work is: a middleware-shaped
- * runtime (`@btravstack/temporal-worker`, `@btravstack/amqp-worker`) opens the unit around
- * a call it does not own the arguments of, so an activity or a handler has no
- * parameter to receive it through. It is data, not a capability: there is
- * nothing to substitute in a test, and a deadline nobody can observe is not a
- * deadline. A transport's own cancellation — Temporal's
- * `Context.current().cancellationSignal` — is a different clock, not this one.
+ * runtime opens the unit around a call whose arguments it does not own. A
+ * transport's own cancellation is a different clock, not this one.
  */
 export type UnitRecord = {
   readonly unitId: string;
@@ -37,21 +32,14 @@ export const currentUnit = (): UnitRecord | undefined => storage.getStore();
  *
  * @remarks
  * **`id` must be unique per unit unless a `traceId` is supplied**, because
- * `traceId` defaults to it. A runtime that passes a *category* as the id — an
- * HTTP runtime using the route template `"POST /orders"` — gives every request
- * the same trace id, and the ambient record's whole purpose, telling one unit
- * apart from another in a log line, is silently defeated. A broker message id
- * or a queue job id is already unique and needs nothing more; a route template
- * is a `kind`, not an `id`.
+ * `traceId` defaults to it. A runtime passing a CATEGORY as the id — a route
+ * template such as `"POST /orders"` — gives every request the same trace id and
+ * silently defeats the ambient record. A route template is a `kind`.
  *
- * The kernel cannot check this — it would have to remember every id it had
- * ever seen — so uniqueness is the runtime's to guarantee. What the kernel
- * does guarantee is {@link UnitRecord}'s `unitId`, minted per unit and always
- * unique: a reader that only needs to tell two units apart already has it.
- * `traceId` is the **correlation** id, which is why it is the one a runtime
- * may supply — it carries an id from *outside* the process (a `traceparent`
- * header, a message property) so a line logged here joins a trace that started
- * elsewhere.
+ * The kernel cannot check this, so uniqueness is the runtime's to guarantee.
+ * What it does guarantee is {@link UnitRecord}'s `unitId`, minted per unit;
+ * `traceId` is the CORRELATION id, which is why it is the one a runtime may
+ * supply — it carries an id from outside the process.
  */
 export type UnitMeta = {
   readonly kind: string;
@@ -69,10 +57,8 @@ export type UnitWork<T, E> = (
 export type UnitRegistry = {
   readonly run: <T, E>(meta: UnitMeta, work: UnitWork<T, E>) => AsyncResult<T, E>;
   readonly inFlight: () => number;
-  // Monotonic: only ever increments, so `closed() - closedAtSomeEarlierPoint`
-  // can never go negative the way `inFlightAtStart - inFlight()` can (a unit
-  // that starts after the earlier point is sampled shrinks the latter below
-  // zero; it only grows the former).
+  // Monotonic, so a delta of it can never go negative the way
+  // `inFlightAtStart - inFlight()` can once a unit starts after the sample.
   readonly closed: () => number;
   readonly abortAll: () => void;
   readonly awaitIdle: () => AsyncResult<void, never>;
@@ -106,23 +92,21 @@ export const createUnitRegistry = (): UnitRegistry => {
         traceId: meta.traceId ?? meta.id,
         tenantId: meta.tenantId,
         deadline: meta.deadline,
-        // The very signal `work` is handed below: one abort, two ways to
-        // reach it, so a runtime whose work is a callback it does not own the
-        // arguments of (a middleware) is not left without the deadline.
+        // The very signal `work` is handed below: one abort, two ways to reach
+        // it. Do not mirror it onto a second controller.
         signal: controller.signal,
       };
 
-      // `fromSafePromise` is correct rather than `fromPromise`: the promise
-      // below cannot reject — the work's own throw is caught by `flatMap`'s
-      // throw-to-defect net once the inner Result is unwrapped — and there is
-      // no cause here that a `qualify` could triage into a modeled error.
+      // `fromSafePromise`, not `fromPromise`: the promise cannot reject — the
+      // work's own throw is caught by `flatMap`'s throw-to-defect net — and no
+      // cause here could be triaged into a modeled error.
       return fromSafePromise(
         runWithUnit(record, async () => {
           try {
             return await work(controller.signal);
           } finally {
-            // Same `finally` as the delete: every path a unit can leave by —
-            // Ok, Err, or a throw — closes it exactly once, here.
+            // Every path a unit can leave by — Ok, Err or a throw — closes it
+            // exactly once, here.
             open.delete(controller);
             closedCount += 1;
             settleIfIdle();

@@ -57,9 +57,7 @@ const publicApi = defineHttp();
 
 /**
  * The transport under test with a bare listener where `http()` would put the
- * oRPC one — the internal seam `httpModule` exists for, so the guarantees
- * (`404`/`500`, the unit open until `'close'`, the drain) are exercised without
- * a router in the way. Loopback and an ephemeral port unless told otherwise.
+ * oRPC one, so the guarantees are exercised without a router in the way.
  */
 const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securityHeaders"]) =>
   Module("App")({
@@ -107,13 +105,7 @@ export const helloController = publicApi.HttpController("HelloController", hello
   { sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet("world")) }) },
 );
 
-/**
- * The keyed form's own contract, over the same two fragments. Not a constraint
- * — a bare procedure is a `RouterContract` too, so a controller sits at such a
- * key as happily as at a nested one — but `greetingContract` is the deps
- * form's fixture, carrying its `boom` defect and the stray key smuggled past
- * the types, and the two arms are worth exercising side by side.
- */
+/** The keyed form's own contract, so the two arms are exercised side by side. */
 const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
 
 /** The other half of `slicedContract`, alongside the reused `helloController`. */
@@ -125,12 +117,9 @@ const echoesController = publicApi.HttpController(
 });
 
 /**
- * A contract whose top-level key is literally `sync` — the one input that could
- * confuse `HttpRouter`'s runtime discriminator, which tells its arm-only form
- * from its keyed-controllers form by whether `sync` holds a function. A
- * contract may name a key anything, so this is the adversarial case: the value
- * under `sync` here is a CONTROLLER, an object carrying `.port`, and the check
- * must keep picking the keyed arm.
+ * A contract whose top-level key is literally `sync` — the adversarial case for
+ * `HttpRouter`'s runtime discriminator. The value here is a CONTROLLER, an
+ * object carrying `.port`, so the check must keep picking the keyed arm.
  */
 const syncKeyedContract = oc.router({ sync: helloFragment });
 
@@ -171,11 +160,7 @@ const rpcSlicedAppOf = () =>
     ],
   });
 
-/**
- * What this deployment knows about a caller. The contract names no identity
- * type at all, so `defineHttp` is the only place one is stated — and the only
- * route by which a handler gets a readable `context.principal`.
- */
+/** What this deployment knows about a caller; `defineHttp` is the only place one is stated. */
 type Identity = { readonly tenantId: string; readonly userId: string };
 
 const userAuthenticator = HttpAuthenticator<Identity>()({
@@ -281,11 +266,7 @@ const rpcRootMarkedAppOf = () =>
     hostname: "127.0.0.1",
   });
 
-/**
- * The other arm of `HttpAuthenticator`: one that DECLARES a dependency — a JWT
- * verifier, a key set, a token table — which is the form every adopter writes
- * and the one `defineHttp` binds through `Provider(port)(deps, arm)`.
- */
+/** The other arm of `HttpAuthenticator`: one that DECLARES a dependency. */
 class TokenTable extends Port("TokenTable")<(token: string) => Identity | undefined> {}
 
 const verifying = defineHttp({
@@ -333,11 +314,8 @@ const rpcVerifiedAppOf = () =>
 /**
  * The substitution seam `authenticatorPort` exists for: a hand-rolled
  * composition provides its OWN authenticator on the scheme's port and never
- * spreads `router.authenticators` — recomposition, this repo's stated way to
- * swap an adapter, not a second `defineHttp` registry and not a provider
- * layered over one (di refuses two providers for one port). The real,
- * `TokenTable`-backed authenticator is not in this graph at all, which is the
- * point: the stub composition never builds the verifier.
+ * spreads `router.authenticators`. The `TokenTable`-backed one is not in this
+ * graph at all, which is the point — the stub composition never builds it.
  */
 const rpcSubstitutedAppOf = () =>
   Module("RpcSubstitutedApp")({
@@ -370,9 +348,8 @@ type RootMarkedClient = RouterContractClient<{
 }>;
 
 /**
- * The same implementation carrying a key the contract never declared — only
- * reachable past the types (the assertion is the bypass), which is what
- * `routerOf`'s own guard exists for: the stray key is dropped, not defected on.
+ * The same implementation carrying a key the contract never declared, reachable
+ * only past the types: `routerOf` drops it rather than defecting on it.
  */
 const strayRouter = publicApi.HttpRouter(greetingContract)(
   { greeter: Greeter },
@@ -396,8 +373,7 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
 
 /**
  * A one-procedure `greet` contract, named for the plugin test's own request
- * path — `greetingContract`'s `hello` would not match `/rpc/greet` and the
- * CORS plugin only decorates a MATCHED response.
+ * path: the CORS plugin only decorates a MATCHED response.
  */
 const corsContract = oc.router({
   greet: oc.input(ocType<{ readonly name: string }>()).output(ocType<string>()),
@@ -536,10 +512,8 @@ export type HttpFixtures = {
   };
   /**
    * Like `gate`, except the handler flushes its headers before holding — the
-   * state a streamed response is in, and the one `retire`'s `headersSent`
-   * branch exists for. This package's own router never produces it
-   * (`writeHead` and `end` sit adjacent, with nothing async between), but a
-   * handler is free to.
+   * state `retire`'s `headersSent` branch exists for. This package's own router
+   * never produces it, but a handler is free to.
    */
   readonly streamedGate: {
     readonly handler: Handler;
@@ -552,10 +526,9 @@ export type HttpFixtures = {
     readonly seen: () => readonly (string | undefined)[];
   };
   /**
-   * A raw keep-alive connection held BUSY across a drain. `fetch` cannot express
-   * it: undici owns its pool, and `Connection` is hop-by-hop so it never reaches
-   * the `Response`. Busy is the point — `closeIdleConnections()` reaches every
-   * *idle* connection and no others.
+   * A raw keep-alive connection held BUSY across a drain, which `fetch` cannot
+   * express: undici owns its pool and `Connection` is hop-by-hop. Busy is the
+   * point — `closeIdleConnections()` reaches every IDLE connection and no others.
    */
   readonly keepAlive: {
     readonly call: (origin: string) => Promise<{
@@ -580,10 +553,9 @@ export type HttpFixtures = {
     readonly client: RouterContractClient<typeof slicedContract>;
   }>;
   /**
-   * The starter over a contract whose `orders` fragment is `authenticated(...)`,
-   * with an authenticator that accepts exactly one token — router, controllers
-   * and authenticator all minted by one `defineHttp(...)`. Shut down by
-   * the fixture; the handler's run count is reset before the test body.
+   * The starter over a contract whose `orders` fragment is `authenticated(...)`
+   * — router, controllers and authenticator all from one `defineHttp(...)`. Shut
+   * down by the fixture; the run count is reset before the test body.
    */
   readonly rpcAuthed: {
     /** A typed client presenting `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
@@ -605,11 +577,7 @@ export type HttpFixtures = {
     readonly keyed: readonly string[];
     readonly fromDeps: readonly string[];
   };
-  /**
-   * The starter over a router whose scheme's authenticator DECLARES a
-   * dependency, resolved by an imported module — the form `defineHttp` binds
-   * through `Provider(port)(deps, arm)`. Shut down by the fixture.
-   */
+  /** The starter over a router whose authenticator DECLARES a dependency. Shut down by the fixture. */
   readonly rpcVerified: (token: string) => RootMarkedClient;
   /** The same router with the `user` scheme's authenticator substituted on its port. Shut down by the fixture. */
   readonly rpcSubstituted: (token: string) => RootMarkedClient;

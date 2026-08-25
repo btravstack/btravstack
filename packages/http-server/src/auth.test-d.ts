@@ -144,12 +144,10 @@ const strandedRouter = openApi.HttpRouter(strandedFragment)({
 void HttpModule("Stranded")({ needs: [Env], router: strandedRouter });
 
 // 10. A ROOT-marked contract composes through the KEYED form, and a controller
-//     under it reads the identity its scheme resolves. The keyed overload must
-//     therefore `Exclude` the phantom key from the keys it demands (or the
-//     record can never be complete) and `Inherit` the root's requirements down
-//     to each fragment (or no controller under it could type
-//     `context.principal`) — both of which the deps arm already did.
-//     `contract.orders` above marks a KEY, so neither omission showed there.
+//     under it reads the identity its scheme resolves — so that overload must
+//     `Exclude` the phantom key and `Inherit` the root's requirements, as the
+//     deps arm already did. `contract.orders` above marks a KEY, so neither
+//     omission showed there.
 declare const ordersFragment: Authenticated<
   { readonly whoami: typeof oc },
   [{ readonly user: readonly [] }]
@@ -171,11 +169,9 @@ const _rootKeyed = HttpModule("RootKeyed")({
 
 void _rootKeyed;
 
-// 11. An authenticator that DECLARES DEPENDENCIES is the documented shape — a
-//     JWT verifier, a key set, a user directory. Its own need travels with it
-//     into `provides`, so a root that imports nothing satisfying it is refused
-//     at THIS call by di's `NeedsGate`, exactly as a hand-listed provider would
-//     be. That is what carrying the authenticators on the router has to buy.
+// 11. An authenticator that DECLARES DEPENDENCIES carries its own need into
+//     `provides`, so a root satisfying none is refused at THIS call by di's
+//     `NeedsGate` — what carrying the authenticators on the router has to buy.
 class Verifier extends Port("Verifier")<(token: string) => Identity | undefined> {}
 
 const verifying = defineHttp({
@@ -258,11 +254,9 @@ HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
 expectTypeOf(plain.principal).toEqualTypeOf<{ readonly userId: string }>();
 expectTypeOf(scoped.scope).toEqualTypeOf<"orders:export">();
 
-// ---------------------------------------------------------------------------
-// The scope-vocabulary gate (#90). A contract may name a scope only if the
-// scheme's own authenticator can grant it — otherwise the route compiles, passes
-// every gate command, and then 403s every caller forever with no diagnostic.
-// ---------------------------------------------------------------------------
+// The scope-vocabulary gate. A contract may name a scope only if the scheme's
+// own authenticator can grant it — otherwise the route compiles, passes every
+// gate command, and then 403s every caller forever with no diagnostic.
 
 const scopedApi = defineHttp({
   authenticators: {

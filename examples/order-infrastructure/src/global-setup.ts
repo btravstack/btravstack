@@ -12,14 +12,11 @@ import type {} from "vitest";
 import type { TestProject } from "vitest/node";
 
 /**
- * The key this setup provides, declared beside it — the same rule
- * `internal/test-infra`'s two setups follow, so a workspace's `vitest.d.ts`
- * mirrors the `globalSetup` list in its `vitest.config.ts` and `inject` knows
- * exactly what that run started.
+ * The key this setup provides, declared beside it.
  *
  * `import type {} from "vitest"` above is load-bearing: TypeScript can only
- * augment a module the program has already loaded, and nothing else here
- * imports vitest's root entry.
+ * augment a module the program has already loaded, and nothing else here imports
+ * vitest's root entry.
  */
 declare module "vitest" {
   // oxlint-disable-next-line typescript/consistent-type-definitions -- a module augmentation must be an interface; a type alias cannot merge
@@ -33,21 +30,13 @@ const workspace = fileURLToPath(new URL("../", import.meta.url));
 
 /**
  * The vitest `globalSetup` every workspace that boots the example application
- * registers.
+ * registers: the shared PostgreSQL server comes up, and the committed migrations
+ * are applied with **`prisma migrate deploy`** — the literal command a
+ * deployment runs. `_prisma_migrations` makes running it again a no-op, and
+ * {@link withLock} stops two workspaces' runs racing to be first.
  *
- * Two things happen here and nowhere else. The shared PostgreSQL server comes
- * up — reused across the whole repository, so the four workspaces that need it
- * pay for one container rather than four. And the committed migrations are
- * applied to the application's database with **`prisma migrate deploy`**: the
- * literal command a deployment runs, rather than the hand-rolled loop that
- * applied the SQL statement by statement when this example was in-memory
- * SQLite. `_prisma_migrations` is what makes running it again a no-op, and
- * {@link withLock} is what stops two workspaces' runs racing to be the first.
- *
- * Nothing here truncates or drops anything. Tests do not share a database by
- * accident and then clean up after each other — they share it on purpose, and
- * each one works inside a **tenant of its own** (`src/test-fixtures.ts`), so
- * there is nothing to clean and no order they have to run in.
+ * Nothing here truncates or drops anything: each test works inside a **tenant of
+ * its own**, so there is nothing to clean and no order they must run in.
  */
 export default async ({ provide }: TestProject): Promise<() => void> => {
   const url = postgresUrl(await sharedPostgres(), ORDERS_DATABASE);

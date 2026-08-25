@@ -18,23 +18,16 @@ import { findCustomerProvider, findOrderProvider, placeOrderProvider } from "./u
  * what a consumer is made to depend on.
  *
  * `OrderRepository` and `Logger` are `needs`, not `provides`: the interactors
- * depend on them, nothing here satisfies them, and this layer says so out loud
- * rather than letting a composition root happen to hold them.
- * `Module.scoped(OrderApplicationModule, …)` therefore
- * does not compile — an importing module must provide the repository and a
- * logger first. That refusal is the layering, enforced by the compiler
- * rather than by convention, and splitting the module sharpened it: each
- * vertical's gate now carries that vertical's own repository, so a graph
- * cannot close the orders half with a customers adapter — and prints it: the
- * diagnostic ends on `"UNSATISFIED DEPENDENCIES — nothing provides":
- * Logger | OrderRepository` (di's `DependencyGate`, the marker that replaced
- * the mute rest-tuple arity error).
+ * depend on them and nothing here satisfies them, so
+ * `Module.scoped(OrderApplicationModule, …)` does not compile — an importing
+ * module must provide them first. That refusal is the layering, enforced by the
+ * compiler rather than by convention, and the split sharpened it: each
+ * vertical's gate carries that vertical's own repository, so a graph cannot
+ * close the orders half with a customers adapter.
  *
- * The logger is `@btravstack/observability`'s port, not one this layer
- * declares: a composition root imports `observability()` and the lines this
- * layer writes come out correlated with whatever unit the runtime opened.
- * There is nothing to provide here and nothing to re-export — the port belongs
- * to the framework, exactly like the repositories belong to this layer.
+ * The logger is the framework's port, not one this layer declares: a root
+ * imports `observability()` and the lines this layer writes come out correlated
+ * with whatever unit the runtime opened.
  */
 export const OrderApplicationModule = Module("OrderApplication")({
   needs: [OrderRepository, Logger],
@@ -43,13 +36,11 @@ export const OrderApplicationModule = Module("OrderApplication")({
 });
 
 /**
- * The customers vertical, on the same terms — and with a shorter list of
- * needs: `CustomerRepository`, and not the logger, because only
- * `PlaceOrder` writes a line. That asymmetry is the split earning its keep;
- * one module for the layer had to owe every port any of its use cases owed.
- * Nothing here imports `OrderApplicationModule`, and nothing there imports
- * this — two verticals of one layer are siblings, and a dependency between
- * them would be the layer growing an inside.
+ * The customers vertical, on the same terms and with a shorter list of needs:
+ * no logger, because only `PlaceOrder` writes a line. That asymmetry is the
+ * split earning its keep — one module for the layer had to owe every port any
+ * of its use cases owed. Neither vertical imports the other; a dependency
+ * between them would be the layer growing an inside.
  */
 export const CustomerApplicationModule = Module("CustomerApplication")({
   needs: [CustomerRepository],

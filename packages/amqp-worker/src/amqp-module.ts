@@ -53,7 +53,7 @@ export type AmqpModuleOptions<
   N extends readonly AnyPort[],
 > = {
   readonly contract: TContract;
-  /** The application's handlers — `AmqpHandlers(contract)(deps, arm)`, one per `consumers` / `rpcs` key of THIS contract, as the provider that builds them from the services they call. */
+  /** The application's handlers — what `AmqpHandlers(contract)(…)` returns for THIS contract. */
   readonly handlers: Provider<HandlersInstanceOf<TContract>, HandlersError, HandlersNeeds>;
   /** Pins the broker instead of reading `AMQP_URL` — a test's container. */
   readonly url?: string;
@@ -68,24 +68,17 @@ export type AmqpModuleOptions<
   /** The application's own exports; `AmqpRuntime` is added, since `start` resolves it. */
   readonly exports?: X;
   /**
-   * What this root expects from outside — `Env` at least, since the starter
-   * binds its connection from it and `start` is what provides it. di's own
-   * gate is re-stated over the augmented tuples below, so forgetting one is
-   * an error at THIS call, the same as it would be on a bare `Module(name)`.
+   * What this root's OWN providers expect from outside. di's gate is re-stated
+   * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
 } & NeedsGate<Imports<I, TContract>, Provides<P, TContract, HandlersError, HandlersNeeds>, N>;
 
 /**
  * `Module(name)({...})` for an AMQP deployment: everything a di module takes,
- * plus the contract and the handlers provider, and nothing else to know. The
- * sugar imports the starter (`amqp({ contract })`), provides the
- * handlers, and exports `AmqpRuntime` — so a root that would otherwise write
- * those two lines and remember that `start` needs the runtime exported writes
- * neither. It hands back exactly the module `Module(...)` would have declared
- * over the augmented `imports`/`provides`/`exports` (spelled from di's own
- * pieces), so the kernel, `start`'s gate and di's see nothing new: syntax over
- * the same primitives, one source of truth.
+ * plus the contract and the handlers provider. The sugar imports the starter,
+ * provides the handlers and exports `AmqpRuntime`, handing back exactly the
+ * module `Module(...)` would have declared over the augmented tuples.
  *
  * ```ts
  * export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
@@ -125,14 +118,10 @@ export const AmqpModule =
       ...(defaultConsumerOptions === undefined ? {} : { defaultConsumerOptions }),
       ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
     });
-    // di's own `Module(name)({...})` over the augmented tuples: its return
-    // type IS the sugar's — nothing spelled twice.
-    // The assertion is the gate, not the shape: `NeedsGate` cannot be computed
-    // while the tuples are still type parameters, so it defers and no object
-    // literal satisfies it here. It IS computed at the application's own call,
-    // because the sugar re-declares it on its options type. Asserting to a
-    // spelled-out type rather than `as never` is what keeps the tuples
-    // inferred — `as never` collapses the return to `Module<never, never, never>`.
+    // The assertion is the gate, not the shape: `NeedsGate` defers while the
+    // tuples are type parameters, and is computed at the application's own call
+    // because the options type re-declares it. Spelled out rather than
+    // `as never`, which collapses the return to `Module<never, never, never>`.
     return Module(name)({
       imports: [...imports, starter] as Imports<I, TContract>,
       provides: [handlers, ...provides] as Provides<P, TContract, HandlersError, HandlersNeeds>,

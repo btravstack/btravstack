@@ -37,24 +37,18 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
         resolve(Err(new RuntimeStartFailed({ runtime: "probes", cause })));
       };
 
-      // Permanent, and deliberately not `onBindError`: once the bind has
-      // settled the deferred, routing a later error there could only resolve an
-      // already-settled promise. But leaving the server with ZERO `'error'`
-      // listeners is worse — `net.Server` still emits `'error'` after listening
-      // (an accept failure such as `EMFILE`), and an unhandled `'error'` throws,
-      // which the kernel's own `uncaughtException` handler would turn into a
-      // whole-application teardown over a fault in its health endpoint. The
-      // socket is `unref`'d and dispose-only, so there is nothing to report.
+      // Permanent, and deliberately not `onBindError`, which could only resolve
+      // an already-settled promise. Zero `'error'` listeners is worse: an
+      // unhandled `'error'` throws, and the kernel's `uncaughtException` handler
+      // turns that into a whole-application teardown over a health endpoint.
       const ignoreServingError = (): void => {};
 
       server.once("error", onBindError);
 
-      // `listen` validates the port SYNCHRONOUSLY and throws `ERR_SOCKET_BAD_PORT`
-      // rather than emitting `'error'` — for a non-integer and for anything
-      // outside 0..65535 alike. Uncaught, that throw escapes this executor,
-      // rejects the promise and reaches the caller as a Defect, bypassing the
-      // `AsyncResult<ProbeServer, RuntimeStartFailed>` this function declares.
-      // `probes: { port: Number(process.env.PROBE_PORT) }` is how it arrives.
+      // `listen` validates the port synchronously and THROWS
+      // `ERR_SOCKET_BAD_PORT` rather than emitting `'error'`. Uncaught, that
+      // escapes the executor and reaches the caller as a defect, bypassing the
+      // `RuntimeStartFailed` this function declares.
       try {
         server.listen(args.port, "127.0.0.1", () => {
           server.removeListener("error", onBindError);
@@ -66,8 +60,7 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
             Ok({
               port,
               // Node's own close error is discarded: both dispose sites may
-              // fire, and the second reports `ERR_SERVER_NOT_RUNNING` through
-              // the callback rather than throwing (measured on v24).
+              // fire, and the second reports `ERR_SERVER_NOT_RUNNING`.
               close: () => fromSafePromise(new Promise<void>((done) => server.close(() => done()))),
             }),
           );

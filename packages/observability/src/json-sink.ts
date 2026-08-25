@@ -2,10 +2,9 @@ import type { Line, Sink } from "./logger.js";
 
 /**
  * An `Error`'s `message` and `stack` are **non-enumerable**, so
- * `JSON.stringify` renders a thrown one as `{}` — the line that exists to
- * carry a failure would carry nothing. The kernel's `stderrSink` normalises
- * the same way for the same reason; this is that rule applied to a log line,
- * and it walks `cause` chains so a wrapped failure keeps its origin.
+ * `JSON.stringify` renders a thrown one as `{}` — the line that exists to carry
+ * a failure would carry nothing. Walks `cause` chains so a wrapped failure keeps
+ * its origin.
  */
 const renderCause = (cause: unknown, depth = 0): unknown => {
   if (!(cause instanceof Error)) return cause;
@@ -13,9 +12,8 @@ const renderCause = (cause: unknown, depth = 0): unknown => {
     name: cause.name,
     message: cause.message,
     stack: cause.stack,
-    // Bounded: an error whose `cause` points back at itself is rare and fatal
-    // to a renderer that follows it, and four levels is more than any real
-    // wrap depth.
+    // Bounded: an error whose `cause` points back at itself is fatal to a
+    // renderer that follows it.
     ...(cause.cause === undefined || depth >= 4
       ? {}
       : { cause: renderCause(cause.cause, depth + 1) }),
@@ -23,18 +21,14 @@ const renderCause = (cause: unknown, depth = 0): unknown => {
 };
 
 /**
- * One JSON object per line on `stream`, the shape every log backend already
- * reads and the same one the kernel's `stderrSink` writes its events in.
+ * One JSON object per line on `stream`.
  *
- * The caller's attributes are spread **first** and the line's own fields
- * after them, and that order is the precedence: an `attributes: { level:
- * "info" }` cannot rewrite an `error` line's severity, nor its `traceId`,
- * because the sink writes those last. A stream where a caller can forge the
- * severity is a stream nobody can trust.
+ * The caller's attributes are spread FIRST and the line's own fields after them,
+ * and that order is the precedence: an `attributes: { level: "info" }` cannot
+ * rewrite an `error` line's severity, nor its `traceId`.
  *
- * The unit's ids are spread at the top level rather than nested under `unit`:
- * a log backend indexes fields, and `traceId` is the field an operator
- * searches.
+ * The unit's ids are spread at the top level rather than nested under `unit`,
+ * because `traceId` is the field an operator searches.
  */
 export const jsonSink =
   (stream: { readonly write: (chunk: string) => unknown } = process.stdout): Sink =>
@@ -51,9 +45,8 @@ export const jsonSink =
     stream.write(`${safeStringify(rendered)}\n`);
   };
 
-// A payload `JSON.stringify` refuses — a circular attribute value reaching in
-// through `cause` is the plausible one — must not cost the line. The message
-// and its severity survive; the part that could not be rendered says so.
+// A payload `JSON.stringify` refuses must not cost the line: the message and
+// its severity survive, and the part that could not be rendered says so.
 const safeStringify = (rendered: Record<string, unknown>): string => {
   try {
     return JSON.stringify(rendered);

@@ -9,20 +9,14 @@ import { TenantId } from "@btravstack/example-order-domain";
 import { ErrAsync, P, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
- * What only the relay knows, as a service: its idle sleep, bound from
- * `OUTBOX_POLL_MS`, and the tenants it serves, from `OUTBOX_TENANTS`. `0` is
- * rejected for the sleep — a relay that never sleeps is a busy loop — and so
- * is anything above a minute, which is a typo, not a policy.
- * `Config.provider(name)(schema)` mints the port (`relayConfig.port`): the
- * slice is this deployment's own, so nothing else ever names it.
+ * What only the relay knows, as a service: its idle sleep and the tenants it
+ * serves. `Config.provider(name)(schema)` mints the port, since the slice is
+ * this deployment's own.
  *
- * `OUTBOX_TENANTS` is a comma-separated list and has no default, because
- * there is no safe one: the relay runs outside any unit, so it cannot read a
- * tenant off the ambient record the way every other adapter does, and
+ * `OUTBOX_TENANTS` has no default, because there is no safe one: the relay runs
+ * outside any unit, so it cannot read a tenant off the ambient record, and
  * "whatever is in the table" is how one deployment starts broadcasting
- * another's facts. Naming them is also how a relay is sharded — two
- * deployments, half the tenants each, and neither can starve the other's
- * backlog.
+ * another's facts. Naming them is also how a relay is sharded.
  */
 export const relayConfig = Config.provider("RelayConfig")(
   Config.object({
@@ -56,46 +50,31 @@ export class OutboxRelay extends Port("OutboxRelay")<{
 const BATCH = 32;
 
 /**
- * The other half of the outbox pattern: `OrderRepository.save` wrote the fact
- * down, this loop says it out loud. Pull what is pending, publish it to the
- * `orders` exchange, mark it sent — in commit order, forever, until told to
- * stop.
- *
- * The loop is deliberately at-least-once. A crash between publish and
- * `markPublished` re-publishes on the next sweep; a broker outage leaves rows
- * pending and the sweep after the outage drains them. What is *never* possible
- * is the inverse failure — an order committed whose event evaporated — because
- * the event was committed by the same transaction as the order.
- *
- * Failure triage per event, all three channels: published → mark; a
- * validation error → the row cannot ever serialize, a bug worth a log line,
- * left pending so it stays visible; a defect (broker down, mid-flight close)
- * → logged, left pending, retried next sweep.
- *
- * The client is created here rather than injected: a transport connection is
- * the transport's own — `@btravstack/amqp-worker` creates its worker inside
- * `Runtime.start` from the same `AmqpConfig` this reads. It is not a second
- * connection, either: `@amqp-contract/core`'s `ConnectionManagerSingleton`
- * pools by URL and reference-counts leases, so this client and the consumer's
- * worker share one TCP connection and `client.close()` releases a lease rather
- * than closing the socket. What the relay takes from di is everything the
- * application owns — `Outbox` and `Logger`, handed in by `outboxRelay`'s
- * provider — which is the boundary that matters.
- */
-/**
  * The broker at `AMQP_URL` did not answer when the relay opened its client.
- * Modeled rather than left the defect `TypedAmqpClient.create` reports it as:
- * an operator can act on it — the URL is wrong or the broker is down, and
- * neither is a bug in this code — so `runMain` exits `1`, a startup `Err`,
- * not the `70` a defect earns. The relay is built as the graph builds, before
- * the consumer's own worker connects, so this is the first place that outage
- * surfaces.
+ * Modeled rather than left the defect `TypedAmqpClient.create` reports it as, so
+ * `runMain` exits `1` — an operator can act on it, and neither a wrong URL nor a
+ * broker that is down is a bug in this code.
  */
 export class BrokerUnreachable extends TaggedError("BrokerUnreachable")<{
   readonly url: string;
   readonly cause: unknown;
 }> {}
 
+/**
+ * The other half of the outbox pattern: `OrderRepository.save` wrote the fact
+ * down, this loop says it out loud — pull what is pending, publish it, mark it
+ * sent, in commit order, until told to stop.
+ *
+ * Deliberately at-least-once. A crash between publish and `markPublished`
+ * re-publishes on the next sweep; a broker outage leaves rows pending. What is
+ * NEVER possible is an order committed whose event evaporated, because the event
+ * was committed by the same transaction as the order.
+ *
+ * The client is created here rather than injected: a transport connection is the
+ * transport's own, and it is not a second one — the connection manager pools by
+ * URL, so this shares the consumer's worker's TCP connection and `close()`
+ * releases a lease rather than the socket.
+ */
 const startOutboxRelay = (
   outbox: ServiceOf<Outbox>,
   logger: ServiceOf<Logger>,

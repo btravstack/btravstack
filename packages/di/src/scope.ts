@@ -39,14 +39,9 @@ export function createScope(
           // oxlint-disable-next-line no-await-in-loop
           await f();
         } catch (cause) {
-          // Reported, never rethrown: shutdown must not be abandoned half-way, and
-          // a failed close must not shadow the failure that caused the unwind.
-          // The reporter itself is untrusted user code — if it throws, that must
-          // be swallowed too (there is nowhere left to report a broken reporter
-          // to), or a throwing `onTeardownError` would propagate out of this
-          // loop exactly like an unguarded finaliser would: abandoning every
-          // remaining release and turning `close()` into a rejected promise
-          // that masks whatever failure triggered the unwind in the first place.
+          // The reporter is untrusted user code, and a throw from it would
+          // propagate out of this loop exactly as an unguarded finaliser would:
+          // abandoning every remaining release and masking the original failure.
           try {
             onTeardownError(portId, cause);
           } catch {

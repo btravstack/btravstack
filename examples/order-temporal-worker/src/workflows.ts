@@ -8,52 +8,32 @@ import {
 import { ErrAsync, P } from "unthrown";
 
 /**
- * Both workflows, in their own module — and it has to be. One task queue, two
- * verticals: `fulfillOrder` is the orders vertical's saga, `chargeOrder` is
- * billing's, and this file is the one place both are the workflow-sandbox's
- * business rather than either slice's own.
+ * Both workflows, in their own module, and it has to be one: workflow code runs
+ * inside a deterministic V8 sandbox bundled separately from the worker's own
+ * module graph, and must be free of side effects at module scope. Nothing here
+ * reaches the container or the database — those live behind the ACTIVITIES.
  *
- * Workflow code runs inside a deterministic V8 sandbox that webpack bundles
- * separately from the worker's own module graph, so it may not sit in a spec
- * file, and it must be free of side effects at module scope: `TypedWorker.create`
- * also imports it in the main thread to check that every declared workflow is
- * exported. Nothing here reaches the di container or the database — those live
- * behind the *activities*, which is where this example's kernel units open.
+ * Place, then reserve, then ship — and when a later step answers a permanent no,
+ * walk the earlier ones back before answering the caller. The walk-back is a
+ * **saga**, and it lives here because it spans services no one of which can own
+ * it.
  *
- * This is the orchestration the deployment exists to demonstrate: place, then
- * reserve, then ship — and when a later step answers a permanent no, walk the
- * earlier ones back before answering the caller. The walk-back is a **saga**,
- * and it lives here because it spans services no one of which can own it; a
- * durable workflow is the one place the whole journey exists as code, and
- * survives the process that started it.
- *
- * The triage rule per step is the same one `contract.ts` describes: a
- * *declared* error is a permanent domain answer — compensate, then re-mint it
- * against `context.errors` so the client sees it typed. The two machinery tags
- * are Temporal's own vocabulary for an activity that failed *unmodelled* (its
- * retries already exhausted) or was cancelled — those are handed back as-is,
- * so `propagateActivityFailure` re-raises the platform's original failure and
- * the execution fails the way an untyped workflow would. Compensation is
- * deliberately NOT run on machinery failures: a step that died mid-flight left
- * unknown state, and un-deciding what you cannot see is a second bug, not a
- * remedy.
- *
- * Compensations run in reverse order of the steps they undo, and their
- * activities declare no errors at all — `cancelPlacement`'s `OrderNotFound`
- * is absorbed inside the activity, because compensating a placement that never
- * landed is a no-op, not a failure. Every case in every matcher is named —
- * this repo bans `P._`.
+ * The triage rule per step: a DECLARED error is a permanent domain answer —
+ * compensate, then re-mint it against `context.errors`. The two machinery tags
+ * are Temporal's vocabulary for an activity that failed unmodelled or was
+ * cancelled, handed back as-is so `propagateActivityFailure` re-raises the
+ * platform's original failure. Compensation deliberately does NOT run on those:
+ * a step that died mid-flight left unknown state, and un-deciding what you
+ * cannot see is a second bug.
  */
 export const fulfillOrder = declareWorkflow({
   workflowName: "fulfillOrder",
   contract: orderContract,
   implementation: (context, args) => {
-    // Flat, and sequential because of it. An `AsyncResult` is eager — building
-    // a step IS starting its activity — so a sequence must never construct two
-    // steps as siblings. `flatTap` is what keeps that from needing a nesting
-    // ladder: it runs a failable step, discards its value, and passes the
-    // original one through, so each step's own error triage and compensation
-    // stay at one level of indentation instead of accumulating.
+    // An `AsyncResult` is eager — building a step IS starting its activity — so
+    // a sequence must never construct two steps as siblings. `flatTap` runs a
+    // failable step, discards its value and passes the original through, which
+    // keeps each step's triage at one level of indentation.
     const order = { tenantId: args.tenantId, orderId: args.orderId };
 
     return propagateActivityFailure(

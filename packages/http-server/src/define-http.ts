@@ -44,11 +44,9 @@ export type Http<A extends Authenticators> = {
     typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>
   >;
   /**
-   * The declarations as given, kept for a consumer this repo does not contain:
-   * a hand-rolled composition or a custom sugar reads the registry off these
-   * the way `defineHttp` itself does. No in-repo example will — `HttpModule`
-   * carries the bound providers on the router — and that is not evidence
-   * against the field: the examples are scenarios, not the library's one user.
+   * The declarations as given, for a hand-rolled composition or a custom sugar
+   * that reads the registry off them the way `defineHttp` does. No in-repo
+   * example needs it — `HttpModule` carries the bound providers on the router.
    */
   readonly authenticators: A;
 };
@@ -86,8 +84,8 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
 
 /**
  * `HttpAuthenticator`'s no-deps arm puts its single argument in `deps` and
- * leaves `options` undefined — the same arity discrimination `Provider(port)`
- * makes, replayed here now that the scheme NAME exists to mint a port from.
+ * leaves `options` undefined — `Provider(port)`'s own arity discrimination,
+ * replayed here now that the scheme NAME exists to mint a port from.
  */
 const bind = (
   scheme: string,
