@@ -1,5 +1,5 @@
 import { Env } from "@btravstack/config";
-import { Logger, Meter, Tracer } from "@btravstack/core";
+import { Logger, Meter } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
@@ -79,7 +79,6 @@ describe("prismaDatabase", () => {
       provides: [
         Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
         Provider(Logger)({ value: telemetry.logger }),
-        Provider(Tracer)({ value: telemetry.tracer }),
         Provider(Meter)({ value: telemetry.meter }),
       ],
       exports: [db.port],
@@ -90,9 +89,16 @@ describe("prismaDatabase", () => {
       fromSafePromise(ctx.get(db.port).query("Order", "findMany", Promise.resolve([]))),
     );
 
-    // THEN it was spanned — the client came out wrapped without anyone asking
-    expect(telemetry.recorded().spans).toEqual([
-      expect.objectContaining({ name: "db.Order.findMany" }),
-    ]);
+    // THEN it was counted — the client came out wrapped without anyone asking.
+    // No span: engine-level tracing is `@btravstack/prisma/otel`'s job, and a
+    // client-level one would only duplicate it more shallowly.
+    expect(telemetry.recorded()).toEqual(
+      expect.objectContaining({
+        spans: [],
+        counts: [
+          { value: 1, attributes: { model: "Order", operation: "findMany", outcome: "ok" } },
+        ],
+      }),
+    );
   });
 });

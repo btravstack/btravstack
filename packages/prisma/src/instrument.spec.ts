@@ -9,7 +9,6 @@ describe("instrument", () => {
     const client = instrument(
       stub.client("postgres://localhost/orders"),
       telemetry.logger,
-      telemetry.tracer,
       telemetry.meter,
     );
 
@@ -20,16 +19,9 @@ describe("instrument", () => {
     expect({ answer, ...telemetry.recorded() }).toEqual(
       expect.objectContaining({
         answer: ["a"],
-        spans: [
-          {
-            name: "db.Order.findMany",
-            attributes: {
-              "btravstack.database.model": "Order",
-              "btravstack.database.operation": "findMany",
-            },
-            failed: false,
-          },
-        ],
+        // No span: `@btravstack/prisma/otel` traces at the engine level, and a
+        // second client-level span would carry strictly less.
+        spans: [],
         counts: [
           { value: 1, attributes: { model: "Order", operation: "findMany", outcome: "ok" } },
         ],
@@ -43,7 +35,6 @@ describe("instrument", () => {
     const client = instrument(
       stub.client("postgres://localhost/orders"),
       telemetry.logger,
-      telemetry.tracer,
       telemetry.meter,
     );
     const cause = new Error("deadlock detected");
@@ -58,7 +49,7 @@ describe("instrument", () => {
     expect({ rejected, ...telemetry.recorded() }).toEqual(
       expect.objectContaining({
         rejected: cause,
-        spans: [expect.objectContaining({ name: "db.Order.create", failed: true })],
+        spans: [],
         counts: [
           { value: 1, attributes: { model: "Order", operation: "create", outcome: "error" } },
         ],

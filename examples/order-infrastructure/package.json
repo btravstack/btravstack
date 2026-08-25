@@ -26,6 +26,7 @@
     "@btravstack/prisma": "workspace:*",
     "@prisma/adapter-pg": "catalog:",
     "@prisma/client": "catalog:",
+    "@prisma/instrumentation": "catalog:",
     "@unthrown/prisma": "catalog:",
     "unthrown": "catalog:"
   },

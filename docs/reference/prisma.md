@@ -71,9 +71,12 @@ not something anyone can write.
 ### `instrumented`
 
 Defaults to **`true`**, as on [`cache`](/reference/cache), `mailer` and
-`storage`. Per query: a span named `db.<model>.<operation>`, one
-`btravstack.database.operations` counter whose `outcome` separates `ok` from
-`error`, and an `error` line when a query rejects.
+`storage`. Per query: one `btravstack.database.operations` counter whose
+`outcome` separates `ok` from `error`, and an `error` line when a query rejects.
+
+**No span** — that is `prismaTracing()`'s job, below. A client-level span here
+would sit alongside Prisma's engine-level one carrying strictly less, so this
+wrapper keeps only the two things Prisma's instrumentation does not do at all.
 
 ```ts
 prismaDatabase("OrderDatabase")({
@@ -87,8 +90,7 @@ This works on a client the package cannot see the schema of because Prisma's
 intercepts every operation on every model. The wrapper is transparent: whatever
 the query resolves or rejects with is what the caller receives.
 
-Opting out drops `Logger`, `Meter` and `Tracer` from the provider's
-dependencies. Leaving it on means a root without
+Opting out drops `Logger` and `Meter` from the provider's dependencies. Leaving it on means a root without
 [`observability()`](/reference/observability) and `otel()` gets a compile error
 naming all three — telemetry that is missing is discovered during an incident,
 so the default is on and the cost is stated rather than hidden.
@@ -123,6 +125,39 @@ statement, not here.
 `$disconnect` ends the driver adapter's pool without killing the client; Prisma
 dials again lazily on the next statement, which is why no test asserts that a
 released client refuses to query.
+
+## `prismaTracing()` — from `@btravstack/prisma/otel`
+
+<!-- doctest: skip — an imports-list excerpt, not a statement -->
+
+```ts
+imports: [database, observability(), otel(), prismaTracing()];
+```
+
+Prisma's own `@prisma/instrumentation`, as a module. It traces at the **engine**
+level — the real SQL, the connection acquisition, the serialisation — all of it
+below what a client-level wrapper can reach.
+
+`@prisma/instrumentation` is an **optional peer** behind this subpath, so an
+application that does not import it installs nothing.
+
+**`Tracer` is a dependency for its ordering, not its value.** Nothing reads it.
+`PrismaInstrumentation` resolves the global tracer provider when `enable()`
+runs, and `otel()` sets that global while building the very port named here — so
+depending on it is what guarantees the SDK is up first. A root without `otel()`
+gets a compile error instead of tracing into nothing.
+
+**Registration order is otherwise free**, which is why this can be a provider at
+all rather than an `--import` preload. `@prisma/instrumentation` does not patch
+modules the way `@opentelemetry/auto-instrumentations-node` does: `enable()`
+sets a helper on `globalThis` under a versioned key, and a Prisma client looks
+it up **per query**. So it works after `@prisma/client` is imported and after
+clients are built. The preload rule in
+[observability](/reference/observability) governs patching instrumentations and
+does not apply to this one.
+
+Importing the module is enough — di builds a scope's providers eagerly, so
+nothing has to resolve the port. Tracing goes off again when the scope closes.
 
 ## Not included, deliberately
 

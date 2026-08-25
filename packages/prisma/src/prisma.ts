@@ -1,5 +1,5 @@
 import { Config, Env } from "@btravstack/config";
-import { Logger, Meter, Tracer } from "@btravstack/core";
+import { Logger, Meter } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { OkAsync, type AsyncResult } from "unthrown";
@@ -94,10 +94,10 @@ export const prismaDatabase =
     // per port per graph. Here a `query` extension wraps the client at
     // construction, so one port suffices and the branch lives inside `acquire`.
     const instrumentedProvider = Provider(port)(
-      { settings: config.port, logger: Logger, tracer: Tracer, meter: Meter },
+      { settings: config.port, logger: Logger, meter: Meter },
       {
-        acquire: ({ settings, logger, tracer, meter }): AsyncResult<C, never> =>
-          OkAsync(instrument(open(settings.url), logger, tracer, meter)),
+        acquire: ({ settings, logger, meter }): AsyncResult<C, never> =>
+          OkAsync(instrument(open(settings.url), logger, meter)),
         release: (db: C) => db.$disconnect(),
       },
     );
@@ -123,7 +123,7 @@ export const prismaDatabase =
     // `cache({ adapter })` already makes. `needs` differs per arm because the
     // instrumented provider reads three more ports.
     const instrumentedModule = Module(name)({
-      needs: [Env, Logger, Meter, Tracer],
+      needs: [Env, Logger, Meter],
       provides: [config, instrumentedProvider],
       exports: [DatabasePort],
     });

@@ -30,16 +30,31 @@ is the ORM, and pretending otherwise ships thirteen lines of wiring behind a
 package.
 
 **Instrumented by default**, on the same shape as `cache`, `mailer` and
-`storage`: a span named `db.<model>.<operation>`, a
-`btravstack.database.operations` counter whose `outcome` separates `ok` from
-`error`, and an `error` line when a query rejects. `instrumented: false` opts
-out and drops `Logger`, `Meter` and `Tracer` from what the graph must supply.
+`storage`: a `btravstack.database.operations` counter whose `outcome` separates
+`ok` from `error`, and an `error` line when a query rejects.
+`instrumented: false` opts out. This works on a client the package cannot see
+the schema of because `$extends` takes a `query` component and
+`$allModels.$allOperations` intercepts every operation on every model.
 
-A generated client can be instrumented because Prisma's `$extends` takes a
-`query` component and `$allModels.$allOperations` intercepts every operation on
-every model — the wrapper never needs the schema. The branch lives inside
-`acquire` rather than between two ports, as `cache` needs: an extension wraps
-the client at construction, so one port suffices.
+**Tracing is a separate opt-in, `@btravstack/prisma/otel`**, and it is Prisma's
+own instrumentation rather than ours:
+
+```ts
+imports: [database, observability(), otel(), prismaTracing()];
+```
+
+`prismaTracing()` enables `@prisma/instrumentation`, which traces at the
+**engine** level — the real SQL, the connection acquisition, the serialisation
+— below anything a client-level wrapper can reach. So the wrapper above emits
+**no span**: a client-level one would sit beside Prisma's on every query
+carrying strictly less. What it keeps is the pair Prisma's instrumentation does
+not do at all, a metric and an error line.
+
+It can be a provider rather than an `--import` preload because
+`@prisma/instrumentation` does not patch modules: `enable()` sets a helper on
+`globalThis` under a versioned key and a client reads it per query, so
+registration order is free. `@prisma/instrumentation` is an **optional peer**
+behind the subpath, so an application that does not import it installs nothing.
 
 Not included, deliberately: migrations (a deployment runs `prisma migrate
 deploy` before the process starts; an application that migrates at boot races

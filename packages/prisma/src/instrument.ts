@@ -1,9 +1,4 @@
-import {
-  SPAN_STATUS,
-  type LoggerService,
-  type MeterService,
-  type TracerService,
-} from "@btravstack/core";
+import type { LoggerService, MeterService } from "@btravstack/core";
 
 import type { PrismaLike } from "./prisma.js";
 
@@ -35,6 +30,14 @@ type Extendable = { readonly $extends: (extension: QueryExtension) => unknown };
  * revision of this package claimed instrumentation was impossible for that
  * reason; it was wrong, and this is the mechanism it missed.
  *
+ * **It deliberately opens no span.** `@btravstack/prisma/otel` enables Prisma's
+ * own `@prisma/instrumentation`, which traces at the ENGINE level — the real
+ * SQL, the connection acquisition, the serialisation — all of it below what a
+ * client-level wrapper can see. Emitting a span here as well would put two
+ * spans on every query for strictly less information. What this wrapper keeps
+ * is the pair Prisma's instrumentation does not do at all: a metric, and an
+ * error line correlated with the ambient unit.
+ *
  * The wrapper is transparent to the answer: whatever the query resolves or
  * rejects with is what the caller receives, which is the kernel's own `RunUnit`
  * rule one layer down. `Promise.reject` re-raises rather than `throw`, so the
@@ -44,7 +47,6 @@ type Extendable = { readonly $extends: (extension: QueryExtension) => unknown };
 export const instrument = <C extends PrismaLike>(
   client: C,
   logger: LoggerService,
-  tracer: TracerService,
   meter: MeterService,
 ): C => {
   // One counter per scope, read per call: an instrument is built from the meter
@@ -59,23 +61,15 @@ export const instrument = <C extends PrismaLike>(
       $allModels: {
         $allOperations: ({ model, operation, args, query }) => {
           const label = model ?? "raw";
-          const span = tracer.startSpan(`db.${label}.${operation}`);
-          span.setAttributes({
-            "btravstack.database.model": label,
-            "btravstack.database.operation": operation,
-          });
 
           return query(args).then(
             (value) => {
               operations.add(1, { model: label, operation, outcome: "ok" });
-              span.end();
               return value;
             },
             (cause: unknown) => {
               operations.add(1, { model: label, operation, outcome: "error" });
               logger.error("a database query failed", { model: label, operation }, cause);
-              span.setStatus({ code: SPAN_STATUS.error });
-              span.end();
               return Promise.reject(cause);
             },
           );

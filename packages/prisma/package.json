@@ -40,11 +40,21 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./otel": {
+      "import": {
+        "types": "./dist/otel.d.mts",
+        "default": "./dist/otel.mjs"
+      },
+      "require": {
+        "types": "./dist/otel.d.cts",
+        "default": "./dist/otel.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/otel.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/otel.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "test:types": "tsc -p tsconfig.test-d.json --noEmit",
     "typecheck": "tsc --noEmit"
@@ -55,6 +65,7 @@
     "@btravstack/di": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@prisma/adapter-pg": "catalog:",
+    "@prisma/instrumentation": "catalog:",
     "@types/node": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
@@ -68,7 +79,13 @@
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",
     "@prisma/adapter-pg": "^7.0.0",
+    "@prisma/instrumentation": "^7.0.0",
     "unthrown": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@prisma/instrumentation": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=20"

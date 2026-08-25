@@ -52,11 +52,25 @@ out of the endpoint list.
 ## Instrumentation, on the family's shape
 
 `instrumented` defaults to **`true`**, as it does on `cache`, `mailer` and
-`storage`. Per query: a span named `db.<model>.<operation>`, one
-`btravstack.database.operations` counter whose `outcome` separates `ok` from
-`error`, and an `error` line when a query rejects. Turning it off drops
-`Logger`, `Meter` and `Tracer` from the provider's dependencies, so a root
-without `observability()` and `otel()` opts out rather than failing to compile.
+`storage`. Per query: one `btravstack.database.operations` counter whose
+`outcome` separates `ok` from `error`, and an `error` line when a query rejects.
+Turning it off drops `Logger` and `Meter` from the provider's dependencies.
+
+**It emits no span, deliberately.** `@btravstack/prisma/otel`'s `prismaTracing()`
+enables Prisma's own `@prisma/instrumentation`, which traces at the ENGINE level
+— the real SQL, the connection acquisition, the serialisation. A client-level
+span here would sit beside it on every query carrying strictly less. What the
+wrapper keeps is the pair Prisma's instrumentation does not do at all: a metric,
+and an error line correlated with the ambient unit.
+
+`prismaTracing()` can be a provider at all because `@prisma/instrumentation`
+does **not** patch modules: `enable()` sets a helper on `globalThis` under a
+versioned key and a client looks it up per query, so registration order is free.
+The `--import` preload rule in `packages/observability/CLAUDE.md` governs
+patching instrumentations and does not reach this one — a distinction worth
+keeping straight, since an earlier revision applied that rule here without
+checking whether it belonged. Its `Tracer` dependency is for ORDERING, not
+value: it is what forces `otel()`'s SDK up first.
 
 **A generated client can be instrumented, and an earlier revision of this file
 said it could not.** That claim — repeated in issue #135's decision comment —
