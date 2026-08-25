@@ -159,6 +159,7 @@ const GUIDE_SIDEBAR = [
         collapsed: false,
         items: [
           { text: "Why btravstack?", link: "/explanation/why-btravstack" },
+          { text: "Coming from NestJS", link: "/explanation/coming-from-nestjs" },
           { text: "One process, one runtime", link: "/explanation/one-process-one-runtime" },
           { text: "Compile errors, not surprises", link: "/explanation/compile-time-wiring" },
           { text: "Nothing throws", link: "/explanation/nothing-throws" },
