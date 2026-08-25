@@ -29,7 +29,7 @@ differences are stated instead.
 | Failures              | thrown, and caught by a built-in exceptions layer                | an `unthrown` `Result`, on every async surface but three                             |
 | Shutdown              | five lifecycle hooks, off until `enableShutdownHooks()`          | a three-beat drain, with a delay sized for Kubernetes endpoint propagation           |
 | Configuration         | validated at bootstrap _if_ you pass a schema; read later by key | the validated object **is** the injected value; failure is a modeled `ConfigInvalid` |
-| Overriding for a test | `overrideProvider(token).useValue(…)`, applied at `compile()`    | the same idea, plus a typed double and a loud failure when the root stops backing it |
+| Overriding for a test | `overrideProvider(token).useValue(…)`, applied at `compile()`    | the same idea; the double is typed against the port, and fixture drift fails loudly  |
 
 ## Wiring is checked
 
@@ -45,10 +45,15 @@ on its `module` parameter, so a composition whose ports nothing provides fails
 to assign, and the diagnostic ends on the missing ports:
 `'{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Logger | OrderRepository; }'`.
 That exact message is pinned by a type test that is part of the gate —
-`examples/order-application/src/needs-gate.test-d.ts` — alongside three sibling
-mechanisms: di's `NeedsGate` for a module whose own provider reads a port it
-never declared, and `start`'s own two arms for a root with no runtime. The
-container's rules are in `packages/di/CLAUDE.md`; the reasoning is on
+`examples/order-application/src/needs-gate.test-d.ts`, one of four such files
+spread across four example workspaces. Between them they pin four mechanisms,
+which are easy to conflate: this one, di's `DependencyGate` on `Module.scoped`;
+di's `NeedsGate`, for a module whose own provider reads a port it never
+declared; `start`'s `NO RUNTIME` arm, for a root that exports no runtime port;
+and plain assignability on `start`'s `module` parameter, for a composition that
+imports a starter without providing its router, activities or handlers — that
+last one is not a gate arm at all, just a `Needs` the parameter will not take.
+The container's rules are in `packages/di/CLAUDE.md`; the reasoning is on
 [Compile errors, not surprises](/explanation/compile-time-wiring).
 
 The cost is real and worth naming: there is no auto-discovery. A provider writes
@@ -64,7 +69,10 @@ Nest IoC container"_, and resolution as a token lookup: _"When it finds the
 [Custom providers](https://docs.nestjs.com/fundamentals/custom-providers)). A
 token need not be a class — _"Sometimes, we may want the flexibility to use
 strings or symbols as the DI token"_ — and then injection needs an explicit
-`@Inject('CONNECTION')`.
+`@Inject('CONNECTION')`. That metadata has to be emitted by the build: the
+`.swcrc` in Nest's own [SWC recipe](https://docs.nestjs.com/recipes/swc) sets
+`"legacyDecorator": true` and `"decoratorMetadata": true`, and the page names
+both as properties a project must add.
 
 btravstack has no decorators. A port is a class
 (`class OrderRepository extends Port("OrderRepository")<Shape> {}`,
@@ -127,8 +135,13 @@ removal is eventually consistent, so a pod that stops accepting the instant
 SIGTERM lands rejects traffic the ingress is still routing to it. `20_000` sits
 deliberately under the Kubernetes `terminationGracePeriodSeconds` default of
 30 s, leaving headroom before SIGKILL — raise one and you must raise the other.
+
 Nest's lifecycle documentation describes no equivalent delay; what it describes
-is when each hook runs.
+is when each hook runs. It does mention Kubernetes once — _"This feature is
+often used with Kubernetes to manage containers' lifecycles"_ — but that
+sentence is about **when the hooks are invoked**, on the container's lifecycle
+signals. It is not a delay, and endpoint propagation is the specific thing beat
+2 exists for.
 
 ## Configuration
 
