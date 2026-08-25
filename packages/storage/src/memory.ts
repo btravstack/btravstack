@@ -12,15 +12,12 @@ import {
 /**
  * The in-process adapter: a `Map`, and an honest refusal to presign.
  *
- * `presignedUrl` answers `PresignNotSupported` rather than minting a
- * `file://` or a `data:` URL. A fake URL would be the worst kind of test
- * double — one that passes locally and fails in the deployment for a reason
- * the test could never have shown — so the arm exists in the port precisely
- * so an adapter that cannot do this can say so.
+ * `presignedUrl` answers `PresignNotSupported` rather than minting a fake URL,
+ * which would be the worst kind of double — one that passes locally and fails in
+ * the deployment for a reason no test could have shown.
  *
  * ponytail: no size limit, so a process storing unbounded objects grows
- * unbounded. The upgrade path is the S3 adapter, which is what a deployment
- * with that problem should be running.
+ * unbounded. The upgrade path is the S3 adapter.
  */
 export const memoryStorageBackend = (): StorageService => {
   const objects = new Map<string, StoredObject>();

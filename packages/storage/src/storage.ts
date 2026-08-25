@@ -37,11 +37,9 @@ export type StorageService = {
    * A URL that reads the object for `ttlMs`, without the caller holding
    * credentials.
    *
-   * There is **no `ObjectNotFound` arm**: presigning is a signature
-   * computation and asks the store nothing, so a URL for a key that does not
-   * exist is minted happily and 404s when it is followed. Pretending
-   * otherwise would mean a HEAD per call — a round trip bought for a check
-   * the caller usually does not want.
+   * There is **no `ObjectNotFound` arm**: presigning is a signature computation
+   * that asks the store nothing, so a URL for an absent key is minted happily
+   * and 404s when followed. Checking would cost a HEAD per call.
    */
   readonly presignedUrl: (
     key: string,
@@ -52,23 +50,15 @@ export type StorageService = {
 /**
  * The port an application depends on.
  *
- * Keys are plain strings the caller composes, tenant included
- * (`orders/{tenantId}/{orderId}/confirmation.json`) — the same rule
- * `@btravstack/cache` follows, and for the same reason: a store is an
- * application service, and the framework has no concept of a tenant to put
- * in a slot.
+ * Keys are plain strings the caller composes, tenant included: a store is an
+ * application service, and the framework has no concept of a tenant to put in a
+ * slot.
  *
- * **Bytes, not streams.** An object here is a document — an invoice, a
- * confirmation, an export — and `Uint8Array` is what every adapter and every
- * caller already has. Streaming is the honest boundary this port does not
- * cross: it would change every signature, every adapter and every test to
- * serve a case (multi-gigabyte media) that wants a different design
- * anyway, and it is a stated non-goal rather than an oversight.
+ * **Bytes, not streams.** An object here is a document. Streaming would change
+ * every signature, adapter and test to serve a case that wants a different
+ * design anyway — a stated non-goal, not an oversight.
  */
 export class Storage extends Port("Storage")<StorageService> {}
 
-/**
- * The port every adapter provides, and the one an application never depends
- * on. The same split `@btravstack/cache` and `@btravstack/mailer` make.
- */
+/** The port every adapter provides, and the one an application never depends on. */
 export class StorageBackend extends Port("StorageBackend")<StorageService> {}

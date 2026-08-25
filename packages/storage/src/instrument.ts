@@ -23,10 +23,9 @@ type Failure = ObjectNotFound | PresignNotSupported | StorageUnavailable;
  * log line if it failed.
  *
  * **A missing object is counted `not_found` and logged at `info`, not
- * `error`.** Asking for something that is not there is an ordinary answer —
- * a caller checking whether a document exists yet meets it on the happy path
- * — and a dashboard that treats it as a fault teaches its readers to ignore
- * the fault line. `StorageUnavailable` is what pages somebody.
+ * `error`.** Asking for something that is not there is an ordinary answer, and
+ * a dashboard that treats it as a fault teaches its readers to ignore the fault
+ * line. `StorageUnavailable` is what pages somebody.
  */
 const observed = <T, E extends Failure>(
   call: () => AsyncResult<T, E>,
@@ -54,11 +53,9 @@ const observed = <T, E extends Failure>(
     })
     .tapFailure((failure) => {
       const cause = failure.tag === "Err" ? failure.error : failure.cause;
-      // Two non-faults, and they get two lines: "not there" and "cannot mint
-      // a URL" are different answers, and one message for both would have an
-      // operator hunting a missing object that is sitting right where they
-      // put it. They share the `not_found` OUTCOME because a counter's job is
-      // to separate the ordinary from the faulty, and both are ordinary.
+      // Two non-faults, two lines: one message for both would have an operator
+      // hunting an object sitting right where they put it. They share the
+      // `not_found` OUTCOME, because a counter separates ordinary from faulty.
       const message =
         failure.tag !== "Err"
           ? undefined
@@ -86,7 +83,7 @@ export const instrument = (
   meter: MeterService,
 ): StorageService => {
   // One instrument per scope, read per call: the attributes vary, the counter
-  // does not — the same split `createLogger` documents for the ambient record.
+  // does not.
   const operations = meter.createCounter("btravstack.storage.operations", {
     description: "Storage operations, by operation and outcome",
   });

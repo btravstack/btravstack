@@ -128,11 +128,9 @@ export const it = test.extend<MailerFixtures>({
   },
   // oxlint-disable-next-line no-empty-pattern -- see above
   unreachable: async ({}, use) => {
-    // Port 1 refuses immediately, so the arm is reached in milliseconds and
-    // without touching the container every other test is sharing. Mailpit
-    // itself cannot produce this: it is a catch-all by design and accepts
-    // even an empty sender, which is exactly what makes it a good fixture
-    // for the success path and a useless one for the failure path.
+    // Port 1 refuses immediately, so the arm is reached in milliseconds.
+    // Mailpit cannot produce it: a catch-all accepts even an empty sender,
+    // which makes it a good success fixture and a useless failure one.
     await use(smtpMailerBackend(createTransport("smtp://127.0.0.1:1")));
   },
   // oxlint-disable-next-line no-empty-pattern -- see above

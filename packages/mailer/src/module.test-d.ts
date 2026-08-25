@@ -1,15 +1,8 @@
 /**
  * The compile-time half of `instrumented`: the flag defaults to `true`, so a
- * root that composes a mailer and no observability fails di's declared-
- * dependency gate naming `Logger`, `Meter` and `Tracer` — never a quiet
- * absence of spans. `false` is the opt-out, and it owes nothing.
- *
- * `false` disabling a default-`true` boolean is `StartOptions`' own shape
- * (`signals`, `probes`), which is why the option keeps a positive name: a
- * negative one would read as a double negative the moment anybody wrote
- * `noInstrument: false`.
- *
- * Type-checked by this package's `test:types` script, never executed.
+ * root composing a mailer and no observability fails di's dependency gate naming
+ * `Logger`, `Meter` and `Tracer` — never a quiet absence of spans. `false` is
+ * the opt-out, and it owes nothing.
  */
 import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
@@ -25,8 +18,8 @@ import { mailRecorder, recordingMailer } from "./recording.js";
 // beside it nothing is left owing.
 const Instrumented = Module("Instrumented")({
   imports: [mailer({ adapter: recordingMailer(mailRecorder()) }), observability(), otel()],
-  // `observability()` reads `LOG_LEVEL`, which `start` supplies at the root
-  // of a real application; here the root is this file.
+  // `observability()` reads `LOG_LEVEL`, which `start` supplies in a real
+  // application; here the root is this file.
   provides: [Provider(Env)({ value: {} })],
   exports: [Mailer],
 });
@@ -63,10 +56,9 @@ const Explicit = Module("Explicit")({
 });
 const _explicit = Module.scoped(Explicit, (ctx) => OkAsync(ctx.get(Mailer)));
 
-// A flag computed at runtime is not a literal, so `Instrumented` infers
-// `boolean` and the conditional distributes over both arms — which lands on
-// the union that OWES the ports. The safe direction, pinned so it stays that
-// way: a graph that might instrument must have provided for it.
+// A runtime flag is not a literal, so the conditional distributes over both
+// arms and lands on the union that OWES the ports — the safe direction: a graph
+// that might instrument must have provided for it.
 declare const decided: boolean;
 const Dynamic = Module("Dynamic")({
   imports: [mailer({ adapter: recordingMailer(mailRecorder()), instrumented: decided })],
