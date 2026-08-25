@@ -658,7 +658,7 @@ in its place.
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http-server/src/controller.test-d.ts`
   pins the
   five compile-time gates the composing `HttpRouter(contract)([...])` form
-  owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s 56 specs, across
+  owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s 57 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
   `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the

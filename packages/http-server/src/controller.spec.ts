@@ -67,4 +67,20 @@ describe("HttpController", () => {
     // THEN it answers exactly like a fragment-rooted piece
     await expect(client.health()).resolves.toEqual({ ok: true });
   });
+
+  it("nests a dotted path without writing through a prototype", async ({ rpcDeep }) => {
+    // GIVEN a router composed from dotted paths, which `nest` rebuilt into the
+    // nesting the contract has — on a plain `{}`, a `"__proto__"` segment reads
+    // `Object.prototype` rather than a missing key, and the walk writes the
+    // piece onto it
+    await rpcDeep();
+
+    // WHEN a bare object is asked for the keys those paths are built from
+    // THEN it carries none of them: the rebuild reached no prototype
+    expect(
+      Object.getOwnPropertyNames(Object.prototype).filter((key) =>
+        ["v1", "orders", "customers", "health", "polluted"].includes(key),
+      ),
+    ).toEqual([]);
+  });
 });

@@ -688,7 +688,7 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **56 specs, 100% lines/functions.** Every app boots through the `boot`
+- **57 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
@@ -719,7 +719,7 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   a `greet`-only router configured with oRPC's own `CORSHandlerPlugin`, proving
   `plugins` reaches `RPCHandler` rather than being silently accepted and
   dropped: the plugin, not this package, decided the response's
-  `access-control-allow-origin`. `controller.spec.ts` carries 5, through the
+  `access-control-allow-origin`. `controller.spec.ts` carries 6, through the
   `controllers`, `rpcSliced` and `rpcDeep` fixtures: a piece carries the port
   its contract key minted (`HttpController:greetings`) and the deps it
   declared; `api.HttpRouter(contract)([...])` serves a router composed from
@@ -733,10 +733,16 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   `Array.isArray` decides); and two are `rpcDeep`, over a contract with two
   pieces sharing the nested `"v1"` parent (`"v1.orders"` and
   `"v1.customers"`) plus one minted at the bare procedure path `"health"` —
-  the shared parent is what forces `nest`'s `node[segment] ??= {}` to find a
+  the shared parent is what forces `nest`'s `node[segment] ??=` to find a
   node the first piece already created rather than only ever creating one,
   and `"health"` is the depth-N leaf case, a piece with no fragment around it
-  at all. A process still serves one router (thesis #1); the composing
+  at all. A sixth pins that the rebuild reaches **no prototype**: `nest` builds
+  with `Object.create(null)`, because on a plain `{}` a `"__proto__"` segment
+  reads `Object.prototype` — not nullish, so `??=` assigns nothing — and the
+  walk then writes the piece onto `Object.prototype` itself, corrupting every
+  object in the process (measured). `routerOf` only ever `Object.entries` what
+  it is handed, so nothing downstream wants the prototype.
+  A process still serves one router (thesis #1); the composing
   form changes how many providers build it, not that fact. `auth.spec.ts`
   carries the last 20, through the `rpcAuthed`, `rpcRootMarked`,
   `rpcRootMarkedDeep`, `controllers` and `headers` fixtures — every router, controller and

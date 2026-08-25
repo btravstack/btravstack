@@ -240,13 +240,19 @@ const AUTHENTICATOR = "@btravstack/http-server/authenticator:";
 // here refusing a flat key that does not round-trip through the contract, or
 // excluding dotted keys from `ControllerKeyOf` so one is never mintable.
 const nest = (flat: Record<string, unknown>): Record<string, unknown> => {
-  const out: Record<string, unknown> = {};
+  // Null-prototype, and that is a safety property rather than a style: on a
+  // plain `{}`, `node["__proto__"] ??= {}` reads `Object.prototype` — not
+  // nullish, so nothing is assigned — and the walk then writes the piece onto
+  // `Object.prototype` itself (measured). `routerOf` only ever `Object.entries`
+  // what it is handed, so nothing downstream needs the prototype.
+  const node0 = (): Record<string, unknown> => Object.create(null) as Record<string, unknown>;
+  const out = node0();
   for (const [path, value] of Object.entries(flat)) {
     const segments = path.split(".");
     const last = segments.pop() as string;
     let node = out;
     for (const segment of segments) {
-      node[segment] ??= {};
+      node[segment] ??= node0();
       node = node[segment] as Record<string, unknown>;
     }
     node[last] = value;
