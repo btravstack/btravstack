@@ -1,6 +1,6 @@
 import { describe, expect, vi } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("amqp handler slices", () => {
   it("serves a record composed from one piece per consumer", async ({

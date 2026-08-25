@@ -1,6 +1,7 @@
 import { P } from "unthrown";
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import {
   DuplicateOrder,
   InvalidOrderId,
@@ -11,7 +12,6 @@ import {
   placeOrder,
   type OrderId,
 } from "./index.js";
-import { it } from "./test-fixtures.js";
 
 describe("placeOrder", () => {
   it("constructs a real entity for a positive quantity", ({ placed }) => {

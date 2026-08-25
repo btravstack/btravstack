@@ -158,7 +158,7 @@ exclusivity, `Scope` gating) is pinned in `src/*.test-d.ts` via
 `@ts-expect-error`, checked by `tsc --noEmit -p tsconfig.test-d.json` (part of
 `pnpm typecheck`). These files are excluded from the main tsc pass, from oxlint,
 and from lefthook's pre-commit lint. If you change a type-level guarantee, update
-the matching assertion. `src/type-assert.ts` (`Equal<A, B>`) is a test-only
+the matching assertion. `src/__tests__/type-assert.ts` (`Equal<A, B>`) is a test-only
 helper, excluded from knip.
 
 ### Two TypeScript versions

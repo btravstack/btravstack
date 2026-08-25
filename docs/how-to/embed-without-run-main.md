@@ -145,7 +145,7 @@ settled the moment the runtime is serving (or the probe server bound), and with
 `undefined` on every route that never got there, so neither can hang. An HTTP
 runtime bound to `PORT=0` publishes `{ port }` on `Serving.info`; a queue
 consumer publishes its own shape. Both carry `E = never`, so `.get()` is the
-whole read — the fixture in `examples/order-api/src/test-fixtures.ts` builds
+whole read — the fixture in `examples/order-api/src/__tests__/test-fixtures.ts` builds
 its client origin from exactly that.
 
 ## See also

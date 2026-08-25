@@ -43,11 +43,11 @@ import { Client, Connection } from "@temporalio/client";
 import { ErrAsync, OkAsync } from "unthrown";
 import { inject, test } from "vitest";
 
-import { BillingModule } from "./billing.js";
-import { FulfillmentModule } from "./fulfillment.js";
-import { orderActivities } from "./module.js";
-import { chargeOrder } from "./slices/billing/activities.js";
-import { fulfillOrder } from "./slices/fulfillment/activities.js";
+import { BillingModule } from "../billing.js";
+import { FulfillmentModule } from "../fulfillment.js";
+import { orderActivities } from "../module.js";
+import { chargeOrder } from "../slices/billing/activities.js";
+import { fulfillOrder } from "../slices/fulfillment/activities.js";
 
 /**
  * One Temporal server for the whole repository, with a namespace of this spec
@@ -231,7 +231,11 @@ export const it = test.extend<TemporalFixtures>({
     // Memoised per spec file by `bundleFor`: webpack over the workflow module
     // is the single most expensive thing in this suite, and every test needs
     // the same bundle.
-    const workflowBundle = await bundleFor(fixturePath(import.meta.url, "workflows"));
+    const workflowBundle = await bundleFor(
+      // `fixturePath` appends the CALLER's extension, so it needs this file's
+      // own URL; the hop up out of `__tests__/` rides the name instead.
+      fixturePath(import.meta.url, "../workflows"),
+    );
 
     // Closed in this fixture's own teardown, so a test that fails mid-body
     // still leaves no connection behind on the shared server.

@@ -2,7 +2,7 @@ import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { OkAsync, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 
-import { Config, Env, type ConfigInvalid, type ConfigSchema, type Environment } from "./config.js";
+import { Config, Env, type ConfigInvalid, type ConfigSchema, type Environment } from "../config.js";
 
 class Settings extends Port("ConfigFixtureSettings")<{
   readonly port: number;

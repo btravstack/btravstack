@@ -24,7 +24,7 @@ src/billing.ts                      BillingModule — the payment provider, as a
 src/module.ts                       orderActivities = TemporalActivities(orderContract)([fulfillOrder, chargeOrder]);
                                      OrderTemporalWorker — the composition root, importing both slices
 src/main.ts                         the process: runMain(OrderTemporalWorker)
-src/test-fixtures.ts                boot / serve / server / tenant / fulfilling / outOfStock / noShipping, against the shared Temporal server
+src/__tests__/test-fixtures.ts                boot / serve / server / tenant / fulfilling / outOfStock / noShipping, against the shared Temporal server
 ```
 
 ## Two sagas, two verticals, one queue

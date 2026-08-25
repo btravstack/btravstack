@@ -22,7 +22,7 @@ import {
   OrderApplicationModule,
   OrderRepository,
   PlaceOrder,
-} from "./index.js";
+} from "../index.js";
 
 /**
  * The whole point of the layer split: the use cases run against stub

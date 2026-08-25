@@ -1,7 +1,7 @@
 import { fromSchema } from "@unthrown/standard-schema";
 import { test, type TestAPI } from "vitest";
 
-import { orderContract } from "./contract.js";
+import { orderContract } from "../contract.js";
 
 type FulfillOrderInput = typeof orderContract.workflows.fulfillOrder.input;
 type ChargeOrderInput = typeof orderContract.workflows.chargeOrder.input;

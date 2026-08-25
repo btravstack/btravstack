@@ -4,7 +4,7 @@ import type { RouterContractClient } from "@orpc/contract";
 import { createResultClient, type ResultClient } from "@unthrown/orpc/client";
 import { test, type TestAPI } from "vitest";
 
-import type { contract, OrderView } from "./contract.js";
+import type { contract, OrderView } from "../contract.js";
 
 /**
  * The caller's view of the API, derived from the **contract** —

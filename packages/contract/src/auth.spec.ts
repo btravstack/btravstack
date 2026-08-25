@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { authenticated, isAuthenticated } from "./auth.js";
-import { it } from "./test-fixtures.js";
 
 describe("authenticated", () => {
   it("returns the requirements it was marked with", ({ fragment }) => {

@@ -16,9 +16,9 @@ import { OkAsync, fromSafePromise } from "unthrown";
 import type { TestAPI } from "vitest";
 import { z } from "zod";
 
-import { AmqpModule } from "./amqp-module.js";
-import { AmqpHandlers, type AmqpInfo, type HandlersPortOf } from "./amqp-runtime.js";
-import { AmqpHandler } from "./handler.js";
+import { AmqpModule } from "../amqp-module.js";
+import { AmqpHandlers, type AmqpInfo, type HandlersPortOf } from "../amqp-runtime.js";
+import { AmqpHandler } from "../handler.js";
 
 const echoExchange = defineExchange("amqp-test");
 const echoDlx = defineExchange("amqp-test-dlx", { type: "direct" });

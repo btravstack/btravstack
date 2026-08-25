@@ -42,10 +42,10 @@ The recipe is one fixture module per package, exporting the `it` every spec
 imports:
 
 <!-- doctest: group=order-api -->
-<!-- doctest: skip — quotes examples/order-api/src/test-fixtures.ts, which the gate compiles and runs -->
+<!-- doctest: skip — quotes examples/order-api/src/__tests__/test-fixtures.ts, which the gate compiles and runs -->
 
 ```ts
-// src/test-fixtures.ts
+// src/__tests__/test-fixtures.ts
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { test } from "vitest";
 
@@ -66,7 +66,7 @@ unit module is the composition's choice, not the fixture's:
 ```ts
 // src/api.spec.ts
 import { describe, expect } from "vitest";
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("order-api", () => {
   it("answers a real oRPC call on an ephemeral port", async ({ boot }) => {
@@ -166,7 +166,7 @@ import { Provider } from "@btravstack/di";
 import { createLogger, type Line } from "@btravstack/observability";
 import { overridden } from "@btravstack/testing";
 import { OrderApi } from "../../module.js";
-import { it } from "../../test-fixtures.js";
+import { it } from "../../__tests__/test-fixtures.js";
 -->
 
 ```ts
@@ -244,7 +244,7 @@ string `request()` takes directly:
 <!-- doctest: isolate
 import request from "supertest";
 import { expect } from "vitest";
-import { it } from "../../test-fixtures.js";
+import { it } from "../../__tests__/test-fixtures.js";
 -->
 
 ```ts
@@ -359,10 +359,10 @@ register them once through `setupFiles` and add
 
 The examples do not fake the transport: they boot the real composition root
 on an ephemeral loopback port and talk to it with a typed client.
-`examples/order-api/src/test-fixtures.ts` starts from `bootFixture` and layers
+`examples/order-api/src/__tests__/test-fixtures.ts` starts from `bootFixture` and layers
 the example's own fixtures on top of `boot`:
 
-<!-- doctest: skip — quotes examples/order-api/src/test-fixtures.ts, which the gate compiles and runs -->
+<!-- doctest: skip — quotes examples/order-api/src/__tests__/test-fixtures.ts, which the gate compiles and runs -->
 
 ```ts
 export const it = test.extend<ApiFixtures>({
@@ -464,7 +464,7 @@ export const it = test.extend<{ tenant: TenantId }>({
 });
 ```
 
-<!-- doctest: skip — uses the `repository` and `anOrder` fixtures of examples/order-infrastructure/src/test-fixtures.ts, which the gate runs -->
+<!-- doctest: skip — uses the `repository` and `anOrder` fixtures of examples/order-infrastructure/src/__tests__/test-fixtures.ts, which the gate runs -->
 
 ```ts
 it("reads back only its own tenant's order", async ({

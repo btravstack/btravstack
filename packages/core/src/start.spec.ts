@@ -3,11 +3,11 @@ import { createFakeClock, testRuntime, TestRuntimePort } from "@btravstack/testi
 import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, it } from "vitest";
 
+import { runtimeModule } from "./__tests__/test-fixtures.js";
 import { createDeferred } from "./deferred.js";
 import type { KernelEvent } from "./events.js";
 import { RuntimeStartFailed, type Runtime, type RuntimeHost } from "./runtime.js";
 import { start } from "./start.js";
-import { runtimeModule } from "./test-fixtures.js";
 
 class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 

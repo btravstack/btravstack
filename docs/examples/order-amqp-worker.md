@@ -338,7 +338,7 @@ tenant }` — the poll tight because every spec waits on real broker round
 trips, and the tenant this test's alone, so the relay sweeps its rows and
 nobody else's:
 
-<!-- doctest: skip — an excerpt of src/test-fixtures.ts, which the gate compiles and runs -->
+<!-- doctest: skip — an excerpt of src/__tests__/test-fixtures.ts, which the gate compiles and runs -->
 
 ```ts
 await use(async (module, options) => {

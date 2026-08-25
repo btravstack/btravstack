@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 
+import { aDocument, defectiveStorage, failingStorage, it } from "./__tests__/test-fixtures.js";
 import { memoryStorage } from "./memory.js";
-import { aDocument, defectiveStorage, failingStorage, it } from "./test-fixtures.js";
 
 describe("storage, instrumented", () => {
   it("opens one span per operation, named for it and carrying the key", async ({

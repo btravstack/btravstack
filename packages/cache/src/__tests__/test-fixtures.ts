@@ -18,10 +18,10 @@ import {
   CacheUnavailable,
   type CacheHit,
   type CacheService,
-} from "./cache.js";
-import { memoryCacheBackend } from "./memory.js";
-import { cache } from "./module.js";
-import { redisCache } from "./redis.js";
+} from "../cache.js";
+import { memoryCacheBackend } from "../memory.js";
+import { cache } from "../module.js";
+import { redisCache } from "../redis.js";
 
 /** An adapter that is always down, so the failure arms are reachable without breaking the shared server. */
 const failingBackend: CacheService = {

@@ -11,7 +11,7 @@ library built for exactly this layer.
 src/order.ts          the Order entity, its vocabulary, placeOrder, and the domain errors
 src/customer.ts       the Customer entity and CustomerNotFound
 src/fulfillment.ts    the three failures fulfillment answers with
-src/test-fixtures.ts  a placed Order and a Customer, injected as Vitest fixtures
+src/__tests__/test-fixtures.ts  a placed Order and a Customer, injected as Vitest fixtures
 ```
 
 ## What is deliberately absent

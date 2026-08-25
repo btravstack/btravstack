@@ -1,6 +1,6 @@
 import { describe, expect, vi } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("httpRuntime", () => {
   it("does not throw when the server emits an error after binding", async ({

@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 import { vi } from "vitest";
 
-import { aMail, it } from "./test-fixtures.js";
+import { aMail, it } from "./__tests__/test-fixtures.js";
 
 describe("smtpMailer", () => {
   it("delivers the message to the server", async ({ smtp, recipient, delivered }) => {

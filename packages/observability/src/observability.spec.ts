@@ -2,9 +2,9 @@ import { start, Logger } from "@btravstack/core";
 import { tapped } from "@btravstack/testing";
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { kernelEvents } from "./observability.js";
 import { LoggerConfig } from "./observability.js";
-import { it } from "./test-fixtures.js";
 
 describe("the observability starter", () => {
   it("binds the level from the environment, and every logger in the graph filters at it", async ({

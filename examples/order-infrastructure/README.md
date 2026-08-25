@@ -11,7 +11,7 @@ src/prisma-order-repository.ts     the adapter — where Prisma's errors become 
 src/prisma-customer-repository.ts  the customers vertical's adapter — read-only, because its port is
 src/prisma-outbox.ts               the outbox's read side, for whichever deployment relays it
 src/module.ts                      DatabaseModule (internal), OrderPersistenceModule, CustomerPersistenceModule
-src/test-fixtures.ts               the in-memory database and the repositories, as Vitest fixtures
+src/__tests__/test-fixtures.ts               the in-memory database and the repositories, as Vitest fixtures
 ```
 
 ## The schema is migrated, not hand-created

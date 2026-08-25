@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("orderContract", () => {
   it("routes the broadcast through a queue that parks what it cannot retry", ({ contract }) => {

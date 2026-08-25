@@ -12,10 +12,10 @@ import { createTransport } from "nodemailer";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { inject, test } from "vitest";
 
-import { MailNotSent, Mailer, MailerBackend, type MailerService } from "./mailer.js";
-import { mailer } from "./module.js";
-import { mailRecorder, recordingMailer, type MailRecorder } from "./recording.js";
-import { smtpMailer, smtpMailerBackend } from "./smtp.js";
+import { MailNotSent, Mailer, MailerBackend, type MailerService } from "../mailer.js";
+import { mailer } from "../module.js";
+import { mailRecorder, recordingMailer, type MailRecorder } from "../recording.js";
+import { smtpMailer, smtpMailerBackend } from "../smtp.js";
 
 /** An adapter that always refuses, so the failure arms are reachable without a broken server. */
 const failingBackend: MailerService = {

@@ -1,8 +1,8 @@
 import { Ok, type AsyncResult } from "unthrown";
 import { describe, test } from "vitest";
 
+import { type Equal } from "./__tests__/type-assert.js";
 import { Module, Port, Provider, type AnyPort, type Scope } from "./index.js";
-import { type Equal } from "./type-assert.js";
 
 class Pool extends Port("SPool")<{ readonly close: () => Promise<void> }> {}
 

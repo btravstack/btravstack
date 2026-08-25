@@ -1,6 +1,6 @@
 import { describe, expect, vi } from "vitest";
 
-import { it, undeclared } from "./test-fixtures.js";
+import { it, undeclared } from "./__tests__/test-fixtures.js";
 
 describe("temporal", () => {
   it("publishes the task queue and namespace it polls", async ({ server, serve }) => {

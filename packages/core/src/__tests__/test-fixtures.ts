@@ -10,11 +10,11 @@ import {
 } from "@btravstack/testing";
 import { expect, test } from "vitest";
 
-import type { KernelEvent } from "./events.js";
-import { runMain } from "./run-main.js";
-import type { Runtime } from "./runtime.js";
-import { start, type RunningApp } from "./start.js";
-import { currentUnit } from "./units.js";
+import type { KernelEvent } from "../events.js";
+import { runMain } from "../run-main.js";
+import type { Runtime } from "../runtime.js";
+import { start, type RunningApp } from "../start.js";
+import { currentUnit } from "../units.js";
 
 class Parent extends Port("UnitFixtureParent")<{ readonly mark: () => void }> {}
 class Span extends Port("UnitFixtureSpan")<{ readonly openedIn: string | undefined }> {}

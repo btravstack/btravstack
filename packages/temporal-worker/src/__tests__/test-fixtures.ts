@@ -16,14 +16,14 @@ import { OkAsync, fromSafePromise } from "unthrown";
 import { inject, test } from "vitest";
 import { z } from "zod";
 
-import { TemporalActivities, TemporalModule } from "./temporal-module.js";
+import { TemporalActivities, TemporalModule } from "../temporal-module.js";
 import {
   TemporalConfig,
   type TemporalInfo,
   type TemporalUnreachable,
   type WorkflowSource,
-} from "./temporal-runtime.js";
-import { TemporalWorkflowActivities } from "./workflow-activities.js";
+} from "../temporal-runtime.js";
+import { TemporalWorkflowActivities } from "../workflow-activities.js";
 
 /**
  * One Temporal server for the whole repository, with a namespace of this spec
@@ -293,10 +293,10 @@ const withTaskQueue = <C extends ContractDefinition>(contract: C, taskQueue: str
   ({ ...contract, taskQueue }) as C;
 
 const echoWorkflows: WorkflowSource = {
-  workflowsPath: fileURLToPath(new URL("./test-workflows.ts", import.meta.url)),
+  workflowsPath: fileURLToPath(new URL("../test-workflows.ts", import.meta.url)),
 };
 const missingWorkflows: WorkflowSource = {
-  workflowsPath: fileURLToPath(new URL("./does-not-exist.js", import.meta.url)),
+  workflowsPath: fileURLToPath(new URL("../does-not-exist.js", import.meta.url)),
 };
 
 type ActivitiesProvider = typeof echoing | ReturnType<typeof contractSeamOf>["activities"];

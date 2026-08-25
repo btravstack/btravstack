@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 /**
  * Every `model` schema.prisma declares. PostgreSQL gets a table named after

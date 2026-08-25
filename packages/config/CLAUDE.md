@@ -71,7 +71,7 @@ values, `PORT=0`, empty, blank ×2 + malformed named in one validation, `3.5`,
 bounds, a required field, a defecting field), `Config.pinned` (the pin over
 the environment, the field otherwise), `ConfigInvalid.message`, and `Config.provider` end to end through a real
 `Module.scoped` graph with `Env` provided as a value (`bound`, `boundThrough`
-fixtures in `src/test-fixtures.ts`) — including an async third-party
+fixtures in `src/__tests__/test-fixtures.ts`) — including an async third-party
 Standard Schema. Coverage 100% lines/functions. The kernel-facing half — the
 provider through `start`, `runMain`'s `78`, `PROBE_PORT` — lives in
 `packages/core/src/config.spec.ts`.

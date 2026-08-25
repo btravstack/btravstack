@@ -37,10 +37,10 @@ import { CORSHandlerPlugin } from "@orpc/server/plugins";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
-import { HttpAuthenticator, Unauthenticated, authenticatorPort } from "./auth.js";
-import { defineHttp } from "./define-http.js";
-import { HttpHandler } from "./handler.js";
-import { HttpModule } from "./http-module.js";
+import { HttpAuthenticator, Unauthenticated, authenticatorPort } from "../auth.js";
+import { defineHttp } from "../define-http.js";
+import { HttpHandler } from "../handler.js";
+import { HttpModule } from "../http-module.js";
 import {
   HttpConfig,
   HttpRuntime,
@@ -48,7 +48,7 @@ import {
   httpModule,
   type HttpInfo,
   type HttpOptions,
-} from "./http-runtime.js";
+} from "../http-runtime.js";
 
 type Handler = ServiceOf<HttpHandler>;
 

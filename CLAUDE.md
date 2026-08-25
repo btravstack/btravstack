@@ -583,6 +583,39 @@ in its place.
 
 ## Toolchain & conventions
 
+- **A spec lives beside what it tests; a test artifact lives in
+  `src/__tests__/`.** Co-location is the point — `build.spec.ts` and
+  `build.test-d.ts` sit next to `build.ts`, so renaming a source moves its
+  tests in the same listing and nothing has to be looked up. What moves out is
+  the code with **no subject**: `test-fixtures.ts` (the extended `it`) and
+  `di`'s `type-assert.ts`. Those are helpers a spec imports, not tests of
+  anything, and they are the files that made a package's directory read as
+  half scaffolding.
+
+  **`vitest.d.ts` stays in `src/`, and that is measured rather than
+  preference**: moving it into `src/__tests__/` silently drops the
+  `ProvidedContext` augmentation it exists to carry, and every `inject("…")`
+  in the workspace becomes `never`. The file is in the program either way —
+  `tsc --listFiles` shows it — so the mechanism is not simply inclusion; the
+  behaviour is what is recorded, not an explanation of it. It is an ambient
+  declaration for the workspace's type environment, not a test helper, which
+  is the reason it reads as belonging in `src` anyway.
+
+  Coverage exclusions become one entry per workspace, `"src/__tests__/**"`,
+  in place of naming each artifact — which is worth having, because
+  `@btravstack/cache` shipped with that list one entry short and counted a
+  type test as uncovered source.
+
+  **Three import forms break when one of these files moves, and only the
+  first is caught by the compiler**: a static `from "./x.js"`, a dynamic
+  `await import("./x.js")` (a string — `di`'s `scoped.spec.ts` and
+  `http-server`'s `controller.spec.ts` each have one, both deliberate), and an
+  `import.meta.url` anchor, which no type checker can see at all and which
+  only the test run reports. The temporal fixtures carry two of the third
+  kind; `fixturePath(callerUrl, name)` appends the **caller's** extension, so
+  the hop out of `__tests__/` rides the name (`"../workflows"`) rather than
+  the URL.
+
 - **`examples/` is part of the gate, not a folder of illustrations.** All
   ten workspaces run under the same six commands as the kernel — their specs
   plus four `needs-gate.test-d.ts` files, four `layering.test-d.ts` ones and
@@ -1374,8 +1407,10 @@ kept; only the structural ones differ.
    those helpers is invisible state a test silently depends on. What a test needs
    should arrive **through its own parameter list**, so the dependency is written
    down at the point of use.
-2. **Helpers are Vitest fixtures, injected via `test.extend`, and they live in a
-   sibling `src/test-fixtures.ts`.** The module exports an extended `it`, which
+2. **Helpers are Vitest fixtures, injected via `test.extend`, and they live in
+   one `test-fixtures.ts` beside the specs** — `tests/` in a workspace whose
+   tests have moved out of `src`, `src/` in one where they have not yet. The
+   module exports an extended `it`, which
    every spec in that package imports instead of vitest's own. Keeping the
    `test.extend` block out of the spec is what makes rule 1 achievable — the
    fixture bodies are themselves helpers, so leaving them above `describe` only

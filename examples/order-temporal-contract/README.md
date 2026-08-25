@@ -22,7 +22,7 @@ reason `releaseStock` does — there is nothing saga-specific about it.
 ```
 src/contract.ts        the contract: schemas, declared errors, activity options, task queue
 src/layering.test-d.ts the dependency rule, as a compile error
-src/test-fixtures.ts   the contract's own schema, as a validator returning a Result
+src/__tests__/test-fixtures.ts   the contract's own schema, as a validator returning a Result
 ```
 
 ## Why it is not part of `order-temporal-worker`

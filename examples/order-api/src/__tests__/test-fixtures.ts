@@ -28,9 +28,9 @@ import request from "supertest";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
 import { inject, test } from "vitest";
 
-import { createOrderApiClient, type OrderApiClient } from "./client.js";
-import { OrderApi } from "./module.js";
-import { RequestModule } from "./request-scope.js";
+import { createOrderApiClient, type OrderApiClient } from "../client.js";
+import { OrderApi } from "../module.js";
+import { RequestModule } from "../request-scope.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 

@@ -19,7 +19,7 @@ export default defineConfig({
       exclude: [
         "src/**/*.spec.ts",
         "src/**/*.test-d.ts",
-        "src/test-fixtures.ts",
+        "src/__tests__/**",
         "src/test-workflows.ts",
       ],
       thresholds: { lines: 100, functions: 100 },

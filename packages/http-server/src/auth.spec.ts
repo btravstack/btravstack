@@ -1,8 +1,8 @@
 import { ErrAsync, OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
+import { it } from "./__tests__/test-fixtures.js";
 import { Unauthenticated, granted, principalMiddleware } from "./auth.js";
-import { it } from "./test-fixtures.js";
 
 describe("an authenticated procedure", () => {
   it("hands the handler the identity its scheme resolves", async ({ rpcAuthed }) => {

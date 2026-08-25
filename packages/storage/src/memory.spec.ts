@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { aDocument, it } from "./test-fixtures.js";
+import { aDocument, it } from "./__tests__/test-fixtures.js";
 
 describe("memoryStorageBackend", () => {
   it("answers a stored object with its bytes and its type", async ({ memory }) => {

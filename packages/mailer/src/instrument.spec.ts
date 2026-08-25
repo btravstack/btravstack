@@ -1,8 +1,8 @@
 import { describe, expect } from "vitest";
 
+import { aMail, defectiveMailer, failingMailer, it } from "./__tests__/test-fixtures.js";
 import { mailRecorder } from "./recording.js";
 import { recordingMailer } from "./recording.js";
-import { aMail, defectiveMailer, failingMailer, it } from "./test-fixtures.js";
 
 describe("mailer, instrumented", () => {
   it("opens one span per send, carrying the envelope and not the body", async ({

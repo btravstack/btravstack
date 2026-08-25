@@ -11,7 +11,7 @@ import { LoggerConfig, createLogger, type Line } from "@btravstack/observability
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
 import { inject, type TestAPI } from "vitest";
 
-import { OrderAmqpWorker } from "./module.js";
+import { OrderAmqpWorker } from "../module.js";
 
 type App<E> = RunningApp<E, AmqpInfo>;
 

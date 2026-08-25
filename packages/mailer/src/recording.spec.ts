@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 
-import { aMail, it } from "./test-fixtures.js";
+import { aMail, it } from "./__tests__/test-fixtures.js";
 
 describe("recordingMailer", () => {
   it("keeps the message it was asked to send", async ({ recording, recorder }) => {

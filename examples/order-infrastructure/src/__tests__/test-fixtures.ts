@@ -14,7 +14,7 @@ import {
   prismaOrderRepository,
   prismaOutbox,
   type OrderDatabaseClient,
-} from "./index.js";
+} from "../index.js";
 
 export type PersistenceFixtures = {
   /**

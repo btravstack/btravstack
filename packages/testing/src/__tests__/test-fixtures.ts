@@ -2,8 +2,8 @@ import type { Runtime } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { test } from "vitest";
 
-import { bootFixture, type Boot } from "./boot-fixture.js";
-import { TestRuntimePort, testRuntime, type TestRuntimeInfo } from "./test-runtime.js";
+import { bootFixture, type Boot } from "../boot-fixture.js";
+import { TestRuntimePort, testRuntime, type TestRuntimeInfo } from "../test-runtime.js";
 
 /**
  * A wrapped or ad-hoc runtime as the module `start` boots — the shape

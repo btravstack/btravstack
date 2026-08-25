@@ -12,10 +12,10 @@ import { BatchSpanProcessor, type ReadableSpan, type SpanExporter } from "@opent
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { inject, test } from "vitest";
 
-import { memoryStorage } from "./memory.js";
-import { storage } from "./module.js";
-import { s3Storage, s3StorageBackend } from "./s3.js";
-import { Storage, StorageBackend, StorageUnavailable, type StorageService } from "./storage.js";
+import { memoryStorage } from "../memory.js";
+import { storage } from "../module.js";
+import { s3Storage, s3StorageBackend } from "../s3.js";
+import { Storage, StorageBackend, StorageUnavailable, type StorageService } from "../storage.js";
 
 /** An adapter whose store is down, so the failure arms are reachable without breaking the shared one. */
 const failingBackend: StorageService = {

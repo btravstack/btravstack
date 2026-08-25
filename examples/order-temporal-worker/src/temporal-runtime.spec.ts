@@ -5,7 +5,7 @@ import {
 } from "@temporal-contract/client";
 import { describe, expect } from "vitest";
 
-import { it } from "./test-fixtures.js";
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("the fulfillment saga", () => {
   it("fulfills an order: place, reserve, ship, in order", async ({ tenant, serve, fulfilling }) => {

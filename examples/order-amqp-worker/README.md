@@ -19,7 +19,7 @@ src/slices/audit/module.ts            AuditSlice — same shape as Notifications
 src/outbox-relay.ts    the publishing half: sweep the outbox, publish, mark sent — a resourceful provider
 src/module.ts          orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit]); OrderAmqpWorker — the composition root, an AmqpModule importing both slices and observability(), a constant
 src/main.ts            the process: runMain(OrderAmqpWorker), and nothing else
-src/test-fixtures.ts   boot / serve / tapped, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
+src/__tests__/test-fixtures.ts   boot / serve / tapped, as Vitest fixtures, against a real RabbitMQ — boot and tapped from @btravstack/testing
 ```
 
 ## Two subscribers, not one

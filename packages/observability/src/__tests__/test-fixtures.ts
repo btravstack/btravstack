@@ -10,8 +10,8 @@ import { bootFixture, testRuntime, TestRuntimePort, type Boot } from "@btravstac
 import { Ok, OkAsync } from "unthrown";
 import { test } from "vitest";
 
-import { createLogger, type Line } from "./logger.js";
-import { LoggerConfig, observability, type ObservabilityOptions } from "./observability.js";
+import { createLogger, type Line } from "../logger.js";
+import { LoggerConfig, observability, type ObservabilityOptions } from "../observability.js";
 
 /** A sink that keeps what it was given, so a spec asserts on the line rather than on a stream. */
 export type Recorder = {

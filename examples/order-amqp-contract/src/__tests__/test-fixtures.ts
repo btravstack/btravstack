@@ -1,7 +1,7 @@
 import { fromSchema } from "@unthrown/standard-schema";
 import { test, type TestAPI } from "vitest";
 
-import { orderContract, type OrderContract } from "./contract.js";
+import { orderContract, type OrderContract } from "../contract.js";
 
 type ChangedPayload = typeof orderContract.consumers.orderNotifications.message.payload;
 

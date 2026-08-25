@@ -1,6 +1,6 @@
 import { test } from "vitest";
 
-import { Customer, placeOrder, type Order } from "./index.js";
+import { Customer, placeOrder, type Order } from "../index.js";
 
 export type DomainFixtures = {
   /** A valid entity, built the way the outside world builds one. */

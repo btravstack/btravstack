@@ -1,8 +1,8 @@
 import { Err, Ok, TaggedError } from "unthrown";
 import { describe, test } from "vitest";
 
+import { type Equal } from "./__tests__/type-assert.js";
 import { Port, Provider, type Scope, type ServiceOf } from "./index.js";
-import { type Equal } from "./type-assert.js";
 
 class ConfigError extends TaggedError("ConfigError")<{ readonly reason: string }> {}
 class PoolError extends TaggedError("ProvPoolError")<{ readonly url: string }> {}

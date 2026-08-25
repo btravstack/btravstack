@@ -8,7 +8,7 @@ rules into operations — "place an order", "find an order" — and declares, as
 src/ports.ts          OrderRepository, CustomerRepository, Outbox, StockService, ShippingService, PaymentService, PlaceOrder, FindOrder, FindCustomer
 src/use-cases.ts      the interactors, and their providers
 src/module.ts         OrderApplicationModule, CustomerApplicationModule
-src/test-fixtures.ts  the stub repositories and TestModule, as Vitest fixtures
+src/__tests__/test-fixtures.ts  the stub repositories and TestModule, as Vitest fixtures
 ```
 
 ## The port is declared by the caller, not the adapter
@@ -78,7 +78,7 @@ neither the use case nor its repository.
 
 ## Testable with no infrastructure at all
 
-That hole is also why this layer's specs need no database. `src/test-fixtures.ts`
+That hole is also why this layer's specs need no database. `src/__tests__/test-fixtures.ts`
 provides stub repositories from a module declared alongside the spec, and
 injects it as a Vitest fixture:
 
