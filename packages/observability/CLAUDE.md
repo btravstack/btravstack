@@ -103,7 +103,12 @@ cause?)` — plus `with(attributes)` and `isEnabled(level)`. The uniformity
   stopping and the exit code says so), everything else is `info`. Each event's
   own fields become **attributes** — `draining` keeps `inFlight`, `drained`
   keeps the three report numbers — so a drain is queryable by field rather than
-  parsed out of a sentence. The logger is a **parameter**, not resolved from
+  parsed out of a sentence. `serving` is the one that needs a guard: its `info`
+  is `unknown` (the kernel cannot know a runtime's `Info` at the event union),
+  so it is **spread only when it is a plain record** — which is what puts
+  `port`, `taskQueue`/`namespace` and `queues` on the line for free, with no
+  per-runtime logging code, and what keeps a hand-rolled runtime publishing a
+  string from costing the line. `probePort` rides beside it as its own field. The logger is a **parameter**, not resolved from
   the graph: `building` is emitted while the graph is still being built, so the
   sink cannot come from the context it is watching. That is also why an
   application wiring this passes `createLogger(jsonSink())` by hand in

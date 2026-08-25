@@ -189,7 +189,14 @@ signal }`. `signal` is the same `AbortSignal` `UnitWork` receives as its
 - **`Phase`** — `"building" | "starting" | "serving" | "draining" | "stopping" | "exited"`.
 - **`KernelEvent` / `EventSink` / `stderrSink`** — nine events: `building`,
   `startFailed`, `serving`, `draining`, `drained`, `stopping`, `exited`,
-  `teardownError`, `uncaught`. `startFailed` carries the `cause` of any
+  `teardownError`, `uncaught`. `serving` carries `runtime` plus `info` —
+  whatever the runtime published on `Serving.info`, typed `unknown` because
+  the kernel does not know a runtime's `Info` at the event union and a sink is
+  serialising it anyway — and `probePort`, its own field rather than part of
+  `info` because the probe server is the KERNEL's listener, not the runtime's.
+  Those two are what make `PORT=0` and `PROBE_PORT=0` usable: the ephemeral
+  bind was always supported and, until #117, unreadable to anyone not holding
+  the `RunningApp`. `startFailed` carries the `cause` of any
   startup failure — a modeled `Err` (a `ConfigInvalid` naming its variables,
   a `RuntimeStartFailed`) or a defect — and is emitted before `stopping`, so a
   process that never came up says why on stderr instead of exiting silently.

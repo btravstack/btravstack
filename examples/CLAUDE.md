@@ -92,12 +92,16 @@ is the index of the workspaces themselves.
     `TEMPORAL_ADDRESS` / `REDIS_URL` / `SMTP_URL` / the four `STORAGE_S3_*`. They are written to a file rather than defaulted
     because the ports are whatever Docker mapped, and an ephemeral mapped
     port cannot be a default. `--env-file` is Node's own; no `dotenv`.
-  - **`PROBE_PORT` is per app, inline in each `dev` script** (`9000`, `9001`,
-    `9002`): it defaults to `9000` for every application, so on one machine
-    two of the three fail with `RuntimeStartFailed` for `"probes"`. That is
-    the kernel reporting an `EADDRINUSE` correctly — in production each pod
-    has the port to itself — and it is why per-app values live in the per-app
-    script while shared ones live in `.env.dev`.
+  - **`PROBE_PORT` is `0` in each `dev` script, and so is the API's `PORT`**:
+    `PROBE_PORT` defaults to `9000` for every application, so on one machine
+    two of the three would fail with `RuntimeStartFailed` for `"probes"` —
+    the kernel reporting an `EADDRINUSE` correctly, since in production each
+    pod has the port to itself. Hardcoding `9000`/`9001`/`9002` fixed that and
+    broke on parallel **worktrees**, which this repository uses constantly.
+    Since #117 the `serving` event carries the runtime's `info` and the bound
+    `probePort`, so an ephemeral bind is readable and there is nothing left to
+    collide. Per-app values still live in the per-app script, shared ones in
+    `.env.dev`.
   - **`tsx watch` force-kills its child 5 s after a signal**, so a Ctrl-C
     under the watcher can cut beat 3 short — the kernel's own defaults are
     `preDrainDelayMs: 5_000` then up to `drainTimeoutMs: 20_000`. To watch a

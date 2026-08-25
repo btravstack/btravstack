@@ -3,7 +3,26 @@ import type { DrainReport } from "./drain.js";
 export type KernelEvent =
   | { readonly type: "building" }
   | { readonly type: "startFailed"; readonly cause: unknown }
-  | { readonly type: "serving"; readonly runtime: string }
+  | {
+      readonly type: "serving";
+      readonly runtime: string;
+      /**
+       * Whatever the runtime published on `Serving.info`. `unknown` because the
+       * kernel does not know a runtime's `Info` at the event union — it is read
+       * off the module at `start`'s call site, not here — and a sink is
+       * serialising it anyway. A generic `KernelEvent<Info>` would infect
+       * `EventSink`, `stderrSink` and every adapter for one field none of them
+       * reads structurally.
+       */
+      readonly info: unknown;
+      /**
+       * The port the kernel's own probe listener bound, `undefined` when probes
+       * are off. Its own field rather than folded into `info`: the probe server
+       * is the kernel's, not the runtime's, so publishing it as something the
+       * runtime said would be a small lie.
+       */
+      readonly probePort: number | undefined;
+    }
   | { readonly type: "draining"; readonly inFlight: number }
   | { readonly type: "drained"; readonly report: DrainReport }
   | { readonly type: "stopping" }

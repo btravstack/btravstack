@@ -50,7 +50,7 @@ So the shape is the production shape, with a watcher on top.
 ```json
 {
   "scripts": {
-    "dev": "PORT=3000 PROBE_PORT=9000 tsx watch --env-file=../../.env.dev src/main.ts"
+    "dev": "PORT=0 PROBE_PORT=0 tsx watch --env-file=../../.env.dev src/main.ts"
   }
 }
 ```
@@ -61,8 +61,8 @@ back to `.ts`. `--env-file` is Node's, not a `dotenv` dependency.
 
 The inline variables are the ones that **must differ between deployments**,
 and `PROBE_PORT` is the one that bites: it defaults to `9000` for every
-application, so three deployments on one machine means two of them fail to
-start with
+application, so three deployments on one machine would mean two of them fail
+to start with
 
 ```json
 {
@@ -73,6 +73,24 @@ start with
   }
 }
 ```
+
+**So both are `0` — bind an ephemeral port, and read back which one you got.**
+`Config.port`'s floor is `0` precisely so this stays expressible, and since
+#117 the `serving` event says what was bound:
+
+```json
+{
+  "type": "serving",
+  "runtime": "http",
+  "info": { "port": 54312 },
+  "probePort": 54313
+}
+```
+
+Pinning `3000` and `9000`/`9001`/`9002` also broke the moment a second
+**worktree** ran `pnpm dev`, which this repository does constantly: two
+checkouts collide on all four ports. With the bound port on the event there is
+nothing left to collide.
 
 which is the kernel reporting an `EADDRINUSE` correctly rather than anything
 going wrong. In production each pod has the port to itself, so `9000` is the
@@ -126,8 +144,9 @@ reused, so the second `pnpm dev` costs nothing.
 
 Anything **shared** between the deployments goes in `.env.dev`, written once by
 `dev:env`. Anything that **must differ** — `PROBE_PORT`, the API's `PORT` —
-goes inline in that app's own `dev` script, as above. And to run one alone,
-with an override:
+goes inline in that app's own `dev` script, as above; both are `0`, so what
+differs is resolved at bind time rather than hand-assigned. To pin one anyway
+— a stable port for a browser bookmark or a client sample — override it:
 
 ```sh
 PORT=3001 pnpm --filter @btravstack/example-order-api dev

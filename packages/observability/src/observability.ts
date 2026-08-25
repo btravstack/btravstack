@@ -90,7 +90,18 @@ export const kernelEvents =
         );
         return;
       case "serving":
-        logger.info("serving", { event: event.type, runtime: event.runtime });
+        // `info` is `unknown` — the kernel cannot know a runtime's `Info` at the
+        // event union — so it is spread only when it is a record. That guard is
+        // also what protects a hand-rolled runtime publishing a string or a
+        // number: the line still goes out, carrying what the kernel does know.
+        logger.info("serving", {
+          event: event.type,
+          runtime: event.runtime,
+          probePort: event.probePort,
+          ...(typeof event.info === "object" && event.info !== null && !Array.isArray(event.info)
+            ? (event.info as Record<string, unknown>)
+            : {}),
+        });
         return;
       case "draining":
         logger.info("draining", { event: event.type, inFlight: event.inFlight });
