@@ -12,9 +12,8 @@ describe("httpRuntime", () => {
     await serve();
 
     // WHEN one is emitted
-    // THEN it is absorbed. Unhandled, it would reach the kernel's
-    // `uncaughtException` handler and tear the whole application down over a
-    // transient fault in the transport.
+    // THEN it is absorbed — unhandled, it would reach the kernel's
+    // `uncaughtException` handler and tear the application down
     expect(() => boundServer().emit("error", new Error("accept"))).not.toThrow();
   });
 
@@ -65,8 +64,7 @@ describe("httpRuntime", () => {
 
     // WHEN the drain begins while it is still unanswered, and the handler is
     // released only once the phase has moved. `vi.waitUntil` synchronises rather
-    // than asserts — the drain samples `inFlightAtStart` in the same synchronous
-    // turn that advances the phase.
+    // than asserts.
     app.requestDrain();
     await vi.waitUntil(() => app.phase() === "draining");
     gate.release();
@@ -274,10 +272,9 @@ describe("httpRuntime", () => {
     // WHEN it makes a request
     await fetch(origin, { headers: { "x-request-id": "" } });
 
-    // THEN the minted id wins. `traceId` falls back to `meta.id` only when
+    // THEN the minted id wins: `traceId` falls back to `meta.id` only when
     // nullish, and `""` is not — so a blank header would hand every request from
-    // that caller the same empty id, defeating the ambient record exactly as a
-    // route template would.
+    // that caller the same empty id
     expect(traced.seen()).toEqual([expect.not.stringMatching(/^$/u)]);
   });
 
@@ -300,8 +297,7 @@ describe("httpRuntime", () => {
 
     // THEN the response tells the client the connection is finished. Left
     // `keep-alive`, node serves further requests down it for the whole drain
-    // window — new units the drain exists to stop admitting, and ones the
-    // deadline then reports abandoned.
+    // window — new units the drain exists to stop admitting.
     await expect(held.head()).resolves.toContain("Connection: close");
   });
 

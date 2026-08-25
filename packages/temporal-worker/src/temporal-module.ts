@@ -61,7 +61,7 @@ export type TemporalModuleOptions<
 > = {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
-  /** The application's activity implementations — `TemporalActivities(contract)(deps, arm)`, the provider that builds the record for THIS contract from the services it closes over. */
+  /** The application's activity implementations — what `TemporalActivities(contract)(…)` returns. */
   readonly activities: Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds>;
   readonly workflows: WorkflowSource;
   /** Pins `TemporalConfig.address` instead of reading `TEMPORAL_ADDRESS`. */
@@ -77,25 +77,18 @@ export type TemporalModuleOptions<
   /** The application's own exports; `TemporalRuntime` is added, since `start` resolves it. */
   readonly exports?: X;
   /**
-   * What this root expects from outside — `Env` at least, since the starter
-   * binds `TEMPORAL_*` from it and `start` is what provides it. di's own gate
-   * is re-stated over the augmented tuples below, so forgetting one is an
-   * error at THIS call, the same as it would be on a bare `Module(name)`.
+   * What this root's OWN providers expect from outside. di's gate is re-stated
+   * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
 } & NeedsGate<Imports<I, C>, Provides<P, C, ActivitiesError, ActivitiesNeeds>, N>;
 
 /**
- * `Module(name)({...})` for a Temporal worker deployment: everything a di
- * module takes, plus the contract, the activities provider and the workflow
- * source, and nothing else to know. The sugar imports the starter
- * (`temporal({ contract, workflows })`), provides the activities,
- * and exports `TemporalRuntime` — so a root that would otherwise write those
- * lines and remember that `start` needs the runtime exported writes none of
- * them. It hands back exactly the module `Module(...)` would have declared
- * over the augmented `imports`/`provides`/`exports` (spelled from di's own
- * pieces), so the kernel, `start`'s gate and di's see nothing new: syntax over
- * the same primitives, one source of truth.
+ * `Module(name)({...})` for a Temporal worker deployment: everything a di module
+ * takes, plus the contract, the activities provider and the workflow source. The
+ * sugar imports the starter, provides the activities and exports
+ * `TemporalRuntime`, handing back exactly the module `Module(...)` would have
+ * declared over the augmented tuples.
  *
  * ```ts
  * export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
@@ -136,15 +129,10 @@ export const TemporalModule =
       ...(gracePeriod === undefined ? {} : { gracePeriod }),
       ...(forceAfter === undefined ? {} : { forceAfter }),
     });
-    // di's own `Module(name)({...})` over the augmented tuples: its return
-    // type IS the sugar's — nothing spelled twice.
-    //
-    // The assertion is the gate, not the shape: `NeedsGate` cannot be computed
-    // while the tuples are still type parameters, so it defers and no object
-    // literal satisfies it here. It IS computed at the application's own call,
-    // because the sugar re-declares it on its options type. Asserting to a
-    // spelled-out type rather than `as never` is what keeps the tuples
-    // inferred — `as never` collapses the return to `Module<never, never, never>`.
+    // The assertion is the gate, not the shape: `NeedsGate` defers while the
+    // tuples are type parameters, and is computed at the application's own call
+    // because the options type re-declares it. Spelled out rather than
+    // `as never`, which collapses the return to `Module<never, never, never>`.
     return Module(name)({
       imports: [...imports, starter] as Imports<I, C>,
       provides: [activities, ...provides] as Provides<P, C, ActivitiesError, ActivitiesNeeds>,
@@ -179,17 +167,11 @@ type Uncovered<C extends ContractDefinition, T extends readonly PieceOf<C>[]> = 
 /**
  * The composing arm. Declared LAST in the intersection below on purpose:
  * TypeScript reports the last overload's failure, so a non-covering array is
- * refused against the `"UNCOVERED ACTIVITIES — …"` marker rather than
- * degrading to di's `Qualification`, which names nothing. The missing key
- * itself is named in the diagnostic only when the array's length matches the
- * marker tuple's own length (2) — measured.
+ * refused against the `"UNCOVERED ACTIVITIES — …"` marker rather than degrading
+ * to di's `Qualification`, which names nothing.
  *
- * The marker is a **sentence**, not a bare label, because it is the only part
- * of this diagnostic a reader can act on and it prints LAST: TypeScript names
- * the source type first, and the source here is the piece the caller wrote —
- * di's `Provider<…>` over the contract, several hundred characters wide and
- * outside this package to name. Widening the literal costs nothing to print
- * and is what carries the explanation to where the eye lands.
+ * The marker is a sentence rather than a bare label because it prints last,
+ * after the caller's own several-hundred-character piece type.
  */
 type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C>[]>(
   pieces: [Uncovered<C, T>] extends [never]
@@ -211,13 +193,11 @@ type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C
  * ```
  *
  * The first two are di's own `Provider(port)` on the starter's activities port
- * typed for the contract — any arm, same typing. The third takes the **pieces**
- * `TemporalWorkflowActivities(contract, key)` builds, one per top-level key of
- * the record: di constructs every piece first — they are the provider's deps,
- * keyed by the very contract key each piece's port id carries, so the services
- * record IS the activities record. Every key must be
- * covered, and two slices claiming one key are two providers for one port — di's
- * duplicate-provider defect at build, which is the point.
+ * typed for the contract. The third takes the pieces
+ * `TemporalWorkflowActivities(contract, key)` builds: they are the provider's
+ * deps, keyed by the contract key each piece's port id carries, so the services
+ * record IS the activities record. Every key must be covered, and two slices
+ * claiming one key are di's duplicate-provider defect at build.
  */
 export const TemporalActivities = <C extends ContractDefinition>(
   contract: C,
@@ -234,11 +214,8 @@ export const TemporalActivities = <C extends ContractDefinition>(
       ) as never,
       { sync: (services: unknown) => services } as never,
     );
-  // One array argument is never a valid `Provider(port)` call — its arms are
-  // `(deps, options)` and `(options)`, and both objects are records — so
-  // `Array.isArray` alone identifies this THIRD, composing arm. The arity check
-  // rides along because di's own build discriminates on arity (`provider.ts`)
-  // and a two-argument call is never this arm.
+  // One array argument is never a valid `Provider(port)` call — both its arms
+  // take records — so `Array.isArray` alone identifies the composing arm.
   return ((first: unknown, second?: unknown) =>
     second === undefined && Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])

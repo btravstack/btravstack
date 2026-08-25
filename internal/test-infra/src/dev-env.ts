@@ -20,17 +20,14 @@ import { withLock } from "./lock.js";
 
 const run = promisify(execFile);
 /**
- * Stays a `URL` all the way to `writeFile`, which accepts one. Round-tripping
- * it through a path string and back (`file://${repoRoot}`) happens to work on
- * POSIX and is wrong in general: a Windows path would produce `file://C:\…`,
- * and a repository checked out under a directory with a space or a `#` would
- * be mis-parsed. There is no reason to leave URL semantics and re-enter them.
+ * Stays a `URL` all the way to `writeFile`, which accepts one: round-tripping it
+ * through a path string works on POSIX and is wrong in general — a Windows path,
+ * or a checkout under a directory with a space or a `#`, is mis-parsed.
  */
 const envFile = new URL("../../../.env.dev", import.meta.url);
 /**
- * The one workspace this script knows by path. It owns the schema and the
- * `prisma` CLI, so applying the committed migrations has to happen there —
- * the same `prisma migrate deploy` under the same lock as its own vitest
+ * The one workspace this script knows by path: it owns the schema and the
+ * `prisma` CLI. The same `prisma migrate deploy` under the same lock as its own
  * `globalSetup`, because the dev loop and the gate share one database and
  * neither may assume it ran first.
  */
@@ -42,15 +39,13 @@ const infrastructure = fileURLToPath(
  * Brings up the six shared containers and writes the repository root's
  * `.env.dev` — what `turbo run dev` loads into each example process.
  *
- * These are the **same** containers the test suites use, attached to rather
- * than duplicated: `withReuse()` hashes the creation options, so a warm
- * machine pays nothing here and a `pnpm test` running alongside shares them.
- * That is the point — a second set of dev containers would be the per-workspace
- * duplication issue #52 removed, wearing a different hat.
+ * The **same** containers the test suites use, attached to rather than
+ * duplicated, so a warm machine pays nothing here and a `pnpm test` running
+ * alongside shares them.
  *
- * The ports are therefore whatever Docker mapped, which is why the addresses
- * are written to a file rather than defaulted in each application's config: an
- * ephemeral mapped port cannot be a default.
+ * The ports are therefore whatever Docker mapped, which is why the addresses are
+ * written to a file rather than defaulted: an ephemeral mapped port cannot be a
+ * default.
  */
 const main = async (): Promise<void> => {
   const postgres = await sharedPostgres();
@@ -78,9 +73,8 @@ const main = async (): Promise<void> => {
     `AMQP_URL=amqp://guest:guest@${rabbitmq.getHost()}:${rabbitmq.getMappedPort(5672)}`,
     `TEMPORAL_ADDRESS=${temporal.getHost()}:${temporal.getMappedPort(7233)}`,
     "TEMPORAL_NAMESPACE=default",
-    // `order-api`'s root composes a cache, so a dev run that omitted this
-    // would exit 78 on a `ConfigInvalid` naming the variable — the config
-    // gate doing its job, and a broken `pnpm dev` all the same.
+    // `order-api`'s root composes a cache, so omitting this exits 78 on a
+    // `ConfigInvalid` naming the variable.
     `REDIS_URL=redis://${redis.getHost()}:${redis.getMappedPort(6379)}`,
     // `order-amqp-worker`'s notifications slice sends mail, so a dev run
     // without this would exit 78 on a `ConfigInvalid` naming the variable.

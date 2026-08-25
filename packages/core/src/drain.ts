@@ -8,10 +8,9 @@ export type DrainReport = {
   /** Units in flight when the drain began. */
   readonly inFlightAtStart: number;
   /**
-   * Units that closed during the drain. Counted from a monotonic total, not
-   * `inFlightAtStart - abandoned` — it may exceed `inFlightAtStart` if
-   * in-flight work spawned more units during the drain. That is honest
-   * reporting, not a bug: the alternative formula can go negative.
+   * Units that closed during the drain, counted from a monotonic total. It may
+   * exceed `inFlightAtStart` when in-flight work spawned more units — honest
+   * reporting, where `inFlightAtStart - abandoned` can go negative.
    */
   readonly completed: number;
   /** Units still open at the deadline. The exit-code decision reads this. */
@@ -32,16 +31,13 @@ export type DrainArgs = {
   readonly onUnready: () => void;
 };
 
-// The three beats, in order — root CLAUDE.md's thesis 5 says why each exists.
-// Three orderings here are load-bearing and are what the comments below guard:
-// the counters are sampled BEFORE the pre-drain sleep, `awaitIdle()` is
-// sequenced AFTER the runtime's `drain` rather than alongside it, and the
-// deadline is aborted the instant the race settles on either branch.
+// Three orderings here are load-bearing: the counters are sampled BEFORE the
+// pre-drain sleep, `awaitIdle()` is sequenced AFTER the runtime's `drain`, and
+// the deadline is aborted the instant the race settles on either branch.
 //
-// Every `Result` the three awaited calls hand back is threaded, never dropped.
-// `AsyncResult<void, never>` empties the *error* channel only — a `Serving`
-// written by a third party can still defect, and discarding it would report a
-// clean shutdown that never happened.
+// Every `Result` the awaited calls hand back is threaded, never dropped.
+// `AsyncResult<void, never>` empties the error channel only, and a third-party
+// `Serving` can still defect.
 export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
   args.onUnready();
 
@@ -53,21 +49,19 @@ export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
   return args.clock.sleep(args.preDrainDelayMs, args.skip).flatMap(() => {
     const drainStopped = args.serving.drain(deadline.signal);
 
-    // `awaitIdle()` is SEQUENCED behind `drainStopped`, never sampled alongside
-    // it: it answers about the registry at the instant it is called, so a unit
-    // opening while `drain` is still resolving would go unwaited and be
-    // reported abandoned with the whole budget unspent. The losing branch's
-    // `Result` is the one drop here — once the timeout has decided the report,
-    // `exited` has settled and a late defect has no consumer.
+    // SEQUENCED behind `drainStopped`, never sampled alongside it: `awaitIdle`
+    // answers about the registry at the instant it is called, so a unit opening
+    // while `drain` is still resolving would go unwaited and be reported
+    // abandoned with the whole budget unspent. The losing branch's `Result` is
+    // the one drop here — the report is already decided.
     return fromSafePromise(
       Promise.race([
         drainStopped.flatMap(() => args.registry.awaitIdle()),
         args.clock.sleep(args.drainTimeoutMs, args.skip),
       ]),
     ).flatMap((raced) => {
-      // On either branch, and whatever the winning `Result` carries: a runtime
-      // that treats `signal` as its cue to return is released on the defect
-      // path too.
+      // On either branch, whatever the winning `Result` carries: a runtime that
+      // treats `signal` as its cue to return is released on the defect path too.
       deadline.abort();
 
       return raced.map(() => {
@@ -76,9 +70,8 @@ export const drainApp = (args: DrainArgs): AsyncResult<DrainReport, never> => {
           args.registry.abortAll();
         }
 
-        // Monotonic, not `inFlightAtStart - abandoned`: that formula goes
-        // negative the moment a unit starts after `inFlightAtStart` was
-        // sampled and then closes before the deadline (see `DrainReport` above).
+        // Monotonic, never `inFlightAtStart - abandoned`, which goes negative
+        // once a unit starts after the sample and closes before the deadline.
         return { inFlightAtStart, completed: args.registry.closed() - closedAtStart, abandoned };
       });
     });

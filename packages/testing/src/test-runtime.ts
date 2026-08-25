@@ -16,9 +16,7 @@ export type SubmittedUnit<T, E> = {
 
 /**
  * What `testRuntime` publishes on `Serving.info` — its own name, the one thing
- * an in-memory runtime genuinely knows about itself. A real runtime publishes
- * its own shape (an HTTP one, a bound `port`); this exists so the mechanism is
- * exercised end to end by the suite.
+ * an in-memory runtime genuinely knows about itself.
  */
 export type TestRuntimeInfo = { readonly name: string };
 
@@ -27,14 +25,12 @@ export class TestRuntimePort extends RuntimePort<Runtime<never, TestRuntimeInfo>
 
 export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   /**
-   * A module providing this very runtime on `TestRuntimePort` — the shape a
-   * runtime package ships (`@btravstack/http-server`'s `http()`), sized for a test: import it
-   * next to the module under test and export the port, and `start` finds it.
+   * A module providing this very runtime on `TestRuntimePort`: import it next
+   * to the module under test, export the port, and `start` finds it.
    *
-   * It provides **this** object. A wrapper built by spreading (`{ ...runtime,
-   * start }`) copies the module too, so its module still boots the inner,
-   * unwrapped runtime — a wrapper provides itself on `TestRuntimePort` with a
-   * module of its own.
+   * It provides THIS object, so a wrapper built by spreading copies the module
+   * too and that module still boots the inner runtime — a wrapper needs a module
+   * of its own.
    */
   readonly module: Module<TestRuntimePort, never, never>;
   readonly started: () => boolean;
@@ -42,8 +38,8 @@ export type TestRuntime = Runtime<never, TestRuntimeInfo> & {
   readonly untilStarted: () => AsyncResult<void, never>;
   /**
    * Whether the runtime would still take new work — false once `drain` or
-   * `stop` has been called. Lets a test observe *when* the kernel told the
-   * runtime to stop accepting, which the drain's ordering invariant turns on.
+   * `stop` has been called, so a test can observe WHEN the kernel told it to
+   * stop accepting.
    */
   readonly accepting: () => boolean;
   readonly serving: () => Serving<TestRuntimeInfo>;

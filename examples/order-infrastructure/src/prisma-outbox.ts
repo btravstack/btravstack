@@ -7,20 +7,15 @@ import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
 
 /**
  * The outbox's read side. The write side lives inside
- * `prismaOrderRepository.save` — same transaction as the order row, which is
- * the entire pattern — so this adapter only ever pulls and marks.
+ * `prismaOrderRepository.save`, in the same transaction as the order row — the
+ * entire pattern — so this adapter only pulls and marks.
  *
- * Both operations promise `never`: the port declares that a database that will
- * not answer is a defect, and this adapter keeps that promise by not
- * `mapErrCases`-ing anything into `E` — `tryFindMany` / `tryUpdateMany` carry
- * only `DriverError`, which the safe boundary would defect anyway.
+ * Both operations promise `never`, which they keep by mapping nothing into `E`:
+ * the port declares that a database which will not answer is a defect.
  *
- * Scoped to the tenant the caller names, like every other read in this layer.
- *
- * Ordered by `id` so the relay publishes in commit order; filtered on
+ * Ordered by `id` so the relay publishes in commit order, and filtered on
  * `publishedAt: null` so a crash between publish and mark re-delivers rather
- * than loses — the outbox trades exactly-once for at-least-once on purpose,
- * and the consumer's idempotency is where that trade is honoured.
+ * than loses. The outbox trades exactly-once for at-least-once on purpose.
  */
 export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
   pending: (tenantId, limit) =>
@@ -33,24 +28,19 @@ export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
       .map((rows) =>
         rows.map((row) => ({
           id: row.id,
-          // Echoed back rather than assumed from the query: the relay puts it
-          // on the event it publishes, which is how the tenant crosses the
-          // broker to a subscriber in another process. The one read-back in
-          // the system, so the one place the brand is re-applied: the column
-          // is a `string`, and every value in it was written by a call that
+          // The one read-back in the system, and so the one place the brand is
+          // re-applied: every value in this column was written by a call that
           // named a `TenantId`.
           tenantId: TenantId(row.tenantId),
-          // The column is a `string`; the port's `kind` is the union of the
-          // kinds this application emits, and `save`/`remove` are the only
-          // writers. A row carrying anything else was not written by this
-          // code, so the narrowing is a claim the adapter is entitled to make.
+          // `save`/`remove` are the only writers, so a row carrying another
+          // kind was not written by this code.
           kind: row.kind as "order",
           subjectId: row.subjectId,
           occurredAt: row.occurredAt,
-          // A NULL payload is the tombstone, and it stays null all the way to
-          // the wire. `JSON.parse` on a row this code wrote cannot fail; if it
-          // somehow does, the throw becomes a Defect — which is the honest
-          // channel for "the database contains something impossible".
+          // A NULL payload is the tombstone and stays null to the wire.
+          // `JSON.parse` on a row this code wrote cannot fail; if it somehow
+          // does, the throw becomes a Defect, which is the honest channel for
+          // "the database contains something impossible".
           payload:
             row.payload === null
               ? null
@@ -64,9 +54,8 @@ export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
       .tryUpdateMany({ where: { id: { in: [...ids] } }, data: { publishedAt: new Date() } })
       .map(() => undefined)
       .mapErrCases((matcher, defect) =>
-        // No relation to violate, no unique column touched, and a driver that
-        // will not answer is infrastructure: every arm is a bug by this
-        // schema's lights, so all three keep the port's `never` honest.
+        // No relation to violate and no unique column touched: every arm is a
+        // bug by this schema's lights, so all three keep the port's `never`.
         matcher.with(
           P.tag("DriverError"),
           P.tag("ForeignKeyViolation"),

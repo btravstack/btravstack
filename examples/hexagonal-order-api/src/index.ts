@@ -25,14 +25,12 @@ export class Env extends Port("Env")<Record<string, string | undefined>> {}
 export class AppConfig extends Port("AppConfig")<{ readonly dbUrl: string }> {}
 
 /**
- * The connection pool: a real resource, acquired once and closed on
- * teardown, which is exactly what routes any module providing it through
- * `Module.scoped` rather than `Module.build` (see `provider.ts`'s `ScopeOf`
- * in the library itself). Exported here — the plain TypeScript `export` — so
- * `src/index.test-d.ts` can name the *class* and attempt `ctx.get(Pool)`
- * against it; the guarantee that assertion pins is that the *DI module*
- * below never lists `Pool` in its own `exports`, so no built application
- * context can name it, even though the flat runtime map genuinely holds it.
+ * The connection pool: a real resource, acquired once and closed on teardown,
+ * which is what routes any module providing it through `Module.scoped`.
+ *
+ * `export`ed so `index.test-d.ts` can name the CLASS and attempt `ctx.get(Pool)`
+ * — what that pins is that the DI module below never lists it in `exports`, so
+ * no built context can name it even though the runtime map holds it.
  */
 export class Pool extends Port("Pool")<{
   readonly findById: (id: string) => Order | undefined;
@@ -66,10 +64,8 @@ export class GetOrderInteractor {
 
 export const ConfigModule = Module("Config")({
   provides: [
-    // A stand-in `Env`, not the process's real `process.env` — this is a
-    // composition root's own choice, not something the library asks for; a
-    // real one would read `process.env` and let a genuinely unset variable
-    // surface as the `ConfigError` below.
+    // A stand-in `Env`: a real one would read `process.env` and let an unset
+    // variable surface as the `ConfigError` below.
     Provider(Env)({ value: { ORDER_API_DATABASE_URL: "postgres://localhost/orders" } }),
     Provider(AppConfig)(
       { env: Env },
@@ -137,10 +133,8 @@ export const makePersistenceModule = () =>
         },
       ),
     ],
-    // `Pool` never appears here — the only port this module makes visible is
-    // `OrderRepository`. `Pool` is still genuinely present in the built
-    // context's flat runtime map; `exports` withholds the *type* that would
-    // let a caller name it.
+    // `Pool` never appears here. It is genuinely present in the built context's
+    // flat runtime map; `exports` withholds the TYPE that would name it.
     exports: [OrderRepository],
   });
 
@@ -170,11 +164,10 @@ export const makeAppModule = <E, N extends Scope>(persistence: Module<OrderRepos
   type Provides = readonly [ReturnType<typeof getOrder>];
   const getOrder = () =>
     Provider(GetOrder)({ orders: OrderRepository }, { class: GetOrderInteractor });
-  // The discharged-signature cast `runMain` makes around `start`'s gate, for
-  // the same reason: di's `needs` gate cannot be computed while `E` is still a
-  // type parameter, so it defers. Nothing is being waved through — an adapter
-  // that owed a real port would be this module's to declare, which is why the
-  // parameter admits `Scope` and nothing else.
+  // di's `needs` gate defers while `E` is a type parameter, so the cast
+  // discharges it. Nothing is waved through: the parameter admits `Scope` and
+  // nothing else, so an adapter owing a real port would be this module's to
+  // declare.
   return Module("App")({
     imports: [persistence],
     provides: [getOrder()],

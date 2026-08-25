@@ -4,14 +4,10 @@ import { OkAsync } from "unthrown";
 import { MailerBackend, type Mail, type MailerService } from "./mailer.js";
 
 /**
- * What a spec asserts against: the mails that would have been sent.
- *
- * `record` is the adapter's half and `sent`/`only` are the test's, on one
- * object rather than two, so nothing has to reach into an array somebody
- * else owns. The shape of the reading half is
- * `@btravstack/observability`'s `Recorder`: `only()` throws unless there is
- * exactly one, because a test that read it before the send it exists to
- * capture is a broken test and the loudest answer is the right one.
+ * What a spec asserts against: the mails that would have been sent. `record` is
+ * the adapter's half and `sent`/`only` the test's, on one object, so nothing
+ * reaches into an array somebody else owns. `only()` throws unless there is
+ * exactly one — a test that read it too early is a broken test.
  */
 export type MailRecorder = {
   readonly record: (mail: Mail) => void;
@@ -38,16 +34,13 @@ export const mailRecorder = (): MailRecorder => {
 };
 
 /**
- * The testable-by-default adapter: it sends nothing and keeps everything.
+ * The testable-by-default adapter: it sends nothing and keeps everything, since
+ * the question in a suite is almost never "did SMTP work" but "would this code
+ * have sent the right message".
  *
- * This is the half of a mailer that matters most in a test suite — the
- * question is almost never "did SMTP work", it is "would this code have sent
- * the right message" — which is why it ships beside the real transport
- * rather than being left for every application to write again.
- *
- * It cannot fail. A spec that needs the failure arm composes an adapter of
- * its own answering `MailNotSent`; making this one configurable would put a
- * policy in a fixture whose whole value is having none.
+ * It cannot fail. A spec that needs the failure arm composes an adapter of its
+ * own; a configurable failure mode would put a policy in a fixture whose whole
+ * value is having none.
  */
 export const recordingMailerBackend = (recorder: MailRecorder): MailerService => ({
   send: (mail) => {

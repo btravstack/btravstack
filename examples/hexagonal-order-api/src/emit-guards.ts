@@ -1,48 +1,27 @@
 /**
  * NOT example code. Do not copy anything out of this file.
  *
- * It is a compile-time test that happens to live beside an example, because
- * what it tests *is* what an example is: a downstream package that uses
- * `@btravstack/di` and **emits its own declarations**. Everything below is a
- * consumer-side shape that `tsconfig.emit.json` has to be able to write into a
- * `.d.ts` — the one thing `tsc --noEmit` on the example proper does not fully
- * exercise, and the thing that was broken.
- *
- * What went wrong when nothing checked this: `PortInstance`'s brand keys are
- * two module-private `unique symbol`s (`ID`/`SERVICE`), and `PortClass` was not
- * exported from the package index. With no name to reach for, the emitter
- * expanded a port class's
- * heritage expression down to those symbols, and **every consumer that exported
- * a port** — the pattern `packages/di/README.md` teaches on its first page —
- * failed with `TS4020: 'extends' clause of exported class 'X' has or is using
- * private name 'ID'`. The three example packages had been papering over it with
- * `declaration: false` in their own tsconfigs, which is why the repo was green
- * while no consumer could build. Those overrides are gone; this file is what
- * replaced them.
+ * A compile-time test living beside an example, because what it tests IS what an
+ * example is: a downstream package that uses `@btravstack/di` and **emits its
+ * own declarations**. Every shape below is one `tsconfig.emit.json` has to be
+ * able to write into a `.d.ts` — which `tsc --noEmit` does not exercise, and
+ * which was broken (`TS4020` on every consumer that exported a port).
  *
  * Two rules that are easy to destroy by tidying:
  *
- *  1. **An unused `@ts-expect-error` here is a failure, not noise.** The fix
- *     for `TS4020` is to make more of the port machinery nameable, and the
- *     cheap version of that — exporting `ID`/`SERVICE` themselves —
- *     makes emit work while quietly destroying the thing the brands exist for:
- *     with the symbols in hand a consumer hand-writes `{ [ID]: "Pool",
- *     [SERVICE]: Shape }` and passes it off as a `Pool`. Measured: it
- *     type-checks. The directives below are the assertion that the symbols are
- *     still out of reach, so a directive going unused is the signal that
- *     someone widened the export surface too far.
+ *  1. **An unused `@ts-expect-error` here is a failure, not noise.** The cheap
+ *     fix for `TS4020` — exporting `ID`/`SERVICE` — makes emit work and
+ *     destroys what the brands exist for: with the symbols in hand a consumer
+ *     hand-writes a port instance and passes it off as a real one. The
+ *     directives below assert the symbols are still out of reach.
  *
- *  2. **The gate compiles this file, it does not merely check it.** Emit-time
- *     diagnostics like `TS4020` are raised by the *declaration emitter*, so
- *     `noEmit` has to be off for the pass to mean anything, and the emitted
- *     output is then fed back through the compiler — a dangling reference in
- *     the output is not an emit-time diagnostic and would otherwise ship. The
- *     re-check names `emit-guards.d.ts` explicitly rather than `index.d.ts`
- *     alone: a file is checked only if it is named or reached by an import from
- *     something named, and **nothing imports this one**. Never add
- *     `--skipLibCheck` to that step; it turns off `.d.ts` checking entirely and
- *     the run exits 0 on broken output.
- * */
+ *  2. **The gate compiles this file, it does not merely check it.** `TS4020` is
+ *     raised by the declaration EMITTER, so `noEmit` must be off, and the
+ *     emitted output is fed back through the compiler because a dangling
+ *     reference in it is not an emit-time diagnostic. The re-check names
+ *     `emit-guards.d.ts` explicitly, since nothing imports this file. Never add
+ *     `--skipLibCheck`: the run then exits 0 on broken output.
+ */
 import { Module, Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
 import { Ok, type AsyncResult } from "unthrown";
 
@@ -78,10 +57,8 @@ void forged;
 const forgedFromService: Clock = { now: () => "" };
 void forgedFromService;
 
-// The brand keys themselves have no name a consumer can reach. Each of these
-// resolves only if the package starts exporting the symbol, at which point the
-// forgery above becomes writable — which is why the directives, not a comment,
-// are what holds the export surface where it is.
+// Each of these resolves only if the package starts exporting the symbol, at
+// which point the forgery above becomes writable.
 // @ts-expect-error `@btravstack/di` exports no `ID`
 declare const idBrand: typeof import("@btravstack/di").ID;
 // @ts-expect-error `@btravstack/di` exports no `SERVICE`

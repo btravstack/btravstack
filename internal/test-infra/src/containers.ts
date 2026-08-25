@@ -9,10 +9,9 @@ import { withLock } from "./lock.js";
 const LABEL = "com.btravstack.test-infra";
 
 /**
- * The credentials and the two database names are constants rather than
- * configuration: the server is a test fixture nothing outside this repository
- * connects to, and a value that never changes is not config (root
- * `CLAUDE.md`, "no config for a value that never changes").
+ * Constants rather than configuration: the server is a test fixture nothing
+ * outside this repository connects to, and a value that never changes is not
+ * config.
  */
 export const POSTGRES_USER = "btravstack";
 export const POSTGRES_PASSWORD = "btravstack";
@@ -24,14 +23,10 @@ export const ORDERS_DATABASE = "orders";
 /**
  * Started once per machine and reused by every workspace's vitest run.
  *
- * `withReuse()` is what makes the second, third and fourth run find the
- * container instead of starting one — testcontainers hashes the creation
- * options and fetches by that hash — and {@link withLock} is what makes the
- * lookup safe when turbo starts those runs concurrently. The consequence is
- * deliberate: a reused container is not registered with Ryuk, so it outlives
- * the run. That is the trade the repository takes — a warm container costs
- * nothing to attach to, and a cold one costs the image pull that made
- * `pnpm test` intermittently red.
+ * `withReuse()` is what makes a later run attach instead of starting one, and
+ * {@link withLock} is what makes the lookup safe when turbo starts those runs
+ * concurrently. One consequence is deliberate: a reused container is not
+ * registered with Ryuk, so it outlives the run.
  */
 const shared = (name: string, define: () => GenericContainer): Promise<StartedTestContainer> =>
   withLock(name, () =>
@@ -42,10 +37,8 @@ const shared = (name: string, define: () => GenericContainer): Promise<StartedTe
   );
 
 /**
- * The one database server: Temporal's persistence and the example
- * application's schema, side by side on it. Two databases on one server
- * rather than two servers, which is the whole reason the application's tests
- * no longer need SQLite.
+ * The one database server: Temporal's persistence and the example application's
+ * schema, side by side. Two databases on one server rather than two servers.
  */
 export const sharedPostgres = async (): Promise<StartedTestContainer> => {
   const postgres = await shared("postgres", () =>
@@ -88,11 +81,9 @@ export const postgresUrl = (postgres: StartedTestContainer, database: string): s
   `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${postgres.getHost()}:${postgres.getMappedPort(5432)}/${database}`;
 
 /**
- * The broker both AMQP workspaces consume. Each *test* still gets its own
- * vhost — `@amqp-contract/testing`'s `it` extension mints one per test from
- * the management API — so sharing the server costs no isolation at all; what
- * it removes is the second image pull and the second 60s startup wait racing
- * the first.
+ * The broker both AMQP workspaces consume. Each TEST still mints its own vhost,
+ * so sharing the server costs no isolation — what it removes is the second image
+ * pull and the second startup wait racing the first.
  */
 export const sharedRabbitMq = (): Promise<StartedTestContainer> =>
   shared("rabbitmq", () =>
@@ -105,11 +96,9 @@ export const sharedRabbitMq = (): Promise<StartedTestContainer> =>
   );
 
 /**
- * The cache server `@btravstack/cache`'s Redis adapter is tested against.
- *
- * Each test mints a UUID key prefix of its own, which is a finer boundary
- * than a database index and needs no cleanup — the same trade the vhost, the
- * namespace and the tenant already make.
+ * The cache server `@btravstack/cache`'s Redis adapter is tested against. Each
+ * test mints a UUID key prefix, a finer boundary than a database index that
+ * needs no cleanup.
  */
 export const sharedRedis = (): Promise<StartedTestContainer> =>
   shared("redis", () =>
@@ -199,14 +188,12 @@ export const sharedRustFs = async (): Promise<StartedTestContainer> => {
 /**
  * The Temporal server, backed by {@link sharedPostgres}.
  *
- * It reaches PostgreSQL by container IP on the default bridge rather than
- * through a testcontainers `Network`: a network is created with a fresh
- * random name every run and torn down with the session, so a *reused*
- * container would be left attached to a network that no longer exists. An IP
- * on the default bridge is stable for as long as the container is, which is
- * exactly the lifetime reuse gives it — and it is part of the reuse hash, so
- * a PostgreSQL container that comes back at a different address produces a
- * matching new Temporal container rather than a silently broken one.
+ * It reaches PostgreSQL by container IP on the default bridge rather than a
+ * testcontainers `Network`, which is created with a fresh random name every run
+ * and torn down with the session — so a REUSED container would be left attached
+ * to a network that no longer exists. The IP is also part of the reuse hash, so
+ * a PostgreSQL container at a new address produces a matching new Temporal one
+ * rather than a silently broken pair.
  */
 export const sharedTemporal = async (
   postgres: StartedTestContainer,

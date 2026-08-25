@@ -23,11 +23,9 @@ import { orpc, type HttpRouterPort } from "./orpc.js";
 export type HttpInfo = { readonly port: number };
 
 /**
- * What the socket is bound with, as a service: `http()` binds it from the
- * environment — `PORT` (default `3000`; `0` lets the OS pick, read it back
- * from `RunningApp.runtimeInfo()`) and `HOST` (default `0.0.0.0`: the
- * deployment target is a pod, not a laptop) — and anything else in the graph
- * may read it.
+ * What the socket is bound with, as a service: `http()` binds it from `PORT`
+ * (default `3000`; `0` lets the OS pick) and `HOST` (default `0.0.0.0`), and
+ * anything else in the graph may read it.
  */
 export class HttpConfig extends Port("HttpConfig")<{
   readonly port: number;
@@ -36,10 +34,9 @@ export class HttpConfig extends Port("HttpConfig")<{
 
 /**
  * `http()`'s options: where the router is mounted, and what a caller pins
- * instead of reading from the environment — a test's `{ port: 0 }`. The router
- * itself is not an option: it is the provider the composition root supplies
- * on the starter's own router port (`HttpRouter(contract)(deps, arm)`), which
- * this module needs.
+ * instead of reading from the environment. The router itself is not an option —
+ * it is the provider the composition root supplies on the starter's router
+ * port, which this module needs.
  */
 export type HttpOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
@@ -48,16 +45,14 @@ export type HttpOptions = {
   readonly hostname?: string;
   /**
    * oRPC handler plugins — CORS, body limits, compression, CSRF. Transport
-   * policy configuring the transport; this is NOT a middleware slot for
-   * application logic, which the package still declines.
+   * policy configuring the transport; not a middleware slot for application
+   * logic, which the package still declines.
    */
   readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
   /**
-   * Headers set on every response, before dispatch — the listener's own
-   * concern, not oRPC's: a handler plugin only runs for a request oRPC
-   * matched, so the runtime's own `404`/`500` would go out bare otherwise.
-   * `true` (default) applies {@link DEFAULT_SECURITY_HEADERS}; `false`
-   * disables the feature entirely; a record replaces the defaults outright.
+   * Headers set on every response, before dispatch. `true` (default) applies
+   * {@link DEFAULT_SECURITY_HEADERS}; `false` disables the feature; a record
+   * replaces the defaults outright.
    */
   readonly securityHeaders?: boolean | Readonly<Record<string, string>>;
 };
@@ -89,13 +84,8 @@ const httpRuntime = (
 /**
  * The runtime and its configuration as a module, over whichever `HttpHandler`
  * provider it is handed: `http()` hands it the oRPC one; the package's own
- * transport specs hand it a bare listener. INTERNAL for that second reason
+ * transport specs hand it a bare listener. Internal for that second reason
  * only.
- *
- * With every field pinned the module reads nothing from the environment; the
- * declared `Env` need and `ConfigInvalid` stay (the kernel discharges the
- * one, a pinned config never produces the other) — one signature, no
- * overload pair to keep in step.
  */
 export const httpModule = <N>(
   options: {
@@ -116,13 +106,9 @@ export const httpModule = <N>(
           }),
         );
   return Module("Http")({
-    // The starter binds its own configuration from the environment, so it
-    // owes `Env` — supplied at the composition root, never from in here. The
-    // handler's own `N` is owed too, and cannot be spelled in `needs`: it is
-    // still a type parameter here, which is also why the gate defers and the
-    // options carry `as never` below. What the module owes is stated once, in
-    // the return type — `Env | N` — and that is what reaches a composition
-    // root, where the gate does resolve.
+    // The handler's own `N` is owed too and cannot be spelled here — it is
+    // still a type parameter, which is why the gate defers and the options
+    // carry `as never`. The return type states it instead.
     needs: [Env],
     provides: [
       config,
@@ -139,22 +125,14 @@ export const httpModule = <N>(
 };
 
 /**
- * The HTTP starter, and the one way HTTP is answered here: oRPC. A
- * module providing the runtime (`HttpRuntime`), its configuration
- * (`HttpConfig`, bound from `PORT`/`HOST` unless pinned) and the HTTP surface
- * built from the application's **router** — a provider on the starter's own
- * router port, built by `HttpRouter(contract)(deps, arm)` from the use cases
- * its procedures call, which this module NEEDS: a composition root that
- * imports the starter without providing a router owes the port, and di's
- * gate says so. `http()` mounts it under `prefix` and puts the listener on
- * the socket. Import it next to the application, provide the router, export
- * `HttpRuntime`, and that is the whole of the transport wiring: no handler,
- * no `needs`, no context handed to a procedure.
+ * The HTTP starter, and the one way HTTP is answered here: oRPC. A module
+ * providing the runtime, its configuration (bound from `PORT`/`HOST` unless
+ * pinned) and the HTTP surface built from the application's router — which this
+ * module NEEDS, so a root that imports the starter without providing one owes
+ * the port.
  *
- * Pin `port`/`hostname` and the module reads nothing from the environment
- * (the declared `Env` need and `ConfigInvalid` stay — the kernel discharges
- * the one, a pinned config never produces the other); pin only some and the
- * rest still comes from the environment.
+ * Pin `port`/`hostname` and the module reads nothing from the environment; pin
+ * only some and the rest still comes from it.
  */
 export const http = (
   options: HttpOptions = {},
@@ -177,16 +155,13 @@ const listen = (
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   fromSafePromise(
     new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
-      // Resolved once, outside the per-request callback: a request answers
-      // no faster for re-deriving the same record every time.
+      // Resolved once, outside the per-request callback, entries included.
       const headerRecord: Readonly<Record<string, string>> =
         securityHeaders === false
           ? {}
           : securityHeaders === true || securityHeaders === undefined
             ? DEFAULT_SECURITY_HEADERS
             : securityHeaders;
-      // Entries too, not just the record: the loop below runs per request, and
-      // `Object.entries` would rebuild the same pairs every time.
       const headers = Object.entries(headerRecord);
 
       // `close()` waits for every connection to end, and a keep-alive client
@@ -195,11 +170,8 @@ const listen = (
       const sockets = new Set<Socket>();
 
       // Responses still open, so the drain can retire them.
-      // `closeIdleConnections()` reaches every connection IDLE at that instant
-      // and no others — one with a request in flight survives it, and node
-      // happily serves further requests down that one for the whole drain
-      // window. `Connection: close` is what actually retires the socket: node
-      // closes it once the response ends.
+      // `closeIdleConnections()` reaches every connection idle at that instant
+      // and no others — one with a request in flight survives it.
       const open = new Set<ServerResponse>();
       let draining = false;
 
@@ -209,41 +181,32 @@ const listen = (
           return;
         }
         // Headers already on the wire: no header left to change, so the socket
-        // is ended once the response is out. Keeps the guarantee "no reuse"
-        // rather than "no reuse where we caught the header in time".
+        // is ended once the response is out.
         const { socket } = response;
         response.once("finish", () => void socket?.end());
       };
 
       const server: Server = createServer((request, response) => {
         // FIRST, before dispatch: covers the runtime's own 404/500 and a
-        // drained/retired response alike, not only what oRPC matched.
+        // drained response alike, not only what oRPC matched.
         for (const [name, value] of headers) response.setHeader(name, value);
         open.add(response);
         response.once("close", () => open.delete(response));
         if (draining) retire(response);
-        // The unit's `Result` is FOLDED to a value here rather than dropped:
-        // `AsyncResult<T, never>` has an empty *error* channel, but a `Defect`
-        // can still be present. `recoverDefect`, not `match`: `E` is
-        // statically `never` at this call site, so a `match`'s `errCases` arm
-        // would be an always-dead branch with no case to name.
+        // `recoverDefect`, not `match`: `E` is statically `never` here, so an
+        // `errCases` arm would be a dead branch with no case to name.
         void host
           .run(metaFor(request), (_ctx, signal) => {
             void answer(handler(request, response, signal), response);
-            // The unit's lifetime IS the response's. This is what makes the
-            // kernel's "flush inside the unit" contract structural rather than
-            // documented: there is no way to write late, because the unit is
-            // still open until the bytes are out.
+            // The unit's lifetime IS the response's, which is what makes the
+            // kernel's "flush inside the unit" contract structural here.
             return closedOf(response);
           })
           .recoverDefect((cause) => {
-            // The unit failed outside `answer`'s reach — the handler threw
-            // synchronously, or a `StartOptions.unit` provider failed to build —
-            // so this is where the `500` is written; `destroy` is the last
-            // courtesy left once headers are already on the wire, so a client
-            // that would otherwise hang gets a reset. Guarded so this callback
-            // cannot throw — `recoverDefect` would wrap a throw here into a
-            // FRESH defect, and the `void` below would drop it.
+            // The unit failed outside `answer`'s reach — a synchronous throw, or
+            // a `StartOptions.unit` provider failing to build. Guarded, because
+            // `recoverDefect` would wrap a throw here into a fresh defect that
+            // the `void` below drops.
             try {
               end(response, 500, "InternalError");
               if (!response.writableEnded)
@@ -266,9 +229,9 @@ const listen = (
 
       const stopAccepting = (): void => {
         draining = true;
-        // Marked HERE rather than in the request callback, which ran before the
-        // drain existed — these are precisely the responses holding a connection
-        // open past `closeIdleConnections()`.
+        // Marked here rather than in the request callback, which ran before the
+        // drain existed — these are the responses holding a connection open
+        // past `closeIdleConnections()`.
         for (const response of open) retire(response);
         if (!server.listening) return;
         server.close();
@@ -279,21 +242,18 @@ const listen = (
         resolve(Err(new RuntimeStartFailed({ runtime: "http", cause })));
       };
 
-      // Permanent, and deliberately NOT `onBindError`: once the bind has
-      // settled the deferred, routing a later error there could only resolve
-      // an already-settled promise. But leaving the server with ZERO
-      // `'error'` listeners is worse — an unhandled `'error'` throws, and the
-      // kernel's `uncaughtException` handler turns that into a
-      // whole-application teardown over a transient accept fault.
+      // Permanent, and deliberately not `onBindError`, which could only resolve
+      // an already-settled promise. Zero `'error'` listeners is worse: an
+      // unhandled `'error'` throws, and the kernel's `uncaughtException` handler
+      // turns that into a whole-application teardown over an accept fault.
       const ignoreServingError = (): void => {};
 
       server.once("error", onBindError);
 
-      // `listen` validates the port SYNCHRONOUSLY and throws `ERR_SOCKET_BAD_PORT`
-      // rather than emitting `'error'` — for a non-integer and for anything
-      // outside 0..65535 alike. Uncaught, that throw escapes this executor,
-      // rejects the promise, and reaches the caller as a Defect, bypassing the
-      // `AsyncResult<Serving, RuntimeStartFailed>` this function declares.
+      // `listen` validates the port synchronously and THROWS
+      // `ERR_SOCKET_BAD_PORT` rather than emitting `'error'`. Uncaught, that
+      // escapes the executor and reaches the caller as a defect, bypassing the
+      // `RuntimeStartFailed` this function declares.
       try {
         server.listen(options.port, options.hostname, () => {
           server.removeListener("error", onBindError);
@@ -326,23 +286,20 @@ const listen = (
     }),
   ).flatMap((result) => result);
 
-// `closed` is checked first because the unit's work is not always synchronous
-// with the request: under a `StartOptions.unit` module it runs once the fork is
-// built, and a client that hung up in the meantime has already emitted
-// `'close'` — subscribing then would hold the unit open for the process
-// lifetime.
+// `closed` is checked first because unit work is not always synchronous with the
+// request: under a `StartOptions.unit` module it runs once the fork is built, and
+// a client that hung up meanwhile has already emitted `'close'` — subscribing
+// then would hold the unit open for the process lifetime.
 const closedOf = (response: ServerResponse): AsyncResult<void, never> =>
   response.closed
     ? OkAsync()
     : fromSafePromise(new Promise<void>((done) => response.once("close", () => done())));
 
 /**
- * The trace id inside a W3C `traceparent` header —
- * `00-{trace-id}-{parent-id}-{flags}` — and nothing else of it: the parent's
- * SPAN id is deliberately dropped, because `UnitMeta.traceId` is a
- * correlation id, not a span context, and carrying half a parentage would
- * invite pretending to the other half. An all-zero trace id is the spec's
- * own "invalid" value and is refused like a malformed header.
+ * The trace id inside a W3C `traceparent` header, and nothing else of it: the
+ * parent's span id is dropped, because `UnitMeta.traceId` is a correlation id
+ * rather than a span context. An all-zero trace id is the spec's own "invalid"
+ * value and is refused like a malformed header.
  */
 const traceIdOfTraceparent = (header: string): string | undefined => {
   const match = /^[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/.exec(header.trim());
@@ -351,18 +308,12 @@ const traceIdOfTraceparent = (header: string): string | undefined => {
 };
 
 /**
- * `UnitMeta.traceId` defaults to `id`, so `id` is minted fresh per request and
- * never taken from the route: a category there would give every request the same
- * trace id and silently defeat the ambient record. Inbound, W3C `traceparent`
- * wins — the trace-id field alone, so a request that crossed another service
- * joins the trace it started (issue #64) — with `x-request-id` as the
- * fallback vocabulary for callers that speak it.
+ * `id` is minted fresh per request and never taken from the route, since
+ * `traceId` defaults to it. Inbound, `traceparent` wins over `x-request-id`.
  *
  * Only a NON-BLANK header is adopted: the kernel falls back to `meta.id` when
- * `traceId` is nullish, and `""` is not, so an empty header would win and hand
- * a caller's every request the same blank id — defeating the ambient record
- * exactly as a route template would. A malformed `traceparent` falls through
- * to `x-request-id`, never half-adopted.
+ * `traceId` is nullish and `""` is not, so an empty header would hand a caller's
+ * every request the same blank id.
  */
 const metaFor = (request: IncomingMessage): UnitMeta => {
   const parent = request.headers["traceparent"];
@@ -378,13 +329,13 @@ const metaFor = (request: IncomingMessage): UnitMeta => {
 
 /**
  * The package's guarantee: every request produces exactly one completed
- * response. A handler that declines (resolves without writing) gets a `404`; one
- * that fails gets a `500`. Without this the response never ends, the client
- * hangs, and the unit stays counted in flight until the drain deadline.
+ * response. A handler that declines gets a `404`, one that fails a `500`.
+ * Without this the client hangs and the unit stays in flight until the drain
+ * deadline.
  *
- * An `AsyncResult` carrying an `Err` or a `Defect` RESOLVES rather than rejects,
- * so it lands in the `404` branch. That is correct: this package does not map
- * `Result` → status, and a handler that hands one back has not answered.
+ * An `AsyncResult` carrying an `Err` or a `Defect` resolves rather than rejects,
+ * so it lands in the `404` branch — correct, since a handler that hands one back
+ * has not answered.
  */
 const answer = async (handled: PromiseLike<unknown>, response: ServerResponse): Promise<void> => {
   try {
@@ -392,9 +343,8 @@ const answer = async (handled: PromiseLike<unknown>, response: ServerResponse): 
     end(response, 404, "NotFound");
   } catch {
     // Guarded so a throw here cannot reject `answer`'s own promise: the call
-    // site drops it with `void`, and an unhandled rejection is exactly the
-    // whole-application teardown the permanent `'error'` listener above
-    // exists to prevent.
+    // site drops it with `void`, and an unhandled rejection is the
+    // whole-application teardown the permanent `'error'` listener prevents.
     try {
       end(response, 500, "InternalError");
     } catch {

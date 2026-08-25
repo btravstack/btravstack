@@ -20,7 +20,7 @@ const get = async (port: number, path: string): Promise<{ status: number; body: 
 const boundPort = async (app: RunningApp<never, unknown>): Promise<number> => {
   const port = (await app.probePort()).get();
   if (port === undefined) {
-    // oxlint-disable-next-line unthrown/no-throw -- a test-only fixture: reaching here means the probe server never bound, which is a bug in the test's setup rather than a modeled outcome, and routing it would make every call site handle a case that only ever means "the test is broken"
+    // oxlint-disable-next-line unthrown/no-throw -- a test-only fixture: reaching here means the probe server never bound, which is a bug in the test rather than a modeled outcome
     throw new Error("[invariants] the probe server did not bind");
   }
   return port;
@@ -67,13 +67,9 @@ const allRaisedFrom = (base: HandlerCounts): HandlerCounts => ({
 });
 
 describe("load-bearing invariants", () => {
-  // 1. Readiness goes false before the runtime stops accepting.
-  //    Asserted end-to-end through the real probe endpoint, in
-  //    "the drain flips readiness false before the runtime stops accepting"
-  //    below — the ordering only means something if `/readyz` is what an
-  //    orchestrator would actually see. `drain.spec.ts`'s "flips readiness
-  //    false, waits preDrainDelayMs, then tells the runtime to stop accepting
-  //    — in that order" pins the same ordering inside `drainApp`.
+  // 1. Readiness goes false before the runtime stops accepting — asserted below
+  //    in "the drain flips readiness false before the runtime stops accepting",
+  //    and inside `drainApp` by `drain.spec.ts`.
 
   it("2. in-flight units complete when the drain has time for them", async ({ boot }) => {
     const clock = createFakeClock();
@@ -91,10 +87,9 @@ describe("load-bearing invariants", () => {
 
     const report = await app.exited;
 
-    // `drain.spec.ts` proves the accounting inside `drainApp`; what this adds
-    // is the kernel's wiring — a unit submitted through the runtime's own
-    // `RunUnit` adapter lands in the registry the drain counts, and the count
-    // reaches `ExitReport.drain`.
+    // `drain.spec.ts` proves the accounting inside `drainApp`; what this adds is
+    // the wiring — a unit submitted through `RunUnit` lands in the registry the
+    // drain counts, and the count reaches `ExitReport.drain`.
     expect(report).toBeOkWith(
       expect.objectContaining({
         reason: "signal",
@@ -142,10 +137,8 @@ describe("load-bearing invariants", () => {
     await app.exited;
 
     // The abort comes from `registry.abortAll()` at the deadline, not from the
-    // runtime honouring `Serving.drain(signal)` — `testRuntime` deliberately
-    // ignores that signal, which is what makes this a test of the kernel. Both
-    // instants are asserted in one projection: the deadline is what aborts, so
-    // "still open after the pre-drain delay" is half the invariant.
+    // runtime honouring `Serving.drain(signal)` — `testRuntime` ignores that
+    // signal, which is what makes this a test of the kernel.
     expect({ afterPreDrain, afterDeadline: aborted }).toEqual({
       afterPreDrain: false,
       afterDeadline: true,
@@ -181,16 +174,13 @@ describe("load-bearing invariants", () => {
       expect.objectContaining({ runtime: "broken" }),
     );
 
-    // `start.spec.ts`'s "closes the application scope on a clean stop" covers
-    // the happy path; this is the other one — a failure short-circuits past
-    // `finish`, and the scope still closes.
+    // `start.spec.ts` covers the happy path; this is the other one — a failure
+    // short-circuits past `finish`, and the scope still closes.
     expect(released).toEqual(["greeting"]);
   });
 
-  // 6. A second signal skips the drain.
-  //    Covered by `start.spec.ts`'s "drains on SIGTERM and skips the drain on
-  //    a second signal", which emits both signals against real handlers and
-  //    asserts the exit does not wait out the 60s timeouts.
+  // 6. A second signal skips the drain — covered by `start.spec.ts`'s "drains on
+  //    SIGTERM and skips the drain on a second signal", against real handlers.
 
   it("7. teardown errors are collected without masking the exit reason", async () => {
     const boom = new Error("release failed");
@@ -218,10 +208,9 @@ describe("load-bearing invariants", () => {
     app.requestDrain();
     await clock.advance(5_000);
 
-    // `start.spec.ts`'s "surfaces a failing release in the exit report's
-    // teardown errors" proves they are collected. What this adds is the other
-    // half of the invariant: a failing finaliser does not turn the exit into a
-    // failure, nor rewrite the reason the application stopped.
+    // `start.spec.ts` proves they are collected; what this adds is the other
+    // half — a failing finaliser does not turn the exit into a failure, nor
+    // rewrite the reason the application stopped.
     expect(await app.exited).toBeOkWith(
       expect.objectContaining({
         reason: "signal",
@@ -250,14 +239,9 @@ describe("load-bearing invariants", () => {
     exitSpy.mockRestore();
   });
 
-  // 9. Signal listeners are removed on exit.
-  //    Covered twice in `start.spec.ts`: "drains on SIGTERM and skips the drain
-  //    on a second signal" asserts the SIGTERM/SIGINT count returns to its
-  //    baseline, and "skips the drain and marks itself unready on an uncaught
-  //    exception" does the same for uncaughtException/unhandledRejection. The
-  //    bind-failure route is the one they do not reach; it is asserted in
-  //    "a bind failure stops the graph being built and still disposes the
-  //    handlers" below.
+  // 9. Signal listeners are removed on exit — covered twice in `start.spec.ts`,
+  //    once per handler family. The bind-failure route is the one they do not
+  //    reach, and is asserted below.
 });
 
 describe("probe wiring", () => {
@@ -327,20 +311,13 @@ describe("probe wiring", () => {
 
     app.requestDrain();
 
-    // A `fetch` is a macrotask, so the drain's first beat has certainly run by
-    // the time this lands. Its pre-drain delay is still pending on the fake
-    // clock, so the runtime has not yet been told to stop accepting: readiness
-    // goes false strictly first, which is the whole point of the delay.
+    // A `fetch` is a macrotask, so the drain's first beat has run by the time
+    // this lands, while its pre-drain delay is still pending on the fake clock:
+    // readiness goes false strictly first, which is the point of the delay.
     //
-    // Note which mechanism answers here: `runDrain` advances the tracker to
-    // `"draining"` synchronously before `drainApp` calls `onUnready`, so on
-    // this path the phase term of `ready()` alone already returns false and
-    // the `forcedUnready` latch changes nothing. This test therefore does NOT
-    // guard the latch (deleting it leaves this green) — it guards the
-    // *ordering*, and fails if the pre-drain delay that creates the window is
-    // removed. The latch is guarded solely by the uncaught-exception test
-    // below, the one path where the phase is still `"serving"` when readiness
-    // flips. See the comment on `ready()` in `start.ts`.
+    // This test does NOT guard the `forcedUnready` latch — on this path the
+    // phase term alone already answers false — it guards the ORDERING, and
+    // fails if the pre-drain delay is removed.
     expect((await get(port, "/readyz")).status).toBe(503);
     expect(runtime.accepting()).toBe(true);
 
@@ -373,10 +350,9 @@ describe("probe wiring", () => {
     process.emit("uncaughtException", new Error("boom"));
 
     // Read in the same synchronous turn as the handler: the tracker has not
-    // moved off `"serving"` yet, so a `ready()` that consulted the phase alone
-    // would still answer true here. This single tick is the entire reason the
-    // `forcedUnready` latch exists, and no HTTP round trip can observe it —
-    // hence the synchronous accessor.
+    // moved off `"serving"`, so a `ready()` consulting the phase alone would
+    // still answer true. This single tick is the entire reason the
+    // `forcedUnready` latch exists, and no round trip can observe it.
     expect(app.phase()).toBe("serving");
     expect(app.ready()).toBe(false);
 
@@ -466,15 +442,12 @@ describe("probe wiring", () => {
   it("binds 9000 when no probe port is given", async () => {
     const runtime = testRuntime();
     // `env: {}` — the default is the kernel's, not whatever `PROBE_PORT` the
-    // shell running this suite happens to carry.
+    // shell running this suite carries.
     const app = start(runtime.module, { env: {}, signals: false, onEvent: () => {} });
 
-    // Asserted positively — the bound port *is* 9000, and answers there —
-    // rather than inferred from a deliberate conflict on 9000, which proved
-    // the default only by implication and failed outright on any machine
-    // already using the port. The residual coupling is the honest one: this
-    // needs 9000 to be free, where the old shape needed it to be free *and*
-    // then took it.
+    // Asserted positively — the bound port IS 9000 and answers there — rather
+    // than inferred from a deliberate conflict, which proved the default only by
+    // implication and failed on any machine already using the port.
     await expect(app.probePort()).toBeOkWith(9000);
     expect(await get(9000, "/livez")).toEqual({ status: 200, body: "ok" });
 
@@ -505,10 +478,9 @@ describe("probe wiring", () => {
       onEvent: () => {},
     });
 
-    // Installed synchronously by `start`, before the bind is even attempted.
-    // Asserting the rise is what makes the fall below mean something: a
-    // `start` that never installed a handler at all would satisfy the
-    // "back to baseline" check on its own.
+    // Installed synchronously by `start`, before the bind is attempted.
+    // Asserting the rise is what makes the fall below mean something: a `start`
+    // that never installed one would satisfy "back to baseline" on its own.
     expect(handlerCounts()).toEqual(allRaisedFrom(before));
 
     await expect(app.exited).toBeErrTagged(

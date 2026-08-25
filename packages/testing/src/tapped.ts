@@ -21,16 +21,12 @@ export type ServicesOf<P extends readonly AnyPort[]> = {
  * expect(logger.lines()).toContain(…);
  * ```
  *
- * The returned module exports exactly what `module` exports — the kernel
- * still finds the runtime. `services()` is loud before the graph has been
- * built: reading a tap nobody booted is a bug in the test, not a modeled
- * outcome, so it throws rather than answering an `undefined` a careless
- * assertion could swallow. The gate refuses a port `module` does not export,
- * at this call site: an application-scope service is the only thing there is
- * to tap. It rides the `ports` parameter as an intersection — `unknown` when
- * every tapped port is exported, a one-property marker object otherwise, so
- * the diagnostic names the port (the same mechanism as di's `DependencyGate`;
- * the conditional rest tuple it replaced printed only a bare arity line).
+ * The returned module exports exactly what `module` exports, so the kernel still
+ * finds the runtime. `services()` is loud before the graph has been built:
+ * reading a tap nobody booted is a bug in the test, and an `undefined` a
+ * careless assertion could swallow is worse than a throw. The gate refuses a
+ * port `module` does not export — an application-scope service is the only thing
+ * there is to tap.
  */
 type TapGate<P extends readonly AnyPort[], X> = [Exclude<InstanceType<P[number]>, X>] extends [
   never,
@@ -48,10 +44,9 @@ export const tapped = <X, E, N, const P extends readonly AnyPort[]>(
   ports: P & TapGate<P, X>,
 ): { readonly module: Module<X, E, N>; readonly services: () => ServicesOf<P> } => {
   let services: ServicesOf<P> | undefined;
-  // `ports` stays an array — it is what `services()` answers positionally, not
-  // a dependency declaration a reader writes. Keying it by index is the
-  // translation into the one shape `Provider` takes, and index keys are what
-  // put the services record back in `ports` order.
+  // `ports` stays an array — it is what `services()` answers positionally.
+  // Index keys are the translation into the record `Provider` takes, and what
+  // put the services back in `ports` order.
   const tap = Provider(Tap)(Object.fromEntries(ports.map((port, index) => [index, port])), {
     sync: (built: Record<number, unknown>) => {
       services = ports.map((_, index) => built[index]) as unknown as ServicesOf<P>;
@@ -59,19 +54,14 @@ export const tapped = <X, E, N, const P extends readonly AnyPort[]>(
     },
   } as never);
   return {
-    // The same re-export-through-import move the kernel makes to add its `Env`
-    // module: `X` stays exactly what the caller composed, and the cast restates
-    // that. `Tap` itself is not exported — nothing resolves it; di builds every
-    // provider in the graph, exported or not, which is what makes this work.
+    // Re-exported through the import, so `X` stays what the caller composed.
+    // `Tap` is never exported: di builds every provider in the graph, exported
+    // or not, which is what makes this work. The `as never` is di's `needs`
+    // gate deferring while `X`/`N` are type parameters; the wrapper adds none.
     module: Module("Tapped")({
       imports: [module as never],
       provides: [tap],
       exports: [module as never],
-      // `as never` on the options: di's `needs` gate cannot be computed while
-      // `X`/`N` are still type parameters, and this wrapper adds no need of
-      // its own — the tap depends only on ports the wrapped module already
-      // holds, and whatever that module owes it still owes, unchanged, through
-      // the cast below.
     } as never) as unknown as Module<X, E, N>,
     services: () => {
       if (services === undefined) {
@@ -83,7 +73,7 @@ export const tapped = <X, E, N, const P extends readonly AnyPort[]>(
   };
 };
 
-// The id is NAMESPACED because this port is invisible to the application that
-// would collide with it: a bare `Port("Tap")` is a plausible application name,
-// and di's duplicate-id warning names an id a test never wrote.
+// NAMESPACED because this port is invisible to the application that would
+// collide with it: a bare `Port("Tap")` is a plausible application name, and
+// di's duplicate-id warning would name an id a test never wrote.
 class Tap extends Port("@btravstack/testing/Tap")<Record<never, never>> {}

@@ -5,27 +5,19 @@ import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 import { Ok } from "unthrown";
 
 /**
- * The tracing half of observability (issue #64) — the **adapter**, not the
- * contract. `Tracer` and `Meter` are the kernel's ports; this file is one
- * implementation of them, and OTel's presence stops at this subpath.
+ * The tracing half of observability — the ADAPTER, not the contract. `Tracer`
+ * and `Meter` are the kernel's ports, and OTel's presence stops at this subpath,
+ * behind an optional peer exactly like `pino`.
  *
- * `@opentelemetry/*` is an **optional** peer behind it, exactly like `pino`:
- * install the two packages, import `@btravstack/observability/otel`, compose
- * `otel()` — a consumer that never imports this file never needs them, and a
- * package that merely depends on `Tracer` never needed them at all.
- *
- * The ports' contracts are narrowings of OTel's own shapes, so what the SDK
- * hands back satisfies them with no translation in between: `metrics.getMeter()`
- * IS a `MeterService`, and a real span IS a `Span`.
+ * The ports are narrowings of OTel's own shapes, so what the SDK hands back
+ * satisfies them with no translation in between.
  */
 
 /**
- * The SDK itself, module-private: nothing should resolve it — providing it is
- * what starts it, and `release` is what flushes it. It rides the graph as a
- * RESOURCE so the kernel closes it on every exit path: a span lost in
- * `shutdown()` becomes a `teardownError` and exit `2`, never silence — the
- * flush-on-shutdown half most OTel integrations get wrong, answered by a
- * primitive the kernel already had.
+ * The SDK itself, module-private: providing it is what starts it, and `release`
+ * is what flushes it. It rides the graph as a RESOURCE so the kernel closes it
+ * on every exit path — a span lost in `shutdown()` becomes a `teardownError` and
+ * exit `2`, never silence.
  */
 class OtelSdk extends Port("OtelSdk")<NodeSDK> {}
 
@@ -35,17 +27,13 @@ class OtelSdk extends Port("OtelSdk")<NodeSDK> {}
  * `observability()` in a root's `imports`.
  *
  * **No config slice, deliberately**: the SDK reads the `OTEL_*` environment
- * conventions itself (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`,
- * `OTEL_SDK_DISABLED`, …) — that vocabulary is the platform's own standard,
- * and re-binding it through a `Config` slice would be a second spelling of
- * names operators already know. Programmatic overrides go through `options`,
- * which is the SDK's own configuration type.
+ * conventions itself, and re-binding them through `Config` would be a second
+ * spelling of names operators already know. Programmatic overrides go through
+ * `options`, the SDK's own configuration type.
  *
- * **Auto-instrumentation cannot live here** and is not attempted:
- * `@opentelemetry/auto-instrumentations-node/register` must be preloaded
- * (`node --import`) before the instrumented libraries are imported, which no
- * DI provider can promise. This module owns what the graph owns — the SDK's
- * lifecycle and the two ports; preloading is the deployment's line.
+ * **Auto-instrumentation cannot live here**: the register hook must be
+ * preloaded before the instrumented libraries are imported, which no DI
+ * provider can promise. Preloading is the deployment's line.
  */
 export const otel = (
   options?: Partial<NodeSDKConfiguration>,
@@ -83,22 +71,17 @@ export const otel = (
 export class UnitSpan extends Port("UnitSpan")<Span> {}
 
 /**
- * A span per kernel unit, as a `StartOptions.unit` module: the kernel forks
- * this per unit and tears it down inside the unit's ambient record, so the
- * span opens when the unit does and `onStop` ends it on every path out —
- * no kernel change involved, which is the shape the deferred design promised.
+ * A span per kernel unit, as a `StartOptions.unit` module: the kernel forks it
+ * per unit and tears it down inside the unit's ambient record, so the span opens
+ * when the unit does and `onStop` ends it on every path out.
  *
- * The correlation is the ambient record's own: `unitId`, `traceId` and (when
- * present) `tenantId` ride as attributes, so a span joins the same query the
- * logger's lines answer — the one id family, on every signal. The remote
- * PARENT is deliberately not reconstructed: `UnitMeta.traceId` carries the
- * inbound trace id alone (never the caller's span id), so v1 correlates by
- * attribute rather than pretending to a W3C parent-child edge it cannot
- * prove.
+ * The correlation is the ambient record's own, carried as attributes so a span
+ * joins the same query the logger's lines answer. The remote PARENT is
+ * deliberately not reconstructed: `UnitMeta.traceId` carries the inbound trace
+ * id alone, so this correlates by attribute rather than pretending to a W3C
+ * parent-child edge it cannot prove.
  *
- * Compose it as `start`'s `unit` (or import it from your own unit module);
- * `needs: [Tracer]` is the fork seam — the root must export `Tracer`, which
- * `otel()` provides.
+ * Compose it as `start`'s `unit`; the root must export `Tracer`.
  */
 export const UnitSpanModule = Module("UnitSpan")({
   needs: [Tracer],

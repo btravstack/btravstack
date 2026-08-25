@@ -12,37 +12,26 @@ const view = (customer: Customer): CustomerView => ({ id: customer.id, name: cus
 const VIEW_TTL_MS = 60_000;
 
 /**
- * The key carries the tenant, because the port does not.
- *
- * `Cache` is an application service and takes plain string keys — the
- * framework has no concept of a tenant anywhere — so composing one is the
- * application's job, and getting it wrong here would serve one tenant's
- * customer to another. It is the same discipline `find(tenantId, id)` states
- * in the type, spelled by hand where the type cannot.
+ * The key carries the tenant, because the port does not: `Cache` takes plain
+ * string keys, so composing one is the application's job and getting it wrong
+ * would serve one tenant's customer to another. The same discipline
+ * `find(tenantId, id)` states in the type, spelled by hand where the type
+ * cannot.
  */
 const keyFor = (tenantId: string, id: string): string => `customers:${tenantId}:${id}`;
 
 /**
- * The customers slice's transport boundary — the orders controller's shape
- * over the orders controller's stack: a use case from
- * `@btravstack/example-order-application`, an entity from the domain, a
- * Prisma-backed repository behind it, and `view` as the one place the branded
- * `Customer` becomes the wire's `CustomerView`.
- *
- * That conversion is the point of the layering, not ceremony: the throwaway
- * directory this replaced declared its port over `CustomerView` itself, which
- * pointed the dependency arrow outwards — an adapter speaking the transport's
- * shape. A slice is defined by owning its fragment, its controller and its
- * triage, not by owning a private adapter.
+ * The customers slice's transport boundary, over the same stack the orders one
+ * uses, with `view` as the one place the branded `Customer` becomes the wire's
+ * `CustomerView`. A slice is defined by owning its fragment, its controller and
+ * its triage, not by owning a private adapter.
  *
  * It also reads through a cache, and the two recoveries are the interesting
- * half. **An unreachable cache is a miss, and a failed write is nothing** —
- * both recovered right here, because whether a cache outage degrades a
- * request or fails it is the application's decision and not the cache
- * package's. The stored value comes back `unknown`, so a hit claims
- * `CustomerView` by cast: the same once-per-boundary rule a branded id
- * follows, at the boundary where a stored value re-enters this application's
- * vocabulary.
+ * half: **an unreachable cache is a miss, and a failed write is nothing** — both
+ * recovered here, because whether an outage degrades a request or fails it is
+ * the application's decision, not the cache package's. A stored value comes back
+ * `unknown`, so a hit claims `CustomerView` by cast at the boundary where it
+ * re-enters this application's vocabulary.
  */
 export const customersController = api.HttpController("CustomersController", contract.customers)(
   { find: FindCustomer, cache: Cache },

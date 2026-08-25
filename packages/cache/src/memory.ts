@@ -18,19 +18,14 @@ type Entry = { readonly value: unknown; readonly expiresAt: number | undefined }
 /**
  * The in-memory adapter's service, so a spec can drive it without a graph.
  *
- * Expiry is lazy — checked on read rather than swept on a timer — because a
- * timer would keep the event loop alive, and a kernel whose whole drain story
- * is about a process that can end has no business holding one open for a
- * cache.
+ * Expiry is lazy, checked on read rather than swept on a timer: a timer would
+ * keep the event loop alive, which a kernel built around a process that can end
+ * has no business doing. Nothing is serialised — the value comes back as the
+ * same reference, which is the honest difference from the Redis adapter rather
+ * than a deep-cloning fake that would hide a mutation bug.
  *
- * Nothing is serialised here: the value goes in and comes back out as the
- * same reference. That is a real difference from the Redis adapter, and it is
- * the honest one — a fake that deep-cloned would hide a mutation bug the
- * deployment will have.
- *
- * ponytail: no eviction and no maximum size, so a process caching unbounded
- * keys grows unbounded. The upgrade path is the Redis adapter, which is what
- * a deployment with that problem should be running anyway.
+ * ponytail: no eviction and no maximum size, so a process caching unbounded keys
+ * grows unbounded. The upgrade path is the Redis adapter.
  */
 export const memoryCacheBackend = (options: MemoryCacheOptions = {}): CacheService => {
   const clock = options.clock ?? systemClock;

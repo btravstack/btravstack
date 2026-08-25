@@ -13,13 +13,12 @@ import { TaggedError, type AsyncResult } from "unthrown";
  */
 export class Unauthenticated extends TaggedError("Unauthenticated") {}
 
-// Module-private, so the mark cannot be applied by accident: `Grant` is the
-// only shape carrying it and `granted` the only thing that mints one. The type
+// Module-private, so `granted` is the only thing that mints a grant. The type
 // parameter is erased at runtime, so structure is all the middleware has to go
 // on — and `{ userId, tenantId, scopes }` is an ordinary JWT-claims identity, a
-// BARE answer that a `"scopes" in granted` test read as the scoped one and
-// destroyed. `Symbol.for` rather than `Symbol()`: two copies of this package
-// would otherwise read each other's grants as bare.
+// BARE answer a `"scopes" in granted` test misread as the scoped one.
+// `Symbol.for` rather than `Symbol()`: two copies of this package would
+// otherwise read each other's grants as bare.
 const GRANT: unique symbol = Symbol.for("@btravstack/http-server/grant") as never;
 
 /**
@@ -68,38 +67,27 @@ export type AuthenticatorService<P, Scope extends string = never> = (
 const ports = new Map<string, unknown>();
 
 /**
- * One port per scheme, its id carrying the scheme name — the move
- * `AmqpHandler(contract, key)` makes. The service type is erased to
- * `AuthenticatorService<unknown>` — `Granted<unknown, never>` is `unknown`, so
- * it admits the bare and the scoped answer alike — because di identifies a port
- * by id; the principal and scope types ride the description `HttpAuthenticator`
- * returns, and `defineHttp` reads the registry off them.
+ * One port per scheme, its id carrying the scheme name. The service type is
+ * erased to `AuthenticatorService<unknown>`, since di identifies a port by id;
+ * the principal and scope types ride the description `HttpAuthenticator`
+ * returns.
  *
- * The id is a LITERAL type, so `PortInstance<"HttpAuthenticator:user", …>` and
- * `PortInstance<"HttpAuthenticator:service", …>` are different types: a
- * contract naming a scheme the registry has no authenticator for leaves that
- * scheme's port unmet, which is di's own diagnostic naming the port rather than
- * a gate this package writes.
+ * The id is a LITERAL type, so a contract naming a scheme the registry has no
+ * authenticator for leaves that scheme's port unmet — di's own diagnostic,
+ * naming the port, rather than a gate this package writes.
  *
- * Exported for the consumer `defineHttp` does not cover: a test composition
- * substituting ONE scheme's authenticator provides its own on this port —
- * `Provider(authenticatorPort("user"))({ value: stub })` — instead of minting
- * a second registry. `test-fixtures.ts`'s `rpcSubstitutedAppOf` is that story
- * exercised: the stub composition serves a caller the real token table would
- * refuse, and never builds the verifier at all.
+ * Exported for the consumer `defineHttp` does not cover: a test substituting
+ * ONE scheme's authenticator provides its own on this port instead of minting a
+ * second registry.
  */
 export const authenticatorPort = <const S extends string>(
   scheme: S,
 ): PortClassOf<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>> => {
   const id = `HttpAuthenticator:${scheme}` as const;
-  // Memoised — but not for resolution: di identifies a port by its `portId`
-  // string and the instance type is branded by the id literal, so two classes
-  // under one id ARE the same type and the same lookup, and the suite passes
-  // with a fresh class per call (measured). What a second `Port(id)` call DOES
-  // cost is di's dev-time duplicate-id warning, once per scheme, in every
-  // consumer's terminal (measured on the built package) — and `defineHttp`
-  // binding plus `routerFor` depending is the designed two-call pattern, not a
-  // declaration bug the warning exists to catch.
+  // Memoised for the WARNING, not for resolution: two classes under one id are
+  // the same type and the same lookup, but a second `Port(id)` call costs di's
+  // duplicate-id warning — and binding here plus depending in `routerFor` is
+  // the designed two-call pattern, not the declaration bug it exists to catch.
   const existing = ports.get(id);
   if (existing !== undefined) return existing as never;
   // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
@@ -138,15 +126,12 @@ export type Authenticator<P, Scope extends string, N> = {
  * ```
  *
  * The type arguments are explicit rather than inferred from `sync`: inference
- * through a returned function's `AsyncResult` is exactly where a principal
- * silently widens to `unknown`, and the whole point is that it cannot. The
- * scheme NAME is not stated here — it is the key this authenticator sits under
- * in `defineHttp({ authenticators })`, so it is written once.
+ * through a returned function's `AsyncResult` is where a principal silently
+ * widens to `unknown`. The scheme NAME is not stated here — it is the key this
+ * authenticator sits under in `defineHttp({ authenticators })`.
  */
 export const HttpAuthenticator = <P, Scope extends string = never>() => {
-  // Two arms, discriminated by ARITY, mirroring `Provider(port)`'s own — an
-  // authenticator that reads only the request's headers declares no
-  // dependencies, which is the common shape rather than an edge case.
+  // Two arms discriminated by ARITY, mirroring `Provider(port)`'s own.
   function build<const D extends Readonly<Record<string, AnyPort>>>(
     deps: D,
     options: {
@@ -183,11 +168,9 @@ export const principalMiddleware =
       readonly context: { readonly principal: unknown };
     }) => Promise<unknown>;
   }): Promise<unknown> => {
-    // Tagged when the leaf names more than one SCHEME, not more than one
-    // requirement. One requirement may name several schemes, and counting
-    // requirements disagreed with `SchemesOf`, which unions the scheme names
-    // across all of them: the handler typed `Tagged` while this injected bare,
-    // so `principal.scheme` read `undefined` with no type error to catch it.
+    // More than one SCHEME, not more than one requirement: one requirement may
+    // name several schemes, and counting requirements disagreed with
+    // `SchemesOf`, so the handler typed `Tagged` while this injected bare.
     const tagged =
       new Set(requirements.flatMap((requirement) => Object.keys(requirement))).size > 1;
     let underScoped = false;
@@ -206,20 +189,17 @@ export const principalMiddleware =
           throw resolved.cause;
         }
         if (resolved.isErr()) continue;
-        // `Granted` is erased to `unknown` on the port, so which arm answered
-        // has to be read back at runtime. The BRAND is what says so — a
-        // structural `"scopes" in answer` test misreads a claims-shaped bare
-        // identity as the scoped answer and hands the handler `undefined`.
+        // The BRAND, never a structural `"scopes" in answer` test, which
+        // misreads a claims-shaped bare identity as the scoped answer and hands
+        // the handler `undefined`.
         const answer = resolved.value;
         const scoped =
           typeof answer === "object" && answer !== null && GRANT in answer
             ? (answer as Grant<unknown, string>)
             : undefined;
-        // A requirement that names scopes is NOT satisfied by a credential
-        // reporting none. A scheme declared without a vocabulary answers bare,
-        // and skipping the comparison for it admitted the caller outright —
-        // the one place in this package where the failure direction matters.
-        // An empty `required` still passes trivially.
+        // A requirement naming scopes is NOT satisfied by a credential
+        // reporting none: skipping the comparison for a bare answer admitted
+        // the caller outright. An empty `required` still passes trivially.
         const scopesGranted = scoped?.scopes ?? [];
         if (!required.every((scope) => scopesGranted.includes(scope))) {
           underScoped = true;

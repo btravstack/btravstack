@@ -4,18 +4,14 @@ import type { WorkerMiddleware } from "@amqp-contract/worker";
 import type { RuntimeHost, UnitMeta } from "@btravstack/core";
 
 /**
- * Open one kernel unit per delivery. It injects nothing: a handler is built by
- * di from the services it declares, and the ambient `currentUnit()` record is
- * what the unit leaves for the adapters that read it. `next()` unchanged is
- * the whole of the chain — the handler's own `Result` is what the worker
- * routes, and this package is transparent to it.
+ * Open one kernel unit per delivery. It injects nothing — `next()` unchanged is
+ * the whole of the chain — so the ambient `currentUnit()` record is what the
+ * unit leaves for the adapters that read it.
  *
- * **The kernel's per-unit `AbortSignal` rides that record too.** `host.run`
- * hands one to its work callback, and this middleware's callback is `next()`
- * — a handler has no parameter to receive it through, and this transport has
- * no cancellation story of its own to fall back on (an un-acked delivery is
- * redelivered, which is recovery, not cancellation). A handler that must stop
- * when the kernel stops waiting reads `currentUnit()?.signal`.
+ * **The kernel's per-unit `AbortSignal` rides that record too**, and it is the
+ * only route to it here: a handler has no parameter to receive one through. A
+ * handler that must stop when the kernel stops waiting reads
+ * `currentUnit()?.signal`.
  */
 export const messageUnits =
   (host: RuntimeHost<never>): WorkerMiddleware =>
@@ -23,26 +19,18 @@ export const messageUnits =
     host.run(metaFor(args.rawMessage), () => next());
 
 /**
- * `UnitMeta.id` must be unique per unit, and a **delivery tag is not one**:
- * tags are per-channel and restart at `1` after a reconnect, which
- * amqp-connection-manager performs silently underneath this worker. The one
- * identifier that looks unique per delivery is not, across exactly the event
- * this library exists to handle. `consumerTag + deliveryTag` almost fixes it,
- * until `ConsumerOptions` lets a caller pin `consumerTag`. Minting is the only
- * form the rule survives — the same answer `-http` reaches per request.
+ * `UnitMeta.id` must be unique per unit, and a **delivery tag is not one**: tags
+ * are per-channel and restart at `1` after a reconnect, which
+ * amqp-connection-manager performs silently underneath this worker.
+ * `consumerTag + deliveryTag` almost fixes it, until `ConsumerOptions` lets a
+ * caller pin `consumerTag`. Minting is the only form the rule survives.
  *
- * A W3C `traceparent` application header wins when the publisher sends one —
- * see `traceIdOfTraceparent` below. Otherwise the publisher's `messageId`
- * becomes the `traceId`: minted outside this
- * process and stable across every redelivery, which is what `traceId` is for.
- * `correlationId` is the fallback for an RPC-shaped message.
+ * A W3C `traceparent` header wins when the publisher sends one; otherwise
+ * `messageId`, with `correlationId` as the RPC-shaped fallback.
  *
- * Only a NON-BLANK id is adopted, and the trim is load-bearing rather than
- * tidy: `??` guards nullish alone, and `""` is not nullish, so a publisher
- * that sets `messageId: ""` — or a broker that hands one through — would give
- * every delivery the same blank trace id and defeat the ambient record
- * exactly as a category-as-id would. `-http` refuses a blank `x-request-id`
- * for the same reason.
+ * Only a NON-BLANK id is adopted, and the trim is load-bearing: `??` guards
+ * nullish alone, so a publisher setting `messageId: ""` would give every
+ * delivery the same blank trace id.
  */
 const metaFor = (raw: {
   readonly properties: {
@@ -61,14 +49,11 @@ const metaFor = (raw: {
 };
 
 /**
- * The trace id inside a W3C `traceparent` application header, when a
- * publisher sends one (issue #64) — it outranks `messageId`, because it is
- * the one value minted to span processes. Only the trace-id field is taken:
- * `traceId` is a correlation id, not a span context, so the parent's span id
- * is dropped rather than half-carried. The all-zero id is the spec's own
- * "invalid" and is refused like a malformed header. The same sixteen lines
- * live in `@btravstack/http-server` — tracked with the other cross-starter
- * duplication in issue #24.
+ * The trace id inside a W3C `traceparent` header, which outranks `messageId`
+ * because it is the one value minted to span processes. Only the trace-id field
+ * is taken: `traceId` is a correlation id, not a span context, so the parent's
+ * span id is dropped rather than half-carried. The all-zero id is the spec's own
+ * "invalid" and is refused like a malformed header.
  */
 const traceIdOfTraceparent = (header: string): string | undefined => {
   const match = /^[\da-f]{2}-([\da-f]{32})-[\da-f]{16}-[\da-f]{2}$/.exec(header.trim());

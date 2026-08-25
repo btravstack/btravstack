@@ -12,15 +12,12 @@ export type MailerOptions<E, N, Instrumented extends boolean> = {
    */
   readonly adapter: Module<MailerBackend, E, N>;
   /**
-   * Span, count and log every send. **Default `true`** — `false` opts out,
-   * the way `StartOptions`' `signals` and `probes` do.
+   * Span, count and log every send. **Default `true`**, `false` opts out.
    *
-   * On by default for the reason `@btravstack/cache`'s flag is: telemetry
-   * that is missing gets discovered during an incident, and the cost of the
-   * loud arm is stated rather than hidden — instrumenting puts `Logger`,
-   * `Meter` and `Tracer` in this module's `Needs`, so a root that has not
-   * composed `observability()` and `otel()` gets a compile error naming all
-   * three.
+   * On by default because telemetry that is missing is discovered during an
+   * incident. The cost is stated rather than hidden: instrumenting puts
+   * `Logger`, `Meter` and `Tracer` in this module's `Needs`, so a root without
+   * `observability()` and `otel()` gets a compile error naming all three.
    */
   readonly instrumented?: Instrumented;
 };
@@ -34,11 +31,9 @@ export type MailerOptions<E, N, Instrumented extends boolean> = {
  * mailer({ adapter: smtpMailer(), instrumented: false }); // just a mailer
  * ```
  *
- * The two-port split and the conditional return type are
- * `@btravstack/cache`'s, for the same reasons: di allows one provider per
- * port per graph, so the port an application depends on must not be the one
- * an adapter provides, and instrumentation has to be a flag on the
- * composition rather than a wrapper around it.
+ * **Two ports, because di allows one provider per port per graph**: the port an
+ * application depends on must not be the one an adapter provides, which is also
+ * why instrumentation is a flag on the composition rather than a wrapper.
  */
 export const mailer = <E, N, Instrumented extends boolean = true>({
   adapter,

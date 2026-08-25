@@ -3,25 +3,16 @@ import type { ActivityMiddleware } from "@temporal-contract/worker/activity";
 import { activityInfo } from "@temporalio/activity";
 
 /**
- * Open one kernel unit per activity attempt. It injects nothing: an activity
- * implementation is a service the graph built, closing over what its provider
- * declared, and the ambient `currentUnit()` record is there for an adapter that
- * wants the trace id.
+ * Open one kernel unit per activity attempt. It injects nothing — `next()`
+ * unchanged — so the ambient `currentUnit()` record is what an adapter reads.
  *
- * **That includes the kernel's per-unit `AbortSignal`.** `host.run` hands one
- * to its work callback, and this middleware's callback is `next()` — an
- * activity has no parameter to receive it through, and giving it one would
- * mean injecting a context the contract does not type. So it travels on the
- * ambient record instead: `currentUnit()?.signal`, aborted at the kernel's
- * `drainTimeoutMs`. Temporal's own `Context.current().cancellationSignal` is
- * a **different clock** — it fires on a workflow-side cancellation and on
- * worker shutdown after `shutdownGraceTime` — so an activity that must stop
- * when the *kernel* stops waiting reads this one, and the two are honoured
- * together rather than one standing in for the other.
+ * **That includes the kernel's per-unit `AbortSignal`**, and it is the only
+ * route to it: an activity has no parameter to receive one through. Temporal's
+ * own `Context.current().cancellationSignal` is a DIFFERENT clock, so the two
+ * are honoured together rather than one standing in for the other.
  *
- * There is deliberately no `Result`-unwrapping boundary: `declareActivitiesHandler`
- * owns the mapping from a settled `Result` to an activity failure, and the
- * kernel maps nothing to a transport.
+ * No `Result`-unwrapping boundary, deliberately: `declareActivitiesHandler` owns
+ * the mapping from a settled `Result` to an activity failure.
  */
 export const activityUnits =
   (host: RuntimeHost<never>): ActivityMiddleware =>
@@ -30,15 +21,12 @@ export const activityUnits =
 
 /**
  * `UnitMeta.id` must be unique per unit, and a workflow id is **not** one: an
- * activity is retried under the same execution, and Temporal lets a workflow id
- * be reused once an execution closes. A task token identifies one activity task
- * attempt, so its uniqueness is Temporal's guarantee rather than an argument of
- * ours.
+ * activity is retried under the same execution. A task token identifies one
+ * attempt, so its uniqueness is Temporal's guarantee rather than ours.
  *
- * The workflow id becomes the `traceId`, which is what `traceId` is for — the
- * correlation id, minted outside this process, holding steady across every
- * retry so all attempts join up in a log. An activity with no workflow falls
- * back to the activity id, itself stable across that activity's attempts.
+ * The workflow id becomes the `traceId` — minted outside this process and steady
+ * across every retry, so all attempts join up in a log. An activity with no
+ * workflow falls back to the activity id.
  */
 const metaFor = (): UnitMeta => {
   const info = activityInfo();

@@ -87,16 +87,12 @@ export type ActivitiesOf<C extends ContractDefinition> =
   DeclareActivitiesHandlerOptions<C>["activities"];
 
 /**
- * The activities' port — one id, the starter's own. A worker serves one
- * activities record as it polls one task queue, so the port is
- * framework-owned like `TemporalConfig`, and an application never names it:
- * `TemporalActivities(contract)(deps, arm)` returns the provider that targets
- * it. Left generic at the value level (one `Port(...)` call, one id, no
- * duplicate-id warning however many contracts instantiate it) and fixed per
- * contract at the type level through `ActivitiesPortOf<C>` — the same move
- * the kernel's `RuntimePort` makes — so a provider built for one contract
- * cannot be handed to a module declaring another. Exported from this file
- * for the package's own tests, not from `index.ts`.
+ * The activities' port — one id, the starter's own, which an application never
+ * names. Generic at the value level (one `Port(...)` call, so no duplicate-id
+ * warning however many contracts instantiate it) and fixed per contract at the
+ * type level through `ActivitiesPortOf<C>`, so a provider built for one contract
+ * cannot be handed to a module declaring another. Exported for this package's
+ * tests, not from `index.ts`.
  */
 export const TemporalActivitiesPort = Port("TemporalActivities");
 
@@ -114,12 +110,9 @@ export type ActivitiesInstanceOf<C extends ContractDefinition> = PortInstance<
 
 export type TemporalOptions<C extends ContractDefinition> = {
   /**
-   * The `temporal-contract` contract; the task queue this worker polls is read
-   * off it, and the activities port is typed by it — the record
-   * `declareActivitiesHandler` takes for `contract`, which the composition
-   * root provides through `TemporalActivities(contract)(deps, arm)`. The
-   * starter calls `declareActivitiesHandler` itself, with its unit middleware
-   * in place.
+   * The contract; the task queue this worker polls is read off it, and the
+   * activities port is typed by it. The starter calls
+   * `declareActivitiesHandler` itself, with its unit middleware in place.
    */
   readonly contract: C;
   readonly workflows: WorkflowSource;
@@ -139,21 +132,15 @@ const DEFAULT_FORCE: Duration = "15 seconds";
 type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
 
 /**
- * The Temporal starter: a module providing the runtime (`TemporalRuntime`),
- * its configuration (`TemporalConfig`, bound from `TEMPORAL_ADDRESS` /
- * `TEMPORAL_NAMESPACE` unless pinned here) and the connection
- * (`TemporalConnection`, a resource opened with the scope and closed with it;
- * a service that will not answer is a modeled `TemporalUnreachable`). Import
- * it next to the application, export `TemporalRuntime`, and provide the
- * activities (`TemporalActivities(contract)(deps, arm)`) — that is the whole
- * of the transport wiring. The activities port is a **need** of this module,
- * so a composition root that forgets to provide it fails at `Module(...)`,
- * di's own gate.
+ * The Temporal starter: a module providing the runtime, its configuration
+ * (bound from `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` unless pinned) and the
+ * connection (a resource opened with the scope and closed with it; a service
+ * that will not answer is a modeled `TemporalUnreachable`). Import it next to
+ * the application, export `TemporalRuntime`, provide the activities — the
+ * activities port is a need of this module.
  *
  * With both configuration fields pinned the module reads nothing from the
- * environment (the declared `Env` need and `ConfigInvalid` stay — the kernel
- * discharges the one, a pinned config never produces the other); pin only one
- * and the other still comes from the environment.
+ * environment; pin only one and the other still comes from it.
  */
 export const temporal = <C extends ContractDefinition>(
   options: TemporalOptions<C>,
@@ -176,9 +163,6 @@ export const temporal = <C extends ContractDefinition>(
           }),
         );
   return Module("Temporal")({
-    // Both stated: the starter binds its own configuration from the
-    // environment, and the activities are the application's — neither comes
-    // from inside this module, and the composition root supplies both.
     needs: [Env, activities],
     provides: [
       config,
@@ -190,14 +174,10 @@ export const temporal = <C extends ContractDefinition>(
               NativeConnection.connect({ address: bound.address }),
               (cause) => new TemporalUnreachable({ address: bound.address, cause }),
             ),
-          // On the drain-deadline path the kernel has already been handed its
-          // thread back while `worker.run()` is still winding down on Temporal's
-          // own clock, and `NativeConnection.close()` refuses while a Worker
-          // holds it (`IllegalStateError`). That is not a teardown failure to
-          // report — the worker releases the connection when its force-stop
-          // lands, and the process is exiting — so only that refusal is
-          // absorbed; any other close failure is still the finaliser's to
-          // surface.
+          // `close()` refuses with `IllegalStateError` while a Worker still
+          // holds the connection, which is the ordinary state on the
+          // drain-deadline path and not a teardown failure to report. Only that
+          // refusal is absorbed; any other close failure still surfaces.
           release: (connection) =>
             connection
               .close()
@@ -239,11 +219,9 @@ const createWorker = <C extends ContractDefinition>(
   const { taskQueue } = options.contract;
   const { namespace } = config;
 
-  // `declareActivitiesHandler` runs INSIDE the qualifier rather than before it.
-  // It throws on a contract it cannot satisfy — an implementation the contract
-  // does not declare, one it declares and finds missing — and calling it
-  // outside would put that throw on the defect channel, where it is `runMain`'s
-  // exit 70 instead of the 1 a modeled startup failure earns.
+  // INSIDE the qualifier: `declareActivitiesHandler` throws on a contract it
+  // cannot satisfy, and outside it that throw is a defect — `runMain` exit 70
+  // where a modeled startup failure earns 1.
   return fromThrowable(
     () =>
       declareActivitiesHandler({
@@ -273,12 +251,9 @@ const createWorker = <C extends ContractDefinition>(
 
 const poll = (worker: Worker, taskQueue: string, namespace: string): Serving<TemporalInfo> => {
   // `run()` moves the worker to RUNNING synchronously, before its first await,
-  // so the worker is already polling by the time this returns — which is what
-  // lets `stopPolling` trust `getState()`.
-  //
-  // The result is HELD, not dropped: `run()` can defect, and an empty error
-  // channel is not an empty defect channel. `drain` and `stop` hand it to the
-  // kernel, which is what consumes it.
+  // which is what lets `stopPolling` trust `getState()`. The result is HELD,
+  // not dropped: `run()` can defect, and an empty error channel is not an empty
+  // defect channel.
   const running = fromSafePromise(worker.run());
 
   // `shutdown()` on a worker that is not RUNNING throws Temporal's
@@ -289,10 +264,8 @@ const poll = (worker: Worker, taskQueue: string, namespace: string): Serving<Tem
   };
 
   // The kernel's deadline, kept from `drain` so `stop` is released by the same
-  // abort. Without it the release is only half done: `finish` calls `stop()`
-  // after the drain has already timed out, and a `stop` that started waiting on
-  // `running` all over again would put Temporal's `shutdownForceTime` back in
-  // charge of when the process exits.
+  // abort. Without it a `stop` that waits on `running` all over again puts
+  // Temporal's `shutdownForceTime` back in charge of when the process exits.
   let deadline: AbortSignal | undefined;
 
   const stopped = (): AsyncResult<void, never> =>
@@ -300,12 +273,9 @@ const poll = (worker: Worker, taskQueue: string, namespace: string): Serving<Tem
 
   return {
     info: { taskQueue, namespace },
-    // `@temporalio/worker` has no public forced-shutdown call —
-    // `Worker.forceShutdown$` is `protected` and `Runtime.shutdown()` is
-    // process-global — so the escalation available to a runtime is to stop
-    // waiting: the kernel gets its thread back at its own deadline, and the
-    // worker is left winding down on Temporal's `shutdownForceTime` clock
-    // until the process exits.
+    // `@temporalio/worker` exposes no public forced shutdown, so the only
+    // escalation is to stop waiting: the kernel gets its thread back at its own
+    // deadline and the worker winds down on Temporal's clock.
     drain: (signal) => {
       deadline = signal;
       stopPolling();
@@ -319,19 +289,12 @@ const poll = (worker: Worker, taskQueue: string, namespace: string): Serving<Tem
 };
 
 /**
- * `running`, but no later than the kernel's drain deadline.
- *
- * `Serving.drain(signal)` is a contract, not a courtesy: the kernel aborts
- * `signal` the instant its own timeout wins, precisely so a runtime that treats
- * it as its cue to return can be released. A worker whose activity never
- * finishes cannot honour that by waiting on `run()`, which settles on Temporal's
- * clock rather than the kernel's.
+ * `running`, but no later than the kernel's drain deadline — which `run()`
+ * cannot honour on its own, since it settles on Temporal's clock.
  *
  * The losing branch's `Result` is dropped, and it is the one drop in this
- * package: when the deadline wins, the kernel has already decided the report and
- * settled `exited`, so the worker's eventual outcome has no consumer left — and
- * an `AsyncResult` never rejects, so nothing floats. It is the same trade the
- * kernel's own `drainApp` documents for its race.
+ * package: once the deadline wins, `exited` has settled and the worker's
+ * eventual outcome has no consumer left.
  */
 const releasedBy = (
   signal: AbortSignal,

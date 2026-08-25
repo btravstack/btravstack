@@ -2,20 +2,15 @@
 // compiled. A sample that stops compiling fails `pnpm typecheck`. Each section
 // names the page it mirrors.
 //
-// This file exists because nothing gated those samples, and they drifted: six
-// pages went on calling `PlaceOrder.execute(input.id, input.quantity)` after
-// the use cases grew a leading `tenantId` and the `orders` fragment became
-// `authenticated`, passing an order id where a tenant goes. Every call below
-// is therefore made against the REAL `contract`, the REAL `PlaceOrder` /
-// `FindOrder` / `FindCustomer` and the application's own `auth.ts` — a stub
-// would have accepted every one of those broken calls, which is exactly how
-// the drift survived.
+// Every call below is made against the REAL contract, the REAL use cases and the
+// application's own `auth.ts`, because a stub would have accepted the broken
+// calls that drifted here: six pages went on passing an order id where a tenant
+// goes, long after the use cases grew one.
 //
-// What it does NOT cover: the pages' own contract declarations. `zod` and
-// `@btravstack/contract` are `@btravstack/example-order-api-contract`'s
-// dependencies, not this workspace's, so the fragments are compiled where they
-// live. The controllers below are typed by that contract, so a marker removed
-// from it still fails here.
+// What it does NOT cover is the pages' own contract declarations, whose
+// dependencies belong to the contract workspace — so the fragments are compiled
+// where they live. The controllers here are typed by that contract, so a marker
+// removed from it still fails this file.
 
 import { Env } from "@btravstack/config";
 import { Logger } from "@btravstack/core";
@@ -50,20 +45,15 @@ const customerViewOf = (customer: Customer): CustomerView => ({
   name: customer.name,
 });
 
-// ---------------------------------------------------------------------------
 // "Step 2 — a controller per slice" — docs/how-to/split-a-router-into-controllers.md;
 // "The slices" — docs/examples/order-api.md; "The kernel maps nothing"'s
 // `place` fragment — docs/explanation/the-kernel-maps-nothing.md.
 //
 // The controllers are `./auth.ts`'s `api`, the one `defineHttp` call this
 // application makes: reached through anything else, a marked fragment types
-// `principal: never` and every read below is a compile error. That
-// substitution is half of what these pages were getting wrong, so it is
-// pinned by the import rather than asserted. `place` and `find` read the
-// identity bare — one scheme — while `export` narrows a tagged union, which is
-// the contrast every page draws and the reason its bodies match the real
-// controller's byte for byte.
-// ---------------------------------------------------------------------------
+// `principal: never` and every read below is a compile error. `place` and `find`
+// read the identity bare — one scheme — while `export` narrows a tagged union,
+// which is the contrast every page draws.
 
 const ordersController = api.HttpController("DocsOrdersController", contract.orders)(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
@@ -147,10 +137,8 @@ const DocsCustomersSlice = Module("DocsCustomersSlice")({
   exports: [customersController],
 });
 
-// ---------------------------------------------------------------------------
 // "Step 3 — the keyed root" — docs/how-to/split-a-router-into-controllers.md;
 // "The router" and "The composition root" — docs/examples/order-api.md.
-// ---------------------------------------------------------------------------
 
 const docsRouter = api.HttpRouter(contract)({
   orders: ordersController,
@@ -164,16 +152,14 @@ const _DocsOrderApi = HttpModule("DocsOrderApi")({
   exports: [Logger],
 });
 
-// ---------------------------------------------------------------------------
 // "Step 4 — lifting a slice into its own process" —
 // docs/how-to/split-a-router-into-controllers.md; the same call quoted in
 // docs/examples/order-api.md and docs/reference/http-server.md.
 //
 // The do-not-break property: the slice, its module and its controller are the
-// very ones composed above — a new composition root and one fewer import, not
-// a rewrite. The lifted fragment carries its marker, so the lifted root owes
-// the same schemes — which the router brings with it, from the same `api`.
-// ---------------------------------------------------------------------------
+// very ones composed above — a new composition root and one fewer import, not a
+// rewrite. The lifted fragment carries its marker, and the router brings the
+// same schemes with it.
 
 const liftedOrdersRouter = api.HttpRouter(contract.orders)(
   { implementation: ordersController.port },
@@ -186,13 +172,11 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
   imports: [DocsOrdersSlice, observability()],
 });
 
-// ---------------------------------------------------------------------------
 // "Step 2 — the router, as a provider" — docs/how-to/serve-orpc-over-http.md;
 // "`HttpRouter(contract)({ name: Dep }, arm)`" — docs/reference/http-server.md; "At a
 // glance" — docs/index.md. The deps form over the same marked fragment, with no
 // controller layer: the three pages that show a router rather than a
 // controller all reduce to this call.
-// ---------------------------------------------------------------------------
 
 const depsOrdersRouter = api.HttpRouter(contract.orders)(
   { place: PlaceOrder, find: FindOrder },
@@ -242,16 +226,13 @@ const _DocsDepsApi = HttpModule("DocsDepsApi")({
   exports: [Logger],
 });
 
-// ---------------------------------------------------------------------------
 // "Declare the schemes" — docs/how-to/protect-a-procedure.md, and "One file
 // per application" — docs/examples/order-api.md.
 //
-// The authenticator half of those pages was ungated until it drifted: both
-// showed a scoped scheme answering a hand-built `{ identity, scopes }`, which
-// does not type-check — and, cast past, is read as a BARE identity, so every
-// caller on a scoped route is refused forever. Pinned here so the next reader
-// of those pages is reading something that compiles.
-// ---------------------------------------------------------------------------
+// The authenticator half of those pages drifted while ungated: both showed a
+// scoped scheme answering a hand-built `{ identity, scopes }`, which does not
+// type-check — and, cast past, is read as a BARE identity, refusing every caller
+// on a scoped route forever.
 
 const _docsUserAuth = HttpAuthenticator<
   { readonly tenantId: TenantId; readonly userId: string },

@@ -1,36 +1,26 @@
-// Never exported as a value, so the mark cannot be applied by accident and
-// cannot be written literally. It is not unforgeable: `Authenticated<T, R>` is
-// exported (`@btravstack/http-server` needs it), so a deliberate
-// `node as unknown as Authenticated<typeof node, [{ user: [] }]>` types as
-// protected while the registry stays empty. Exporting the symbol would drop
-// the cast — and would also cost every consumer an annotation:
-// an inferred exported type that references an inaccessible unique symbol is
-// TS2527, which is why `@btravstack/http-server` hands back ONE nameable object.
+// Never exported as a value, so the mark cannot be applied by accident. Not
+// unforgeable, though: `Authenticated<T, R>` is exported, so a deliberate
+// double cast types as protected while the registry stays empty. Exporting the
+// symbol would drop even that cast.
 declare const PRINCIPAL: unique symbol;
 
 /**
  * One OpenAPI security requirement: a scheme, and the scopes it must grant.
- * A requirement names ONE scheme — this package does not model OpenAPI's
- * AND-within-a-requirement, which would put a record rather than an identity
- * on the handler. See the design spec.
  *
- * This type is the CARRIER — what a marked node holds and `isAuthenticated`
- * reads back — so it says nothing about arity. `OneScheme` below is what
- * refuses a second key where one is written.
+ * The CARRIER — what a marked node holds and `isAuthenticated` reads back — so
+ * it says nothing about arity. `OneScheme` below is what refuses a second key.
  */
 export type Requirement = Readonly<Record<string, readonly string[]>>;
 
-// Distributes over the key union, then asks whether the whole union is
-// assignable back into the member being visited: `false` for one key, `true`
-// for several. The standard union test; do not "simplify" it to `K extends U`.
+// The standard distribute-then-compare-back union test; do not "simplify" it to
+// `K extends U`.
 type SeveralKeys<K, U = K> = K extends U ? ([U] extends [K] ? false : true) : never;
 
 /**
- * A requirement naming two schemes is OpenAPI's AND — both credentials must be
- * presented — and nothing here models it: `@btravstack/http-server` walks the entries
- * and takes the first that satisfies, which is OR, so a two-key requirement
- * copied out of an OpenAPI document would silently execute as a WEAKER rule
- * than the one it states. Refused at the mark instead.
+ * A requirement naming two schemes is OpenAPI's AND, and nothing here models it:
+ * `@btravstack/http-server` takes the first entry that satisfies, which is OR — so a
+ * two-key requirement copied out of an OpenAPI document would execute as a
+ * WEAKER rule than the one it states. Refused at the mark instead.
  */
 type OneScheme<Q> = SeveralKeys<keyof Q> extends false ? Q : never;
 
@@ -53,10 +43,9 @@ export type RequirementsOf<T> = T extends { readonly [PRINCIPAL]: infer R extend
 
 // On `globalThis`, not module-private: two copies each with their own map read
 // every node the other marked as unmarked, and a protected route serves open.
-// The key names `requirements`, not `marked`: a copy expecting the old
-// `WeakSet` would call `.has` on a `WeakMap` and get `true`, which is
-// accidentally correct and not worth relying on. Under this key a mismatched
-// copy reads unmarked and fails closed.
+// The key names `requirements`, not `marked`, so a copy expecting the old
+// `WeakSet` reads unmarked and fails closed rather than calling `.has` on a
+// `WeakMap` and getting an accidentally-correct `true`.
 const KEY: unique symbol = Symbol.for("@btravstack/contract/requirements") as never;
 const store = globalThis as unknown as { [KEY]?: WeakMap<object, Requirements> };
 const marked = (store[KEY] ??= new WeakMap<object, Requirements>());

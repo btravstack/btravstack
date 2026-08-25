@@ -37,15 +37,12 @@ export type BootDefaults = Omit<StartOptions, "signals" | "unit">;
  * });
  * ```
  *
- * The defaults are a test's: `signals: false` always (process-wide signal
- * handlers would fight across a file), `probes: false` unless a call asks
- * for a port (`{ port: 0 }` — an ephemeral one cannot collide),
- * `preDrainDelayMs: 0` (a test has no Kubernetes endpoint to wait for) and a
- * silent `onEvent` — each overridable by `defaults` and again per call.
+ * The defaults are a test's: `signals: false` always (process-wide handlers
+ * would fight across a file), `probes: false`, `preDrainDelayMs: 0` and a silent
+ * `onEvent` — each overridable by `defaults` and again per call.
  *
- * Teardown is `stop()`, then `exited` is examined — a
- * **`Defect`** fails the test even when the test never looked at `exited`
- * (a shutdown that blew up must not pass green), while a modeled `Err` passes
+ * Teardown is `stop()`, then `exited` is examined: a **`Defect`** fails the test
+ * even when the test never looked at `exited`, while a modeled `Err` passes
  * through, since a startup failure is an outcome a test may be asserting.
  */
 export const bootFixture =
@@ -55,8 +52,7 @@ export const bootFixture =
     const started: RunningApp<unknown, unknown>[] = [];
 
     // The gate is proven at each `boot` call site and invisible in this body,
-    // where `X` and `UnitNeeds` are unresolved — the same discharged-signature
-    // cast the kernel's own forwarding makes.
+    // where `X` and `UnitNeeds` are unresolved.
     const boot = ((module: Module<never, unknown, Scope | Env>, options = {}) => {
       const app = (
         start as unknown as (

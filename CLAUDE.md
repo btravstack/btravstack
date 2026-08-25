@@ -1192,10 +1192,36 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   in order"_) so a regression to the racing spelling fails a test rather than
   shipping. Measured: the sibling spelling logs `start:a start:b end:b end:a`,
   `flatTap` logs `start:a end:a start:b end:b`.
-- Comment density: **sparse**. No comments in JSON files. Rationale belongs
-  here, not inline — except where a comment is guarding a specific line against
-  a plausible "simplification" (the `teardownErrors` aliasing, the `ready()`
-  latch, the monotonic `completed`), which is what the surviving comments are.
+- **Comment density: sparse, and the rule now has a test.** No comments in JSON
+  files. Rationale belongs **here**, not inline. The bullet used to end "which
+  is what the surviving comments are" and that had stopped being true: measured
+  before the sweep, 2 649 inline `//` lines and 4 302 TSDoc lines against 27 762
+  lines of TypeScript — **a quarter of the code was comment**, one line in ten
+  an inline essay. A reader looking for the code had to skim past the reasons
+  for it.
+
+  A comment earns its line only if it passes one of four tests:
+
+  1. **It guards a specific line against a plausible "simplification"** — the
+     `teardownErrors` aliasing, the `ready()` latch, the monotonic `completed`,
+     `closedOf`'s `response.closed` check. One or two lines, naming what breaks.
+  2. **It is TSDoc stating a symbol's contract** — what it does, and any
+     obligation a signature cannot express (the two contracts a runtime owes).
+     Public API only; TypeDoc turns it into the reference page.
+  3. **It is a directive with a reason** — `oxlint-disable`, and a
+     `@ts-expect-error` in a `*.test-d.ts` naming the error it expects.
+  4. **It is a `// GIVEN` / `// WHEN` / `// THEN` marker** (Test conventions
+     rule 4, which explicitly exempts them from this bullet).
+
+  Everything else goes: history ("it was X until…"), measurements, alternatives
+  considered, issue numbers, cross-references to other files, and any comment
+  restating the line under it. All of that is what **this file**, the
+  documentation site and `git log` are for — and unlike a comment, they are
+  read on purpose rather than scrolled past, and this one is gated by review
+  instead of drifting silently. Prose that argues for a design belongs in a
+  thesis above; prose that explains a package's surface belongs in that
+  package's own `CLAUDE.md` and its reference page.
+
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).
 - Coverage thresholds are 100% lines/functions on `packages/core`,
   `packages/testing` and `packages/observability`, with each package's

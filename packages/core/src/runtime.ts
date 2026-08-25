@@ -18,27 +18,21 @@ export class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
  *
  * @remarks
  * **Everything the client must receive has to be flushed INSIDE `work`, never
- * after the returned `AsyncResult` settles.** A unit is closed the instant its
- * `Result` settles; an idle registry is what the drain waits for, and going
- * idle is its permission to call `Serving.stop()`. A runtime that resolves the
- * unit and *then* writes its response is racing `stop()` tearing the transport
- * down — with a small body the write usually wins, and with a large one it does
- * not (measured with an 8 MB body: `UND_ERR_SOCKET: other side closed`). A unit
- * is not "compute the answer", it is "compute the answer **and get it out of
- * the process**".
+ * after the returned `AsyncResult` settles.** A unit closes the instant its
+ * `Result` settles, and an idle registry is the drain's permission to call
+ * `Serving.stop()` — so a runtime that writes after resolving is racing the
+ * transport being torn down.
  *
  * `UnitMeta.id` must be unique per unit unless a `traceId` is supplied — see
  * {@link UnitMeta}.
  *
  * With a `StartOptions.unit` module in play, `work` runs only once the fork is
- * built — after an `await` when a unit provider is async — not synchronously
- * inside `host.run`. A runtime that subscribes to an event from inside `work`
- * (a response's `'close'`) must first check whether it has already fired.
+ * built. A runtime that subscribes to an event from inside `work` must first
+ * check whether it has already fired.
  */
 // `Context<InstanceType<Resolves>>`, not `Context<Resolves>`: di parameterises
-// `Context<in R>` by port *instance* types, while a runtime declares what it
-// resolves as port *classes* (`AnyPort` is `abstract new () => AnyPortInstance`).
-// `InstanceType<never>` is `never`, so a runtime resolving nothing is unaffected.
+// `Context<in R>` by port instance types, while a runtime declares what it
+// resolves as port classes.
 export type RunUnit<Resolves extends AnyPort> = <T, E>(
   meta: UnitMeta,
   work: (ctx: Context<InstanceType<Resolves>>, signal: AbortSignal) => ReturnType<UnitWork<T, E>>,
@@ -50,16 +44,14 @@ export type RunUnit<Resolves extends AnyPort> = <T, E>(
  * runtime inventing its own unit tracking — the thing the kernel exists to own.
  *
  * @remarks
- * The two contracts a runtime author owes, both easy to miss and neither
- * checkable by the kernel: a unit's response must be flushed **inside** the
- * work callback (see {@link RunUnit}), and `UnitMeta.id` must be unique per
- * unit unless a `traceId` is supplied (see {@link UnitMeta}).
+ * The two contracts a runtime author owes, neither checkable by the kernel: a
+ * unit's response must be flushed **inside** the work callback (see
+ * {@link RunUnit}), and `UnitMeta.id` must be unique per unit unless a
+ * `traceId` is supplied (see {@link UnitMeta}).
  *
- * `ctx` is the **application** context, and `start`'s gate checks a
- * runtime's `resolves` against the application module's exports only — a port a
- * `StartOptions.unit` module provides exists only while a unit is open, and a
- * runtime naming it there is rejected at the call site rather than left
- * to `ctx.get(...)` throwing at startup.
+ * `ctx` is the **application** context: a port a `StartOptions.unit` module
+ * provides exists only while a unit is open, so a runtime naming it in
+ * `resolves` is rejected at `start`'s call site.
  */
 export type RuntimeHost<Resolves extends AnyPort> = {
   readonly ctx: Context<InstanceType<Resolves>>;
@@ -68,20 +60,15 @@ export type RuntimeHost<Resolves extends AnyPort> = {
 
 /**
  * What a runtime is, once it is up — plus, optionally, what it wants to say
- * about itself.
+ * about itself, read back through `RunningApp.runtimeInfo()`.
  *
- * `Info` is the runtime's own shape and is deliberately **not** modelled as a
- * port number: a runtime that binds `port: 0` publishing `{ port }` is the
- * motivating case, but a queue consumer has no port and might publish
- * `{ queue, prefetch }`. It defaults to `never`, so `info` is unwritable and
- * `Serving` reads exactly as it did for every runtime with nothing to publish.
- * The caller reads it back through `RunningApp.runtimeInfo()`.
+ * `Info` is the runtime's own shape rather than a port number: a queue consumer
+ * has no port and might publish `{ queue, prefetch }`. It defaults to `never`,
+ * so `info` is unwritable for a runtime with nothing to publish.
  */
 export type Serving<Info = never> = {
-  // Returns `void`, not a `DrainReport`: only the kernel can see the unit
-  // registry, so it — not the runtime — owns the accounting. `drain` tells
-  // the runtime to stop accepting new work; the kernel decides what counts as
-  // completed vs. abandoned once its own deadline passes.
+  // `void`, not a `DrainReport`: only the kernel can see the unit registry, so
+  // it owns the accounting. `drain` means "stop accepting".
   readonly drain: (signal: AbortSignal) => AsyncResult<void, never>;
   readonly stop: () => AsyncResult<void, never>;
   readonly info?: Info;
@@ -89,12 +76,10 @@ export type Serving<Info = never> = {
 
 export type Runtime<Resolves extends AnyPort = never, Info = never> = {
   readonly name: string;
-  // `resolves`, not `needs`: di's `Module` has a `needs` of its own and the two
-  // are different obligations — a module's is what a composition root supplies
-  // it, this is what the runtime reads back out of the built application
-  // context. The array is never read at run time; it exists so `Resolves` is
-  // inferable from the value, and `start`'s gate checks it against the
-  // module's exports.
+  // `resolves`, not `needs`: a module's `needs` is what a composition root
+  // supplies it, this is what the runtime reads back out of the built
+  // application context. Never read at run time — it exists so `Resolves` is
+  // inferable from the value.
   readonly resolves: readonly Resolves[];
   readonly start: (host: RuntimeHost<Resolves>) => AsyncResult<Serving<Info>, RuntimeStartFailed>;
 };
@@ -103,16 +88,12 @@ export type Runtime<Resolves extends AnyPort = never, Info = never> = {
  * The port the kernel resolves its runtime from. A runtime is a **service the
  * module provides**, not an option handed to `start`: a runtime package
  * declares its own port over this one — `class HttpRuntime extends
- * RuntimePort<Runtime<never, HttpInfo>> {}` — and ships a module
- * providing it, so the runtime is built by di like everything else and reads
- * its collaborators the same way. The kernel then owns nothing but the graph's
- * lifecycle: it builds the module, resolves this port, and drives what it
- * finds through `start` → `serving` → `drain` → `stop`.
+ * RuntimePort<Runtime<never, HttpInfo>> {}` — so it is built by di like
+ * everything else, and the kernel owns nothing but the lifecycle.
  *
- * Left generic on purpose (`Port("Runtime")` without a fixed service): every
- * runtime port is one id at runtime — a process boots exactly one — while each
- * carries its own `Resolves`/`Info` in the type, which is what `start`'s gate and
- * `RunningApp.runtimeInfo()` read back out of the module's exports.
+ * Left generic on purpose: every runtime port is one id at runtime, since a
+ * process boots exactly one, while each carries its own `Resolves`/`Info` in
+ * the type.
  */
 export const RuntimePort = Port("Runtime");
 

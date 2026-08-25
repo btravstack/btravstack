@@ -32,9 +32,8 @@ describe("order-api", () => {
     // GIVEN the real composition root, served on an ephemeral port
     const client = await clientFor(serve(api));
 
-    // WHEN a second request looks up what the first wrote. A second request is
-    // a second unit — and the same database, because the application scope is
-    // opened once by the kernel and only the request scope is forked per call.
+    // WHEN a second request — a second unit, the same database — looks up what
+    // the first wrote
     const found = await client.orders
       .place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 })
       .flatMap(() => client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" }));
@@ -71,11 +70,8 @@ describe("order-api", () => {
       );
 
     // THEN the `Err` channel, not the defect one: the client got a value back.
-    // `constructor` is read through the prototype chain, so the one assertion
-    // also pins the class; `inferable` is the other half of
-    // `isInferableError`, and what "typed end to end" means at runtime — oRPC
-    // marks a returned, declared error inferable, which is why this is an `Err`
-    // and not a `Defect` collapsed to INTERNAL_SERVER_ERROR.
+    // `inferable` is what makes it one rather than a `Defect` collapsed to
+    // INTERNAL_SERVER_ERROR.
     expect(conflict).toBeErrWith(
       expect.objectContaining({
         constructor: ORPCError,
@@ -123,10 +119,8 @@ describe("order-api", () => {
       quantity: 0,
     });
 
-    // WHEN the channel is folded — the mirror of the `mapErrCases` that
-    // produced it, with no wildcard to fall back on. All three codes are named
-    // and grouped into one arm because they share a handler, which is what a
-    // wildcard would look like if it were still a decision
+    // WHEN the channel is folded — the mirror of the `mapErrCases` that produced
+    // it, with no wildcard to fall back on
     const named = invalid.match({
       ok: () => "WRONGLY ACCEPTED",
       errCases: (matcher) =>
@@ -154,10 +148,8 @@ describe("order-api", () => {
     // WHEN a call reaches it
     const result = await client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
 
-    // THEN the raw cause does NOT leak over the wire; oRPC collapses it, and
-    // the non-inferable result lands back in the defect channel. `inferable`
-    // is asserted here rather than behind an `if (result.isDefect())`, which
-    // would silently not run at all if the channel were ever the other one.
+    // THEN the raw cause does NOT leak over the wire; oRPC collapses it, and the
+    // non-inferable result lands back in the defect channel
     expect(result).toBeDefectWith(
       expect.objectContaining({
         constructor: ORPCError,
@@ -177,9 +169,8 @@ describe("order-api", () => {
     const app = serve(unmodelled);
     const client = await clientFor(app);
 
-    // WHEN a call blows up and another one follows it. The defect is consumed
-    // here rather than asserted — it is the subject of the test above; what
-    // this one asks is what the process does next.
+    // WHEN a call blows up and another one follows it — the defect is consumed
+    // rather than asserted, since the test above is its subject
     const served = await client.orders
       .find({ id: "0199a1e0-0000-7000-8000-000000000001" })
       .recoverDefect(() => Ok("defected" as const))
@@ -207,10 +198,8 @@ describe("order-api", () => {
         client.orders.place({ id: "0199a1e0-0000-7000-8000-000000000002", quantity: 1 }),
       );
 
-    // THEN two calls, each writing a controller line, an interactor line and a
-    // request-scope teardown line, carrying two distinct trace ids and never
-    // one written outside a unit — read off the line's own `unit` field, which is what the logger
-    // stamps from `currentUnit()` per call
+    // THEN two calls, each writing three lines, carrying two distinct trace ids
+    // and never one written outside a unit
     const traced = served
       .map(() => recording.lines())
       .map((lines) => ({
@@ -230,9 +219,7 @@ describe("order-api", () => {
     await gate.arrived;
 
     // WHEN the drain starts and the call is released only once the phase moved.
-    // `vi.waitUntil` synchronises rather than asserts — the drain samples
-    // `inFlightAtStart` in the same synchronous turn that advances the phase,
-    // so releasing afterwards is what makes the report exact rather than racy.
+    // `vi.waitUntil` synchronises rather than asserts.
     app.requestDrain();
     await vi.waitUntil(() => app.phase() === "draining");
     gate.release();
@@ -257,9 +244,8 @@ describe("order-api", () => {
     await vi.waitUntil(() => app.phase() === "draining");
     gate.release();
 
-    // THEN the drain report says the unit finished — read through the
-    // in-flight call, so its own `Result` is consumed and a call that failed
-    // could not be reported as completed
+    // THEN the drain report says the unit finished — read through the in-flight
+    // call, so its own `Result` is consumed
     const report = await inFlight.flatMap(() => app.exited);
 
     expect(report).toBeOkWith(
@@ -282,9 +268,8 @@ describe("order-api", () => {
     app.requestDrain();
 
     // THEN the unit still open at the deadline is counted abandoned. The hung
-    // call settles only once `stop` destroys the socket under it, which is
-    // after the report — so it is consumed by the `flatTap`, in that order,
-    // and asserted on its own in the test below.
+    // call settles only after the report, so the `flatTap` consumes it in that
+    // order; it is asserted on its own in the test below.
     const report = await app.exited.flatTap(() => hung.recoverDefect(() => Ok()));
 
     expect(report).toBeOkWith(
@@ -306,9 +291,8 @@ describe("order-api", () => {
     // WHEN the drain starts and the call is never released
     app.requestDrain();
 
-    // THEN `stop` destroyed the socket under it, so the client's own `Result`
-    // is a defect — consumed here rather than left floating. The cause is the
-    // fetch stack's own transport error, whose exact shape is not ours.
+    // THEN `stop` destroyed the socket under it, so the client's own `Result` is
+    // a defect carrying the fetch stack's transport error
     await expect(hung).toBeDefectWith(expect.any(Error));
   });
 
@@ -316,13 +300,11 @@ describe("order-api", () => {
     // GIVEN the runtime and the kernel's probe server both bound
     const app = serve(gate.api, { probes: { port: 0 } });
     const probes = await probesFor(app);
-    // The probe server binds BEFORE the graph is built, and answers 503 until
-    // the runtime is serving — correctly. `runtimeInfo()` settles when it is,
-    // which is the barrier every other test here crosses by asking for a port.
+    // The probe server binds BEFORE the graph is built and answers 503 until the
+    // runtime is serving, so `runtimeInfo()` is the barrier.
     await app.runtimeInfo();
 
-    // WHEN both endpoints are read while serving — supertest, because the
-    // probes are the one surface with no contract for the typed client
+    // WHEN both endpoints are read while serving
     const probed = {
       livez: (await probes.get("/livez")).status,
       readyz: (await probes.get("/readyz")).status,
@@ -348,11 +330,8 @@ describe("order-api", () => {
       quantity: 1,
     });
 
-    // THEN it was refused before the use case was reached. `UNAUTHORIZED` is
-    // not a code the contract declares, so oRPC does not mark it inferable and
-    // the client hands it back on the defect channel — the same treatment a
-    // collapsed 500 gets, and the reason a refusal is not something a caller
-    // has to match on
+    // THEN it was refused before the use case was reached. The contract declares
+    // no `UNAUTHORIZED`, so it is not inferable and lands on the defect channel.
     expect(refused).toBeDefectWith(
       expect.objectContaining({ constructor: ORPCError, code: "UNAUTHORIZED", inferable: false }),
     );
@@ -361,8 +340,8 @@ describe("order-api", () => {
   it("refuses the anonymous caller on the wire: a 401 wearing the security headers", async ({
     origin,
   }) => {
-    // GIVEN the real composition root served by the `origin` fixture — the
-    // raw transport surface, where the facts the typed client hides live
+    // GIVEN the real composition root on the raw transport surface, where the
+    // facts the typed client hides live
 
     // WHEN the marked procedure is called with no credential at all
     const response = await request(origin)
@@ -386,10 +365,10 @@ describe("order-api", () => {
     // GIVEN the real composition root and a caller holding only an API key
     const client = await serviceClientFor(serve(api));
 
-    // WHEN the export is called — `user` is the requirement declared first, and
-    // this caller presents nothing it accepts
-    // THEN the walk fell through to the second requirement, and the service
-    // arm of the handler is what answered
+    // WHEN the export is called — `user` is declared first, and this caller
+    // presents nothing it accepts
+    // THEN the walk fell through to the second requirement, and the service arm
+    // answered
     await expect(client.orders.export()).toBeOkWith({ csv: "service,reporting" });
   });
 
@@ -419,9 +398,8 @@ describe("order-api", () => {
     // WHEN the export, which asks a user token for `orders:export`, is called
     const refused = await client.orders.export();
 
-    // THEN authenticated-but-under-scoped is a 403: the credential was good, so
-    // this is not the 401 an anonymous caller gets, and no scheme in the
-    // requirement list rescued it
+    // THEN authenticated-but-under-scoped is a 403, not the 401 an anonymous
+    // caller gets
     expect(refused).toBeDefectWith(
       expect.objectContaining({ constructor: ORPCError, code: "FORBIDDEN", inferable: false }),
     );
@@ -443,10 +421,8 @@ describe("order-api", () => {
       quantity: "abc",
     } as never);
 
-    // THEN oRPC refused it before dispatch. This is the property `type<T>()`
-    // did not have: it validates nothing, so `"abc"` reached the use case
-    // typed `number`. `BAD_REQUEST` is undeclared, so it lands on the defect
-    // channel like any error the contract does not model
+    // THEN oRPC refused it before dispatch — the property `type<T>()` did not
+    // have, under which `"abc"` reached the use case typed `number`
     expect(refused).toBeDefectWith(
       expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", inferable: false }),
     );
@@ -475,12 +451,10 @@ describe("order-api", () => {
     // WHEN a malformed input is sent, past the client's own types
     await client.orders.place({ id: "o-rejected", quantity: "abc" } as never);
 
-    // THEN neither the controller nor the interactor wrote a line: oRPC
-    // refused the input before dispatch, so the handler was never entered. The
-    // request-scope line still lands, because the unit opened. Asserting on
-    // the absence of those two rather than on the stored row, because the
-    // DOMAIN would refuse `"abc"` too — a test that checks nothing was stored
-    // passes whether or not the contract validates, and pins nothing
+    // THEN neither the controller nor the interactor wrote a line, and the
+    // request-scope one still lands because the unit opened. Asserted on those
+    // two absences rather than on the stored row, because the DOMAIN would
+    // refuse `"abc"` too and such a test would pin nothing.
     expect(recording.lines().map((line) => line.message)).toEqual(["request finished"]);
   });
 
@@ -523,9 +497,8 @@ describe("order-api", () => {
       .place({ id: "0199a1e0-0000-7000-8000-000000000001", quantity: 2 })
       .flatMap(() => stranger.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" }));
 
-    // THEN the second sees nothing: the tenant a marked handler serves is
-    // `context.principal.tenantId`, and the fragment's inputs name no tenant
-    // for a caller to ask for another one with
+    // THEN the second sees nothing: a marked handler serves the tenant on its
+    // principal, and the fragment's inputs name none for a caller to ask with
     expect(found).toBeErrWith(
       expect.objectContaining({
         constructor: ORPCError,
@@ -547,8 +520,8 @@ describe("order-api", () => {
     const client = await clientFor(serve(stubbed));
 
     // WHEN a procedure from the second slice is called
-    // THEN it answers with the contract's shape — the branded `Customer` the
-    // use case returned, converted by that controller's own `view`
+    // THEN it answers with the contract's shape, converted by that controller's
+    // own `view`
     await expect(
       client.customers.find({ tenantId: tenant, id: "0199a1e0-0000-7000-8000-0000000000c1" }),
     ).toBeOkWith({
@@ -571,9 +544,8 @@ describe("order-api", () => {
     // WHEN the same customer is read again
     const second = await client.customers.find(input);
 
-    // THEN the answer is the same one, and the repository was asked once —
-    // the read-through worked, and the tenant is in the key, so no other
-    // test's customer could have answered it
+    // THEN the answer is the same one and the repository was asked once — the
+    // read-through worked, with the tenant in the key
     expect({ second, reads: counting.reads() }).toEqual({
       second: expect.objectContaining({
         value: { id: "0199a1e0-0000-7000-8000-0000000000c1", name: "Ada" },
@@ -597,9 +569,8 @@ describe("order-api", () => {
       id: "0199a1e0-0000-7000-8000-00000000c404",
     });
 
-    // THEN the domain's `CustomerNotFound` crossed the second slice's own
-    // triage the way `OrderNotFound` crosses the first's — a typed, inferable
-    // value, not a thrown 500
+    // THEN the domain's `CustomerNotFound` crossed the second slice's own triage
+    // as a typed, inferable value rather than a thrown 500
     expect(missing).toBeErrWith(
       expect.objectContaining({
         constructor: ORPCError,
@@ -619,10 +590,9 @@ describe("order-api", () => {
     const inFlight = client.orders.find({ id: "0199a1e0-0000-7000-8000-000000000001" });
     await gate.arrived;
 
-    // WHEN the drain starts. The TRANSITION is awaited through `ready()`, which
-    // is synchronously readable — polling `/readyz` for it races the app
-    // exiting out from under the probe server. The endpoints are then read
-    // exactly once, in a state the held call keeps stable.
+    // WHEN the drain starts. The transition is awaited through `ready()`, which
+    // is synchronously readable — polling `/readyz` for it races the app exiting
+    // out from under the probe server.
     app.requestDrain();
     await vi.waitUntil(() => !app.ready());
     const probed = {

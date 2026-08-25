@@ -165,28 +165,20 @@ describe("Module algebra", () => {
       provides: [OrderRepositoryProvider],
       exports: [OrderRepository],
     });
-    // `orphan` genuinely needs `Database` (unmet — nothing provides or
-    // imports it). `_needs` must be covariant so this widening lie is
-    // rejected: if it were contravariant (as it read before this fix),
-    // `Module<OrderRepository, never, Database>` would be assignable to
-    // `Module<OrderRepository, never, never>` — laundering a real, unmet
-    // dependency past a caller that asks for `Needs = never`, which is
-    // exactly what Task 5's build gate uses to decide a module is
-    // runnable. Pins the direction, not just the value, so a future
-    // variance regression on `_needs` fails this test immediately instead
-    // of surviving to a runtime "dependency missing" failure.
+    // `_needs` must be covariant for this widening lie to be rejected:
+    // contravariant, `Module<OrderRepository, never, Database>` is assignable to
+    // `Module<…, never>` and launders a real unmet dependency past the very
+    // check the build gate uses to decide a module is runnable.
     // @ts-expect-error Database is still an unmet requirement
     const typed: Module<OrderRepository, never, never> = orphan;
     void typed;
   });
 
   test("an undeclared need is an error at the module that owes it", () => {
-    // The gate #50 added. `OrderRepositoryProvider` needs `Database`, nothing
-    // here provides or imports it, and `needs` does not name it — so this is
-    // an error HERE, rather than an obligation that travels to whoever
-    // composes the module. The diagnostic names the port: the marker is an
-    // object with one required property, not a bare sentence, precisely so
-    // `Database` reaches the message.
+    // `OrderRepositoryProvider` needs `Database`, nothing here provides or
+    // imports it, and `needs` does not name it — an error HERE rather than an
+    // obligation that travels to whoever composes the module. The marker is an
+    // object with one required property so `Database` reaches the message.
     // @ts-expect-error UNDECLARED NEEDS — name it in `needs`: Database
     Module("Undeclared")({
       provides: [OrderRepositoryProvider],
@@ -195,13 +187,10 @@ describe("Module algebra", () => {
   });
 
   test("an import's unmet needs travel without being re-declared", () => {
-    // The other half of the gate, and the reason a `needs` list stays one line
-    // per FEATURE rather than one per hop. `Orphan` reads `Database` through
-    // its own provider and declares it; `Importer` only imports `Orphan` and
-    // declares nothing — the obligation still reaches its channel, and `start`
-    // (or `Module.build`) is still what refuses a root that has not discharged
-    // it. Nothing is hidden: `Orphan`'s type says `Database` at the `imports`
-    // entry a reader is looking at.
+    // The other half of the gate, and why a `needs` list stays one line per
+    // FEATURE rather than one per hop: `Importer` declares nothing, the
+    // obligation still reaches its channel, and nothing is hidden — `Orphan`'s
+    // type says `Database` at the `imports` entry a reader is looking at.
     const orphan = Module("Orphan")({
       needs: [Database],
       provides: [OrderRepositoryProvider],

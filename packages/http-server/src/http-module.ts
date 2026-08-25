@@ -22,11 +22,9 @@ type Imports<I extends readonly AnyModule[]> = readonly [...I, HttpStarter];
 
 /**
  * The router provider, the scheme authenticators `defineHttp` bound, and the
- * application's own — what `Module(name)` is handed. A union-element array
- * rather than a tuple: `Auth` is one type per scheme, so it arrives as a union
- * and a tuple takes one rest element, not two. di reads `P[number]` throughout,
- * so nothing downstream wants the arity — and the authenticators' own needs
- * (a `JwtVerifier`, a key set) reach `NeedsGate` because they are here.
+ * application's own. A union-element array rather than a tuple: `Auth` is one
+ * type per scheme, and a tuple takes one rest element, not two. Putting the
+ * authenticators here is what carries their own needs into `NeedsGate`.
  */
 type Provides<
   P extends readonly AnyProvider[],
@@ -45,10 +43,9 @@ export type HttpModuleOptions<
   N extends readonly AnyPort[],
 > = {
   /**
-   * The application's oRPC router — `api.HttpRouter(contract)(deps, arm)`, the
-   * provider that builds it from the services its procedures call. It carries
-   * the scheme authenticators `defineHttp` bound, which is how they reach
-   * `provides` without an application ever listing them.
+   * The application's oRPC router — what `api.HttpRouter(contract)(…)` returns.
+   * It carries the scheme authenticators `defineHttp` bound, which is how they
+   * reach `provides` without an application listing them.
    */
   readonly router: Provider<HttpRouterPort, RouterError, RouterNeeds> & {
     readonly authenticators: readonly Auth[];
@@ -60,14 +57,14 @@ export type HttpModuleOptions<
   readonly hostname?: string;
   /**
    * oRPC handler plugins — CORS, body limits, compression, CSRF. Transport
-   * policy configuring the transport; this is NOT a middleware slot for
-   * application logic, which the package still declines.
+   * policy configuring the transport; not a middleware slot for application
+   * logic, which the package still declines.
    */
   readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
   /**
    * Headers set on every response, before dispatch — a listener concern, not
-   * oRPC's. `true` (default) applies the package's small helmet-style
-   * default set; `false` disables it; a record replaces it outright.
+   * oRPC's. `true` (default) applies the package's small helmet-style set;
+   * `false` disables it; a record replaces it outright.
    */
   readonly securityHeaders?: boolean | Readonly<Record<string, string>>;
   readonly imports?: I;
@@ -75,25 +72,17 @@ export type HttpModuleOptions<
   /** The application's own exports; `HttpRuntime` is added, since `start` resolves it. */
   readonly exports?: X;
   /**
-   * What this root expects from outside — `Env` at least, since the starter
-   * binds `PORT`/`HOST` from it and `start` is what provides it. Declared
-   * here rather than absorbed: di's own gate is re-stated over the augmented
-   * tuples below, so forgetting one is an error at THIS call, the same as it
-   * would be on a bare `Module(name)`.
+   * What this root's OWN providers expect from outside. di's gate is re-stated
+   * over the augmented tuples below, so forgetting one is an error at THIS call.
    */
   readonly needs?: N;
 } & NeedsGate<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>, N>;
 
 /**
  * `Module(name)({...})` for an HTTP deployment: everything a di module takes,
- * plus the router provider, and nothing else to know. The sugar imports the
- * starter (`http()`), provides the router, and exports
- * `HttpRuntime` — so a root that would otherwise write those two lines and
- * remember that `start` needs the runtime exported writes neither. It hands
- * back exactly the module `Module(...)` would have declared over the
- * augmented `imports`/`provides`/`exports` (spelled from di's own pieces), so
- * the kernel, `start`'s gate and di's see nothing new: syntax over the same
- * primitives, one source of truth.
+ * plus the router provider. The sugar imports the starter, provides the router
+ * and exports `HttpRuntime`, handing back exactly the module `Module(...)` would
+ * have declared over the augmented tuples.
  *
  * ```ts
  * export const OrderApi = HttpModule("OrderApi")({
@@ -129,16 +118,10 @@ export const HttpModule =
       ...(plugins === undefined ? {} : { plugins }),
       ...(securityHeaders === undefined ? {} : { securityHeaders }),
     });
-    // di's own `Module(name)({...})` over the augmented tuples: its return
-    // type IS the sugar's — nothing spelled twice.
-    //
-    // The assertion is the gate, not the shape: `NeedsGate` cannot be computed
-    // while the tuples are still type parameters, so it defers and no object
-    // literal satisfies it here. It IS computed at the application's own call,
-    // because the sugar re-declares it on `HttpModuleOptions`. Asserting to a
-    // spelled-out type rather than `as never` is what keeps `I`/`P`/`X`/`N`
-    // inferred — `as never` collapses the return type to
-    // `Module<never, never, never>` (measured).
+    // The assertion is the gate, not the shape: `NeedsGate` defers while the
+    // tuples are type parameters, and is computed at the application's own call
+    // because `HttpModuleOptions` re-declares it. Spelled out rather than
+    // `as never`, which collapses the return to `Module<never, never, never>`.
     return Module(name)({
       imports: [...imports, starter] as Imports<I>,
       provides: [router, ...router.authenticators, ...provides] as unknown as Provides<

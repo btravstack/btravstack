@@ -35,10 +35,9 @@ import { RequestModule } from "./request-scope.js";
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
 
 /**
- * Both repositories as overrides, so one call closes both verticals the way
- * the two persistence modules do. Only the orders half varies per
- * spec; the customers one holds a single registered customer, which is all
- * that slice's one procedure needs to answer.
+ * Both repositories as overrides, so one call closes both verticals. Only the
+ * orders half varies per spec; the customers one holds a single registered
+ * customer.
  */
 const persistenceOf = (repository: ServiceOf<OrderRepository>) => [
   Provider(OrderRepository)({ value: repository }),
@@ -59,17 +58,13 @@ const recorderOf = () => {
 };
 
 /**
- * `OrderApi` ITSELF with persistence and the logger overridden — not a
- * parallel root any more (issue #63). The slices still bring the Prisma
- * providers with them; `overridden` REPLACES those providers by port, so the
- * stub answers and the real adapter is never constructed. The database
- * client behind it still opens — an override replaces one provider, never a
- * subsystem — which is fine here: every spec's environment carries the
- * shared database anyway. The sink defaults
- * to a no-op: these roots are booted to exercise the transport, and the real
- * `jsonSink()` would put the application's lines in the test runner's own
- * output; the logger override reads the real `LoggerConfig`, so `boot`'s
- * `LOG_LEVEL` filters exactly as the composed `observability()` did.
+ * `OrderApi` ITSELF with persistence and the logger overridden, not a parallel
+ * root: `overridden` REPLACES those providers by port, so the stub answers and
+ * the real adapter is never constructed. The database client behind it still
+ * opens — an override replaces one provider, never a subsystem.
+ *
+ * The sink defaults to a no-op, since the real `jsonSink()` would put the
+ * application's lines in the runner's own output.
  */
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   overridden(OrderApi, [
@@ -81,17 +76,9 @@ const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) 
   ]);
 
 /**
- * The real root's composition with a recording sink in place of stdout.
- *
- * `observability({ sink })` IS the seam a spec reads the running graph's lines
- * through, which is why the `tapped(OrderApi, [Logger])` this replaces is
- * gone: the old placeholder port could only be read back because it kept its
- * own array, and reaching into the graph for that instance was the price. A
- * sink is a value the composition takes, so what comes back is the `Line`
- * itself — `unit.traceId` as a field, not a prefix parsed out of a string.
- * `OrderApi` itself here too, with only the logger overridden — the drift
- * this fixture used to invite ("mirror the real root by hand") is now a
- * `WiringDefect` the moment the root stops providing `Logger`.
+ * The real root's composition with a recording sink in place of stdout. A sink
+ * is a value the composition takes, so what comes back is the `Line` itself —
+ * `unit.traceId` as a field, not a prefix parsed out of a string.
  */
 const recordingApi = () => {
   const recorder = recorderOf();
@@ -128,10 +115,9 @@ const countingCustomers = () => {
 };
 
 /**
- * The stub root at rest: nothing hangs, nothing blows up, and the customer
- * `0199a1e0-0000-7000-8000-0000000000c1` is registered. What the customers slice's success path needs, which
- * the real root cannot give it — its database is born empty inside the graph
- * and no procedure registers anyone.
+ * The stub root at rest: nothing hangs, nothing blows up, and one customer is
+ * registered — what the customers slice's success path needs and the real root
+ * cannot give it, since no procedure registers anyone.
  */
 const stubbedApi = () =>
   apiWith({
@@ -153,10 +139,9 @@ const unmodelledApi = () =>
   });
 
 /**
- * A repository whose `find` never settles until `release()` is called, and
- * whose `arrived` promise reports the moment the request reached it. Both drain
- * specs turn on knowing a unit is genuinely in flight before the drain starts —
- * polling a wall clock instead would be the flake.
+ * A repository whose `find` never settles until `release()` is called, and whose
+ * `arrived` reports the moment the request reached it: the drain specs turn on
+ * knowing a unit is genuinely in flight before the drain starts.
  */
 const gatedApi = () => {
   let entered!: () => void;
@@ -183,9 +168,8 @@ const gatedApi = () => {
 };
 
 /**
- * `runtimeInfo()` carries `E = never`, so `getOrThrow()` does not even typecheck
- * — the empty error channel is the point. `get()` plus an assertion is the shape
- * the whole fixture module uses.
+ * `runtimeInfo()` carries `E = never`, so `getOrThrow()` does not typecheck —
+ * `get()` plus an assertion is the shape this module uses throughout.
  */
 const portOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<number> => {
   const info = (await app.runtimeInfo()).get();
@@ -200,63 +184,51 @@ export type ApiFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   /**
-   * This test's tenant, and nobody else's. The database is shared by every
-   * workspace's run — one migration for the whole gate rather than one per
-   * test — so a UUID here is what keeps one spec's `0199a1e0-0000-7000-8000-000000000001` from being another's.
-   * Every call names it, because the contract does.
+   * This test's tenant, and nobody else's: the database is shared by every
+   * workspace's run, so a UUID here is what keeps one spec's order id from being
+   * another's.
    */
   readonly tenant: string;
   /**
-   * Starts an app on an ephemeral loopback port — `env: { PORT: "0", HOST:
-   * "127.0.0.1" }`, which is how every composition here, the real one
-   * included, gets bound — with `RequestModule` forked around every request,
-   * through `boot`: its shutdown is the fixture's, on every exit path.
+   * Starts an app on an ephemeral loopback port with `RequestModule` forked
+   * around every request, through `boot` — so its shutdown is the fixture's.
    *
-   * The module's `X` is pinned to the two ports every composition here
-   * exports rather than left generic: `start`'s gate is a marker intersected
-   * onto `module`, proven at the call site, and no proof is available inside a
-   * helper generic in the module's own exports. `HttpRuntime` is what `start`
-   * resolves, and `Logger` is for the gate's OTHER half — `RequestModule`,
-   * passed as `StartOptions.unit`, reads it out of the parent.
+   * The module's `X` is pinned rather than left generic: `start`'s gate is
+   * proven at the call site, and no proof is available inside a helper generic
+   * in the module's own exports.
    */
   readonly serve: <E>(
     module: Module<HttpRuntime | Logger | Tracer | Meter, E, Scope | Env>,
     options?: Pick<StartOptions, "drainTimeoutMs" | "probes">,
   ) => RunningApp<E, HttpInfo>;
   /**
-   * A client already carrying credentials for this test's tenant — the shape
-   * every spec here wants, since the contract marks the orders fragment and an
-   * anonymous call to it never reaches a use case. `u-1` is a user id and
-   * nothing reads it; what the token establishes that a test cares about is
-   * the tenant.
+   * A client already carrying credentials for this test's tenant — what every
+   * spec here wants, since an anonymous call to the marked fragment never
+   * reaches a use case.
    */
   readonly clientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;
   /**
-   * The same client with the `authorization` header stated verbatim, and
-   * absent when the token is `undefined` — what a spec about the refusal
-   * itself needs, rather than one about what a caller is then allowed to do.
+   * The same client with the `authorization` header stated verbatim, and absent
+   * when the token is `undefined` — what a spec about the refusal itself needs.
    */
   readonly clientWith: <E>(
     app: RunningApp<E, HttpInfo>,
     token: string | undefined,
   ) => Promise<OrderApiClient>;
   /**
-   * A client presenting an API key and no bearer token — the `service`
-   * scheme's credential. `export` names `user` first, so this is the caller
-   * that has to reach the second requirement to be served at all.
+   * A client presenting an API key and no bearer token — the `service` scheme's
+   * credential. `export` names `user` first, so this caller has to reach the
+   * second requirement to be served at all.
    */
   readonly serviceClientFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<OrderApiClient>;
   /**
-   * A supertest agent bound to the kernel's probe server — the one HTTP
-   * surface in this application that has no contract, which is exactly what
-   * makes supertest the right client for it: the typed oRPC client speaks
-   * the contract, and `/livez` / `/readyz` have none to speak.
+   * A supertest agent bound to the probe server — the one HTTP surface here with
+   * no contract for the typed client to speak.
    */
   readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<TestAgent>;
   /**
-   * The real root, served, as the origin string `supertest` takes directly —
-   * `request(origin).post(…)` — for a spec about the raw transport surface:
-   * statuses and headers rather than payloads.
+   * The real root, served, as the origin string `supertest` takes directly — for
+   * a spec about statuses and headers rather than payloads.
    */
   readonly origin: string;
   /** The real composition root. */
@@ -271,31 +243,25 @@ export type ApiFixtures = {
   readonly counting: ReturnType<typeof countingCustomers>;
 };
 
-/**
- * The port comes back from `Serving.info` — the kernel's own channel for it,
- * which is why this runtime has no `onListening` hook and no `boundPort()`
- * accessor of its own.
- */
+/** The port comes back from `Serving.info`, the kernel's own channel for it. */
 const originOf = async <E>(app: RunningApp<E, HttpInfo>): Promise<string> =>
   `http://127.0.0.1:${await portOf(app)}`;
 
 export const it = test.extend<ApiFixtures>({
-  // `LOG_LEVEL: "fatal"` is what keeps the real `OrderApi` — whose sink is the
-  // production `jsonSink()` on stdout — from writing its lines into the
-  // runner's own output. The roots a spec reads back pin their level instead.
+  // `LOG_LEVEL: "fatal"` keeps the real `OrderApi`, whose sink is the production
+  // `jsonSink()` on stdout, out of the runner's own output. The roots a spec
+  // reads back pin their level instead.
   boot: bootFixture({
     env: {
       PORT: "0",
       HOST: "127.0.0.1",
       LOG_LEVEL: "fatal",
-      // The real root composes otel(); a spec run stands up no collector, so
-      // the SDK is disabled through its own switch — the ports still resolve
-      // (noop tracer and meter), and the machinery is pinned by the package's
-      // own otel.spec.ts.
+      // A spec run stands up no collector, so the SDK is disabled through its
+      // own switch and the ports still resolve to noop instruments.
       OTEL_SDK_DISABLED: "true",
       DATABASE_URL: inject("__ORDERS_DATABASE_URL__"),
-      // The shared Redis, which every spec here reaches under a tenant of its
-      // own — so the cache needs no more cleanup than the database does.
+      // The shared Redis, reached under a tenant of its own, so the cache needs
+      // no more cleanup than the database does.
       REDIS_URL: inject("__TESTCONTAINERS_REDIS_URL__"),
     },
   }),

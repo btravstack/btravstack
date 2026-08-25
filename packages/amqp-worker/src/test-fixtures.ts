@@ -23,10 +23,8 @@ import { AmqpHandler } from "./handler.js";
 const echoExchange = defineExchange("amqp-test");
 const echoDlx = defineExchange("amqp-test-dlx", { type: "direct" });
 const echoQueue = defineQueue("amqp-echo", {
-  // No queue in this suite's own contract binds to the DLX — nothing here
-  // exercises the retry/DLQ path, so `defineContract`'s define-time
-  // routability check is told another service owns it, matching the
-  // suggestion in its own error message.
+  // No queue in this suite's contract binds to the DLX, so `defineContract`'s
+  // routability check is told another service owns it.
   deadLetter: { exchange: echoDlx, externalConsumers: true },
   retry: { mode: "immediate-requeue", maxRetries: 1 },
 });
@@ -55,11 +53,9 @@ const AppModule = Module("App")({
 type EchoProvider = Provider<InstanceType<EchoHandlers>, never, Greeting>;
 
 /**
- * The runtime is a service the module provides, so each fixture composes the
- * application with the starter it is testing — the same shape a real
- * deployment's composition root has, sized for one test — through the
- * `AmqpModule` sugar, so the package's own suite covers it. `url` is pinned to
- * the test's own broker, so the module reads no environment.
+ * Each fixture composes the application with the starter it is testing, through
+ * the `AmqpModule` sugar so the suite covers it. `url` is pinned to the test's
+ * own broker, so the module reads no environment.
  */
 const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: number) =>
   AmqpModule("Consuming")({
@@ -79,13 +75,9 @@ type App = RunningApp<ConfigInvalid, AmqpInfo>;
 type ServeOptions = { readonly drainTimeoutMs: number };
 
 /**
- * Handlers declared the way a consumer declares them — a provider built from
- * the application's own services, plain functions typed by the contract —
- * that record what each delivery ran under.
- *
- * `currentUnit()` is the seam: the ambient record is what the unit leaves for
- * the adapters that read it, so what the handler sees there IS the claim —
- * `traceId` the publisher's message id, or the minted one when there is none.
+ * Handlers declared the way a consumer declares them, recording what each
+ * delivery ran under. `currentUnit()` is the seam: what the handler sees there
+ * IS the claim — `traceId` the publisher's message id, or the minted one.
  */
 const seamOf = () => {
   const seen: (UnitRecord | undefined)[] = [];
@@ -110,9 +102,8 @@ const seamOf = () => {
 };
 
 /**
- * A handler that waits on the kernel's own per-unit signal — reached through
- * `currentUnit()`, since a middleware-shaped runtime hands its work no
- * parameter — and reports what it saw. `arrived` is the moment the delivery
+ * A handler that waits on the kernel's per-unit signal, reached through
+ * `currentUnit()`, and reports what it saw. `arrived` is the moment the delivery
  * reached it, so a drain spec knows the unit is genuinely in flight.
  */
 const deadlineHandler = () => {
@@ -164,10 +155,9 @@ const deadlineHandler = () => {
 };
 
 /**
- * A handler that never finishes until `release()` is called, and whose
- * `arrived` promise reports the moment the delivery reached it. Both drain
- * specs turn on knowing a unit is genuinely in flight before the drain
- * starts — polling a wall clock instead would be the flake.
+ * A handler that never finishes until `release()` is called, and whose `arrived`
+ * reports the moment the delivery reached it — the drain specs turn on knowing a
+ * unit is genuinely in flight before the drain starts.
  */
 const gatedHandler = () => {
   let entered!: () => void;
@@ -210,16 +200,12 @@ const slicedContract = defineContract({
 });
 
 /**
- * Two slices, composed. `left` declares `Greeting` and `right` declares
- * nothing, so the spec can tell that each piece was built from the ports its
- * OWN provider declared rather than from a record closing over both.
+ * Two slices, composed. `left` declares `Greeting` and `right` declares nothing,
+ * so the spec can tell each was built from the ports its OWN provider declared.
  *
- * `pieces` is exposed alongside `handlers`: the composed provider's own
- * `deps` are the pieces' PORTS (`AmqpHandler:left` / `AmqpHandler:right`),
- * not what they close over, so something in the module still has to REGISTER
- * `left` and `right` themselves — `flatten` (`build.ts`) only collects
- * providers a module's own `provides` names, never a provider's `deps`
- * transitively. `serveSliced` is what adds them.
+ * `pieces` is exposed alongside `handlers` because the composed provider's
+ * `deps` are the pieces' PORTS: something still has to REGISTER them, since
+ * `flatten` never collects a provider's deps transitively.
  */
 const slicesOf = () => {
   const ran: string[] = [];
@@ -284,13 +270,10 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     });
   },
   serveBroken: async ({ boot }, use) => {
-    // A port nothing listens on: amqp-connection-manager retries the
-    // connect on its own reconnect clock regardless of the failure mode
-    // (ECONNREFUSED included — it is built for HA, not for failing fast),
-    // so `TypedAmqpWorker.create` only settles once `connectTimeoutMs`
-    // gives up and reports the DEFECT the runtime recovers. Set short so
-    // this test fails fast instead of waiting out the library's 30s
-    // default.
+    // A port nothing listens on. amqp-connection-manager retries on its own
+    // reconnect clock whatever the failure mode, so `create` only settles once
+    // `connectTimeoutMs` gives up — set short, rather than waiting out the
+    // library's 30s default.
     await use(() => Promise.resolve(boot(consuming("amqp://127.0.0.1:1", plainHandlers, 2_000))));
   },
   // oxlint-disable-next-line no-empty-pattern -- see above

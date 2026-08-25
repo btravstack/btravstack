@@ -54,16 +54,12 @@ export type AmqpConnectionOptions = NonNullable<
 >;
 
 /**
- * The handlers' port — one id, the starter's own. A consumer serves one
- * handlers record as it boots one runtime, so the port is framework-owned
- * like `AmqpConfig`, and an application never names it:
- * `AmqpHandlers(contract)(deps, arm)` returns the provider that targets it.
- * Left generic at the value level (one `Port(...)` call, one id, no
- * duplicate-id warning however many contracts instantiate it) and fixed per
- * contract at the type level through `HandlersPortOf<C>` — the same move the
- * kernel's `RuntimePort` makes — so a provider built for one contract cannot
- * be handed to a module declaring another. Exported from this file for the
- * package's own tests, not from `index.ts`.
+ * The handlers' port — one id, the starter's own, which an application never
+ * names. Generic at the value level (one `Port(...)` call, so no duplicate-id
+ * warning however many contracts instantiate it) and fixed per contract at the
+ * type level through `HandlersPortOf<C>`, so a provider built for one contract
+ * cannot be handed to a module declaring another. Exported for this package's
+ * tests, not from `index.ts`.
  */
 export const AmqpHandlersPort = Port("AmqpHandlers");
 
@@ -82,10 +78,8 @@ export type HandlersInstanceOf<C extends AnyAmqpContract> = PortInstance<
 export type AmqpOptions<TContract extends AnyAmqpContract> = {
   /**
    * The contract; the handlers port is typed by it — one handler per
-   * `consumers` / `rpcs` key, `WorkerInferHandlers<TContract>` with no
-   * injected context (a handler is built by di from the services it declares,
-   * so there is no context for the middleware to hand it) — and the
-   * composition root provides it through `AmqpHandlers(contract)(deps, arm)`.
+   * `consumers` / `rpcs` key, with no injected context, since a handler is
+   * built by di from the services it declares.
    */
   readonly contract: TContract;
   /** Pins the broker instead of reading `AMQP_URL` — a test's container. */
@@ -104,17 +98,12 @@ export type AmqpOptions<TContract extends AnyAmqpContract> = {
 };
 
 /**
- * The AMQP starter: a module providing the runtime (`AmqpRuntime`) and its
- * configuration (`AmqpConfig`, bound from `AMQP_URL` unless pinned here),
- * built over the handlers the application provides on the starter's own
- * handlers port (`AmqpHandlers(contract)(deps, arm)`). Import it next to the
- * application, provide the handlers, export `AmqpRuntime` — that is the whole
- * of the transport wiring. The handlers port is the module's one need, which
- * di's own gate checks where the composition root is declared.
+ * The AMQP starter: a module providing the runtime and its configuration (bound
+ * from `AMQP_URL` unless pinned), built over the handlers the application
+ * provides on the starter's own handlers port — the module's one need. Import
+ * it next to the application, provide the handlers, export `AmqpRuntime`.
  *
- * With `url` pinned the module reads nothing from the environment (the
- * declared `Env` need and `ConfigInvalid` stay — the kernel discharges the
- * one, a pinned config never produces the other).
+ * With `url` pinned the module reads nothing from the environment.
  */
 export const amqp = <TContract extends AnyAmqpContract>(
   options: AmqpOptions<TContract>,
@@ -128,9 +117,6 @@ export const amqp = <TContract extends AnyAmqpContract>(
         )
       : Provider(AmqpConfig)({ value: { url: options.url } });
   return Module("Amqp")({
-    // Both stated: the starter binds its own configuration from the
-    // environment, and the handlers are the application's — neither comes
-    // from inside this module, and the composition root supplies both.
     needs: [Env, AmqpHandlersPort as HandlersPortOf<TContract>],
     provides: [
       config,
@@ -171,16 +157,10 @@ type Uncovered<C extends AnyAmqpContract, T extends readonly PieceOf<C>[]> = Exc
  * The composing arm. Declared LAST in the intersection below on purpose:
  * TypeScript reports the last overload's failure, so a non-covering array is
  * refused against the `"UNCOVERED HANDLERS — …"` marker rather than degrading
- * to di's `Qualification`, which names nothing. The missing key itself is
- * named in the diagnostic only when the array's length matches the marker
- * tuple's own length (2) — measured.
+ * to di's `Qualification`, which names nothing.
  *
- * The marker is a **sentence**, not a bare label, because it is the only part
- * of this diagnostic a reader can act on and it prints LAST: TypeScript names
- * the source type first, and the source here is the piece the caller wrote —
- * di's `Provider<…>` over the contract, several hundred characters wide and
- * outside this package to name. Widening the literal costs nothing to print
- * and is what carries the explanation to where the eye lands.
+ * The marker is a sentence rather than a bare label because it prints last,
+ * after the caller's own several-hundred-character piece type.
  */
 type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]>(
   pieces: [Uncovered<C, T>] extends [never]
@@ -202,17 +182,11 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
  * ```
  *
  * The first two are di's own `Provider(port)` on the starter's handlers port
- * typed for the contract — any arm, same typing, checked against the record
- * before any module sees it. The third takes the **pieces**
- * `AmqpHandler(contract, key)` builds, one per consumer or rpc: di constructs
- * every piece first — they are the provider's deps, keyed by the very contract
- * key each piece's port id carries, so the services record IS the handlers
- * record. Every key the contract declares must be
- * covered, and two slices claiming one key are two providers for one port —
- * di's duplicate-provider defect at build, which is the point.
- *
- * There is no name to give: a consumer serves one handlers record, so the port
- * is the starter's, and the provider carries it typed (`orderHandlers.port`).
+ * typed for the contract. The third takes the pieces `AmqpHandler(contract,
+ * key)` builds: they are the provider's deps, keyed by the contract key each
+ * piece's port id carries, so the services record IS the handlers record. Every
+ * declared key must be covered, and two slices claiming one key are di's
+ * duplicate-provider defect at build.
  */
 export const AmqpHandlers = <C extends AnyAmqpContract>(
   contract: C,
@@ -226,11 +200,8 @@ export const AmqpHandlers = <C extends AnyAmqpContract>(
       ) as never,
       { sync: (services: unknown) => services } as never,
     );
-  // One array argument is never a valid `Provider(port)` call — its arms are
-  // `(deps, options)` and `(options)`, and both objects are records — so
-  // `Array.isArray` alone identifies this THIRD, composing arm. The arity check
-  // rides along because di's own build discriminates on arity (`provider.ts`)
-  // and a two-argument call is never this arm.
+  // One array argument is never a valid `Provider(port)` call — both its arms
+  // take records — so `Array.isArray` alone identifies the composing arm.
   return ((first: unknown, second?: unknown) =>
     second === undefined && Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])
@@ -281,22 +252,16 @@ const createWorker = <TContract extends AnyAmqpContract>(
     .recoverDefect((cause) => ErrAsync(startFailed(cause)));
 
 const consume = (worker: TypedAmqpWorker<never>, queues: readonly string[]): Serving<AmqpInfo> => {
-  // `close()` is the whole of this worker's shutdown — cancel every consumer,
-  // drain in-flight handlers so their acks land on a still-open channel, then
-  // close. Memoised because both methods reach it and the kernel calls `stop`
-  // after `drain` on the signal path.
-  //
-  // The result is HELD, not dropped: `close()` can defect, and an empty error
-  // channel is not an empty defect channel.
+  // Memoised because both methods reach it and the kernel calls `stop` after
+  // `drain` on the signal path. The result is HELD, not dropped: `close()` can
+  // defect, and an empty error channel is not an empty defect channel.
   let closing: AsyncResult<void, never> | undefined;
   const beginClose = (): AsyncResult<void, never> =>
     (closing ??= worker.close({ drainTimeoutMs: null }));
 
   // The kernel's deadline, kept from `drain` so `stop` is released by the same
-  // abort. `drainTimeoutMs: null` is deliberate: the library's own
-  // DEFAULT_DRAIN_TIMEOUT_MS is 30s and would sit ABOVE the kernel's 20s
-  // default, quietly winning. One deadline in the process, and it is the
-  // kernel's.
+  // abort. `drainTimeoutMs: null` is deliberate: the library's own 30s default
+  // sits above the kernel's 20s one and would quietly win.
   let deadline: AbortSignal | undefined;
   const stopped = (): AsyncResult<void, never> =>
     deadline === undefined ? beginClose() : releasedBy(deadline, beginClose());
@@ -312,23 +277,13 @@ const consume = (worker: TypedAmqpWorker<never>, queues: readonly string[]): Ser
 };
 
 /**
- * `closing`, but no later than the kernel's drain deadline.
- *
- * `Serving.drain(signal)` is a contract, not a courtesy: the kernel aborts
- * `signal` the instant its own timeout wins, precisely so a runtime that treats
- * it as its cue to return can be released. A delivery whose handler never
- * finishes cannot honour that by waiting on `close()`, which settles on the
- * library's own drain clock rather than the kernel's.
+ * `closing`, but no later than the kernel's drain deadline — which `close()`
+ * cannot honour on its own, since it settles on the library's clock.
  *
  * The losing branch's `Result` is dropped, and it is the one drop in this
- * package: when the deadline wins, the kernel has already decided the report
- * and settled `exited`, so the worker's eventual close has no consumer left —
- * and an `AsyncResult` never rejects, so nothing floats. Losing here is
- * cheaper than it is for `-temporal` or `-http`: the un-acked deliveries are
- * redelivered by the broker, so abandonment loses nothing and repeats
- * something — where an abandoned HTTP response is an answer nobody gets and an
- * abandoned Temporal activity is a platform retry. It is the same trade the
- * kernel's own `drainApp` documents for its race.
+ * package: once the deadline wins, `exited` has settled and the eventual close
+ * has no consumer left. An un-acked delivery is redelivered, so abandoning one
+ * repeats work rather than losing it.
  */
 const releasedBy = (
   signal: AbortSignal,

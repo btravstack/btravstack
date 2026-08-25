@@ -14,20 +14,10 @@ class Repo extends Port("ProvRepo")<{ readonly find: () => string }> {}
 class Pool extends Port("ProvPool")<{ readonly close: () => void }> {}
 
 /**
- * Recovers `Provider`'s three type arguments by direct positional inference
- * against the same generic interface, rather than by assignability. `P` sits
- * in a contravariant field position (`_port`), so a plain `const typed:
- * Provider<X, Y, Z> = p` assignment only proves `X` is assignable *into*
- * whatever the value actually carries — a narrower or unrelated declared
- * type, or a widened actual type like `unknown`, can pass that check
- * regardless. (`_error`/`_needs` are covariant since the variance fix — see
- * `Provider`'s own doc comment — so assignment *does* now catch a narrowing
- * lie on those two, which the three "cannot be laundered" tests below rely
- * on. Pinning with `Equal` is still the stronger check, and stays the
- * default here.) Matching `T` against `Provider<infer P, infer E, infer N>`
- * reads the literal type arguments `p`'s declared type was built from,
- * sidestepping field variance entirely — combine with `Equal` to pin them
- * exactly.
+ * Recovers `Provider`'s three type arguments by positional inference rather than
+ * assignability: `P` sits in a contravariant position, so a plain
+ * `const typed: Provider<X, Y, Z> = p` passes for a widened actual type too.
+ * Combine with `Equal` to pin them exactly.
  */
 type ChannelsOf<T> = T extends Provider<infer P, infer E, infer N> ? readonly [P, E, N] : never;
 
@@ -47,10 +37,9 @@ describe("Provider", () => {
     const typed: Provider<Logger, never, never> = p;
     void typed;
 
-    // The assignability check above is close to vacuous here: `never` is
-    // assignable into a contravariant parameter position regardless of what
-    // the actual type is, so it would pass even if `E`/`N` weren't really
-    // `never`. Pin the three channels exactly.
+    // The assignability check above is close to vacuous — `never` is assignable
+    // into a contravariant position whatever the actual type is — so pin the
+    // three channels exactly.
     type Channels = ChannelsOf<typeof p>;
     const portIsLogger: Equal<Channels[0], Logger> = true;
     const errorIsNever: Equal<Channels[1], never> = true;
@@ -114,11 +103,8 @@ describe("Provider", () => {
     const typed: Provider<AppConfig, ConfigError, Env> = p;
     void typed;
 
-    // The assignability check above only proves `ConfigError` is assignable
-    // *into* `p`'s actual error channel — it stays green even if `ErrorOf`
-    // regressed to widening `E` to `unknown` (a wider type is always
-    // assignable into a contravariant parameter). Pin it exactly, and prove
-    // the hole is closed with a negative control against `unknown`.
+    // The assignability check above stays green even if `ErrorOf` regressed to
+    // widening `E` to `unknown`, so pin it exactly with a negative control.
     type Channels = ChannelsOf<typeof p>;
     const portIsAppConfig: Equal<Channels[0], AppConfig> = true;
     const errorIsConfigError: Equal<Channels[1], ConfigError> = true;
@@ -150,20 +136,13 @@ describe("Provider", () => {
       onStart: (s) => void s.log,
     });
 
-    // The assignability check style used elsewhere in this file only proves
-    // `never` is assignable *into* a contravariant slot, which passes
-    // regardless of whether hooks disturbed anything — pin the channels
-    // exactly instead, same as every other test here.
     type Channels = ChannelsOf<typeof p>;
     const portIsLogger: Equal<Channels[0], Logger> = true;
     const errorIsNever: Equal<Channels[1], never> = true;
-    // A bare `onStart` (no `acquire`, no `onStop`) needs no `Scope` — only
-    // teardown (`release`/`onStop`) does; see "onStop needs a Scope..." below.
+    // A bare `onStart` needs no `Scope` — only teardown does.
     const needsIsNever: Equal<Channels[2], never> = true;
-    // Negative control: a regression that let `Hooks<S>`'s intersection leak
-    // into `ErrorOf`/`ScopeOf` (e.g. by making `O extends { acquire: ... }`
-    // spuriously true) would widen `Needs` away from `never` — pin against
-    // that, not just check it's `never`.
+    // Negative control: a regression letting `Hooks<S>` leak into `ScopeOf`
+    // would widen `Needs` away from `never`.
     const needsIsNotUnknown: Equal<Channels[2], unknown> = false;
     void portIsLogger;
     void errorIsNever;
@@ -186,17 +165,13 @@ describe("Provider", () => {
       onStop: (s) => void s.log,
     });
 
-    // `onStop` is registered on the scope exactly like `release` is
-    // (`lifecycle.ts`'s `constructLevel`) — only `Module.scoped`/`forkScope`
-    // ever open and close one, so a provider whose only teardown is an
-    // `onStop` must gate `Module.build` the same way `acquire`/`release`
-    // already does, or the hook silently never runs (`Module.build` never
-    // closes the throwaway scope it builds against).
+    // `onStop` is registered on the scope exactly like `release` is, and only
+    // `Module.scoped`/`forkScope` ever close one — so a provider whose only
+    // teardown is an `onStop` must gate `Module.build` too, or the hook
+    // silently never runs.
     type Channels = ChannelsOf<typeof p>;
     const needsIsScope: Equal<Channels[2], Scope> = true;
-    // Negative control: pins `Scope` exactly, not merely "not never" — a
-    // regression that widened `Needs` to `unknown` instead of `Scope` would
-    // otherwise slip past a bare "is it never" check.
+    // Negative control: pins `Scope` exactly, not merely "not never".
     const needsIsNotNever: Equal<Channels[2], never> = false;
     void needsIsScope;
     void needsIsNotNever;
@@ -204,14 +179,9 @@ describe("Provider", () => {
 
   /**
    * The three tests below are `Provider`'s analogues of `module.test-d.ts`'s
-   * "an unmet requirement cannot be laundered to no requirement" and "a wider
-   * error union cannot be narrowed away", plus one more for the `Scope` case.
-   * Task 4 made `Module`'s `_error`/`_needs` covariant and wrote those two
-   * tests; `Provider` was left contravariant and untested, which is precisely
-   * why the drift survived ten tasks. Each is written in the shape the defect
-   * actually takes in real code — an ordinary return-type annotation on a
-   * factory function, no cast and no `any` — because that is the form that
-   * launders the channel silently.
+   * laundering tests. Each is written in the shape the defect actually takes —
+   * an ordinary return-type annotation on a factory, no cast and no `any` —
+   * because that is the form that launders a channel silently.
    */
   test("an unmet requirement cannot be laundered to no requirement", () => {
     const p = Provider(Repo)(
@@ -222,11 +192,10 @@ describe("Provider", () => {
     const typed: Provider<Repo, never, never> = p;
     void typed;
 
-    // The same lie in the form it is actually written: a factory whose
-    // declared return type quietly drops the dependency. With `_needs`
-    // contravariant this compiled, and the resulting `Provider<Repo, never,
-    // never>` sailed through `Module.build`'s `[N] extends [never]` gate with
-    // nothing registered for `AppConfig` at all.
+    // The same lie in the form it is actually written: a factory whose declared
+    // return type quietly drops the dependency. With `_needs` contravariant this
+    // compiled and sailed through `Module.build`'s gate with nothing registered
+    // for `AppConfig` at all.
     const makeRepoProvider = (): Provider<Repo, never, never> =>
       // @ts-expect-error AppConfig is still an unmet requirement
       Provider(Repo)(
@@ -258,9 +227,8 @@ describe("Provider", () => {
     void typed;
 
     // And the annotation form: a provider that genuinely fails cannot be
-    // declared infallible. Contravariance made this reduce to "is `never`
-    // assignable to `ConfigError`" — trivially true — so the error vanished
-    // from the module's `E` and from `Module.build`'s result type.
+    // declared infallible. Contravariance reduced this to "is `never` assignable
+    // to `ConfigError`", trivially true, and the error vanished from `E`.
     const infallible = (): Provider<AppConfig, never, never> =>
       // @ts-expect-error ConfigError is a real failure this provider can return
       Provider(AppConfig)({ make: () => Err(new ConfigError({ reason: "unset" })) });
@@ -268,16 +236,11 @@ describe("Provider", () => {
   });
 
   test("a resourceful provider cannot be laundered into needing no Scope", () => {
-    // The variance leak with a silent *runtime* consequence, which is why it
-    // gets its own test rather than riding along with the `_needs` case above.
-    // `ScopeOf` puts `Scope` in this provider's `Needs` exactly so the graph
-    // is forced through `Module.scoped`, the only entry point that closes the
-    // scope it opens. Laundered to `never`, it routes to `Module.build`
-    // instead — which creates a `createScope()` it never closes (`module.ts`),
-    // so the `release` registered in `lifecycle.ts`'s `constructLevel` is
-    // dropped on the floor and the pool is never closed. No type error, no
-    // runtime error, just a leak: the same hole Task 6 closed from the
-    // scope-unwind side, reopened from the declaration side.
+    // The variance leak with a silent RUNTIME consequence, which is why it gets
+    // its own test. `ScopeOf` puts `Scope` in `Needs` so the graph is forced
+    // through `Module.scoped`; laundered to `never` it routes to
+    // `Module.build`, which opens a scope it never closes — so the `release` is
+    // dropped on the floor. No type error, no runtime error, just a leak.
     const leaky = (): Provider<Pool, never, never> =>
       // @ts-expect-error Scope is still required — this provider has a release
       Provider(Pool)({

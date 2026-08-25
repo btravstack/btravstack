@@ -12,11 +12,9 @@ import { Err, Ok, P, TaggedError, fromSafePromise, type AsyncResult, type Result
 export type Environment = Readonly<Record<string, string | undefined>>;
 
 /**
- * The environment, as a service. Twelve-factor configuration is the
- * environment and nothing else, so the kernel provides this port to every graph
- * it boots — `process.env` by default, `StartOptions.env` for a test — and a
- * configuration provider is simply a provider that reads it. Nothing else in
- * an application should touch `process.env`.
+ * The environment, as a service. The kernel provides this port to every graph it
+ * boots — `process.env` by default, `StartOptions.env` for a test — so nothing
+ * else in an application touches `process.env`.
  */
 export class Env extends Port("Env")<Environment> {}
 
@@ -97,9 +95,8 @@ const invalid = (reason: string): Result<never, ConfigFieldInvalid> =>
 type WithDefault<T> = { readonly default?: T };
 
 // An empty or blank value is a configuration ERROR, never an absent variable:
-// `PORT=` would otherwise bind whatever the empty string coerces to (`0`, the
-// ephemeral port), which is the silent failure this whole module exists to
-// remove. `default` applies only when the variable is genuinely unset.
+// `PORT=` would otherwise bind what the empty string coerces to — `0`, the
+// ephemeral port. `default` applies only to a variable nobody set.
 const present = <T>(
   variable: string,
   options: WithDefault<T>,
@@ -127,17 +124,12 @@ const integerIn =
   };
 
 /**
- * Configuration, the twelve-factor way: typed values bound from the
- * environment, validated once as the graph is built, and injected like any
- * other service.
+ * Configuration, the twelve-factor way: typed values bound from the environment,
+ * validated once as the graph is built, and injected like any other service.
  *
- * `Config.object({...})` describes a slice of the environment as a schema
- * (any Standard Schema does as well — a `zod` object over the raw variables,
- * for instance); `Config.provider(Port)(schema)` turns it into a di provider
- * that reads {@link Env} and answers `ConfigInvalid` when the environment is
- * wrong. A starter provides its own slice — `@btravstack/http-server` binds `PORT` and
- * `HOST` onto `HttpConfig` — and an application binds whatever else it needs
- * onto ports of its own.
+ * `Config.object({...})` describes a slice of the environment as a schema — any
+ * Standard Schema does as well — and `Config.provider(Port)(schema)` turns it
+ * into a provider that reads {@link Env} and answers `ConfigInvalid`.
  */
 export const Config = {
   /** A non-empty string. */
@@ -160,10 +152,9 @@ export const Config = {
     present(variable, options, integerIn(0, 65_535)),
 
   /**
-   * `field`, unless `value` is given — then a field that answers `value` and
-   * reads nothing. What a starter's options do to its own fields: explicit
-   * beats environment beats default, per field (`http({ port: 0 })` still
-   * reads `HOST`).
+   * `field`, unless `value` is given — then a field answering `value` that
+   * reads nothing. Explicit beats environment beats default, per field:
+   * `http({ port: 0 })` still reads `HOST`.
    */
   pinned: <T>(value: T | undefined, field: ConfigField<T>): ConfigField<T> =>
     value === undefined ? field : { variable: field.variable, parse: () => Ok(value) },
@@ -171,8 +162,7 @@ export const Config = {
   /**
    * A record of fields, as a Standard Schema over the environment. Every field
    * is read, so one validation names every offending variable at once — an
-   * operator fixes the deployment in one round trip, not one variable per
-   * restart. Issues carry the variable name as their `path`.
+   * operator fixes the deployment in one round trip.
    */
   object: <F extends Record<string, ConfigField<unknown>>>(
     fields: F,
@@ -196,9 +186,8 @@ export const Config = {
               matcher.with(P.tag("ConfigFieldInvalid"), (error) => {
                 issues.push({ message: error.reason, path: [field.variable] });
               }),
-            // A field's `parse` is a pure function of a string, so this is a bug
-            // in the field — reported against its variable rather than thrown
-            // through a validation that promised issues.
+            // A bug in the field, reported against its variable rather than
+            // thrown through a validation that promised issues.
             defect: (cause) => {
               issues.push({ message: String(cause), path: [field.variable] });
             },
@@ -217,20 +206,13 @@ export const Config = {
 
   /**
    * A provider binding a port from the environment through `schema`. Reads
-   * {@link Env} — which the kernel provides — so the port is built with the
-   * rest of the graph, and a bad environment is a modeled startup `Err`
-   * (`ConfigInvalid`, exit code 78 under `runMain`) rather than a crash or,
-   * worse, a silently wrong value.
+   * {@link Env}, so the port is built with the rest of the graph and a bad
+   * environment is a modeled startup `Err` rather than a silently wrong value.
    *
-   * Curried like di's own `Provider(port)(…)` and the starters' sugars: the
-   * first call names the port, the second says how it is bound. Two forms of
-   * the first call. `Config.provider(Port)(schema)` binds a port you declared
-   * — the shape for a port that is public API, which a starter or another
-   * package names (`HttpConfig`). `Config.provider("RelayConfig")(schema)`
-   * mints the port for you — its service is the schema's output — and hands
-   * back the provider carrying it: `relayConfig.port` is what a dependent
-   * lists in its deps. The shape for a slice that is one application's own,
-   * where a class line for the port would name it twice.
+   * Two forms of the first call. `Config.provider(Port)(schema)` binds a port
+   * you declared — for a port that is public API another package names.
+   * `Config.provider("RelayConfig")(schema)` mints the port and hands back the
+   * provider carrying it, for a slice that is one application's own.
    */
   provider: configProvider,
 };

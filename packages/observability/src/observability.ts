@@ -21,10 +21,9 @@ export class LoggerConfig extends Port("LoggerConfig")<LoggerSettings> {}
 
 export type ObservabilityOptions = {
   /**
-   * Where lines go. Default: one JSON object per line on `stdout` —
-   * dependency-free, and the shape every log backend already reads. The
-   * `@btravstack/observability/pino` subpath is the same seam for a
-   * deployment that wants pino's throughput.
+   * Where lines go. Default: one JSON object per line on `stdout`. The
+   * `@btravstack/observability/pino` subpath is the same seam for a deployment
+   * that wants pino's throughput.
    */
   readonly sink?: Sink;
   /** Pins the level instead of reading `LOG_LEVEL` — a test's `"fatal"`, a CLI's `"debug"`. */
@@ -32,28 +31,18 @@ export type ObservabilityOptions = {
 };
 
 /**
- * The observability starter: a module providing the application's `Logger`
- * and the `LoggerConfig` it was built from.
+ * The observability starter: a module providing the application's `Logger` and
+ * the `LoggerConfig` it was built from. Import it next to the application and
+ * export `Logger`.
  *
- * Import it next to the application and export `Logger` — that is the whole
- * of it. Every line carries the ambient unit's `traceId` because the logger
- * reads `currentUnit()` per call, so a request's lines are attributable
- * without a single argument threaded through the call stack, and without the
- * mutable per-instance context that makes that trick unsafe elsewhere.
- *
- * An application that wants its own implementation provides `Logger` itself
- * and does not import this module; one that wants this implementation with a
- * different destination passes a `sink`. Both are the same seam a starter
- * always offers: the default behaviour is here, and it is one argument to
- * replace.
+ * Every line carries the ambient unit's `traceId`, because the logger reads
+ * `currentUnit()` per call — so a request's lines are attributable with no
+ * argument threaded through the call stack.
  */
 export const observability = (
   options: ObservabilityOptions = {},
 ): Module<Logger | LoggerConfig, ConfigInvalid, Env> =>
   Module("Observability")({
-    // The starter reads `LOG_LEVEL`, so it owes `Env` — which no module here
-    // provides and `start` supplies at the root. Declared, because a need
-    // nothing local satisfies is this module's to state.
     needs: [Env],
     provides: [
       Config.provider(LoggerConfig)(loggerSchema(options.level)),
@@ -68,24 +57,16 @@ export const observability = (
   });
 
 /**
- * The kernel's nine lifecycle events, as log lines on `logger`.
+ * The kernel's nine lifecycle events, as log lines on `logger` — the adapter
+ * between `StartOptions.onEvent` and an application's own stream.
  *
- * `StartOptions.onEvent` takes a sink and the kernel's default writes JSON to
- * stderr, which is correct for a process with no logger and wrong for one
- * with: two streams, two shapes, two sets of fields to search. This is the
- * adapter between them — pass it as `onEvent` and `serving` lands next to the
- * request that was in flight when it did.
+ * The mapping is deliberate rather than mechanical: `startFailed` and `uncaught`
+ * are `error`, `teardownError` is `warn` (the application is already stopping
+ * and the exit code says so), everything else `info`. Each event's own fields
+ * become attributes, so a drain is queryable by field.
  *
- * The mapping is deliberate rather than mechanical. `startFailed` and
- * `uncaught` are `error`: they carry a cause and they are what an operator is
- * paged for. `teardownError` is `warn` — the application is already stopping
- * and the exit code says so — and everything else is `info`, one line per
- * transition. The event's own fields become attributes, so `draining` keeps
- * its `inFlight` count and `drained` its report.
- *
- * The logger is passed in rather than resolved: this runs before the graph
- * exists (`building` is emitted while it is still being built), so it cannot
- * come from the context it is watching.
+ * The logger is a PARAMETER, not resolved: `building` is emitted while the graph
+ * is still being built, so the sink cannot come from the context it watches.
  */
 export const kernelEvents =
   (logger: LoggerService): EventSink =>

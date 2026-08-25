@@ -10,21 +10,17 @@ import { fileURLToPath } from "node:url";
 const LOCKS = fileURLToPath(new URL("../../../.cache/test-infra-locks/", import.meta.url));
 
 /**
- * How long a waiter is prepared to queue. Generous because the work under a
- * lock is a container start or `prisma migrate deploy` shelled out through
- * `pnpm exec`, and a cold image pull is minutes rather than seconds — a
- * waiter that gives up while the holder is still working takes down a run
- * that was about to succeed.
+ * How long a waiter is prepared to queue. Generous because a cold image pull is
+ * minutes rather than seconds, and a waiter that gives up while the holder is
+ * still working takes down a run that was about to succeed.
  */
 const WAIT_MS = 600_000;
 
 /**
- * The fallback staleness window, for a lock whose owning process is gone in a
- * way {@link alive} cannot see — another machine's, or a recycled pid. It is
- * deliberately well **under** {@link WAIT_MS}: a stale window longer than the
- * wait cannot self-heal, because every waiter gives up before the lock is
- * old enough to break. That ordering is what turned one killed holder into a
- * five-minute outage for the whole gate once.
+ * The fallback staleness window, for a lock whose owner is gone in a way
+ * {@link alive} cannot see. Deliberately well UNDER {@link WAIT_MS}: a stale
+ * window longer than the wait cannot self-heal, because every waiter gives up
+ * before the lock is old enough to break.
  */
 const STALE_MS = 120_000;
 
@@ -57,13 +53,9 @@ const tryTake = (path: string): boolean => {
 };
 
 /**
- * A lock nobody is holding any more.
- *
- * The pid is what makes this quick rather than a five-minute wait: a holder
- * killed mid-work — turbo cancelling its siblings after another task failed,
- * a Ctrl-C — never reaches the `finally` that would release, so the
- * *liveness* of the process that wrote it is the honest signal, and the clock
- * is only the fallback for the cases it cannot answer.
+ * A lock nobody is holding any more. The pid is what makes this quick: a holder
+ * killed mid-work never reaches the `finally` that would release, so process
+ * LIVENESS is the honest signal and the clock only the fallback.
  */
 const isStale = (path: string): boolean => {
   try {
@@ -80,13 +72,10 @@ const isStale = (path: string): boolean => {
 /**
  * Hold `name` across **processes** while `run` executes.
  *
- * testcontainers' own reuse lock is an in-process mutex, so it does nothing
- * about the case this repository actually has: turbo starting several
- * workspaces' vitest runs at the same instant, each calling `withReuse()` on
- * the same container definition. Both fetch-by-label, both miss, both start a
- * container — which is the duplicate-container contention this whole module
- * exists to remove. A file lock is what makes "start it once" true across
- * processes.
+ * testcontainers' own reuse lock is in-process, which does nothing about the
+ * case this repository has: turbo starting several workspaces' runs at the same
+ * instant, each calling `withReuse()` on the same definition — both miss the
+ * fetch-by-label and both start a container.
  */
 export const withLock = async <T>(name: string, run: () => Promise<T>): Promise<T> => {
   mkdirSync(LOCKS, { recursive: true });
