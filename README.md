@@ -19,7 +19,7 @@ declare const OrderPersistenceModule: Module<never, never, never>;
 
 <div align="center">
 
-# start
+# btravstack
 
 **The application kernel for [TypeScript](https://www.typescriptlang.org/):
 boot a dependency-injection module into a running process, and stop it again
@@ -30,24 +30,24 @@ without losing work.**
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[**Documentation**](https://btravstack.github.io/start/) · [**Get Started**](https://btravstack.github.io/start/tutorial/getting-started) · [**Why start?**](https://btravstack.github.io/start/explanation/why-start)
+[**Documentation**](https://btravstack.github.io/start/) · [**Get Started**](https://btravstack.github.io/start/tutorial/getting-started) · [**Why btravstack?**](https://btravstack.github.io/start/explanation/why-btravstack)
 
 </div>
 
 An application is a [`@btravstack/di`](./packages/di) module: ports, providers,
-and a wiring the compiler has already proven. `start` owns **when** that graph
+and a wiring the compiler has already proven. btravstack owns **when** that graph
 is built and torn down — one lifecycle state machine, one unit-of-work
 registry, one `Runtime` contract — and a **starter** brings the transport: HTTP
 through oRPC, a Temporal worker, an AMQP consumer. The kernel knows none of
 them by name.
 
-## Why start?
+## Why btravstack?
 
 Every backend process gets the same things wrong on its own: it stops
 accepting the instant SIGTERM lands and rejects the traffic Kubernetes is
 still routing to it; its readiness probe answers from a transport rather than
 from its state; a failed finaliser is logged and forgotten; a crash exits `0`.
-`start` gets them right once, as defaults.
+btravstack gets them right once, as defaults.
 
 - 🧩 **Business code only.** A composition root is a
   `HttpModule("OrdersApi")({ router, imports, exports, needs })` and a `main.ts` is
@@ -67,7 +67,7 @@ from its state; a failed finaliser is logged and forgotten; a crash exits `0`.
   process's fate becomes an exit code — `0`, `1`, `2`, `70` or `78`, each
   meaning one thing.
 
-See [Why start?](https://btravstack.github.io/start/explanation/why-start) for
+See [Why btravstack?](https://btravstack.github.io/start/explanation/why-btravstack) for
 what it is not — NestJS's `NestFactory.create`, an Effect runtime, a
 full-stack framework — and how it compares to a hand-rolled `main.ts`.
 
