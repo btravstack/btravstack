@@ -422,7 +422,7 @@ under the wrong path — impossible by construction, since the path rides the
 piece's own port id — are all compile errors, the last two at
 `api.HttpController(contract, path)` itself. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
-the recipe, and `packages/http-server/src/controller.test-d.ts` for the five gates
+the recipe, and `packages/http-server/src/controller.test-d.ts` for the six gates
 that pin these errors and the lift below. Because a fragment is itself a valid
 contract, `ordersController` serves `contract.orders` alone unchanged: the
 lifted root is

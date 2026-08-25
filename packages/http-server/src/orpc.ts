@@ -111,7 +111,10 @@ type Built<Auth, N> = Provider<
  * of the contract tree, at any depth, the paths partitioning the contract's
  * procedures: an uncovered leaf is refused against the
  * `"UNCOVERED CONTROLLERS — …"` marker, a piece nested inside another piece's
- * fragment against `"OVERLAPPING CONTROLLERS — …"`.
+ * fragment against `"OVERLAPPING CONTROLLERS — …"`, and a contract whose top
+ * level carries a dotted key — which no piece path can encode — against
+ * `"UNSLICEABLE CONTRACT KEY — …"`, which points at this form's `(deps, arm)`
+ * arm instead.
  */
 export const routerFor =
   <Schemes, Auth extends AnyProvider = never, Vocab = Record<never, never>>(
@@ -143,16 +146,21 @@ export const routerFor =
     // because it is the only actionable part of the diagnostic and it prints
     // last, past the caller's own wide piece type.
     function build<const T extends readonly PieceOf<C, Schemes>[]>(
-      pieces: [Uncovered<C, KeyOfPiece<T[number]>>] extends [never]
-        ? [Overlapping<KeyOfPiece<T[number]>>] extends [never]
-          ? T
+      pieces: [Unsliceable<C>] extends [never]
+        ? [Uncovered<C, KeyOfPiece<T[number]>>] extends [never]
+          ? [Overlapping<KeyOfPiece<T[number]>>] extends [never]
+            ? T
+            : readonly [
+                "OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment",
+                Overlapping<KeyOfPiece<T[number]>>,
+              ]
           : readonly [
-              "OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment",
-              Overlapping<KeyOfPiece<T[number]>>,
+              "UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover",
+              Uncovered<C, KeyOfPiece<T[number]>>,
             ]
         : readonly [
-            "UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover",
-            Uncovered<C, KeyOfPiece<T[number]>>,
+            "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the (deps, arm) form instead",
+            Unsliceable<C>,
           ],
     ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<C>>;
     function build(depsOrPieces: unknown, options?: unknown): unknown {
@@ -233,12 +241,12 @@ const AUTHENTICATOR = "@btravstack/http-server/authenticator:";
 // `routerOf` walks the same tree it always did — marks, inheritance and the
 // stray-key drop included. Written here rather than pushed into the walk
 // because the walk is shared with the `(deps, arm)` form, which never nests.
-// ponytail: `path.split(".")` cannot tell a path SEPARATOR from a literal dot
-// inside one contract key, so `{ "a.b": impl }` silently rebuilds as
-// `{ a: { b: impl } }` — passes coverage, then `routerOf`'s stray-key drop
-// discards it, a 404 with a fully green compile. Upgrade path: a runtime guard
-// here refusing a flat key that does not round-trip through the contract, or
-// excluding dotted keys from `ControllerKeyOf` so one is never mintable.
+// `path.split(".")` cannot tell a path SEPARATOR from a literal dot inside one
+// contract key, so nothing reaching here may carry one: `ControllerKeyOf` drops
+// dotted keys at every level, and `Unsliceable` refuses a contract whose TOP
+// level has one. Only the top level, because a piece at a dotted key's PARENT
+// hands its implementation record to `routerOf` whole — this walk splits paths,
+// never the keys underneath them.
 const nest = (flat: Record<string, unknown>): Record<string, unknown> => {
   // Null-prototype, and that is a safety property rather than a style: on a
   // plain `{}`, `node["__proto__"] ??= {}` reads `Object.prototype` — not
@@ -318,6 +326,15 @@ type Uncovered<C, Paths extends string> =
         : L
       : never
     : never;
+
+/**
+ * Top-level contract keys carrying a literal dot. A piece path is joined and
+ * split on `.`, so such a key cannot be named — and unlike a dotted key deeper
+ * in the tree, it has no nameable ancestor a piece could cover it from, the
+ * array form being rooted at the contract itself. Reported ahead of `Uncovered`
+ * because "no piece can name this" is a different fact from "no piece did".
+ */
+type Unsliceable<C> = Extract<Exclude<keyof C, PrincipalKey> & string, `${string}.${string}`>;
 
 /**
  * A piece path nested inside another piece's path. Both would implement the

@@ -1,4 +1,4 @@
-// The five compile gates the composing router form exists to provide, the
+// The six compile gates the composing router form exists to provide, the
 // inheritance rule the contract's requirements follow, and the scheme ports a
 // router declares from them. Each `@ts-expect-error` is an assertion: if one
 // stops erroring, the gate is gone.
@@ -308,3 +308,71 @@ void api.HttpController(
     find: () => OkAsync("found"),
   }),
 });
+
+// A TOP-LEVEL contract key carrying a literal dot is UNSLICEABLE. `nest` splits
+// a piece's path on `.`, so it cannot tell a path SEPARATOR from a dot inside
+// one key: `{ "a.b": impl }` would rebuild as `{ a: { b: impl } }`, which
+// coverage accepts and `routerOf`'s stray-key drop then discards — a 404 on a
+// green compile. Both halves are refused here instead.
+const dotted = { "a.b": oc, plain: oc };
+
+// @ts-expect-error — `a.b` carries a literal dot: no piece path can name it
+void publicApi.HttpController(dotted, "a.b");
+
+// …and the refusal SAYS WHY. Dropping the key from `ControllerKeyOf` alone
+// leaves `not assignable to parameter of type '"plain"'`, which reads as a
+// typo hint and sends a reader hunting for the wrong thing; the gate rides the
+// `key` parameter so the sentence is in the diagnostic.
+type _MintSaysWhy = Expect<
+  Parameters<typeof publicApi.HttpController<typeof dotted, "a.b">>[1] extends {
+    readonly "UNSLICEABLE CONTRACT KEY — this path names a key containing a literal dot, which a piece path cannot encode; serve this contract with the (deps, arm) form instead": "a.b";
+  }
+    ? true
+    : false
+>;
+
+const plainPiece = publicApi.HttpController(dotted, "plain")({ sync: () => () => OkAsync("ok") });
+
+// @ts-expect-error — the contract carries an unsliceable key
+void publicApi.HttpRouter(dotted)([plainPiece]);
+
+// …and the diagnostic says UNSLICEABLE, not UNCOVERED: `a.b` is not a leaf some
+// piece forgot, it is a leaf no piece can name. Reading the last overload's
+// parameter is what tells the two markers apart, which `@ts-expect-error` alone
+// cannot do.
+const dottedRouter = publicApi.HttpRouter(dotted);
+type _Unsliceable = Expect<
+  Parameters<typeof dottedRouter>[0] extends readonly [
+    `UNSLICEABLE CONTRACT KEY${string}`,
+    ...unknown[],
+  ]
+    ? true
+    : false
+>;
+
+// The escape hatch the marker points at: the `(deps, arm)` form splits nothing,
+// so it serves such a contract correctly and stays open.
+void publicApi.HttpRouter(dotted)({
+  sync: () => ({ "a.b": () => OkAsync("ok"), plain: () => OkAsync("ok") }),
+});
+
+// BELOW the top level the same key costs nothing, and the gate must not
+// over-reach onto it. `nest` splits only a piece's PATH, never the
+// implementation keys underneath — so a piece at the dotted key's PARENT hands
+// `{ "a.b": fn }` to `routerOf` whole, and that walk has never split anything.
+const dottedDeep = { v1: { "a.b": oc }, health: oc };
+
+// @ts-expect-error — `v1.a.b` still cannot say which dot is the separator
+void publicApi.HttpController(dottedDeep, "v1.a.b");
+
+// The parent IS nameable, and composing over it is exactly how such a contract
+// is served by the array form.
+const v1Dotted = publicApi.HttpController(
+  dottedDeep,
+  "v1",
+)({ sync: () => ({ "a.b": () => OkAsync("ok") }) });
+const healthDotted = publicApi.HttpController(
+  dottedDeep,
+  "health",
+)({ sync: () => () => OkAsync("ok") });
+void publicApi.HttpRouter(dottedDeep)([v1Dotted, healthDotted]);
