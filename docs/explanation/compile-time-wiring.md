@@ -293,13 +293,16 @@ ends on, which is the payload of the whole message.
 | http's composing router — `UNCOVERED CONTROLLERS`                        | `api.HttpRouter(contract)([...])` missing a piece                                     | (the retired keyed record's own gate) ends on `'"UNDECLARED KEY — the contract declares no fragment under billing"'` | ends on `'"UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover"'` — the missing procedure prints too, as a separate diagnostic on the trailing element, once the array is as long as the marker tuple (measured: `'"v1.customers.find"'`)                           |
 | http's composing router — `OVERLAPPING CONTROLLERS`                      | `api.HttpRouter(contract)([...])` with a piece nested inside another piece's path     | (no equivalent — the retired keyed record had no nested paths to overlap)                                            | ends on `'"OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment"'`                                                                                                                                                                                                                |
 
-No gate's behaviour moved: the same 82 `@ts-expect-error` directives fire
-after this branch as before it — none added or removed, and none now guards a
-different call. (Four in `packages/core/src/start.test-d.ts` shifted line —
-56→57, 66→67, 92→95, 129→131 — because the hand-spelled bypass calls below them
-became `expectTypeOf` assertions; each still sits above the call it always
-guarded.) What changed is which of these target strings a reader sees.
+That count is issue #93's diagnostics-wording sweep alone: the same 82
+`@ts-expect-error` directives fired after it as before, none added or
+removed, and none guarding a different call. (Four in
+`packages/core/src/start.test-d.ts` shifted line — 56→57, 66→67, 92→95,
+129→131 — because the hand-spelled bypass calls below them became
+`expectTypeOf` assertions; each still sat above the call it always guarded.)
+The http rows above are this branch's own, not that sweep's — `UNDECLARED
+KEY` retired for `UNCOVERED CONTROLLERS`, `OVERLAPPING CONTROLLERS` added —
+so the 82 above does not cover them.
 The row that did **not** change and is still the best diagnostic in the
-repo — the unmet need at `start` — is the one this branch's own documentation
+repo — the unmet need at `start` — is the one that sweep's own documentation
 most often mislabelled as di's gate; naming it correctly here is the closing
 half of that fix.

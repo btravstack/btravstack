@@ -1065,7 +1065,7 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   in the application layer: the request span's histogram, the outbox relay's
   per-tenant `relayed` counter, the billing stand-in's `authorized` counter. Each procedure is a plain
   `Result`-returning function typed by its slice's fragment (`@unthrown/orpc`'s
-  `.result()` handler, attached inside each `HttpController`). It reads
+  `.result()` handler, wrapped by the router's walk at composition). It reads
   `port` back off
   `Serving.info`; binding, the drain and the trace-id policy are the
   package's. Two gates keep the composition honest at compile time: a root
