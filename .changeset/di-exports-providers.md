@@ -17,7 +17,7 @@ channel comes out identical, so `start`'s gate, the unmet-dependency gate and
 `Context<X>` are unaffected. Purely additive: exporting a port class is
 unchanged.
 
-It matters most where there is no class to name: `HttpController(name,
-fragment)`, `Config.provider(name)(schema)`, `HttpRouter(contract)(…)`,
+It matters most where there is no class to name: `HttpController(contract,
+path)`, `Config.provider(name)(schema)`, `HttpRouter(contract)(…)`,
 `TemporalActivities` and `AmqpHandlers` all mint their own port and hand back a
 provider carrying it.

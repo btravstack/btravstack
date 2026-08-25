@@ -121,6 +121,43 @@ describe("a contract marked at its root", () => {
   });
 });
 
+describe("a contract marked at its root, served through a piece minted two levels below", () => {
+  // The fold-vs-walk proof: `FragmentAt`'s compile-time fold (applied where
+  // `rootMarkedDeepController` is minted, at "v1.orders") and `routerOf`'s
+  // runtime `inherited` walk (seeded from the composed contract's own root)
+  // must agree, or a piece below a mark would silently skip authentication.
+
+  it("hands the principal to the piece", async ({ rpcRootMarkedDeep }) => {
+    // GIVEN a client presenting a token the authenticator accepts
+    const client = rpcRootMarkedDeep.clientWith("good");
+
+    // WHEN the procedure two levels below the root mark is called
+    // THEN the principal the authenticator resolved reached the handler —
+    // proving the type-level fold and the runtime walk typed and protected the
+    // same leaf
+    await expect(client.v1.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-good" });
+  });
+
+  it("refuses an unauthenticated call with the handler never entered", async ({
+    rpcRootMarkedDeep,
+  }) => {
+    // GIVEN a client presenting a token the authenticator rejects
+    const client = rpcRootMarkedDeep.clientWith("bad");
+
+    // WHEN the procedure two levels below the root mark is called
+    const call = client.v1.orders.whoami({ id: "o-1" }).catch((cause: unknown) => cause);
+
+    // THEN the request was refused before the handler ran — the runtime walk
+    // protected a leaf no `contract[key]` lookup at "v1.orders" itself marks
+    await expect(
+      call.then((error) => ({
+        code: (error as { code: string }).code,
+        ran: rpcRootMarkedDeep.handlerRuns(),
+      })),
+    ).resolves.toEqual({ code: "UNAUTHORIZED", ran: 0 });
+  });
+});
+
 describe("a router over a marked contract", () => {
   it("declares the scheme's own port alongside the dependencies the caller wrote", ({
     authedRouterDeps,

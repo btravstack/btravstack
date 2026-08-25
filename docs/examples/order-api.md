@@ -1,6 +1,6 @@
 ---
 title: Order API example
-description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, HttpController and full vertical down to Prisma, an auth.ts declaring two schemes and a scope through defineHttp, composed by the keyed HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
+description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, HttpController and full vertical down to Prisma, an auth.ts declaring two schemes and a scope through defineHttp, composed by the array HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
 ---
 
 <!-- doctest: prelude
@@ -262,9 +262,9 @@ use cases in [`order-application`](/examples/order-application), and the
 entities and Prisma adapters behind it.
 
 ```
-src/slices/orders/controller.ts       api.HttpController("OrdersController", contract.orders)({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
+src/slices/orders/controller.ts       api.HttpController(contract, "orders")({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
 src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
-src/slices/customers/controller.ts    api.HttpController("CustomersController", contract.customers)({ find: FindCustomer }, { sync })
+src/slices/customers/controller.ts    api.HttpController(contract, "customers")({ find: FindCustomer }, { sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 ```
 
@@ -275,10 +275,7 @@ below does the same for its own slice:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(
-  "OrdersController",
-  contract.orders,
-)(
+export const ordersController = api.HttpController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -370,8 +367,8 @@ than a fallback.
 The tenant comes off `context.principal` — the value the `user` scheme's
 authenticator
 resolved from this request's headers — and it is the only thing on oRPC's
-context channel. `HttpController` comes off `auth.ts`'s `api`, which is why
-`principal` has
+context channel. `ordersController` is minted from `auth.ts`'s `api`, which is
+why `principal` has
 a readable type here at all with no annotation at this call site. `place` and
 `find` name **one** scheme, so they read the identity bare — byte-for-byte what
 this file held before named schemes existed; `export` names two, so its
@@ -398,30 +395,32 @@ defined by owning its fragment, its controller and its triage, not by owning a
 private adapter. The throwaway in-memory directory this replaced declared its
 port over `CustomerView` itself, which pointed the dependency arrow outwards.
 
-## The router: composed from controllers, keyed by the contract
+## The router: composed from controllers, each carrying its own path
 
-`module.ts`'s `orderRouter` is `api.HttpRouter(contract)`'s **keyed** form —
-a record of controllers, one per top-level contract key, instead of one
-`sync`:
+`module.ts`'s `orderRouter` is `api.HttpRouter(contract)`'s **composing** form
+— an array of pieces, each already carrying the path it was minted from,
+instead of one `sync`:
 
 ```ts
 import { api } from "./auth.js";
 
-export const orderRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+export const orderRouter = api.HttpRouter(contract)([
+  ordersController,
+  customersController,
+]);
 ```
 
 `HttpRouter` comes off the same `api` as the controllers: the marks on
 `contract.orders` ride
-through the keyed form, so the router declares **one dependency per scheme the
+through the composing form, so the router declares **one dependency per scheme the
 contract names** — `HttpAuthenticator:user` and `HttpAuthenticator:service` —
 and carries the providers that discharge them, from that same call.
 
-This form is exact: a slice missing from the record, a key the contract does
-not declare, and a controller wired under the wrong key are all compile
-errors at this call — see
+This form is exact: a slice's path missing from the array, a path the contract
+does not declare — refused at the piece's own mint, not here — and a piece
+under the wrong path — impossible by construction, since the path rides the
+piece's own port id — are all compile errors, the last two at
+`api.HttpController(contract, path)` itself. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the recipe, and `packages/http-server/src/controller.test-d.ts` for the five gates
 that pin these errors and the lift below. Because a fragment is itself a valid
@@ -639,7 +638,7 @@ and is counted `completed`, one still hung at a zero deadline is counted
 `abandoned`; `/livez` and `/readyz` answer while serving, and readiness goes
 false before liveness during the drain; and the `customers` slice answers over
 the same client and the same running root — a `CustomerView` on the way out of
-a stub-backed root, a typed `NOT_FOUND` out of the real one — proving the keyed
+a stub-backed root, a typed `NOT_FOUND` out of the real one — proving the composed
 router actually mounted both controllers rather than one.
 
 ## Three gates, pinned at compile time

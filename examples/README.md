@@ -228,17 +228,17 @@ same three-package vertical below it.
 order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
                             │                        │
 order-api              slices/orders/           slices/customers/
-                         controller.ts            controller.ts     ← HttpController(name, fragment)({ name: Dep }, { sync })
+                         controller.ts            controller.ts     ← HttpController(contract, "orders")({ name: Dep }, { sync })
                          module.ts                module.ts         ← the slice's own di module
                             └───────────┬────────────┘
-                                   module.ts                        ← HttpRouter(contract)({ orders, customers })
+                                   module.ts                        ← HttpRouter(contract)([ordersController, customersController])
                             ┌───────────┴────────────┐
                        PlaceOrder / FindOrder    FindCustomer       ← use cases, entities, Prisma adapters — the same three packages
 ```
 
-A **controller** is `HttpController("OrdersController", contract.orders)({ place:
+A **controller** is `HttpController(contract, "orders")({ place:
 PlaceOrder, find: FindOrder }, { sync })` — an ordinary di provider on a port `HttpController`
-mints and hands back on `.port`. A **slice** is an ordinary di `Module` that
+mints from the path itself and hands back on `.port`. A **slice** is an ordinary di `Module` that
 **imports the vertical it needs**, provides its controller and exports
 **only** that controller, so nothing outside the slice can reach anything else
 it holds. Neither slice owns a private adapter: both go through the use cases,

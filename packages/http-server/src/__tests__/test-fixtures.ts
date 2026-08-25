@@ -301,6 +301,39 @@ const rpcRootMarkedAppOf = () =>
     hostname: "127.0.0.1",
   });
 
+/**
+ * The marker on the ROOT, served through a piece minted TWO LEVELS below it —
+ * `FragmentAt`'s compile-time fold happens at the piece's own mint, while
+ * `routerOf`'s runtime walk is seeded from the ROUTER's contract regardless of
+ * how many pieces compose it; this is the one fixture where both are live at
+ * once, so a disagreement between them would surface here as an auth bypass.
+ */
+const rootMarkedDeepContract = authenticated({ user: [] })({ v1: { orders: { whoami } } });
+
+let rootMarkedDeepRuns = 0;
+
+const rootMarkedDeepController = api.HttpController(
+  rootMarkedDeepContract,
+  "v1.orders",
+)({
+  sync: () => ({
+    whoami: ({ context }) => {
+      rootMarkedDeepRuns += 1;
+      return OkAsync({ userId: context.principal.userId });
+    },
+  }),
+});
+
+const rootMarkedDeepRouter = api.HttpRouter(rootMarkedDeepContract)([rootMarkedDeepController]);
+
+const rpcRootMarkedDeepAppOf = () =>
+  HttpModule("RpcRootMarkedDeepApp")({
+    router: rootMarkedDeepRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [rootMarkedDeepController],
+  });
+
 /** The other arm of `HttpAuthenticator`: one that DECLARES a dependency. */
 class TokenTable extends Port("TokenTable")<(token: string) => Identity | undefined> {}
 
@@ -380,6 +413,10 @@ type AuthedClient = RouterContractClient<{
 
 type RootMarkedClient = RouterContractClient<{
   readonly orders: { readonly whoami: typeof whoami };
+}>;
+
+type RootMarkedDeepClient = RouterContractClient<{
+  readonly v1: { readonly orders: { readonly whoami: typeof whoami } };
 }>;
 
 type DeepClient = RouterContractClient<typeof deepContract>;
@@ -615,6 +652,15 @@ export type HttpFixtures = {
    */
   readonly rpcRootMarked: {
     readonly clientWith: (token: string | undefined) => RootMarkedClient;
+    readonly handlerRuns: () => number;
+  };
+  /**
+   * The starter over a contract marked at its **root** and served through a
+   * piece minted TWO LEVELS below it (`"v1.orders"`) — the fold-vs-walk proof.
+   * Shut down by the fixture.
+   */
+  readonly rpcRootMarkedDeep: {
+    readonly clientWith: (token: string | undefined) => RootMarkedDeepClient;
     readonly handlerRuns: () => number;
   };
   /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
@@ -861,6 +907,19 @@ export const it = test.extend<HttpFixtures>({
     await use({
       clientWith: (token) => createORPCClient(linkOf(origin, token)),
       handlerRuns: () => rootMarkedRuns,
+    });
+  },
+
+  rpcRootMarkedDeep: async ({ boot }, use) => {
+    const app = boot(rpcRootMarkedDeepAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const origin = `http://127.0.0.1:${info.port}`;
+    rootMarkedDeepRuns = 0;
+
+    await use({
+      clientWith: (token) => createORPCClient(linkOf(origin, token)),
+      handlerRuns: () => rootMarkedDeepRuns,
     });
   },
 

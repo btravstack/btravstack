@@ -688,7 +688,7 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **54 specs, 100% lines/functions.** Every app boots through the `boot`
+- **56 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
@@ -738,8 +738,8 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   and `"health"` is the depth-N leaf case, a piece with no fragment around it
   at all. A process still serves one router (thesis #1); the composing
   form changes how many providers build it, not that fact. `auth.spec.ts`
-  carries the last 18, through the `rpcAuthed`, `rpcRootMarked`,
-  `controllers` and `headers` fixtures — every router, controller and
+  carries the last 20, through the `rpcAuthed`, `rpcRootMarked`,
+  `rpcRootMarkedDeep`, `controllers` and `headers` fixtures — every router, controller and
   authenticator in them minted by ONE `defineHttp({ authenticators })`,
   since a contract naming no principal leaves the factory as the only way a
   handler gets a readable one. Four are over
@@ -757,7 +757,14 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   `authenticated({ user: [] })({ orders: { whoami } })`, the mark on the **root**, where
   there is no `contract[key]` to read it from: every leaf beneath it is
   protected, and an accepted caller still reaches the
-  handler with its principal. Two are composition-time — the scheme's own port
+  handler with its principal. Two more are over `rootMarkedDeepContract` — the
+  same root mark served through a piece minted **two levels below it**
+  (`"v1.orders"`) — the fold-vs-walk proof: an accepted caller reaches the
+  piece with its principal and a refused one never enters it, evidence that
+  `FragmentAt`'s compile-time fold (applied where the piece is minted) and
+  `routerOf`'s runtime `inherited` walk (seeded from the router's own root,
+  regardless of how many pieces compose it) type and protect the same leaf.
+  Two are composition-time — the scheme's own port
   declared alongside the dependencies the caller wrote, and no scheme port at
   all when the contract marks nothing. The last eight drive
   `principalMiddleware` directly, over the `headers` fixture, and are where the

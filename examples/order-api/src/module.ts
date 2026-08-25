@@ -13,14 +13,12 @@ import { ordersController } from "./slices/orders/controller.js";
 import { OrdersSlice } from "./slices/orders/module.js";
 
 /**
- * The router, composed from each slice's own controller — keyed by the
- * contract's own top-level keys, so a key the contract does not declare is a
- * compile error and a declared key with no controller is too.
+ * The router, composed from each slice's own controller — each minted by the
+ * contract path it serves, so a path the contract does not declare is a
+ * compile error at the mint and a path with no controller is refused here as
+ * uncovered.
  */
-export const orderRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+export const orderRouter = api.HttpRouter(contract)([ordersController, customersController]);
 
 /**
  * The composition root, and a list of **slices**: each imports the vertical it

@@ -30,8 +30,9 @@ one function. That is right for a small API and wrong for a large one: a
 fifty-procedure contract would mean fifty injected services in one `sync`, one
 slice's typo failing the whole router's type-check, and no way to serve one
 slice without the rest. A **controller** is the fix: an ordinary di provider
-over one fragment of the contract, minted its own port, composed by the root
-through a keyed `api.HttpRouter(contract)(controllers)` call. Everything below is
+over one path of the contract — a fragment or a single procedure — minted its
+own port, composed by the root through an array
+`api.HttpRouter(contract)([...])` call. Everything below is
 lifted from `examples/order-api`, which serves an `orders` slice and a
 `customers` slice this way.
 
@@ -108,21 +109,21 @@ public half and a protected one stop being one undifferentiated surface.
 
 ## Step 2 — a controller per slice
 
-`api.HttpController(name, fragment)({ name: Dep }, { sync })` is
+`api.HttpController(contract, path)({ name: Dep }, { sync })` is
 `api.HttpRouter`'s own
-shape, aimed at one fragment: the first call fixes the fragment's type and
-mints a port under `name`; the second is di's
+shape, aimed at one node of the contract tree: the first call fixes the
+contract's type and mints a port under the path — `"orders"`, or a nested one
+like `"v1.orders"`; the second is di's
 `Provider(port)({ name: Dep }, { sync })`,
-so `sync`'s return is typed by the fragment at the call — a typo'd or missing
-procedure is a compile error inside the controller itself, not at the root:
+so `sync`'s return is typed by that node at the call — a typo'd or missing
+procedure is a compile error inside the controller itself, not at the root.
+A path the contract does not declare is refused **here**, at the mint — there
+is nothing to type the key by:
 
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(
-  "OrdersController",
-  contract.orders,
-)(
+export const ordersController = api.HttpController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -182,9 +183,10 @@ no `principal` at all. See [Protect a procedure](/how-to/protect-a-procedure).
 
 The controller does no oRPC work of its own — it stores a plain record, and
 `api.HttpRouter` wraps each leaf in `.result(...)` when it composes the router.
-`api.HttpController` mints the port and carries it back on `.port`, which the
-keyed form reads to order this controller's construction before the router's —
-there is nothing to name by hand. A slice ships its controller as a module
+`api.HttpController` mints the port from the path itself and carries it back
+on `.port`, which the composing form reads — stripping the port id's own
+prefix back off — to recover each piece's path and order its construction
+before the router's — there is nothing to name by hand. A slice ships its controller as a module
 that **imports the vertical it needs** and exports only that controller, the
 same privacy di already gives any provider:
 
@@ -213,17 +215,18 @@ persistence modules import, it is a diamond and not duplication: di flattens
 the module tree into a `Set` keyed by provider **reference**, so one database
 is built.
 
-## Step 3 — the keyed root
+## Step 3 — the composed root
 
-`api.HttpRouter(contract)(controllers)` — a record keyed by the contract's own
-top-level keys, one `HttpController` per key — replaces the
-`(deps, { sync })` call at the root, and is told apart from it by **arity**:
+`api.HttpRouter(contract)([...])` — an **array** of pieces, each an
+`HttpController(contract, path)` — replaces the
+`(deps, { sync })` call at the root. An array is never a valid `(deps, arm)`
+or `(arm)` call, so `Array.isArray` alone tells this arm from the other two:
 
 ```ts
-export const orderRouter = api.HttpRouter(contract)({
-  orders: ordersController,
-  customers: customersController,
-});
+export const orderRouter = api.HttpRouter(contract)([
+  ordersController,
+  customersController,
+]);
 ```
 
 The composition root is then a list of **slices**, plus whatever no slice
@@ -250,10 +253,16 @@ di's arity gate either, but the plain assignability of the `Needs` channel
 against `Env | Scope`, which names the port. Nothing else about what a slice
 needs is spelled at the root.
 
-This form is **exact**: a key the record above is missing, a key the
-contract does not declare, and a controller wired under the wrong key are all
-compile errors at the `api.HttpRouter(contract)({...})` call, not runtime
-surprises the first time a client hits the missing slice.
+This form is **exact**, over the contract's **procedures** rather than its
+top-level keys: the pieces' paths must partition every procedure the contract
+declares, so a missing piece, a path the contract does not declare, and a
+piece wired under the wrong path — impossible by construction, since the path
+rides the piece's own port id — are all compile errors at the
+`api.HttpRouter(contract)([...])` call, not runtime surprises the first time a
+client hits the missing slice. Because paths can nest (`"v1"` next to
+`"v1.orders"`), a **second** gate refuses an array where one piece's path
+sits inside another's — two pieces would otherwise implement the same
+procedures on two distinct port ids, which di has no way to see conflicting.
 
 ## Step 4 — lifting a slice into its own process
 
