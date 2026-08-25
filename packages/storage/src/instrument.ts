@@ -54,16 +54,26 @@ const observed = <T, E extends Failure>(
     })
     .tapFailure((failure) => {
       const cause = failure.tag === "Err" ? failure.error : failure.cause;
-      const missing =
-        failure.tag === "Err" &&
-        (failure.error._tag === "ObjectNotFound" || failure.error._tag === "PresignNotSupported");
-      const outcome = missing ? "not_found" : "error";
-      operations.add(1, { operation, outcome });
-      if (missing) {
-        logger.info("the object was not there", { operation, key });
-      } else {
+      // Two non-faults, and they get two lines: "not there" and "cannot mint
+      // a URL" are different answers, and one message for both would have an
+      // operator hunting a missing object that is sitting right where they
+      // put it. They share the `not_found` OUTCOME because a counter's job is
+      // to separate the ordinary from the faulty, and both are ordinary.
+      const message =
+        failure.tag !== "Err"
+          ? undefined
+          : failure.error._tag === "ObjectNotFound"
+            ? "the object was not there"
+            : failure.error._tag === "PresignNotSupported"
+              ? "this store cannot mint a url"
+              : undefined;
+
+      operations.add(1, { operation, outcome: message === undefined ? "error" : "not_found" });
+      if (message === undefined) {
         logger.error("the store could not answer", { operation, key }, cause);
         span.setStatus({ code: SPAN_STATUS.error });
+      } else {
+        logger.info(message, { operation, key });
       }
       span.end();
     });

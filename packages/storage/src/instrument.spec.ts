@@ -62,10 +62,10 @@ describe("storage, instrumented", () => {
     // that pages on it teaches its readers to ignore the fault line
     expect({
       points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
-      levels: instrumented.lines().map((line) => line.level),
+      lines: instrumented.lines().map((line) => ({ level: line.level, message: line.message })),
     }).toEqual({
       points: [{ operation: "get", outcome: "not_found", value: 1 }],
-      levels: ["info"],
+      lines: [{ level: "info", message: "the object was not there" }],
     });
   });
 
@@ -97,18 +97,31 @@ describe("storage, instrumented", () => {
     );
   });
 
-  it("counts a presign refusal as not_found rather than a fault", async ({ instrumented }) => {
-    // GIVEN an instrumented store over an adapter that cannot presign
-    // WHEN a url is asked for
+  it("counts a presign refusal as not_found, and says what it actually was", async ({
+    instrumented,
+  }) => {
+    // GIVEN an instrumented store over an adapter that cannot presign, and an
+    // object that IS there
     await instrumented.run(memoryStorage(), (service) =>
-      service.presignedUrl("a/b.json", { ttlMs: 60_000 }),
+      service
+        .put("a/b.json", new Uint8Array([1]), { contentType: "application/json" })
+        .flatMap(() => service.presignedUrl("a/b.json", { ttlMs: 60_000 })),
     );
 
-    // THEN it is the same class as a missing object — a "no" the caller can
-    // act on, not an outage
-    expect(
-      instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
-    ).toEqual([{ operation: "presigned_url", outcome: "not_found", value: 1 }]);
+    // THEN it shares the outcome of a missing object — a "no" the caller can
+    // act on, not an outage — but NOT its message: the object is sitting
+    // right where it was put, and an operator sent hunting for it would be
+    // hunting nothing
+    expect({
+      points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
+      lines: instrumented.lines().map((line) => line.message),
+    }).toEqual({
+      points: [
+        { operation: "put", outcome: "ok", value: 1 },
+        { operation: "presigned_url", outcome: "not_found", value: 1 },
+      ],
+      lines: ["this store cannot mint a url"],
+    });
   });
 });
 

@@ -149,17 +149,23 @@ export const DocumentsApp = Module("ReferenceDocumentsApp")({
 });
 ```
 
-| Signal  | Name                                                                                  | Attributes                                              |
-| ------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| span    | `storage.put` / `.get` / `.delete` / `.presigned_url`                                 | `btravstack.storage.key`; error status on a failure     |
-| counter | `btravstack.storage.operations`                                                       | `{ operation, outcome }` — `ok`, `not_found` or `error` |
-| log     | `"the object was not there"` at **`info`**; `"the store could not answer"` at `error` | `{ operation, key }`, with the failure as the cause     |
+| Signal  | Name                                                                                                                     | Attributes                                              |
+| ------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| span    | `storage.put` / `.get` / `.delete` / `.presigned_url`                                                                    | `btravstack.storage.key`; error status on a failure     |
+| counter | `btravstack.storage.operations`                                                                                          | `{ operation, outcome }` — `ok`, `not_found` or `error` |
+| log     | `"the object was not there"` / `"this store cannot mint a url"` at **`info`**; `"the store could not answer"` at `error` | `{ operation, key }`, with the failure as the cause     |
 
 **A missing object is counted apart and logged at `info`, not `error`.**
 Asking for something that is not there is an ordinary answer — a caller
 checking whether a document exists yet meets it on the happy path — and a
 dashboard that treats it as a fault teaches its readers to ignore the fault
 line. `StorageUnavailable` is what pages somebody.
+
+**A presign refusal shares that outcome and not that message.** It is the same
+class of answer, so the counter says `not_found` for both — but the line says
+`"this store cannot mint a url"`, because the object may be sitting exactly
+where it was put, and an operator reading "the object was not there" would go
+hunting for nothing.
 
 **Instrumented by default**, `instrumented: false` opts out — the same shape,
 and the same reasoning, as [`@btravstack/cache`](/reference/cache).

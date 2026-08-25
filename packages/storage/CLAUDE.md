@@ -40,11 +40,11 @@ return type; only what differs is written out here.
 
 What the instrumented form emits, per operation:
 
-| Signal  | Name                                                                                  | Attributes                                              |
-| ------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| span    | `storage.put` / `.get` / `.delete` / `.presigned_url`                                 | `btravstack.storage.key`; error status on a failure     |
-| counter | `btravstack.storage.operations`                                                       | `{ operation, outcome }` — `ok`, `not_found` or `error` |
-| log     | `"the object was not there"` at **`info`**; `"the store could not answer"` at `error` | `{ operation, key }`, with the failure as the cause     |
+| Signal  | Name                                                                                                                     | Attributes                                              |
+| ------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| span    | `storage.put` / `.get` / `.delete` / `.presigned_url`                                                                    | `btravstack.storage.key`; error status on a failure     |
+| counter | `btravstack.storage.operations`                                                                                          | `{ operation, outcome }` — `ok`, `not_found` or `error` |
+| log     | `"the object was not there"` / `"this store cannot mint a url"` at **`info`**; `"the store could not answer"` at `error` | `{ operation, key }`, with the failure as the cause     |
 
 ## Decisions
 
@@ -52,8 +52,14 @@ What the instrumented form emits, per operation:
   Asking for something that is not there is an ordinary answer — a caller
   checking whether a document exists yet meets it on the happy path — and a
   dashboard that treats it as a fault teaches its readers to ignore the fault
-  line. `StorageUnavailable` is what pages somebody. `PresignNotSupported`
-  rides the same arm: it is a "no" the caller can act on, not an outage.
+  line. `StorageUnavailable` is what pages somebody.
+- **`PresignNotSupported` shares the outcome and NOT the message.** It is the
+  same class — a "no" the caller can act on, not an outage — so the counter
+  says `not_found` for both. But the line says `"this store cannot mint a
+url"`, because the object may be sitting exactly where it was put, and an
+  operator reading "the object was not there" would go hunting for nothing.
+  A counter separates ordinary from faulty; a log line has to say what
+  actually happened.
 - **`presignedUrl` has no `ObjectNotFound` arm.** Presigning is a signature
   computation that asks the store nothing, so a URL for an absent key is
   minted happily and 404s when followed. Checking would cost a HEAD per call,
