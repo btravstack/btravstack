@@ -61,6 +61,7 @@ catalog:
   "@temporalio/testing": 1.22.0
   "@temporalio/worker": 1.22.0
   "@temporalio/workflow": 1.22.0
+  "@types/nodemailer": 8.0.1
   "@types/supertest": 7.2.1
   "@types/node": 26.2.0
   "@unthrown/oxlint": 5.7.0
@@ -73,6 +74,7 @@ catalog:
   oxfmt: 0.64.0
   oxlint: 1.79.0
   pino: 10.3.1
+  nodemailer: 9.0.5
   prisma: 7.9.1
   redis: 6.2.1
   tsdown: 0.22.14

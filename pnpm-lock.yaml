@@ -105,6 +105,9 @@ catalogs:
     '@types/node':
       specifier: 26.2.0
       version: 26.2.0
+    '@types/nodemailer':
+      specifier: 8.0.1
+      version: 8.0.1
     '@types/supertest':
       specifier: 7.2.1
       version: 7.2.1
@@ -132,6 +135,9 @@ catalogs:
     lefthook:
       specifier: 2.1.10
       version: 2.1.10
+    nodemailer:
+      specifier: 9.0.5
+      version: 9.0.5
     oxfmt:
       specifier: 0.64.0
       version: 0.64.0
@@ -351,6 +357,9 @@ importers:
       '@btravstack/example-order-infrastructure':
         specifier: workspace:*
         version: link:../order-infrastructure
+      '@btravstack/mailer':
+        specifier: workspace:*
+        version: link:../../packages/mailer
       '@btravstack/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -1074,6 +1083,66 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
+
+  packages/mailer:
+    devDependencies:
+      '@btravstack/config':
+        specifier: workspace:*
+        version: link:../config
+      '@btravstack/core':
+        specifier: workspace:*
+        version: link:../core
+      '@btravstack/di':
+        specifier: workspace:*
+        version: link:../di
+      '@btravstack/internal-test-infra':
+        specifier: workspace:*
+        version: link:../../internal/test-infra
+      '@btravstack/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@btravstack/tsconfig':
+        specifier: 'catalog:'
+        version: 0.2.0
+      '@opentelemetry/api':
+        specifier: 'catalog:'
+        version: 1.9.1
+      '@opentelemetry/sdk-metrics':
+        specifier: 'catalog:'
+        version: 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-node':
+        specifier: 'catalog:'
+        version: 0.221.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace':
+        specifier: 'catalog:'
+        version: 2.10.0(@opentelemetry/api@1.9.1)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.2.0
+      '@types/nodemailer':
+        specifier: 'catalog:'
+        version: 8.0.1
+      '@unthrown/vitest':
+        specifier: 'catalog:'
+        version: 5.7.0(unthrown@5.7.0)(vitest@4.1.10)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 4.1.10(vitest@4.1.10)
+      nodemailer:
+        specifier: 'catalog:'
+        version: 9.0.5
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.23.12)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      unthrown:
+        specifier: 'catalog:'
+        version: 5.7.0
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
 
   packages/observability:
     devDependencies:
@@ -3621,6 +3690,9 @@ packages:
   '@types/node@26.2.0':
     resolution: {integrity: sha512-5IviulTZeRNp2vAJ514cc/HUlY5nZ9fCbq9DMyC52BrhFZACo3nI0R7qBxhQmo/d27NFe96ur/b7Wwxklda+kg==}
 
+  '@types/nodemailer@8.0.1':
+    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
+
   '@types/pg@8.23.1':
     resolution: {integrity: sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==}
 
@@ -5357,6 +5429,10 @@ packages:
   node-releases@2.0.53:
     resolution: {integrity: sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ==}
     engines: {node: '>=18'}
+
+  nodemailer@9.0.5:
+    resolution: {integrity: sha512-wvjiKvjczmsN7U/8006JOdXubgBk2XFAbioDMbT+sM7cPs0QrhJTa6KBRX7P5REGGkDcLUz/EarWidb8G8C1jQ==}
+    engines: {node: '>=6.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -8480,6 +8556,10 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
 
+  '@types/nodemailer@8.0.1':
+    dependencies:
+      '@types/node': 26.2.0
+
   '@types/pg@8.23.1':
     dependencies:
       '@types/node': 26.2.0
@@ -10135,6 +10215,8 @@ snapshots:
   nexus-rpc@0.0.2: {}
 
   node-releases@2.0.53: {}
+
+  nodemailer@9.0.5: {}
 
   normalize-path@3.0.0: {}
 

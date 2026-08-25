@@ -11,6 +11,8 @@ export default defineConfig({
     // extension, so isolation costs nothing per test.
     globalSetup: [
       "@btravstack/internal-test-infra/rabbitmq",
+      // The shared Mailpit the notifications slice sends through.
+      "@btravstack/internal-test-infra/mailpit",
       "@btravstack/example-order-infrastructure/global-setup",
     ],
     // The image pull dominates a cold run.

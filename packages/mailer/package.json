@@ -1,0 +1,98 @@
+{
+  "name": "@btravstack/mailer",
+  "version": "0.2.0",
+  "description": "A Mailer port for @btravstack/core: a recording adapter a spec asserts against, an SMTP adapter, and a composition that spans, counts and logs every send",
+  "keywords": [
+    "dependency-injection",
+    "email",
+    "mailer",
+    "smtp",
+    "typescript",
+    "unthrown"
+  ],
+  "homepage": "https://github.com/btravstack/start#readme",
+  "bugs": {
+    "url": "https://github.com/btravstack/start/issues"
+  },
+  "license": "MIT",
+  "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/btravstack/start.git",
+    "directory": "packages/mailer"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./smtp": {
+      "import": {
+        "types": "./dist/smtp.d.mts",
+        "default": "./dist/smtp.mjs"
+      },
+      "require": {
+        "types": "./dist/smtp.d.cts",
+        "default": "./dist/smtp.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts src/smtp.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/smtp.ts --format cjs,esm --dts --watch",
+    "test": "vitest run --coverage",
+    "test:types": "tsc -p tsconfig.test-d.json --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@btravstack/config": "workspace:*",
+    "@btravstack/core": "workspace:*",
+    "@btravstack/di": "workspace:*",
+    "@btravstack/internal-test-infra": "workspace:*",
+    "@btravstack/observability": "workspace:*",
+    "@btravstack/tsconfig": "catalog:",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
+    "@opentelemetry/sdk-node": "catalog:",
+    "@opentelemetry/sdk-trace": "catalog:",
+    "@types/node": "catalog:",
+    "@types/nodemailer": "catalog:",
+    "@unthrown/vitest": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "nodemailer": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "unthrown": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@btravstack/config": "workspace:^",
+    "@btravstack/core": "workspace:^",
+    "@btravstack/di": "workspace:^",
+    "nodemailer": "^9.0.0",
+    "unthrown": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "nodemailer": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

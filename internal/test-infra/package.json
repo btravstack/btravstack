@@ -8,6 +8,7 @@
   "exports": {
     "./containers": "./src/containers.ts",
     "./lock": "./src/lock.ts",
+    "./mailpit": "./src/mailpit.ts",
     "./namespace": "./src/namespace.ts",
     "./rabbitmq": "./src/rabbitmq.ts",
     "./redis": "./src/redis.ts",

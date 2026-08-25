@@ -9,6 +9,8 @@ import {
   PlaceOrder,
 } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
+import { mailer } from "@btravstack/mailer";
+import { smtpMailer } from "@btravstack/mailer/smtp";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 
@@ -77,6 +79,7 @@ export const OrderAmqpWorker = AmqpModule("OrderAmqpWorker")({
     OrderPersistenceModule,
     NotificationsSlice,
     AuditSlice,
+    mailer({ adapter: smtpMailer() }),
     observability(),
     otel(),
   ],

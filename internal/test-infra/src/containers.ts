@@ -121,6 +121,23 @@ export const sharedRedis = (): Promise<StartedTestContainer> =>
   );
 
 /**
+ * The SMTP server `@btravstack/mailer`'s adapter is tested against, and the
+ * API a spec reads the delivered mail back through.
+ *
+ * Mailpit accepts anything and delivers nowhere, which is the whole point: a
+ * suite proving "this code would have sent that message" needs a transport
+ * that answers like a real one and a mailbox it can query. Isolation is a
+ * **recipient per test** — a UUID localpart — so nothing is purged between
+ * tests and one suite cannot read another's mail.
+ */
+export const sharedMailpit = (): Promise<StartedTestContainer> =>
+  shared("mailpit", () =>
+    new GenericContainer("axllent/mailpit:v1.31.0")
+      .withExposedPorts(1025, 8025)
+      .withWaitStrategy(Wait.forListeningPorts()),
+  );
+
+/**
  * The Temporal server, backed by {@link sharedPostgres}.
  *
  * It reaches PostgreSQL by container IP on the default bridge rather than

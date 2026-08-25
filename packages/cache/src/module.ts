@@ -46,7 +46,7 @@ export type CacheOptions<E, N, Instrumented extends boolean> = {
  * what a spec overrides to swap an adapter under the real root.
  *
  * **Why `instrumented` can be one boolean.** The three ports it needs are
- * the kernel\'s — `@btravstack/core` declares `Logger`, `Tracer` and `Meter`
+ * the kernel's — `@btravstack/core` declares `Logger`, `Tracer` and `Meter`
  * — so this package names them without depending on any implementation, and
  * a graph that passes `false` installs no observability at all. That the
  * flag can be this small IS the reason those contracts live in the kernel:
@@ -56,7 +56,7 @@ export type CacheOptions<E, N, Instrumented extends boolean> = {
  * **Why not auto-detect them instead**, which would need an optional-provider
  * notion in di: the type would stop telling the truth. Composing without
  * `otel()` would silently produce no spans rather than a compile error, and
- * adding `otel()` for one reason would quietly change this module\'s
+ * adding `otel()` for one reason would quietly change this module's
  * behaviour — behaviour by action at a distance, in a container whose whole
  * claim is that wiring is proven before the process exists.
  *
@@ -67,7 +67,7 @@ export type CacheOptions<E, N, Instrumented extends boolean> = {
  * for, and one a call count cannot give; and an `error` line when the
  * backend could not answer. **Keys ride spans and log lines; values never
  * do** — a cached value is application data this package cannot read. The
- * wrapper is transparent to the `Result`, the kernel\'s own `RunUnit` rule
+ * wrapper is transparent to the `Result`, the kernel's own `RunUnit` rule
  * one layer down.
  */
 export const cache = <E, N, Instrumented extends boolean = true>({
@@ -79,7 +79,7 @@ export const cache = <E, N, Instrumented extends boolean = true>({
   Instrumented extends true ? N | Logger | Meter | Tracer : N
 > =>
   // The two arms build different graphs from one signature, so the return
-  // type is the conditional above rather than either branch\'s own — which no
+  // type is the conditional above rather than either branch's own — which no
   // inference can produce. The cast is how a value-level branch reports a
   // type-level one.
   (instrumented !== false
