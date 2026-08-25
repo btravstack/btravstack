@@ -68,12 +68,12 @@ describe("HttpController", () => {
     await expect(client.health()).resolves.toEqual({ ok: true });
   });
 
-  it("reaches a piece minted below a nested mark, with the principal the ancestor typed", async ({
+  it("reaches a piece minted two levels below a root mark, with the principal the ancestor typed", async ({
     rpcNestedMarked,
   }) => {
-    // GIVEN a contract marked one level below the root, on "v1" — not the
-    // root itself and not a top-level key — with a piece minted at
-    // "v1.orders" beneath it
+    // GIVEN a contract marked at the ROOT, with a piece minted two levels
+    // below it, at "v1.orders" — the intervening "v1" node is unmarked, so
+    // the requirements must be THREADED through it, not picked up locally
     const client = rpcNestedMarked.clientWith("good");
 
     // WHEN an authenticated caller invokes the procedure
@@ -83,7 +83,7 @@ describe("HttpController", () => {
     await expect(client.v1.orders.whoami({ id: "o-1" })).resolves.toEqual({ userId: "u-good" });
   });
 
-  it("refuses an unauthenticated caller reaching a piece below a nested mark", async ({
+  it("refuses an unauthenticated caller reaching a piece two levels below a root mark", async ({
     rpcNestedMarked,
   }) => {
     // GIVEN the same nested-marked contract, with no credentials presented

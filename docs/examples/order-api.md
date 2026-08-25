@@ -421,10 +421,10 @@ through the composing form, so the router declares **one dependency per scheme
 the contract names** — `HttpAuthenticator:user` and `HttpAuthenticator:service`
 — and carries the providers that discharge them, from that same call.
 
-This form is exact on coverage: an array leaving a fragment uncovered is a
+This form is exact on coverage: an array leaving a procedure uncovered is a
 compile error at this call, against
-`"UNCOVERED CONTROLLERS — the contract declares a fragment this array does not
-cover"`. The other two mistakes the retired keyed record refused at the root
+`"UNCOVERED CONTROLLERS — the contract declares a procedure this array does
+not cover"`. The other two mistakes the retired keyed record refused at the root
 are gone from the root entirely — a key the contract does not declare is
 refused at `api.HttpController(contract, key)`, and a controller under the
 wrong key cannot be written, because the key rides the port id. See

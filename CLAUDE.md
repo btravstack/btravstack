@@ -549,7 +549,8 @@ in its place.
   `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the
   starter proper through `HttpModule`, the composing router form through the
-  `rpcSliced` fixture, and the contract marker's runtime half — the per-scheme
+  `controllers`, `rpcSliced`, `rpcDeep` and `rpcNestedMarked` fixtures, and the
+  contract marker's runtime half — the per-scheme
   authenticator ports and the one middleware they install — through
   `rpcAuthed`. **The contract says WHICH SCHEMES protect a route, and which
   scopes each must grant; the application's `defineHttp({ authenticators })`

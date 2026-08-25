@@ -313,15 +313,20 @@ const rpcRootMarkedAppOf = () =>
   });
 
 /**
- * The mark sits on "v1", one level BELOW the root, with a piece minted at
- * "v1.orders" underneath it — the case `FragmentAt`'s compile-time fold and
- * `routerOf`'s runtime `inherited` walk each have to answer for independently,
- * and the one Task 1's review named as the auth-bypass class if the two ever
- * disagreed: `rootMarkedContract` above proves the mark-at-the-root seed,
- * `authedContract` proves a mark at a top-level key, neither proves a mark
- * reaching THROUGH a nesting level to a piece minted below it.
+ * The mark sits on the contract's ROOT, with a piece minted TWO levels below
+ * it at "v1.orders" — the intervening "v1" node carries no mark of its own,
+ * so `FragmentAt`'s recursive branch has to THREAD the root's requirements
+ * through that unmarked step (a non-`never` `R` passed into the next
+ * recursive call) rather than a terminal step picking them straight off a
+ * local mark. `rootMarkedContract` above proves the mark-and-piece-at-the-root
+ * seed (no `FragmentAt` recursion at all — it mints via a bare `sync`, not
+ * `HttpController`), `authedContract` proves a mark and a piece at the SAME
+ * top-level key (one `FragmentAt` step, terminal from the start); neither
+ * exercises the threading arm. `routerOf`'s runtime `inherited` walk has to
+ * answer for the identical case, and the one Task 1's review named as the
+ * auth-bypass class if the two ever disagreed.
  */
-const nestedMarkedContract = { v1: authenticated({ user: [] })({ orders: { whoami } }) };
+const nestedMarkedContract = authenticated({ user: [] })({ v1: { orders: { whoami } } });
 
 let nestedMarkedRuns = 0;
 
@@ -661,11 +666,11 @@ export type HttpFixtures = {
     readonly client: DeepClient;
   }>;
   /**
-   * The starter over a contract whose mark sits one level BELOW the root, on
-   * "v1" — with a piece minted at "v1.orders" beneath it, proving the
-   * compile-time fold and the runtime walk agree past a nesting level. Shut
-   * down by the fixture; the handler's run count is reset before the test
-   * body.
+   * The starter over a contract whose mark sits on the ROOT, with a piece
+   * minted TWO levels below it, at "v1.orders" — proving the compile-time
+   * fold and the runtime walk agree past an unmarked nesting level, not just
+   * at it. Shut down by the fixture; the handler's run count is reset before
+   * the test body.
    */
   readonly rpcNestedMarked: {
     readonly clientWith: (token: string | undefined) => NestedMarkedClient;

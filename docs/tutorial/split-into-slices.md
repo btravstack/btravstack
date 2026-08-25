@@ -219,9 +219,9 @@ Delete `router.ts` — its job moved into the slices. `main.ts` has not changed
 since lesson one.
 
 The two mistakes this shape rules out are caught in two different places.
-Leave a fragment uncovered and the composing call refuses the array, against
-`"UNCOVERED CONTROLLERS — the contract declares a fragment this array does not
-cover"`. Name a fragment the contract never declared and it is refused where
+Leave a procedure uncovered and the composing call refuses the array, against
+`"UNCOVERED CONTROLLERS — the contract declares a procedure this array does
+not cover"`. Name a fragment the contract never declared and it is refused where
 you named it, at the mint — there is nothing there to type the key by:
 
 ```ts
