@@ -74,3 +74,27 @@ The published manifests therefore carry
 `"@btravstack/internal-test-infra": "0.0.0"` in `devDependencies`, naming a
 package that is not on npm. That is inert — a consumer never installs a
 dependency's devDependencies — and it is the standard cost of this fix.
+
+## Releasing is CI's job from 0.4.0 onward
+
+`.github/workflows/release.yml` calls
+`btravstack/tools/.github/workflows/release-reusable.yml@workflows-v1` — the
+same reusable workflow `unthrown` calls, pinned at the same ref `ci.yml` uses.
+It chains off a green CI run on `main`, and changesets' two-step does the rest:
+a push carrying changesets opens a release PR with the bumps and the rendered
+CHANGELOGs, and merging that PR publishes.
+
+Two things live outside the file and the workflow is inert without them:
+
+- **`RELEASE_PAT`**, a secret with Contents + Pull requests write. The bare
+  `GITHUB_TOKEN` will not do: events it triggers do not start new workflow
+  runs, so the release PR would skip CI — the single thing chaining off CI
+  exists to guarantee.
+- **A Trusted Publisher on npmjs.com per package**, pointing at this repository
+  and this workflow file. Publishing rides the OIDC token `id-token: write`
+  mints; there is no `NPM_TOKEN` anywhere, and provenance comes with it.
+
+**A package must exist on npm before a Trusted Publisher can be configured for
+it.** That is why `0.3.0` was cut from a laptop and why this workflow could not
+have replaced it: eleven of the twelve had no publisher to trust. It takes over
+from `0.4.0`.

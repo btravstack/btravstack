@@ -1,0 +1,49 @@
+name: Release
+
+# Publish the twelve packages once CI is green on main, through the same
+# reusable workflow the sibling repositories call. Chaining off CI rather than
+# off the push is `deploy-docs.yml`'s rule, and it matters more here: a tarball
+# is permanent, so a version must never be cut from a commit that does not
+# compile.
+#
+# The flow is changesets' own two-step. A push to main carrying changesets opens
+# (or updates) a release PR with the version bumps and rendered CHANGELOGs;
+# merging it is what publishes. That PR is the review gate, and it is
+# load-bearing rather than ceremonial: the twelve move as one `fixed` group, so
+# the bump it shows is the whole family's, and `1.0.0` must stay a decision
+# rather than somewhere a stray `major` changeset arrives on its own.
+#
+# Two things must exist outside this file, and the workflow is inert without
+# them:
+#
+#   1. A `RELEASE_PAT` secret with Contents + Pull requests write. The bare
+#      `GITHUB_TOKEN` cannot be used: events it triggers do not start new
+#      workflow runs, so the release PR would skip CI — the one thing this
+#      workflow exists to guarantee.
+#   2. A Trusted Publisher on npmjs.com for EACH of the twelve packages,
+#      pointing at this repository and this workflow file. Publishing rides the
+#      OIDC token `id-token: write` mints; there is no `NPM_TOKEN`. A package
+#      must already exist on npm before a Trusted Publisher can be configured
+#      for it, which is why the first release was cut locally.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    # A `workflow_run` fires on ANY CI conclusion (failure, cancelled); release
+    # only after a successful one.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write # the release PR's branch and the tags
+      pull-requests: write # open and update the release PR
+      id-token: write # the OIDC token npm Trusted Publishing rides
+    uses: btravstack/tools/.github/workflows/release-reusable.yml@workflows-v1
+    secrets:
+      RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
