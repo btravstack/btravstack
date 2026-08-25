@@ -19,7 +19,7 @@ Six containers for ten workspaces. Before this existed there were five
 servers for those six — two RabbitMQ containers and up to three Temporal
 time-skipping servers — and `pnpm test` was intermittently red at turbo's
 default concurrency because the 60s testcontainers startup wait was what gave
-out first ([#52](https://github.com/btravstack/start/issues/52)).
+out first ([#52](https://github.com/btravstack/btravstack/issues/52)).
 
 ## Isolation is logical, not physical
 

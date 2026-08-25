@@ -28,7 +28,7 @@ declare const options: { readonly onTeardownError: (portId: string, cause: unkno
 
 # Hexagonal order API (di alone)
 
-[`examples/hexagonal-order-api`](https://github.com/btravstack/start/tree/main/examples/hexagonal-order-api)
+[`examples/hexagonal-order-api`](https://github.com/btravstack/btravstack/tree/main/examples/hexagonal-order-api)
 — `@btravstack/di` without the kernel: one use case, one port for its
 repository, a resourceful production adapter and a resource-free in-memory
 one, and a composition seam generic enough to wire the same application

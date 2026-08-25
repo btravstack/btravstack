@@ -23,9 +23,9 @@ declare const RequestModule: Module<never, never, Logger>;
 > `@nestjs/testing` is to NestJS, and kept out of the kernel so a production
 > bundle never pulls the fakes in.
 
-📖 **[Documentation](https://btravstack.github.io/start/how-to/test-an-application)** ·
-[Reference](https://btravstack.github.io/start/reference/testing) ·
-[API Reference](https://btravstack.github.io/start/api/testing/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/how-to/test-an-application)** ·
+[Reference](https://btravstack.github.io/btravstack/reference/testing) ·
+[API Reference](https://btravstack.github.io/btravstack/api/testing/)
 
 ```sh
 pnpm add -D @btravstack/testing @btravstack/core @btravstack/config @btravstack/di unthrown

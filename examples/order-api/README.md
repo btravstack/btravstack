@@ -26,7 +26,7 @@ Each slice owns its contract fragment and its controller, and both are backed
 by the same three-package vertical — [use cases](../order-application),
 [entities](../order-domain), [Prisma adapters](../order-infrastructure). The
 root only composes them — see
-[Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
+[Split a router into controllers](https://btravstack.github.io/btravstack/how-to/split-a-router-into-controllers).
 
 ## The two channels survive the wire
 

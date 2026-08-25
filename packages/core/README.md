@@ -5,10 +5,10 @@
 > machine, one unit-of-work registry, one `Runtime` contract. It knows nothing
 > about HTTP, AMQP or Temporal, never throws, and never calls `process.exit`.
 
-📖 **[Documentation](https://btravstack.github.io/start/)** ·
-[Get Started](https://btravstack.github.io/start/tutorial/getting-started) ·
-[Reference](https://btravstack.github.io/start/reference/core/start) ·
-[API Reference](https://btravstack.github.io/start/api/core/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/)** ·
+[Get Started](https://btravstack.github.io/btravstack/tutorial/getting-started) ·
+[Reference](https://btravstack.github.io/btravstack/reference/core/start) ·
+[API Reference](https://btravstack.github.io/btravstack/api/core/)
 
 ```sh
 pnpm add @btravstack/core @btravstack/config @btravstack/di unthrown
@@ -140,7 +140,7 @@ is a module that exports no runtime port at all.
 Every sample above is compiled by
 [`src/docs-examples.test-d.ts`](./src/docs-examples.test-d.ts). The rest —
 the `Runtime` contract, the drain, embedding without `runMain` — is on the
-[documentation site](https://btravstack.github.io/start/reference/core/start).
+[documentation site](https://btravstack.github.io/btravstack/reference/core/start).
 Testing what the kernel boots is [`@btravstack/testing`](../testing)'s job — a
 `bootFixture` for `test.extend`, `tapped` to read services out of a running
 app, an in-memory runtime and a fake clock — kept out of this package so a

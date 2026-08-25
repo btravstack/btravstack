@@ -25,12 +25,12 @@ declare const OrderPersistenceModule: Module<never, never, never>;
 boot a dependency-injection module into a running process, and stop it again
 without losing work.**
 
-[![CI](https://github.com/btravstack/start/actions/workflows/ci.yml/badge.svg)](https://github.com/btravstack/start/actions/workflows/ci.yml)
+[![CI](https://github.com/btravstack/btravstack/actions/workflows/ci.yml/badge.svg)](https://github.com/btravstack/btravstack/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40btravstack%2Fcore.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/core)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[**Documentation**](https://btravstack.github.io/start/) · [**Get Started**](https://btravstack.github.io/start/tutorial/getting-started) · [**Why btravstack?**](https://btravstack.github.io/start/explanation/why-btravstack)
+[**Documentation**](https://btravstack.github.io/btravstack/) · [**Get Started**](https://btravstack.github.io/btravstack/tutorial/getting-started) · [**Why btravstack?**](https://btravstack.github.io/btravstack/explanation/why-btravstack)
 
 </div>
 
@@ -67,7 +67,7 @@ btravstack gets them right once, as defaults.
   process's fate becomes an exit code — `0`, `1`, `2`, `70` or `78`, each
   meaning one thing.
 
-See [Why btravstack?](https://btravstack.github.io/start/explanation/why-btravstack) for
+See [Why btravstack?](https://btravstack.github.io/btravstack/explanation/why-btravstack) for
 what it is not — NestJS's `NestFactory.create`, an Effect runtime, a
 full-stack framework — and how it compares to a hand-rolled `main.ts`.
 
@@ -206,7 +206,7 @@ becomes a typed `CONFLICT` on the first and a non-retryable contract error on
 the second, with no mapping anywhere near the kernel. Plus the
 container's own `hexagonal-order-api`, which never calls `start`. Each is
 compiled, linted and tested by CI like a package. See the
-[annotated walkthroughs](https://btravstack.github.io/start/examples/).
+[annotated walkthroughs](https://btravstack.github.io/btravstack/examples/).
 
 ## Contributing
 

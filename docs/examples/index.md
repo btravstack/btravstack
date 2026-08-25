@@ -6,7 +6,7 @@ description: One clean-architecture order application booted under three runtime
 # Examples
 
 Annotated tours of the runnable packages under
-[`examples/`](https://github.com/btravstack/start/tree/main/examples). Ten of
+[`examples/`](https://github.com/btravstack/btravstack/tree/main/examples). Ten of
 them, none published, all of them in the gate: nine model **one order
 application, booted three ways**, and the tenth is the container's own.
 
@@ -16,7 +16,7 @@ Docker daemon for the AMQP one, network access on a cold cache for the
 Temporal one — and each page below says so.
 
 ```sh
-git clone https://github.com/btravstack/start.git
+git clone https://github.com/btravstack/btravstack.git
 cd start
 pnpm install
 pnpm turbo run test --filter="@btravstack/example-*"

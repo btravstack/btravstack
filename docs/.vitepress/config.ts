@@ -3,7 +3,7 @@ import { defineConfig } from "vitepress";
 const SITE_DESCRIPTION =
   "btravstack is the TypeScript backend framework whose dependency injection is checked by the compiler: modules and DI without decorators or reflect-metadata, errors as values, and a drain that survives Kubernetes.";
 
-const BASE = "/start/";
+const BASE = "/btravstack/";
 const SITE_URL = `https://btravstack.github.io${BASE}`;
 
 // The guide is structured by the four Diátaxis modes (https://diataxis.fr/): a
@@ -274,7 +274,7 @@ export default defineConfig({
       { text: "Examples", link: "/examples/" },
       {
         text: "Changelog",
-        link: "https://github.com/btravstack/start/releases",
+        link: "https://github.com/btravstack/btravstack/releases",
       },
       // Back to the btravstack hub (links the docs up to the landing page).
       { text: "btravstack", link: "https://btravstack.github.io/" },
@@ -313,7 +313,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: "github", link: "https://github.com/btravstack/start" },
+      { icon: "github", link: "https://github.com/btravstack/btravstack" },
       { icon: "npm", link: "https://www.npmjs.com/package/@btravstack/core" },
     ],
 
@@ -331,7 +331,7 @@ export default defineConfig({
     outline: { level: [2, 3] },
 
     editLink: {
-      pattern: "https://github.com/btravstack/start/edit/main/docs/:path",
+      pattern: "https://github.com/btravstack/btravstack/edit/main/docs/:path",
       text: "Edit this page on GitHub",
     },
   },

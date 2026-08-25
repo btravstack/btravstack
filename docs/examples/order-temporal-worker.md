@@ -19,7 +19,7 @@ import { BillingSlice } from "../../slices/billing/module.js";
 
 # Order Temporal worker
 
-[`examples/order-temporal-worker`](https://github.com/btravstack/start/tree/main/examples/order-temporal-worker)
+[`examples/order-temporal-worker`](https://github.com/btravstack/btravstack/tree/main/examples/order-temporal-worker)
 — the orchestration deployment: [the order application](/examples/order-application)
 owning two journeys, served by [`@btravstack/temporal-worker`](/reference/temporal-worker).
 

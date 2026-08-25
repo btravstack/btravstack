@@ -1295,7 +1295,7 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
 ## Documentation site
 
 `docs/` is `@btravstack/docs`, the VitePress site published to
-`https://btravstack.github.io/start/` — the same tooling and shape as
+`https://btravstack.github.io/btravstack/` — the same tooling and shape as
 `unthrown`'s: `@btravstack/theme`, one shared sidebar over the four Diátaxis
 modes (`tutorial/`, `how-to/`, `reference/`, `explanation/`), `examples/`
 walkthroughs of the ten example workspaces, and a TypeDoc-generated

@@ -16,7 +16,7 @@ hero:
       link: /explanation/coming-from-nestjs
     - theme: alt
       text: GitHub
-      link: https://github.com/btravstack/start
+      link: https://github.com/btravstack/btravstack
 
 features:
   - title: Wiring proven at compile time

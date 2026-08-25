@@ -8,9 +8,9 @@
 > `Result`-returning record — and it is enforced, not offered among
 > alternatives.
 
-📖 **[Documentation](https://btravstack.github.io/start/how-to/serve-orpc-over-http)** ·
-[Reference](https://btravstack.github.io/start/reference/http-server) ·
-[API Reference](https://btravstack.github.io/start/api/http-server/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/how-to/serve-orpc-over-http)** ·
+[Reference](https://btravstack.github.io/btravstack/reference/http-server) ·
+[API Reference](https://btravstack.github.io/btravstack/api/http-server/)
 
 ```sh
 pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack/di \
@@ -268,7 +268,7 @@ each refused at the root — and because a fragment is itself a valid contract,
 a slice can be served alone, its piece unchanged: the lifted root is
 `api.HttpRouter(orderContract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
 declaring the very provider the modulith composed. See
-[Split a router into controllers](https://btravstack.github.io/start/how-to/split-a-router-into-controllers).
+[Split a router into controllers](https://btravstack.github.io/btravstack/how-to/split-a-router-into-controllers).
 
 A nested contract slices at any depth — a versioned API keeps its tree and
 still gets a piece per team:
@@ -515,7 +515,7 @@ client, and a refusal has nothing a caller is entitled to, so an authenticator
 that wants to record why logs it before returning `Unauthenticated`. A
 **defect** from an authenticator is a bug, not a refusal: it stops the walk
 rather than promoting the caller to the next scheme. See
-[Protect a procedure](https://btravstack.github.io/start/how-to/protect-a-procedure).
+[Protect a procedure](https://btravstack.github.io/btravstack/how-to/protect-a-procedure).
 
 ## Options
 
@@ -534,7 +534,7 @@ provider on its own port, which is how the composition root supplies it:
 | `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                 |
 
 The full table — required/optional, defaults, and the reasoning — lives on
-[the reference page](https://btravstack.github.io/start/reference/http-server),
+[the reference page](https://btravstack.github.io/btravstack/reference/http-server),
 which is this list's one detailed home.
 
 ## What it guarantees
@@ -547,7 +547,7 @@ mapped to is oRPC's; a defect inside a procedure is oRPC's own
 `Result` → HTTP status is the router's `.result()` triage — this package maps
 nothing. The drain retires busy keep-alive connections; a client's
 `x-request-id` becomes the unit's `traceId`. The rest is on the
-[documentation site](https://btravstack.github.io/start/reference/http-server).
+[documentation site](https://btravstack.github.io/btravstack/reference/http-server).
 
 ## What it does not do
 

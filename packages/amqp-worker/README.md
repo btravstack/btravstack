@@ -7,9 +7,9 @@
 > the kernel's lifecycle — one unit per delivery, and a drain with exactly one
 > deadline, the kernel's own.
 
-📖 **[Documentation](https://btravstack.github.io/start/how-to/consume-amqp-messages)** ·
-[Reference](https://btravstack.github.io/start/reference/amqp-worker) ·
-[API Reference](https://btravstack.github.io/start/api/amqp-worker/)
+📖 **[Documentation](https://btravstack.github.io/btravstack/how-to/consume-amqp-messages)** ·
+[Reference](https://btravstack.github.io/btravstack/reference/amqp-worker) ·
+[API Reference](https://btravstack.github.io/btravstack/api/amqp-worker/)
 
 ```sh
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
@@ -125,7 +125,7 @@ provider on its own port, which is how the composition root supplies it:
 | `connectTimeoutMs`       | how long startup waits before an unreachable broker is a `RuntimeStartFailed` (the library defaults to 30 s)    |
 
 The full table — required/optional, defaults, and the reasoning — lives on
-[the reference page](https://btravstack.github.io/start/reference/amqp-worker),
+[the reference page](https://btravstack.github.io/btravstack/reference/amqp-worker),
 which is this list's one detailed home.
 
 ## What it decides, and what it does not
@@ -139,7 +139,7 @@ budget — which is why the handler above recovers its own defects into a
 raced against the kernel's deadline: the library is told to wait forever, so
 there is no second timeout in the process to keep in step. Each delivery is one
 unit, `traceId` the publisher's `messageId`. The rest is on the
-[documentation site](https://btravstack.github.io/start/reference/amqp-worker).
+[documentation site](https://btravstack.github.io/btravstack/reference/amqp-worker).
 
 ## License
 

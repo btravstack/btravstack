@@ -23,7 +23,7 @@ declare const view: (order: Order) => { id: string; quantity: number };
 
 # Order API (HTTP)
 
-[`examples/order-api`](https://github.com/btravstack/start/tree/main/examples/order-api)
+[`examples/order-api`](https://github.com/btravstack/btravstack/tree/main/examples/order-api)
 — the first deployment: [the order application](/examples/order-application)
 answering callers over oRPC, served by [`@btravstack/http-server`](/reference/http-server).
 
