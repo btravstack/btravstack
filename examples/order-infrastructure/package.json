@@ -18,11 +18,15 @@
   },
   "dependencies": {
     "@btravstack/config": "workspace:*",
+    "@btravstack/core": "workspace:*",
     "@btravstack/di": "workspace:*",
     "@btravstack/example-order-application": "workspace:*",
     "@btravstack/example-order-domain": "workspace:*",
+    "@btravstack/observability": "workspace:*",
+    "@btravstack/prisma": "workspace:*",
     "@prisma/adapter-pg": "catalog:",
     "@prisma/client": "catalog:",
+    "@prisma/instrumentation": "catalog:",
     "@unthrown/prisma": "catalog:",
     "unthrown": "catalog:"
   },

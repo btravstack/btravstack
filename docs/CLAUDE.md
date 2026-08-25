@@ -15,12 +15,12 @@ was folded in here when the container was merged; nothing under
 
 - **TypeDoc runs from `docs/`, not from the packages** — it needs its own
   TypeScript (`catalog:typedoc` pins 6.0.3; 7.x is the native port and ships
-  no `typescript.js`). One `typedoc.<name>.json` per package — twelve — points
+  no `typescript.js`). One `typedoc.<name>.json` per package — thirteen — points
   at that package's `src/index.ts` (core's one entry point; the doubles are
   `typedoc.testing.json`'s, and `typedoc.observability.json` names two entry
   points, `src/index.ts` and `src/pino.ts`) and writes straight into
   `api/<name>/` (gitignored; `docs/api/index.md` is the one committed file
-  there); `scripts/build-api.ts` runs the twelve concurrently.
+  there); `scripts/build-api.ts` runs the thirteen concurrently.
   The package list is repeated in four places that must stay in sync: the
   configs, `build-api.ts`, `@btravstack/docs#build`'s `dependsOn` in
   `turbo.json` (explicit `<pkg>#build` edges — the site does not _depend_ on

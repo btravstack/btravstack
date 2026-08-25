@@ -52,6 +52,7 @@
         "@btravstack/cache#build",
         "@btravstack/mailer#build",
         "@btravstack/storage#build",
+        "@btravstack/prisma#build",
         "@btravstack/http-server#build",
         "@btravstack/temporal-worker#build",
         "@btravstack/amqp-worker#build"

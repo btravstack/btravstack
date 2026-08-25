@@ -108,7 +108,7 @@ is the index of the workspaces themselves.
     real drain, run the entry point without `watch`. Measured end to end:
     `draining` → `drained` exactly 5.002 s later → `stopping` → `exited 0`.
   - **The root `dev` script is filtered for a reason.** Sixteen workspaces
-    have a `dev` script (twelve packages' watch-builds, `docs`, three examples),
+    have a `dev` script (thirteen packages' watch-builds, `docs`, three examples),
     and turbo refuses more persistent tasks than its concurrency — so the
     unfiltered `turbo run dev` the root carried was **already broken** before
     this, failing on ten persistent tasks against a concurrency of ten.

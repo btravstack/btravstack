@@ -1,11 +1,11 @@
 ---
 title: Packages and install
-description: The twelve published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
+description: The thirteen published packages grouped by the job each does, who peers on what, and one install command per kind of deployment.
 ---
 
 # Packages and install
 
-> **Reference.** The twelve published packages, grouped by the job each does,
+> **Reference.** The thirteen published packages, grouped by the job each does,
 > their peer-dependency matrix and the install command for each kind of
 > deployment. For _why_ everything is a peer
 > dependency, see [Peer dependencies](/explanation/peer-dependencies); for what
@@ -45,6 +45,7 @@ at all.
 | `@btravstack/cache`           | A `Cache` port, an in-memory adapter and a Redis one, and one composition whose `instrumented` flag defaults to on. A miss is `Ok(undefined)`; keys are yours.                                                                   | [@btravstack/cache](/reference/cache)                                                                                                                                                            |
 | `@btravstack/mailer`          | A `Mailer` port, a recording adapter a spec asserts against and an SMTP one. `send` means accepted, not delivered; retries belong to your transport.                                                                             | [@btravstack/mailer](/reference/mailer)                                                                                                                                                          |
 | `@btravstack/storage`         | A `Storage` port, an in-memory adapter and an S3-compatible one with presigned reads. A missing object is an ordinary answer, not a fault.                                                                                       | [@btravstack/storage](/reference/storage)                                                                                                                                                        |
+| `@btravstack/prisma`          | A Prisma client whose pool is the application scope's: `DATABASE_URL` through `Config`, the Postgres driver adapter, and a resourceful provider. The client type stays yours — it is generated from your schema.                 | [@btravstack/prisma](/reference/prisma)                                                                                                                                                          |
 | `@btravstack/observability`   | The kernel's `Logger`, `Tracer` and `Meter` ports, implemented: a logger correlated with the ambient unit, a dependency-free JSON sink, pino behind one subpath and OpenTelemetry behind another, the kernel's events as lines.  | [@btravstack/observability](/reference/observability)                                                                                                                                            |
 | `@btravstack/http-server`     | The HTTP starter: oRPC over `node:http`, one unit per request, `PORT`/`HOST` bound onto `HttpConfig`.                                                                                                                            | [@btravstack/http-server](/reference/http-server)                                                                                                                                                |
 | `@btravstack/temporal-worker` | The Temporal starter: a Worker as the runtime, one unit per activity attempt, a drain that honours the kernel's deadline.                                                                                                        | [@btravstack/temporal-worker](/reference/temporal-worker)                                                                                                                                        |
@@ -52,6 +53,7 @@ at all.
 | `@btravstack/cache`           | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `redis` as an **optional** peer, behind the `/redis` subpath                                                                                        |
 | `@btravstack/mailer`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `nodemailer` as an **optional** peer, behind the `/smtp` subpath                                                                                    |
 | `@btravstack/storage`         | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown` — and `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` as **optional** peers, behind the `/s3` subpath                                              |
+| `@btravstack/prisma`          | `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`, `@prisma/adapter-pg` — and `@prisma/instrumentation` as an **optional** peer, loaded dynamically when present                                            |
 | `@btravstack/testing`         | The test harness, a **dev dependency**: `bootFixture` boots and stops inside a vitest fixture, `tapped` reaches a running service, plus `testRuntime` and `createFakeClock`.                                                     | [@btravstack/testing](/reference/testing)                                                                                                                                                        |
 
 The dependency direction is **`core` → `config` → `di`**, never back. `di`
@@ -163,7 +165,7 @@ not a promise made to consumers.
 | `@btravstack/observability`      | `createLogger`, `jsonSink`, `observability`, `LoggerConfig`, `logLevel`, `kernelEvents`, `Line`, `Sink` — and `pinoSink` / `otel` / `UnitSpanModule` behind their subpaths. The ports it implements are the kernel's — see [@btravstack/observability](/reference/observability) |
 | `@btravstack/observability/pino` | `pinoSink` alone, so `pino` stays an optional peer a consumer that never imports this never installs                                                                                                                                                                             |
 
-All twelve packages ship dual CJS/ESM builds with `.d.ts` files and no source
+All thirteen packages ship dual CJS/ESM builds with `.d.ts` files and no source
 maps (the tarball carries no `src/`, so a map would be a dead end). Four of them
 carry extra entry points, all on the optional-peer protocol:
 `@btravstack/observability` behind `/pino` and `/otel`, `@btravstack/cache`

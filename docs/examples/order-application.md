@@ -23,11 +23,16 @@ import {
   PlaceOrder,
 } from "@btravstack/example-order-application";
 import {
-  databaseConfig,
   openDatabase,
   type OrderDatabaseClient,
 } from "@btravstack/example-order-infrastructure";
+import { prismaDatabase } from "@btravstack/prisma";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { P, type AsyncResult, type Result } from "unthrown";
+
+// The client THIS application's schema generates, with `@unthrown/prisma`
+// applied — the one thing the starter cannot own.
+declare const createClient: (adapter: PrismaPg) => OrderDatabaseClient;
 
 class OrderDatabase extends Port("OrderDatabase")<OrderDatabaseClient> {}
 declare const PlaceOrderInteractor: new (deps: {
@@ -233,22 +238,24 @@ data from the ambient store, never a capability (see
 
 ## The infrastructure: P-codes stop here
 
-`order-infrastructure` fills the hole. Its database is a **resourceful**
-provider — acquired when the scope opens, released when it closes, so the
-kernel's teardown reaches a real `$disconnect()`:
+`order-infrastructure` fills the hole. Its database comes from
+[`@btravstack/prisma`](/reference/prisma), which owns `DATABASE_URL`, the pool's
+lifetime — acquired when the scope opens, released when it closes, so the
+kernel's teardown reaches a real `$disconnect()` — and a span, a count and a log
+line per query:
 
 ```ts
-export const orderDatabaseProvider = Provider(OrderDatabase)(
-  { config: databaseConfig.port },
-  {
-    acquire: ({ config }) => openDatabase(config.url),
-    release: (db) => db.$disconnect(),
-  },
-);
+export const OrderDatabaseModule = prismaDatabase("OrderDatabase")({
+  client: createClient,
+});
 ```
 
-`OrderDatabase` lives in an internal `DatabaseModule` that the two persistence
-modules import and neither re-exports — di's `exports` are declared, never
+The one thing that stays here is `createClient`, because the client is generated
+from **this** application's schema and `@unthrown/prisma`'s extension is applied
+to it — so the port carries exactly the client the repositories will hold.
+
+`OrderDatabase` is `OrderDatabaseModule.port`, imported by the two persistence
+modules and re-exported by neither — di's `exports` are declared, never
 inherited — so no outer module can reach the client and start speaking SQL.
 What crosses the boundary of `OrderPersistenceModule` is `OrderRepository` and
 `Outbox`, and of `CustomerPersistenceModule`, `CustomerRepository`. One

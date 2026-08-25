@@ -216,7 +216,7 @@ consolation prizes — for a lot of teams they decide the question.
 **The ecosystem is not close.** Nest has first-party packages for most things a
 backend needs: GraphQL, WebSockets, microservice transports, scheduling, queues,
 caching, health checks, Swagger generation, an ORM integration story for several
-ORMs. btravstack has twelve packages and three transports, and a workload the
+ORMs. btravstack has thirteen packages and three transports, and a workload the
 [transport role map](/explanation/one-process-one-runtime) does not cover is a
 decision somebody has to make rather than a package they install.
 

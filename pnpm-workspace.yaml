@@ -53,6 +53,7 @@ catalog:
   "@orpc/server": 2.0.0-beta.28
   "@prisma/adapter-pg": 7.9.1
   "@prisma/client": 7.9.1
+  "@prisma/instrumentation": 7.10.0
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.7.0. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
@@ -172,3 +173,4 @@ minimumReleaseAgeExclude:
   - "unthrown@5.7.0"
   - "@aws-sdk/client-s3@3.1117.0"
   - "@aws-sdk/s3-request-presigner@3.1117.0"
+  - "@prisma/instrumentation@7.10.0"

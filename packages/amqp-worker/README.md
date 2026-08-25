@@ -30,11 +30,12 @@ import { Module } from "@btravstack/di";
 import { OrderApplicationModule, OrderRepository, Outbox } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 
 // The application module the README's composition imports — the orders
 // vertical plus its persistence, as an application would compose it.
 const AppModule = Module("App")({
-  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability(), otel()],
   exports: [PlaceOrder, OrderRepository, Outbox, Logger],
 });
 -->

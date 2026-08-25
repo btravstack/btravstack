@@ -22,7 +22,12 @@
       "project": ["src/**/*.ts"]
     },
     "examples/order-api": {
-      "ignoreDependencies": ["@btravstack/entity", "zod"]
+      "ignoreDependencies": [
+        "@btravstack/entity",
+        "@btravstack/prisma",
+        "@prisma/adapter-pg",
+        "zod"
+      ]
     },
     "examples/order-temporal-worker": {
       "ignoreDependencies": ["zod"]

@@ -2,6 +2,8 @@ import { Env } from "@btravstack/config";
 import { Module, Provider } from "@btravstack/di";
 import { OrderRepository } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
+import { observability } from "@btravstack/observability";
+import { otel } from "@btravstack/observability/otel";
 import { fromSafePromise } from "unthrown";
 import { describe, expect, inject, vi } from "vitest";
 
@@ -15,7 +17,7 @@ import { OrderPersistenceModule } from "./index.js";
  */
 const scopedPersistence = (applicationName?: string) =>
   Module("ScopedPersistence")({
-    imports: [OrderPersistenceModule],
+    imports: [OrderPersistenceModule, observability(), otel()],
     provides: [
       Provider(Env)({
         value: {
