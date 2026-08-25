@@ -130,7 +130,7 @@ describe("a router over a marked contract", () => {
     // THEN the scheme's port joins both, named for the scheme and alongside —
     // never in place of — the caller's own
     expect(authedRouterDeps).toEqual({
-      keyed: ["AuthedOrders", "AuthedHealth", "HttpAuthenticator:user"],
+      composed: ["HttpController:orders", "HttpController:health", "HttpAuthenticator:user"],
       fromDeps: ["Greeter", "HttpAuthenticator:user"],
     });
   });
@@ -139,7 +139,10 @@ describe("a router over a marked contract", () => {
     // GIVEN a router composed from a controller over an unmarked contract
     // WHEN its declared dependencies are read
     // THEN nothing was appended — an application with no protected route provides nothing
-    expect(controllers.unmarkedRouterDeps).toEqual(["HelloController", "EchoesController"]);
+    expect(controllers.unmarkedRouterDeps).toEqual([
+      "HttpController:greetings",
+      "HttpController:echoes.ping",
+    ]);
   });
 });
 

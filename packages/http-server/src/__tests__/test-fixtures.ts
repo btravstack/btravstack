@@ -99,31 +99,25 @@ const greetingRouter = publicApi.HttpRouter(greetingContract)(
   },
 );
 
-/** Two controllers over the same contract's two halves — what the keyed router composes. */
-export const helloController = publicApi.HttpController("HelloController", helloFragment)(
+/** The composing form's own contract, so the two arms are exercised side by side. */
+const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
+
+/**
+ * Two pieces over `slicedContract` — the path is the port's name. The second is
+ * minted by a DOTTED path, so the composing arm's `nest` rebuild is exercised
+ * on a real request rather than only on top-level keys.
+ */
+export const helloController = publicApi.HttpController(slicedContract, "greetings")(
   { greeter: Greeter },
   { sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet("world")) }) },
 );
 
-/** The keyed form's own contract, so the two arms are exercised side by side. */
-const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
-
-/** The other half of `slicedContract`, alongside the reused `helloController`. */
 const echoesController = publicApi.HttpController(
-  "EchoesController",
-  nestedFragment,
+  slicedContract,
+  "echoes.ping",
 )({
-  sync: () => ({ ping: () => OkAsync("pong") }),
+  sync: () => () => OkAsync("pong"),
 });
-
-/**
- * A contract whose top-level key is literally `sync` — the adversarial case for
- * `HttpRouter`'s runtime discriminator. The value here is a CONTROLLER, an
- * object carrying `.port`, so the check must keep picking the keyed arm.
- */
-const syncKeyedContract = oc.router({ sync: helloFragment });
-
-export const syncKeyedRouter = publicApi.HttpRouter(syncKeyedContract)({ sync: helloController });
 
 /**
  * An arm-only router whose `sync` records its own arity. The arm-only form is
@@ -141,11 +135,8 @@ export const armOnlyRouterRecording = () => {
   return { provider, arity: () => seen };
 };
 
-/** The same kind of API as `greetingRouter`, composed from controllers instead of one `sync`. */
-const slicedRouter = publicApi.HttpRouter(slicedContract)({
-  greetings: helloController,
-  echoes: echoesController,
-});
+/** The same kind of API as `greetingRouter`, composed from pieces instead of one `sync`. */
+const slicedRouter = publicApi.HttpRouter(slicedContract)([helloController, echoesController]);
 
 /** `HttpModule` over the composed router, mirroring `rpcAppOf`. */
 const rpcSlicedAppOf = () =>
@@ -158,6 +149,50 @@ const rpcSlicedAppOf = () =>
       echoesController,
       Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } }),
     ],
+  });
+
+/**
+ * Two pieces sharing the nested parent "v1" — "v1.orders" and "v1.customers" —
+ * plus one minted at the bare PROCEDURE path "health". The shared parent forces
+ * `nest`'s node-reuse branch (`node[segment] ??= {}` finding a node the first
+ * piece already created) to actually run, which `slicedContract`'s one dotted
+ * piece above never exercises; "health" is the depth-N leaf case, a piece with
+ * no fragment around it at all.
+ */
+const deepContract = {
+  v1: { orders: { place: oc }, customers: { find: oc } },
+  health: oc,
+};
+
+const v1OrdersController = publicApi.HttpController(
+  deepContract,
+  "v1.orders",
+)({
+  sync: () => ({ place: () => OkAsync({ id: "o-1" }) }),
+});
+const v1CustomersController = publicApi.HttpController(
+  deepContract,
+  "v1.customers",
+)({
+  sync: () => ({ find: () => OkAsync({ id: "c-1" }) }),
+});
+const deepHealthController = publicApi.HttpController(
+  deepContract,
+  "health",
+)({ sync: () => () => OkAsync({ ok: true as const }) });
+
+const deepRouter = publicApi.HttpRouter(deepContract)([
+  v1OrdersController,
+  v1CustomersController,
+  deepHealthController,
+]);
+
+const rpcDeepAppOf = () =>
+  HttpModule("RpcDeepApp")({
+    router: deepRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [v1OrdersController, v1CustomersController, deepHealthController],
   });
 
 /** What this deployment knows about a caller; `defineHttp` is the only place one is stated. */
@@ -191,8 +226,8 @@ const authedContract = { orders: authenticated({ user: [] })({ whoami }), health
 let authedRuns = 0;
 
 const authedOrdersController = api.HttpController(
-  "AuthedOrders",
-  authedContract.orders,
+  authedContract,
+  "orders",
 )({
   sync: () => ({
     whoami: ({ context }) => {
@@ -203,16 +238,16 @@ const authedOrdersController = api.HttpController(
 });
 
 const authedHealthController = api.HttpController(
-  "AuthedHealth",
-  authedContract.health,
+  authedContract,
+  "health",
 )({
   sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
 });
 
-const authedRouter = api.HttpRouter(authedContract)({
-  orders: authedOrdersController,
-  health: authedHealthController,
-});
+const authedRouter = api.HttpRouter(authedContract)([
+  authedOrdersController,
+  authedHealthController,
+]);
 
 /**
  * The same marked contract through the deps form, so the scheme's own key on
@@ -346,6 +381,8 @@ type AuthedClient = RouterContractClient<{
 type RootMarkedClient = RouterContractClient<{
   readonly orders: { readonly whoami: typeof whoami };
 }>;
+
+type DeepClient = RouterContractClient<typeof deepContract>;
 
 /**
  * The same implementation carrying a key the contract never declared, reachable
@@ -538,19 +575,27 @@ export type HttpFixtures = {
     }>;
     readonly stoppedAccepting: (origin: string) => Promise<void>;
   };
-  /** The controllers the keyed router form composes, and what the unmarked router they build declares. */
+  /** The pieces the composing router form takes, and what the unmarked router they build declares. */
   readonly controllers: {
     readonly controller: typeof helloController;
     readonly unmarkedRouterDeps: readonly string[];
   };
   /**
-   * The starter over a router composed from several controllers, keyed by
-   * the contract — the same shape as `rpc`, but built from `slicedRouter`.
-   * Shut down by the fixture.
+   * The starter over a router composed from an array of pieces — the same
+   * shape as `rpc`, but built from `slicedRouter`. Shut down by the fixture.
    */
   readonly rpcSliced: () => Promise<{
     readonly origin: string;
     readonly client: RouterContractClient<typeof slicedContract>;
+  }>;
+  /**
+   * The starter over `deepContract` — two pieces sharing the nested "v1"
+   * parent, plus one minted at the bare procedure path "health". Shut down by
+   * the fixture.
+   */
+  readonly rpcDeep: () => Promise<{
+    readonly origin: string;
+    readonly client: DeepClient;
   }>;
   /**
    * The starter over a contract whose `orders` fragment is `authenticated(...)`
@@ -574,7 +619,7 @@ export type HttpFixtures = {
   };
   /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
   readonly authedRouterDeps: {
-    readonly keyed: readonly string[];
+    readonly composed: readonly string[];
     readonly fromDeps: readonly string[];
   };
   /** The starter over a router whose authenticator DECLARES a dependency. Shut down by the fixture. */
@@ -781,6 +826,17 @@ export const it = test.extend<HttpFixtures>({
     });
   },
 
+  rpcDeep: async ({ boot }, use) => {
+    await use(async () => {
+      const app = boot(rpcDeepAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      const client: DeepClient = createORPCClient(new RPCLink({ origin, url: "/rpc" }));
+      return { origin, client };
+    });
+  },
+
   rpcAuthed: async ({ boot }, use) => {
     const app = boot(rpcAuthedAppOf());
     const info = (await app.runtimeInfo()).get();
@@ -811,7 +867,7 @@ export const it = test.extend<HttpFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   authedRouterDeps: async ({}, use) => {
     await use({
-      keyed: authedRouter.deps.map((dep) => dep.portId),
+      composed: authedRouter.deps.map((dep) => dep.portId),
       fromDeps: authedPositionalRouter.deps.map((dep) => dep.portId),
     });
   },
