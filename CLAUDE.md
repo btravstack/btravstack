@@ -14,7 +14,8 @@ application scope on every path. It owns three things — the lifecycle state
 machine, the unit-of-work registry, and the `Runtime` contract — and knows
 nothing about HTTP, AMQP or Temporal.
 
-`di` proves the wiring before the process exists. btravstack owns **when** an
+`di` proves the wiring before the process exists. `@btravstack/core` owns
+**when** an
 already-proven graph is constructed and torn down, and nothing more. Nothing
 throws to callers: every fallible operation returns an
 [`unthrown`](https://github.com/btravstack/unthrown) `Result`.
