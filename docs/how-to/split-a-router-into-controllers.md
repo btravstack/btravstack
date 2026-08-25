@@ -257,9 +257,9 @@ This form is **exact**, over the contract's **procedures** rather than its
 top-level keys: the pieces' paths must partition every procedure the contract
 declares, so a missing piece, a path the contract does not declare, and a
 piece wired under the wrong path — impossible by construction, since the path
-rides the piece's own port id — are all compile errors at the
-`api.HttpRouter(contract)([...])` call, not runtime surprises the first time a
-client hits the missing slice. Because paths can nest (`"v1"` next to
+rides the piece's own port id — are all compile errors, the last two at
+`api.HttpController(contract, path)` itself, not runtime surprises the first
+time a client hits the missing slice. Because paths can nest (`"v1"` next to
 `"v1.orders"`), a **second** gate refuses an array where one piece's path
 sits inside another's — two pieces would otherwise implement the same
 procedures on two distinct port ids, which di has no way to see conflicting.

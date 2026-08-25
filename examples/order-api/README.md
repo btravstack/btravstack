@@ -265,7 +265,7 @@ the server's `mapErrCases`.
 ## Running it
 
 ```bash
-pnpm --filter @btravstack/example-order-api test  # 26 api specs
+pnpm --filter @btravstack/example-order-api test  # 28 api specs
 ```
 
 The specs run against a real HTTP server and a real oRPC client — genuine JSON

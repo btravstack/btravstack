@@ -985,7 +985,7 @@ AuditSlice, observability(), otel()], … })`),
   each with the key carried on the piece's own port id rather than on a record
   position, and compose an **array** of them:
   `api.HttpRouter(contract)([...])`, `AmqpHandlers(contract)([...])`,
-  `TemporalActivities(contract)([...])`. Every key the contract declares must
+  `TemporalActivities(contract)([...])`. Every leaf the contract declares must
   be covered (an uncovered one is refused at the call, against an
   `"UNCOVERED CONTROLLERS — …"` / `"UNCOVERED HANDLERS — …"` /
   `"UNCOVERED ACTIVITIES — …"` marker — at the **tail of the third line** of a
