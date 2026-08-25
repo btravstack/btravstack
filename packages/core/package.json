@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The application kernel: boot a di module into a running process, and stop it without losing work",
   "keywords": [
     "application",
