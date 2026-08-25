@@ -116,8 +116,18 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   teardown always completes and never masks the original failure.
 - **`index.ts`** — the deliberate public surface. `Scope` is exported as a _type
   only_ (the class value would let consumers provide or alias it);
-  `PortClass` is exported solely so declaration emit works for
-  consumers who export ports; `PortInstance` and **`PortClassOf<Id, Service>`**
+  `PortClass` is exported so declaration emit **names** what a consumer's
+  exported port extends. Not so it works at all — measured, and the earlier
+  claim that it was load-bearing for correctness was wrong: with the export
+  removed, `examples/hexagonal-order-api`'s emit gate still passes, because
+  the emitter falls back to inlining the structural shape
+  (`{ new <Service>(): PortInstance<Id, Service>; readonly portId: Id }`)
+  and that compiles. What the export buys is that the blob stays out of every
+  consumer's `.d.ts`, replaced by `import("@btravstack/di").PortClass<"Env">`.
+  Keep it for that, and do not "verify" it by deleting it and watching the
+  gate stay green — the gate is answering a different question.
+
+  `PortInstance` and **`PortClassOf<Id, Service>`**
   (`{ portId: Id; new (): PortInstance<Id, Service> }`, both types only) so a
   provider over a port declared inside a helper — one minted per call
   (`Config.provider("RelayConfig")(schema)`) or the helper's own fixed one
