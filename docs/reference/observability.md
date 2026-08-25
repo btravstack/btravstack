@@ -6,7 +6,7 @@ description: The complete surface of @btravstack/observability — the Logger po
 <!-- doctest: prelude
 import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
 import { Config } from "@btravstack/config";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { createLogger, jsonSink, kernelEvents, logLevel, observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { cache } from "@btravstack/cache";
@@ -449,9 +449,9 @@ unit does and `onStop` ends it on every path out, with the ambient record's
 query the logger's lines answer. The remote W3C **parent is deliberately not
 reconstructed**: `UnitMeta.traceId` carries the inbound trace id alone, so
 correlation is by attribute, never a parent-child edge the record cannot
-prove. Inbound, `@btravstack/http` and `@btravstack/amqp` honour a W3C
+prove. Inbound, `@btravstack/http-server` and `@btravstack/amqp-worker` honour a W3C
 `traceparent` (trace-id field only; it outranks `x-request-id` and
-`messageId` respectively); `@btravstack/temporal` keeps the workflow id as
+`messageId` respectively); `@btravstack/temporal-worker` keeps the workflow id as
 its correlation, which is what that transport's retries and replays preserve.
 
 **Auto-instrumentation cannot live here**:

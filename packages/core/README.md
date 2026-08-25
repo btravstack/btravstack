@@ -24,8 +24,8 @@ release yet.
 An application is a di module. A **runtime** is a service of that module,
 provided on a port declared over `RuntimePort`; `start` finds it there, builds
 the graph, and drives what it finds. The transport starters
-([`@btravstack/http`](../http), [`@btravstack/temporal`](../temporal),
-[`@btravstack/amqp`](../amqp)) provide real runtimes; this one is a timer, so
+([`@btravstack/http-server`](../http), [`@btravstack/temporal-worker`](../temporal),
+[`@btravstack/amqp-worker`](../amqp)) provide real runtimes; this one is a timer, so
 the sample stays self-contained:
 
 ```ts
@@ -52,7 +52,7 @@ const AppModule = Module("App")({
 
 // A runtime owns the transport; the kernel owns the lifecycle. This one is a
 // timer, so the sample stays self-contained — no published runtime models a
-// timer, and `@btravstack/http` would pull in a real dependency this
+// timer, and `@btravstack/http-server` would pull in a real dependency this
 // sample doesn't need.
 const ticker: Runtime<typeof Greeter> = {
   name: "ticker",

@@ -40,7 +40,7 @@ catalog:
   # package.json — the ESM build does not actually honour the optionality, so
   # anything that imports `@amqp-contract/worker` fails to load at all without
   # this installed. Not a `devDependency` alone: a real consumer of
-  # `@btravstack/amqp` hits the same load failure.
+  # `@btravstack/amqp-worker` hits the same load failure.
   "@opentelemetry/api": 1.9.1
   "@opentelemetry/sdk-node": 0.221.0
   "@opentelemetry/sdk-metrics": 2.10.0

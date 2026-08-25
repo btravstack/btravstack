@@ -126,7 +126,7 @@ even it only sets a number. See [Nothing throws](/explanation/nothing-throws).
 
 ## Hono went; oRPC's node adapter stayed
 
-`@btravstack/http` once routed through Hono to oRPC's fetch adapter. A review
+`@btravstack/http-server` once routed through Hono to oRPC's fetch adapter. A review
 found Hono was routing exactly one pattern and `404`ing the rest — which
 `@orpc/server/node`'s `RPCHandler.handle(req, res, { prefix })` and the
 runtime's own `404` do with two dependencies fewer, and without an
@@ -238,7 +238,7 @@ When the kernel's deadline passes, the `AbortSignal` handed to `Serving.drain`
 fires and every open unit's signal fires. There is no stronger step, and the
 Temporal runtime is where that was tested: `@temporalio/worker` exposes no
 public forced shutdown (`Worker.forceShutdown$` is `protected`,
-`Runtime.shutdown()` is process-global), so `@btravstack/temporal` races
+`Runtime.shutdown()` is process-global), so `@btravstack/temporal-worker` races
 `run()` against the signal and stops waiting. The kernel is released on time,
 the work is reported `abandoned`, and the worker keeps winding down on
 Temporal's clock until the process exits. It rules out the kernel ever calling
@@ -247,9 +247,9 @@ Temporal's clock until the process exits. It rules out the kernel ever calling
 ## What there deliberately is not
 
 No job-queue runtime and no scheduler runtime (issues #61 and #60): the
-transport role map assigns answering to `@btravstack/http`, orchestration —
+transport role map assigns answering to `@btravstack/http-server`, orchestration —
 and with it everything job-queue-shaped and everything scheduled — to
-`@btravstack/temporal`, and broadcasting to `@btravstack/amqp`. A workflow
+`@btravstack/temporal-worker`, and broadcasting to `@btravstack/amqp-worker`. A workflow
 already is a durable job with a handle (retries, delay, idempotency, a result
 that outlives the caller), and Temporal Schedules are the cron; a queue
 package would re-ship those semantics over a broker that models

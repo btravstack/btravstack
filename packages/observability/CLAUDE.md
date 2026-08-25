@@ -182,9 +182,9 @@ reason `Config` is a hand-rolled Standard Schema.
   deliberately not reconstructed**: `UnitMeta.traceId` carries the inbound
   trace id alone (never the caller's span id), so v1 correlates spans to logs
   by attribute rather than pretending to a parent-child edge it cannot prove.
-  Inbound `traceparent` is honoured by `@btravstack/http` (over
-  `x-request-id`) and `@btravstack/amqp` (over `messageId`), trace-id field
-  only; `@btravstack/temporal` deliberately keeps the workflow/activity id as
+  Inbound `traceparent` is honoured by `@btravstack/http-server` (over
+  `x-request-id`) and `@btravstack/amqp-worker` (over `messageId`), trace-id field
+  only; `@btravstack/temporal-worker` deliberately keeps the workflow/activity id as
   its correlation — see its own `CLAUDE.md`.
 - **The two ports moved to `@btravstack/core` after this shipped**, when the
   first application-service package (`@btravstack/cache`) needed to depend on

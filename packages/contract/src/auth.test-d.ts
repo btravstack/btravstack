@@ -80,7 +80,7 @@ describe("a requirement names exactly one scheme", () => {
 
   test("two schemes in ONE requirement are refused", () => {
     const node = { place: { kind: "procedure" } } as const;
-    // @ts-expect-error — OpenAPI reads this as AND; `@btravstack/http` would run it as OR
+    // @ts-expect-error — OpenAPI reads this as AND; `@btravstack/http-server` would run it as OR
     void authenticated({ user: [], service: [] })(node);
   });
 });

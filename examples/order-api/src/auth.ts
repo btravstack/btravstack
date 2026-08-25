@@ -1,5 +1,5 @@
 import { TenantId } from "@btravstack/example-order-domain";
-import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http";
+import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 /**

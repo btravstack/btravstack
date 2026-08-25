@@ -5,9 +5,9 @@
 "@btravstack/core": minor
 "@btravstack/testing": minor
 "@btravstack/observability": minor
-"@btravstack/http": minor
-"@btravstack/temporal": minor
-"@btravstack/amqp": minor
+"@btravstack/http-server": minor
+"@btravstack/temporal-worker": minor
+"@btravstack/amqp-worker": minor
 ---
 
 The `Unmet` type is gone from `@btravstack/di`
@@ -19,7 +19,7 @@ consumer that exports a composition root), which is why every in-repo sugar
 already inlined the computation instead. Inline it; `NeedsGate` is unchanged
 and still exported.
 
-Internal trims alongside, none of them surface: `@btravstack/http` no longer
+Internal trims alongside, none of them surface: `@btravstack/http-server` no longer
 memoises scheme ports (di resolves by id, so a fresh class per call is the same
 lookup — measured), and `HasMark`, `authenticatorPort` and `Http.authenticators`
 now carry TSDoc naming the external consumer each exists for, so their lack of

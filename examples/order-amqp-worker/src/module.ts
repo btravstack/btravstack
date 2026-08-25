@@ -1,4 +1,4 @@
-import { AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 import { Env } from "@btravstack/config";
 import { Logger, Tracer } from "@btravstack/core";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
@@ -33,7 +33,7 @@ export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, or
  * plus what no slice owns: the orders vertical the outbox relay writes from
  * (`OrderApplicationModule` / `OrderPersistenceModule`, unchanged from before
  * the split — the vertical is the relay's, not either subscriber's),
- * `observability()`, and the relay itself. `@btravstack/amqp`'s `AmqpModule`
+ * `observability()`, and the relay itself. `@btravstack/amqp-worker`'s `AmqpModule`
  * sugar imports the starter over `orderHandlers`, provides it, and exports
  * `AmqpRuntime` for `start` to resolve; the outbox relay sits next to it as a
  * resourceful provider: both halves of the outbox pattern in one graph, each
@@ -56,7 +56,7 @@ export const orderHandlers = AmqpHandlers(orderContract)([orderNotifications, or
  *
  * Tenancy is the CONTRACT's, not the transport's. The envelope carries
  * `tenantId`, so a subscriber reads it off the message it was already given
- * and `@btravstack/amqp` knows nothing about tenants; the relay's own side is
+ * and `@btravstack/amqp-worker` knows nothing about tenants; the relay's own side is
  * `OUTBOX_TENANTS`, which says whose facts this deployment is allowed to
  * broadcast.
  *

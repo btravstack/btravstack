@@ -76,9 +76,9 @@ Standard Schema, and brings none.
 ## Starters peer on their transport, too
 
 A starter is, by definition, the exception to "no dependencies" — and it keeps
-the exception a peer. `@btravstack/http` peers on `@orpc/server`,
-`@orpc/contract` and `@unthrown/orpc`; `@btravstack/temporal` on
-`@temporal-contract/*` and `@temporalio/*`; `@btravstack/amqp` on
+the exception a peer. `@btravstack/http-server` peers on `@orpc/server`,
+`@orpc/contract` and `@unthrown/orpc`; `@btravstack/temporal-worker` on
+`@temporal-contract/*` and `@temporalio/*`; `@btravstack/amqp-worker` on
 `@amqp-contract/worker` and `@opentelemetry/api`. The reasoning is the same
 `Result` reasoning applied to a contract: the oRPC contract your router
 implements, the Temporal activities your worker registers, the AMQP handlers

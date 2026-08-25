@@ -7,8 +7,8 @@ steps — and `chargeOrder` — authorize the payment, then capture it, refundin
 if the capture fails. Both are orchestration, and a durable workflow is the
 one place either journey exists as code and survives the process that started
 it. The worker is served by
-[`@btravstack/temporal`](../../packages/temporal) the way
-`order-api` is served by `@btravstack/http`; the contract lives in
+[`@btravstack/temporal-worker`](../../packages/temporal-worker) the way
+`order-api` is served by `@btravstack/http-server`; the contract lives in
 [`order-temporal-contract`](../order-temporal-contract), because a client that
 starts these workflows needs it and needs none of this.
 
@@ -182,7 +182,7 @@ per-test **tenant** separates their rows in the application database on the
 same PostgreSQL the Temporal server uses.
 
 `tenantId` rides every workflow's arguments and every activity's input, because
-the **contract** declares it — `@btravstack/temporal` knows nothing about
+the **contract** declares it — `@btravstack/temporal-worker` knows nothing about
 tenants. An activity hands `args.tenantId` to the use case, which hands it to
 the repository. On the input rather than a Temporal header because an input is
 persisted in the event history: a replay a year later reconstructs the tenant

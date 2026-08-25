@@ -14,7 +14,7 @@ import { start, Logger } from "@btravstack/core";
  * this package's `test:types` script, never executed.
  */
 import { Module } from "@btravstack/di";
-import { HttpRuntime, http } from "@btravstack/http";
+import { HttpRuntime, http } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 
 import { OrderApi, orderRouter } from "./module.js";

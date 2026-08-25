@@ -23,21 +23,21 @@ composition root, not a second flag ([why](/explanation/one-process-one-runtime)
 ::: code-group
 
 ```sh [pnpm]
-pnpm add @btravstack/temporal @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker @temporal-contract/contract zod
+pnpm add @btravstack/temporal-worker @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker @temporal-contract/contract zod
 ```
 
 ```sh [npm]
-npm install @btravstack/temporal @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker @temporal-contract/contract zod
+npm install @btravstack/temporal-worker @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker @temporal-contract/contract zod
 ```
 
 ```sh [yarn]
-yarn add @btravstack/temporal @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker @temporal-contract/contract zod
+yarn add @btravstack/temporal-worker @temporalio/worker @temporalio/activity @temporalio/common @temporal-contract/worker @temporal-contract/contract zod
 ```
 
 :::
 
 `@btravstack/core`, `config`, `di` and `unthrown` are already there from
-lesson one; the rest are `@btravstack/temporal`'s peers. `zod` is for the
+lesson one; the rest are `@btravstack/temporal-worker`'s peers. `zod` is for the
 contract, the same as lesson one's — and it earns its place twice over here,
 because Temporal persists every input and output and replays them later.
 
@@ -106,7 +106,7 @@ its dependencies exactly as the router did:
 
 ```ts
 // activities.ts
-import { TemporalActivities } from "@btravstack/temporal";
+import { TemporalActivities } from "@btravstack/temporal-worker";
 import { OkAsync } from "unthrown";
 
 import { Greeter } from "./greeter.js";
@@ -189,7 +189,7 @@ code lives, imports the Temporal starter, and exports `TemporalRuntime`:
 
 ```ts
 // worker.ts
-import { TemporalModule } from "@btravstack/temporal";
+import { TemporalModule } from "@btravstack/temporal-worker";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
 import { greetingActivities } from "./activities.js";

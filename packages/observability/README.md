@@ -1,5 +1,5 @@
 <!-- doctest: prelude
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { Port } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
 import { orderRouter } from "../../module.js";
@@ -153,8 +153,8 @@ const AppImports = [observability(), otel()];
 // runMain(App, { unit: UnitSpanModule })
 ```
 
-Inbound W3C `traceparent` feeds the unit's trace id in `@btravstack/http` and
-`@btravstack/amqp`. Auto-instrumentation must be preloaded
+Inbound W3C `traceparent` feeds the unit's trace id in `@btravstack/http-server` and
+`@btravstack/amqp-worker`. Auto-instrumentation must be preloaded
 (`node --import @opentelemetry/auto-instrumentations-node/register`) — it
 cannot be a provider, and the package does not pretend otherwise. Full
 semantics on

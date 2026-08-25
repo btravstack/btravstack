@@ -1,9 +1,9 @@
 {
   "extends": "@btravstack/typedoc/base.json",
-  "name": "@btravstack/http",
-  "entryPoints": ["../packages/http/src/index.ts"],
-  "tsconfig": "../packages/http/tsconfig.json",
-  "out": "api/http",
+  "name": "@btravstack/http-server",
+  "entryPoints": ["../packages/http-server/src/index.ts"],
+  "tsconfig": "../packages/http-server/tsconfig.json",
+  "out": "api/http-server",
   "intentionallyNotExported": [
     "AnyRouterInstance",
     "HttpStarter",

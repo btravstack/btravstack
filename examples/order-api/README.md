@@ -2,7 +2,7 @@
 
 The transport. A router implementing
 [`order-api-contract`](../order-api-contract), provided as a port and served
-under the kernel's lifecycle by [`@btravstack/http`](../../packages/http). One
+under the kernel's lifecycle by [`@btravstack/http-server`](../../packages/http-server). One
 stack, all of it in the graph: oRPC owns the contract, `@unthrown/orpc` owns
 the `Result` bridge, the `http` starter owns oRPC's node adapter and the
 socket, and the router itself is a di-provided service. The contract lives in
@@ -82,11 +82,11 @@ that has to decide what a client sees. A `Defect` is never named: it has no code
 because it was never modelled, and collapsing it to a 500 is the correct
 treatment rather than a fallback.
 
-## The transport is `@btravstack/http`, all of it
+## The transport is `@btravstack/http-server`, all of it
 
 Binding the socket, one unit per request, the drain that retires a busy
 keep-alive connection, the trace-id policy, oRPC's node adapter mounted under
-`/rpc` all live in [`@btravstack/http`](../../packages/http) —
+`/rpc` all live in [`@btravstack/http-server`](../../packages/http-server) —
 see its README for the guarantee it makes and the one way it answers HTTP.
 What this example writes is two slices, each an `api.HttpController(name, fragment)({ name: Dep }, { sync })`
 over its own contract fragment, and a root router composed by the **keyed**
@@ -205,7 +205,7 @@ read back off `Serving.info` the same way any caller of the package does.
 
 ### One unit per call
 
-The unit's lifetime **is** the response's: `@btravstack/http` keeps it open
+The unit's lifetime **is** the response's: `@btravstack/http-server` keeps it open
 until the response completes, so there is no seam for a late write to land in.
 An unmatched path is the starter's 404; a defect inside a procedure is oRPC's own
 `INTERNAL_SERVER_ERROR` collapse — nothing left to dispatch or end by hand.
@@ -360,7 +360,7 @@ fragment is marked `authenticated({ user: [] })`, so its controller takes the te
 contract never names — and its inputs name none: a required field the
 handler ignores is a field that lies, and a caller that could name a tenant it
 is not served is a confused deputy waiting to happen. Either way
-`@btravstack/http` knows
+`@btravstack/http-server` knows
 nothing about tenants and has no hook for them — context is the application's
 to own, and a starter that read a tenant off a header would be deciding a
 system's authentication model on its behalf.

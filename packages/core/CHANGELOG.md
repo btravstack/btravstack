@@ -21,7 +21,7 @@
   silently. An empty or blank variable is an error, never an absent one; `PORT=0`
   stays expressible.
 
-  `@btravstack/http` becomes a starter: `http()` provides
+  `@btravstack/http-server` becomes a starter: `http()` provides
   `HttpRuntime` and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST`
   (default `0.0.0.0`) unless pinned (`http({ port: 0 })` for a test —
   explicit beats environment beats default, per field, through
@@ -92,8 +92,8 @@
 
   It was a hand-maintained copy of `package.json`'s `version`, read by nothing but
   a test asserting the literal it was written as — so it could only ever go stale
-  or fail its own tautology. Neither `@btravstack/http` nor
-  `@btravstack/temporal` ever shipped one. A consumer that needs the version
+  or fail its own tautology. Neither `@btravstack/http-server` nor
+  `@btravstack/temporal-worker` ever shipped one. A consumer that needs the version
   should read it from the package manifest.
 
 - 4fa693c: The application kernel: `start` boots a `@btravstack/di` module into a running
@@ -231,15 +231,15 @@ services() }`; the gate refuses a port `module` does not export, and
   deadline or at once on a path that skips the drain.
 
   The gap it closes: a middleware-shaped runtime opens its unit around a call it
-  does not own the arguments of. `@btravstack/temporal`'s `activityUnits` and
-  `@btravstack/amqp`'s `messageUnits` both hand the kernel a work callback that
+  does not own the arguments of. `@btravstack/temporal-worker`'s `activityUnits` and
+  `@btravstack/amqp-worker`'s `messageUnits` both hand the kernel a work callback that
   _is_ the library's `next()`, so an activity or a handler had no parameter to
   receive the signal through and the kernel's `drainTimeoutMs` was unobservable
   from inside the work. Injecting a context the transport's contract does not
   type was the alternative, and it is exactly the hidden-dependency shape `di`
   exists to prevent, so the signal travels on the record instead — data about
   this unit, like `deadline`, with nothing to substitute in a test.
-  `@btravstack/http` is unchanged: it still passes the same signal as its
+  `@btravstack/http-server` is unchanged: it still passes the same signal as its
   handler's third parameter.
 
   What each transport does with it is the transport's own business, and both

@@ -20,7 +20,7 @@ import {
   type CustomerId,
   type OrderId,
 } from "@btravstack/example-order-domain";
-import type { HttpInfo, HttpRuntime } from "@btravstack/http";
+import type { HttpInfo, HttpRuntime } from "@btravstack/http-server";
 import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { LoggerConfig, createLogger, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";

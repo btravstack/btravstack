@@ -20,7 +20,7 @@ export class Unauthenticated extends TaggedError("Unauthenticated") {}
 // BARE answer that a `"scopes" in granted` test read as the scoped one and
 // destroyed. `Symbol.for` rather than `Symbol()`: two copies of this package
 // would otherwise read each other's grants as bare.
-const GRANT: unique symbol = Symbol.for("@btravstack/http/grant") as never;
+const GRANT: unique symbol = Symbol.for("@btravstack/http-server/grant") as never;
 
 /**
  * The scoped answer, and the reason `granted()` is mandatory rather than

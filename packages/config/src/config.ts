@@ -135,7 +135,7 @@ const integerIn =
  * (any Standard Schema does as well — a `zod` object over the raw variables,
  * for instance); `Config.provider(Port)(schema)` turns it into a di provider
  * that reads {@link Env} and answers `ConfigInvalid` when the environment is
- * wrong. A starter provides its own slice — `@btravstack/http` binds `PORT` and
+ * wrong. A starter provides its own slice — `@btravstack/http-server` binds `PORT` and
  * `HOST` onto `HttpConfig` — and an application binds whatever else it needs
  * onto ports of its own.
  */

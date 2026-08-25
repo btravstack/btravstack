@@ -211,7 +211,7 @@ None of these is checkable by the kernel, and each is silent when broken.
    synchronous with `host.run`.** A unit-provided port reaches the runtime only
    through `run`'s work callback, and with a `unit` module the callback runs
    after an `await` — a runtime subscribing to an event from inside it must
-   check whether it already fired (`@btravstack/http` checks `response.closed`
+   check whether it already fired (`@btravstack/http-server` checks `response.closed`
    for exactly this).
 
 ## A minimal runtime

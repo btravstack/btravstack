@@ -31,14 +31,14 @@ adapter behind its own subpath; it IMPLEMENTS the `Logger`, `Tracer` and
 `Meter` ports rather than declaring them, which is `core`'s job), `cache`
 `mailer` and `storage` (the three application-service ports of issue #62, on
 one shape — a port, a real adapter, an in-process adapter, and one
-composition function whose `instrumented` flag defaults to on), `http`
-(the HTTP starter — oRPC), `temporal` (the Temporal starter) and `amqp` (the
-AMQP starter). `di` was its own repository until it was merged here
+composition function whose `instrumented` flag defaults to on), and the three
+**servers**, each named for the half it implements: `http-server` (oRPC over
+`node:http`), `temporal-worker` and `amqp-worker`. `di` was its own repository until it was merged here
 **with its history**; it and `contract` are the two packages that depend on
 nothing else in
 this workspace, and the dependencies run `core` → `config` → `di`, never
-back, with `testing`, `observability`, the three application-service ports and the three transport starters on
-`core`. Its own spec is `packages/di/CLAUDE.md`; `contract`'s is
+back, with `testing`, `observability`, the three application-service ports
+and the three servers on `core`. Its own spec is `packages/di/CLAUDE.md`; `contract`'s is
 `packages/contract/CLAUDE.md`; the harness's is
 `packages/testing/CLAUDE.md`; the logging starter's is
 `packages/observability/CLAUDE.md`.
@@ -85,7 +85,7 @@ The twelve published packages share **one version number**, enforced by a
 `fixed` group in `.changeset/config.json`. A release bumps every one of them,
 whether or not it changed — Spring Boot's model, and the reason is the same:
 an application installs a kernel and two or three starters together, and
-"which version of `@btravstack/http` goes with `@btravstack/core@0.4.1`" is a
+"which version of `@btravstack/http-server` goes with `@btravstack/core@0.4.1`" is a
 question nobody should have to answer.
 
 `@btravstack/di` is the only one with a published history (`0.1.0`, from its
@@ -146,7 +146,7 @@ major.
    committed fact does, relayed from a transactional outbox — and no mapping
    anywhere near the kernel. The second is also where
    `Serving.drain` first meets a transport with real drain semantics of its
-   own — which is why that half now lives in `@btravstack/temporal`, the
+   own — which is why that half now lives in `@btravstack/temporal-worker`, the
    package the example consumes: `worker.shutdown()` stops polling immediately and `run()` resolves only
    once the in-flight activity has finished, so `drain` is a genuine wait
    rather than the "stop accepting, nothing left to await" the other two are.
@@ -171,9 +171,9 @@ major.
    **The local loop** under _Toolchain & conventions_.
 
    **The transport role map is a decision, not an inventory** (issues #61 and
-   #60): answering is `@btravstack/http`; orchestration — and with it
+   #60): answering is `@btravstack/http-server`; orchestration — and with it
    everything job-queue-shaped and everything scheduled — is
-   `@btravstack/temporal`; broadcasting is `@btravstack/amqp`. There is no
+   `@btravstack/temporal-worker`; broadcasting is `@btravstack/amqp-worker`. There is no
    job-queue runtime and no scheduler runtime to come. A workflow already IS
    a durable job with a handle — retries, per-attempt budgets, delay,
    idempotency keys and a result that outlives the caller are Temporal's own
@@ -182,6 +182,32 @@ major.
    ("AMQP carries announcements, orchestration carries intent", the amqp
    contract's own line). A workload the map does not cover is a new decision
    to record here, never a fourth runtime by default.
+
+   **Each transport package is named for the HALF it implements, and the
+   other half's name is reserved.** `http-server`, `temporal-worker` and
+   `amqp-worker` — not `http`, `temporal`, `amqp`, which claimed a whole
+   transport and delivered the serving side of it. The calling side exists
+   today as somebody else's library, used directly by the examples
+   (`@orpc/client`, `@temporal-contract/client`, `@amqp-contract/client`),
+   and when this family grows its own they take `-client` names beside these.
+   Three things decided the spelling:
+   - **The neighbours qualify both sides** — `@orpc/server`/`@orpc/client`,
+     `@temporal-contract/worker`/`/client` — so an unqualified name reads as
+     the umbrella containing both, which is exactly what it is not.
+   - **"worker" rather than a uniform `-server`**, because it is Temporal's
+     and AMQP's own word, and because `temporal-server` already means the
+     Temporal Service — the cluster `internal/test-infra` runs as
+     `temporalio/auto-setup`. A name that suggests you are booting the
+     cluster is worse than a suffix that varies.
+   - **A client will be a PACKAGE, never a subpath.** Peers are per-package,
+     so `@btravstack/http-server/client` would drag `@orpc/server` into a
+     consumer that only ever calls — the same reason `examples/*-contract`
+     are packages of their own: a client must be able to take a contract
+     without the server.
+
+   The rename cost nothing because only `@btravstack/di` had ever been
+   published (`0.1.0`); after the first release it would have cost a
+   deprecation cycle, which is why it happened when it did.
 
 2. **Ambient carries DATA. The DI `Context` carries CAPABILITIES.** The kernel
    opens one `AsyncLocalStorage` store per unit holding a small, fixed record —
@@ -194,11 +220,11 @@ major.
    swap. Nor is an `AbortSignal`: `signal` is the **very** controller the work
    callback is handed — one abort, two ways to reach it — and it is on the
    record because the callback is not always where the work is. A
-   middleware-shaped runtime (`@btravstack/temporal`, `@btravstack/amqp`) opens
+   middleware-shaped runtime (`@btravstack/temporal-worker`, `@btravstack/amqp-worker`) opens
    the unit around a call it does not own the arguments of, so an activity or a
    handler has no parameter to receive it through, and injecting a context the
    contract does not type was the alternative and was rejected;
-   `@btravstack/http` passes the same signal as its handler's third parameter,
+   `@btravstack/http-server` passes the same signal as its handler's third parameter,
    which is that signal by another route. A transport's own cancellation —
    Temporal's `Context.current().cancellationSignal` — is a **different clock**,
    not this one. A repository pulled from an ambient store is the untestable
@@ -237,9 +263,9 @@ major.
    this: not supported, and not a framework concept.
 
 3. **The kernel never maps an outcome to a transport.** `Result` → HTTP status
-   belongs to the router an application hands `@btravstack/http`
+   belongs to the router an application hands `@btravstack/http-server`
    (oRPC's `.result()` triage) — the package itself declines that mapping,
-   deliberately — `Result` → activity failure to `@btravstack/temporal`, likewise. `@btravstack/amqp`
+   deliberately — `Result` → activity failure to `@btravstack/temporal-worker`, likewise. `@btravstack/amqp-worker`
    declines it too, and more starkly: `Result` → ack/nack/DLQ is a **three-way**
    split between `amqp-contract`'s own dispatch and the handler, not something
    either package owns outright. A modeled `RetryableError`/`NonRetryableError`
@@ -421,7 +447,7 @@ at `start` only what the application module itself exports. And with a unit
 module the work runs only once the fork is built — after an `await` when a
 unit provider is async — so a runtime that subscribes to an event from inside
 its work (a response's `'close'`) must first check whether it already fired:
-`@btravstack/http`'s `closedOf` checks `response.closed` for exactly this,
+`@btravstack/http-server`'s `closedOf` checks `response.closed` for exactly this,
 found by a client hanging up during a slow per-request acquire and leaving a
 unit open for the process lifetime.
 
@@ -433,7 +459,7 @@ handler configuration, not a middleware slot.** Thesis #3's refusal survives
 intact, narrowed to what it was always about. An oRPC plugin and the starter's
 own `principalMiddleware` act on the **request/response envelope** — bytes,
 headers, a principal resolved before dispatch. An application middleware would
-act on the handler's **`Result`**, and that is the only one `@btravstack/http`
+act on the handler's **`Result`**, and that is the only one `@btravstack/http-server`
 refuses, because it is the one that would put a use case's outcome in the
 transport's hands.
 
@@ -472,7 +498,7 @@ transport's hands.
   same test: it is a property of the credential, answerable before dispatch,
   which is exactly why authentication is in the contract already. What stays
   out is resource-dependent authorization — the order's owner, the row's tenant
-  — which a scope was never going to answer. `@btravstack/http` checks a
+  — which a scope was never going to answer. `@btravstack/http-server` checks a
   credential's granted scopes against the endpoint's declared ones and answers
   `403`, distinct from the `401` a caller with no valid credential gets.
 
@@ -486,20 +512,20 @@ while `logger.ts` shipped `(message, attributes?, cause?)` on all six methods
 _and argued for that ordering in its own TSDoc_. Five copies, one gate, and
 the copy with no gate is the one that lies.
 
-| Package                     | Surface lives in                   | Reference page             |
-| --------------------------- | ---------------------------------- | -------------------------- |
-| `@btravstack/contract`      | `packages/contract/CLAUDE.md`      | `/reference/contract`      |
-| `@btravstack/di`            | `packages/di/CLAUDE.md`            | `/reference/di/`           |
-| `@btravstack/config`        | `packages/config/CLAUDE.md`        | `/reference/config`        |
-| `@btravstack/core`          | `packages/core/CLAUDE.md`          | `/reference/core/`         |
-| `@btravstack/testing`       | `packages/testing/CLAUDE.md`       | `/reference/testing`       |
-| `@btravstack/observability` | `packages/observability/CLAUDE.md` | `/reference/observability` |
-| `@btravstack/cache`         | `packages/cache/CLAUDE.md`         | `/reference/cache`         |
-| `@btravstack/mailer`        | `packages/mailer/CLAUDE.md`        | `/reference/mailer`        |
-| `@btravstack/storage`       | `packages/storage/CLAUDE.md`       | `/reference/storage`       |
-| `@btravstack/http`          | `packages/http/CLAUDE.md`          | `/reference/http`          |
-| `@btravstack/temporal`      | `packages/temporal/CLAUDE.md`      | `/reference/temporal`      |
-| `@btravstack/amqp`          | `packages/amqp/CLAUDE.md`          | `/reference/amqp`          |
+| Package                       | Surface lives in                     | Reference page               |
+| ----------------------------- | ------------------------------------ | ---------------------------- |
+| `@btravstack/contract`        | `packages/contract/CLAUDE.md`        | `/reference/contract`        |
+| `@btravstack/di`              | `packages/di/CLAUDE.md`              | `/reference/di/`             |
+| `@btravstack/config`          | `packages/config/CLAUDE.md`          | `/reference/config`          |
+| `@btravstack/core`            | `packages/core/CLAUDE.md`            | `/reference/core/`           |
+| `@btravstack/testing`         | `packages/testing/CLAUDE.md`         | `/reference/testing`         |
+| `@btravstack/observability`   | `packages/observability/CLAUDE.md`   | `/reference/observability`   |
+| `@btravstack/cache`           | `packages/cache/CLAUDE.md`           | `/reference/cache`           |
+| `@btravstack/mailer`          | `packages/mailer/CLAUDE.md`          | `/reference/mailer`          |
+| `@btravstack/storage`         | `packages/storage/CLAUDE.md`         | `/reference/storage`         |
+| `@btravstack/http-server`     | `packages/http-server/CLAUDE.md`     | `/reference/http-server`     |
+| `@btravstack/temporal-worker` | `packages/temporal-worker/CLAUDE.md` | `/reference/temporal-worker` |
+| `@btravstack/amqp-worker`     | `packages/amqp-worker/CLAUDE.md`     | `/reference/amqp-worker`     |
 
 **Three ports are declared in `@btravstack/core` and implemented elsewhere:
 `Logger`, `Tracer` and `Meter`.** That is the one place the table's
@@ -574,16 +600,16 @@ in its place.
   `UNSATISFIED RUNTIME PORTS` arm is pinned only by `packages/core`'s own
   `start.test-d.ts`, since every shipped runtime declares `resolves: []`.
   `examples/` is not the only place the gate is pinned by a **type test**:
-  `packages/amqp/src/amqp-runtime.test-d.ts` pins the handlers-port half of
-  `amqp`'s own gate, and its sibling `packages/amqp/src/handler.test-d.ts` pins
+  `packages/amqp-worker/src/amqp-runtime.test-d.ts` pins the handlers-port half of
+  `amqp`'s own gate, and its sibling `packages/amqp-worker/src/handler.test-d.ts` pins
   the composing form's — a piece typed by the one key it names, and the root's
-  array refused when it misses a declared key. `packages/temporal/src/workflow-activities.test-d.ts`
+  array refused when it misses a declared key. `packages/temporal-worker/src/workflow-activities.test-d.ts`
   pins the same shape for `temporal`'s composing form and is that package's
-  **first** type test — `packages/temporal` had no `*.test-d.ts` file, and no
-  `tsconfig.test-d.json` or `test:types` script, before it. `packages/http/src/controller.test-d.ts`
+  **first** type test — `packages/temporal-worker` had no `*.test-d.ts` file, and no
+  `tsconfig.test-d.json` or `test:types` script, before it. `packages/http-server/src/controller.test-d.ts`
   pins the
   five compile-time gates the keyed `HttpRouter(contract)(controllers)` form
-  owes (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 50 specs, across
+  owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s 50 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
   `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the
@@ -648,7 +674,7 @@ in its place.
   `axllent/mailpit:v1.31.0` and one `rustfs/rustfs:1.0.0-rc.3`, started
   once per machine and reused by
   every workspace's vitest run **and by `pnpm dev`**. Nine workspaces need a Docker daemon —
-  `packages/amqp`, `packages/temporal`, `packages/cache`, `packages/mailer`,
+  `packages/amqp-worker`, `packages/temporal-worker`, `packages/cache`, `packages/mailer`,
   `packages/storage`, and the four
   `examples/` that boot the
   application or a broker-backed runtime — and that is a fact a contributor
@@ -823,8 +849,8 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   boundary than a server, and it is the boundary the system under test
   actually has. State the cost in the workspace's README, since a suite that
   needs a daemon is a fact a contributor discovers the hard way otherwise.
-- **`examples/order-temporal-worker` consumes `@btravstack/temporal`**, the same
-  way `order-api` consumes `@btravstack/http`: it supplies the contract, the
+- **`examples/order-temporal-worker` consumes `@btravstack/temporal-worker`**, the same
+  way `order-api` consumes `@btravstack/http-server`: it supplies the contract, the
   activities provider and the `mapErrCases` triage, and reads `{ taskQueue,
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. It is a **two-slice
@@ -885,12 +911,12 @@ AuditSlice, observability(), otel()], … })`),
   because the module that reads `DATABASE_URL` is `DatabaseModule` and it says
   so there. That is what makes a slice directory readable on its own — which
   ports come from outside, without naming who supplies them — and what keeps a
-  `needs` list one line per feature instead of one per hop. `@btravstack/http`'s
+  `needs` list one line per feature instead of one per hop. `@btravstack/http-server`'s
   `api.HttpController(name, fragment)({ name: Dep }, { sync })` mints the controller's
   port — `api` being the application's one `defineHttp(...)` binding; the root
   composes every slice's controller into one router with the
   keyed `api.HttpRouter(contract)(controllers)` form, exact against the contract
-  (see `packages/http/CLAUDE.md`). **A fragment is itself a valid contract**,
+  (see `packages/http-server/CLAUDE.md`). **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
   controller changing at all: the lifted root is
   `api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
@@ -904,8 +930,8 @@ AuditSlice, observability(), otel()], … })`),
 
   A worker's record is not nested by fragment the way HTTP's contract is —
   there is nothing shaped like `HttpRouter`'s record to key a composition by —
-  so its starter composes an **array** of pieces instead. `@btravstack/amqp`'s
-  `AmqpHandler(contract, key)` and `@btravstack/temporal`'s
+  so its starter composes an **array** of pieces instead. `@btravstack/amqp-worker`'s
+  `AmqpHandler(contract, key)` and `@btravstack/temporal-worker`'s
   `TemporalWorkflowActivities(contract, key)` each mint one piece straight
   from the contract key — a consumer or a workflow, with the key carried on
   the piece's own port id rather than on a record position — and
@@ -922,13 +948,13 @@ AuditSlice, observability(), otel()], … })`),
   the same exactness the keyed HTTP
   form gets from the shape of the record it composes, reached here through the
   port id instead, because there is no record to be exact against. See
-  `packages/amqp/CLAUDE.md` and `packages/temporal/CLAUDE.md` for the full
+  `packages/amqp-worker/CLAUDE.md` and `packages/temporal-worker/CLAUDE.md` for the full
   surface, and `docs/how-to/split-a-worker-into-slices.md` for the task — the
   sibling of `controller.test-d.ts`'s do-not-break property above does not
   exist on this side: a worker's array has no lifted-fragment form to
   preserve, since a piece already IS one contract key on its own.
 
-- **`examples/order-api` consumes `@btravstack/http` rather than
+- **`examples/order-api` consumes `@btravstack/http-server` rather than
   hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
   over its own node adapter, `@unthrown/orpc` at the boundary.** It is a
   two-slice modulith on the shape above: `slices/orders/` and
@@ -1009,7 +1035,7 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   server is what that example uses — not because containers are unwelcome.
 - **Runtime dependencies: none.** `unthrown` and `@btravstack/di` are **peer**
   dependencies of `@btravstack/core` — the dual-copy hazard is real for both (di's port
-  identity and unthrown's `isResult` each compare across copies). `@btravstack/http`
+  identity and unthrown's `isResult` each compare across copies). `@btravstack/http-server`
   peers on both of those plus `@btravstack/core` itself, for the same reason.
   `node:` builtins only otherwise. Do not add a dependency — `Config` is
   hand-rolled Standard Schema for exactly this reason. `@btravstack/di`
@@ -1029,7 +1055,7 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   `core` is not optional and cannot be, since the ports it implements are
   declared there. A
   **starter** is the exception by definition:
-  `@btravstack/http` peers on `@orpc/server`, `@orpc/contract` and
+  `@btravstack/http-server` peers on `@orpc/server`, `@orpc/contract` and
   `@unthrown/orpc` — peers, not dependencies, so an application holds one
   copy of each. **Optional peers behind a subpath** are the family's second
   shape, and `@btravstack/observability`'s `pino` was the first: a consumer
@@ -1112,7 +1138,7 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   so do not add one pre-emptively.
 - **A passthrough option is typed by the underlying library's own types, or
   it does not exist — a `Record<string, unknown>` bag is banned.** Decided in
-  issue #25, where `@btravstack/amqp`'s `connectionOptions` /
+  issue #25, where `@btravstack/amqp-worker`'s `connectionOptions` /
   `defaultConsumerOptions` were the family's only untyped bags (twice each —
   the primitive and the `AmqpModule` sugar re-declared them): an `unknown`
   bag cuts against the typesafety pitch, and a key the library ignores was
@@ -1120,8 +1146,8 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   `ConsumerOptions` and an `AmqpConnectionOptions` alias reached by index —
   the library declares the type without exporting it, the same trick as
   `AnyAmqpContract` — pinned by `amqp-runtime.test-d.ts`'s passthrough block.
-  No starter is obliged to grow a passthrough: `@btravstack/http` and
-  `@btravstack/temporal` have none, and temporal's named typed options
+  No starter is obliged to grow a passthrough: `@btravstack/http-server` and
+  `@btravstack/temporal-worker` have none, and temporal's named typed options
   (`gracePeriod`, `forceAfter`) are the preferred shape when a handful of
   knobs is all that is wanted — but a passthrough that exists is typed by the
   library it forwards to.
@@ -1176,8 +1202,8 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   the change is to `packages/core/src/` internals or the invariants guarding
   them, `packages/core/CLAUDE.md` too — and for a runtime package, its own:
   `packages/config/CLAUDE.md`, `packages/testing/CLAUDE.md`,
-  `packages/http/CLAUDE.md`, `packages/temporal/CLAUDE.md` or
-  `packages/amqp/CLAUDE.md`, whichever is where that package's public
+  `packages/http-server/CLAUDE.md`, `packages/temporal-worker/CLAUDE.md` or
+  `packages/amqp-worker/CLAUDE.md`, whichever is where that package's public
   surface lives — or `packages/di/CLAUDE.md` for the container, or
   `packages/contract/CLAUDE.md` for the auth marker, or
   `packages/cache/CLAUDE.md`, `packages/mailer/CLAUDE.md` or
@@ -1416,14 +1442,14 @@ And a seventh, about the infrastructure a suite runs against:
   OTel `NodeSDK` as a resourceful provider whose `release` flushes, behind
   the `@btravstack/observability/otel` subpath on the `pino` optional-peer
   protocol; `UnitSpanModule` as a span per unit through `StartOptions.unit`;
-  W3C `traceparent` honoured inbound by `@btravstack/http` and
-  `@btravstack/amqp` (trace-id field only — the parent span id is dropped,
-  never half-carried), with `@btravstack/temporal` deliberately keeping the
+  W3C `traceparent` honoured inbound by `@btravstack/http-server` and
+  `@btravstack/amqp-worker` (trace-id field only — the parent span id is dropped,
+  never half-carried), with `@btravstack/temporal-worker` deliberately keeping the
   workflow id as its correlation. The auto-instrumentation constraint held:
   the preload cannot be DI-provided, so the package ships the graph-owned
   half and the `--import` line stays the deployment's. Surfaces in
   `packages/observability/CLAUDE.md`.
-- ~~A `docs-examples.test-d.ts` for `@btravstack/temporal`, `@btravstack/amqp`
+- ~~A `docs-examples.test-d.ts` for `@btravstack/temporal-worker`, `@btravstack/amqp-worker`
   and `@btravstack/observability`.~~ **Closed by the doc-samples gate**
   (issue #94): `docs/scripts/extract-doc-samples.ts` now compiles every `ts`
   fence on the site and in every README under `pnpm typecheck` — see
@@ -1440,7 +1466,7 @@ And a seventh, about the infrastructure a suite runs against:
   two days (issues #74 and #75, six pages describing `examples/order-api` as it
   was before it had authentication). `examples/order-api/src/docs-examples.test-d.ts`
   is the gate, and it lives in the **example** rather than in
-  `packages/http`: the samples call the real `PlaceOrder` / `FindOrder` /
+  `packages/http-server`: the samples call the real `PlaceOrder` / `FindOrder` /
   `FindCustomer` against the real `contract` through the application's own
   `src/auth.ts`, and a stub would have accepted every broken call — passing an
   order id where a tenant goes was exactly the drift. It covers both
@@ -1448,7 +1474,7 @@ And a seventh, about the infrastructure a suite runs against:
   ride the router,
   the lifted single-slice root and the bare `api.HttpRouter(contract)(deps, arm)`
   form the three router-shaped pages share — `docs/index.md`,
-  `docs/reference/http.md` and `docs/how-to/serve-orpc-over-http.md`, none of
+  `docs/reference/http-server.md` and `docs/how-to/serve-orpc-over-http.md`, none of
   which puts a controller in between. Every deps record it compiles is
   **keyed**, di's one shape since `feat(di)!: a provider declares its
 dependencies by name`; a positional array is refused as

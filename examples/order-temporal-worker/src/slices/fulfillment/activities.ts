@@ -7,7 +7,7 @@ import {
 import { TenantId } from "@btravstack/example-order-domain";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { Storage } from "@btravstack/storage";
-import { TemporalWorkflowActivities } from "@btravstack/temporal";
+import { TemporalWorkflowActivities } from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 
 /**
@@ -51,7 +51,7 @@ import { P } from "unthrown";
  *
  * `args.tenantId` is the tenant the workflow was started with, threaded to
  * every call that touches the database. It arrives on the activity's own
- * input because the CONTRACT declares it — `@btravstack/temporal` knows
+ * input because the CONTRACT declares it — `@btravstack/temporal-worker` knows
  * nothing about tenants, and an input is what Temporal persists in the event
  * history, so a replay reconstructs the tenant along with everything else.
  * `TenantId(args.tenantId)` claims the brand at each activity that needs one —

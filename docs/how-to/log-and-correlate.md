@@ -48,7 +48,7 @@ happened. The recipe is one import.
 
 ```ts
 import { Module, Provider } from "@btravstack/di";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { Logger } from "@btravstack/core";
 import { observability } from "@btravstack/observability";
 
@@ -158,9 +158,9 @@ call, so one application-scope logger is correct for every request:
 }
 ```
 
-`traceId` is the field to search on: `@btravstack/http` fills it from
-`x-request-id`, `@btravstack/temporal` from the workflow id (stable across
-retries) and `@btravstack/amqp` from the message id, so a line logged here
+`traceId` is the field to search on: `@btravstack/http-server` fills it from
+`x-request-id`, `@btravstack/temporal-worker` from the workflow id (stable across
+retries) and `@btravstack/amqp-worker` from the message id, so a line logged here
 joins a trace that started outside the process. `unitId` is minted per unit and
 always unique. Outside a unit — a startup line, a spec that boots no kernel —
 neither field is on the line at all.

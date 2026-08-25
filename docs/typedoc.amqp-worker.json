@@ -1,0 +1,14 @@
+{
+  "extends": "@btravstack/typedoc/base.json",
+  "name": "@btravstack/amqp-worker",
+  "entryPoints": ["../packages/amqp-worker/src/index.ts"],
+  "tsconfig": "../packages/amqp-worker/tsconfig.json",
+  "out": "api/amqp-worker",
+  "intentionallyNotExported": [
+    "AmqpStarter",
+    "AnyAmqpContract",
+    "HandlersPort",
+    "Imports",
+    "Provides"
+  ]
+}

@@ -46,14 +46,14 @@ of one application.
 The three shipped starters each answer the question differently, and none of
 them answers it in the kernel.
 
-**HTTP: oRPC's `.result()` triage, in the router.** `@btravstack/http` mounts an
+**HTTP: oRPC's `.result()` triage, in the router.** `@btravstack/http-server` mounts an
 oRPC router and declines to map anything itself. The router's procedures are
 `Result`-returning functions typed by the contract, and the one place a domain
 error becomes a status is the `mapErrCases` in each procedure. From
 [`examples/order-api`](/examples/order-api), whose `orders` fragment is
 `authenticated`, so the tenant comes off the principal rather than the input:
 
-<!-- doctest: skip — a mapErrCases excerpt of the router shown in full in docs/reference/http.md -->
+<!-- doctest: skip — a mapErrCases excerpt of the router shown in full in docs/reference/http-server.md -->
 
 ```ts
       place: ({ errors, context }, input) =>
@@ -81,7 +81,7 @@ fallbacks are a `404` for a path naming no procedure and a `500` for a unit
 that could not be built. Nothing else.
 
 **Temporal: activity failure, owned by `declareActivitiesHandler`.**
-`@btravstack/temporal` hands the activities record to `temporal-contract`,
+`@btravstack/temporal-worker` hands the activities record to `temporal-contract`,
 which already owns `Result` → activity failure — a modeled error becomes a
 typed contract error the workflow can branch on, `nonRetryable` where the
 contract says so. Doing that mapping a second time in the starter is what the
@@ -104,7 +104,7 @@ a permanent domain error, unless the handler recovers it itself:
           ),
 ```
 
-That line, in `@btravstack/amqp`'s worked example, is not decoration. It is
+That line, in `@btravstack/amqp-worker`'s worked example, is not decoration. It is
 what keeps "infrastructure comes back" true on this transport, and it belongs
 to the handler because only the handler knows which of its defects are worth
 retrying.
@@ -128,7 +128,7 @@ bytes are still in flight — so a runtime must flush its response _inside_ the
 unit, or race `stop()` tearing the transport down. And it sees a `UnitMeta`
 and cannot know whether its `id` is unique — so a runtime that passes a route
 template as the id collapses every request onto one trace id, silently. Both
-are stated on [Write a runtime](/how-to/write-a-runtime); `@btravstack/http`
+are stated on [Write a runtime](/how-to/write-a-runtime); `@btravstack/http-server`
 discharges both structurally (the unit does not close until the response's
 `'close'` fires; the id is a `randomUUID()` per request), which is one good
 reason to consume a starter rather than hand-roll a transport.

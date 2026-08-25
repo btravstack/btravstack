@@ -93,9 +93,9 @@ Nothing about the code that reads it changes shape when it is absent; the
 `?.` in `currentUnit()?.signal` is the whole of the fallback.
 
 The reason it is on the record at all is that **the work callback is not
-always where the work is**. `@btravstack/http` opens the unit around its own
+always where the work is**. `@btravstack/http-server` opens the unit around its own
 listener, so it passes the signal as the handler's third parameter and never
-needs the record. `@btravstack/temporal` and `@btravstack/amqp` are
+needs the record. `@btravstack/temporal-worker` and `@btravstack/amqp-worker` are
 middleware-shaped: the kernel's work callback is the library's `next()`, and
 an activity or a handler has no parameter to receive a signal through. The
 alternative was injecting a context — an extra first argument the Temporal or
@@ -145,13 +145,13 @@ port, declared like everything else it depends on. The store is for the code
 that would otherwise have to thread a trace id through every signature in the
 codebase to reach the one place that writes it out.
 
-The shipped runtimes are written to that rule. `@btravstack/http` opens a
-unit per request, `@btravstack/temporal` one per activity attempt and
-`@btravstack/amqp` one per delivery, and each injects nothing — a handler is a closure
+The shipped runtimes are written to that rule. `@btravstack/http-server` opens a
+unit per request, `@btravstack/temporal-worker` one per activity attempt and
+`@btravstack/amqp-worker` one per delivery, and each injects nothing — a handler is a closure
 over the services its provider declared, and the ambient record is what an
 adapter underneath reads. For the two middleware-shaped ones the record is
 also the only route to the unit's `AbortSignal`, since they call `next()`
-unchanged; `@btravstack/http` passes the same signal as an argument instead.
+unchanged; `@btravstack/http-server` passes the same signal as an argument instead.
 
 ## The lint rule that does not exist
 

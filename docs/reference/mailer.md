@@ -172,7 +172,7 @@ in the module's `Needs`.
 
 - **No templating, no attachments, no cc/bcc, no custom headers.**
 - **No bulk send and no scheduling.** Sending many is your loop; scheduling
-  one is [`@btravstack/temporal`](/reference/temporal)'s job.
+  one is [`@btravstack/temporal-worker`](/reference/temporal-worker)'s job.
 - **No address validation.** The transport rejects what it will not take, and
   a second opinion in a port would be a different, worse one.
 - **No delivery tracking.** `send` means accepted.

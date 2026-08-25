@@ -1,8 +1,8 @@
-# packages/amqp
+# packages/amqp-worker
 
 The AMQP starter's public surface. The root `CLAUDE.md` is the authoritative
 spec for the kernel and the conventions; this file holds what only matters
-when you are working under `packages/amqp/`. Keep it in sync with the code in
+when you are working under `packages/amqp-worker/`. Keep it in sync with the code in
 the same commit, and with `README.md` — the package ships no
 `docs-examples.test-d.ts`, so nothing else compiles these claims.
 
@@ -69,8 +69,8 @@ key)`, both of which cast it to the typed alias), so there is nothing a
   port typed (`provider.port`, di's `& { readonly port: P }`, for a
   hand-declared provider or a type test). No name, no class line.
   The contract argument is a value the type alone reads (`_contract`). Same
-  shape as `@btravstack/http`'s `HttpRouter(contract)` and
-  `@btravstack/temporal`'s `TemporalActivities(contract)` — unlike
+  shape as `@btravstack/http-server`'s `HttpRouter(contract)` and
+  `@btravstack/temporal-worker`'s `TemporalActivities(contract)` — unlike
   `@btravstack/config`'s `Config.provider(name)(schema)`, which keeps its
   name because several config slices per application is normal. A
   hand-written `Provider(port)(…)` over the same port still works everywhere
@@ -156,7 +156,7 @@ K]`, which always names the marker — printed as the **bare string**, the
   from `handler.ts` as a value, so the two files reference each other in the
   type graph with **no runtime cycle**.
 - **`amqp(options)` → `Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>`**
-  — the starter, the same shape as `@btravstack/http`'s `http()`. It provides
+  — the starter, the same shape as `@btravstack/http-server`'s `http()`. It provides
   the runtime on **`AmqpRuntime`** (`extends RuntimePort<Runtime<never,
 AmqpInfo>>` — the runtime resolves **nothing**) and the broker on
   **`AmqpConfig`** (`{ url }`, bound from `AMQP_URL`, default
@@ -256,7 +256,7 @@ not a defect"` guards it). `create` never throws synchronously (its own
   (`WorkerInferHandlers`, through `HandlersInstanceOf`) live in `worker`, and
   bundling it cost two orders of magnitude of dist size: 344 KB, measured at
   the commit where it was still bundled, against **~6 KB** peered (`pnpm
---filter @btravstack/amqp build`'s own report — re-measure rather than
+--filter @btravstack/amqp-worker build`'s own report — re-measure rather than
   trust this number). `@opentelemetry/api` is a peer transitively, because
   `@amqp-contract/worker` itself peers on it. `@amqp-contract/contract` stays
   a devDependency only — used to type this package's own tests, never

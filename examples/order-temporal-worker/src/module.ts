@@ -4,7 +4,7 @@ import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { storage } from "@btravstack/storage";
 import { s3Storage } from "@btravstack/storage/s3";
-import { TemporalActivities, TemporalModule } from "@btravstack/temporal";
+import { TemporalActivities, TemporalModule } from "@btravstack/temporal-worker";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
 import { chargeOrder } from "./slices/billing/activities.js";

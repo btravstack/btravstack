@@ -1,10 +1,10 @@
 ---
-title: "@btravstack/temporal"
+title: "@btravstack/temporal-worker"
 description: The Temporal worker starter — TemporalModule, TemporalActivities, TemporalWorkflowActivities, temporal(), its three ports, TemporalUnreachable, WorkflowSource, the unit per activity attempt, and the drain raced against the kernel's deadline.
 ---
 
 <!-- doctest: prelude
-import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal";
+import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 import { TenantId } from "@btravstack/example-order-domain";
 import {
@@ -22,20 +22,20 @@ import { BillingModule } from "../../billing.js";
 import { FulfillmentModule } from "../../fulfillment.js";
 -->
 
-# @btravstack/temporal
+# @btravstack/temporal-worker
 
 > **Reference.** A complete, structured description of the Temporal worker
-> starter's public surface: every export of `@btravstack/temporal`, its
+> starter's public surface: every export of `@btravstack/temporal-worker`, its
 > options and defaults, and how a worker's drain meets the kernel's deadline.
 > For the task, see [Run a Temporal worker](/how-to/run-a-temporal-worker);
 > for the reasoning, [Starters](/explanation/starters) and
 > [Draining, in three beats](/explanation/draining-in-three-beats); for the
 > worked example, [Order Temporal worker](/examples/order-temporal-worker).
-> Generated signatures are under [API reference](/api/temporal/).
+> Generated signatures are under [API reference](/api/temporal-worker/).
 
 ## Exports
 
-`packages/temporal/src/index.ts` exports exactly this:
+`packages/temporal-worker/src/index.ts` exports exactly this:
 
 | Export                           | Kind  | What it is                                                                                                                                                                                                                                                            |
 | -------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -222,7 +222,7 @@ composing form below exists.
 `args.tenantId` is the application's, not the package's: it is a field the
 **contract** declares on every workflow and activity input, which is what
 makes it survive a replay — Temporal persists an activity's input in the
-event history. `@btravstack/temporal` reads nothing about tenancy.
+event history. `@btravstack/temporal-worker` reads nothing about tenancy.
 `TenantId(…)` is `examples/order-domain`'s brand claimed at the boundary the
 activity is, so a use case cannot be handed an order id where a tenant goes;
 the contract validated the field as a UUIDv7 before the activity was entered,

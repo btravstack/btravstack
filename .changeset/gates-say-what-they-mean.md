@@ -1,8 +1,8 @@
 ---
 "@btravstack/core": minor
-"@btravstack/amqp": minor
-"@btravstack/temporal": minor
-"@btravstack/http": minor
+"@btravstack/amqp-worker": minor
+"@btravstack/temporal-worker": minor
+"@btravstack/http-server": minor
 "@btravstack/testing": minor
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: "@btravstack/http"
+title: "@btravstack/http-server"
 description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
@@ -11,27 +11,27 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 
 import type { Order } from "@btravstack/example-order-domain";
 import { Module } from "@btravstack/di";
-import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http";
+import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http-server";
 import { ErrAsync, OkAsync, P } from "unthrown";
 import { customersController } from "../../slices/customers/controller.js";
 import { ordersController } from "../../slices/orders/controller.js";
 declare const view: (order: Order) => OrderView;
 -->
 
-# @btravstack/http
+# @btravstack/http-server
 
 > **Reference.** A complete, structured description of the HTTP starter's
-> public surface: every export of `@btravstack/http`, its options and their
+> public surface: every export of `@btravstack/http-server`, its options and their
 > defaults, and what the package decides about a request. For the task, see
 > [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http); for the
 > reasoning behind a starter, see [Starters](/explanation/starters) and
 > [The kernel maps nothing](/explanation/the-kernel-maps-nothing); for the
 > worked example, [Order API](/examples/order-api). Generated signatures are
-> under [API reference](/api/http/).
+> under [API reference](/api/http-server/).
 
 ## Exports
 
-`packages/http/src/index.ts` exports exactly this:
+`packages/http-server/src/index.ts` exports exactly this:
 
 | Export                 | Kind  | What it is                                                                                                                                                                                                                                |
 | ---------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -97,7 +97,7 @@ The worked composition root, from `examples/order-api/src/module.ts`:
 
 <!-- doctest: isolate
 import { Logger } from "@btravstack/core";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { orderRouter } from "../../module.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
@@ -274,7 +274,7 @@ its **root** composes through this form too, and each fragment inherits those
 requirements, so a controller under it types `context.principal` — unless it
 carries a mark of its own, in which case that one wins.
 Five gates are pinned by
-`packages/http/src/controller.test-d.ts`: every contract key must be covered;
+`packages/http-server/src/controller.test-d.ts`: every contract key must be covered;
 a key the contract does not declare is rejected; a controller wired under the
 wrong key is rejected (its fragment does not match that key's); a
 procedure a controller's own fragment does not declare is rejected inside the
@@ -472,7 +472,7 @@ the handler `undefined`.
 
 ```ts
 import { TenantId } from "@btravstack/example-order-domain";
-import { granted } from "@btravstack/http";
+import { granted } from "@btravstack/http-server";
 
 export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
   sync: () => (headers) => {

@@ -1,11 +1,11 @@
 // Never exported as a value, so the mark cannot be applied by accident and
 // cannot be written literally. It is not unforgeable: `Authenticated<T, R>` is
-// exported (`@btravstack/http` needs it), so a deliberate
+// exported (`@btravstack/http-server` needs it), so a deliberate
 // `node as unknown as Authenticated<typeof node, [{ user: [] }]>` types as
 // protected while the registry stays empty. Exporting the symbol would drop
 // the cast — and would also cost every consumer an annotation:
 // an inferred exported type that references an inaccessible unique symbol is
-// TS2527, which is why `@btravstack/http` hands back ONE nameable object.
+// TS2527, which is why `@btravstack/http-server` hands back ONE nameable object.
 declare const PRINCIPAL: unique symbol;
 
 /**
@@ -27,7 +27,7 @@ type SeveralKeys<K, U = K> = K extends U ? ([U] extends [K] ? false : true) : ne
 
 /**
  * A requirement naming two schemes is OpenAPI's AND — both credentials must be
- * presented — and nothing here models it: `@btravstack/http` walks the entries
+ * presented — and nothing here models it: `@btravstack/http-server` walks the entries
  * and takes the first that satisfies, which is OR, so a two-key requirement
  * copied out of an OpenAPI document would silently execute as a WEAKER rule
  * than the one it states. Refused at the mark instead.
@@ -89,7 +89,7 @@ export const authenticated =
 
 /**
  * What this exact node requires, or `undefined` when nobody marked it.
- * Ancestry is the caller's to carry — `@btravstack/http`'s `routerOf` walks
+ * Ancestry is the caller's to carry — `@btravstack/http-server`'s `routerOf` walks
  * the tree and passes the nearest mark down.
  */
 export const isAuthenticated = (node: object): Requirements | undefined => marked.get(node);

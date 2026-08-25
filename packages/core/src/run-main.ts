@@ -99,7 +99,7 @@ export const awaitExit = async <E>(
  *
  * @example
  * ```ts
- * // `OrderApi` imports the application next to `@btravstack/http`'s `http()`
+ * // `OrderApi` imports the application next to `@btravstack/http-server`'s `http()`
  * // starter and exports `HttpRuntime` — the port `start` resolves the runtime
  * // from. `PORT`, `HOST` and `PROBE_PORT` are read inside the graph.
  * await runMain(OrderApi);

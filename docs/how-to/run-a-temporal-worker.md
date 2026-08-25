@@ -10,7 +10,7 @@ description: Provide a temporal-contract's activities as a di service, compose t
 > Boot a Temporal worker under the kernel: activities built from
 > your own services, the connection as a resource of the graph, and a drain
 > that releases the kernel at the kernel's deadline. For the package's full
-> surface, see [`@btravstack/temporal`](/reference/temporal); for _why_ the
+> surface, see [`@btravstack/temporal-worker`](/reference/temporal-worker); for _why_ the
 > drain needs a package of its own, see
 > [Draining, in three beats](/explanation/draining-in-three-beats).
 
@@ -57,7 +57,7 @@ import {
 } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
 import { orderContract } from "@btravstack/example-order-temporal-contract";
-import { TemporalActivities } from "@btravstack/temporal";
+import { TemporalActivities } from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 
 export const orderActivities = TemporalActivities(orderContract)(
@@ -152,7 +152,7 @@ import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure
 import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
-import { TemporalModule } from "@btravstack/temporal";
+import { TemporalModule } from "@btravstack/temporal-worker";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
 import { orderActivities } from "./activities.js";
@@ -336,7 +336,7 @@ it fires on a workflow-side cancellation, and on worker shutdown after
 
 ## See also
 
-- [`@btravstack/temporal`](/reference/temporal) — options, ports, `TemporalInfo`, `WorkflowSource`.
+- [`@btravstack/temporal-worker`](/reference/temporal-worker) — options, ports, `TemporalInfo`, `WorkflowSource`.
 - [Split a worker into slices](/how-to/split-a-worker-into-slices) — several
   workflows, one activities record per workflow, composed at the root.
 - [Order Temporal worker](/examples/order-temporal-worker) — the saga these samples come from.

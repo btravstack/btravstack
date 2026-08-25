@@ -34,7 +34,7 @@
 // compiled ahead of the page's fences and rendered nowhere:
 //
 //   <!-- doctest: prelude
-//   import { AmqpHandler } from "@btravstack/amqp";
+//   import { AmqpHandler } from "@btravstack/amqp-worker";
 //   declare const orderContract: …;
 //   -->
 //
@@ -63,15 +63,15 @@ const GROUPS: readonly Group[] = [
 const classify = (imports: readonly string[]): Group => {
   const has = (...prefixes: readonly string[]) =>
     imports.some((source) => prefixes.some((prefix) => source.startsWith(prefix)));
-  const temporal = has("@btravstack/temporal", "@temporal-contract/", "@temporalio/");
-  const amqp = has("@btravstack/amqp", "@amqp-contract/");
+  const temporal = has("@btravstack/temporal-worker", "@temporal-contract/", "@temporalio/");
+  const amqp = has("@btravstack/amqp-worker", "@amqp-contract/");
   // oxlint-disable-next-line unthrown/no-throw -- a generator's misconfiguration must fail the generate task loudly
   if (temporal && amqp) throw new Error("a page mixing temporal and amqp needs a group marker");
   if (temporal) return "order-temporal-worker";
   if (amqp) return "order-amqp-worker";
   if (
     has(
-      "@btravstack/http",
+      "@btravstack/http-server",
       "@btravstack/contract",
       "@btravstack/observability",
       "zod",

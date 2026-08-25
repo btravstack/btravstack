@@ -5,7 +5,7 @@ description: Mark a contract fragment or a procedure with authenticated(), decla
 
 <!-- doctest: prelude
 import { Logger } from "@btravstack/core";
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { OkAsync, P } from "unthrown";
 import type { Order } from "@btravstack/example-order-domain";
@@ -33,7 +33,7 @@ declare const userId: string;
 > accepts and which scopes each must grant, resolve the caller once per
 > request, and read it in the handler. For
 > the marker's surface, see [`@btravstack/contract`](/reference/contract); for
-> the starter's, [`@btravstack/http`](/reference/http); for the worked
+> the starter's, [`@btravstack/http-server`](/reference/http-server); for the worked
 > deployment, [Order API (HTTP)](/examples/order-api).
 
 Three moves, in this order: **mark** the contract, **implement** each scheme,
@@ -143,7 +143,7 @@ key the authenticator sits under in `defineHttp`, so it is written once.
 
 <!-- doctest: isolate
 import { TenantId } from "@btravstack/example-order-domain";
-import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http";
+import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 -->
 
@@ -155,7 +155,7 @@ import {
   Unauthenticated,
   defineHttp,
   granted,
-} from "@btravstack/http";
+} from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 /** What the `user` scheme resolves to. The contract names none of this. */
@@ -446,7 +446,7 @@ order's owner?" is not, and belongs in the handler, where the use case is.
 - [`@btravstack/contract`](/reference/contract) — `authenticated`,
   `Requirement`, `Requirements`, `Authenticated`, `PrincipalKey`, `IsMarked`,
   `RequirementsOf`, `isAuthenticated`.
-- [`@btravstack/http`](/reference/http) — `defineHttp`, `HttpAuthenticator`,
+- [`@btravstack/http-server`](/reference/http-server) — `defineHttp`, `HttpAuthenticator`,
   `Granted`, `Principal`, `Unauthenticated`, and the request table.
 - [Split a router into controllers](/how-to/split-a-router-into-controllers) —
   where the handler in step 3 lives once an API has slices.

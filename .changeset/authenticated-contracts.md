@@ -1,10 +1,10 @@
 ---
 "@btravstack/contract": minor
-"@btravstack/http": minor
+"@btravstack/http-server": minor
 ---
 
 Let a contract declare that a procedure requires an authenticated caller, and
-give `@btravstack/http` what it needs to satisfy that declaration.
+give `@btravstack/http-server` what it needs to satisfy that declaration.
 
 **The contract says which schemes protect a route; the application says what
 each one resolves to.**
@@ -22,7 +22,7 @@ contract rather than detecting one that was forgotten. Its full shape — the
 curried `authenticated(...requirements)(node)`, scopes and per-procedure
 overrides — is in the _named security schemes_ entry.
 
-`@btravstack/http` resolves the principal before dispatch, through an
+`@btravstack/http-server` resolves the principal before dispatch, through an
 authenticator per scheme. A contract that marks nothing needs none; a marked
 router whose graph provides none carries that scheme's port as an
 unmet need `start` refuses. A marked procedure whose

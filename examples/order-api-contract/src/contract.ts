@@ -40,7 +40,7 @@ const malformedRef = z.object({ id: z.string() });
  * An **unauthenticated** input names its tenant, because this API serves
  * several from one database and "which tenant" is then part of what is being
  * asked. It is an argument, not a header the transport reads:
- * `@btravstack/http` has no tenancy concept and should not grow one — context
+ * `@btravstack/http-server` has no tenancy concept and should not grow one — context
  * is the application's to own, and naming it in the contract is what makes it
  * the application's.
  *

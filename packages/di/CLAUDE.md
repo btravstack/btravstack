@@ -121,7 +121,7 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   (`{ portId: Id; new (): PortInstance<Id, Service> }`, both types only) so a
   provider over a port declared inside a helper — one minted per call
   (`Config.provider("RelayConfig")(schema)`) or the helper's own fixed one
-  (`HttpRouter(contract)({ name: Dep }, { sync })`, on `@btravstack/http`'s
+  (`HttpRouter(contract)({ name: Dep }, { sync })`, on `@btravstack/http-server`'s
   `HttpRouterPort`) — has a nameable
   declared type when a consumer exports it: the class expression
   `class extends Port(id)<S> {}` has an anonymous type declaration emit cannot

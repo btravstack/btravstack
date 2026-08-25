@@ -90,7 +90,7 @@ TemporalActivities(pinContract)([echo]);
 // genuinely different input and output, not a second copy of `step` — di's
 // port typing is structural on id and service, so reusing `step` here would
 // make the two `runEcho` pieces the same type and this assertion would report
-// nothing to catch. (`packages/amqp`'s mirror of this gate needed exactly that
+// nothing to catch. (`packages/amqp-worker`'s mirror of this gate needed exactly that
 // fix: its first version shared one message shape and the directive sat
 // unused.)
 //

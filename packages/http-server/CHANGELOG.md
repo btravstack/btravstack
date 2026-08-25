@@ -1,4 +1,4 @@
-# @btravstack/http
+# @btravstack/http-server
 
 ## 0.2.0
 
@@ -21,7 +21,7 @@
   silently. An empty or blank variable is an error, never an absent one; `PORT=0`
   stays expressible.
 
-  `@btravstack/http` becomes a starter: `http()` provides
+  `@btravstack/http-server` becomes a starter: `http()` provides
   `HttpRuntime` and `HttpConfig`, bound from `PORT` (default `3000`) and `HOST`
   (default `0.0.0.0`) unless pinned (`http({ port: 0 })` for a test —
   explicit beats environment beats default, per field, through
@@ -39,7 +39,7 @@
   prints; the starters' `HttpRouter` / `TemporalActivities` / `AmqpHandlers`
   provide the starter's own fixed port and take none.
 
-- ee6c612: **Breaking.** `@btravstack/http` is the HTTP starter, and there is one way HTTP
+- ee6c612: **Breaking.** `@btravstack/http-server` is the HTTP starter, and there is one way HTTP
   is answered: **oRPC, over its own node adapter**. `http()` mounts the
   application's router under `prefix` (default `/rpc`) and provides the runtime
   on **`HttpRuntime`** (declared over core's `RuntimePort`, `Runtime<never,

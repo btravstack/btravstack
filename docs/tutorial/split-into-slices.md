@@ -28,7 +28,7 @@ a `farewells` fragment beside it:
 // defineHttp — none of which this lesson changes.
 import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
-import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http";
+import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{
@@ -86,7 +86,7 @@ export const contract = { greetings, farewells };
 
 A fragment is itself a valid contract — a client can import `contract.farewells`
 alone — which is what lets a slice lift out into its own process later without
-its controller changing ([the property](/reference/http)).
+its controller changing ([the property](/reference/http-server)).
 
 ## Step 2 — A controller per fragment
 
@@ -193,7 +193,7 @@ against it. The root becomes a list of slices, plus what no slice owns:
 
 ```ts
 // app.ts
-import { HttpModule } from "@btravstack/http";
+import { HttpModule } from "@btravstack/http-server";
 
 import { api } from "./auth.js";
 import { contract } from "./contract.js";

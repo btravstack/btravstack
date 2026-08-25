@@ -60,7 +60,7 @@ export const HttpRouterPort = Port("HttpRouter") as PortClassOf<
 export type HttpRouterPort = PortInstance<"HttpRouter", Router<Record<never, never>>>;
 
 /**
- * The oRPC starter: a provider of `@btravstack/http`'s `HttpHandler` built
+ * The oRPC starter: a provider of `@btravstack/http-server`'s `HttpHandler` built
  * from the **router port** — the application provides its router as a service
  * (a provider that declares the use cases its procedures call), and this
  * turns it into the HTTP surface through oRPC's own node adapter, mounted
@@ -269,7 +269,7 @@ export const routerFor =
 
 // Namespaced so it cannot collide with a key the caller wrote; see `build`.
 // The trailing colon is part of the prefix: the scheme name follows it.
-const AUTHENTICATOR = "@btravstack/http/authenticator:";
+const AUTHENTICATOR = "@btravstack/http-server/authenticator:";
 
 /** A controller for one fragment — what `HttpController` returns, as the keyed form consumes it. */
 type ControllerFor<Fragment extends RouterContract, Schemes = never> = {

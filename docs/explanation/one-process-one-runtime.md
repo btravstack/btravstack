@@ -104,7 +104,7 @@ sequenced _behind_ it rather than sampled alongside it (the reason is on
 Second, it was the first runtime that had to **honour the deadline signal**
 rather than merely note it. `run()` settles on Temporal's own
 `shutdownForceTime`, so an activity that never finishes would hold
-`Serving.stop` well past the kernel's `drainTimeoutMs`. `@btravstack/temporal`
+`Serving.stop` well past the kernel's `drainTimeoutMs`. `@btravstack/temporal-worker`
 races `run()` against the `AbortSignal` the kernel hands `drain`, and reuses
 that signal for `stop()`. There was no stronger escalation available:
 `@temporalio/worker` exposes no public forced shutdown (`forceShutdown$` is

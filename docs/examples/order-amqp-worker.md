@@ -4,7 +4,7 @@ description: The broadcast deployment — two subscriber slices composed by Amqp
 ---
 
 <!-- doctest: prelude
-import { AmqpConfig, AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp";
+import { AmqpConfig, AmqpHandler, AmqpHandlers, AmqpModule } from "@btravstack/amqp-worker";
 import { RetryableError } from "@amqp-contract/worker";
 import { Config, Env } from "@btravstack/config";
 import { currentUnit, Logger, Meter, Tracer } from "@btravstack/core";
@@ -38,7 +38,7 @@ import type { AsyncResult } from "unthrown";
 
 [`examples/order-amqp-worker`](https://github.com/btravstack/start/tree/main/examples/order-amqp-worker)
 — the broadcast deployment: [the order application](/examples/order-application)
-telling everyone what happened, served by [`@btravstack/amqp`](/reference/amqp).
+telling everyone what happened, served by [`@btravstack/amqp-worker`](/reference/amqp-worker).
 
 ```sh
 pnpm turbo run test --filter=@btravstack/example-order-amqp-worker
@@ -314,7 +314,7 @@ const audit = defineQueue("order-audit", {
 
 Naming a failure decides what the platform does next — the sharper form of
 the claim the Temporal contract makes with `nonRetryable`. Two things to keep
-straight, both from [`@btravstack/amqp`](/reference/amqp): `maxRetries: 3` is
+straight, both from [`@btravstack/amqp-worker`](/reference/amqp-worker): `maxRetries: 3` is
 **four** total attempts, not Temporal's three; and a handler's `Defect` is
 nacked once, straight to the dead-letter exchange, never touching that budget
 — so a handler that wants "infrastructure comes back" recovers its own
@@ -422,5 +422,5 @@ port. Neither is di's `UNSATISFIED DEPENDENCIES` dependency gate.
 
 - The other two deployments: [Order API (HTTP)](/examples/order-api),
   [Order Temporal worker](/examples/order-temporal-worker).
-- The package: [`@btravstack/amqp`](/reference/amqp); the task:
+- The package: [`@btravstack/amqp-worker`](/reference/amqp-worker); the task:
   [Consume AMQP messages](/how-to/consume-amqp-messages).

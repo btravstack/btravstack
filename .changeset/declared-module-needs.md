@@ -5,9 +5,9 @@
 "@btravstack/core": minor
 "@btravstack/testing": minor
 "@btravstack/observability": minor
-"@btravstack/http": minor
-"@btravstack/temporal": minor
-"@btravstack/amqp": minor
+"@btravstack/http-server": minor
+"@btravstack/temporal-worker": minor
+"@btravstack/amqp-worker": minor
 ---
 
 A module declares what its own providers expect from outside

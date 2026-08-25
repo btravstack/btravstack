@@ -159,7 +159,7 @@ A tap is for the **services** a spec drives or asserts against.
 `examples/order-amqp-worker` taps the writer it places orders through and the
 outbox it reads back, on a root composed to record what its logger wrote:
 
-<!-- doctest: skip — needs `@btravstack/amqp`, which packages/core does not install; the shape it shows is exercised by examples/order-amqp-worker's specs -->
+<!-- doctest: skip — needs `@btravstack/amqp-worker`, which packages/core does not install; the shape it shows is exercised by examples/order-amqp-worker's specs -->
 
 ```ts
 const lines: Line[] = [];
