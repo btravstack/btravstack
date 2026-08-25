@@ -1,7 +1,7 @@
 {
   "name": "@btravstack/docs",
   "private": true,
-  "description": "Documentation website for start",
+  "description": "Documentation website for btravstack",
   "license": "MIT",
   "author": "Benoit TRAVERS <benoit.travers.fr@gmail.com>",
   "type": "module",

@@ -22,16 +22,25 @@ const demo = fileURLToPath(new URL("../.vitepress/theme/CompileErrorDemo.vue", i
 // check is for the words, not for line breaks neither file owes the other.
 const normalize = (text: string) => text.replace(/^\s*\/\/ ?/gm, " ").replace(/\s+/g, " ");
 
-for (const [what, path] of [
-  ["di's `DependencyGate` marker", source],
-  ["the pinned type test", pinned],
-  ["the landing page demo", demo],
+// TypeScript escapes the em dash in type-printing positions and leaves it
+// literal in the `Property … is missing` clause, so the demo quotes BOTH
+// spellings verbatim. Checking only one would let drift confined to the other
+// pass green — the demo carries the escaped form twice and the literal once.
+const ESCAPED = MARKER.replace("—", "\\u" + "2014");
+
+for (const [what, path, expected] of [
+  ["di's `DependencyGate` marker", source, [MARKER]],
+  ["the pinned type test", pinned, [MARKER]],
+  ["the landing page demo", demo, [MARKER, ESCAPED]],
 ] as const) {
-  if (!normalize(readFileSync(path, "utf8")).includes(normalize(MARKER))) {
-    process.stderr.write(
-      `[docs] ${what} no longer contains ${JSON.stringify(MARKER)}.\n` +
-        `The landing page quotes this diagnostic as proof. Update both, or drop the demo.\n`,
-    );
-    process.exit(1);
+  const text = normalize(readFileSync(path, "utf8"));
+  for (const marker of expected) {
+    if (!text.includes(normalize(marker))) {
+      process.stderr.write(
+        `[docs] ${what} no longer contains ${JSON.stringify(marker)}.\n` +
+          `The landing page quotes this diagnostic as proof. Update both, or drop the demo.\n`,
+      );
+      process.exit(1);
+    }
   }
 }

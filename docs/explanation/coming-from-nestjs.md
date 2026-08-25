@@ -22,14 +22,14 @@ Nest validates configuration at bootstrap and Nest overrides providers into the
 real module — the popular versions of those two claims are wrong, and the real
 differences are stated instead.
 
-|                       | NestJS                                                           | btravstack                                                                           |
-| --------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Wiring is checked     | at startup, when the container instantiates providers            | at compile time, at the `Module.scoped` call, with the missing ports named           |
-| Declaring a provider  | `@Injectable()` / `@Module()` decorators; resolution by token    | plain values — a port is a class, a provider is a value, dependencies named by key   |
-| Failures              | thrown, and caught by a built-in exceptions layer                | an `unthrown` `Result`, on every async surface but three                             |
-| Shutdown              | five lifecycle hooks, off until `enableShutdownHooks()`          | a three-beat drain, with a delay sized for Kubernetes endpoint propagation           |
-| Configuration         | validated at bootstrap _if_ you pass a schema; read later by key | the validated object **is** the injected value; failure is a modeled `ConfigInvalid` |
-| Overriding for a test | `overrideProvider(token).useValue(…)`, applied at `compile()`    | the same idea; the double is typed against the port, and fixture drift fails loudly  |
+|                       | NestJS                                                                     | btravstack                                                                           |
+| --------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Wiring is checked     | at startup, when the container instantiates providers                      | at compile time, at the `Module.scoped` call, with the missing ports named           |
+| Declaring a provider  | `@Injectable()` / `@Module()` decorators; resolution by token              | plain values — a port is a class, a provider is a value, dependencies named by key   |
+| Failures              | thrown, and caught by a built-in exceptions layer                          | an `unthrown` `Result`, on every async surface but three                             |
+| Shutdown              | five lifecycle hooks; the three shutdown ones need `enableShutdownHooks()` | a three-beat drain, with a delay sized for Kubernetes endpoint propagation           |
+| Configuration         | validated at bootstrap _if_ you pass a schema; read later by key           | the validated object **is** the injected value; failure is a modeled `ConfigInvalid` |
+| Overriding for a test | `overrideProvider(token).useValue(…)`, applied at `compile()`              | the same idea; the double is typed against the port, and fixture drift fails loudly  |
 
 ## Wiring is checked
 

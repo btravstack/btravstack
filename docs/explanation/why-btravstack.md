@@ -21,7 +21,7 @@ HTTP, AMQP or Temporal.
 That sentence is the whole design. Everything below is what follows from
 holding it.
 
-## `di` proves the graph; btravstack owns _when_
+## `di` proves the graph; `@btravstack/core` owns _when_
 
 `di` answers "does this composition hold together?" before the process
 exists: a missing provider, a private port reached across a module boundary, a
@@ -30,7 +30,7 @@ call site (see [Compile errors, not
 surprises](/explanation/compile-time-wiring)). By the time `start` sees a
 module there is nothing left to discover about it.
 
-So **btravstack does not wire**. It decides when the already-proven graph is
+So **`@btravstack/core` does not wire**. It decides when the already-proven graph is
 constructed and when it is torn down. Construction is `Module.scoped`; teardown
 is the scope closing; between the two sits the runtime, serving. The kernel is
 DI initialisation plus lifecycle, and it deliberately stops there.
