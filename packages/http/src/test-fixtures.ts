@@ -159,6 +159,50 @@ const rpcSlicedAppOf = () =>
   });
 
 /**
+ * Two pieces sharing the nested parent "v1" — "v1.orders" and
+ * "v1.customers" — plus one minted at the bare PROCEDURE path "health". The
+ * shared parent forces `nest`'s node-reuse branch (`node[segment] ??= {}`
+ * finding a node the first piece already created) to actually run, which
+ * `slicedContract`'s one dotted piece above never exercises; "health" is the
+ * depth-N leaf case, a piece with no fragment around it at all.
+ */
+const deepContract = {
+  v1: { orders: { place: oc }, customers: { find: oc } },
+  health: oc,
+};
+
+const v1OrdersController = publicApi.HttpController(
+  deepContract,
+  "v1.orders",
+)({
+  sync: () => ({ place: () => OkAsync({ id: "o-1" }) }),
+});
+const v1CustomersController = publicApi.HttpController(
+  deepContract,
+  "v1.customers",
+)({
+  sync: () => ({ find: () => OkAsync({ id: "c-1" }) }),
+});
+const deepHealthController = publicApi.HttpController(
+  deepContract,
+  "health",
+)({ sync: () => () => OkAsync({ ok: true as const }) });
+
+const deepRouter = publicApi.HttpRouter(deepContract)([
+  v1OrdersController,
+  v1CustomersController,
+  deepHealthController,
+]);
+
+const rpcDeepAppOf = () =>
+  HttpModule("RpcDeepApp")({
+    router: deepRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [v1OrdersController, v1CustomersController, deepHealthController],
+  });
+
+/**
  * What this deployment knows about a caller. The contract names no identity
  * type at all, so `defineHttp` is the only place one is stated — and the only
  * route by which a handler gets a readable `context.principal`.
@@ -269,6 +313,41 @@ const rpcRootMarkedAppOf = () =>
   });
 
 /**
+ * The mark sits on "v1", one level BELOW the root, with a piece minted at
+ * "v1.orders" underneath it — the case `FragmentAt`'s compile-time fold and
+ * `routerOf`'s runtime `inherited` walk each have to answer for independently,
+ * and the one Task 1's review named as the auth-bypass class if the two ever
+ * disagreed: `rootMarkedContract` above proves the mark-at-the-root seed,
+ * `authedContract` proves a mark at a top-level key, neither proves a mark
+ * reaching THROUGH a nesting level to a piece minted below it.
+ */
+const nestedMarkedContract = { v1: authenticated({ user: [] })({ orders: { whoami } }) };
+
+let nestedMarkedRuns = 0;
+
+const nestedMarkedController = api.HttpController(
+  nestedMarkedContract,
+  "v1.orders",
+)({
+  sync: () => ({
+    whoami: ({ context }) => {
+      nestedMarkedRuns += 1;
+      return OkAsync({ userId: context.principal.userId });
+    },
+  }),
+});
+
+const nestedMarkedRouter = api.HttpRouter(nestedMarkedContract)([nestedMarkedController]);
+
+const rpcNestedMarkedAppOf = () =>
+  HttpModule("RpcNestedMarkedApp")({
+    router: nestedMarkedRouter,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [nestedMarkedController],
+  });
+
+/**
  * The other arm of `HttpAuthenticator`: one that DECLARES a dependency — a JWT
  * verifier, a key set, a token table — which is the form every adopter writes
  * and the one `defineHttp` binds through `Provider(port)(deps, arm)`.
@@ -355,6 +434,12 @@ type AuthedClient = RouterContractClient<{
 type RootMarkedClient = RouterContractClient<{
   readonly orders: { readonly whoami: typeof whoami };
 }>;
+
+type NestedMarkedClient = RouterContractClient<{
+  readonly v1: { readonly orders: { readonly whoami: typeof whoami } };
+}>;
+
+type DeepClient = RouterContractClient<typeof deepContract>;
 
 /**
  * The same implementation carrying a key the contract never declared — only
@@ -566,6 +651,26 @@ export type HttpFixtures = {
     readonly origin: string;
     readonly client: RouterContractClient<typeof slicedContract>;
   }>;
+  /**
+   * The starter over `deepContract` — two pieces sharing the nested "v1"
+   * parent, plus one minted at the bare procedure path "health". Shut down by
+   * the fixture.
+   */
+  readonly rpcDeep: () => Promise<{
+    readonly origin: string;
+    readonly client: DeepClient;
+  }>;
+  /**
+   * The starter over a contract whose mark sits one level BELOW the root, on
+   * "v1" — with a piece minted at "v1.orders" beneath it, proving the
+   * compile-time fold and the runtime walk agree past a nesting level. Shut
+   * down by the fixture; the handler's run count is reset before the test
+   * body.
+   */
+  readonly rpcNestedMarked: {
+    readonly clientWith: (token: string | undefined) => NestedMarkedClient;
+    readonly handlerRuns: () => number;
+  };
   /**
    * The starter over a contract whose `orders` fragment is `authenticated(...)`,
    * with an authenticator that accepts exactly one token — router, controllers
@@ -797,6 +902,30 @@ export const it = test.extend<HttpFixtures>({
         new RPCLink({ origin, url: "/rpc" }),
       );
       return { origin, client };
+    });
+  },
+
+  rpcDeep: async ({ boot }, use) => {
+    await use(async () => {
+      const app = boot(rpcDeepAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      const client: DeepClient = createORPCClient(new RPCLink({ origin, url: "/rpc" }));
+      return { origin, client };
+    });
+  },
+
+  rpcNestedMarked: async ({ boot }, use) => {
+    const app = boot(rpcNestedMarkedAppOf());
+    const info = (await app.runtimeInfo()).get();
+    assert.ok(info !== undefined, "the runtime published no Serving.info");
+    const origin = `http://127.0.0.1:${info.port}`;
+    nestedMarkedRuns = 0;
+
+    await use({
+      clientWith: (token) => createORPCClient(linkOf(origin, token)),
+      handlerRuns: () => nestedMarkedRuns,
     });
   },
 

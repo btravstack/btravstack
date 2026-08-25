@@ -272,6 +272,13 @@ const AUTHENTICATOR = "@btravstack/http/authenticator:";
 // `routerOf` walks the same tree it always did — marks, inheritance and the
 // stray-key drop included. Written here rather than pushed into the walk
 // because the walk is shared with the `(deps, arm)` form, which never nests.
+// ponytail: `path.split(".")` cannot tell a path SEPARATOR from a literal dot
+// inside one contract key, so `{ "a.b": impl }` silently rebuilds as
+// `{ a: { b: impl } }` — passes coverage, then `routerOf`'s stray-key drop
+// discards it, a 404 with a fully green compile. Upgrade path: a runtime
+// guard here refusing a flat key containing a segment that doesn't round-trip
+// through the contract, or excluding dotted keys from `ControllerKeyOf` so a
+// literal-dot key is simply never mintable.
 const nest = (flat: Record<string, unknown>): Record<string, unknown> => {
   const out: Record<string, unknown> = {};
   for (const [path, value] of Object.entries(flat)) {
@@ -321,12 +328,17 @@ type KeyOfPiece<P> = P extends {
 type LeafPathsOf<C, P extends string = ""> =
   C extends ProcedureContract<infer _I, infer _O, infer _E>
     ? P
-    : {
-        [K in Exclude<keyof C, PrincipalKey> & string]: LeafPathsOf<
-          C[K],
-          P extends "" ? K : `${P}.${K}`
-        >;
-      }[Exclude<keyof C, PrincipalKey> & string];
+    : // The same TS2589 guard `ControllerKeyOf` needs, for symmetry: an
+      // index-signature record short-circuits to `string` rather than
+      // recursing over its keys.
+      string extends keyof C
+      ? string
+      : {
+          [K in Exclude<keyof C, PrincipalKey> & string]: LeafPathsOf<
+            C[K],
+            P extends "" ? K : `${P}.${K}`
+          >;
+        }[Exclude<keyof C, PrincipalKey> & string];
 
 /** Whether leaf `L` sits at, or under, piece path `P`. */
 type CoveredBy<L extends string, P extends string> = L extends P | `${P}.${string}` ? true : false;

@@ -544,7 +544,7 @@ in its place.
   pins the
   five compile-time gates `HttpController(contract, key)` and the composing
   `HttpRouter(contract)([piece, …])` form owe together
-  (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 52 specs, across
+  (see `packages/http/CLAUDE.md`). `@btravstack/http`'s 56 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
   `auth.spec.ts`, drive the
   transport through the internal `httpModule` with a bare listener, the

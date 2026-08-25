@@ -154,6 +154,17 @@ not cover"` marker, and what the marker names is a procedure path
   other's implementation is simply never registered — no diagnostic marks the
   conflict, and "a fragment belongs to exactly one slice" holds only for the
   slice actually composed in.
+  **A ceiling in the dot encoding itself, not a bug in the mechanism**: `nest`
+  rebuilds a piece's path by splitting on `.`, so it cannot tell a path
+  separator from a literal dot inside one contract key — a contract keyed
+  `{ "a.b": oc }` mints a piece at path `"a.b"`, passes coverage, and `nest`
+  then splits it into `{ a: { b: fn } }`, which `routerOf`'s stray-key drop
+  silently discards: a fully green compile and a 404 at runtime. The escape is
+  the `(deps, arm)` form, which never splits anything — nothing about a
+  contract key with a literal dot in it is unsafe there. No guard exists for
+  this today; `orpc.ts`'s `nest` carries a `ponytail:` comment naming the two
+  upgrade paths (a runtime guard, or excluding dotted keys from
+  `ControllerKeyOf` so a literal-dot key is never mintable as a piece path).
   The return is the same `Built<Auth, N>` as the other arms, with
   `N = InstanceType<T[number]["port"]> | SchemePortsOf<C>`.
   Five compile-time gates are pinned by `controller.test-d.ts`: every
@@ -684,7 +695,7 @@ prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider de
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **52 specs, 100% lines/functions.** Every app boots through the `boot`
+- **56 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
@@ -715,8 +726,9 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   a `greet`-only router configured with oRPC's own `CORSHandlerPlugin`, proving
   `plugins` reaches `RPCHandler` rather than being silently accepted and
   dropped: the plugin, not this package, decided the response's
-  `access-control-allow-origin`. `controller.spec.ts` carries 3,
-  through the `controllers` and `rpcSliced` fixtures: a piece carries the
+  `access-control-allow-origin`. `controller.spec.ts` carries 7,
+  through the `controllers`, `rpcSliced`, `rpcDeep` and `rpcNestedMarked`
+  fixtures: a piece carries the
   port its contract key minted (`HttpController:greetings`) and the deps it
   declared, `api.HttpRouter(contract)([...])` serves a router composed from
   two pieces — `helloController` over the `greetings` fragment and
@@ -728,6 +740,22 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   `sync` is handed **no arguments** at all. (The former sync-key
   discrimination spec is deleted with the record form: there is no record for
   a `sync` key to be confused with, `Array.isArray` decides.)
+  Two more are `rpcDeep`, over a contract with two pieces sharing the nested
+  "v1" parent (`"v1.orders"` and `"v1.customers"`) plus one minted at the bare
+  procedure path `"health"` — the shared parent is what forces `nest`'s
+  `node[segment] ??= {}` to find a node the first piece already created rather
+  than only ever creating one, and `"health"` is the depth-N leaf case, a
+  piece with no fragment around it at all. The last two are `rpcNestedMarked`,
+  over a contract marked one level BELOW the root — on `"v1"`, not the root
+  and not a top-level key — with a piece minted at `"v1.orders"` beneath it:
+  the runtime evidence that `FragmentAt`'s compile-time fold and `routerOf`'s
+  runtime `inherited` walk agree past a nesting level, in both directions —
+  an authenticated caller reaches the handler with the principal the
+  ancestor's mark typed, and an unauthenticated one is refused before the
+  handler runs. Neither `rootMarkedContract` (marked at the literal root) nor
+  `authedContract` (marked at a top-level key) exercises a mark reaching
+  THROUGH a nesting level to a piece minted below it, which is what made this
+  case worth a fixture of its own rather than folding it into either.
   A process still serves one router (thesis #1); the composing
   form changes how many providers build it, not that fact. `auth.spec.ts`
   carries the last 18, through the `rpcAuthed`, `rpcRootMarked`,

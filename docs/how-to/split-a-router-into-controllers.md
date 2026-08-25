@@ -217,8 +217,8 @@ is built.
 
 ## Step 3 — the composed root
 
-`api.HttpRouter(contract)([controller, …])` — an array of controllers, one per
-top-level contract key — replaces the
+`api.HttpRouter(contract)([controller, …])` — an array of controllers, each
+owning one node of the contract tree — replaces the
 `(deps, { sync })` call at the root. Nothing names a key here: each
 controller's port id already carries the one it was minted from, and the call
 strips the prefix back off to recover it. An array is never a record, so it is
@@ -255,19 +255,69 @@ di's arity gate either, but the plain assignability of the `Needs` channel
 against `Env | Scope`, which names the port. Nothing else about what a slice
 needs is spelled at the root.
 
-This form is **exact** on coverage: a fragment no controller in the array
-covers is a compile error at the `api.HttpRouter(contract)([...])` call —
-refused against `"UNCOVERED CONTROLLERS — the contract declares a fragment
-this array does not cover"` — not a runtime surprise the first time a client
-hits the missing slice. The other two gates the keyed record used to carry
-have moved somewhere better: a key the contract does not declare is refused at
-the mint, and a controller under the wrong key is impossible, because the key
-rides the port id rather than a position at the root.
+This form is **exact** on coverage, and coverage is **leaf-based**: a
+procedure no controller in the array covers is a compile error at the
+`api.HttpRouter(contract)([...])` call — refused against `"UNCOVERED
+CONTROLLERS — the contract declares a procedure this array does not cover"`
+— not a runtime surprise the first time a client hits the missing slice. A
+key the contract does not declare is refused at the mint, and a controller
+under the wrong key is impossible, because the key rides the port id rather
+than a position at the root.
 
 Coverage is not uniqueness, though: two controllers minted for one fragment
 type-check together fine, and di catches the conflict only when **both** are
 discharged — then they are two providers for one port, its duplicate-provider
-defect at build.
+defect at build. A controller nested INSIDE another controller's fragment is
+different: the two carry distinct port ids for the same procedures, which di
+cannot see conflicting, so a second gate — `"OVERLAPPING CONTROLLERS — a piece
+sits inside another piece's fragment"` — catches it at this same call instead.
+
+### Slicing a nested contract
+
+A controller's key is not limited to a top-level fragment. `HttpController(
+contract, key)` takes a **dotted path** into the contract tree, so a slice may
+own any node — a fragment several levels deep, or a single procedure with no
+fragment around it at all:
+
+<!-- doctest: isolate
+import { oc } from "@orpc/contract";
+import { defineHttp } from "@btravstack/http";
+import { OkAsync } from "unthrown";
+
+const api = defineHttp();
+const contract = { v1: { orders: { place: oc }, customers: { find: oc } }, health: oc };
+-->
+
+```ts
+const v1Orders = api.HttpController(
+  contract,
+  "v1.orders",
+)({
+  sync: () => ({ place: () => OkAsync("placed") }),
+});
+const v1Customers = api.HttpController(
+  contract,
+  "v1.customers",
+)({
+  sync: () => ({ find: () => OkAsync("found") }),
+});
+const health = api.HttpController(
+  contract,
+  "health",
+)({ sync: () => () => OkAsync("ok") });
+
+export const versionedRouter = api.HttpRouter(contract)([
+  v1Orders,
+  v1Customers,
+  health,
+]);
+```
+
+The three pieces partition every procedure the contract declares — two under
+the shared `v1` node, one at the bare procedure path `health` — so the array
+composes exactly as `[ordersController, customersController]` does above. A
+top-level key, the shape every example on this page otherwise uses, is the
+depth-1 case of a path: nothing about the flat, single-level split changes.
 
 ## Step 4 — lifting a slice into its own process
 
