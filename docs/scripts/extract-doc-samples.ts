@@ -43,8 +43,8 @@
 // ones' declarations — with import statements hoisted to the top and
 // de-duplicated textually. Bodies are byte-for-byte: fidelity is the point,
 // and `@ts-expect-error` inside a fence survives as a measured assertion.
-import { globSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { existsSync, globSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import process from "node:process";
 
 const DOCS_ROOT = resolve(import.meta.dirname, "..");
@@ -306,6 +306,51 @@ const emit = (page: Page, outDir: string): number => {
   return together.length + isolated.length;
 };
 
+/**
+ * Every relative link in a page, with the line it sits on.
+ *
+ * Fenced blocks are stripped first: a `](../x)` inside a sample is code, not
+ * a link, and resolving it would fail for a path that was never meant to
+ * exist. Root-relative links (`/reference/…`) are deliberately NOT collected
+ * — VitePress fails its own build on those, and checking them here would be a
+ * second opinion that can disagree with the one that ships.
+ */
+const relativeLinks = (
+  body: string,
+): readonly { readonly target: string; readonly line: number }[] => {
+  const withoutFences = body.replace(/```[\s\S]*?```/g, (block) => block.replace(/[^\n]/g, " "));
+  const links: { target: string; line: number }[] = [];
+  const pattern = /]\(\s*<?([^)>\s]+)>?(?:\s+"[^"]*")?\s*\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(withoutFences)) !== null) {
+    const target = match[1] ?? "";
+    if (!target.startsWith(".")) continue;
+    links.push({ target, line: withoutFences.slice(0, match.index).split("\n").length });
+  }
+  return links;
+};
+
+/**
+ * A relative link that resolves to nothing fails the generate task.
+ *
+ * This exists because a package rename broke `packages/core/README.md`'s
+ * `](../http)` and **nothing noticed**: VitePress checks the site's own
+ * routes, but a package README is not part of the site, and this script read
+ * every README already without ever looking at a link. The four shapes a
+ * rename has to sweep — the specifier, the workspace path, and the two
+ * documentation routes — do not include a relative sibling link, so the one
+ * form no gate covered was also the one form a regex was most likely to miss.
+ */
+const checkLinks = (file: string, body: string): readonly string[] =>
+  relativeLinks(body)
+    .filter(({ target }) => {
+      const [path] = target.split(/[#?]/);
+      // A bare anchor names this page and resolves to it.
+      if (path === undefined || path === "") return false;
+      return !existsSync(resolve(dirname(file), path));
+    })
+    .map(({ target, line }) => `${relative(REPO_ROOT, file)}:${line} → ${target}`);
+
 const main = (): void => {
   const group = process.argv[process.argv.indexOf("--group") + 1] as Group | undefined;
   const out = process.argv[process.argv.indexOf("--out") + 1];
@@ -324,8 +369,15 @@ const main = (): void => {
   mkdirSync(outDir, { recursive: true });
   let fences = 0;
   let pages = 0;
+  let links = 0;
   const skips: string[] = [];
+  const broken: string[] = [];
   for (const file of sources.sort()) {
+    // Links are checked on EVERY page, not only this group's: a page belongs
+    // to one group's TypeScript, and to nobody's links.
+    const body = readFileSync(file, "utf8");
+    links += relativeLinks(body).length;
+    broken.push(...checkLinks(file, body));
     const page = parsePage(file);
     if (!page || page.group !== group) continue;
     pages += 1;
@@ -334,8 +386,14 @@ const main = (): void => {
       skips.push(`${relative(REPO_ROOT, page.file)}:${skip.line} — ${skip.reason}`);
     }
   }
+  if (broken.length > 0) {
+    // oxlint-disable-next-line unthrown/no-throw -- a generate task reports failure by throwing; there is no Result channel in a CLI script
+    throw new Error(
+      `doc-samples: ${broken.length} relative link(s) resolve to nothing:\n  ${broken.join("\n  ")}`,
+    );
+  }
   const report = [
-    `doc-samples[${group}]: ${fences} fences from ${pages} pages → ${relative(process.cwd(), outDir)}`,
+    `doc-samples[${group}]: ${fences} fences from ${pages} pages → ${relative(process.cwd(), outDir)}, ${links} relative links resolved`,
   ];
   // Opt-outs are part of the output on purpose: silent truncation reads as
   // "covered everything" when it was not.

@@ -1270,6 +1270,24 @@ was folded in here when the container was merged; nothing under
   `examples/order-api/src/docs-examples.test-d.ts` still pins the
   application-reality coupling the extraction cannot (its samples call the
   real use cases through the real `auth.ts` by hand).
+- **The same script resolves every RELATIVE link in those files, and a link
+  that resolves to nothing fails the generate task.** It reports the count it
+  checked, so a silent no-op is visible. Root-relative links
+  (`/reference/core/start`) are deliberately left alone — VitePress fails its
+  own build on those, and a second opinion here could disagree with the one
+  that ships — and links inside fences are stripped first, since `](../x)` in
+  a sample is code rather than a link.
+
+  It exists because the transport rename broke `packages/core/README.md`'s
+  `](../http)` and **nothing noticed**: the site's own routes are checked by
+  VitePress, but a package README is not part of the site, and this script
+  read every README already without ever looking at a link. A rename has four
+  shapes to sweep — the specifier, the workspace path, and the two
+  documentation routes — and a relative sibling link is none of them, so the
+  one form no gate covered was also the one a regex was most likely to miss.
+  Regression-proved: restoring `](../http)` fails `generate` with
+  `packages/core/README.md:27 → ../http`.
+
 - Pages carry frontmatter `title` and `description`, open with the quadrant
   blockquote (`> **How-to.** …`), and link root-relative (`/reference/core/start`).
   The house style is `unthrown`'s; read a page there before writing one here.
