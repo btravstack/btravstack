@@ -169,7 +169,8 @@ yet. The commands above are what they will be once it has.
 | `@btravstack/observability/pino` | `pinoSink` alone, so `pino` stays an optional peer a consumer that never imports this never installs                                                                                                                                                                             |
 
 All twelve packages ship dual CJS/ESM builds with `.d.ts` files and no source
-maps (the tarball carries no `src/`, so a map would be a dead end). Two of them
-carry extra entry points, both on the optional-peer protocol:
-`@btravstack/observability` behind `/pino` and `/otel`, and `@btravstack/cache`
-behind `/redis`.
+maps (the tarball carries no `src/`, so a map would be a dead end). Four of them
+carry extra entry points, all on the optional-peer protocol:
+`@btravstack/observability` behind `/pino` and `/otel`, `@btravstack/cache`
+behind `/redis`, `@btravstack/mailer` behind `/smtp`, and `@btravstack/storage`
+behind `/s3`.

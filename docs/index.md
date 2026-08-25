@@ -22,7 +22,7 @@ features:
   - title: Wiring proven at compile time
     details: A module that forgets a provider is a compile error naming the missing ports; a root with no runtime, or a runtime resolving a port the root does not export, fails at the start call. No decorators, no reflect-metadata, no missing provider discovered at boot.
   - title: Nothing throws
-    details: Every async surface but three returns an unthrown AsyncResult, the startup error channel stays the application's own, and one place — runMain, the first of those three — decides the process exit code.
+    details: Every async surface returns an unthrown AsyncResult, the startup error channel stays the application's own, and one place — runMain — decides the process exit code.
   - title: One process, one runtime
     details: An API, a Temporal worker and an AMQP consumer are three processes booting the same module under a different composition root. The runtime is a service of the module, and a graph holds exactly one.
   - title: A drain that survives Kubernetes

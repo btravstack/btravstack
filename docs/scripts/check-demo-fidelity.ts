@@ -26,7 +26,7 @@ const normalize = (text: string) => text.replace(/^\s*\/\/ ?/gm, " ").replace(/\
 // literal in the `Property … is missing` clause, so the demo quotes BOTH
 // spellings verbatim. Checking only one would let drift confined to the other
 // pass green — the demo carries the escaped form twice and the literal once.
-const ESCAPED = MARKER.replace("—", "\\u" + "2014");
+const ESCAPED = MARKER.replace("—", "\\u2014");
 
 for (const [what, path, expected] of [
   ["di's `DependencyGate` marker", source, [MARKER]],
