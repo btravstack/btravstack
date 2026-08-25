@@ -15,11 +15,8 @@ describe("prismaDatabase", () => {
       instrumented: false,
     });
     const root = Module("Root")({
-      provides: [
-        Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        db.config,
-        db.provider,
-      ],
+      imports: [db],
+      provides: [Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } })],
       exports: [db.port],
     });
 
@@ -37,11 +34,8 @@ describe("prismaDatabase", () => {
       instrumented: false,
     });
     const root = Module("Root")({
-      provides: [
-        Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        db.config,
-        db.provider,
-      ],
+      imports: [db],
+      provides: [Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } })],
       exports: [db.port],
     });
 
@@ -59,7 +53,8 @@ describe("prismaDatabase", () => {
       instrumented: false,
     });
     const root = Module("Root")({
-      provides: [Provider(Env)({ value: {} }), db.config, db.provider],
+      imports: [db],
+      provides: [Provider(Env)({ value: {} })],
       exports: [db.port],
     });
 
@@ -80,13 +75,12 @@ describe("prismaDatabase", () => {
     // supplies the three telemetry ports the default arm now depends on
     const db = prismaDatabase("OrderDatabase")({ client: (_, url) => stub.client(url) });
     const root = Module("Root")({
+      imports: [db],
       provides: [
         Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
         Provider(Logger)({ value: telemetry.logger }),
         Provider(Tracer)({ value: telemetry.tracer }),
         Provider(Meter)({ value: telemetry.meter }),
-        db.config,
-        db.provider,
       ],
       exports: [db.port],
     });

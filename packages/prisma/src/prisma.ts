@@ -1,6 +1,6 @@
-import { Config } from "@btravstack/config";
+import { Config, Env } from "@btravstack/config";
 import { Logger, Meter, Tracer } from "@btravstack/core";
-import { Port, Provider, type PortClassOf } from "@btravstack/di";
+import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { OkAsync, type AsyncResult } from "unthrown";
 
@@ -117,9 +117,34 @@ export const prismaDatabase =
       },
     );
 
-    const provider = (
-      instrumented !== false ? instrumentedProvider : plainProvider
-    ) as Instrumented extends true ? typeof instrumentedProvider : typeof plainProvider;
+    // A MODULE, not three loose pieces. An application writes
+    // `imports: [database]` and reads `database.port`; the config provider and
+    // the resourceful provider are never its business, which is the bargain
+    // `cache({ adapter })` already makes. `needs` differs per arm because the
+    // instrumented provider reads three more ports.
+    const instrumentedModule = Module(name)({
+      needs: [Env, Logger, Meter, Tracer],
+      provides: [config, instrumentedProvider],
+      exports: [DatabasePort],
+    });
 
-    return { port: DatabasePort, config, provider };
+    const plainModule = Module(name)({
+      needs: [Env],
+      provides: [config, plainProvider],
+      exports: [DatabasePort],
+    });
+
+    const chosen = (
+      instrumented !== false ? instrumentedModule : plainModule
+    ) as Instrumented extends true ? typeof instrumentedModule : typeof plainModule;
+
+    // The port rides the module because it is minted from `name` HERE, so an
+    // application has no other handle on it — the counterpart of
+    // `@btravstack/cache` exporting a fixed `Cache` class it never has to mint.
+    // The cast is what carries BOTH halves: `Object.assign` over a conditional
+    // first argument widens to the added property alone, dropping the module's
+    // own shape.
+    return Object.assign(chosen, { port: DatabasePort }) as (Instrumented extends true
+      ? typeof instrumentedModule
+      : typeof plainModule) & { readonly port: PortClassOf<N, C> };
   };

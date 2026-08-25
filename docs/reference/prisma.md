@@ -43,8 +43,8 @@ Returns three pieces, and a composition root wants all three:
 | `provider` | The **resourceful** provider that opens the pool and closes it again. |
 
 ```ts
-export const DatabaseModule = Module("Database")({
-  provides: [database.config, database.provider],
+export const PersistenceModule = Module("Persistence")({
+  imports: [database],
   exports: [database.port],
   needs: [Env, Logger, Meter, Tracer],
 });

@@ -17,25 +17,24 @@ const createClient = (adapter: PrismaPg) => new PrismaClient({ adapter }).$exten
 export type OrderDatabaseClient = ReturnType<typeof createClient>;
 
 /**
- * `DATABASE_URL` bound through `Config`, the port, and the resourceful provider
- * whose `release` closes the pool — all three from the starter.
+ * The database, as a module. `@btravstack/prisma` owns `DATABASE_URL` through
+ * `Config`, the pool's lifetime and the per-query span, count and log line;
+ * what stays here is the client its `client` arrow builds.
  *
  * A deployment runs `prisma migrate deploy` against this same URL **before the
  * process starts**; the application never migrates itself at boot. The suites do
  * the same, once per run, so a test exercises the statements a deployment runs
  * rather than a copy that can drift.
+ *
+ * Internal to this layer: `module.ts` imports it and does not re-export
+ * `OrderDatabase`, so no outer module can reach the client and start speaking
+ * SQL. The only things that cross the boundary are the repositories and the
+ * outbox.
  */
-const database = prismaDatabase("OrderDatabase")({ client: createClient });
+export const OrderDatabaseModule = prismaDatabase("OrderDatabase")({ client: createClient });
 
-/**
- * Internal to this layer: `DatabaseModule` provides and exports it so the two
- * persistence modules can depend on it, and neither of those re-exports it —
- * so no outer module can reach the client and start speaking SQL. The only
- * things that cross the boundary are the repositories and the outbox.
- */
-export const OrderDatabase = database.port;
-export const databaseConfig = database.config;
-export const orderDatabaseProvider = database.provider;
+/** The port the two persistence modules depend on, minted by the starter from the name above. */
+export const OrderDatabase = OrderDatabaseModule.port;
 
 /**
  * A client outside any scope, for the suites' fixtures. The starter deliberately

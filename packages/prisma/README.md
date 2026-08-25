@@ -49,8 +49,8 @@ That is the whole surface. `database` carries three pieces, and a composition
 root wants all three:
 
 ```ts
-export const DatabaseModule = Module("Database")({
-  provides: [database.config, database.provider],
+export const PersistenceModule = Module("Persistence")({
+  imports: [database],
   exports: [database.port],
   needs: [Env, Logger, Meter, Tracer],
 });
