@@ -23,6 +23,8 @@ slices is a starting point rather than a trap.
 No new install. Group the existing procedures under a `greetings` key and add
 a `farewells` fragment beside it:
 
+**`contract.ts`**
+
 <!-- doctest: prelude
 // The application as lesson three left it, restated so this page compiles on
 // its own: the configurable Greeter, its module, and auth.ts's one
@@ -62,7 +64,6 @@ const api = defineHttp({ authenticators: { user: userAuth } });
 -->
 
 ```ts
-// contract.ts
 import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
@@ -96,8 +97,9 @@ the same deps record, the same `sync` arm, typed by **one node** of the
 contract tree — and it mints a port from the path itself, so there is no
 class to name:
 
+**`slices/greetings/controller.ts`**
+
 ```ts
-// slices/greetings/controller.ts
 import { OkAsync } from "unthrown";
 
 import { api } from "../../auth.js";
@@ -117,8 +119,9 @@ export const greetingsController = api.HttpController(contract, "greetings")(
 );
 ```
 
+**`slices/farewells/controller.ts`**
+
 ```ts
-// slices/farewells/controller.ts
 import { OkAsync } from "unthrown";
 
 import { api } from "../../auth.js";
@@ -145,8 +148,9 @@ Each slice ships as an ordinary di module that provides its controller and
 exports it — and states, out loud, where its dependencies come from. Two
 shapes, both legitimate:
 
+**`slices/greetings/module.ts`**
+
 ```ts
-// slices/greetings/module.ts
 import { Module } from "@btravstack/di";
 
 import { GreetingModule } from "../../greeter.js";
@@ -159,8 +163,9 @@ export const GreetingsSlice = Module("GreetingsSlice")({
 });
 ```
 
+**`slices/farewells/module.ts`**
+
 ```ts
-// slices/farewells/module.ts
 import { Module } from "@btravstack/di";
 
 import { Greeter } from "../../greeter.js";
@@ -188,8 +193,9 @@ The router composes the controllers from an **array**, each already carrying
 its own path — exact against the contract's procedures. The root becomes a
 list of slices, plus what no slice owns:
 
+**`app.ts`**
+
 ```ts
-// app.ts
 import { HttpModule } from "@btravstack/http-server";
 
 import { api } from "./auth.js";

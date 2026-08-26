@@ -62,10 +62,11 @@ The example application is multi-tenant, and it needs none of that. It makes
 the tenant part of its **own** vocabulary — the ports name it, so it is an
 argument a caller cannot forget and a reader can see:
 
+**`examples/order-application/src/ports.ts`**
+
 <!-- doctest: skip — quotes examples/order-application/src/ports.ts, which its own workspace compiles -->
 
 ```ts
-// examples/order-application/src/ports.ts
 export class OrderRepository extends Port("OrderRepository")<{
   readonly save: (
     tenantId: TenantId,

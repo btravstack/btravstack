@@ -42,8 +42,9 @@ Lesson one hard-coded `Hello`. Make it a setting: `Config.provider` mints a
 port and binds it from the `Env` port the kernel provides, validating **once,
 as the graph is built** — your code never touches `process.env`:
 
+**`greeter.ts`**
+
 ```ts
-// greeter.ts
 import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
 
@@ -99,8 +100,9 @@ One config file, once. `@unthrown/vitest` registers `Result` matchers
 (`toBeOkWith`, `toBeErrTagged`, …) as a vitest setup file, so a test asserts
 on a `Result` in one deep `expect`:
 
+**`vitest.config.ts`**
+
 ```ts
-// vitest.config.ts
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -114,6 +116,8 @@ export default defineConfig({
 real module — the same `App` — with `signals` off and an environment you
 choose, and stops it when the test ends, on every path. `PORT=0` asks the
 operating system for an ephemeral port, so tests never collide:
+
+**`app.spec.ts`**
 
 <!-- doctest: isolate
 // The application as this lesson leaves it, restated so the spec compiles
@@ -161,7 +165,6 @@ const App = HttpModule("App")({ router: greetingRouter, imports: [GreetingModule
 -->
 
 ```ts
-// app.spec.ts
 import assert from "node:assert/strict";
 
 import { bootFixture } from "@btravstack/testing";
@@ -217,6 +220,8 @@ Lesson one stopped the process with a signal and a real five-second wait. A
 test stops it with a method — and a clock it controls, so the wait costs
 nothing:
 
+**`drain.spec.ts`**
+
 <!-- doctest: isolate
 // The application as this lesson leaves it, restated so the spec compiles
 // on its own — in your project these come from the files above.
@@ -263,7 +268,6 @@ const App = HttpModule("App")({ router: greetingRouter, imports: [GreetingModule
 -->
 
 ```ts
-// drain.spec.ts
 import { bootFixture, createFakeClock } from "@btravstack/testing";
 import { expect, test } from "vitest";
 

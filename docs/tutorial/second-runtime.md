@@ -53,6 +53,8 @@ temporal server start-dev
 Where lesson one declared an oRPC procedure, this declares an **activity** and
 the **workflow** that calls it, on a named task queue:
 
+**`temporal-contract.ts`**
+
 <!-- doctest: prelude
 // The artifacts lesson one built, restated so this lesson compiles on its
 // own: the port, the service, and the module the new runtime is added to.
@@ -67,7 +69,6 @@ const GreetingModule = Module("Greeting")({
 -->
 
 ```ts
-// temporal-contract.ts
 import {
   defineActivity,
   defineContract,
@@ -104,8 +105,9 @@ queue — the starter reads it from here rather than taking it as an option.
 its service is the contract's activities record — so the next call declares
 its dependencies exactly as the router did:
 
+**`activities.ts`**
+
 ```ts
-// activities.ts
 import { TemporalActivities } from "@btravstack/temporal-worker";
 import { OkAsync } from "unthrown";
 
@@ -134,6 +136,8 @@ Workflow code runs in Temporal's deterministic sandbox, bundled separately from
 the worker, so it lives in its own file and touches neither di nor the
 `Greeter` — only the activity:
 
+**`workflows.ts`**
+
 <!-- doctest: isolate
 // `greeting` names the workflow FILE's declaration here, and the contract
 // fence above already used the name for the definition — two files on the
@@ -161,7 +165,6 @@ const greetingContract = defineContract({
 -->
 
 ```ts
-// workflows.ts
 import {
   declareWorkflow,
   propagateActivityFailure,
@@ -187,8 +190,9 @@ errors of its own, so there is nothing else to triage.
 that also takes the contract, the activities provider and where the workflow
 code lives, imports the Temporal starter, and exports `TemporalRuntime`:
 
+**`worker.ts`**
+
 ```ts
-// worker.ts
 import { TemporalModule } from "@btravstack/temporal-worker";
 import { workflowsPathFromURL } from "@temporal-contract/worker/worker";
 
@@ -213,8 +217,9 @@ activities provider declares `Greeter`.
 
 ## Step 6 — Write the second `main.ts`
 
+**`worker-main.ts`**
+
 ```ts
-// worker-main.ts
 import { runMain } from "@btravstack/core";
 
 import { Worker } from "./worker.js";

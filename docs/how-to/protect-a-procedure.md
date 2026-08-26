@@ -142,6 +142,8 @@ has no business reading a body, and the narrower argument is what keeps it
 testable without a socket. The scheme's **name** is not stated here; it is the
 key the authenticator sits under in `defineHttp`, so it is written once.
 
+**`src/auth.ts`** — one file per application
+
 <!-- doctest: isolate
 import { TenantId } from "@btravstack/example-order-domain";
 import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http-server";
@@ -149,7 +151,6 @@ import { ErrAsync, OkAsync } from "unthrown";
 -->
 
 ```ts
-// src/auth.ts — one file per application
 import { TenantId } from "@btravstack/example-order-domain";
 import {
   HttpAuthenticator,

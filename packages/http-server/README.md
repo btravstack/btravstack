@@ -323,13 +323,14 @@ Declaring a scheme and implementing it are the same act, so there is no
 registry to keep in step with the contract and nothing for a composition root
 to forget:
 
+**`src/auth.ts`** — the one file that names this deployment's identities
+
 <!-- doctest: isolate
 import { HttpAuthenticator, Unauthenticated, defineHttp, granted } from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 -->
 
 ```ts
-// src/auth.ts — the one file that names this deployment's identities
 import {
   HttpAuthenticator,
   Unauthenticated,

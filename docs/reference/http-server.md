@@ -550,8 +550,9 @@ that gives a marked handler a readable `context.principal`. Declaring a scheme
 and implementing it are the **same act**, so a scheme without an authenticator
 is not a state this can reach:
 
+**`src/auth.ts`** — one per application
+
 ```ts
-// src/auth.ts — one per application
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 export type ServiceIdentity = { readonly appId: string };
 

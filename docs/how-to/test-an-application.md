@@ -41,11 +41,12 @@ transport, `createFakeClock` moves time when you say so.
 The recipe is one fixture module per package, exporting the `it` every spec
 imports:
 
+**`src/__tests__/test-fixtures.ts`**
+
 <!-- doctest: group=order-api -->
 <!-- doctest: skip — quotes examples/order-api/src/__tests__/test-fixtures.ts, which the gate compiles and runs -->
 
 ```ts
-// src/__tests__/test-fixtures.ts
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { test } from "vitest";
 
@@ -61,10 +62,11 @@ A call's own options win over the fixture's (`boot(module, { probes: { port:
 0 } })` binds an ephemeral probe port), and `unit` goes on the call, because a
 unit module is the composition's choice, not the fixture's:
 
+**`src/api.spec.ts`**
+
 <!-- doctest: skip — an excerpt of examples/order-api/src/api.spec.ts, which the gate runs -->
 
 ```ts
-// src/api.spec.ts
 import { describe, expect } from "vitest";
 import { it } from "./__tests__/test-fixtures.js";
 
