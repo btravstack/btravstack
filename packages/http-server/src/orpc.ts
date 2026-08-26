@@ -476,22 +476,6 @@ type SchemePortsOf<C> =
     : never;
 
 /**
- * Whether the contract marks anything, anywhere. Nothing inside this package
- * consumes it; it is exported for tooling over a contract — an OpenAPI
- * generator deciding whether to emit `security` at all.
- */
-export type HasMark<C> =
-  IsMarked<C> extends true
-    ? true
-    : C extends ProcedureContract<infer _I, infer _O, infer _E>
-      ? false
-      : true extends {
-            readonly [K in Exclude<keyof C, PrincipalKey>]: HasMark<C[K]>;
-          }[Exclude<keyof C, PrincipalKey>]
-        ? true
-        : false;
-
-/**
  * Every scheme the contract names, anywhere — the router's scheme
  * dependencies. The type side is `SchemePortsOf<C>`; these two must agree.
  */

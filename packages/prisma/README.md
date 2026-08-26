@@ -88,10 +88,9 @@ package's.
 
 ## Options
 
-| Option   | Default          | What it does                                       |
-| -------- | ---------------- | -------------------------------------------------- |
-| `client` | —                | Builds the client from the driver adapter and URL. |
-| `urlVar` | `"DATABASE_URL"` | The variable the connection string is read from.   |
+| Option   | Default | What it does                                       |
+| -------- | ------- | -------------------------------------------------- |
+| `client` | —       | Builds the client from the driver adapter and URL. |
 
 ## License
 

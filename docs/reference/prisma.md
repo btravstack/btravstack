@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/prisma"
-description: The complete surface of @btravstack/prisma — prismaDatabase, the client arrow, PrismaLike, urlVar, and what the starter deliberately does not own.
+description: The complete surface of @btravstack/prisma — prismaDatabase, the client arrow, PrismaLike, and what the starter deliberately does not own.
 ---
 
 <!-- doctest: group=order-api -->
@@ -26,7 +26,7 @@ declare const unthrownPrisma: unknown;
 > **Reference.** The Prisma starter: `DATABASE_URL` bound through `Config`, the
 > Postgres driver adapter, and a client whose pool is the application scope's.
 
-## `prismaDatabase(name)({ client, urlVar? })`
+## `prismaDatabase(name)({ client, instrumented? })`
 
 ```ts
 const database = prismaDatabase("OrderDatabase")({
@@ -58,9 +58,9 @@ class and your extensions meet, and the port is typed by exactly what it
 returns — including `@unthrown/prisma`'s extension, which belongs here so the
 graph holds the extended client rather than a bare one.
 
-It receives the driver adapter, already built from the environment's URL, and
-that URL. A driver other than Postgres is reachable: ignore the adapter passed
-in and build your own.
+It receives the driver adapter, already built from the environment's URL. A
+driver other than Postgres is reachable: ignore the adapter passed in and build
+your own.
 
 This is also why the [`@btravstack/cache`](/reference/cache) shape — a fixed
 service type, a memory adapter and a real one — does not apply. `CacheService`
@@ -94,16 +94,6 @@ Opting out drops `Logger` and `Meter` from the provider's dependencies. Leaving 
 [`observability()`](/reference/observability) and `otel()` gets a compile error
 naming all three — telemetry that is missing is discovered during an incident,
 so the default is on and the cost is stated rather than hidden.
-
-### `urlVar`
-
-Defaults to `"DATABASE_URL"`, the 12-factor convention. It exists so two
-databases in one application do not collide on one variable; their config ports
-are named from `name`, so those never collide.
-
-A missing or blank value is a modeled `ConfigInvalid` naming the variable — not
-a throw — so a misconfigured deployment exits `78` with the reason on stderr
-rather than crashing on the first query.
 
 ### `PrismaLike`
 

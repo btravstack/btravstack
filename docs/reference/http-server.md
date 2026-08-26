@@ -51,7 +51,6 @@ declare const view: (order: Order) => OrderView;
 | `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                  |
 | `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                  |
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                |
-| `HasMark`              | type  | `HasMark<C>` — exactly `true` or `false`: whether the contract marks anything, anywhere in its tree                                                                                                                                       |
 | `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                         |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                        |
 | `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                |
@@ -408,8 +407,7 @@ injected context, so the handler reads `opts.context.principal` — oRPC's own
 context channel, not a second handler parameter this package invents and not a
 wrapper around `.result()`. An unmarked
 leaf's context is unchanged, which is what makes reading a principal there a
-compile error. `HasMark<C>` is whether the contract marks anything anywhere in
-its tree — a yes/no, since the contract names no principal to recover.
+compile error.
 
 **At runtime.** `HttpRouter`'s walk carries the effective requirements down the
 contract exactly as the types do, and a protected leaf is built as

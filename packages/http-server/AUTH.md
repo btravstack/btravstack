@@ -38,11 +38,7 @@ The two rules this half exists to state, before the detail:
   phantom key never becomes a procedure key. An unmarked leaf keeps today's
   spelling, `object`, exactly — which is what makes the negative gate
   meaningful, since `DefaultInitialContext` is an empty interface rather than
-  an index signature. `HasMark<C>` (exported from `orpc.ts` **and** from
-  `index.ts`) is **whether** a contract marks anything anywhere in its tree —
-  exactly `true` or exactly `false`, asserted both directions in
-  `auth.test-d.ts` because a `boolean` result would satisfy either. Pinned by
-  `auth.test-d.ts`, mutation-checked. What makes the type true at runtime is
+  an index signature. What makes the type true at runtime is
   `principalMiddleware`, below.
 - **`Principal<S, Schemes>` and `SchemesOf<R>`** (`principal.ts`) — what a
   leaf's handler actually reads, from the scheme NAMES its effective
@@ -257,8 +253,8 @@ it": "order:export"`). `VocabFrom<A>` reads the vocabulary off the same
     enter is a mark it can miss and the walk cannot, and missing one is the
     unsafe direction; over-approximating only ever declares a port nothing
     uses. Its type-level twin is `SchemePortsOf<C>`, built on
-    `AllRequirementsOf<C>` — the same tree walk as `HasMark<C>`, keeping what
-    it found instead of answering yes — and the two must agree.
+    `AllRequirementsOf<C>` — a tree walk keeping every requirement it finds —
+    and the two must agree.
   - **A scheme with no authenticator behind it does not build.** There is no
     fail-closed stand-in any more, and none is wanted: the router names one
     port per scheme, `defineHttp` binds one provider per authenticator, and a
