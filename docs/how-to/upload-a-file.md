@@ -7,7 +7,7 @@ description: Hand the client a presigned URL and let it write straight to the st
 <!-- doctest: prelude
 import { Port, Provider } from "@btravstack/di";
 import { Storage, StorageUnavailable } from "@btravstack/storage";
-import { ErrAsync, P, TaggedError, type AsyncResult } from "unthrown";
+import { OkAsync, P, TaggedError, type AsyncResult } from "unthrown";
 
 type TenantId = string;
 class TooLarge extends TaggedError("TooLarge")<{ readonly key: string }> {}
@@ -64,39 +64,45 @@ const attachments = Provider(Attachments)(
   { store: Storage },
   {
     sync: ({ store }) => ({
-      upload: (tenantId, name, file) => {
-        // Your policy, spelled where a reader can see it. The URL cannot be
-        // widened afterwards: what you sign is what the store will accept.
-        if (file.sizeBytes > 5 * ONE_MEGABYTE)
-          return ErrAsync(new TooLarge({ key: keyFor(tenantId, name) }));
-        if (!file.contentType.startsWith("image/")) {
-          return ErrAsync(
-            new UnsupportedType({ contentType: file.contentType }),
-          );
-        }
-
-        return store
-          .presignedUpload(keyFor(tenantId, name), {
-            ttlMs: 60_000,
-            contentType: file.contentType,
-            contentLength: file.sizeBytes,
-          })
-          .mapErrCases((matcher) =>
-            // The memory adapter cannot presign, so a graph composed without a
-            // real store fails here — loudly, in development.
-            matcher
-              .with(
-                P.tag("PresignNotSupported"),
-                () =>
-                  new StorageUnavailable({
-                    operation: "presignedUpload",
-                    key: keyFor(tenantId, name),
-                    reason: "this store cannot mint a url",
-                  }),
-              )
-              .with(P.tag("StorageUnavailable"), (failure) => failure),
-          );
-      },
+      // Your policy, as steps rather than guard clauses: each `ensure` names
+      // the rule it enforces and passes the same file through. The URL cannot
+      // be widened afterwards — what you sign is what the store will accept.
+      upload: (tenantId, name, file) =>
+        OkAsync(file)
+          .ensure(
+            (candidate) => candidate.sizeBytes <= 5 * ONE_MEGABYTE,
+            () => new TooLarge({ key: keyFor(tenantId, name) }),
+          )
+          .ensure(
+            (candidate) => candidate.contentType.startsWith("image/"),
+            (candidate) =>
+              new UnsupportedType({ contentType: candidate.contentType }),
+          )
+          .flatMap((accepted) =>
+            store
+              .presignedUpload(keyFor(tenantId, name), {
+                ttlMs: 60_000,
+                contentType: accepted.contentType,
+                contentLength: accepted.sizeBytes,
+              })
+              // Folded HERE rather than at the end of the chain, so the
+              // application's own two failures never meet the adapter's.
+              .mapErrCases((matcher) =>
+                // The memory adapter cannot presign, so a graph composed
+                // without a real store fails here — loudly, in development.
+                matcher
+                  .with(
+                    P.tag("PresignNotSupported"),
+                    () =>
+                      new StorageUnavailable({
+                        operation: "presignedUpload",
+                        key: keyFor(tenantId, name),
+                        reason: "this store cannot mint a url",
+                      }),
+                  )
+                  .with(P.tag("StorageUnavailable"), (failure) => failure),
+              ),
+          ),
       // The same move in reverse: a time-limited read the client follows
       // itself. Serving those bytes through your own handler instead is the
       // anti-pattern this whole page exists to avoid.
