@@ -15,7 +15,7 @@ Four peer dependencies, plus `nodemailer` — optional, and needed only if you
 compose the SMTP adapter. Instrumentation needs no peer of its own: the
 `Logger`, `Tracer` and `Meter` it depends on are
 [the kernel's ports](https://btravstack.github.io/btravstack/reference/core/observability).
-Node `>=20`.
+Node `>=22`.
 
 ## A worked example
 

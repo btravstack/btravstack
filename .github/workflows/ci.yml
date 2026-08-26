@@ -25,10 +25,13 @@ jobs:
       # line; 24 overlaps "" while .node-version stays on 24.x and is listed
       # explicitly so bumping that file does not silently drop 24 coverage.
       #
-      # The PUBLISHED package's floor (`engines: ">=20"`) is not covered here
-      # and cannot be by this matrix: these jobs run the dev toolchain, and
-      # pnpm 11 needs `node:sqlite`, which Node 20 does not have. That floor is
-      # declared, not proven.
+      # The PUBLISHED package's floor (`engines: ">=22"`) is on the same major
+      # as the `22.22` row, so the promise is exercised rather than merely
+      # declared — which it was not while the floor read `>=20`: these jobs run
+      # the dev toolchain, and pnpm 11 needs `node:sqlite`, which Node 20 does
+      # not have, so that line could never run here. The row is still 22.22
+      # rather than 22.0 because `engineStrict` pins it to the toolchain's
+      # highest demand; 22.0-22.21 are covered by the major, not by a job.
       node-versions: '["", "22.22", "24", "26"]'
       # The reusable default appends `--coverage`; packages/core already runs
       # `vitest run --coverage` (with 100% thresholds), and the root script is

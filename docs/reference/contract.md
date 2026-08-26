@@ -198,7 +198,7 @@ a bypass. No oRPC builder has to know the marker exists.
 ## Peer dependencies
 
 None, and no runtime dependencies either. `pnpm add @btravstack/contract`, and
-that is the whole install. Node `>=20`.
+that is the whole install. Node `>=22`.
 
 ::: warning One copy — and a second one is a compile error, not an open route
 `PrincipalKey` is a `unique symbol`, so two copies of this package mint two

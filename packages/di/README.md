@@ -15,7 +15,7 @@ pnpm add @btravstack/di unthrown
 ```
 
 `unthrown` is a peer dependency. `@btravstack/di` depends on nothing else. Node
-`>=20`.
+`>=22`.
 
 ## Ports, providers, modules
 

@@ -35,7 +35,7 @@ pnpm add -D @btravstack/testing @btravstack/core @btravstack/config @btravstack/
 peer dependencies; the package depends on nothing else — not even `vitest`:
 `bootFixture` is a plain `(ctx, use) => Promise<void>` function, which is
 vitest's fixture protocol, so no import is needed to hand it to `test.extend`.
-Node `>=20`.
+Node `>=22`.
 
 ## A booted application, as a fixture
 

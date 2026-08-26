@@ -2,14 +2,13 @@ import { fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { createDeferred } from "./deferred.js";
 import { releasedBy } from "./runtime.js";
 
 describe("releasedBy", () => {
   it("waits for the work when the work settles first", async () => {
     // GIVEN work that will finish, and a deadline that never fires
     const deadline = new AbortController();
-    const work = createDeferred<void>();
+    const work = Promise.withResolvers<void>();
     let finished = false;
     const running = fromSafePromise(
       work.promise.then(() => {

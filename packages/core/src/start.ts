@@ -10,7 +10,6 @@ import {
 import { fromSafePromise, Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
-import { createDeferred } from "./deferred.js";
 import { drainApp, type DrainReport } from "./drain.js";
 import { safeSink, stderrSink, type EventSink } from "./events.js";
 import { createPhaseTracker, type Phase } from "./phase.js";
@@ -139,7 +138,9 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   });
 
   const registry = createUnitRegistry();
-  const shutdown = createDeferred<ExitReport["reason"]>();
+  // `resolve` is idempotent by spec, so the second SIGTERM — and the uncaught
+  // handler racing a signal — cannot rewrite the reason an application stopped.
+  const shutdown = Promise.withResolvers<ExitReport["reason"]>();
   const teardownErrors: TeardownError[] = [];
   const startedAt = clock.now();
   const preDrainDelayMs = options.preDrainDelayMs ?? 5_000;
@@ -180,8 +181,8 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
           requestShutdown("uncaught");
         });
   let disposeProbes = (): void => {};
-  const probeBound = createDeferred<number | undefined>();
-  const runtimePublished = createDeferred<Info | undefined>();
+  const probeBound = Promise.withResolvers<number | undefined>();
+  const runtimePublished = Promise.withResolvers<Info | undefined>();
 
   emit({ type: "building" });
 

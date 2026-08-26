@@ -754,7 +754,7 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   an external package under `node_modules`, so this is the one convention here
   the repo itself cannot show you. `import { x } from "./units"` fails
   `pnpm typecheck` with TS2835.
-- All thirteen published packages claim `engines: { node: ">=20" }` while the root
+- All thirteen published packages claim `engines: { node: ">=22" }` while the root
   claims `>=22.22`. The divergence is **deliberate**: the root floor is the dev
   toolchain's, a package's is a compatibility promise to consumers. Do not
   align them for tidiness — raising a published floor is a breaking change,
@@ -763,6 +763,14 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   dependency declares, so a bump that raises one (`testcontainers@12.1.0`
   wanting `>= 22.22`) moves the root `engines` **and** CI's floor row in the
   same commit, or the install fails on that row.
+
+  It was `>=20` until Node 20 reached end of life on 2026-04-30. That floor
+  was never provable — CI runs the dev toolchain, and pnpm 11 needs
+  `node:sqlite`, which Node 20 does not have — so it promised a line nothing
+  here had ever executed. Raising it is what let `packages/core` drop its
+  `createDeferred` shim for `Promise.withResolvers` (ES2024, Node 22), and
+  CI's `22.22` row now runs the same major the promise names.
+
 - **oxlint rules are binding: no `interface` (use `type`), no `any` (use
   `unknown`).** Genuine exceptions carry a targeted `oxlint-disable` **with a
   reason**. Two are structural: `units.ts`'s `UnitWork` return union

@@ -16,7 +16,7 @@ pnpm add @btravstack/core @btravstack/config @btravstack/di unthrown
 
 `@btravstack/config`, `@btravstack/di` and `unthrown` are **peer
 dependencies** — install all four. The kernel itself depends on `node:`
-builtins only. Node `>=20`.
+builtins only. Node `>=22`.
 
 ## A worked example
 

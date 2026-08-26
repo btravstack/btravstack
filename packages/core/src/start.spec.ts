@@ -4,7 +4,6 @@ import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { runtimeModule } from "./__tests__/test-fixtures.js";
-import { createDeferred } from "./deferred.js";
 import type { KernelEvent } from "./events.js";
 import { RuntimeStartFailed, type Runtime, type RuntimeHost } from "./runtime.js";
 import { start } from "./start.js";
@@ -45,7 +44,7 @@ describe("start", () => {
     // construction that outlasts the whole pre-drain delay on its own
     const clock = createFakeClock();
     const runtime = testRuntime();
-    const built = createDeferred<void>();
+    const built = Promise.withResolvers<void>();
     const Slow = Module("Slow")({
       imports: [runtime.module],
       provides: [
@@ -334,7 +333,7 @@ describe("runtimeInfo", () => {
   });
 
   it("stays pending until the runtime is serving", async () => {
-    const gate = createDeferred<void>();
+    const gate = Promise.withResolvers<void>();
     const inner = testRuntime();
     const stalled = {
       ...inner,

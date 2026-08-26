@@ -804,7 +804,7 @@ so a transient accept fault cannot become an `uncaughtException` teardown.
 `@unthrown/orpc`. All peers, so an application holds one copy of each —
 `@btravstack/contract` most of all, since its marker is a `unique symbol` and
 two copies are two different symbols, so a contract marked against one would
-read as unmarked here. Node `>=20`.
+read as unmarked here. Node `>=22`.
 
 ## Deliberately not included
 

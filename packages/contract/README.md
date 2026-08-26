@@ -10,7 +10,7 @@
 pnpm add @btravstack/contract
 ```
 
-Node `>=20`.
+Node `>=22`.
 
 ## Usage
 
