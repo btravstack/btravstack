@@ -1111,7 +1111,12 @@ And a seventh, about the infrastructure a suite runs against:
   W3C `traceparent` honoured inbound by `@btravstack/http-server` and
   `@btravstack/amqp-worker` (trace-id field only — the parent span id is dropped,
   never half-carried), with `@btravstack/temporal-worker` deliberately keeping the
-  workflow id as its correlation. The auto-instrumentation constraint held:
+  workflow id as its correlation. A starter's OWN instrumentation is
+  graph-owned: it contributes to `Instrumentations` (declared in `core`) and
+  `otel()` registers every contribution, so composing `@btravstack/prisma`
+  declares engine tracing and composing `otel()` turns it on — nothing
+  registers when no SDK is composed. The auto-instrumentation constraint held
+  for the PRELOAD alone:
   the preload cannot be DI-provided, so the package ships the graph-owned
   half and the `--import` line stays the deployment's. Surfaces in
   `packages/observability/CLAUDE.md`.

@@ -204,3 +204,28 @@ reason `Config` is a hand-rolled Standard Schema.
   The package ships the graph-owned half only and `otel`'s TSDoc says so;
   the `--import` preload is the deployment's line. Do not try to
   wire auto-instrumentation into a provider.
+
+  **That rule is about the PRELOAD, not about instrumentations generally.** An
+  instrumentation that patches nothing — one whose `enable()` sets a helper the
+  instrumented library reads per call, as `@prisma/instrumentation` does — has
+  no ordering requirement a provider cannot meet, and `otel()` registers those.
+  A package contributes one to `@btravstack/core`'s `Instrumentations` set port;
+  `otel()` loads every contribution and hands it to the `NodeSDK`. The test is
+  whether the instrumentation patches module loading, not whether it is OTel.
+
+## Collecting a starter's instrumentation
+
+`otel()` depends on `Instrumentations` and registers what it finds, so
+composing a starter DECLARES what can be instrumented and composing `otel()`
+is what turns it on. A graph without an SDK collects nothing, loads nothing,
+and installs nothing.
+
+Each contribution is `{ name, load }`. `load` is async and answers `undefined`
+rather than failing, because the package supplying the instrumentation is an
+OPTIONAL peer that a consumer may not have installed — the contributor logs the
+skip, since it is the one that knows why.
+
+`otel()` contributes a member of its own that loads nothing. That is what makes
+`Instrumentations` a port the graph always has: a collector depending on a set
+port NOTHING provides is an unmet dependency both at plan time and in `Needs`.
+Guice's `newSetBinder` declares the empty set for the same reason.

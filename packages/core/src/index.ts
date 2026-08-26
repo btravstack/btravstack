@@ -1,3 +1,4 @@
+export { Instrumentations, type OtelInstrumentation } from "./instrumentation.js";
 export {
   HealthCheckFailed,
   HealthChecks,

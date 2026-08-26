@@ -35,13 +35,14 @@ type _Service = Expect<Exactly<ServiceOf<InstanceType<typeof instrumented.port>>
 //    application are two ports rather than a duplicate-provider defect.
 type _PortId = Expect<Exactly<typeof instrumented.port.portId, "OrderDatabase">>;
 
-// 3. Instrumented by default: the module needs the three telemetry ports, so a
-//    root without `observability()` and `otel()` cannot compose it.
-type _InstrumentedNeeds = Expect<
-  Exactly<NeedsOf<typeof instrumented>, Env | Logger | Meter | Tracer>
->;
+// 3. Instrumented by default: the module needs the telemetry ports it reads, so
+//    a root without `observability()` and `otel()` cannot compose it. `Tracer`
+//    is NOT among them — the engine instrumentation is offered to the SDK
+//    through `Instrumentations` rather than ordered behind a port nothing
+//    reads, and `Meter` is what still orders this after `otel()`.
+type _InstrumentedNeeds = Expect<Exactly<NeedsOf<typeof instrumented>, Env | Logger | Meter>>;
 
-// 4. `instrumented: false` drops all three — opting out of telemetry, not out
+// 4. `instrumented: false` drops them — opting out of telemetry, not out
 //    of the database. `Env` stays, because the URL is still read.
 type _PlainNeeds = Expect<Exactly<NeedsOf<typeof plain>, Env>>;
 

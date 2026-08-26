@@ -11,7 +11,12 @@ const defaultLoader: Loader = async () =>
   };
 
 /**
- * Prisma's own OpenTelemetry instrumentation, turned on if it is installed.
+ * Prisma's own OpenTelemetry instrumentation, loaded if it is installed.
+ *
+ * Handed to `@btravstack/observability/otel` through the `Instrumentations`
+ * set port rather than registered here: a graph with no SDK collects nothing
+ * and this is never called, so engine tracing follows from composing `otel()`
+ * instead of from importing this package.
  *
  * **A dynamic import, and it has to be**: `@prisma/instrumentation` is an
  * OPTIONAL peer, so a static import would make every consumer install it. The
@@ -30,7 +35,7 @@ const defaultLoader: Loader = async () =>
  * is worse than none, so the one path that quietly produces no spans says so at
  * `debug` — the level for something that is a choice rather than a fault.
  */
-export const enableTracing = async (
+export const loadPrismaInstrumentation = async (
   logger: LoggerService,
   load: Loader = defaultLoader,
 ): Promise<Instrumentation | undefined> => {

@@ -1,9 +1,9 @@
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { enableTracing } from "./tracing.js";
+import { loadPrismaInstrumentation } from "./tracing.js";
 
-describe("enableTracing", () => {
+describe("loadPrismaInstrumentation", () => {
   it("turns the instrumentation on when it resolves", async ({ telemetry }) => {
     // GIVEN an instrumentation that loads
     let enabled = false;
@@ -18,7 +18,7 @@ describe("enableTracing", () => {
       );
 
     // WHEN tracing is enabled
-    const instrumentation = await enableTracing(telemetry.logger, load);
+    const instrumentation = await loadPrismaInstrumentation(telemetry.logger, load);
 
     // THEN it came on, and nothing was logged about it being absent
     expect({ enabled, returned: instrumentation !== undefined, ...telemetry.recorded() }).toEqual(
@@ -31,7 +31,7 @@ describe("enableTracing", () => {
     const load = () => Promise.reject(new Error("Cannot find package"));
 
     // WHEN tracing is attempted
-    const instrumentation = await enableTracing(telemetry.logger, load);
+    const instrumentation = await loadPrismaInstrumentation(telemetry.logger, load);
 
     // THEN it is skipped, and the skip is stated rather than silent — telemetry
     // you believe you have and do not is worse than none
