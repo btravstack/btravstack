@@ -2,17 +2,14 @@
 
 reviews:
   path_filters:
-    - "!**/src/generated/**"
-    - "!docs/.vitepress/dist/**"
     - "!pnpm-lock.yaml"
   path_instructions:
     - path: "**/*.ts"
       instructions: |
-        This repository writes its conventions down, and a suggestion it has
-        already considered and rejected is noise. Read the root `CLAUDE.md`
-        first — it is the authoritative spec, rules and reasoning both — and
-        the `CLAUDE.md` of whichever package the diff touches, which is where
-        that package's public surface is stated. There are thirteen of them.
+        When the same diff also changes a `CLAUDE.md`, an `AGENTS.md` or a
+        README, check what it now claims against this code. A sentence that
+        counts call sites, names "the one such site" or describes a signature is
+        a claim that goes stale silently, and one already had.
 
         Errors are values here (`unthrown`), not exceptions. Suggestions that
         assume otherwise are wrong rather than debatable:
@@ -74,10 +71,3 @@ reviews:
         commit. Say so when a diff changes the surface and touches none of
         them — documentation drift is the failure this repository has met most
         often, and the copy with no gate is the one that lies.
-
-    - path: "**/{CLAUDE,AGENTS}.md"
-      instructions: |
-        These are the spec, not commentary. Check their claims against the code
-        in the same diff: a sentence that counts call sites, names "the one such
-        site", or describes a signature is a claim that can go stale silently,
-        and one already had.
