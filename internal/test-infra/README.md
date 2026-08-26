@@ -81,14 +81,13 @@ break.
 
 ## Entry points
 
-| Import                                       | What it is                                                                         |
-| -------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys            |
-| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                    |
-| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal`, `postgresUrl`              |
-| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                 |
-| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                              |
-| `@btravstack/internal-test-infra/uuid`       | `uuidv7()`, a real UUIDv7 for the tenant fixtures — `crypto.randomUUID()` mints v4 |
+| Import                                       | What it is                                                              |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys |
+| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s         |
+| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal`, `postgresUrl`   |
+| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                      |
+| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                   |
 
 There is also one **script** rather than an entry point: `pnpm dev:env`
 (`src/dev-env.ts`), which the repository's `pnpm dev` runs first. It starts the
@@ -119,3 +118,19 @@ Every workspace that boots the example application or either broker-backed
 runtime needs a daemon. Measured on this machine, `pnpm test` (27 tasks, default
 concurrency): **32s warm**, and a cold first run pays the three image pulls
 once ever rather than once per run.
+
+## Not here: UUIDv7
+
+The tenant fixtures need a real UUIDv7 — `crypto.randomUUID()` mints v4, which
+`z.uuidv7()` rejects — and this package used to hand-roll one. It is the
+[`uuidv7`](https://www.npmjs.com/package/uuidv7) package now, taken directly by
+the four example workspaces that mint ids.
+
+The hand-rolled fifteen lines were correct, and had a spec proving a thousand
+minted ids were valid and distinct. What they did not have was a reason to
+exist: the rule that makes this repository hand-roll `Config` rather than take
+a schema library protects **consumers of published packages**, and this
+workspace is `private` and reaches none. So the trade was fifteen lines of
+RFC 9562 layout, verified once and unlikely to be read again, against a
+zero-dependency package that also orders ids minted within the same
+millisecond — which nothing needs today.

@@ -37,6 +37,7 @@
     "@unthrown/vitest": "catalog:",
     "prisma": "catalog:",
     "typescript": "catalog:",
+    "uuidv7": "catalog:",
     "vitest": "catalog:"
   }
 }

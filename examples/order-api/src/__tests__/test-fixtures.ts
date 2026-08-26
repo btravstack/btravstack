@@ -21,11 +21,11 @@ import {
   type OrderId,
 } from "@btravstack/example-order-domain";
 import type { HttpInfo, HttpRuntime } from "@btravstack/http-server";
-import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { LoggerConfig, createLogger, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import request from "supertest";
 import { ErrAsync, fromSafePromise, OkAsync } from "unthrown";
+import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
 import { createOrderApiClient, type OrderApiClient } from "../client.js";

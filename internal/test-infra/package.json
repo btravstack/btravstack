@@ -14,8 +14,7 @@
     "./rabbitmq": "./src/rabbitmq.ts",
     "./rustfs": "./src/rustfs.ts",
     "./redis": "./src/redis.ts",
-    "./temporal": "./src/temporal.ts",
-    "./uuid": "./src/uuid.ts"
+    "./temporal": "./src/temporal.ts"
   },
   "scripts": {
     "dev:env": "tsx src/dev-env.ts",
@@ -34,7 +33,6 @@
     "@unthrown/vitest": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "zod": "catalog:"
+    "vitest": "catalog:"
   }
 }
