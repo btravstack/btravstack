@@ -1,6 +1,6 @@
 ---
 title: Ports
-description: "Port, ServiceOf, the type-only Scope, and the class and instance types a consumer's declaration emit needs — the tokens the rest of the container keys on, precisely."
+description: "Port, Port.many, ServiceOf, the type-only Scope, and the class and instance types a consumer's declaration emit needs — the tokens the rest of the container keys on, precisely."
 ---
 
 <!-- doctest: prelude
@@ -8,6 +8,7 @@ import { Port, type AnyPort, type PortClassOf, type ServiceOf } from "@btravstac
 import { TaggedError, type AsyncResult } from "unthrown";
 type Order = { readonly id: string; readonly quantity: number };
 class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
+class HealthCheckFailed extends TaggedError("HealthCheckFailed")<{ readonly why: string }> {}
 -->
 
 # Ports
@@ -42,6 +43,31 @@ type positions.
 | Duplicate id | Two distinct classes sharing an id are distinct types but one key — one would shadow the other. Development builds warn once per id: `[di] duplicate port id "X" — one will shadow the other`. Folded out when `NODE_ENV` is `production`.          |
 | Cost         | None beyond the class object. Declaring a port runs no factory and allocates no service.                                                                                                                                                            |
 
+## `Port.many(id)<Member>`
+
+```ts
+class HealthCheck extends Port.many("HealthCheck")<{
+  readonly name: string;
+  readonly run: () => AsyncResult<"healthy", HealthCheckFailed>;
+}> {}
+```
+
+Declares a **set port**. `Member` fixes what one contribution looks like; the
+port's own service — what lands in a `Context` and what `Context.get`
+returns — is `readonly Member[]`.
+
+- Several providers may target it, via
+  [`Provider.member`](/reference/di/providers#provider-member-port-deps-options);
+  on an ordinary port a second provider is a
+  [wiring defect](/reference/di/wiring-defects).
+- `Context.get` returns every contribution, accumulated across module
+  boundaries. No contributors is not an error — the array is empty.
+- One id, one kind: the same `portId` declared ordinary in one place and set
+  in another is a wiring defect.
+- The runtime discriminant is the static `many: true` on the class; the
+  type-level one is a private brand on the instance type, which is what makes
+  `Provider.member` on an ordinary port a compile error.
+
 ## `ServiceOf<T>`
 
 Recovers the service shape from a port — the type a provider must construct
@@ -60,6 +86,8 @@ class GetOrderInteractor {
 ```
 
 Use it to type application code against a port without importing any adapter.
+For a set port, `ServiceOf` yields the accumulated `readonly Member[]` — one
+contribution's shape is the port declaration's own type argument.
 
 ## `Scope` (type only)
 
@@ -114,17 +142,17 @@ consumer that **exports** such a provider needs so its own `.d.ts` can be
 written. Naming either type forges
 nothing: the brand keys stay private, so a value still cannot be hand-rolled.
 
-## `PortClass<Id>`
+## `PortClass<Id>` and `ManyPortClass<Id>`
 
-The return type of `Port(id)`. Exported so a consumer's **declaration emit**
-can name it — `class X extends Port("X")<S> {}` in a library compiled with
-`declaration: true` emits a base-class type the compiler must be able to
-write. You are not expected to write it by hand.
+The return types of `Port(id)` and `Port.many(id)`. Exported so a consumer's
+**declaration emit** can name them — `class X extends Port("X")<S> {}` in a
+library compiled with `declaration: true` emits a base-class type the compiler
+must be able to write. You are not expected to write either by hand.
 
 ## Where the rest lives
 
 | Export                                                              | Page                                       |
 | ------------------------------------------------------------------- | ------------------------------------------ |
-| `Provider`, `AnyProvider`                                           | [Providers](/reference/di/providers)       |
+| `Provider`, `Provider.member`, `AnyProvider`                        | [Providers](/reference/di/providers)       |
 | `Module`, `AnyModule`, `Exportable`                                 | [Modules](/reference/di/modules)           |
 | `Module.build` / `scoped` / `forkScope`, `ScopedOptions`, `Context` | [Entry points](/reference/di/entry-points) |

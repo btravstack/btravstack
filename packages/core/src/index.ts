@@ -1,3 +1,11 @@
+export {
+  HealthCheckFailed,
+  HealthChecks,
+  runHealthChecks,
+  type ComponentHealth,
+  type HealthCheck,
+  type HealthReport,
+} from "./health.js";
 export { systemClock } from "./clock.js";
 export type { Clock } from "./clock.js";
 export type { DrainReport } from "./drain.js";

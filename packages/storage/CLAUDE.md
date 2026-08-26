@@ -115,3 +115,13 @@ never leaves the process and so cannot fail on an unreachable endpoint.
 
 Coverage is 100% lines/functions, `test-fixtures.ts` excluded.
 `src/module.test-d.ts` pins the needs gate and all five flag arms.
+
+## Health check
+
+The starter contributes one `HealthChecks` member, named `storage`, so the
+kernel's `/healthz` reports on it without the application wiring anything. The
+probe is a `get` on a reserved probe key — `ObjectNotFound` is the store ANSWERING and therefore healthy; only `StorageUnavailable` is not.
+
+Composing the starter therefore exports `HealthChecks` alongside its own port —
+a composition root that re-exports the module whole passes it up to the kernel
+with no extra line.

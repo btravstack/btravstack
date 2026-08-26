@@ -17,6 +17,9 @@ type AllOperations = (args: {
 
 export type StubClient = {
   readonly $disconnect: () => Promise<void>;
+  readonly $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+  /** Makes the next `$queryRaw` reject, so the health check can be driven down. */
+  readonly breakQueries: (reason: string) => void;
   readonly $extends: (extension: unknown) => StubClient;
   readonly disconnected: () => number;
   readonly url: string;
@@ -52,7 +55,15 @@ export const it = test.extend<{ stub: Stub; telemetry: Telemetry }>({
     let count = 0;
     const make = (url: string): StubClient => {
       let hook: AllOperations | undefined;
+      let queryFailure: string | undefined;
       const client: StubClient = {
+        $queryRaw: () =>
+          queryFailure === undefined
+            ? Promise.resolve([{ "?column?": 1 }])
+            : Promise.reject(new Error(queryFailure)),
+        breakQueries: (reason: string) => {
+          queryFailure = reason;
+        },
         $disconnect: () => {
           count += 1;
           return Promise.resolve();

@@ -250,6 +250,25 @@ checker already verifies — in production; `@btravstack/testing`'s `overridden`
 is the testing half of that sentence since issue #63 (see the root
 `CLAUDE.md`'s public-surface section). The kernel itself ships no override.
 
+### Health checks
+
+| Export                             | What it is                                                                                                                                                                                         |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HealthChecks`                     | The **set port** every starter contributes to (`Provider.member`). The kernel reads it whole once the graph is built.                                                                              |
+| `HealthCheck`                      | One contribution: `{ name, check: () => AsyncResult<void, HealthCheckFailed> }`.                                                                                                                   |
+| `HealthCheckFailed`                | Modeled, not thrown — a check that throws is a bug in the check; one that fails is the news `/healthz` carries.                                                                                    |
+| `runHealthChecks(checks)`          | Folds them into a `HealthReport`. `AsyncResult<HealthReport, never>` — every check's failure becomes a component line before `allAsync` sees it, so one failing dependency cannot hide the others. |
+| `HealthReport` / `ComponentHealth` | `{ status, components }`, each component `{ name, status, reason? }`.                                                                                                                              |
+
+Served at `GET /healthz` by the probe server, 200 when every component is
+healthy and 503 otherwise, with the same JSON body either way. Deliberately not
+folded into `/readyz` — see the root `CLAUDE.md`.
+
+The list is **late-bound**: probes answer from `building` onward, which is
+before the graph declaring the checks exists, so `start` fills a holder once
+`Module.scoped` hands it a context. Until then `/healthz` reports healthy with
+no components, which is the honest answer while building.
+
 ## Load-bearing runtime invariants (tests must guard these)
 
 The nine from the design, each with the test that guards it, plus the ones that

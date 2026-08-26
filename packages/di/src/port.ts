@@ -1,5 +1,6 @@
 declare const ID: unique symbol;
 declare const SERVICE: unique symbol;
+declare const MANY: unique symbol;
 
 /**
  * The type that appears in a Needs / Exports union. Identity is the literal `Id`:
@@ -16,6 +17,22 @@ export type PortClass<Id extends string> = {
   readonly portId: Id;
 };
 
+/**
+ * A set port: several providers may target it, and `Context.get` yields every
+ * contribution rather than one service. `Port.many("Id")<Member>` fixes the
+ * MEMBER shape, but the port's own service — what lands in a `Context` — is
+ * `readonly Member[]`.
+ *
+ * `many: true` is the runtime discriminant `build.ts` reads off the class;
+ * the `[MANY]` brand is its type-level twin, which is what lets `MemberOf`
+ * recover a member's shape from a concrete set-port class.
+ */
+export type ManyPortClass<Id extends string> = {
+  new <Member>(): PortInstance<Id, readonly Member[]> & { readonly [MANY]: true };
+  readonly portId: Id;
+  readonly many: true;
+};
+
 // `AnyPort` demands only what a concrete port class has, since `typeof Logger`
 // is not assignable to `PortClass<string>`'s generic construct signature.
 // `abstract new` rather than `new` is what makes a concrete class's constructor
@@ -27,8 +44,15 @@ export type PortClass<Id extends string> = {
 // oxlint-disable-next-line typescript/no-explicit-any
 type AnyPortInstance = PortInstance<string, any>;
 
+// `many?: true` is optional, not required, so it stays structurally
+// unaffected for every ordinary `PortClass<Id>`-derived port (which never
+// declares it) while still letting `build.ts` read `provider.port.many` off
+// a value typed only as `AnyPort` — the same reasoning that keeps `Scope`,
+// an ordinary port, exempt from the many-port codepath: `Scope.many` is
+// `undefined`, not `true`.
 export type AnyPort = {
   readonly portId: string;
+  readonly many?: true;
 } & (abstract new () => AnyPortInstance);
 
 /**
@@ -49,6 +73,33 @@ export type ServiceOf<T> =
     : T extends abstract new () => PortInstance<string, infer S>
       ? S
       : never;
+
+/**
+ * Recovers a set port's *member* shape — the type a `Provider.member` factory
+ * actually produces — from `[MANY]`, not from `ServiceOf<T>`'s shape. An
+ * earlier version keyed this off "does the service look like an array"
+ * (`ServiceOf<T> extends readonly (infer M)[] ? M : never`), which is
+ * unsound: an *ordinary* port whose declared service happens to be an array
+ * — `class Tags extends Port("Tags")<readonly string[]> {}` — has `many`
+ * `undefined` at runtime (`build.ts`'s `plan`/`context.ts`'s `unsafeAddAll`
+ * both discriminate on that static field, never on shape), so
+ * `Provider.member(Tags)({ value: "a" } )` type-checked under the old
+ * definition while landing as a single service at runtime — `ctx.get(Tags)`
+ * would return `"a"`, contradicting its own `readonly string[]` type. `[MANY]`
+ * is the same brand `ManyPortClass`'s instance type carries and is
+ * module-private (declared, not exported, above), so nothing outside this
+ * file can forge it onto an ordinary port's instance type; keying `MemberOf`
+ * off its presence makes the type-level check agree with the runtime one.
+ */
+export type MemberOf<T> = T extends { readonly [MANY]: true } & PortInstance<string, infer S>
+  ? S extends readonly (infer M)[]
+    ? M
+    : never
+  : T extends abstract new () => { readonly [MANY]: true } & PortInstance<string, infer S>
+    ? S extends readonly (infer M)[]
+      ? M
+      : never
+    : never;
 
 const seen = new Set<string>();
 
@@ -79,13 +130,19 @@ function warnOnDuplicateId(id: string): void {
  * slips past it) and a false positive on any port-generic helper, since the
  * conditional cannot reduce for an unresolved `P`.
  */
-export class Scope extends Port("@di/Scope")<never> {}
+export class Scope extends PortDeclaration("@di/Scope")<never> {}
 
 /**
- * A `function` declaration, not a `const`, specifically so it hoists: `Scope`
- * above calls it at module-evaluation time.
+ * Renamed from the brief's plain exported `Port` function: the "operations
+ * namespaced on the constructor" convention (`Port.many`, below) needs a
+ * value distinct from this one to `Object.assign` the namespace onto —
+ * same rationale, and the same fix, as `ModuleDeclaration`/`ProviderDeclaration`
+ * elsewhere in this package. Kept as a `function` declaration (not a `const`)
+ * specifically so it hoists: `Scope`, above, calls it at module-evaluation
+ * time, before the `export const Port = Object.assign(...)` line below has
+ * run — a `const` there would still be in its temporal dead zone.
  */
-export function Port<const Id extends string>(id: Id): PortClass<Id> {
+function PortDeclaration<const Id extends string>(id: Id): PortClass<Id> {
   warnOnDuplicateId(id);
   // A class, not a plain object: `extends Port("X")<Shape>` needs a construct
   // signature, and only a class expression provides one.
@@ -94,3 +151,23 @@ export function Port<const Id extends string>(id: Id): PortClass<Id> {
     static readonly portId = id;
   } as unknown as PortClass<Id>;
 }
+
+/**
+ * `Port.many` mirrors `PortDeclaration` exactly, except the returned class
+ * also carries a `many: true` static field — the runtime discriminant
+ * `build.ts`'s `plan`/`constructLevel` read to decide a port accumulates
+ * contributions instead of colliding on the second provider. See
+ * `ManyPortClass`'s own doc comment above for why this is a *static* field
+ * (readable at runtime off the class) rather than the `[MANY]` brand (a
+ * type-level-only marker on the never-instantiated instance type).
+ */
+export const Port = Object.assign(PortDeclaration, {
+  many: <const Id extends string>(id: Id): ManyPortClass<Id> => {
+    warnOnDuplicateId(id);
+    // oxlint-disable-next-line typescript/no-extraneous-class max-classes-per-file
+    return class {
+      static readonly portId = id;
+      static readonly many = true;
+    } as unknown as ManyPortClass<Id>;
+  },
+});

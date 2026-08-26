@@ -110,3 +110,13 @@ omission: a Prisma client dials on the first statement, so the pool's lifecycle
 `$disconnect` counter. A database here would be testing Prisma. The real
 database exercise lives in `examples/order-infrastructure`, which consumes this
 package and runs against the shared PostgreSQL container.
+
+## Health check
+
+The starter contributes one `HealthChecks` member, named `the database (named after the starter)`, so the
+kernel's `/healthz` reports on it without the application wiring anything. The
+probe is `SELECT 1` through `$queryRaw` — not `$connect()`, because a pooled client reports connected while the server behind it is gone.
+
+Composing the starter therefore exports `HealthChecks` alongside its own port —
+a composition root that re-exports the module whole passes it up to the kernel
+with no extra line.

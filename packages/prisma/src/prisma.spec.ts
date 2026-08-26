@@ -1,5 +1,5 @@
 import { Env } from "@btravstack/config";
-import { Logger, Meter, Tracer } from "@btravstack/core";
+import { HealthChecks, Logger, Meter, Tracer, runHealthChecks } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
@@ -111,5 +111,53 @@ describe("prismaDatabase", () => {
         ],
       }),
     );
+  });
+
+  it("declares a health check that asks the database to answer", async ({ stub }) => {
+    // GIVEN a starter over a reachable stub client
+    const db = prismaDatabase("OrderDatabase")({
+      client: (adapter) => stub.client(connectionStringOf(adapter)),
+      instrumented: false,
+    });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } })],
+      exports: [db.port, HealthChecks],
+    });
+
+    // WHEN the contributed check is run
+    const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+
+    // THEN the database answered, under the name the starter was given
+    expect(report).toBeOkWith({
+      status: "healthy",
+      components: [{ name: "OrderDatabase", status: "healthy" }],
+    });
+  });
+
+  it("reports the database unhealthy when it cannot answer", async ({ stub }) => {
+    // GIVEN a client whose queries fail, as an unreachable server's would
+    const db = prismaDatabase("OrderDatabase")({
+      client: (adapter) => {
+        const client = stub.client(connectionStringOf(adapter));
+        client.breakQueries("connection refused");
+        return client;
+      },
+      instrumented: false,
+    });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } })],
+      exports: [db.port, HealthChecks],
+    });
+
+    // WHEN the contributed check is run
+    const report = await Module.scoped(root, (ctx) => runHealthChecks(ctx.get(HealthChecks)));
+
+    // THEN the report is unhealthy and carries the reason the driver gave
+    expect(report).toBeOkWith({
+      status: "unhealthy",
+      components: [{ name: "OrderDatabase", status: "unhealthy", reason: "connection refused" }],
+    });
   });
 });

@@ -4,8 +4,12 @@ import type { PortInstance, ServiceOf } from "./port.js";
 // the plumbing is typed against this rather than `AnyPort`, which a concrete
 // port class is not assignable to. A constructor intersection rather than a
 // plain record, so it still overlaps `get`'s `abstract new () => S` parameter.
+// `many?: true` is the same runtime discriminant `port.ts`'s `AnyPort` carries,
+// added here so `unsafeAddAll` can tell a set port's members from an ordinary
+// port's single service without importing `AnyPort` itself.
 type PortLike = {
   readonly portId: string;
+  readonly many?: true;
 } & (abstract new () => unknown);
 
 /**
@@ -38,6 +42,11 @@ const make = (services: ReadonlyMap<string, unknown>): Context<never> => {
     get: (port: PortLike) => {
       const service = services.get(port.portId);
       if (service === undefined) {
+        // A set port nobody contributed to is empty, not missing: `plan` never
+        // registers a port with no providers, so this is the only place the
+        // distinction can be made, and contributing nothing is what a starter
+        // an application did not compose legitimately does.
+        if (port.many === true) return [];
         // Unreachable through the public API, so a bug in this package rather
         // than a modeled error — thrown, which unthrown turns into a defect.
         // oxlint-disable-next-line unthrown/no-throw
@@ -75,15 +84,55 @@ export const unsafeAdd = <R>(
 export const unsafeKeys = (ctx: Context<never>): ReadonlySet<string> =>
   new Set(entries.get(ctx)?.keys() ?? []);
 
+// Unlike `get`/`unsafeAdd`'s callers, which treat a missing key as this
+// package's own bug, a set port genuinely has nothing registered yet before
+// its first level of members lands — a missing key here is the ordinary
+// case, not a defect, hence `orElse` rather than a throw.
+const getOrElse = (ctx: Context<never>, port: PortLike, orElse: () => unknown): unknown => {
+  const services = entries.get(ctx);
+  return services !== undefined && services.has(port.portId) ? services.get(port.portId) : orElse();
+};
+
 /**
  * Internal: used only by `build.ts`'s `run`, folding one dependency-ordered
- * level's constructed results into `ctx`.
+ * level's constructed results into `ctx`. An ordinary port's single service
+ * is added directly; a set port's members (`port.many === true`) are
+ * gathered into one array first, since `Context.get` on a set port must
+ * yield every contribution, not just the last one added.
+ *
+ * A set port's members can land across more than one level — a
+ * dependency-free member is ready earlier than a sibling that depends on
+ * something else — so each group is appended to whatever array an *earlier*
+ * level already registered for that port (`getOrElse`, `[]` the first time),
+ * never overwritten. That is also what lets a later level's consumer, which
+ * `build.ts`'s `plan` schedules only once every member of a port it depends
+ * on has been placed, see every contribution built so far.
  */
 export const unsafeAddAll = (
   ctx: Context<never>,
   built: readonly (readonly [PortLike, unknown])[],
-): Context<never> =>
-  built.reduce<Context<never>>(
+): Context<never> => {
+  const singles = built.filter(([port]) => port.many !== true);
+  const members = built.filter(([port]) => port.many === true);
+
+  const withSingles = singles.reduce<Context<never>>(
     (c, [port, service]) => unsafeAdd(c, port, service) as Context<never>,
     ctx,
   );
+
+  const grouped = new Map<string, readonly [PortLike, unknown[]]>();
+  for (const [port, service] of members) {
+    const existing = grouped.get(port.portId);
+    if (existing === undefined) {
+      const already = getOrElse(withSingles, port, () => []) as unknown[];
+      grouped.set(port.portId, [port, [...already, service]]);
+      continue;
+    }
+    existing[1].push(service);
+  }
+
+  return [...grouped.values()].reduce<Context<never>>(
+    (c, [port, services]) => unsafeAdd(c, port, services) as Context<never>,
+    withSingles,
+  );
+};

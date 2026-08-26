@@ -4,13 +4,25 @@ export { Port } from "./port.js";
 // provider for the phantom, and `const widened: AnyPort = Scope` defeats any
 // type-level guard. `plan()`'s runtime `portId` check stays as defence in depth.
 //
-// `PortClass` is exported for declaration emit, not to be written by hand:
+// `PortClass`/`ManyPortClass` are exported for declaration emit, not to be
+// written by hand:
 // without it the emitter expands a port's heritage expression down to
 // `PortInstance`'s module-private `unique symbol` keys, and every consumer that
 // exported a port failed TS4020. The symbols stay unexported, because a
 // consumer that can name them can hand-write a port instance and forge one;
 // naming the class or instance TYPE forges nothing.
-export type { AnyPort, PortClass, PortClassOf, PortInstance, Scope, ServiceOf } from "./port.js";
+// `MemberOf`'s `[MANY]` discriminant stays unspoofable for the same reason the
+// brand keys do: it is never named, and `emit-guards.ts` keeps that true.
+export type {
+  AnyPort,
+  ManyPortClass,
+  MemberOf,
+  PortClass,
+  PortClassOf,
+  PortInstance,
+  Scope,
+  ServiceOf,
+} from "./port.js";
 export { Context } from "./context.js";
 export { Provider } from "./provider.js";
 // Test-harness-facing: `@btravstack/testing`'s `overridden` is the intended

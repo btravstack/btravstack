@@ -32,6 +32,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 declare class PrismaClient {
   constructor(options: { readonly adapter: PrismaPg });
   $disconnect(): Promise<void>;
+  $queryRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
   $extends(extension: unknown): this;
 }
 declare const unthrownPrisma: unknown;

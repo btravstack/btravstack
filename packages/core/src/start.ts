@@ -12,6 +12,7 @@ import { fromSafePromise, Ok, OkAsync, P, type AsyncResult, type Result } from "
 import { systemClock, type Clock } from "./clock.js";
 import { drainApp, type DrainReport } from "./drain.js";
 import { safeSink, stderrSink, type EventSink } from "./events.js";
+import { HealthChecks, runHealthChecks, type HealthCheck, type HealthReport } from "./health.js";
 import { createPhaseTracker, type Phase } from "./phase.js";
 import { startProbeServer } from "./probes.js";
 import { installSignalHandlers, installUncaughtHandlers } from "./process-handlers.js";
@@ -181,6 +182,12 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
           requestShutdown("uncaught");
         });
   let disposeProbes = (): void => {};
+  // Probes answer from `building` onward, which is BEFORE the graph that
+  // declares the checks exists — so the list is late-bound rather than passed
+  // in. Until it is filled, `/healthz` reports healthy with no components:
+  // "nothing has said otherwise yet" is the honest answer while building.
+  let healthChecks: readonly HealthCheck[] = [];
+  const health = (): AsyncResult<HealthReport, never> => runHealthChecks(healthChecks);
   const probeBound = Promise.withResolvers<number | undefined>();
   const runtimePublished = Promise.withResolvers<Info | undefined>();
 
@@ -212,7 +219,7 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
     .flatMap((probes) =>
       probes === false
         ? OkAsync()
-        : startProbeServer({ port: probes.port, live, ready })
+        : startProbeServer({ port: probes.port, live, ready, health })
             .tap((server) => {
               probeBoundPort = server.port;
               probeBound.resolve(server.port);
@@ -307,6 +314,12 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
           RuntimePort as unknown as abstract new () => RuntimeInstance,
         ) as Runtime<Resolves, Info>;
         runtimeName = runtime.name;
+
+        // A set port with no contributors resolves to `[]`, so an application
+        // that composed no starter declaring a check needs no special case.
+        healthChecks = (ctx as unknown as Context<HealthChecks>).get(
+          HealthChecks as unknown as abstract new () => HealthChecks,
+        );
 
         const runtimeCtx = ctx as unknown as Context<InstanceType<Resolves>>;
 

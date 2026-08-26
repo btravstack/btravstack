@@ -1,5 +1,6 @@
-import { Logger, Meter, Tracer } from "@btravstack/core";
+import { HealthCheckFailed, HealthChecks, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
+import { Err, Ok, P } from "unthrown";
 
 import { instrument } from "./instrument.js";
 import { Storage, StorageBackend } from "./storage.js";
@@ -39,14 +40,37 @@ export const storage = <E, N, Instrumented extends boolean = true>({
   adapter,
   instrumented,
 }: StorageOptions<E, N, Instrumented>): Module<
-  Storage,
+  Storage | HealthChecks,
   E,
   Instrumented extends true ? N | Logger | Meter | Tracer : N
-> =>
+> => {
+  const healthCheck = Provider.member(HealthChecks)(
+    { backend: StorageBackend },
+    {
+      sync: ({ backend }) => ({
+        name: "storage",
+        // The probe key is never written, so `ObjectNotFound` is the
+        // store ANSWERING and therefore healthy; only the adapter
+        // reporting it could not reach the store at all is unhealthy.
+        check: () =>
+          backend
+            .get("btravstack:health")
+            .map((): void => undefined)
+            .flatMapErrCases((matcher) =>
+              matcher
+                .with(P.tag("ObjectNotFound"), () => Ok<void>(undefined))
+                .with(P.tag("StorageUnavailable"), ({ reason }) =>
+                  Err(new HealthCheckFailed({ reason: `storage unavailable (${reason})` })),
+                ),
+            ),
+      }),
+    },
+  );
+
   // One signature, two graphs — so the return type is the conditional above
   // and the implementation casts once, a value-level branch reporting a
   // type-level one.
-  (instrumented !== false
+  return (instrumented !== false
     ? Module("InstrumentedStorage")({
         needs: [Logger, Meter, Tracer],
         imports: [adapter],
@@ -58,17 +82,20 @@ export const storage = <E, N, Instrumented extends boolean = true>({
                 instrument(backend, logger, tracer, meter),
             },
           ),
+          healthCheck,
         ],
-        exports: [Storage],
+        exports: [Storage, HealthChecks],
       })
     : Module("Storage")({
         imports: [adapter],
         provides: [
           Provider(Storage)({ backend: StorageBackend }, { sync: ({ backend }) => backend }),
+          healthCheck,
         ],
-        exports: [Storage],
+        exports: [Storage, HealthChecks],
       })) as unknown as Module<
-    Storage,
+    Storage | HealthChecks,
     E,
     Instrumented extends true ? N | Logger | Meter | Tracer : N
   >;
+};
