@@ -468,7 +468,9 @@ reads per call, as `@prisma/instrumentation` does — has no ordering requiremen
 a provider cannot meet, and `otel()` registers it.
 
 A package contributes to `@btravstack/core`'s `Instrumentations` set port;
-`otel()` loads every contribution and hands it to the `NodeSDK`:
+`otel()` loads every contribution and hands it to the `NodeSDK`. A contribution
+is just the loader — a loaded instrumentation already carries OTel's own
+`instrumentationName`, so the port has no name of its own to keep in step:
 
 <!-- doctest: isolate
 import { Instrumentations } from "@btravstack/core";
@@ -481,10 +483,7 @@ declare const loadOptionalPeer: () => Promise<{ new (): SomeInstrumentation }>;
 
 ```ts
 Provider.member(Instrumentations)({
-  value: {
-    name: "@prisma/instrumentation",
-    load: async () => new (await loadOptionalPeer())(),
-  },
+  value: async () => new (await loadOptionalPeer())(),
 });
 ```
 

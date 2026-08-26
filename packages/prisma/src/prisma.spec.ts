@@ -179,20 +179,17 @@ describe("prismaDatabase", () => {
     });
 
     // WHEN the contributions are collected and loaded, as an OTel SDK does
-    const offered = await Module.scoped(root, (ctx) =>
+    const loaded = await Module.scoped(root, (ctx) =>
       fromSafePromise(
-        Promise.all(
-          ctx.get(Instrumentations).map(async (one) => ({
-            name: one.name,
-            loaded: (await one.load()) !== undefined,
-          })),
+        Promise.all(ctx.get(Instrumentations).map((load) => load())).then((all) =>
+          all.map((one) => one !== undefined),
         ),
       ),
     );
 
-    // THEN it is offered under its package name, and loads because the
-    // optional peer IS installed here — a graph composing no SDK never calls
-    // `load`, which is what makes this a declaration rather than a side effect
-    expect(offered).toBeOkWith([{ name: "@prisma/instrumentation", loaded: true }]);
+    // THEN one instrumentation is offered, and it loads because the optional
+    // peer IS installed here — a graph composing no SDK never calls the
+    // loader, which is what makes this a declaration rather than a side effect
+    expect(loaded).toBeOkWith([true]);
   });
 });

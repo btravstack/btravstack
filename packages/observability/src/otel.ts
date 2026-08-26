@@ -58,15 +58,13 @@ export const otel = (
 ): Module<Tracer | Meter, never, Scope> =>
   Module("Otel")({
     provides: [
-      Provider.member(Instrumentations)({
-        value: { name: "@btravstack/observability", load: () => Promise.resolve(undefined) },
-      }),
+      Provider.member(Instrumentations)({ value: () => Promise.resolve(undefined) }),
       Provider(OtelSdk)(
         { offered: Instrumentations },
         {
           acquire: ({ offered }) =>
             fromSafePromise(
-              Promise.all(offered.map((one) => one.load())).then((loaded) => {
+              Promise.all(offered.map((load) => load())).then((loaded) => {
                 const sdk = new NodeSDK({
                   ...options,
                   instrumentations: [

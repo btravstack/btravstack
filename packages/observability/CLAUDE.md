@@ -220,7 +220,9 @@ composing a starter DECLARES what can be instrumented and composing `otel()`
 is what turns it on. A graph without an SDK collects nothing, loads nothing,
 and installs nothing.
 
-Each contribution is `{ name, load }`. `load` is async and answers `undefined`
+Each contribution is a bare loader, `() => Promise<unknown>` — nothing here
+reads a name, and a loaded instrumentation already carries OTel's own
+`instrumentationName`. It is async and answers `undefined`
 rather than failing, because the package supplying the instrumentation is an
 OPTIONAL peer that a consumer may not have installed — the contributor logs the
 skip, since it is the one that knows why.

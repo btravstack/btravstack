@@ -165,10 +165,10 @@ export const prismaDatabase =
     const instrumentation = Provider.member(Instrumentations)(
       { logger: Logger },
       {
-        sync: ({ logger }) => ({
-          name: "@prisma/instrumentation",
-          load: () => loadPrismaInstrumentation(logger),
-        }),
+        sync:
+          ({ logger }) =>
+          () =>
+            loadPrismaInstrumentation(logger),
       },
     );
 

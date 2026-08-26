@@ -123,7 +123,8 @@ with no extra line.
 
 ## Engine tracing is offered, not registered
 
-The instrumented arm contributes `@prisma/instrumentation` to `Instrumentations`
+The instrumented arm contributes a loader for `@prisma/instrumentation` to
+`Instrumentations`
 instead of enabling it while the client is built. Composing this starter
 declares engine tracing; composing `@btravstack/observability/otel` is what
 turns it on, and a graph with no SDK never loads the package at all.

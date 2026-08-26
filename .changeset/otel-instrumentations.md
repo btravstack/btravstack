@@ -17,7 +17,7 @@
 A starter offers its OpenTelemetry instrumentation; composing `otel()` registers it.
 
 `@btravstack/core` declares an `Instrumentations` set port. A package
-contributes `{ name, load }`; `@btravstack/observability/otel` loads every
+contributes a loader, `() => Promise<unknown>`; `@btravstack/observability/otel` loads every
 contribution and hands it to the `NodeSDK`. Composing a starter **declares**
 what can be instrumented, and composing `otel()` is what turns it on — the
 Spring Boot starter shape, in one port.

@@ -271,10 +271,10 @@ no components, which is the honest answer while building.
 
 ### Instrumentations
 
-| Export                | What it is                                                                                                                                         |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Instrumentations`    | The **set port** a package contributes its OpenTelemetry instrumentation to. Collected by `@btravstack/observability/otel`; nothing else reads it. |
-| `OtelInstrumentation` | `{ name, load: () => Promise<unknown> }`.                                                                                                          |
+| Export                  | What it is                                                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Instrumentations`      | The **set port** a package contributes its OpenTelemetry instrumentation to. Collected by `@btravstack/observability/otel`; nothing else reads it.          |
+| `InstrumentationLoader` | `() => Promise<unknown>`. A bare loader: the collector needs nothing else, and the loaded instrumentation already carries OTel's own `instrumentationName`. |
 
 `load` is async and answers `undefined` rather than failing, because the
 package supplying the instrumentation is an OPTIONAL peer the consumer may not
