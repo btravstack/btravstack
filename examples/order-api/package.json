@@ -31,6 +31,8 @@
     "@opentelemetry/sdk-node": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
+    "@orpc/json-schema": "catalog:",
+    "@orpc/openapi": "catalog:",
     "@unthrown/orpc": "catalog:",
     "unthrown": "catalog:"
   },
