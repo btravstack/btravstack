@@ -269,6 +269,24 @@ before the graph declaring the checks exists, so `start` fills a holder once
 `Module.scoped` hands it a context. Until then `/healthz` reports healthy with
 no components, which is the honest answer while building.
 
+### Instrumentations
+
+| Export                  | What it is                                                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Instrumentations`      | The **set port** a package contributes its OpenTelemetry instrumentation to. Collected by `@btravstack/observability/otel`; nothing else reads it.          |
+| `InstrumentationLoader` | `() => Promise<unknown>`. A bare loader: the collector needs nothing else, and the loaded instrumentation already carries OTel's own `instrumentationName`. |
+
+`load` is async and answers `undefined` rather than failing, because the
+package supplying the instrumentation is an OPTIONAL peer the consumer may not
+have installed — `@btravstack/prisma` declares engine tracing without making
+every consumer install `@prisma/instrumentation`.
+
+The instrumentation is `unknown` here on purpose: naming OpenTelemetry's
+`Instrumentation` would put the vendor in the package every other one peers on,
+the same reason `Tracer` and `Meter` are narrowings rather than OTel's own
+types. The cast belongs in the collector, where the vendor is already a
+dependency.
+
 ## Load-bearing runtime invariants (tests must guard these)
 
 The nine from the design, each with the test that guards it, plus the ones that

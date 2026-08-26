@@ -460,6 +460,42 @@ its correlation, which is what that transport's retries and replays preserve.
 provider can promise. `otel()` owns what the graph owns; the preload is the
 deployment's line.
 
+## Instrumentations a starter contributes
+
+That limit is about the **preload**, not about instrumentations generally. One
+that patches nothing — whose `enable()` sets a helper the instrumented library
+reads per call, as `@prisma/instrumentation` does — has no ordering requirement
+a provider cannot meet, and `otel()` registers it.
+
+A package contributes to `@btravstack/core`'s `Instrumentations` set port;
+`otel()` loads every contribution and hands it to the `NodeSDK`. A contribution
+is just the loader — a loaded instrumentation already carries OTel's own
+`instrumentationName`, so the port has no name of its own to keep in step:
+
+<!-- doctest: isolate
+import { Instrumentations } from "@btravstack/core";
+import { Provider } from "@btravstack/di";
+// Stands in for the optional peer the real contributor imports dynamically —
+// `@prisma/instrumentation` is not a dependency of this workspace.
+declare class SomeInstrumentation {}
+declare const loadOptionalPeer: () => Promise<{ new (): SomeInstrumentation }>;
+-->
+
+```ts
+Provider.member(Instrumentations)({
+  value: async () => new (await loadOptionalPeer())(),
+});
+```
+
+Composing the starter **declares** what can be instrumented; composing `otel()`
+turns it on. A graph without an SDK collects nothing, loads nothing and
+installs nothing — which is why `load` is async and answers `undefined` rather
+than failing: the package supplying it is an optional peer the consumer may not
+have installed, and the contributor logs that skip itself.
+
+`@btravstack/prisma` is the worked example: composing it alone gives you a
+counted, logged client, and adding `otel()` is what brings engine spans.
+
 ## `pinoSink(logger)`
 
 <!-- doctest: skip — needs `pino`, which no example workspace installs; held by packages/observability/src/pino.spec.ts instead -->

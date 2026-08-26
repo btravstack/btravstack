@@ -1,5 +1,5 @@
-import { Meter, Tracer } from "@btravstack/core";
-import { Module } from "@btravstack/di";
+import { Instrumentations, Meter, Tracer } from "@btravstack/core";
+import { Module, Provider } from "@btravstack/di";
 import {
   TestRuntimePort,
   bootFixture,
@@ -125,5 +125,40 @@ describe("otel", () => {
 
     // THEN the meter accepted the count without a throw
     expect(counted).toBeOkWith("counted");
+  });
+
+  it("registers an instrumentation a starter contributed", async ({ spans }) => {
+    // GIVEN a package offering an instrumentation, the shape a starter
+    // contributes — the SDK wires a provider into whatever it registers
+    let wired = false;
+    const offered = {
+      instrumentationName: "@btravstack/spec-instrumentation",
+      instrumentationVersion: "0.0.0",
+      enable: () => {},
+      disable: () => {},
+      setConfig: () => {},
+      getConfig: () => ({}),
+      setTracerProvider: () => {
+        wired = true;
+      },
+      setMeterProvider: () => {},
+    };
+    const contributor = Module("Contributor")({
+      provides: [Provider.member(Instrumentations)({ value: () => Promise.resolve(offered) })],
+      exports: [Instrumentations],
+    });
+
+    // WHEN a graph composes both the contributor and the SDK
+    const built = await Module.scoped(
+      Module("Root")({
+        imports: [contributor, batchedOtel(spans)],
+        exports: [Tracer],
+      }),
+      (ctx) => Ok(ctx.get(Tracer)).toAsync(),
+    );
+
+    // THEN the SDK took the contribution and wired its tracer provider in —
+    // nothing in the application named the instrumentation
+    expect({ ok: built.isOk(), wired }).toEqual({ ok: true, wired: true });
   });
 });

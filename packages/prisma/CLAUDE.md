@@ -120,3 +120,20 @@ probe is `SELECT 1` through `$queryRaw` — not `$connect()`, because a pooled c
 Composing the starter therefore exports `HealthChecks` alongside its own port —
 a composition root that re-exports the module whole passes it up to the kernel
 with no extra line.
+
+## Engine tracing is offered, not registered
+
+The instrumented arm contributes a loader for `@prisma/instrumentation` to
+`Instrumentations`
+instead of enabling it while the client is built. Composing this starter
+declares engine tracing; composing `@btravstack/observability/otel` is what
+turns it on, and a graph with no SDK never loads the package at all.
+
+The optional peer is still dynamically imported, and a missing one is still
+logged at `debug` rather than failing — the contributor owns that message,
+since it is the one that knows why the load answered nothing.
+
+`Tracer` is no longer in the instrumented arm's `needs`. It was there for
+ORDERING, to guarantee the SDK was up before the instrumentation was enabled;
+the SDK now does the registering, so the ordering is inherent. `Meter` is what
+still orders this after `otel()`.

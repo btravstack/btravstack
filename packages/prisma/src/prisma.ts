@@ -1,11 +1,11 @@
 import { Config, Env } from "@btravstack/config";
-import { HealthCheckFailed, HealthChecks, Logger, Meter, Tracer } from "@btravstack/core";
+import { HealthCheckFailed, HealthChecks, Instrumentations, Logger, Meter } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { OkAsync, fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { instrument } from "./instrument.js";
-import { enableTracing } from "./tracing.js";
+import { loadPrismaInstrumentation } from "./tracing.js";
 
 /**
  * All this starter needs of a client: a pool it can close. A generated Prisma
@@ -103,20 +103,18 @@ export const prismaDatabase =
     // per port per graph. Here a `query` extension wraps the client at
     // construction, so one port suffices and the branch lives inside `acquire`.
     const instrumentedProvider = Provider(port)(
-      { settings: config.port, logger: Logger, tracer: Tracer, meter: Meter },
+      { settings: config.port, logger: Logger, meter: Meter },
       {
-        // `Tracer` is depended on for its ORDERING, not its value: nothing
-        // reads it, but `otel()` sets the global tracer provider while building
-        // that very port, so naming it is what guarantees the SDK is up before
-        // `enableTracing` asks for it. A root without `otel()` gets a compile
-        // error instead of tracing into nothing.
-        acquire: ({ settings, logger, tracer, meter }): AsyncResult<C, never> => {
-          void tracer;
+        // `Meter` is what orders this after `otel()`: it sets the global meter
+        // provider while building that very port. The engine instrumentation
+        // no longer needs ordering of its own — the SDK collects and registers
+        // it, so composing `otel()` is what turns it on.
+        acquire: ({ settings, logger, meter }): AsyncResult<C, never> => {
           // Cast because `C` is only constrained by `PrismaLike`, so unthrown's
           // `NotThenable` guard cannot prove a client is not a promise. It is
           // whatever the application's `client` arrow returned.
           return fromSafePromise(
-            enableTracing(logger).then(() => instrument(open(settings.url), logger, meter)),
+            Promise.resolve(instrument(open(settings.url), logger, meter)),
           ) as AsyncResult<C, never>;
         },
         release: (db: C) => db.$disconnect(),
@@ -163,10 +161,21 @@ export const prismaDatabase =
       },
     );
 
+    // Offered, not registered: nothing loads it unless an OTel SDK is composed.
+    const instrumentation = Provider.member(Instrumentations)(
+      { logger: Logger },
+      {
+        sync:
+          ({ logger }) =>
+          () =>
+            loadPrismaInstrumentation(logger),
+      },
+    );
+
     const instrumentedModule = Module(name)({
-      needs: [Env, Logger, Meter, Tracer],
-      provides: [config, instrumentedProvider, healthCheck],
-      exports: [DatabasePort, HealthChecks],
+      needs: [Env, Logger, Meter],
+      provides: [config, instrumentedProvider, healthCheck, instrumentation],
+      exports: [DatabasePort, HealthChecks, Instrumentations],
     });
 
     const plainModule = Module(name)({

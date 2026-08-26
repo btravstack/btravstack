@@ -1,8 +1,8 @@
-import { Meter, Tracer, currentUnit, type Span } from "@btravstack/core";
+import { Instrumentations, Meter, Tracer, currentUnit, type Span } from "@btravstack/core";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
 import { metrics, trace } from "@opentelemetry/api";
 import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
-import { Ok } from "unthrown";
+import { fromSafePromise } from "unthrown";
 
 /**
  * The tracing half of observability — the ADAPTER, not the contract. `Tracer`
@@ -19,6 +19,11 @@ import { Ok } from "unthrown";
  * on every exit path — a span lost in `shutdown()` becomes a `teardownError` and
  * exit `2`, never silence.
  */
+// Reached by index rather than imported: `@opentelemetry/instrumentation` is
+// not a dependency here, and `sdk-node` already names the type this list must
+// satisfy.
+type SdkInstrumentations = NodeSDKConfiguration["instrumentations"];
+
 class OtelSdk extends Port("OtelSdk")<NodeSDK> {}
 
 /**
@@ -34,20 +39,46 @@ class OtelSdk extends Port("OtelSdk")<NodeSDK> {}
  * **Auto-instrumentation cannot live here**: the register hook must be
  * preloaded before the instrumented libraries are imported, which no DI
  * provider can promise. Preloading is the deployment's line.
+ *
+ * **What CAN live here is a starter's own instrumentation.** Every package
+ * that contributed to `Instrumentations` is loaded and handed to the SDK, so
+ * composing a starter is what declares the instrumentation and composing this
+ * is what turns it on. A contribution whose optional peer is not installed
+ * loads as `undefined` and is dropped — the contributor says so at `debug`,
+ * since it is the one that knows why.
+ *
+ * The module contributes one member of its own, which loads nothing. That is
+ * what makes `Instrumentations` a port the graph always has — a collector
+ * depending on a set port NOTHING provides is an unmet dependency, both at
+ * plan time and in `Needs`. Guice's `newSetBinder` declares the empty set for
+ * the same reason.
  */
 export const otel = (
   options?: Partial<NodeSDKConfiguration>,
 ): Module<Tracer | Meter, never, Scope> =>
   Module("Otel")({
     provides: [
-      Provider(OtelSdk)({
-        acquire: () => {
-          const sdk = new NodeSDK(options);
-          sdk.start();
-          return Ok(sdk);
+      Provider.member(Instrumentations)({ value: () => Promise.resolve(undefined) }),
+      Provider(OtelSdk)(
+        { offered: Instrumentations },
+        {
+          acquire: ({ offered }) =>
+            fromSafePromise(
+              Promise.all(offered.map((load) => load())).then((loaded) => {
+                const sdk = new NodeSDK({
+                  ...options,
+                  instrumentations: [
+                    ...(options?.instrumentations ?? []),
+                    ...(loaded.filter((one) => one !== undefined) as SdkInstrumentations),
+                  ],
+                });
+                sdk.start();
+                return sdk;
+              }),
+            ),
+          release: (sdk) => sdk.shutdown(),
         },
-        release: (sdk) => sdk.shutdown(),
-      }),
+      ),
       // Depending on the SDK port is what orders these after `start()`, so
       // the global providers the getters read are the configured ones.
       Provider(Tracer)(

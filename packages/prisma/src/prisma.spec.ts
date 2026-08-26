@@ -1,5 +1,5 @@
 import { Env } from "@btravstack/config";
-import { HealthChecks, Logger, Meter, Tracer, runHealthChecks } from "@btravstack/core";
+import { HealthChecks, Instrumentations, Logger, Meter, runHealthChecks } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
@@ -90,7 +90,6 @@ describe("prismaDatabase", () => {
         Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
         Provider(Logger)({ value: telemetry.logger }),
         Provider(Meter)({ value: telemetry.meter }),
-        Provider(Tracer)({ value: telemetry.tracer }),
       ],
       exports: [db.port],
     });
@@ -159,5 +158,38 @@ describe("prismaDatabase", () => {
       status: "unhealthy",
       components: [{ name: "OrderDatabase", status: "unhealthy", reason: "connection refused" }],
     });
+  });
+
+  it("offers its engine instrumentation rather than registering it", async ({
+    stub,
+    telemetry,
+  }) => {
+    // GIVEN the instrumented starter — the arm that can emit telemetry at all
+    const db = prismaDatabase("OrderDatabase")({
+      client: (adapter) => stub.client(connectionStringOf(adapter)),
+    });
+    const root = Module("Root")({
+      imports: [db],
+      provides: [
+        Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+        Provider(Logger)({ value: telemetry.logger }),
+        Provider(Meter)({ value: telemetry.meter }),
+      ],
+      exports: [db.port, Instrumentations],
+    });
+
+    // WHEN the contributions are collected and loaded, as an OTel SDK does
+    const loaded = await Module.scoped(root, (ctx) =>
+      fromSafePromise(
+        Promise.all(ctx.get(Instrumentations).map((load) => load())).then((all) =>
+          all.map((one) => one !== undefined),
+        ),
+      ),
+    );
+
+    // THEN one instrumentation is offered, and it loads because the optional
+    // peer IS installed here — a graph composing no SDK never calls the
+    // loader, which is what makes this a declaration rather than a side effect
+    expect(loaded).toBeOkWith([true]);
   });
 });

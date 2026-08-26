@@ -1,3 +1,4 @@
+export { Instrumentations, type InstrumentationLoader } from "./instrumentation.js";
 export {
   HealthCheckFailed,
   HealthChecks,
