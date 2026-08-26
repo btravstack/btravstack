@@ -1,4 +1,4 @@
-import { Err, Ok, TaggedError } from "unthrown";
+import { Err, ErrAsync, Ok, OkAsync, TaggedError } from "unthrown";
 import { expect, test, vi } from "vitest";
 
 import { Module, Port, Provider, type AnyPort } from "./index.js";
@@ -34,7 +34,7 @@ test("resources release in reverse acquisition order after use", async () => {
     exports: [First, Second],
   });
 
-  await Module.scoped(mod, () => Ok("done").toAsync());
+  await Module.scoped(mod, () => OkAsync("done"));
   expect(released).toEqual(["second", "first"]);
 });
 
@@ -61,7 +61,7 @@ test("a mid-graph failure releases everything already acquired", async () => {
     exports: [First, Second],
   });
 
-  const result = await Module.scoped(mod, () => Ok("unreachable").toAsync());
+  const result = await Module.scoped(mod, () => OkAsync("unreachable"));
   expect(result).toBeErrTagged("OpenError");
   expect(released).toEqual(["first"]);
 });
@@ -86,7 +86,7 @@ test("a rejecting release neither masks the failure nor stops the unwind", async
     exports: [First, Second],
   });
 
-  const result = await Module.scoped(mod, () => Err(new OpenError({ which: "use" })).toAsync(), {
+  const result = await Module.scoped(mod, () => ErrAsync(new OpenError({ which: "use" })), {
     onTeardownError,
   });
 
@@ -126,7 +126,7 @@ test("a throwing onTeardownError does not abandon the unwind or mask the origina
     exports: [First, Second],
   });
 
-  const result = await Module.scoped(mod, () => Err(openError).toAsync(), {
+  const result = await Module.scoped(mod, () => ErrAsync(openError), {
     onTeardownError,
   });
 

@@ -1,4 +1,4 @@
-import { Ok, type AsyncResult, type Result } from "unthrown";
+import { OkAsync, type AsyncResult, type Result } from "unthrown";
 
 import type { AnyPort, MemberOf, Scope, ServiceOf } from "./port.js";
 
@@ -166,7 +166,7 @@ const descriptor = (
 ): Provider<unknown, never, never> => {
   // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- see the field comment on `Provider.construct`
   const construct = (services: readonly unknown[]): AsyncResult<unknown, unknown> => {
-    if ("value" in options) return Ok(options["value"]).toAsync();
+    if ("value" in options) return OkAsync(options["value"]);
     // The build pipeline resolves `deps` positionally, so the record the caller
     // declared is rebuilt here under the names they wrote. One element for a
     // provider with deps, none without.
@@ -176,25 +176,19 @@ const descriptor = (
         : [Object.fromEntries(keys.map((key, index) => [key, services[index]]))];
     if ("sync" in options) {
       const f = options["sync"] as (...a: readonly unknown[]) => unknown;
-      return Ok()
-        .toAsync()
-        .map(() => f(...args));
+      return OkAsync().map(() => f(...args));
     }
     if ("class" in options) {
       const C = options["class"] as new (...a: readonly unknown[]) => unknown;
-      return Ok()
-        .toAsync()
-        .map(() => new C(...args));
+      return OkAsync().map(() => new C(...args));
     }
     const f = (options["acquire"] ?? options["make"]) as (
       ...a: readonly unknown[]
       // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- see the field comment on `Provider.construct`
     ) => Result<unknown, unknown> | AsyncResult<unknown, unknown>;
-    // Lifting through an Ok keeps a sync Result and an AsyncResult on one path,
+    // Lifting through an OkAsync keeps a sync Result and an AsyncResult on one path,
     // with no runtime type-sniffing.
-    return Ok()
-      .toAsync()
-      .flatMap(() => f(...args));
+    return OkAsync().flatMap(() => f(...args));
   };
   return {
     port,

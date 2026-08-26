@@ -1,4 +1,4 @@
-import { Ok, fromSafePromise } from "unthrown";
+import { Ok, OkAsync, fromSafePromise } from "unthrown";
 import { expect, test, vi } from "vitest";
 
 import { Module, Port, Provider } from "./index.js";
@@ -27,7 +27,7 @@ test("onStart runs after the whole graph is built, in declaration order", async 
     exports: [Server, Worker],
   });
 
-  await Module.scoped(mod, () => Ok("ran").toAsync());
+  await Module.scoped(mod, () => OkAsync("ran"));
   expect(events).toEqual(["start-server-8080", "start-w"]);
 });
 
@@ -50,7 +50,7 @@ test("onStop runs in reverse declaration order during teardown", async () => {
     exports: [Server, Worker],
   });
 
-  await Module.scoped(mod, () => Ok("ran").toAsync());
+  await Module.scoped(mod, () => OkAsync("ran"));
   expect(events).toEqual(["stop-worker", "stop-server"]);
 });
 
@@ -68,7 +68,7 @@ test("Module.scoped runs an onStop registered with no acquire/release at all", a
     exports: [Server],
   });
 
-  await Module.scoped(mod, () => Ok("ran").toAsync());
+  await Module.scoped(mod, () => OkAsync("ran"));
   expect(stopped).toBe(true);
 });
 
@@ -92,7 +92,7 @@ test("release and onStop interleave in one combined LIFO unwind, not two separat
     exports: [Server, Worker],
   });
 
-  await Module.scoped(mod, () => Ok("ran").toAsync());
+  await Module.scoped(mod, () => OkAsync("ran"));
   // Worker (built second) unwinds before Server (built first); within
   // Worker, its own `onStop` and `release` are adjacent — `onStop` first,
   // since it is registered on the scope right after `release` and the scope
@@ -119,7 +119,7 @@ test("an async onStart is genuinely awaited before use runs", async () => {
 
   await Module.scoped(mod, () => {
     events.push("use");
-    return Ok("ran").toAsync();
+    return OkAsync("ran");
   });
   // If `onStart`'s promise were discarded (`void provider.onStart!(service)`
   // on a value that happens to be a `Promise`) rather than awaited, `use`
@@ -155,7 +155,7 @@ test("a throwing onStart surfaces as a Defect, use is skipped, and teardown stil
 
   const result = await Module.scoped(mod, () => {
     useRan();
-    return Ok("ran").toAsync();
+    return OkAsync("ran");
   });
 
   expect(result).toBeDefect();
@@ -189,6 +189,6 @@ test("declaration order holds even when an earlier same-level provider resolves 
     exports: [Server, Worker],
   });
 
-  await Module.scoped(mod, () => Ok("ran").toAsync());
+  await Module.scoped(mod, () => OkAsync("ran"));
   expect(events).toEqual(["server", "worker"]);
 });

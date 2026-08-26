@@ -1,4 +1,4 @@
-import { Ok, fromSafePromise, type AsyncResult } from "unthrown";
+import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { Context, unsafeAddAll, unsafeKeys } from "./context.js";
 import { constructLevel, runStartHooks, type AnyProvider } from "./lifecycle.js";
@@ -206,8 +206,7 @@ export const run = (
   seed: Context<never> = Context.empty(),
   // oxlint-disable-next-line unthrown/no-ambiguous-error-type
 ): AsyncResult<Context<never>, unknown> =>
-  Ok()
-    .toAsync()
+  OkAsync()
     .map(() => plan(flatten(module), unsafeKeys(seed)))
     .flatMap((levels) =>
       levels
@@ -221,7 +220,7 @@ export const run = (
                 started: [...started, ...result.started],
               })),
             ),
-          Ok({ ctx: seed, started: [] }).toAsync(),
+          OkAsync({ ctx: seed, started: [] }),
         )
         .flatMap(({ ctx, started }) => runStartHooks(started).map(() => ctx)),
     );

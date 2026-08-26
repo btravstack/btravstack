@@ -859,8 +859,15 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   / `ErrAsync(e)` / `OkAsync()` are what unthrown ships for this;
   `Ok(v).toAsync()` and `Ok(undefined)` are the boilerplate they replace.
   `.toAsync()` survives only where it lifts a `Result` that already exists —
-  `examples/order-application`'s `placeOrder(id, quantity).toAsync()` is the one
-  such site.
+  `examples/order-application`'s `placeOrder(id, quantity).toAsync()`,
+  `start.ts`'s `probesOptions.toAsync()`, `fromNullable(row, …).toAsync()` and
+  the handful like them. It used to say that was **the one** such site, which
+  was wrong in both directions: eight sites lift an existing `Result`
+  legitimately, and thirty-three lifted a fresh literal in violation of this
+  very bullet — across `di`, `observability` and `hexagonal-order-api`, specs
+  included. `.toAsync()` on an `Ok(`/`Err(` receiver is what the rule bans, and
+  the receiver is what makes it mechanical: no lint rule enforces it here yet
+  (btravstack/unthrown#260).
 - **A sequence is `flatTap` or `DoAsync`, never sibling `const`s.** An
   `AsyncResult` is **eager**: constructing it starts the work. So the readable
   spelling of a sequence — each step in its own `const`, then chained — is a

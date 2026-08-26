@@ -1,4 +1,4 @@
-import { Err, Ok, TaggedError, type AsyncResult } from "unthrown";
+import { Err, Ok, OkAsync, TaggedError, fromNullable, type AsyncResult } from "unthrown";
 import { expect, test } from "vitest";
 
 import {
@@ -96,7 +96,7 @@ const makePersistenceModule = (released: string[]) =>
           sync: ({ db }) => ({
             findById: (id) => {
               const row = db.rows.find((r) => r.id === id);
-              return (row === undefined ? Err(new OrderNotFound({ id })) : Ok(row)).toAsync();
+              return fromNullable(row, () => new OrderNotFound({ id })).toAsync();
             },
           }),
         },
@@ -112,7 +112,7 @@ const makePersistenceModule = (released: string[]) =>
 const InMemoryPersistenceModule = Module("InMemoryPersistence")({
   provides: [
     Provider(OrderRepository)({
-      value: { findById: (id) => Ok({ id, total: 99 }).toAsync() },
+      value: { findById: (id) => OkAsync({ id, total: 99 }) },
     }),
   ],
   exports: [OrderRepository],

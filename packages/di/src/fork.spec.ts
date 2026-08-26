@@ -1,4 +1,4 @@
-import { Ok } from "unthrown";
+import { Ok, OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
 import { Module, Port, Provider } from "./index.js";
@@ -34,13 +34,13 @@ test("a fork releases only its own resources and leaves the parent up", async ()
   });
 
   const outcome = await Module.scoped(app, (appCtx) =>
-    Module.forkScope(appCtx, request, (ctx) => Ok(ctx.get(Txn).id).toAsync())
+    Module.forkScope(appCtx, request, (ctx) => OkAsync(ctx.get(Txn).id))
       // Checkpoint after the first fork unwinds: only its own "txn" release
       // has run — the parent's "pool" is still absent, proving the parent
       // stayed up across the fork's own teardown.
       .tap(() => void expect(released).toEqual(["txn"]))
       .flatMap((first) =>
-        Module.forkScope(appCtx, request, (ctx) => Ok(ctx.get(Txn).id).toAsync())
+        Module.forkScope(appCtx, request, (ctx) => OkAsync(ctx.get(Txn).id))
           // Checkpoint after the second, sibling fork unwinds: a second
           // "txn" release, still no "pool" — the parent survives a second
           // fork over the same context too, not just the first.

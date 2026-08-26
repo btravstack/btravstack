@@ -30,7 +30,7 @@
  *     `private name 'MANY'`.
  */
 import { Module, Port, Provider, type AnyPort, type ServiceOf } from "@btravstack/di";
-import { Ok, type AsyncResult } from "unthrown";
+import { OkAsync, type AsyncResult } from "unthrown";
 
 import {
   InMemoryPersistenceModule,
@@ -117,7 +117,7 @@ export const ObservabilityModule = Module("Observability")({
     Provider(Auditor)(
       { orders: OrderRepository },
       {
-        sync: ({ orders }) => ({ orders, record: () => Ok(undefined).toAsync() }),
+        sync: ({ orders }) => ({ orders, record: () => OkAsync() }),
       },
     ),
   ],

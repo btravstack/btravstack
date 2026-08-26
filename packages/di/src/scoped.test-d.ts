@@ -1,4 +1,4 @@
-import { Ok, type AsyncResult } from "unthrown";
+import { Ok, OkAsync, type AsyncResult } from "unthrown";
 import { describe, test } from "vitest";
 
 import { type Equal } from "./__tests__/type-assert.js";
@@ -66,7 +66,7 @@ describe("resources", () => {
   });
 
   test("a resourceful graph is accepted by scoped", () => {
-    const used = Module.scoped(Resourceful, (ctx) => Ok(ctx.get(Pool)).toAsync());
+    const used = Module.scoped(Resourceful, (ctx) => OkAsync(ctx.get(Pool)));
 
     type Channels = ScopedChannels<typeof used>;
     const valueIsPoolService: Equal<Channels[0], { readonly close: () => Promise<void> }> = true;
@@ -97,7 +97,7 @@ describe("resources", () => {
       exports: [Pool],
     });
     // @ts-expect-error unsatisfied dependency: Other (Scope alone is excused)
-    Module.scoped(needsOther, (ctx) => Ok(ctx.get(Pool)).toAsync());
+    Module.scoped(needsOther, (ctx) => OkAsync(ctx.get(Pool)));
   });
 
   test("a port-generic helper still typechecks", () => {

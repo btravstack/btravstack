@@ -1,4 +1,4 @@
-import { Err, Ok, TaggedError, fromSafePromise } from "unthrown";
+import { Err, Ok, OkAsync, TaggedError, fromSafePromise } from "unthrown";
 import { expect, test, vi } from "vitest";
 
 import { Module, Port, Provider, overrideProvider } from "./index.js";
@@ -98,10 +98,7 @@ test("the error from a parallel level is the first in declaration order", async 
   const slowFailure = Module("Slow")({
     provides: [
       Provider(A)({
-        make: () =>
-          Ok(undefined)
-            .toAsync()
-            .flatMap(() => Err(new AError({ why: "a" }))),
+        make: () => OkAsync().flatMap(() => Err(new AError({ why: "a" }))),
       }),
       Provider(B)({ make: () => Err(new BError({ why: "b" })) }),
     ],
@@ -252,7 +249,7 @@ test("a resourceful base is replaced whole — its acquire never runs", async ()
   // WHEN the graph is built and read — `build`, because the override erased
   // the graph's one resource along with its provider... except `Scope` rides
   // the module TYPE, so `scoped` is still the entry point that accepts it
-  const built = await Module.scoped(mod, (ctx) => Ok({ served: ctx.get(A).v, acquired }).toAsync());
+  const built = await Module.scoped(mod, (ctx) => OkAsync({ served: ctx.get(A).v, acquired }));
 
   // THEN the override's value answers and no resource was ever acquired
   expect(built).toBeOkWith({ served: "override", acquired: false });

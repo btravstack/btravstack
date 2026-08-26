@@ -69,7 +69,9 @@ export const otel = (
                   ...options,
                   instrumentations: [
                     ...(options?.instrumentations ?? []),
-                    ...(loaded.filter((one) => one !== undefined) as SdkInstrumentations),
+                    ...loaded.filter(
+                      (one): one is SdkInstrumentations[number] => one !== undefined,
+                    ),
                   ],
                 });
                 sdk.start();

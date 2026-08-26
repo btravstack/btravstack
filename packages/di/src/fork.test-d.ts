@@ -1,4 +1,4 @@
-import { Ok, type AsyncResult } from "unthrown";
+import { OkAsync, type AsyncResult } from "unthrown";
 import { describe, test } from "vitest";
 
 import { type Equal } from "./__tests__/type-assert.js";
@@ -32,9 +32,7 @@ type ForkChannels<T> = T extends AsyncResult<infer A, infer E> ? readonly [A, E]
 describe("forkScope", () => {
   test("a request module whose needs the parent covers is accepted", () => {
     const parent = null as unknown as Context<Db>;
-    const forked = Module.forkScope(parent, RequestModule, (ctx) =>
-      Ok(ctx.get(RequestId)).toAsync(),
-    );
+    const forked = Module.forkScope(parent, RequestModule, (ctx) => OkAsync(ctx.get(RequestId)));
 
     type Channels = ForkChannels<typeof forked>;
     const valueIsRequestIdService: Equal<Channels[0], { readonly value: string }> = true;
@@ -59,7 +57,7 @@ describe("forkScope", () => {
       // pass, since that test only reads `RequestId`).
       const db = ctx.get(Db);
       const requestId = ctx.get(RequestId);
-      return Ok({ db, requestId }).toAsync();
+      return OkAsync({ db, requestId });
     });
 
     type Channels = ForkChannels<typeof forked>;
@@ -77,6 +75,6 @@ describe("forkScope", () => {
   test("a request module needing a port the parent lacks does not compile", () => {
     const parent = null as unknown as Context<Db>;
     // @ts-expect-error unsatisfied dependency: Missing
-    Module.forkScope(parent, NeedsMissing, (ctx) => Ok(ctx.get(RequestId)).toAsync());
+    Module.forkScope(parent, NeedsMissing, (ctx) => OkAsync(ctx.get(RequestId)));
   });
 });
