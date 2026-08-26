@@ -8,7 +8,15 @@
  * and exercised end to end.
  */
 import { Module, Port, Provider, type NeedsGate, type Scope, type ServiceOf } from "@btravstack/di";
-import { Err, Ok, TaggedError, type AsyncResult, type Result } from "unthrown";
+import {
+  Err,
+  Ok,
+  OkAsync,
+  TaggedError,
+  fromNullable,
+  type AsyncResult,
+  type Result,
+} from "unthrown";
 
 export class OrderNotFound extends TaggedError("OrderNotFound")<{ readonly id: string }> {}
 export class ConfigError extends TaggedError("ConfigError")<{ readonly reason: string }> {}
@@ -127,7 +135,7 @@ export const makePersistenceModule = () =>
           sync: ({ pool }) => ({
             findById: (id) => {
               const row = pool.findById(id);
-              return (row === undefined ? Err(new OrderNotFound({ id })) : Ok(row)).toAsync();
+              return fromNullable(row, () => new OrderNotFound({ id })).toAsync();
             },
           }),
         },
@@ -146,7 +154,7 @@ export const makePersistenceModule = () =>
 export const InMemoryPersistenceModule = Module("InMemoryPersistence")({
   provides: [
     Provider(OrderRepository)({
-      value: { findById: (id) => Ok({ id, total: 99 }).toAsync() },
+      value: { findById: (id) => OkAsync({ id, total: 99 }) },
     }),
   ],
   exports: [OrderRepository],

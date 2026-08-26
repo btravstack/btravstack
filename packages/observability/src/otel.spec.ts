@@ -9,7 +9,7 @@ import {
 } from "@btravstack/testing";
 import { metrics, trace } from "@opentelemetry/api";
 import { BatchSpanProcessor, type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace";
-import { Ok } from "unthrown";
+import { Ok, OkAsync } from "unthrown";
 import { describe, expect, test } from "vitest";
 
 import { UnitSpan, UnitSpanModule, otel } from "./otel.js";
@@ -96,7 +96,7 @@ describe("otel", () => {
     const result = await Module.scoped(batchedOtel(spans), (ctx) =>
       Module.forkScope(ctx, UnitSpanModule, (fork) => {
         fork.get(UnitSpan);
-        return Ok("forked").toAsync();
+        return OkAsync("forked");
       }),
     );
 
@@ -120,7 +120,7 @@ describe("otel", () => {
     const counted = await Module.scoped(batchedOtel(spans), (ctx) => {
       const counter = ctx.get(Meter).createCounter("otel.spec.count");
       counter.add(1);
-      return Ok("counted").toAsync();
+      return OkAsync("counted");
     });
 
     // THEN the meter accepted the count without a throw
@@ -154,7 +154,7 @@ describe("otel", () => {
         imports: [contributor, batchedOtel(spans)],
         exports: [Tracer],
       }),
-      (ctx) => Ok(ctx.get(Tracer)).toAsync(),
+      (ctx) => OkAsync(ctx.get(Tracer)),
     );
 
     // THEN the SDK took the contribution and wired its tracer provider in —

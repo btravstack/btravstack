@@ -1,4 +1,4 @@
-import { Ok, allAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { OkAsync, allAsync, fromSafePromise, type AsyncResult } from "unthrown";
 
 import type { Context } from "./context.js";
 import type { AnyPort } from "./port.js";
@@ -103,5 +103,5 @@ export const runStartHooks = (
   entries.reduce<AsyncResult<void, unknown>>(
     (acc, [provider, service]) =>
       acc.flatMap(() => fromSafePromise(() => Promise.resolve(provider.onStart!(service)))),
-    Ok().toAsync(),
+    OkAsync(),
   );
