@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+
+reviews:
+  path_filters:
+    - "!**/src/generated/**"
+    - "!docs/.vitepress/dist/**"
+    - "!pnpm-lock.yaml"
+  path_instructions:
+    - path: "**/*.ts"
+      instructions: |
+        This repository writes its conventions down, and a suggestion it has
+        already considered and rejected is noise. Read the root `CLAUDE.md`
+        first — it is the authoritative spec, rules and reasoning both — and
+        the `CLAUDE.md` of whichever package the diff touches, which is where
+        that package's public surface is stated. There are thirteen of them.
+
+        Errors are values here (`unthrown`), not exceptions. Suggestions that
+        assume otherwise are wrong rather than debatable:
+
+        - No `try`/`catch` around a `Result` pipeline. Every combinator catches
+          a thrown callback and converts it to a `Defect`; the `defect` arm of
+          the final `match` is the catch. A `try` in the diff is either a
+          boundary around a foreign throwing API — legitimate, and they carry a
+          reason — or a mistake.
+        - There is no `mapErr`. The error combinators are `mapErrCases`,
+          `flatMapErrCases`, `recoverErrCases` and `tapErrCases`, and they are
+          exhaustive by design: `P._` is a lint error outside a helper generic
+          in `E`.
+        - Every async surface returns `AsyncResult`, never a bare `Promise` —
+          the infallible ones included (`AsyncResult<T, never>`).
+        - `Ok(v).toAsync()` is `OkAsync(v)`; `Err(e).toAsync()` is
+          `ErrAsync(e)`. A `flatMap` returning the value it was handed is
+          `ensure`. A nullable lookup is `fromNullable`, not a ternary.
+        - `E` is never `unknown`, `any` or `Error`; a `Defect` never appears
+          in it.
+
+        Comments are deliberately sparse, and the rule has a test: a comment
+        earns its line only by guarding a specific line against a plausible
+        "simplification", stating a symbol's contract in TSDoc on a public
+        surface, carrying a directive with a reason, or marking a test phase.
+        Do not ask for more comments, and do not ask for TSDoc on a private
+        symbol. Rationale lives in `CLAUDE.md`, which is read on purpose.
+
+        `type` not `interface`, `unknown` not `any`, and every relative import
+        carries `.js` — `moduleResolution: NodeNext`, so `from "./units"` does
+        not compile.
+
+    - path: "**/*.spec.ts"
+      instructions: |
+        Two test rules bind everywhere and are the ones worth enforcing,
+        because both let an assertion silently decline to run:
+
+        - **One deep `expect` per test, asserting once against one resource.**
+          Not a scatter of shallow assertions. Two resources means two tests.
+        - **No assertion that can decline to run.** `expect(r).toBeErr(); if
+          (r.isErr()) { ... }` passes on the outer assertion alone the moment
+          the narrowing is false, and every assertion inside silently does not
+          run. So does `descriptor?.writable`, and so does anything reached
+          through an `&&`. Flag these; they were caught three times in review,
+          which is why they are a rule.
+
+        Also: every test body carries `// GIVEN` / `// WHEN` / `// THEN`, the
+        GIVEN phase asserts nothing, and `getOrThrow()` is the right tool in a
+        test rather than a smell.
+
+        Helpers are vitest fixtures in `test-fixtures.ts`, injected through the
+        test's own parameter list — not module-level `const`s above `describe`,
+        and teardown goes after `await use(...)` rather than in a `finally`.
+
+    - path: "packages/*/src/**"
+      instructions: |
+        A change to a package's public surface must update that package's own
+        `CLAUDE.md`, its page under `docs/`, and its `README.md` in the same
+        commit. Say so when a diff changes the surface and touches none of
+        them — documentation drift is the failure this repository has met most
+        often, and the copy with no gate is the one that lies.
+
+    - path: "**/{CLAUDE,AGENTS}.md"
+      instructions: |
+        These are the spec, not commentary. Check their claims against the code
+        in the same diff: a sentence that counts call sites, names "the one such
+        site", or describes a signature is a claim that can go stale silently,
+        and one already had.
