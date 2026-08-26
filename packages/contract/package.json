@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/contract",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Contract-level markers shared by a client and the server that implements it: declare that a procedure requires an authenticated principal, and let the handler's type carry it",
   "keywords": [
     "authentication",

@@ -1,5 +1,95 @@
 # @btravstack/config
 
+## 0.6.0
+
+### Minor Changes
+
+- d6c035a: Health checks: a module declares one, the kernel serves them at `/healthz`.
+
+  ```json
+  {
+    "status": "unhealthy",
+    "components": [
+      { "name": "cache", "status": "healthy" },
+      {
+        "name": "database",
+        "status": "unhealthy",
+        "reason": "connection refused"
+      }
+    ]
+  }
+  ```
+
+  `@btravstack/cache`, `@btravstack/storage` and `@btravstack/prisma` each
+  contribute a check. An application composing them wires nothing: one unhealthy
+  component makes the whole application unhealthy, and the report names every
+  component rather than stopping at the first failure.
+
+  **`Port.many`/`Provider.member` are back in `@btravstack/di`.** They were
+  removed because an audit found no consumer — true then, and false as soon as a
+  second feature wanted the shape. A set port is what lets a starter DECLARE a
+  check rather than register one: a registry the kernel handed out would
+  type-check whether or not the call was ever made, so a starter that forgot
+  would compile and report healthy forever.
+
+  A set port nobody contributed to now resolves to `[]` rather than throwing —
+  the behaviour both di reference pages already documented, and which an
+  application composing no starter hits immediately.
+
+  **`/healthz` does not gate `/readyz`.** Readiness removes a pod from its
+  Service's endpoints, so failing it on a dependency several replicas share takes
+  every replica out at once and turns a degraded system into an outage. The
+  kernel reports; an operator decides what a `503` there means.
+
+  `@btravstack/mailer` contributes no check: its port offers only `send`, and a
+  probe that delivers mail is not a probe. A cheap `verify()` belongs to the SMTP
+  adapter, and can be added there without changing this shape.
+
+  `PrismaLike` now requires `$queryRaw` — every generated Prisma client has it,
+  and the check needs the server to answer something rather than trusting a
+  pooled client's idea of "connected".
+
+- b905a31: A starter offers its OpenTelemetry instrumentation; composing `otel()` registers it.
+
+  `@btravstack/core` declares an `Instrumentations` set port. A package
+  contributes a loader, `() => Promise<unknown>`; `@btravstack/observability/otel` loads every
+  contribution and hands it to the `NodeSDK`. Composing a starter **declares**
+  what can be instrumented, and composing `otel()` is what turns it on — the
+  Spring Boot starter shape, in one port.
+
+  `@btravstack/prisma` is the first contributor. Engine tracing used to be
+  enabled while the client was built, whether or not an SDK existed; it is now
+  offered, so a graph with no `otel()` never loads `@prisma/instrumentation` at
+  all.
+
+  **This does not weaken the preload rule.** `@opentelemetry/auto-instrumentations-node/register`
+  still has to be preloaded before the libraries it patches are imported, and no
+  provider can promise that. The rule was always about instrumentations that
+  patch module loading — one whose `enable()` sets a helper the library reads per
+  call has no such ordering requirement, and those are what `otel()` registers.
+
+  `load` is async and answers `undefined` rather than failing, because the
+  package supplying the instrumentation is an optional peer the consumer may not
+  have installed. The contributor logs the skip, since it is the one that knows
+  why.
+
+  `otel()` contributes a member of its own that loads nothing — a collector
+  depending on a set port nothing provides is an unmet dependency both at plan
+  time and in `Needs`, and Guice's `newSetBinder` declares the empty set for the
+  same reason.
+
+  `Tracer` leaves `@btravstack/prisma`'s instrumented `needs`. It was there for
+  ordering, to get the SDK up before the instrumentation was enabled; the SDK now
+  does the registering, so the ordering is inherent. `Meter` still orders the
+  client after `otel()`.
+
+### Patch Changes
+
+- Updated dependencies [d6c035a]
+- Updated dependencies [1427b48]
+- Updated dependencies [b905a31]
+  - @btravstack/di@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes
