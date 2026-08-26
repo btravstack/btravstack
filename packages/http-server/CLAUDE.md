@@ -8,7 +8,7 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
+- **`HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
   `http({ prefix?, port?, hostname? })` to `imports`, prepends the provider to
@@ -282,7 +282,7 @@ not cover"` marker, and what the marker names is a procedure path
   scheme resolves to, and an unmarked procedure is public with nothing failing
   if the marker is forgotten.
 
-- **`http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` →
+- **`http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **the one way HTTP is answered here: oRPC, over its own
   node adapter**. The
@@ -310,17 +310,43 @@ http()], provides: [orderRouter], exports:
 [HttpRuntime] })` + `runMain(OrderApi)`; a test passes `env: { PORT: "0",
 HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `Serving.info` once bound; `0` lets the OS pick, read back via
-  `runtimeInfo()`. **`plugins`** —
+  `runtimeInfo()`.
+- **`cors`, `bodyLimit`, `compression`** — three oRPC plugins as named
+  options, each typed by the plugin's own options type per the passthrough
+  rule: `boolean | CORSHandlerPluginOptions<DefaultInitialContext>`,
+  `number | false`, and
+  `boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>`.
+  `true` takes the plugin's own defaults; a record is that plugin's options
+  verbatim. `orpc.ts`'s `pluginsOf` constructs one only when configured and
+  puts them ahead of `plugins`, which is order-independent anyway — oRPC sorts
+  its own plugins by their `before`/`after` names.
+
+  **`bodyLimit` is the only one that defaults on** (`DEFAULT_BODY_LIMIT`, 1
+  MiB): an unbounded body is a trust boundary, where CORS and compression are
+  policy a framework guessing is worse than one staying quiet. Over the limit
+  is oRPC's `PAYLOAD_TOO_LARGE`, decided on `content-length` when one is sent
+  and while streaming otherwise. `false` is unbounded.
+
+  **`compression` is the RESPONSE half only.** `RequestCompressionHandlerPlugin`
+  stays in `plugins`: inflating a body before the limit measures it is an
+  application's decision to make in the open.
+
+  **CSRF is deliberately NOT here**, and that is the one narrowing of the
+  claim below rather than a shipment of it: oRPC's
+  `GetMethodCsrfProtectionHandlerPlugin` is meaningful only once a request
+  carries a `SameSite` cookie, and this package configures no cookies. It
+  becomes an option when cookies do; until then it is a `plugins` line.
+
+- **`plugins`** —
   `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
-  `@orpc/server/node` — forwards straight to `new RPCHandler(service, {
-plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
-  already expresses as handler plugins, so the ordinary use is configuration
-  rather than a middleware slot for application logic. It threads through all three surfaces on the same
+  `@orpc/server/node` — any oRPC plugin the three named options do not cover,
+  appended to them and forwarded to `new RPCHandler(service, { plugins })`.
+  Each of the four threads through all three surfaces on the same
   `...(x === undefined ? {} : { x })` spread every other option here uses —
-  `OrpcOptions.plugins` (`orpc.ts`) → `HttpOptions.plugins` (`http-runtime.ts`)
-  → `HttpModuleOptions.plugins` (`http-module.ts`) — and needs no generic
-  parameter on any of the three, since it is a plain optional field like
-  `prefix`. It is an **honest escape hatch, not a keyhole**: oRPC's
+  `OrpcOptions` (`orpc.ts`) → `HttpOptions` (`http-runtime.ts`)
+  → `HttpModuleOptions` (`http-module.ts`) — and needs no generic
+  parameter on any of the three, since each is a plain optional field like
+  `prefix`. `plugins` is an **honest escape hatch, not a keyhole**: oRPC's
   `StandardHandlerPlugin.init` transforms handler options **including
   `StandardHandlerOptions.interceptors`**, so a plugin can wrap execution and
   an application determined to see a procedure's outcome can get there. What
@@ -579,7 +605,17 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
 CORS, body limits, compression, CSRF, security headers and authentication all
 arrive at the same door, and the answer is the same for all of them: **they are
 handler configuration, not a middleware slot.** Thesis #3's refusal survives
-intact, narrowed to what it was always about. An oRPC plugin and the starter's
+intact, narrowed to what it was always about.
+
+**Five of the six are named options; CSRF is the exception, and it is stated
+rather than glossed.** `cors`, `bodyLimit` and `compression` (above),
+`securityHeaders` on the listener, and authentication through `defineHttp`.
+CSRF is reached through `plugins` because oRPC's protection only bites on a
+request carrying a `SameSite` cookie and this package configures no cookies —
+an option over a cookie surface that does not exist would be configuration
+with nothing to configure. The claim used to cover all six while the code
+shipped two, which is the drift the root `CLAUDE.md` names as the failure
+mode it fears most; if cookies arrive, the exception goes with them. An oRPC plugin and the starter's
 own `principalMiddleware` act on the **request/response envelope** — bytes,
 headers, a principal resolved before dispatch. An application middleware would
 act on the handler's **`Result`**, and that is the only one `@btravstack/http-server`

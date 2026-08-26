@@ -14,6 +14,10 @@ import {
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import type { DefaultInitialContext } from "@orpc/server";
 import type { NodeHttpHandlerPlugin } from "@orpc/server/node";
+import type {
+  CORSHandlerPluginOptions,
+  ResponseCompressionHandlerPluginOptions,
+} from "@orpc/server/plugins";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { HttpHandler } from "./handler.js";
@@ -44,9 +48,27 @@ export type HttpOptions = {
   readonly port?: number;
   readonly hostname?: string;
   /**
-   * oRPC handler plugins — CORS, body limits, compression, CSRF. Transport
-   * policy configuring the transport; not a middleware slot for application
-   * logic, which the package still declines.
+   * The CORS policy, off by default. `true` takes oRPC's own defaults — which
+   * reflect the request's origin — and a record is
+   * `CORSHandlerPluginOptions` verbatim.
+   */
+  readonly cors?: boolean | CORSHandlerPluginOptions<DefaultInitialContext>;
+  /**
+   * The largest request body a procedure will read, in bytes. Default 1 MiB;
+   * `false` reads an unbounded body. Over the limit is oRPC's
+   * `PAYLOAD_TOO_LARGE`.
+   */
+  readonly bodyLimit?: number | false;
+  /**
+   * Response compression, off by default. `true` takes oRPC's own defaults
+   * (gzip then deflate, above 1 KB) and a record is
+   * `ResponseCompressionHandlerPluginOptions` verbatim.
+   */
+  readonly compression?: boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>;
+  /**
+   * Any other oRPC handler plugin. Transport policy configuring the transport;
+   * not a middleware slot for application logic, which the package still
+   * declines.
    */
   readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
   /**
@@ -137,11 +159,14 @@ export const httpModule = <N>(
 export const http = (
   options: HttpOptions = {},
 ): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort> => {
-  const { prefix, plugins, ...socket } = options;
+  const { prefix, plugins, cors, bodyLimit, compression, ...socket } = options;
   return httpModule(
     socket,
     orpc({
       ...(prefix === undefined ? {} : { prefix }),
+      ...(cors === undefined ? {} : { cors }),
+      ...(bodyLimit === undefined ? {} : { bodyLimit }),
+      ...(compression === undefined ? {} : { compression }),
       ...(plugins === undefined ? {} : { plugins }),
     }),
   );

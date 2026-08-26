@@ -524,14 +524,17 @@ module lists (`imports`, `provides`, `exports`, `needs`). The `http()`
 primitive does not take `router` as an option — it **needs** the router
 provider on its own port, which is how the composition root supplies it:
 
-| Option            | What it is                                                                             |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| `router`          | the router provider — what `api.HttpRouter(contract)(...)` returns                     |
-| `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                     |
-| `port`            | pins the port instead of reading `PORT`                                                |
-| `hostname`        | pins the host instead of reading `HOST`                                                |
-| `plugins`         | oRPC handler plugins, forwarded to `RPCHandler` — CORS, body limits, compression, CSRF |
-| `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                 |
+| Option            | What it is                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------------- |
+| `router`          | the router provider — what `api.HttpRouter(contract)(...)` returns                            |
+| `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                            |
+| `port`            | pins the port instead of reading `PORT`                                                       |
+| `hostname`        | pins the host instead of reading `HOST`                                                       |
+| `cors`            | the CORS policy — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (default off) |
+| `bodyLimit`       | the largest request body a procedure reads, in bytes (default 1 MiB; `false` is unbounded)    |
+| `compression`     | response compression — `true` for oRPC's defaults, or its options record (default off)        |
+| `plugins`         | any other oRPC handler plugin, forwarded to `RPCHandler`                                      |
+| `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                        |
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server),
@@ -559,9 +562,12 @@ nothing. The drain retires busy keep-alive connections; a client's
   itself is `principalMiddleware`, on a leaf whose requirements say so. `plugins` is an
   honest escape hatch rather than a keyhole — an oRPC plugin's `init`
   transforms handler options **including interceptors**, so an application
-  determined to see a procedure's outcome can get there. What the option buys
-  is that the ordinary path — CORS, body limits, compression, CSRF — is
-  configuration a reader can see at the composition root. An application
+  determined to see a procedure's outcome can get there. What the options buy
+  is that the ordinary path — CORS, body limits, compression — is `cors`,
+  `bodyLimit` and `compression`, configuration a reader can see at the
+  composition root. CSRF is the one of the four still reached through
+  `plugins`: it is only meaningful once a request carries a cookie, and this
+  package has no cookie surface to configure it against. An application
   middleware acting on the handler's `Result` is still what this package
   refuses, because it is the one that puts a use case's outcome in the
   transport's hands.

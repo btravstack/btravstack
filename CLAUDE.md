@@ -460,10 +460,13 @@ outage. The kernel reports; an operator decides.
 
 ## Cross-cutting concerns: configuration, not a middleware slot
 
-CORS, body limits, compression, CSRF, security headers and authentication are
+CORS, body limits, compression, security headers and authentication are
 **handler configuration, not a middleware slot** — thesis #3's refusal, narrowed
-to what it was always about. Rate limiting is a stated non-goal. The full
-reasoning is in `packages/http-server/CLAUDE.md`.
+to what it was always about, and named options on `http()` / `HttpModule` for
+all five. CSRF is the stated exception: oRPC's protection only bites on a
+request carrying a `SameSite` cookie, and this package configures no cookies,
+so it stays a `plugins` line until they arrive. Rate limiting is a stated
+non-goal. The full reasoning is in `packages/http-server/CLAUDE.md`.
 
 ## Public surface
 

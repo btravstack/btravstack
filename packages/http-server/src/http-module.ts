@@ -10,6 +10,10 @@ import {
 } from "@btravstack/di";
 import type { DefaultInitialContext } from "@orpc/server";
 import type { NodeHttpHandlerPlugin } from "@orpc/server/node";
+import type {
+  CORSHandlerPluginOptions,
+  ResponseCompressionHandlerPluginOptions,
+} from "@orpc/server/plugins";
 
 import { HttpRuntime, http, type HttpConfig } from "./http-runtime.js";
 import type { HttpRouterPort } from "./orpc.js";
@@ -56,9 +60,27 @@ export type HttpModuleOptions<
   readonly port?: number;
   readonly hostname?: string;
   /**
-   * oRPC handler plugins — CORS, body limits, compression, CSRF. Transport
-   * policy configuring the transport; not a middleware slot for application
-   * logic, which the package still declines.
+   * The CORS policy, off by default. `true` takes oRPC's own defaults — which
+   * reflect the request's origin — and a record is
+   * `CORSHandlerPluginOptions` verbatim.
+   */
+  readonly cors?: boolean | CORSHandlerPluginOptions<DefaultInitialContext>;
+  /**
+   * The largest request body a procedure will read, in bytes. Default 1 MiB;
+   * `false` reads an unbounded body. Over the limit is oRPC's
+   * `PAYLOAD_TOO_LARGE`.
+   */
+  readonly bodyLimit?: number | false;
+  /**
+   * Response compression, off by default. `true` takes oRPC's own defaults
+   * (gzip then deflate, above 1 KB) and a record is
+   * `ResponseCompressionHandlerPluginOptions` verbatim.
+   */
+  readonly compression?: boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>;
+  /**
+   * Any other oRPC handler plugin. Transport policy configuring the transport;
+   * not a middleware slot for application logic, which the package still
+   * declines.
    */
   readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
   /**
@@ -107,7 +129,17 @@ export const HttpModule =
   >(
     options: HttpModuleOptions<RouterError, RouterNeeds, Auth, I, P, X, N>,
   ) => {
-    const { router, prefix, port, hostname, plugins, securityHeaders } = options;
+    const {
+      router,
+      prefix,
+      port,
+      hostname,
+      cors,
+      bodyLimit,
+      compression,
+      plugins,
+      securityHeaders,
+    } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
@@ -115,6 +147,9 @@ export const HttpModule =
       ...(prefix === undefined ? {} : { prefix }),
       ...(port === undefined ? {} : { port }),
       ...(hostname === undefined ? {} : { hostname }),
+      ...(cors === undefined ? {} : { cors }),
+      ...(bodyLimit === undefined ? {} : { bodyLimit }),
+      ...(compression === undefined ? {} : { compression }),
       ...(plugins === undefined ? {} : { plugins }),
       ...(securityHeaders === undefined ? {} : { securityHeaders }),
     });

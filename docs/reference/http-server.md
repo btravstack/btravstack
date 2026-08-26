@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/http-server"
-description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
+description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
 <!-- doctest: prelude
@@ -33,29 +33,29 @@ declare const view: (order: Order) => OrderView;
 
 `packages/http-server/src/index.ts` exports exactly this:
 
-| Export                 | Kind  | What it is                                                                                                                                                                                                                                |
-| ---------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `HttpController`, `HttpRouter` and `authenticators` typed by them                  |
-| `Http`                 | type  | `Http<A>` — what `defineHttp` returns, held as one binding and never destructured                                                                                                                                                         |
-| `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                      |
-| `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                              |
-| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
-| `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                               |
-| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                    |
-| `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                    |
-| `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                 |
-| `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                  |
-| `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                          |
-| `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                          |
-| `authenticatorPort`    | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                            |
-| `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                  |
-| `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                  |
-| `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                |
-| `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                         |
-| `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                        |
-| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                |
-| `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                                                           |
-| `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                   |
+| Export                 | Kind  | What it is                                                                                                                                                                                                                                                                 |
+| ---------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `HttpController`, `HttpRouter` and `authenticators` typed by them                                                   |
+| `Http`                 | type  | `Http<A>` — what `defineHttp` returns, held as one binding and never destructured                                                                                                                                                                                          |
+| `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                       |
+| `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                               |
+| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
+| `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                                                     |
+| `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                                                     |
+| `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                                                  |
+| `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                                                   |
+| `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                                                           |
+| `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                                                           |
+| `authenticatorPort`    | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                                                             |
+| `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                                                   |
+| `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                   |
+| `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                 |
+| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                         |
+| `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                         |
+| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                                                 |
+| `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                                                                                            |
+| `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                                                    |
 
 `HttpController` and `HttpRouter` are **not** top-level exports: they come off
 `defineHttp`, because that is where the scheme registry that types them is
@@ -73,7 +73,8 @@ inferred at the call, the third is an internal seam.
 
 Everything `Module(name)({...})` takes — `imports`, `provides`, `exports` —
 plus the starter's own fields. It appends
-`http({ prefix, port, hostname, plugins, securityHeaders })` to `imports`,
+`http({ prefix, port, hostname, cors, bodyLimit, compression, plugins, securityHeaders })`
+to `imports`,
 prepends `router` **and the scheme authenticators the router carries** to
 `provides`,
 prepends `HttpRuntime` to `exports`, and hands the augmented tuples to di's own
@@ -86,7 +87,10 @@ a plain module.
 | `prefix`          | no       | `/rpc`           | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                    |
 | `port`            | no       | read from `PORT` | pins the port instead of reading it                                                                                                                                            |
 | `hostname`        | no       | read from `HOST` | pins the host instead of reading it                                                                                                                                            |
-| `plugins`         | no       | `[]`             | oRPC handler plugins, forwarded to `RPCHandler` — CORS, body limits, compression, CSRF                                                                                         |
+| `cors`            | no       | off              | the CORS policy — `true` for oRPC's defaults, or its options record                                                                                                            |
+| `bodyLimit`       | no       | `1_048_576`      | the largest request body a procedure reads, in bytes; `false` is unbounded                                                                                                     |
+| `compression`     | no       | off              | response compression — `true` for oRPC's defaults, or its options record                                                                                                       |
+| `plugins`         | no       | `[]`             | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                       |
 | `securityHeaders` | no       | `true`           | response headers set on the raw listener, before dispatch                                                                                                                      |
 | `imports`         | no       | `[]`             | the application's modules                                                                                                                                                      |
 | `provides`        | no       | `[]`             | the application's own providers                                                                                                                                                |
@@ -652,6 +656,9 @@ hand. `HttpOptions`:
 | `prefix`          | no       | `/rpc`           | where the RPC endpoint is mounted                               |
 | `port`            | no       | read from `PORT` | pins the port                                                   |
 | `hostname`        | no       | read from `HOST` | pins the host                                                   |
+| `cors`            | no       | off              | `boolean \| CORSHandlerPluginOptions`, oRPC's CORS plugin       |
+| `bodyLimit`       | no       | `1_048_576`      | `number \| false`, the largest body a procedure reads, in bytes |
+| `compression`     | no       | off              | `boolean \| ResponseCompressionHandlerPluginOptions`            |
 | `plugins`         | no       | `[]`             | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler` |
 | `securityHeaders` | no       | `true`           | `boolean \| Record<string, string>`, applied on the listener    |
 
@@ -666,16 +673,60 @@ declared type is the same whether or not a field is pinned: `Env` and
 `ConfigInvalid` stay in the signature, and a pinned config never produces the
 latter.
 
+### `cors`, `bodyLimit`, `compression`
+
+`boolean | CORSHandlerPluginOptions`, `number | false` and
+`boolean | ResponseCompressionHandlerPluginOptions` — three oRPC plugins as
+**named options**, so the ordinary transport policy is configuration a reader
+sees at the composition root:
+
+<!-- doctest: isolate
+import { HttpModule } from "@btravstack/http-server";
+import { orderRouter } from "../../module.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+-->
+
+```ts
+export const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  imports: [OrdersSlice, CustomersSlice],
+  cors: { origin: "https://orders.example", credentials: true },
+  bodyLimit: 5_000_000,
+  compression: true,
+});
+```
+
+`true` takes the underlying plugin's own defaults; a record is that plugin's
+own options type verbatim, never a `Record<string, unknown>` bag. Each is
+constructed only when configured, so a graph that names none of them adds no
+plugin — except `bodyLimit`, which is the one that defaults **on**.
+
+**`bodyLimit` defaults to 1 MiB because an unbounded body is a trust boundary
+rather than a convenience.** `cors` and `compression` are policy — who may
+call, and how the bytes travel — and a framework guessing either is worse than
+one that stays quiet; a body nobody bounded is a request that can consume the
+process. Over the limit is oRPC's `PAYLOAD_TOO_LARGE`, decided on
+`content-length` when one is sent and while streaming otherwise. An application
+serving uploads raises it, and `false` turns it off.
+
+`compression` is the **response** half. Request decompression is a separate
+oRPC plugin (`RequestCompressionHandlerPlugin`), left to `plugins` because
+inflating a body before the limit measures it is a decision an application
+should make in the open.
+
+**CSRF is deliberately not an option here**, though the same paragraph in this
+package's own spec once claimed it: oRPC's protection is meaningful only once a
+request carries a `SameSite` cookie, and this package configures no cookies. It
+stays reachable through `plugins`, and becomes an option when cookies do.
+
 ### `plugins`
 
 `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
-`@orpc/server/node`, forwarded straight to `new RPCHandler(service, { plugins })`.
-CORS, body limits, compression and CSRF are transport policy oRPC already
-expresses as handler plugins, so the ordinary use is **configuration** rather
-than a middleware slot for application logic —
-`plugins: [new CORSHandlerPlugin({ origin: () => "https://orders.example" })]`
-on `HttpModule` or `http()`, with the plugin imported from
-`@orpc/server/plugins`.
+`@orpc/server/node`, appended to the three configured above and forwarded
+straight to `new RPCHandler(service, { plugins })` — any oRPC plugin the named
+options do not cover, imported from `@orpc/server/plugins`:
+`plugins: [new BatchHandlerPlugin()]`.
 
 `plugins` is an **honest escape hatch, not a keyhole**. oRPC's
 `StandardHandlerPlugin.init` transforms handler options — including
@@ -817,8 +868,9 @@ read as unmarked here. Node `>=22`.
   [`plugins`](#plugins) is an honest
   escape hatch rather than a keyhole — a plugin can reach the handler's
   interceptors — but the ordinary path is configuration visible at the
-  composition root, and an application middleware acting on the handler's
-  `Result` is what this package refuses.
+  composition root ([`cors`, `bodyLimit`, `compression`](#cors-bodylimit-compression),
+  [`securityHeaders`](#securityheaders)), and an application middleware acting
+  on the handler's `Result` is what this package refuses.
 - **`Result` → HTTP status.** The router's `.result()` triage owns it.
 - **Resource-dependent authorization.** A **scope** is checked here, because it
   is a property of the credential and answerable before dispatch. "Is this
