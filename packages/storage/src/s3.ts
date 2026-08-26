@@ -55,7 +55,7 @@ class S3Connection extends Port("S3Connection")<{
 }> {}
 
 const unavailable = (
-  operation: "put" | "get" | "delete" | "presignedUrl",
+  operation: "put" | "get" | "delete" | "presignedUrl" | "presignedUpload",
   key: string,
   cause: unknown,
 ): StorageUnavailable =>
@@ -114,6 +114,23 @@ export const s3StorageBackend = (client: S3Client, bucket: string): StorageServi
         expiresIn: Math.ceil(options.ttlMs / 1_000),
       }),
       (cause) => unavailable("presignedUrl", key, cause),
+    ),
+  presignedUpload: (key, options) =>
+    fromPromise(
+      getSignedUrl(
+        client,
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          ContentType: options.contentType,
+          ContentLength: options.contentLength,
+        }),
+        // `ContentType` and `ContentLength` are signed because they are set on
+        // the command, so a client sending different ones is refused. Naming
+        // them in `signableHeaders` changes nothing (measured against RustFS).
+        { expiresIn: Math.ceil(options.ttlMs / 1_000) },
+      ),
+      (cause) => unavailable("presignedUpload", key, cause),
     ),
 });
 

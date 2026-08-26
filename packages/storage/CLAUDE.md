@@ -13,18 +13,18 @@ return type; only what differs is written out here.
 
 ### `@btravstack/storage` (root)
 
-| Export                                                                   | What it is                                                                  |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| `Storage`                                                                | The port an application depends on: `put`, `get`, `delete`, `presignedUrl`. |
-| `StorageBackend`                                                         | The port every adapter provides. Not for application code.                  |
-| `StorageService`                                                         | The service both ports carry.                                               |
-| `StoredObject`                                                           | `{ bytes: Uint8Array; contentType: string }`.                               |
-| `ObjectNotFound`                                                         | `{ key }` — only `get` answers it.                                          |
-| `StorageUnavailable`                                                     | `{ operation, key, reason }` — the store could not answer.                  |
-| `PresignNotSupported`                                                    | `{ key }` — this adapter cannot mint a URL, and says so.                    |
-| `storage({ adapter, instrumented? })`                                    | The composition. Instrumented by default; `false` opts out.                 |
-| `StorageOptions`                                                         | `{ adapter: Module<StorageBackend, E, N>; instrumented?: boolean }`.        |
-| `memoryStorage()` / `memoryStorageProvider()` / `memoryStorageBackend()` | The in-process adapter, as a module, a provider and a service.              |
+| Export                                                                   | What it is                                                                                     |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `Storage`                                                                | The port an application depends on: `put`, `get`, `delete`, `presignedUrl`, `presignedUpload`. |
+| `StorageBackend`                                                         | The port every adapter provides. Not for application code.                                     |
+| `StorageService`                                                         | The service both ports carry.                                                                  |
+| `StoredObject`                                                           | `{ bytes: Uint8Array; contentType: string }`.                                                  |
+| `ObjectNotFound`                                                         | `{ key }` — only `get` answers it.                                                             |
+| `StorageUnavailable`                                                     | `{ operation, key, reason }` — the store could not answer.                                     |
+| `PresignNotSupported`                                                    | `{ key }` — this adapter cannot mint a URL, and says so.                                       |
+| `storage({ adapter, instrumented? })`                                    | The composition. Instrumented by default; `false` opts out.                                    |
+| `StorageOptions`                                                         | `{ adapter: Module<StorageBackend, E, N>; instrumented?: boolean }`.                           |
+| `memoryStorage()` / `memoryStorageProvider()` / `memoryStorageBackend()` | The in-process adapter, as a module, a provider and a service.                                 |
 
 ### `@btravstack/storage/s3`
 
@@ -42,7 +42,7 @@ What the instrumented form emits, per operation:
 
 | Signal  | Name                                                                                                                     | Attributes                                              |
 | ------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
-| span    | `storage.put` / `.get` / `.delete` / `.presigned_url`                                                                    | `btravstack.storage.key`; error status on a failure     |
+| span    | `storage.put` / `.get` / `.delete` / `.presigned_url` / `.presigned_upload`                                              | `btravstack.storage.key`; error status on a failure     |
 | counter | `btravstack.storage.operations`                                                                                          | `{ operation, outcome }` — `ok`, `not_found` or `error` |
 | log     | `"the object was not there"` / `"this store cannot mint a url"` at **`info`**; `"the store could not answer"` at `error` | `{ operation, key }`, with the failure as the cause     |
 
@@ -65,6 +65,27 @@ url"`, because the object may be sitting exactly where it was put, and an
   minted happily and 404s when followed. Checking would cost a HEAD per call,
   bought for something the caller usually does not want. Measured against
   RustFS: the mint succeeds, the fetch answers `404`.
+- **`presignedUpload` signs the content type and the content length, and
+  `contentLength` is therefore required.** Both are set on the command, so both
+  are in the signature and a client sending different ones is refused by the
+  store — the URL grants exactly one write, of exactly that size, of exactly
+  that type. That is the only ceiling a presigned PUT can express: S3 has no
+  "at most n bytes" for this shape, so an optional length would quietly hand
+  out an unbounded write. Naming the two in `getSignedUrl`'s `signableHeaders`
+  changes nothing — measured against RustFS by removing it, which left the
+  mismatched write still refused with `403`. A presigned POST policy WOULD
+  express a range, at the cost of a third optional peer and a form-encoded
+  return shape; it is not here because nothing has asked for a range.
+- **The application decides, the adapter signs.** Who may write this key, for
+  how long, and how large is policy, and it stays in the application exactly as
+  the earlier "no presigned writes" entry demanded. What moved into the adapter
+  is the signature computation, which was never the contested half.
+- **There is no `stat`/HEAD, and the presigned flow does not need one.** The
+  confirm step after an upload has nothing to verify: the signature already
+  pinned the type, the size and the key, so the only object that URL could have
+  produced is the one that was asked for. Whether the write happened at all is
+  a row in the application's own database, and a later `get` answers
+  `ObjectNotFound` if it did not.
 - **Bytes, not streams.** An object here is a document. Streaming would change
   every signature, adapter and test to serve a case that wants a different
   design anyway — a stated non-goal, not an oversight.
@@ -89,10 +110,11 @@ url"`, because the object may be sitting exactly where it was put, and an
 
 ## Deliberately not here
 
-- **No streaming, and no presigned writes.** A presigned PUT is a different
-  security decision (who may write what, for how long) and belongs to an
-  application that has answered it.
-- **No listing, no copy, no multipart.** Each is a real S3 feature and none
+- **No streaming**, and no multipart parsing anywhere in the family: an upload
+  that transits the process is a unit held open for the length of a transfer.
+  Presigned writes are what replaced that, and they ship — see the two entries
+  above for what the adapter does and does not decide.
+- **No listing, no copy, and no S3 multipart upload.** Each is a real S3 feature and none
   has a consumer here; adding them speculatively is what issue #62 says not
   to do.
 - **No metadata beyond the content type**, and no tags.
@@ -110,8 +132,14 @@ that image _before_ the port was written.
 
 Two failure fixtures, because one cannot reach both arms: an endpoint that is
 **not listening** (`http://127.0.0.1:1`) reaches `put`/`get`/`delete`, and a
-client whose **credentials will not resolve** reaches `presignedUrl`, which
-never leaves the process and so cannot fail on an unreachable endpoint.
+client whose **credentials will not resolve** reaches `presignedUrl` and
+`presignedUpload`, which never leave the process and so cannot fail on an
+unreachable endpoint.
+
+The upload arm is proved end to end rather than by inspecting a URL: a plain
+`fetch` `PUT`s at the minted URL carrying no credentials, and the object is
+then read back through the port. Its sibling proves the binding by sending
+four bytes at a URL signed for one — `403`, and nothing stored.
 
 Coverage is 100% lines/functions, `test-fixtures.ts` excluded.
 `src/module.test-d.ts` pins the needs gate and all five flag arms.

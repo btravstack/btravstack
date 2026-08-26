@@ -68,6 +68,7 @@ const GUIDE_SIDEBAR = [
         text: "Testing",
         collapsed: false,
         items: [
+          { text: "Upload a file", link: "/how-to/upload-a-file" },
           { text: "Test an application", link: "/how-to/test-an-application" },
           { text: "Swap an adapter for tests", link: "/how-to/swap-an-adapter" },
         ],

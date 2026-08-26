@@ -2,7 +2,7 @@
 
 > The object-storage port for [`@btravstack/core`](../core): one `Storage` an
 > application depends on, an in-memory adapter, an S3-compatible one with
-> presigned reads, and a span, a count and a log line per operation.
+> presigned reads and writes, and a span, a count and a log line per operation.
 
 📖 **[Documentation](https://btravstack.github.io/btravstack/reference/storage)** ·
 [API Reference](https://btravstack.github.io/btravstack/api/storage/)
@@ -129,5 +129,5 @@ says so instead of minting a URL that would fail only in production.
 
 **It does not decide** what your keys look like, whether a failed write should
 fail your request, or how long a link should live. There is no streaming, no
-presigned writes, no listing and no bucket management; the reasons are in
+no listing and no bucket management; the reasons are in
 [`CLAUDE.md`](./CLAUDE.md).

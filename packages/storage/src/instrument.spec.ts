@@ -123,6 +123,27 @@ describe("storage, instrumented", () => {
       lines: ["this store cannot mint a url"],
     });
   });
+
+  it("counts an upload presign under its own operation", async ({ instrumented }) => {
+    // GIVEN an instrumented store over an adapter that cannot presign
+    await instrumented.run(memoryStorage(), (service) =>
+      service.presignedUpload("a/b.json", {
+        ttlMs: 60_000,
+        contentType: "application/json",
+        contentLength: 11,
+      }),
+    );
+
+    // THEN a write url is a different operation from a read one, so a
+    // dashboard can tell the two flows apart
+    expect({
+      points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
+      spans: instrumented.spans().map((span) => span.name),
+    }).toEqual({
+      points: [{ operation: "presigned_upload", outcome: "not_found", value: 1 }],
+      spans: ["storage.presigned_upload"],
+    });
+  });
 });
 
 describe("storage, instrumented, when the client defects", () => {
