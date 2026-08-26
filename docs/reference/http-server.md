@@ -832,3 +832,49 @@ read as unmarked here. Node `>=20`.
   `bearerFormat`, an OAuth flow — belongs beside the contract, not in
   `defineHttp`.
 - **HTTPS, HTTP/2.** `node:http` only; terminate TLS at the ingress.
+
+## `openApiDocument()` — from `@btravstack/http-server/openapi`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled by the package's own specs -->
+
+```ts
+const document = await openApiDocument(contract, {
+  base: { info: { title: "Order API", version: "1.0.0" } },
+  securitySchemes: { user: { type: "http", scheme: "bearer" } },
+});
+```
+
+The contract as an OpenAPI document, with
+[`@btravstack/contract`](/reference/contract)'s marker folded into each
+operation's `security`.
+
+**A fold, not a translation.** `Requirement` is
+`Readonly<Record<string, readonly string[]>>` and `Requirements` an array of
+them — byte-identical to OpenAPI's `SecurityRequirementObject[]`, keys within
+one object AND, separate objects OR. The emitted `security` is the marker's own
+value; nothing is reinterpreted, which is why the OR rule the contract already
+enforces survives into the document intact.
+
+A document from this stack therefore carries **OR and never AND** — not a
+limitation of the generator but of what a contract can say:
+[`@btravstack/contract`](/reference/contract) refuses the multi-key requirement
+OpenAPI reads as AND, because this package would run it as OR.
+
+**`securitySchemes` is yours to supply.** The contract says WHICH schemes
+protect a route and deliberately never says what a scheme IS — the same split
+`defineHttp({ authenticators })` makes, one layer out: the authenticators say
+what `user` resolves to for the server, this says what it looks like to a
+client. A scheme the contract names with no definition still appears in
+`security`, as a visible unresolvable reference rather than a silently dropped
+requirement.
+
+`@orpc/openapi` and `@orpc/json-schema` are **optional peers** behind the
+subpath, so an application that never asks for a document installs neither.
+
+### Nothing serves it
+
+This package mounts no documentation route and ships no UI asset. A Swagger UI
+bundle inside a transport package would be a runtime dependency for every
+consumer, including the ones who never ask for a document — so an application
+serves the value from a route of its own. `examples/order-api/src/openapi.ts`
+is the whole recipe.

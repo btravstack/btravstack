@@ -409,6 +409,55 @@ plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
   with two dependencies fewer — and no `overrideGlobalObjects` footgun to
   disarm.
 
+## `openApiDocument` — from `@btravstack/http-server/openapi`
+
+**`openApiDocument(contract, { base?, securitySchemes? })`** (`openapi.ts`) —
+the contract as an OpenAPI document, with the `@btravstack/contract` marker
+folded into each operation's `security`.
+
+**It is a fold, not a translation**, and that is the whole reason this was
+cheap: `Requirement` is `Readonly<Record<string, readonly string[]>>` and
+`Requirements` an array of them — byte-identical to OpenAPI's
+`SecurityRequirementObject[]`, where keys within one object are AND and separate
+objects are OR. That correspondence is why `@btravstack/contract` refuses a
+two-scheme requirement it would otherwise run as OR, and it means the emitted
+`security` is the marker's value with nothing reinterpreted.
+
+**So a document from this stack carries OR and never AND**, because AND cannot
+be expressed a layer earlier: the contract refuses the multi-key requirement
+OpenAPI would read as AND. An earlier revision of the spec asserted an AND
+round-trip and the compiler refused it, which is the two packages agreeing.
+
+**Operations are matched by `operationId`.** `@orpc/openapi` defaults it to the
+router segments joined by `.` — measured, not assumed — which is the same
+dotted path the contract tree gives, so the walk keys on the contract's own
+path rather than on the document's shape.
+
+**`securitySchemes` is the caller's**, because the contract deliberately does
+not say what a scheme IS. That is the same split as
+`defineHttp({ authenticators })`, one layer out: `auth.ts` says what `user`
+resolves to for the server, the document says what it looks like to a client.
+A scheme named by the contract with no definition still appears in `security` —
+a visible unresolvable reference beats a silently dropped requirement.
+
+**`OpenApiDocument` is exported so a consumer can name it.** Its constituent
+types come from `@hey-api/spec-types`, a transitive dependency nothing here
+depends on directly, so an application annotating nothing gets TS4023 in its own
+declaration emit — measured on `examples/order-api`, the same hazard that shapes
+`HttpRouterPort` and `@btravstack/prisma`'s port.
+
+**Nothing serves it, deliberately.** This package mounts no documentation route
+and ships no UI asset: a Swagger UI bundle in a transport package would be a
+runtime dependency for every consumer, including the ones who never ask for a
+document. An application serves the value from a route of its own —
+`examples/order-api/src/openapi.ts` is the whole recipe.
+
+`@orpc/openapi` and `@orpc/json-schema` are **optional peers behind the
+subpath**, so a consumer that never imports it installs neither.
+`StandardJsonSchemaConverter` is what converts the schemas, and it is why no
+`@orpc/zod` is needed: zod v4 is Standard Schema, and `@orpc/zod` publishes no
+`2.0.0-beta.28` to match the catalog's pin anyway.
+
 ## Internal seam
 
 - **`HttpHandler`** (`src/handler.ts`, **not** exported from `index.ts`) — a
