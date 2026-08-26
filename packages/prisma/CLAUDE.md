@@ -6,20 +6,17 @@ you are working under `packages/prisma/`.
 
 ## Public surface
 
-- **`prismaDatabase(name)({ client, urlVar? })`** (`prisma.ts`) — the whole
+- **`prismaDatabase(name)({ client, instrumented? })`** (`prisma.ts`) — the whole
   surface, returning `{ port, config, provider }`. A composition root puts
   `config` and `provider` in `provides` and exports `port`; there is nothing
   else to wire.
-  - `client: (adapter: PrismaPg, url: string) => C` is **the one thing this
+  - `client: (adapter: PrismaPg) => C` is **the one thing this
     package cannot own**. A Prisma client is generated per application from its
     own schema, so no client type is shippable — which is also why the
     `@btravstack/cache` shape (a fixed `CacheService`, a memory adapter and a
     real one) does not apply here, and why issue #135's adapter-seam option was
     refused. Applying `@unthrown/prisma`'s extension belongs in this arrow too,
     so the port is typed by exactly what the application will hold.
-  - `urlVar` defaults to `"DATABASE_URL"`. It exists so two databases in one
-    application do not collide on one variable; the config port's own name is
-    derived from `name`, so those never collide.
   - `C` is constrained by **`PrismaLike`** — `{ $disconnect(): Promise<void> }`,
     and nothing more. A generated client satisfies it structurally, and so does
     an extended one, since `$extends` preserves `$disconnect`.

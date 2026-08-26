@@ -117,9 +117,9 @@ applied by accident or written literally; it does **not** make it unforgeable.
 `Authenticated<T, R>` is exported, because `@btravstack/http-server`'s `Inherit`
 needs it, so a deliberate
 `node as unknown as Authenticated<typeof node, [{ user: [] }]>` types as
-protected while the registry stays empty: `HasMark<C>` answers `true` and
-`HttpModule` demands an authenticator, `hasMarked` answers `false` and
-`routerOf` installs no middleware, and the leaf serves unauthenticated. It
+protected while the registry stays empty: the type says marked so `HttpModule`
+demands an authenticator, `hasMarked` answers `false` at runtime so `routerOf`
+installs no middleware, and the leaf serves unauthenticated. It
 takes a double cast to reach, which is the whole of the protection. Exporting
 the symbol would remove even that, which is why the TS2527 wart a consumer
 hits when re-exporting an inferred controller type is worth paying —

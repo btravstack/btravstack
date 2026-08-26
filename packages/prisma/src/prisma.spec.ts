@@ -7,11 +7,19 @@ import { describe, expect } from "vitest";
 import { it } from "./__tests__/test-fixtures.js";
 import { prismaDatabase } from "./prisma.js";
 
+/**
+ * The URL the starter put into the driver adapter. Read off the adapter rather
+ * than handed to the arrow: this asserts the ADAPTER was configured, which is
+ * the thing that actually reaches Postgres.
+ */
+const connectionStringOf = (adapter: unknown): string =>
+  (adapter as { readonly config: { readonly connectionString: string } }).config.connectionString;
+
 describe("prismaDatabase", () => {
   it("opens the client against the URL the environment names", async ({ stub }) => {
     // GIVEN a starter over a stub client, and DATABASE_URL in the environment
     const db = prismaDatabase("OrderDatabase")({
-      client: (_, url) => stub.client(url),
+      client: (adapter) => stub.client(connectionStringOf(adapter)),
       instrumented: false,
     });
     const root = Module("Root")({
@@ -30,7 +38,7 @@ describe("prismaDatabase", () => {
   it("disconnects the client when the scope closes", async ({ stub }) => {
     // GIVEN a graph holding the client open
     const db = prismaDatabase("OrderDatabase")({
-      client: (_, url) => stub.client(url),
+      client: (adapter) => stub.client(connectionStringOf(adapter)),
       instrumented: false,
     });
     const root = Module("Root")({
@@ -49,7 +57,7 @@ describe("prismaDatabase", () => {
   it("reports a missing DATABASE_URL as a modeled error naming it", async ({ stub }) => {
     // GIVEN the same graph and an environment that names no database
     const db = prismaDatabase("OrderDatabase")({
-      client: (_, url) => stub.client(url),
+      client: (adapter) => stub.client(connectionStringOf(adapter)),
       instrumented: false,
     });
     const root = Module("Root")({
@@ -73,7 +81,9 @@ describe("prismaDatabase", () => {
   }) => {
     // GIVEN the starter with no `instrumented` flag at all, in a root that
     // supplies the three telemetry ports the default arm now depends on
-    const db = prismaDatabase("OrderDatabase")({ client: (_, url) => stub.client(url) });
+    const db = prismaDatabase("OrderDatabase")({
+      client: (adapter) => stub.client(connectionStringOf(adapter)),
+    });
     const root = Module("Root")({
       imports: [db],
       provides: [

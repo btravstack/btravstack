@@ -18,7 +18,7 @@ type Client = {
   readonly $disconnect: () => Promise<void>;
   readonly order: { readonly tryFindMany: () => Promise<readonly string[]> };
 };
-declare const client: (adapter: PrismaPg, url: string) => Client;
+declare const client: (adapter: PrismaPg) => Client;
 
 const instrumented = prismaDatabase("OrderDatabase")({ client });
 const plain = prismaDatabase("OrderDatabase")({ client, instrumented: false });

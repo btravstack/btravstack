@@ -18,18 +18,15 @@ export type PrismaLike = { readonly $disconnect: () => Promise<void> };
 /** What {@link prismaDatabase} is handed. */
 export type PrismaOptions<C extends PrismaLike, Instrumented extends boolean> = {
   /**
-   * Builds the client. The driver adapter is already constructed from the
-   * environment's URL; the second argument is that URL, for a client that wants
-   * it directly.
+   * Builds the client from the driver adapter, which is already constructed
+   * from the environment's URL.
    *
    * This is the one thing the starter cannot own: a Prisma client is
    * **generated per application** from its own schema, so there is no client
    * type to ship. Applying `@unthrown/prisma`'s extension belongs here too, so
    * the returned type is exactly the one the application will hold.
    */
-  readonly client: (adapter: PrismaPg, url: string) => C;
-  /** The variable the connection string is read from. `DATABASE_URL` by 12-factor convention. */
-  readonly urlVar?: string;
+  readonly client: (adapter: PrismaPg) => C;
   /**
    * Span, count and log every query. **Default `true`**, `false` opts out — the
    * same shape as `cache`, `mailer` and `storage`, and as `StartOptions`'
@@ -67,10 +64,11 @@ export const prismaDatabase =
   <const N extends string>(name: N) =>
   <C extends PrismaLike, Instrumented extends boolean = true>({
     client,
-    urlVar = "DATABASE_URL",
     instrumented,
   }: PrismaOptions<C, Instrumented>) => {
-    const config = Config.provider(`${name}Config`)(Config.object({ url: Config.string(urlVar) }));
+    const config = Config.provider(`${name}Config`)(
+      Config.object({ url: Config.string("DATABASE_URL") }),
+    );
 
     // A CAST, not a class expression, and this is the same TS4023 that shapes
     // `HttpRouterPort`: a class expression's type expands di's brand keys into
@@ -84,7 +82,7 @@ export const prismaDatabase =
     // generic parameter that inference defers and `S` lands on `never`. The
     // returned `port` keeps the literal `N`, so a consumer still sees its own
     // port id.
-    const open = (url: string): C => client(new PrismaPg({ connectionString: url }), url);
+    const open = (url: string): C => client(new PrismaPg({ connectionString: url }));
     const port = DatabasePort as PortClassOf<string, C>;
 
     // Both arms are built and one is chosen, so the conditional return type is

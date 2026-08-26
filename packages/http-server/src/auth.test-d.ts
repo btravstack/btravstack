@@ -13,7 +13,7 @@ import { expectTypeOf } from "vitest";
 import { HttpAuthenticator, Unauthenticated, granted } from "./auth.js";
 import { defineHttp } from "./define-http.js";
 import { HttpModule } from "./http-module.js";
-import type { HasMark, Implementation } from "./orpc.js";
+import type { Implementation } from "./orpc.js";
 
 type Identity = { readonly userId: string; readonly tenantId: string };
 type ServiceIdentity = { readonly appId: string };
@@ -77,25 +77,6 @@ type _OrdersKeys = Expect<
 declare const healthContext: HandlerContext<HealthImpl["ping"]>;
 // @ts-expect-error — `principal` is not on an unmarked handler's context
 const _none: Identity = healthContext.principal;
-
-// 5. `HasMark` finds a mark through the nesting, and is EXACTLY `true` — a
-//    `boolean` result would satisfy both this assertion and its opposite.
-type _Marked = Expect<
-  [HasMark<typeof contract>] extends [true]
-    ? [true] extends [HasMark<typeof contract>]
-      ? true
-      : false
-    : false
->;
-
-// 6. An all-public contract is exactly `false`, on the same footing.
-type _Unmarked = Expect<
-  [HasMark<{ readonly health: { readonly ping: typeof oc } }>] extends [false]
-    ? [false] extends [HasMark<{ readonly health: { readonly ping: typeof oc } }>]
-      ? true
-      : false
-    : false
->;
 
 void _inherited;
 void _none;
