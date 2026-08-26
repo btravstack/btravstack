@@ -57,6 +57,8 @@ It is the layer between your business logic and the process it runs in.
 An HTTP API is four files: a contract, a router that implements it, a
 composition root, and an entry point.
 
+**`contract.ts`** — what the API promises. A client can take this file alone.
+
 <!-- doctest: prelude
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
@@ -64,8 +66,6 @@ import { OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-ap
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { api } from "../../auth.js";
 -->
-
-**`contract.ts`** — what the API promises. A client can take this file alone.
 
 ```ts
 import { authenticated } from "@btravstack/contract";

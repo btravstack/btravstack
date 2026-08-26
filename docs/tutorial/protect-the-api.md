@@ -41,6 +41,8 @@ Add `greetMe` to the contract: no input — the caller's identity IS the
 input — and a mark saying the `user` scheme must answer for it, with no
 particular scopes:
 
+**`contract.ts`**
+
 <!-- doctest: prelude
 // The application as lesson two left it, restated so this page compiles on
 // its own: the configurable Greeter and its module.
@@ -67,7 +69,6 @@ const GreetingModule = Module("Greeting")({
 -->
 
 ```ts
-// contract.ts
 import { authenticated } from "@btravstack/contract";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
@@ -96,8 +97,9 @@ di provider, so a JWT verifier or a user directory would arrive through
 `deps` — and `defineHttp` is the one door where scheme **names** meet their
 resolvers. Declaring a scheme and implementing it are the same act:
 
+**`auth.ts`**
+
 ```ts
-// auth.ts
 import {
   HttpAuthenticator,
   Unauthenticated,
@@ -135,8 +137,9 @@ marked procedure's handler receives `context.principal`, typed as the
 `Identity` the scheme resolves — the compiler knows which procedures are
 marked, so `hello` has no principal to read:
 
+**`router.ts`**
+
 ```ts
-// router.ts
 import { OkAsync } from "unthrown";
 
 import { api } from "./auth.js";

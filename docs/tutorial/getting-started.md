@@ -43,8 +43,9 @@ A service is a **port** — a name with a service type — and a **provider** th
 builds it. Both live in a **module**, which says what it provides and what it
 lets others see:
 
+**`greeter.ts`**
+
 ```ts
-// greeter.ts
 import { Module, Port, Provider } from "@btravstack/di";
 
 export class Greeter extends Port("Greeter")<{
@@ -67,8 +68,9 @@ application, and a runtime is something you compose _around_ it in Step 5.
 The transport speaks a contract, declared before any implementation exists. One
 procedure, `hello`, with a typed input and output:
 
+**`contract.ts`**
+
 ```ts
-// contract.ts
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
@@ -95,8 +97,9 @@ security schemes; this service is public, so it takes no argument. Then
 `api.HttpRouter(contract)` types the implementation from the contract — a
 typo'd key or a wrong output is a compile error here:
 
+**`router.ts`**
+
 ```ts
-// router.ts
 import { defineHttp } from "@btravstack/http-server";
 import { OkAsync } from "unthrown";
 
@@ -129,8 +132,9 @@ or `implement(...)` is spelled — the starter does that.
 router. Under the hood it imports the HTTP starter, provides the router and
 exports `HttpRuntime` — the one port the kernel resolves and drives:
 
+**`app.ts`**
+
 ```ts
-// app.ts
 import { HttpModule } from "@btravstack/http-server";
 
 import { GreetingModule } from "./greeter.js";
@@ -149,8 +153,9 @@ and it fires before any process exists.
 
 ## Step 6 — Write `main.ts`
 
+**`main.ts`**
+
 ```ts
-// main.ts
 import { runMain } from "@btravstack/core";
 
 import { App } from "./app.js";
@@ -190,8 +195,9 @@ anything.
 The contract types the client too. `RPCLink` speaks oRPC's RPC protocol to the
 endpoint the starter mounted under `/rpc`:
 
+**`client.ts`**
+
 ```ts
-// client.ts
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterContractClient } from "@orpc/contract";

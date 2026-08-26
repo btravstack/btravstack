@@ -70,10 +70,11 @@ name — and the second is di's own `Provider(port)(deps, { sync })`, so
 record whose message or input has drifted is a compile error inside the
 piece's own file, not at the root:
 
+**`slices/notifications/handler.ts`**
+
 <!-- doctest: group=order-amqp-worker -->
 
 ```ts
-// slices/notifications/handler.ts
 export const orderNotifications = AmqpHandler(
   orderContract,
   "orderNotifications",
@@ -99,10 +100,11 @@ export const orderNotifications = AmqpHandler(
 );
 ```
 
+**`slices/billing/activities.ts`**
+
 <!-- doctest: skip — needs `@btravstack/temporal-worker`, which this page's amqp workspace does not install; the same shape is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
-// slices/billing/activities.ts
 export const chargeOrder = TemporalWorkflowActivities(
   orderContract,
   "chargeOrder",
