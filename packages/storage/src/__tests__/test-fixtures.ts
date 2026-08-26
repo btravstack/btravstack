@@ -25,6 +25,8 @@ const failingBackend: StorageService = {
     ErrAsync(new StorageUnavailable({ operation: "delete", key, reason: "no route" })),
   presignedUrl: (key) =>
     ErrAsync(new StorageUnavailable({ operation: "presignedUrl", key, reason: "no route" })),
+  presignedUpload: (key) =>
+    ErrAsync(new StorageUnavailable({ operation: "presignedUpload", key, reason: "no route" })),
 };
 
 export const failingStorage = (): Module<StorageBackend, never, never> =>

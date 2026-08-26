@@ -36,6 +36,7 @@ export const memoryStorageBackend = (): StorageService => {
       return OkAsync();
     },
     presignedUrl: (key) => ErrAsync(new PresignNotSupported({ key })),
+    presignedUpload: (key) => ErrAsync(new PresignNotSupported({ key })),
   };
 };
 

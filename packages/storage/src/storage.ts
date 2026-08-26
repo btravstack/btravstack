@@ -14,7 +14,7 @@ export class ObjectNotFound extends TaggedError("ObjectNotFound")<{
 
 /** The store could not answer — the endpoint is down, the credentials were refused, the bucket is gone. */
 export class StorageUnavailable extends TaggedError("StorageUnavailable")<{
-  readonly operation: "put" | "get" | "delete" | "presignedUrl";
+  readonly operation: "put" | "get" | "delete" | "presignedUrl" | "presignedUpload";
   readonly key: string;
   readonly reason: string;
 }> {}
@@ -44,6 +44,30 @@ export type StorageService = {
   readonly presignedUrl: (
     key: string,
     options: { readonly ttlMs: number },
+  ) => AsyncResult<string, PresignNotSupported | StorageUnavailable>;
+  /**
+   * A URL that writes the object for `ttlMs`, without the caller holding
+   * credentials — so the bytes go from the client to the store and never
+   * through this process.
+   *
+   * **`contentType` and `contentLength` are signed, not advisory.** They are
+   * part of the signature, so a client sending different ones is refused by the
+   * store: the URL grants exactly one write, of exactly that many bytes, of
+   * exactly that type. `contentLength` is therefore required — an unsigned
+   * length would hand out an unbounded write, and there is no ceiling a
+   * presigned PUT can express other than the exact number.
+   *
+   * The application still decides every input: whether this caller may write
+   * this key, how long the URL lives, and what size it is willing to accept.
+   * The adapter computes a signature over that decision and nothing more.
+   */
+  readonly presignedUpload: (
+    key: string,
+    options: {
+      readonly ttlMs: number;
+      readonly contentType: string;
+      readonly contentLength: number;
+    },
   ) => AsyncResult<string, PresignNotSupported | StorageUnavailable>;
 };
 

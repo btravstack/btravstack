@@ -15,7 +15,7 @@ import type {
   StorageUnavailable,
 } from "./storage.js";
 
-type Operation = "put" | "get" | "delete" | "presigned_url";
+type Operation = "put" | "get" | "delete" | "presigned_url" | "presigned_upload";
 type Failure = ObjectNotFound | PresignNotSupported | StorageUnavailable;
 
 /**
@@ -103,5 +103,7 @@ export const instrument = (
     delete: (key) => observed(() => backend.delete(key), context("delete", key)),
     presignedUrl: (key, options) =>
       observed(() => backend.presignedUrl(key, options), context("presigned_url", key)),
+    presignedUpload: (key, options) =>
+      observed(() => backend.presignedUpload(key, options), context("presigned_upload", key)),
   };
 };

@@ -65,4 +65,18 @@ describe("memoryStorageBackend", () => {
     // could have shown
     await expect(url).toBeErrWith(expect.objectContaining({ key: "a/b.json" }));
   });
+
+  it("refuses to sign an upload for the same reason", async ({ memory }) => {
+    // GIVEN nothing stored — signing asks the store nothing either way
+    // WHEN a url to write against is asked for
+    const url = memory.presignedUpload("a/b.json", {
+      ttlMs: 60_000,
+      contentType: "application/json",
+      contentLength: 11,
+    });
+
+    // THEN the adapter says it cannot, so an application built on the
+    // presigned flow fails here rather than uploading into a fiction
+    await expect(url).toBeErrWith(expect.objectContaining({ key: "a/b.json" }));
+  });
 });

@@ -69,6 +69,57 @@ describe("s3Storage", () => {
     const response = await fetch(url.getOrThrow());
     expect(response.status).toBe(404);
   });
+
+  it("mints a url that writes the object without credentials", async ({ s3, keyPrefix }) => {
+    // GIVEN a url signed for exactly this document
+    const document = aDocument();
+    const url = await s3.presignedUpload(`${keyPrefix}up.json`, {
+      ttlMs: 60_000,
+      contentType: document.contentType,
+      contentLength: document.bytes.byteLength,
+    });
+
+    // WHEN a plain fetch carrying no credentials PUTs the bytes at it
+    const response = await fetch(url.getOrThrow(), {
+      method: "PUT",
+      headers: { "content-type": document.contentType },
+      body: document.bytes,
+    });
+
+    // THEN the store took them, and the object is readable through the port —
+    // which is the whole point: the bytes never passed through this process
+    await expect(
+      s3.get(`${keyPrefix}up.json`).map((object) => ({
+        status: response.status,
+        bytes: object.bytes,
+        contentType: object.contentType,
+      })),
+    ).toBeOkWith({ status: 200, bytes: document.bytes, contentType: "application/json" });
+  });
+
+  it("refuses a write whose size is not the one it signed", async ({ s3, keyPrefix }) => {
+    // GIVEN a url signed for a one-byte object
+    const url = await s3.presignedUpload(`${keyPrefix}short.bin`, {
+      ttlMs: 60_000,
+      contentType: "application/octet-stream",
+      contentLength: 1,
+    });
+
+    // WHEN a client PUTs more than it declared
+    const response = await fetch(url.getOrThrow(), {
+      method: "PUT",
+      headers: { "content-type": "application/octet-stream" },
+      body: new Uint8Array([1, 2, 3, 4]),
+    });
+
+    // THEN the store rejects it and stored nothing — the signed length is the
+    // ceiling, enforced by the store rather than trusted from the client
+    const stored = await s3.get(`${keyPrefix}short.bin`);
+    expect({ status: response.status, stored: stored.isOk() }).toEqual({
+      status: 403,
+      stored: false,
+    });
+  });
 });
 
 describe("s3Storage, when the store cannot be reached", () => {
@@ -120,6 +171,23 @@ describe("s3Storage, when the store cannot be reached", () => {
     // THEN signing itself failed, and said so
     await expect(url).toBeErrWith(
       expect.objectContaining({ operation: "presignedUrl", key: "a/b.json" }),
+    );
+  });
+
+  it("answers StorageUnavailable when an upload url cannot be signed either", async ({
+    uncredentialed,
+  }) => {
+    // GIVEN an adapter whose credential provider rejects
+    // WHEN an upload url is asked for
+    const url = uncredentialed.presignedUpload("a/b.json", {
+      ttlMs: 60_000,
+      contentType: "application/json",
+      contentLength: 11,
+    });
+
+    // THEN signing failed the same way, naming its own operation
+    await expect(url).toBeErrWith(
+      expect.objectContaining({ operation: "presignedUpload", key: "a/b.json" }),
     );
   });
 });

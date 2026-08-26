@@ -61,12 +61,13 @@ export const documents = Provider(
 );
 ```
 
-| Method                             | Answers                                                           |
-| ---------------------------------- | ----------------------------------------------------------------- |
-| `put(key, bytes, { contentType })` | `AsyncResult<void, StorageUnavailable>`                           |
-| `get(key)`                         | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>` |
-| `delete(key)`                      | `AsyncResult<void, StorageUnavailable>`                           |
-| `presignedUrl(key, { ttlMs })`     | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
+| Method                                                        | Answers                                                           |
+| ------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `put(key, bytes, { contentType })`                            | `AsyncResult<void, StorageUnavailable>`                           |
+| `get(key)`                                                    | `AsyncResult<StoredObject, ObjectNotFound \| StorageUnavailable>` |
+| `delete(key)`                                                 | `AsyncResult<void, StorageUnavailable>`                           |
+| `presignedUrl(key, { ttlMs })`                                | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
+| `presignedUpload(key, { ttlMs, contentType, contentLength })` | `AsyncResult<string, PresignNotSupported \| StorageUnavailable>`  |
 
 **Bytes, not streams.** An object here is a document — an invoice, a
 confirmation, an export — and `Uint8Array` is what every adapter and every
@@ -91,6 +92,15 @@ outage and does not retry an absence.
 
 **`delete` is idempotent** — deleting a key nobody stored is `Ok`, which is
 S3's own behaviour rather than a fiction layered over it.
+
+**`presignedUpload` is how bytes get in.** It signs the key, the content type
+and the content length, so the URL grants exactly one write, of exactly that
+size, of exactly that type — a client sending anything else is refused by the
+store. `contentLength` is required for that reason: it is the only ceiling a
+presigned PUT can express, and an optional one would hand out an unbounded
+write. The application still decides who may write what and for how long; the
+adapter only computes the signature over that decision. See
+[Upload a file](/how-to/upload-a-file).
 
 **`presignedUrl` has no `ObjectNotFound` arm.** Presigning is a signature
 computation and asks the store nothing, so a URL for an absent key is minted
@@ -151,7 +161,7 @@ export const DocumentsApp = Module("ReferenceDocumentsApp")({
 
 | Signal  | Name                                                                                                                     | Attributes                                              |
 | ------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
-| span    | `storage.put` / `.get` / `.delete` / `.presigned_url`                                                                    | `btravstack.storage.key`; error status on a failure     |
+| span    | `storage.put` / `.get` / `.delete` / `.presigned_url` / `.presigned_upload`                                              | `btravstack.storage.key`; error status on a failure     |
 | counter | `btravstack.storage.operations`                                                                                          | `{ operation, outcome }` — `ok`, `not_found` or `error` |
 | log     | `"the object was not there"` / `"this store cannot mint a url"` at **`info`**; `"the store could not answer"` at `error` | `{ operation, key }`, with the failure as the cause     |
 
@@ -181,10 +191,10 @@ export const Plain = Module("ReferencePlainStorage")({
 
 ## What it deliberately does not do
 
-- **No streaming, and no presigned writes.** A presigned PUT is a different
+- **No streaming, and no multipart parsing.** A presigned PUT is a different
   security decision — who may write what, for how long — and belongs to an
   application that has answered it.
-- **No listing, no copy, no multipart.** Each is a real S3 feature, and none
+- **No listing, no copy, and no S3 multipart upload.** Each is a real S3 feature, and none
   has a consumer here yet.
 - **No metadata beyond the content type**, and no tags.
 - **No bucket management.** Creating one is deployment, not runtime.
