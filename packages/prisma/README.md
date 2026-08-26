@@ -15,7 +15,7 @@ pnpm add @btravstack/prisma @btravstack/core @btravstack/config @btravstack/di u
 Five peer dependencies — install every one, so the application holds a single
 copy of each. Your own `@prisma/client`, `prisma` and (if you want the `try*`
 twins) `@unthrown/prisma` are yours, not this package's: the client is
-generated from your schema. Node `>=20`.
+generated from your schema. Node `>=22`.
 
 ## A worked example
 

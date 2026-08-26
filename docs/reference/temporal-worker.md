@@ -491,7 +491,7 @@ neither the option nor the clock.
 `@btravstack/core`, `@btravstack/config`, `@btravstack/di`, `unthrown`,
 `@temporalio/worker`, `@temporalio/activity`, `@temporalio/common`,
 `@temporal-contract/worker`, `@temporal-contract/contract`. All nine are
-peers. Node `>=20`.
+peers. Node `>=22`.
 
 ## Deliberately not included
 

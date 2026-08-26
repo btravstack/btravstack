@@ -35,7 +35,7 @@ yarn add @btravstack/core @btravstack/http-server @btravstack/config @btravstack
 Every one of those but `zod` is a **peer** of `@btravstack/http-server`, so your
 application holds a single copy of each ([why](/explanation/peer-dependencies)). The
 project needs `"type": "module"` in its `package.json` — `main.ts` ends in a
-top-level `await` — TypeScript in `strict` mode, and Node `>=20`.
+top-level `await` — TypeScript in `strict` mode, and Node `>=22`.
 
 ## Step 2 — Declare a service
 

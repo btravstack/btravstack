@@ -18,7 +18,7 @@ pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack
 ```
 
 All of those are peer dependencies — install every one, so the application
-holds a single copy of each. Node `>=20`.
+holds a single copy of each. Node `>=22`.
 
 ## A worked example
 

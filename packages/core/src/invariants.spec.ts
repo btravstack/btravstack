@@ -6,7 +6,6 @@ import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it, runtimeModule } from "./__tests__/test-fixtures.js";
-import { createDeferred } from "./deferred.js";
 import { RuntimeStartFailed, type RuntimeHost } from "./runtime.js";
 import { start, type RunningApp } from "./start.js";
 
@@ -246,7 +245,7 @@ describe("load-bearing invariants", () => {
 
 describe("probe wiring", () => {
   it("readiness is false while the graph is still building", async () => {
-    const gate = createDeferred<void>();
+    const gate = Promise.withResolvers<void>();
     const inner = testRuntime();
     const stalled = {
       ...inner,
@@ -271,7 +270,7 @@ describe("probe wiring", () => {
   });
 
   it("liveness is true from building onward", async () => {
-    const gate = createDeferred<void>();
+    const gate = Promise.withResolvers<void>();
     const inner = testRuntime();
     const stalled = {
       ...inner,
@@ -328,7 +327,7 @@ describe("probe wiring", () => {
   });
 
   it("an uncaught exception forces readiness false while the phase is still serving", async () => {
-    const stopGate = createDeferred<void>();
+    const stopGate = Promise.withResolvers<void>();
     const inner = testRuntime();
     const held = {
       ...inner,
@@ -365,7 +364,7 @@ describe("probe wiring", () => {
 
   it("readiness never returns to 200 once forced false", async () => {
     const clock = createFakeClock();
-    const stopGate = createDeferred<void>();
+    const stopGate = Promise.withResolvers<void>();
     const inner = testRuntime();
     const held = {
       ...inner,

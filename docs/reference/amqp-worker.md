@@ -365,7 +365,7 @@ passes.
 `@amqp-contract/worker`, `@opentelemetry/api`. `@opentelemetry/api` is a peer
 because `@amqp-contract/worker` itself peers on it; `@amqp-contract/contract`
 is **not** in the list — it is a devDependency of the package, used only to
-type its own tests. Node `>=20`.
+type its own tests. Node `>=22`.
 
 ## Deliberately not included
 

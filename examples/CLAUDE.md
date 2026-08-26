@@ -113,6 +113,18 @@ is the index of the workspaces themselves.
     unfiltered `turbo run dev` the root carried was **already broken** before
     this, failing on ten persistent tasks against a concurrency of ten.
 
+    The thirteen package scripts are not dead for being unreachable from the
+    root. `dev` depends on `^build`, not `^dev`, so a package's
+    `tsdown --watch` is reached only by an explicit
+    `pnpm --filter @btravstack/core dev` in a second terminal — which is the
+    loop for editing the framework itself against a running example. That
+    pairing works because the example resolves the package through a pnpm
+    symlink and Node reports the **realpath**, which falls outside
+    `tsx watch`'s default `**/node_modules/**` ignore: `tsdown` rewrites the
+    package's `dist` and the example reloads. Measured, because an audit
+    scanning for callers finds none of these scripts and proposes cutting all
+    thirteen — the consumer is a contributor, not code.
+
 ## The example application is multi-tenant
 
 - **The example application is multi-tenant, and that is why one database

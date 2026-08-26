@@ -5,6 +5,13 @@
     "rootDir": "./src",
     "declarationMap": false,
     "types": ["node"],
+    // Above the shared base's `ES2023`, for `Promise.withResolvers`. Safe
+    // because the published `engines` floor is `>=22`, and every Node line
+    // that satisfies it ships the whole of ES2024 — Node 20, which did not,
+    // reached end of life on 2026-04-30. The base stays where it is until
+    // another package needs this; the divergence belongs in the workspace
+    // that needs it rather than in a silent override of everyone's.
+    "lib": ["ES2024"],
     // The specs use `@btravstack/testing`, which peers on THIS package: listing
     // it as a devDependency would be a package-graph cycle turbo refuses, so
     // the type checker is pointed at its built declarations here (its source

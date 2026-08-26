@@ -118,7 +118,7 @@ pnpm add @btravstack/http-server @orpc/server @orpc/contract @unthrown/orpc
 
 Everything is a **peer dependency** — the application holds one copy of each,
 which is what keeps port identity and `isResult` honest across packages. The
-kernel and `@btravstack/config` depend on `node:` builtins only. Node `>=20`.
+kernel and `@btravstack/config` depend on `node:` builtins only. Node `>=22`.
 
 ## Quick example
 

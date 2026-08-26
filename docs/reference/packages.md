@@ -149,9 +149,10 @@ pnpm add @btravstack/di unthrown
 
 :::
 
-Every published package claims `engines: { node: ">=20" }`. The repository's
+Every published package claims `engines: { node: ">=22" }`. The repository's
 own development floor is higher (`>=22.22`); that is the toolchain's floor,
-not a promise made to consumers.
+not a promise made to consumers. The published floor was `>=20` until Node 20
+reached end of life on 2026-04-30.
 
 ## Entry points
 

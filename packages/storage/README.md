@@ -16,7 +16,7 @@ Four peer dependencies, plus `@aws-sdk/client-s3` and
 S3 adapter. Instrumentation needs no peer of its own: the `Logger`, `Tracer`
 and `Meter` it depends on are
 [the kernel's ports](https://btravstack.github.io/btravstack/reference/core/observability).
-Node `>=20`.
+Node `>=22`.
 
 ## A worked example
 
