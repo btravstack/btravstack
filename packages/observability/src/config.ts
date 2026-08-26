@@ -1,6 +1,7 @@
 import { Config, ConfigFieldInvalid, type ConfigField } from "@btravstack/config";
 import { LEVELS, type Level } from "@btravstack/core";
-import { Err, Ok } from "unthrown";
+
+const isLevel = (value: string): value is Level => (LEVELS as readonly string[]).includes(value);
 
 /**
  * `LOG_LEVEL`, as a `ConfigField` of the six levels and nothing else.
@@ -17,14 +18,12 @@ export const logLevel = (options: { readonly default?: Level } = {}): ConfigFiel
   return {
     variable: text.variable,
     parse: (raw) =>
-      text.parse(raw).flatMap((value) =>
-        LEVELS.includes(value as Level)
-          ? Ok(value as Level)
-          : Err(
-              new ConfigFieldInvalid({
-                reason: `must be one of ${LEVELS.join(", ")}, got ${JSON.stringify(value)}`,
-              }),
-            ),
+      text.parse(raw).ensure(
+        isLevel,
+        (value) =>
+          new ConfigFieldInvalid({
+            reason: `must be one of ${LEVELS.join(", ")}, got ${JSON.stringify(value)}`,
+          }),
       ),
   };
 };
