@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/amqp-worker",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "The AMQP starter for @btravstack/core: the handlers as a port, one unit per delivery, and a drain the kernel's deadline releases",
   "keywords": [
     "amqp",

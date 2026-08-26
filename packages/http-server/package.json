@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/http-server",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "The HTTP starter for @btravstack/core: oRPC over node:http, one unit per request, and a drain that actually stops accepting",
   "keywords": [
     "graceful-shutdown",
