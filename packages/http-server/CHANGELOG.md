@@ -1,5 +1,108 @@
 # @btravstack/http-server
 
+## 0.5.0
+
+### Minor Changes
+
+- aec5a7a: Remove four pieces of public surface nobody uses.
+
+  **`HasMark<C>` is gone** from `@btravstack/http-server`. It existed for exactly
+  one hypothetical consumer — its own TSDoc said so: "exported for tooling over a
+  contract — an OpenAPI generator deciding whether to emit `security` at all."
+  That generator now exists, and it uses `isAuthenticated` instead, because
+  emitting `security` needs the requirements rather than a boolean. Its only other
+  references were two type tests asserting `HasMark` against itself.
+
+  **`urlVar` is gone** from `prismaDatabase`. It was added so two databases in one
+  application would not collide on `DATABASE_URL`; no application has a second
+  database, no spec set it, and the collision it prevented has never happened.
+
+  **The `client` arrow takes only the adapter now**, not `(adapter, url)`. The URL
+  was passed for a client that wanted it directly; every documented sample takes
+  `(adapter)`. The one place that read it was a spec asserting the URL reached the
+  adapter — which now reads it **off the adapter**, a stronger assertion than the
+  argument allowed, since it proves the thing that actually reaches Postgres was
+  configured.
+
+  **`BootDefaults` and `SubmittedUnit` are no longer exported** from
+  `@btravstack/testing`. Both stayed internal types; neither had a consumer
+  outside the package, and neither TSDoc named one — which is this repository's
+  own bar for a library-facing export.
+
+  Nothing here changes behaviour. Each was flexibility added ahead of a need that
+  did not arrive, and three of the four were added within the last week.
+
+- c118a74: Raise the published Node floor to `>=22`, and use `Promise.withResolvers`.
+
+  Node 20 reached end of life on **2026-04-30**. Every line that still receives
+  security fixes — 22, 24, 26 — satisfies `>=22`, so this drops a promise rather
+  than a supported runtime.
+
+  **The old floor was never provable.** CI runs the dev toolchain, and pnpm 11
+  needs `node:sqlite`, which Node 20 does not have — so no job here could ever
+  execute the line `>=20` named, and `ci.yml` said so in a comment. The new floor
+  sits on the same major as the matrix's `22.22` row, so the promise is exercised.
+
+  The knock-on is `@btravstack/core`'s: `createDeferred` was an eight-line shim
+  for a primitive the platform ships as `Promise.withResolvers`, held back only
+  by the floor. It is gone, along with `src/deferred.ts`. `Deferred` was never
+  exported, so no public surface moves — the only visible change is the
+  `engines` field.
+
+  `packages/core` raises its `lib` to `ES2024` for this, alone in the repository
+  and commented where it happens; the shared `@btravstack/tsconfig` base stays on
+  `ES2023` until a second package needs otherwise.
+
+- 6a36dde: Emit an OpenAPI document from a contract, with the security marker folded in.
+
+  ```ts
+  import { openApiDocument } from "@btravstack/http-server/openapi";
+
+  const document = await openApiDocument(contract, {
+    base: { info: { title: "Order API", version: "1.0.0" } },
+    securitySchemes: { user: { type: "http", scheme: "bearer" } },
+  });
+  ```
+
+  `@btravstack/contract` has modelled OpenAPI's security semantics exactly for a
+  while — AND versus OR, scopes, nearest-mark-wins — and produced no document, so
+  the model reached TypeScript and nothing else. This closes that: Swagger UI,
+  client codegen for non-TypeScript consumers and API-gateway integration all
+  consume a document, not a `.ts` file.
+
+  **It is a fold, not a translation.** `Requirement` is
+  `Readonly<Record<string, readonly string[]>>` — byte-identical to OpenAPI's
+  `SecurityRequirementObject`, keys within one object AND, separate objects OR.
+  The emitted `security` is the marker's own value, reinterpreted nowhere.
+
+  A document from this stack carries **OR and never AND**, because AND cannot be
+  expressed a layer earlier: `@btravstack/contract` refuses the multi-key
+  requirement OpenAPI reads as AND, since this package would run it as OR.
+
+  `securitySchemes` is yours to supply, because the contract deliberately says
+  WHICH schemes protect a route and never what a scheme IS — the same split
+  `defineHttp({ authenticators })` makes, one layer out.
+
+  **Nothing serves it**, and that is a decision rather than an omission: a Swagger
+  UI bundle inside a transport package would be a runtime dependency for every
+  consumer, including those who never ask for a document. An application serves
+  the value from a route of its own; `examples/order-api/src/openapi.ts` is the
+  recipe, and its spec asserts the real document — including `/orders/export`,
+  which carries OR across two schemes and a scope straight out of the application's
+  own contract.
+
+  `@orpc/openapi` and `@orpc/json-schema` are **optional peers behind the
+  `/openapi` subpath**, so a consumer that never imports it installs neither.
+
+### Patch Changes
+
+- Updated dependencies [b921945]
+- Updated dependencies [c118a74]
+  - @btravstack/di@0.5.0
+  - @btravstack/config@0.5.0
+  - @btravstack/contract@0.5.0
+  - @btravstack/core@0.5.0
+
 ## 0.4.0
 
 ### Patch Changes
