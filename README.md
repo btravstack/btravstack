@@ -21,9 +21,10 @@ declare const OrderPersistenceModule: Module<never, never, never>;
 
 # btravstack
 
-**The application kernel for [TypeScript](https://www.typescriptlang.org/):
-boot a dependency-injection module into a running process, and stop it again
-without losing work.**
+**A backend framework for [Node.js](https://nodejs.org/) and
+[TypeScript](https://www.typescriptlang.org/) — dependency injection the
+compiler proves, errors as values instead of exceptions, and a process that
+shuts down the way Kubernetes expects.**
 
 [![CI](https://github.com/btravstack/btravstack/actions/workflows/ci.yml/badge.svg)](https://github.com/btravstack/btravstack/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40btravstack%2Fcore.svg?logo=npm)](https://www.npmjs.com/package/@btravstack/core)
@@ -34,12 +35,26 @@ without losing work.**
 
 </div>
 
-An application is a [`@btravstack/di`](./packages/di) module: ports, providers,
-and a wiring the compiler has already proven. btravstack owns **when** that graph
-is built and torn down — one lifecycle state machine, one unit-of-work
-registry, one `Runtime` contract — and a **starter** brings the transport: HTTP
-through oRPC, a Temporal worker, an AMQP consumer. The kernel knows none of
-them by name.
+btravstack is the layer between your business logic and the process it runs in.
+You build an application out of **ports and providers**, and the compiler checks
+that everything one needs, another supplies. A **starter** then brings the
+transport — an HTTP server, a Temporal worker, an AMQP consumer — and the
+framework owns boot, readiness and shutdown.
+
+It is **not** a full-stack framework: no ORM, no templating, no frontend. What
+it replaces is the `main.ts` every backend writes by hand and gets subtly wrong.
+
+## What you get
+
+|                          |                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| **Dependency injection** | Plain values — no decorators, no `reflect-metadata`. An unmet dependency is a compile error.    |
+| **Errors as values**     | Every fallible call returns a `Result`, so the compiler makes you handle failure.               |
+| **Configuration**        | Environment variables validated once at boot into typed values; a bad one exits `78` naming it. |
+| **Three transports**     | HTTP (contract-first, over oRPC), Temporal workers, AMQP consumers.                             |
+| **Observability**        | Structured logs correlated per request, OpenTelemetry traces and metrics.                       |
+| **Lifecycle**            | Health probes, graceful drain, resource cleanup on every exit path.                             |
+| **Testing**              | A harness that boots the real graph and swaps one provider at a time.                           |
 
 ## Why btravstack?
 
@@ -67,9 +82,27 @@ btravstack gets them right once, as defaults.
   process's fate becomes an exit code — `0`, `1`, `2`, `70` or `78`, each
   meaning one thing.
 
-See [Why btravstack?](https://btravstack.github.io/btravstack/explanation/why-btravstack) for
-what it is not — NestJS's `NestFactory.create`, an Effect runtime, a
-full-stack framework — and how it compares to a hand-rolled `main.ts`.
+## How it compares
+
+|                      | btravstack      | NestJS                | AdonisJS              | Hand-rolled       |
+| -------------------- | --------------- | --------------------- | --------------------- | ----------------- |
+| Wiring checked       | at compile time | at boot               | at boot               | never             |
+| Dependency injection | plain values    | decorators + metadata | decorators + metadata | by hand           |
+| Errors               | values, typed   | exceptions + filters  | exceptions + handlers | your choice       |
+| Graceful shutdown    | default         | opt-in hooks          | opt-in hooks          | write it yourself |
+| Ecosystem            | small, growing  | very large            | large                 | none              |
+| Full-stack           | no              | no                    | yes                   | —                 |
+
+**NestJS has far more packages, integrations and hiring pool**, and decorators
+are more concise to write. If that trade matters more than compile-time
+certainty, Nest is the better tool — the
+[Coming from NestJS](https://btravstack.github.io/btravstack/explanation/coming-from-nestjs)
+page says so in detail, including what Nest does better.
+
+btravstack is for teams that already chose TypeScript for the type safety and
+want the framework to honour that choice rather than opt out of it. See
+[Why btravstack?](https://btravstack.github.io/btravstack/explanation/why-btravstack)
+for the design argument and what it is not.
 
 ## Install
 
@@ -95,8 +128,9 @@ declares, and a composition root. This is
 own and condensed to one procedure — the example itself composes that slice
 and a `customers` one into a single router through controllers:
 
+**`contract.ts`** — declared before any implementation exists; a client needs only this file.
+
 ```ts
-// contract.ts — declared before any implementation exists; a client needs only this.
 import { oc, type } from "@orpc/contract";
 
 export const ordersContract = {
@@ -111,8 +145,9 @@ export const ordersContract = {
 };
 ```
 
+**`router.ts`** — one `Result`-returning function per procedure, typed by the contract.
+
 ```ts
-// router.ts — one Result-returning function per procedure, typed by the contract.
 import { defineHttp } from "@btravstack/http-server";
 import { P } from "unthrown";
 
@@ -158,8 +193,9 @@ export const ordersRouter = api.HttpRouter(ordersContract)(
 );
 ```
 
+**`main.ts`** — the composition root and the entry point; this is the whole process.
+
 ```ts
-// main.ts — the whole process.
 import { runMain } from "@btravstack/core";
 import { HttpModule } from "@btravstack/http-server";
 
@@ -191,6 +227,12 @@ deployments.
 | [`@btravstack/http-server`](./packages/http-server)         | The HTTP starter: oRPC over `node:http`, `HttpRouter` / `HttpModule`, one unit per request, a drain that retires keep-alive connections.                                 |
 | [`@btravstack/temporal-worker`](./packages/temporal-worker) | The Temporal starter: `TemporalActivities` / `TemporalWorkflowActivities` / `TemporalModule`, one unit per activity attempt, a drain that honours the kernel's deadline. |
 | [`@btravstack/amqp-worker`](./packages/amqp-worker)         | The AMQP starter: `AmqpHandlers` / `AmqpHandler` / `AmqpModule`, one unit per delivery, one drain deadline.                                                              |
+| [`@btravstack/contract`](./packages/contract)               | Contract-level markers a client and its server share: which schemes protect a route, and which scopes each must grant. Zero dependencies.                                |
+| [`@btravstack/observability`](./packages/observability)     | Structured logging correlated with the ambient unit, a JSON sink, and OpenTelemetry traces and metrics behind their own subpath.                                         |
+| [`@btravstack/prisma`](./packages/prisma)                   | The Prisma starter: `DATABASE_URL` through `Config`, a client whose pool is the application scope's, and a count and error line per query.                               |
+| [`@btravstack/cache`](./packages/cache)                     | A `Cache` port with an in-memory adapter and a Redis one, instrumented by default.                                                                                       |
+| [`@btravstack/mailer`](./packages/mailer)                   | A `Mailer` port with a recording adapter and an SMTP one, instrumented by default.                                                                                       |
+| [`@btravstack/storage`](./packages/storage)                 | A `Storage` port with an in-memory adapter and an S3-compatible one with presigned reads.                                                                                |
 
 ## Examples
 
