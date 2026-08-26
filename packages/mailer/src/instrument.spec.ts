@@ -23,7 +23,7 @@ describe("mailer, instrumented", () => {
         subject: span.attributes["btravstack.mail.subject"],
         leaked: JSON.stringify(span.attributes).includes("thank you"),
       })),
-    ).toEqual([{ name: "mailer.send", recipients: 1, subject: "your order", leaked: false }]);
+    ).toEqual([{ name: "mail.send", recipients: 1, subject: "your order", leaked: false }]);
   });
 
   it("counts a delivered message as ok", async ({ instrumented }) => {
@@ -36,7 +36,7 @@ describe("mailer, instrumented", () => {
     // THEN the one counted point is an ok
     expect(
       instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
-    ).toEqual([{ outcome: "ok", value: 1 }]);
+    ).toEqual([{ operation: "send", outcome: "ok", value: 1 }]);
   });
 
   it("logs a delivered message without its body", async ({ instrumented }) => {
@@ -67,7 +67,7 @@ describe("mailer, instrumented", () => {
       points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
     }).toEqual({
       lines: [{ level: "error", message: "the mail could not be sent" }],
-      points: [{ outcome: "error", value: 1 }],
+      points: [{ operation: "send", outcome: "error", value: 1 }],
     });
   });
 
@@ -97,8 +97,8 @@ describe("mailer, instrumented, when the transport defects", () => {
       points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
       spans: instrumented.spans().map((span) => span.name),
     }).toEqual({
-      points: [{ outcome: "error", value: 1 }],
-      spans: ["mailer.send"],
+      points: [{ operation: "send", outcome: "error", value: 1 }],
+      spans: ["mail.send"],
     });
   });
 });

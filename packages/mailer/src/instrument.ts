@@ -24,13 +24,13 @@ export const instrument = (
 ): MailerService => {
   // One instrument per scope, read per call: the attributes vary, the counter
   // does not.
-  const sends: Counter = meter.createCounter("btravstack.mailer.sends", {
-    description: "Mail sends, by outcome",
+  const operations: Counter = meter.createCounter("btravstack.mail.operations", {
+    description: "Mail operations, by operation and outcome",
   });
 
   return {
     send: (mail) => {
-      const span = tracer.startSpan("mailer.send");
+      const span = tracer.startSpan("mail.send");
       span.setAttributes({
         "btravstack.mail.recipients": mail.to.length,
         "btravstack.mail.subject": mail.subject,
@@ -40,7 +40,7 @@ export const instrument = (
         backend
           .send(mail)
           .tap(() => {
-            sends.add(1, { outcome: "ok" });
+            operations.add(1, { operation: "send", outcome: "ok" });
             logger.info("mail sent", {
               recipients: mail.to.length,
               subject: mail.subject,
@@ -51,7 +51,7 @@ export const instrument = (
           // failed send too, and it would leave the span open.
           .tapFailure((failure) => {
             const cause = failure.tag === "Err" ? failure.error : failure.cause;
-            sends.add(1, { outcome: "error" });
+            operations.add(1, { operation: "send", outcome: "error" });
             logger.error(
               "the mail could not be sent",
               { recipients: mail.to.length, subject: mail.subject },

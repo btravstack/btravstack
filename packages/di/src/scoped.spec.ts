@@ -8,6 +8,7 @@ import { Module, Port, Provider, type AnyPort } from "./index.js";
 // declares it is what lets them keep proving `plan()`'s runtime `portId`
 // check fires — the defence in depth behind the type-only export.
 import { Scope } from "./port.js";
+import { createScope } from "./scope.js";
 
 class OpenError extends TaggedError("OpenError")<{ readonly which: string }> {}
 
@@ -187,4 +188,22 @@ test("providing Scope through a widened AnyPort alias is still a wiring defect",
   const built = await Module.build(mod);
   expect(built).toBeDefect();
   expect(ran).not.toHaveBeenCalled();
+});
+
+// `createScope`'s default reporter. Every other test supplies one, so the
+// fallback — the only thing standing between a failed finaliser and silence —
+// was never exercised.
+test("reports a failed finaliser on the console when no reporter is given", async () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  const scope = createScope();
+  const cause = new Error("finaliser blew up");
+  scope.onStop("Doomed", () => Promise.reject(cause));
+
+  await scope.close();
+
+  expect(error).toHaveBeenCalledWith(
+    expect.stringContaining("finaliser for Doomed failed during close"),
+    cause,
+  );
+  error.mockRestore();
 });

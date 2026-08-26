@@ -177,7 +177,7 @@ export const it = test.extend<MailerFixtures>({
       const { resourceMetrics } = await reader.collect();
       counted = resourceMetrics.scopeMetrics
         .flatMap((scope) => scope.metrics)
-        .filter((metric) => metric.descriptor.name === "btravstack.mailer.sends")
+        .filter((metric) => metric.descriptor.name === "btravstack.mail.operations")
         .flatMap((metric) => metric.dataPoints as readonly DataPoint<number>[]);
     };
 

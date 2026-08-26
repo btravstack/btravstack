@@ -30,6 +30,10 @@ const entries = new WeakMap<object, ReadonlyMap<string, unknown>>();
 
 const make = (services: ReadonlyMap<string, unknown>): Context<never> => {
   const ctx = {
+    // A phantom variance marker: it exists so `Context<in R>` is contravariant
+    // in `R`, is never callable, and so no test can reach it. Ignored rather
+    // than met, because the alternative is a weaker gate on the container.
+    /* v8 ignore next */
     _R: () => {},
     get: (port: PortLike) => {
       const service = services.get(port.portId);

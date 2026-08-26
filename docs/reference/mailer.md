@@ -152,8 +152,8 @@ export const NotifierApp = Module("ReferenceNotifierApp")({
 
 | Signal  | Name                                                               | Attributes                                                                                   |
 | ------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| span    | `mailer.send`                                                      | `btravstack.mail.recipients` (a count), `btravstack.mail.subject`; error status on a failure |
-| counter | `btravstack.mailer.sends`                                          | `{ outcome }` — `ok` or `error`                                                              |
+| span    | `mail.send`                                                        | `btravstack.mail.recipients` (a count), `btravstack.mail.subject`; error status on a failure |
+| counter | `btravstack.mail.operations`                                       | `{ operation, outcome }` — `send`, and `ok` or `error`                                       |
 | log     | `"mail sent"` at `info`; `"the mail could not be sent"` at `error` | `{ recipients, subject }`, with the failure as the cause                                     |
 
 **The envelope rides the signals; the addresses and the body do not.** `to`

@@ -18,3 +18,19 @@ test("a duplicate id warns exactly once", () => {
   expect(console.warn).toHaveBeenCalledTimes(1);
   expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Duplicated"));
 });
+
+// The duplicate-id warning is a development aid, folded out of production
+// builds by define-replacement. The early return is what makes that true.
+test("says nothing about a duplicate id in production", () => {
+  const previous = process.env["NODE_ENV"];
+  process.env["NODE_ENV"] = "production";
+
+  try {
+    Port("DuplicateInProduction");
+    Port("DuplicateInProduction");
+
+    expect(console.warn).not.toHaveBeenCalled();
+  } finally {
+    process.env["NODE_ENV"] = previous;
+  }
+});
