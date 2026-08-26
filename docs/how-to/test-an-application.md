@@ -452,7 +452,7 @@ names it on its ports rather than reading it from ambient context:
 <!-- doctest: isolate
 import { test } from "vitest";
 import { TenantId } from "@btravstack/example-order-domain";
-import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
+import { uuidv7 } from "uuidv7";
 -->
 
 ```ts

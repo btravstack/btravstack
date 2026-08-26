@@ -5,7 +5,7 @@ import type {
   OrderRepository,
 } from "@btravstack/example-order-application";
 import { TenantId, placeOrder, type Order } from "@btravstack/example-order-domain";
-import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
+import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
 import {

@@ -48,6 +48,7 @@
     "supertest": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
+    "uuidv7": "catalog:",
     "vitest": "catalog:",
     "zod": "catalog:"
   }

@@ -192,6 +192,9 @@ catalogs:
     unthrown:
       specifier: 5.7.0
       version: 5.7.0
+    uuidv7:
+      specifier: 1.2.1
+      version: 1.2.1
     vitepress:
       specifier: 1.6.4
       version: 1.6.4
@@ -406,6 +409,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      uuidv7:
+        specifier: 'catalog:'
+        version: 1.2.1
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
@@ -500,6 +506,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      uuidv7:
+        specifier: 'catalog:'
+        version: 1.2.1
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
@@ -669,6 +678,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      uuidv7:
+        specifier: 'catalog:'
+        version: 1.2.1
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
@@ -791,6 +803,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      uuidv7:
+        specifier: 'catalog:'
+        version: 1.2.1
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
@@ -831,9 +846,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
 
   packages/amqp-worker:
     devDependencies:
@@ -6480,6 +6492,10 @@ packages:
     resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
     hasBin: true
 
+  uuidv7@1.2.1:
+    resolution: {integrity: sha512-4kPkK3/XTQW9Hbm4CaqfICn+kY9LJtDVEOfgsRRra/+n2Ofg4NqzRFceAkxvQ/Ud/6BpHOPzj8cirqM7TzTN5Q==}
+    hasBin: true
+
   valibot@1.4.2:
     resolution: {integrity: sha512-gjdCvJ6d3RyHAneqxMYMW9QMCwYMb3jpOO0IyHZV1bnRHFBHrX3VkIILt5XYR0WhwHiH7Mty8ovuPZ/O3gamrg==}
     peerDependencies:
@@ -11690,6 +11706,8 @@ snapshots:
   util-deprecate@1.0.2: {}
 
   uuid@11.1.1: {}
+
+  uuidv7@1.2.1: {}
 
   valibot@1.4.2(typescript@7.0.2):
     optionalDependencies:

@@ -17,7 +17,6 @@ import {
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 import { orderContract, type OrderContract } from "@btravstack/example-order-temporal-contract";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
-import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { observability, type Line, type Sink } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import {
@@ -41,6 +40,7 @@ import {
 } from "@temporal-contract/testing/workflow-bundle";
 import { Client, Connection } from "@temporalio/client";
 import { ErrAsync, OkAsync } from "unthrown";
+import { uuidv7 } from "uuidv7";
 import { inject, test } from "vitest";
 
 import { BillingModule } from "../billing.js";

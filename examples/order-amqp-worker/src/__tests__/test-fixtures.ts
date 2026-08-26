@@ -6,9 +6,9 @@ import { type RunningApp, Logger } from "@btravstack/core";
 import { Provider, type Module, type Scope } from "@btravstack/di";
 import { OrderRepository, Outbox, PlaceOrder } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
-import { uuidv7 } from "@btravstack/internal-test-infra/uuid";
 import { LoggerConfig, createLogger, type Line } from "@btravstack/observability";
 import { bootFixture, overridden, tapped, type Boot } from "@btravstack/testing";
+import { uuidv7 } from "uuidv7";
 import { inject, type TestAPI } from "vitest";
 
 import { OrderAmqpWorker } from "../module.js";
