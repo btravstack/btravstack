@@ -16,6 +16,7 @@ type Exactly<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 /** A stand-in for the client a schema generates, with an extension applied. */
 type Client = {
   readonly $disconnect: () => Promise<void>;
+  readonly $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
   readonly order: { readonly tryFindMany: () => Promise<readonly string[]> };
 };
 declare const client: (adapter: PrismaPg) => Client;

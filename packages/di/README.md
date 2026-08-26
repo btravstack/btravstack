@@ -79,7 +79,7 @@ absorbs whatever the composition root happens to hold.
 
 The five provider arms — `value`, `sync`, `make` (may fail, with a modeled
 error), `class`, `acquire`/`release` (a resource, released when the scope
-closes) — the private-by-default modules,
+closes) — the private-by-default modules, `Port.many` for a plugin registry,
 `Module.forkScope` for a per-request scope, and the compile-time gates that
 carry what is missing are on the [documentation site](https://btravstack.github.io/btravstack/reference/di/ports).
 Under [`@btravstack/core`](https://btravstack.github.io/btravstack/reference/core/start), `start(module)` is the

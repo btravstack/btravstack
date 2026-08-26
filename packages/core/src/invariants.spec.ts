@@ -6,6 +6,7 @@ import { ErrAsync, Ok, OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect, vi } from "vitest";
 
 import { it, runtimeModule } from "./__tests__/test-fixtures.js";
+import { HealthCheckFailed, HealthChecks } from "./health.js";
 import { RuntimeStartFailed, type RuntimeHost } from "./runtime.js";
 import { start, type RunningApp } from "./start.js";
 
@@ -496,5 +497,51 @@ describe("probe wiring", () => {
     await expect(app.probePort()).toBeOkWith(undefined);
 
     await blocker.close();
+  });
+});
+
+describe("health checks", () => {
+  it("aggregates every module's contribution into /healthz, naming what is down", async () => {
+    // GIVEN two modules contributing a check, one of which cannot answer
+    const checks = Module("Checks")({
+      provides: [
+        Provider.member(HealthChecks)({
+          value: { name: "cache", check: () => OkAsync() },
+        }),
+        Provider.member(HealthChecks)({
+          value: {
+            name: "database",
+            check: () => ErrAsync(new HealthCheckFailed({ reason: "connection refused" })),
+          },
+        }),
+      ],
+      exports: [HealthChecks],
+    });
+    const runtime = runtimeModule(testRuntime());
+    const app = start(Module("App")({ imports: [runtime, checks], exports: [runtime, checks] }), {
+      signals: false,
+      probes: { port: 0 },
+      onEvent: () => {},
+    });
+    const port = await boundPort(app);
+
+    // WHEN /healthz is asked
+    const response = await get(port, "/healthz");
+
+    // THEN the app is unhealthy because one component is, and the report says
+    // WHICH — the healthy component is still listed
+    expect({ status: response.status, body: JSON.parse(response.body) }).toEqual({
+      status: 503,
+      body: {
+        status: "unhealthy",
+        components: [
+          { name: "cache", status: "healthy" },
+          { name: "database", status: "unhealthy", reason: "connection refused" },
+        ],
+      },
+    });
+
+    app.stop();
+    await app.exited;
   });
 });

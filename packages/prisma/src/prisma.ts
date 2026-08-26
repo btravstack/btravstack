@@ -1,8 +1,8 @@
 import { Config, Env } from "@btravstack/config";
-import { Logger, Meter, Tracer } from "@btravstack/core";
+import { HealthCheckFailed, HealthChecks, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
+import { OkAsync, fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { instrument } from "./instrument.js";
 import { enableTracing } from "./tracing.js";
@@ -13,7 +13,16 @@ import { enableTracing } from "./tracing.js";
  * preserves `$disconnect` — which is why the application's own client type
  * flows through untouched.
  */
-export type PrismaLike = { readonly $disconnect: () => Promise<void> };
+export type PrismaLike = {
+  readonly $disconnect: () => Promise<void>;
+  /**
+   * What the health check asks. Part of the contract rather than optional
+   * because every generated Prisma client has it, and a probe that has to
+   * feature-detect its own client cannot report the difference between "the
+   * database is down" and "this client cannot be asked".
+   */
+  readonly $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+};
 
 /** What {@link prismaDatabase} is handed. */
 export type PrismaOptions<C extends PrismaLike, Instrumented extends boolean> = {
@@ -134,16 +143,36 @@ export const prismaDatabase =
     // the resourceful provider are never its business, which is the bargain
     // `cache({ adapter })` already makes. `needs` differs per arm because the
     // instrumented provider reads three more ports.
+    // `SELECT 1` rather than `$connect()`: a pooled client reports connected
+    // while the server behind it is gone, so the probe has to make the server
+    // answer something.
+    const healthCheck = Provider.member(HealthChecks)(
+      { db: port },
+      {
+        sync: ({ db }) => ({
+          name,
+          check: () =>
+            fromPromise(
+              db.$queryRaw`SELECT 1`,
+              (cause: unknown) =>
+                new HealthCheckFailed({
+                  reason: cause instanceof Error ? cause.message : "database unreachable",
+                }),
+            ).map((): void => undefined),
+        }),
+      },
+    );
+
     const instrumentedModule = Module(name)({
       needs: [Env, Logger, Meter, Tracer],
-      provides: [config, instrumentedProvider],
-      exports: [DatabasePort],
+      provides: [config, instrumentedProvider, healthCheck],
+      exports: [DatabasePort, HealthChecks],
     });
 
     const plainModule = Module(name)({
       needs: [Env],
-      provides: [config, plainProvider],
-      exports: [DatabasePort],
+      provides: [config, plainProvider, healthCheck],
+      exports: [DatabasePort, HealthChecks],
     });
 
     const chosen = (

@@ -2,6 +2,7 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 
 import { Err, Ok, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
+import type { HealthReport } from "./health.js";
 import { RuntimeStartFailed } from "./runtime.js";
 
 export type ProbeServer = {
@@ -13,6 +14,14 @@ export type ProbeArgs = {
   readonly port: number;
   readonly live: () => boolean;
   readonly ready: () => boolean;
+  /**
+   * Answers `/healthz`. Deliberately NOT folded into `ready`: readiness
+   * removes a pod from its Service's endpoints, so failing it on a shared
+   * dependency takes every replica out at once and turns a degraded system
+   * into an outage. `/healthz` reports; `/readyz` still answers for the
+   * lifecycle alone.
+   */
+  readonly health: () => AsyncResult<HealthReport, never>;
 };
 
 // There is deliberately no startup probe: `/livez` answers from `building`
@@ -28,6 +37,19 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
         }
         if (request.url === "/readyz") {
           respond(response, args.ready(), "ready");
+          return;
+        }
+        if (request.url === "/healthz") {
+          // The unit of work is the RESPONSE, so the body is written inside
+          // the settle — the same obligation a runtime owes, for the same
+          // reason: a report computed and not flushed tells nobody anything.
+          void args.health().map((report) => {
+            response
+              .writeHead(report.status === "healthy" ? 200 : 503, {
+                "content-type": "application/json",
+              })
+              .end(JSON.stringify(report));
+          });
           return;
         }
         response.writeHead(404).end();

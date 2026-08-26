@@ -1,6 +1,6 @@
 ---
 title: Providers
-description: "Provider(port)(deps, options) — the five construction arms, the onStart/onStop hooks, the typed port it hands back, and the three channels a provider carries, precisely."
+description: "Provider(port)(deps, options) — the five construction arms, the onStart/onStop hooks, the typed port it hands back, Provider.member, and the three channels a provider carries, precisely."
 ---
 
 <!-- doctest: prelude
@@ -12,6 +12,11 @@ class OrderRepository extends Port("OrderRepository")<{
 }> {}
 class Database extends Port("Database")<{
   readonly query: (id: string) => AsyncResult<Order, never>;
+  readonly ping: () => AsyncResult<"healthy", never>;
+}> {}
+class HealthCheck extends Port.many("HealthCheck")<{
+  readonly name: string;
+  readonly run: () => AsyncResult<"healthy", never>;
 }> {}
 class AppConfig extends Port("AppConfig")<{ readonly dbUrl: string }> {}
 type CacheClient = { readonly warm: () => void; readonly flush: () => void };
@@ -140,6 +145,26 @@ one is expected. Its declared type is a
 [`PortClassOf<Id, Service>`](/reference/di/ports#portinstance-id-service-and-portclassof-id-service)
 when the port came from a helper, which is what lets a consumer export such a
 provider from a package with `declaration: true`.
+
+## `Provider.member(port)(deps, options)`
+
+The multi-binding form: contributes **one member** to a
+[set port](/reference/di/ports#port-many-id-member).
+
+```ts
+Provider.member(HealthCheck)(
+  { db: Database },
+  { sync: ({ db }) => ({ name: "database", run: db.ping }) },
+);
+```
+
+Identical to `Provider(...)` in every respect — same arms, same hooks, same
+`deps` checking, same channels, same typed `port` — except the arm constructs
+one `Member`, not the port's whole `readonly Member[]`. `Provider.member` on
+an ordinary port does not compile: its member shape is `never`, so no arm can
+be satisfied. The reverse — `Provider(...)` on a set port — type-checks
+against the whole array and lands it as **one member** at runtime; contribute
+to a set port through `Provider.member` only.
 
 ## The channels
 

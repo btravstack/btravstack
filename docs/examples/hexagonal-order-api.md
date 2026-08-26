@@ -185,7 +185,7 @@ header says so. It is a consumer-side fixture that exports ports and providers
 the way a downstream library would, compiled with `declaration: true` under
 **two** TypeScript versions (the repo's and a consumer's) so the emitted
 `.d.ts` stays free of unnameable private types. It is the reason `PortClass`
-is exported from `@btravstack/di` at all, and what keeps
+and `ManyPortClass` are exported from `@btravstack/di` at all, and what keeps
 `PortClassOf`/`PortInstance` sufficient for a provider whose port was minted
 in a helper — a container-maintenance concern, incidental to what the example
 teaches, and the reason this example survived the merge into this repository

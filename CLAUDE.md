@@ -430,6 +430,34 @@ its work (a response's `'close'`) must first check whether it already fired:
 found by a client hanging up during a slow per-request acquire and leaving a
 unit open for the process lifetime.
 
+## Health checks: a module declares one, the kernel collects them
+
+A starter that owns a dependency declares a health check; the kernel folds every
+one into `GET /healthz`. `@btravstack/cache`, `@btravstack/storage` and
+`@btravstack/prisma` each contribute one, named for the component; a starter an
+application never composed contributes nothing, and a set port with no
+contributors is empty rather than missing.
+
+**It is a set port, not a registry the kernel hands out.** A registry would
+have each starter `needs` it and call `register(...)` while constructing —
+which type-checks whether or not the call is ever made, so a starter that
+forgot would compile and report healthy forever. A contribution is a provider
+like any other: declared, levelled, and visible in the graph.
+
+**This reversed `38d85f7`, which deleted `Port.many`/`Provider.member` because
+"an audit found no consumer in any of the eight packages or ten examples".**
+That was true when written. It stopped being true the moment a second feature
+wanted the same shape — auto-registered OTel instrumentation was the first ask,
+health checks the second — and the removal is what made both look impossible.
+Restoring it brought back the levelling cost the removal cited, which is real:
+`plan` keys `placed` by provider identity and compares member counts, because
+keyed by bare `portId` the first member to land drops its siblings.
+
+**`/healthz` does not gate `/readyz`, and that is the decision.** Readiness
+removes a pod from its Service's endpoints; failing it on a dependency the
+replicas share removes all of them at once, turning a degraded system into an
+outage. The kernel reports; an operator decides.
+
 ## Cross-cutting concerns: configuration, not a middleware slot
 
 CORS, body limits, compression, CSRF, security headers and authentication are

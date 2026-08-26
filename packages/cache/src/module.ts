@@ -1,5 +1,6 @@
-import { Logger, Meter, Tracer } from "@btravstack/core";
+import { HealthCheckFailed, HealthChecks, Logger, Meter, Tracer } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
+import { P } from "unthrown";
 
 import { Cache, CacheBackend } from "./cache.js";
 import { instrument } from "./instrument.js";
@@ -47,13 +48,36 @@ export const cache = <E, N, Instrumented extends boolean = true>({
   adapter,
   instrumented,
 }: CacheOptions<E, N, Instrumented>): Module<
-  Cache,
+  Cache | HealthChecks,
   E,
   Instrumented extends true ? N | Logger | Meter | Tracer : N
-> =>
+> => {
+  const healthCheck = Provider.member(HealthChecks)(
+    { backend: CacheBackend },
+    {
+      sync: ({ backend }) => ({
+        name: "cache",
+        // A miss is the cache WORKING — the probe key is never written,
+        // so `Ok(undefined)` is the healthy answer and the only
+        // unhealthy one is the adapter saying it could not reach the
+        // server at all.
+        check: () =>
+          backend
+            .get("btravstack:health")
+            .map(() => undefined)
+            .mapErrCases((matcher) =>
+              matcher.with(
+                P.tag("CacheUnavailable"),
+                ({ key }) => new HealthCheckFailed({ reason: `cache unavailable (${key})` }),
+              ),
+            ),
+      }),
+    },
+  );
+
   // The two arms build different graphs from one signature, so the cast is how
   // a value-level branch reports the type-level one above.
-  (instrumented !== false
+  return (instrumented !== false
     ? Module("InstrumentedCache")({
         needs: [Logger, Meter, Tracer],
         imports: [adapter],
@@ -65,15 +89,20 @@ export const cache = <E, N, Instrumented extends boolean = true>({
                 instrument(backend, logger, tracer, meter),
             },
           ),
-        ],
-        exports: [Cache],
+          healthCheck,
+        ] as const,
+        exports: [Cache, HealthChecks],
       })
     : Module("Cache")({
         imports: [adapter],
-        provides: [Provider(Cache)({ backend: CacheBackend }, { sync: ({ backend }) => backend })],
-        exports: [Cache],
+        provides: [
+          Provider(Cache)({ backend: CacheBackend }, { sync: ({ backend }) => backend }),
+          healthCheck,
+        ],
+        exports: [Cache, HealthChecks],
       })) as unknown as Module<
-    Cache,
+    Cache | HealthChecks,
     E,
     Instrumented extends true ? N | Logger | Meter | Tracer : N
   >;
+};

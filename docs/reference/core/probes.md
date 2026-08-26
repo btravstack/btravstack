@@ -25,11 +25,12 @@ exposes `/healthz` on the public port.
 
 ## Routes
 
-| Route         | `200`                                                  | `503`         | Anything else |
-| ------------- | ------------------------------------------------------ | ------------- | ------------- |
-| `GET /livez`  | body `ok` — any phase before `exited`                  | `unavailable` | —             |
-| `GET /readyz` | body `ready` — phase `serving`, and not forced unready | `unavailable` | —             |
-| other paths   | —                                                      | —             | `404`, empty  |
+| Route          | `200`                                                  | `503`         | Anything else |
+| -------------- | ------------------------------------------------------ | ------------- | ------------- |
+| `GET /livez`   | body `ok` — any phase before `exited`                  | `unavailable` | —             |
+| `GET /readyz`  | body `ready` — phase `serving`, and not forced unready | `unavailable` | —             |
+| `GET /healthz` | every declared health check passed                     | the report    | —             |
+| other paths    | —                                                      | —             | `404`, empty  |
 
 `/readyz` answers from the same predicate `RunningApp.ready()` reads
 synchronously. Readiness is a **one-way latch**: forced false by a drain
@@ -44,6 +45,44 @@ never returns to `true`.
 | `draining` | `200`    | `503`                       |
 | `stopping` | `200`    | `503`                       |
 | `exited`   | `503`    | `503`                       |
+
+## `/healthz` — the dependency report
+
+Every module that declares a health check contributes one to the `HealthChecks`
+set port; the kernel reads all of them and folds them into one report. The body
+is JSON in both the `200` and the `503` case:
+
+```json
+{
+  "status": "unhealthy",
+  "components": [
+    { "name": "cache", "status": "healthy" },
+    {
+      "name": "database",
+      "status": "unhealthy",
+      "reason": "connection refused"
+    }
+  ]
+}
+```
+
+One unhealthy component makes the whole application unhealthy, and the report
+still names every component — a report naming only the first failure is worth
+less than one naming all of them. An application that composed no starter
+declaring a check gets `{"status":"healthy","components":[]}`: a set port with
+no contributors is empty, not missing.
+
+**`/healthz` is deliberately NOT folded into `/readyz`.** Readiness removes a
+pod from its Service's endpoints, so failing it on a dependency several
+replicas share takes every replica out at once and turns a degraded system into
+an outage. `/readyz` answers for the lifecycle; `/healthz` reports on
+dependencies, and what to do about a `503` there is an operator's decision —
+an alert, a dashboard, a dependency-aware rollout gate — not an automatic
+removal from load balancing.
+
+Each check runs on every request; the kernel caches nothing. A check that is
+expensive to run is the adapter's problem to make cheap, since only the adapter
+knows what "cheap" means for it.
 
 There is deliberately **no startup probe**: `/livez` answers `200` from
 `building` onward, so a slow-building graph is covered by `/readyz` alone.

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { Server } from "node:http";
 
+import { OkAsync, type AsyncResult } from "unthrown";
 import { describe, expect, it, vi } from "vitest";
 
 // Capture the real `http.Server` instances `startProbeServer` creates, so the
@@ -23,6 +24,7 @@ vi.mock("node:http", async (importOriginal) => {
   };
 });
 
+import type { HealthReport } from "./health.js";
 import { startProbeServer } from "./probes.js";
 
 /** The last captured `http.Server`, asserted here so a test body cannot pass on an empty capture. */
@@ -37,10 +39,46 @@ const get = async (port: number, path: string): Promise<{ status: number; body: 
   return { status: response.status, body: await response.text() };
 };
 
+const healthy = (): AsyncResult<HealthReport, never> =>
+  OkAsync({ status: "healthy" as const, components: [] });
+
 describe("startProbeServer", () => {
+  it("serves the health report, and 503 when a component is down", async () => {
+    // GIVEN a probe server whose health function reports one component down
+    const report = {
+      status: "unhealthy" as const,
+      components: [
+        { name: "cache", status: "healthy" as const },
+        { name: "database", status: "unhealthy" as const, reason: "connection refused" },
+      ],
+    };
+    const started = await startProbeServer({
+      port: 0,
+      live: () => true,
+      ready: () => true,
+      health: () => OkAsync(report),
+    });
+    const server = started.getOrThrow();
+
+    // WHEN /healthz is asked
+    const response = await get(server.port, "/healthz");
+
+    // THEN the status is 503 and the body names WHICH component is down
+    expect({ status: response.status, body: JSON.parse(response.body) }).toEqual({
+      status: 503,
+      body: report,
+    });
+    await server.close();
+  });
+
   it("serves liveness and readiness from the supplied predicates", async () => {
     let ready = false;
-    const started = await startProbeServer({ port: 0, live: () => true, ready: () => ready });
+    const started = await startProbeServer({
+      port: 0,
+      live: () => true,
+      health: healthy,
+      ready: () => ready,
+    });
     const server = started.getOrThrow();
 
     expect(await get(server.port, "/livez")).toEqual({ status: 200, body: "ok" });
@@ -53,7 +91,12 @@ describe("startProbeServer", () => {
   });
 
   it("404s an unknown path", async () => {
-    const started = await startProbeServer({ port: 0, live: () => true, ready: () => true });
+    const started = await startProbeServer({
+      port: 0,
+      live: () => true,
+      health: healthy,
+      ready: () => true,
+    });
     const server = started.getOrThrow();
 
     expect((await get(server.port, "/nope")).status).toBe(404);
@@ -63,12 +106,13 @@ describe("startProbeServer", () => {
 
   it("reports a port it cannot bind", async () => {
     const first = (
-      await startProbeServer({ port: 0, live: () => true, ready: () => true })
+      await startProbeServer({ port: 0, live: () => true, health: healthy, ready: () => true })
     ).getOrThrow();
 
     const second = await startProbeServer({
       port: first.port,
       live: () => true,
+      health: healthy,
       ready: () => true,
     });
 
@@ -86,7 +130,12 @@ describe("startProbeServer", () => {
     // `PROBE_PORT=70000` reaching this is the motivating case.
 
     // WHEN the probe server is asked to bind it
-    const started = await startProbeServer({ port: 70_000, live: () => true, ready: () => true });
+    const started = await startProbeServer({
+      port: 70_000,
+      live: () => true,
+      health: healthy,
+      ready: () => true,
+    });
 
     // THEN it arrives in the declared error channel. A defect here would bypass
     // `AsyncResult<ProbeServer, RuntimeStartFailed>` entirely and exit 70 where
@@ -100,7 +149,12 @@ describe("startProbeServer", () => {
   it("swaps the bind-failure error listener for one that outlives the bind", async () => {
     // GIVEN a probe server that bound successfully
     const before = createdServers.length;
-    const started = await startProbeServer({ port: 0, live: () => true, ready: () => true });
+    const started = await startProbeServer({
+      port: 0,
+      live: () => true,
+      health: healthy,
+      ready: () => true,
+    });
     const server = started.getOrThrow();
 
     // WHEN its listener set is inspected
@@ -120,7 +174,12 @@ describe("startProbeServer", () => {
   it("does not throw when the server emits an error after binding", async () => {
     // GIVEN a bound probe server — `net.Server` still emits `'error'` after
     // listening, on accept failures such as `EMFILE` under fd exhaustion.
-    const started = await startProbeServer({ port: 0, live: () => true, ready: () => true });
+    const started = await startProbeServer({
+      port: 0,
+      live: () => true,
+      health: healthy,
+      ready: () => true,
+    });
     const server = started.getOrThrow();
 
     // WHEN one is emitted, and THEN it is absorbed. Unhandled, it would reach

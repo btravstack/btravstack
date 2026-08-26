@@ -36,6 +36,7 @@ const GUIDE_SIDEBAR = [
           { text: "Open a per-request scope", link: "/how-to/open-a-per-request-scope" },
           { text: "Manage a resource's lifetime", link: "/how-to/manage-a-resource" },
           { text: "Keep a port private", link: "/how-to/keep-a-port-private" },
+          { text: "Build a plugin registry", link: "/how-to/build-a-plugin-registry" },
           {
             text: "Read the ambient unit from an adapter",
             link: "/how-to/read-the-ambient-unit",

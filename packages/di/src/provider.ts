@@ -1,6 +1,6 @@
 import { Ok, type AsyncResult, type Result } from "unthrown";
 
-import type { AnyPort, Scope, ServiceOf } from "./port.js";
+import type { AnyPort, MemberOf, Scope, ServiceOf } from "./port.js";
 
 /** Internal: a `deps` record — the one shape a provider declares dependencies in. */
 type Deps = Readonly<Record<string, AnyPort>>;
@@ -226,7 +226,10 @@ export const overrideProvider = <P, E, N>(provider: Provider<P, E, N>): Provider
 /** Package-private (not in `index.ts`): `build.ts`'s plan resolves with it. */
 export const isOverride = (provider: object): boolean => OVERRIDE in provider;
 
-export function Provider<P extends AnyPort, S = ServiceOf<P>>(port: P) {
+// `S` is a second, defaulted type parameter rather than `ServiceOf<P>` inline,
+// so `Provider.member` can instantiate it as `MemberOf<P>` — one contribution's
+// shape, not the `readonly Member[]` the set port resolves to.
+function ProviderDeclaration<P extends AnyPort, S = ServiceOf<P>>(port: P) {
   // `& { readonly port: P }` carries the port class typed, so a provider a
   // helper hands back on a port the caller never spelled is the one value an
   // application needs to hold. Purely additive.
@@ -260,3 +263,18 @@ export function Provider<P extends AnyPort, S = ServiceOf<P>>(port: P) {
   }
   return build;
 }
+
+/**
+ * `Provider.member`'s port is bound by the structural `AnyPort`, not
+ * `ManyPortClass<string>`: a concrete set-port class has a concrete
+ * constructor once `Member` is fixed, so — exactly as with `PortClass` — it is
+ * not assignable to the generic form, and binding it that way would reject
+ * every real call site.
+ *
+ * Instantiating `S` as `MemberOf<P>` is the whole difference: it qualifies an
+ * arm against ONE member's shape. The runtime body is the ordinary factory's;
+ * `context.ts`'s `unsafeAddAll` is what turns a member into an array entry.
+ */
+export const Provider = Object.assign(ProviderDeclaration, {
+  member: <P extends AnyPort>(port: P) => ProviderDeclaration<P, MemberOf<P>>(port),
+});

@@ -172,3 +172,13 @@ Coverage is 100% lines/functions, `test-fixtures.ts` excluded.
 `src/module.test-d.ts` pins the needs gate: a root composing
 a cache without `observability()` and `otel()` beside it fails
 di's `UNSATISFIED DEPENDENCIES` gate naming `Logger | Meter | Tracer`.
+
+## Health check
+
+The starter contributes one `HealthChecks` member, named `cache`, so the
+kernel's `/healthz` reports on it without the application wiring anything. The
+probe is a `get` on a reserved probe key — a MISS is the cache working, so only the adapter reporting it could not reach the server is unhealthy.
+
+Composing the starter therefore exports `HealthChecks` alongside its own port —
+a composition root that re-exports the module whole passes it up to the kernel
+with no extra line.
