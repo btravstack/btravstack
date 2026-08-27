@@ -153,7 +153,7 @@ export const Config = {
   /**
    * A flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive.
    * Anything else is an error rather than a falsy reading — a deployment that
-   * wrote `COMPRESSION=enabled` meant to turn it on.
+   * wrote `HTTP_COMPRESSION=enabled` meant to turn it on.
    */
   boolean: (variable: string, options: WithDefault<boolean> = {}): ConfigField<boolean> =>
     present(variable, options, (value) => {

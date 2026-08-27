@@ -83,6 +83,26 @@ describe("PROBE_PORT", () => {
     );
   });
 
+  it("still reports a bad drain timing when the probe server is off", async ({ configured }) => {
+    // GIVEN probes disabled, so nothing reads PROBE_PORT, and a malformed
+    // DRAIN_TIMEOUT_MS
+    const app = configured.withoutProbes({ DRAIN_TIMEOUT_MS: "soon" });
+
+    // WHEN the application boots
+    // THEN the kernel still refuses: the read covers the drain timings, not
+    // only the probe port, so `probes: false` cannot swallow it
+    await expect(app.exited).toBeErrWith(
+      expect.objectContaining({
+        constructor: RuntimeStartFailed,
+        runtime: "kernel",
+        cause: expect.objectContaining({
+          constructor: ConfigInvalid,
+          issues: [{ message: 'is not a whole number: "soon"', path: ["DRAIN_TIMEOUT_MS"] }],
+        }),
+      }),
+    );
+  });
+
   it("binds the drain timings from the environment when nothing pins them", async ({
     configured,
   }) => {

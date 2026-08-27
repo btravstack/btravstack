@@ -141,7 +141,7 @@ describe("Config.object", () => {
 describe("Config.boolean", () => {
   it("reads every spelling of a flag, in either case, and refuses anything else", () => {
     // GIVEN a flag field
-    const field = Config.boolean("COMPRESSION", { default: false });
+    const field = Config.boolean("HTTP_COMPRESSION", { default: false });
 
     // WHEN every spelling this stack accepts is read, plus one it does not
     const read = {

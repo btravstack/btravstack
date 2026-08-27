@@ -60,6 +60,8 @@ export type ConfiguredApp = {
   readonly exitCodeFor: (env: Environment, probesFromEnv?: boolean) => Promise<number>;
   /** An in-memory runtime alone, with the kernel binding its probe server from `env`. Shut down by the fixture. */
   readonly probesFrom: (env: Environment) => RunningApp<never, TestRuntimeInfo>;
+  /** The same, with the probe server off — the kernel still reads its other variables. */
+  readonly withoutProbes: (env: Environment) => RunningApp<never, TestRuntimeInfo>;
   /**
    * The durations the kernel's own drain slept, with its timings bound from
    * `env` — the pre-drain delay, then the drain deadline. A stub clock, so the
@@ -116,6 +118,16 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
       },
       probesFrom: (env) => {
         const app = start(testRuntime().module, { env, signals: false, onEvent: () => {} });
+        started.push(app);
+        return app;
+      },
+      withoutProbes: (env) => {
+        const app = start(testRuntime().module, {
+          env,
+          signals: false,
+          probes: false,
+          onEvent: () => {},
+        });
         started.push(app);
         return app;
       },

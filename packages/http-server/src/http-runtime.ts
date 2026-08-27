@@ -97,18 +97,18 @@ export const httpModule = <N>(
       hostname: Config.pinned(hostname, Config.string("HOST", { default: "0.0.0.0" })),
       bodyLimit: Config.pinned(
         bodyLimit === false ? 0 : bodyLimit,
-        Config.integer("BODY_LIMIT", { default: DEFAULT_BODY_LIMIT, min: 0 }),
+        Config.integer("HTTP_BODY_LIMIT", { default: DEFAULT_BODY_LIMIT, min: 0 }),
       ),
       // A record naming its own `origin` is what pins this; `corsOf` prefers
       // the record either way, so nothing here has to spell that precedence
       // twice. `cors: false` pins the empty string, which is "off".
       corsOrigin: Config.pinned(
         cors === false ? "" : undefined,
-        Config.string("CORS_ORIGIN", { default: "" }),
+        Config.string("HTTP_CORS_ORIGIN", { default: "" }),
       ),
       compression: Config.pinned(
         compression === undefined ? undefined : compression !== false,
-        Config.boolean("COMPRESSION", { default: false }),
+        Config.boolean("HTTP_COMPRESSION", { default: false }),
       ),
     }),
   );

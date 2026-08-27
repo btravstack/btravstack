@@ -22,7 +22,7 @@ Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   `integerIn(min, max)`: `Number()` + `Number.isInteger` + inclusive bounds.
   `boolean` takes `true`/`false`, `1`/`0`, `yes`/`no` and `on`/`off` in either
   case, and **errors on anything else rather than reading it as falsy** — a
-  deployment that wrote `COMPRESSION=enabled` meant to turn it on, and a silent
+  deployment that wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and a silent
   `false` there is the kind of configuration bug nothing reports.
 - **`Config.pinned(value, field)`** — `field` unless `value` is given, then a
   field answering `value` that reads nothing (same `variable`, `parse: () =>

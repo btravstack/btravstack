@@ -265,10 +265,11 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
 
   emit({ type: "building" });
 
+  // Mapped through `kernelConfig` even when probes are off: the read covers
+  // the drain timings too, and short-circuiting on `probes: false` would let a
+  // malformed `DRAIN_TIMEOUT_MS` boot on the defaults with nothing reported.
   const probesOptions: Result<{ readonly port: number } | false, RuntimeStartFailed> =
-    options.probes === false
-      ? Ok(false)
-      : kernelConfig.map(({ probePort }) => ({ port: probePort }));
+    kernelConfig.map(({ probePort }) => (options.probes === false ? false : { port: probePort }));
   if (options.probes === false) probeBound.resolve(undefined);
 
   const probesStarted: AsyncResult<void, RuntimeStartFailed> = probesOptions

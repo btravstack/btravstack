@@ -42,9 +42,9 @@ beats environment beats default — exactly as `PORT` and `HOST` already worked.
 | Variable                                               | Default           | Bound by                                  |
 | ------------------------------------------------------ | ----------------- | ----------------------------------------- |
 | `PRE_DRAIN_DELAY_MS` / `DRAIN_TIMEOUT_MS`              | `5000` / `20000`  | the kernel                                |
-| `BODY_LIMIT`                                           | `1048576`         | `http()` — `0` is unbounded               |
-| `CORS_ORIGIN`                                          | unset (off)       | `http()` — a comma-separated list, or `*` |
-| `COMPRESSION`                                          | `false`           | `http()`                                  |
+| `HTTP_BODY_LIMIT`                                      | `1048576`         | `http()` — `0` is unbounded               |
+| `HTTP_CORS_ORIGIN`                                     | unset (off)       | `http()` — a comma-separated list, or `*` |
+| `HTTP_COMPRESSION`                                     | `false`           | `http()`                                  |
 | `TEMPORAL_GRACE_PERIOD_MS` / `TEMPORAL_FORCE_AFTER_MS` | `10000` / `15000` | `temporal()`                              |
 | `AMQP_CONNECT_TIMEOUT_MS`                              | `5000`            | `amqp()`                                  |
 
@@ -53,9 +53,16 @@ the pod's `terminationGracePeriodSeconds`, which lives in the manifest — so
 they belong beside it rather than compiled into the image. The same is true of
 a CORS origin, a body limit and Temporal's shutdown budget.
 
+**Every variable carries its starter's prefix** — `HTTP_`, `TEMPORAL_`, `AMQP_`,
+`STORAGE_S3_` — because several starters share one process, and a bare
+`BODY_LIMIT` is a name the next starter would also want. The exceptions are
+names the ecosystem already owns and a platform injects (`PORT`, `HOST`,
+`DATABASE_URL`, `REDIS_URL`, `SMTP_URL`, `LOG_LEVEL`), plus the kernel's own
+three, since a process has exactly one kernel.
+
 `@btravstack/config` gains **`Config.boolean`** for the flags: `true`/`false`,
 `1`/`0`, `yes`/`no`, `on`/`off`, case-insensitive. Anything else is an error
-rather than a falsy reading — a deployment that wrote `COMPRESSION=enabled`
+rather than a falsy reading — a deployment that wrote `HTTP_COMPRESSION=enabled`
 meant to turn it on.
 
 Three things stay composition-time on purpose: a **shape** (`plugins`, a CORS

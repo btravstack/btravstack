@@ -52,7 +52,7 @@ type ConfigField<T> = {
 | `Config.port(variable, options?)`    | a whole number in `0..65535`, `0` (an ephemeral bind) included                     | `{ default?: number }`                             |
 | `Config.pinned(value, field)`        | `field` unless `value` is given, then a field answering `value` that reads nothing | —                                                  |
 
-There is no `Config.boolean`. Semantics shared by every field, in one place:
+Semantics shared by every field, in one place:
 
 | Raw value                   | Result                                                                   |
 | --------------------------- | ------------------------------------------------------------------------ |
@@ -66,7 +66,7 @@ There is no `Config.boolean`. Semantics shared by every field, in one place:
 Values are trimmed before being read; integers are `Number()` plus
 A flag is `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, in either case.
 Anything else is an **error rather than a falsy reading**: a deployment that
-wrote `COMPRESSION=enabled` meant to turn it on, and silently reading that as
+wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and silently reading that as
 `false` is a configuration bug nothing reports.
 
 `Number.isInteger`; an unbounded `Config.integer` spans the safe-integer

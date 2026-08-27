@@ -524,24 +524,26 @@ module lists (`imports`, `provides`, `exports`, `needs`). The `http()`
 primitive does not take `router` as an option — it **needs** the router
 provider on its own port, which is how the composition root supplies it:
 
-| Option            | What it is                                                                                     |
-| ----------------- | ---------------------------------------------------------------------------------------------- |
-| `router`          | the router provider — what `api.HttpRouter(contract)(...)` returns                             |
-| `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                             |
-| `port`            | pins `PORT`                                                                                    |
-| `hostname`        | pins `HOST`                                                                                    |
-| `cors`            | pins `CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off)       |
-| `bodyLimit`       | pins `BODY_LIMIT` — the largest body a procedure reads, in bytes (1 MiB; `false` is unbounded) |
-| `compression`     | pins `COMPRESSION` — response compression, `true` for oRPC's defaults or its options record    |
-| `plugins`         | any other oRPC handler plugin, forwarded to `RPCHandler`                                       |
-| `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                         |
+| Option            | What it is                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| `router`          | the router provider — what `api.HttpRouter(contract)(...)` returns                                  |
+| `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                                  |
+| `port`            | pins `PORT`                                                                                         |
+| `hostname`        | pins `HOST`                                                                                         |
+| `cors`            | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off)       |
+| `bodyLimit`       | pins `HTTP_BODY_LIMIT` — the largest body a procedure reads, in bytes (1 MiB; `false` is unbounded) |
+| `compression`     | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record    |
+| `plugins`         | any other oRPC handler plugin, forwarded to `RPCHandler`                                            |
+| `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                              |
 
-Every scalar among them is a field of `HttpConfig`, bound from the environment
-and **pinned** by the option — explicit beats environment beats default, per
-field — so a deployment sets `CORS_ORIGIN` or `BODY_LIMIT` without a code
-change, and a test pins them instead. The records (`plugins`, a
-`CORSHandlerPluginOptions`, `securityHeaders`) are composition-time: an
-environment carries no records.
+`cors`, `bodyLimit` and `compression` **pin** a field of `HttpConfig` that is
+otherwise bound from the environment — explicit beats environment beats
+default, per field — so a deployment sets `HTTP_CORS_ORIGIN` or
+`HTTP_BODY_LIMIT` without a code change, and a test pins them instead. The rest
+stay composition-time: `prefix` because a client's `baseURL` has to agree with
+it, `securityHeaders` because a deployment that can silently turn
+`x-frame-options` off is a footgun, and `plugins` (or a `CORSHandlerPluginOptions`
+record) because an environment carries no records.
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/http-server),

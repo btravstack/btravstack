@@ -298,7 +298,7 @@ arm)`. The starter provides
   next to the application and exports so `start` finds it, and **`HttpConfig`**
   (`{ port, hostname, bodyLimit, corsOrigin, compression }`) bound through
   `Config.provider` from `PORT` (default `3000`), `HOST` (default `0.0.0.0` — a
-  pod, not a laptop), `BODY_LIMIT`, `CORS_ORIGIN` and `COMPRESSION` in the
+  pod, not a laptop), `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN` and `HTTP_COMPRESSION` in the
   kernel's `Env`. It is declared in `http-config.ts` rather than
   `http-runtime.ts` because `orpc.ts` reads it and `http-runtime.ts` imports
   `orpc` — a leaf module is what keeps that from being a runtime import cycle.
@@ -326,7 +326,7 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>`.
 
   **Each SCALAR half is a field of `HttpConfig`, not a closure**, bound from
-  `BODY_LIMIT`, `CORS_ORIGIN` and `COMPRESSION` and **pinned** by the option —
+  `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN` and `HTTP_COMPRESSION` and **pinned** by the option —
   explicit beats environment beats default, per field, the same
   `Config.pinned` shape `PORT`/`HOST` already used. The option is what a test
   or a fixed decision pins; the variable is what a deployment sets. The
@@ -340,8 +340,8 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   module provides it.
 
   Precedence, spelled once in `corsOf`: a record naming `origin` wins,
-  `CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.
-  `cors: false` pins `""` and is off whatever the deployment says; `CORS_ORIGIN`
+  `HTTP_CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.
+  `cors: false` pins `""` and is off whatever the deployment says; `HTTP_CORS_ORIGIN`
   alone is enough to turn CORS on, which is what lets a deployment admit a
   browser client without a code change. A comma-separated list becomes the
   plugin's own origin array, `*` included.

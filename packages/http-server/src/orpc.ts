@@ -42,14 +42,18 @@ export type OrpcOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
   readonly prefix?: `/${string}`;
   /**
-   * The CORS policy, off unless this or `CORS_ORIGIN` turns it on. `true` takes
-   * oRPC's own defaults — which reflect the request's origin — and a record is
-   * `CORSHandlerPluginOptions` verbatim; a record naming `origin` pins it
-   * instead of reading `CORS_ORIGIN`.
+   * The CORS policy, off unless this or `HTTP_CORS_ORIGIN` turns it on.
+   *
+   * The origin is decided per field, like every other pin: a record naming
+   * `origin` wins, `HTTP_CORS_ORIGIN` next, and oRPC's own default — reflect
+   * the request's origin — last. So `cors: true` turns CORS on and still takes
+   * the deployment's `HTTP_CORS_ORIGIN` when one is set; `cors: false` is off
+   * whatever the deployment says. Everything else in a
+   * `CORSHandlerPluginOptions` record is verbatim.
    */
   readonly cors?: boolean | CORSHandlerPluginOptions<DefaultInitialContext>;
   /**
-   * Pins `HttpConfig.bodyLimit` instead of reading `BODY_LIMIT` (default
+   * Pins `HttpConfig.bodyLimit` instead of reading `HTTP_BODY_LIMIT` (default
    * {@link DEFAULT_BODY_LIMIT}) — the largest request body a procedure will
    * read, in bytes; `false` pins the unbounded `0`. Over the limit is oRPC's
    * `PAYLOAD_TOO_LARGE`, decided on `content-length` when one is sent and while
@@ -57,7 +61,7 @@ export type OrpcOptions = {
    */
   readonly bodyLimit?: number | false;
   /**
-   * Response compression, off unless this or `COMPRESSION` turns it on. `true`
+   * Response compression, off unless this or `HTTP_COMPRESSION` turns it on. `true`
    * takes oRPC's own defaults (gzip then deflate, above 1 KB); a record is
    * `ResponseCompressionHandlerPluginOptions` verbatim and turns it on. Request
    * DEcompression is not this option — it is `RequestCompressionHandlerPlugin`
@@ -73,19 +77,19 @@ export type OrpcOptions = {
 };
 
 /**
- * 1 MiB, the `BODY_LIMIT` default. An unbounded body is a trust boundary rather
- * than a convenience, so this one field defaults ON where `CORS_ORIGIN` and
- * `COMPRESSION` — policy, not safety — default off. An application serving
+ * 1 MiB, the `HTTP_BODY_LIMIT` default. An unbounded body is a trust boundary rather
+ * than a convenience, so this one field defaults ON where `HTTP_CORS_ORIGIN` and
+ * `HTTP_COMPRESSION` — policy, not safety — default off. An application serving
  * uploads raises it.
  */
 export const DEFAULT_BODY_LIMIT = 1_048_576;
 
 /**
  * The CORS options the plugin is built with, or `undefined` for no plugin at
- * all. A record's own `origin` wins over `CORS_ORIGIN`, which wins over oRPC's
+ * all. A record's own `origin` wins over `HTTP_CORS_ORIGIN`, which wins over oRPC's
  * default of reflecting the request's — explicit beats environment beats
  * default, per field. `cors: false` is off whatever the environment says, and
- * `CORS_ORIGIN` alone is enough to turn it on.
+ * `HTTP_CORS_ORIGIN` alone is enough to turn it on.
  */
 const corsOf = (
   option: OrpcOptions["cors"],

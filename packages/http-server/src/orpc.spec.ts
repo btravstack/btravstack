@@ -161,28 +161,38 @@ describe("http, over a router", () => {
     expect(encoding).toBe("gzip");
   });
 
-  it("reads the policy from the environment when no option pins it", async ({ rpcPolicy }) => {
+  it("reads the body limit and the CORS origin from the environment", async ({ rpcPolicy }) => {
     // GIVEN an app that configures no policy at all, deployed with one
-    const { greet, encodingOf } = await rpcPolicy(
+    const { greet } = await rpcPolicy(
       {},
-      { BODY_LIMIT: "4096", CORS_ORIGIN: "https://allowed.test", COMPRESSION: "true" },
+      { HTTP_BODY_LIMIT: "4096", HTTP_CORS_ORIGIN: "https://allowed.test" },
     );
 
-    // WHEN a body over that limit is sent, and a compressible answer requested
-    const rejected = await greet("x".repeat(8192), { origin: "https://allowed.test" });
+    // WHEN a body over the deployed limit is sent from the deployed origin
+    const response = await greet("x".repeat(8192), { origin: "https://allowed.test" });
+
+    // THEN both variables were honoured — HTTP_CORS_ORIGIN alone turns CORS on,
+    // with no `cors` option anywhere
+    expect({
+      status: response.status,
+      origin: response.headers.get("access-control-allow-origin"),
+    }).toEqual({ status: 413, origin: "https://allowed.test" });
+  });
+
+  it("reads compression from the environment", async ({ rpcPolicy }) => {
+    // GIVEN an app that configures no policy at all, deployed with compression on
+    const { encodingOf } = await rpcPolicy({}, { HTTP_COMPRESSION: "true" });
+
+    // WHEN a procedure answers with more than the default threshold
     const encoding = await encodingOf("x".repeat(2048));
 
-    // THEN all three variables were honoured — CORS_ORIGIN alone turns CORS on
-    expect({
-      status: rejected.status,
-      origin: rejected.headers.get("access-control-allow-origin"),
-      encoding,
-    }).toEqual({ status: 413, origin: "https://allowed.test", encoding: "gzip" });
+    // THEN the response came back gzipped
+    expect(encoding).toBe("gzip");
   });
 
   it("prefers the option over the environment, per field", async ({ rpcPolicy }) => {
     // GIVEN an app whose body limit is pinned against an environment saying otherwise
-    const { greet } = await rpcPolicy({ bodyLimit: false }, { BODY_LIMIT: "16" });
+    const { greet } = await rpcPolicy({ bodyLimit: false }, { HTTP_BODY_LIMIT: "16" });
 
     // WHEN a body over the deployed limit is sent
     const response = await greet("x".repeat(64));

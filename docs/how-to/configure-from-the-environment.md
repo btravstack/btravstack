@@ -208,9 +208,9 @@ composition root.
 | `PRE_DRAIN_DELAY_MS`       | `5000`                  | the kernel ([drain](/how-to/tune-the-drain-for-kubernetes)) |
 | `DRAIN_TIMEOUT_MS`         | `20000`                 | the kernel                                                  |
 | `PORT` / `HOST`            | `3000` / `0.0.0.0`      | [`http()`](/reference/http-server)                          |
-| `BODY_LIMIT`               | `1048576`               | `http()` — `0` is unbounded                                 |
-| `CORS_ORIGIN`              | unset (CORS off)        | `http()` — comma-separated origins, or `*`                  |
-| `COMPRESSION`              | `false`                 | `http()` — response compression                             |
+| `HTTP_BODY_LIMIT`          | `1048576`               | `http()` — `0` is unbounded                                 |
+| `HTTP_CORS_ORIGIN`         | unset (CORS off)        | `http()` — comma-separated origins, or `*`                  |
+| `HTTP_COMPRESSION`         | `false`                 | `http()` — response compression                             |
 | `TEMPORAL_ADDRESS`         | `127.0.0.1:7233`        | [`temporal()`](/reference/temporal-worker)                  |
 | `TEMPORAL_NAMESPACE`       | `default`               | `temporal()`                                                |
 | `TEMPORAL_GRACE_PERIOD_MS` | `10000`                 | `temporal()` — `shutdownGraceTime`                          |
@@ -222,6 +222,15 @@ composition root.
 | `REDIS_URL`                | required                | [`cache()` over Redis](/reference/cache)                    |
 | `SMTP_URL`                 | required                | [`mailer()` over SMTP](/reference/mailer)                   |
 | `STORAGE_S3_*`             | see the page            | [`storage()` over S3](/reference/storage)                   |
+
+**A variable carries its starter's prefix**, so two starters in one process
+cannot collide — an HTTP deployment that also publishes to AMQP and reads a
+database composes three of them. `HTTP_`, `TEMPORAL_`, `AMQP_`, `STORAGE_S3_`
+are the namespaces; the exceptions are names the ecosystem already owns and
+that a platform injects for you (`PORT`, `HOST`, `DATABASE_URL`, `REDIS_URL`,
+`SMTP_URL`, `LOG_LEVEL`), where a prefix would break the convention rather than
+protect it. The kernel's three are unprefixed because there is exactly one
+kernel in a process and nothing else binds them.
 
 A **shape** is never a variable: a plugin list, a CORS record's allowed
 headers, a set of security headers. An environment carries strings, so what it

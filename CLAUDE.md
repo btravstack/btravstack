@@ -1071,7 +1071,7 @@ A sixth rule is about production code that tests keep honest:
    `Number()` + `isInteger` + inclusive bounds, so `abc`, `3.5` and
    out-of-range are all named; a **flag** is `true`/`false`, `1`/`0`,
    `yes`/`no` or `on`/`off` in either case and **errors on anything else
-   rather than reading it as falsy**, since `COMPRESSION=enabled` meant to
+   rather than reading it as falsy**, since `HTTP_COMPRESSION=enabled` meant to
    turn it on. Any Standard Schema is accepted in place of
    `Config.object` (a `zod` object over the raw variables) — the practice
    _"Accept any Standard Schema validator"_ — but the fields exist so the
@@ -1083,18 +1083,30 @@ A sixth rule is about production code that tests keep honest:
    timeout has to agree with a pod's `terminationGracePeriodSeconds`, a CORS
    origin with whoever is calling, a body limit with what the endpoint
    accepts — all in the manifest, none in the image. So `PRE_DRAIN_DELAY_MS`,
-   `DRAIN_TIMEOUT_MS`, `BODY_LIMIT`, `CORS_ORIGIN`, `COMPRESSION`,
+   `DRAIN_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
    `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS` and
    `AMQP_CONNECT_TIMEOUT_MS` are fields beside `PORT`, `HOST`,
    `TEMPORAL_ADDRESS` and `AMQP_URL`, each **pinned** by the matching option:
    the option is what a test or a settled decision fixes, the variable what a
-   deployment sets, and `Config.pinned` decides between them per field. Three
+   deployment sets, and `Config.pinned` decides between them per field.
+
+   **A variable carries its starter's prefix** — `HTTP_`, `TEMPORAL_`, `AMQP_`,
+   `STORAGE_S3_` — because several starters share one process (an HTTP
+   deployment that publishes to AMQP and reads a database composes three), and
+   a bare name like `BODY_LIMIT` is one the next starter would also want. The
+   exceptions are names the **ecosystem** already owns and a platform injects
+   (`PORT`, `HOST`, `DATABASE_URL`, `REDIS_URL`, `SMTP_URL`, `LOG_LEVEL`),
+   where a prefix breaks the convention rather than protecting it — and the
+   kernel's own three, since a process has exactly one kernel and nothing else
+   binds them.
+
+   Three
    things stay options on purpose — a **shape** (`plugins`, a CORS record's
    allowed headers), because an environment carries strings; a **graph
    decision** (`instrumented`, an adapter choice), because it changes what is
    built rather than how it behaves; and a value whose silent change is a
    security regression, which is why `securityHeaders` is an option and
-   `CORS_ORIGIN` is a variable. The full index is
+   `HTTP_CORS_ORIGIN` is a variable. The full index is
    `docs/how-to/configure-from-the-environment.md`.
 
    `examples/order-config` and the three `env.ts`
