@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/temporal-worker",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "The Temporal worker runtime for @btravstack/core: one unit per activity attempt, and a drain that honours the kernel's deadline",
   "keywords": [
     "graceful-shutdown",

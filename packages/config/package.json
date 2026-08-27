@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/config",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Configuration the twelve-factor way for @btravstack/di: typed values bound from the environment, validated once, injected like any other service",
   "keywords": [
     "12-factor",
