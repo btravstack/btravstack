@@ -124,8 +124,10 @@ class RuntimeStartFailed extends TaggedError("RuntimeStartFailed")<{
 ```
 
 The one error the kernel mints. A runtime answers it from `start`; the kernel
-answers it with `runtime: "probes"` when the probe server cannot bind or
-`PROBE_PORT` is malformed (its `cause` then a `ConfigInvalid`).
+answers it with `runtime: "probes"` when the probe server cannot bind, and
+with `runtime: "kernel"` when one of its own variables is malformed —
+`PROBE_PORT`, `PRE_DRAIN_DELAY_MS`, `DRAIN_TIMEOUT_MS` — its `cause` then a
+`ConfigInvalid` naming every one of them that was wrong.
 
 ## `releasedBy`
 

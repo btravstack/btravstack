@@ -460,10 +460,13 @@ outage. The kernel reports; an operator decides.
 
 ## Cross-cutting concerns: configuration, not a middleware slot
 
-CORS, body limits, compression, CSRF, security headers and authentication are
+CORS, body limits, compression, security headers and authentication are
 **handler configuration, not a middleware slot** — thesis #3's refusal, narrowed
-to what it was always about. Rate limiting is a stated non-goal. The full
-reasoning is in `packages/http-server/CLAUDE.md`.
+to what it was always about, and named options on `http()` / `HttpModule` for
+all five. CSRF is the stated exception: oRPC's protection only bites on a
+request carrying a `SameSite` cookie, and this package configures no cookies,
+so it stays a `plugins` line until they arrive. Rate limiting is a stated
+non-goal. The full reasoning is in `packages/http-server/CLAUDE.md`.
 
 ## Public surface
 
@@ -1066,11 +1069,47 @@ A sixth rule is about production code that tests keep honest:
    ephemeral port; a **port's floor is `0`** so an ephemeral bind stays
    expressible, which is why that guard cannot be a lower bound; integers are
    `Number()` + `isInteger` + inclusive bounds, so `abc`, `3.5` and
-   out-of-range are all named. Any Standard Schema is accepted in place of
+   out-of-range are all named; a **flag** is `true`/`false`, `1`/`0`,
+   `yes`/`no` or `on`/`off` in either case and **errors on anything else
+   rather than reading it as falsy**, since `HTTP_COMPRESSION=enabled` meant to
+   turn it on. Any Standard Schema is accepted in place of
    `Config.object` (a `zod` object over the raw variables) — the practice
    _"Accept any Standard Schema validator"_ — but the fields exist so the
    framework's own starters, and an application with ordinary needs, bring no
-   schema library at all. `examples/order-config` and the three `env.ts`
+   schema library at all.
+
+   **The test of whether something belongs in the environment is whether it
+   varies by deployment, not whether it is "configuration-shaped."** A drain
+   timeout has to agree with a pod's `terminationGracePeriodSeconds`, a CORS
+   origin with whoever is calling, a body limit with what the endpoint
+   accepts — all in the manifest, none in the image. So `PRE_DRAIN_DELAY_MS`,
+   `DRAIN_TIMEOUT_MS`, `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN`, `HTTP_COMPRESSION`,
+   `TEMPORAL_GRACE_PERIOD_MS`, `TEMPORAL_FORCE_AFTER_MS` and
+   `AMQP_CONNECT_TIMEOUT_MS` are fields beside `PORT`, `HOST`,
+   `TEMPORAL_ADDRESS` and `AMQP_URL`, each **pinned** by the matching option:
+   the option is what a test or a settled decision fixes, the variable what a
+   deployment sets, and `Config.pinned` decides between them per field.
+
+   **A variable carries its starter's prefix** — `HTTP_`, `TEMPORAL_`, `AMQP_`,
+   `STORAGE_S3_` — because several starters share one process (an HTTP
+   deployment that publishes to AMQP and reads a database composes three), and
+   a bare name like `BODY_LIMIT` is one the next starter would also want. The
+   exceptions are names the **ecosystem** already owns and a platform injects
+   (`PORT`, `HOST`, `DATABASE_URL`, `REDIS_URL`, `SMTP_URL`, `LOG_LEVEL`),
+   where a prefix breaks the convention rather than protecting it — and the
+   kernel's own three, since a process has exactly one kernel and nothing else
+   binds them.
+
+   Three
+   things stay options on purpose — a **shape** (`plugins`, a CORS record's
+   allowed headers), because an environment carries strings; a **graph
+   decision** (`instrumented`, an adapter choice), because it changes what is
+   built rather than how it behaves; and a value whose silent change is a
+   security regression, which is why `securityHeaders` is an option and
+   `HTTP_CORS_ORIGIN` is a variable. The full index is
+   `docs/how-to/configure-from-the-environment.md`.
+
+   `examples/order-config` and the three `env.ts`
    files were the earlier shape (a shared zod fragment, `readEnv()`,
    `describeEnvIssues`, `abort(78)` by hand in every `main.ts`); they were
    deleted when the kernel took this over.

@@ -1,4 +1,3 @@
-import type { ConsumerOptions } from "@amqp-contract/worker";
 import type { ConfigInvalid, Env } from "@btravstack/config";
 import {
   Module,
@@ -14,7 +13,7 @@ import {
   AmqpRuntime,
   amqp,
   type AmqpConfig,
-  type AmqpConnectionOptions,
+  type AmqpTuning,
   type AnyAmqpContract,
   type HandlersInstanceOf,
 } from "./amqp-runtime.js";
@@ -51,18 +50,10 @@ export type AmqpModuleOptions<
     Provides<P, TContract, HandlersError, HandlersNeeds>
   >[],
   N extends readonly AnyPort[],
-> = {
+> = AmqpTuning & {
   readonly contract: TContract;
   /** The application's handlers — what `AmqpHandlers(contract)(…)` returns for THIS contract. */
   readonly handlers: Provider<HandlersInstanceOf<TContract>, HandlersError, HandlersNeeds>;
-  /** Pins the broker instead of reading `AMQP_URL` — a test's container. */
-  readonly url?: string;
-  /** See `AmqpOptions.connectionOptions`. */
-  readonly connectionOptions?: AmqpConnectionOptions;
-  /** See `AmqpOptions.defaultConsumerOptions`. */
-  readonly defaultConsumerOptions?: ConsumerOptions;
-  /** See `AmqpOptions.connectTimeoutMs`. */
-  readonly connectTimeoutMs?: number;
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `AmqpRuntime` is added, since `start` resolves it. */
@@ -106,18 +97,15 @@ export const AmqpModule =
   >(
     options: AmqpModuleOptions<TContract, HandlersError, HandlersNeeds, I, P, X, N>,
   ) => {
-    const { contract, handlers, url, connectionOptions, defaultConsumerOptions, connectTimeoutMs } =
-      options;
+    const { handlers } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
-    const starter = amqp({
-      contract,
-      ...(url === undefined ? {} : { url }),
-      ...(connectionOptions === undefined ? {} : { connectionOptions }),
-      ...(defaultConsumerOptions === undefined ? {} : { defaultConsumerOptions }),
-      ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
-    });
+    // The whole options record, not a field-by-field spread: `AmqpModuleOptions`
+    // IS `AmqpTuning` plus the contract, the handlers and the module lists, so
+    // an option this sugar forgets to forward cannot exist. The lists `amqp()`
+    // does not know are ignored rather than rejected.
+    const starter = amqp(options);
     // The assertion is the gate, not the shape: `NeedsGate` defers while the
     // tuples are type parameters, and is computed at the application's own call
     // because the options type re-declares it. Spelled out rather than

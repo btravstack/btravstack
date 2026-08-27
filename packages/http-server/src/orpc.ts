@@ -23,22 +23,103 @@ import {
   type Router,
 } from "@orpc/server";
 import { RPCHandler, type NodeHttpHandlerPlugin } from "@orpc/server/node";
+import {
+  CORSHandlerPlugin,
+  RequestLimitHandlerPlugin,
+  ResponseCompressionHandlerPlugin,
+  type CORSHandlerPluginOptions,
+  type ResponseCompressionHandlerPluginOptions,
+} from "@orpc/server/plugins";
 import "@unthrown/orpc/extensions/result";
 
 import { authenticatorPort, principalMiddleware, type AuthenticatorService } from "./auth.js";
 import { CONTROLLER_PREFIX, type ControllerKeyOf, type ControllerPortOf } from "./controller.js";
 import { HttpHandler } from "./handler.js";
+import { HttpConfig } from "./http-config.js";
 import type { Principal, SchemesOf } from "./principal.js";
 
 export type OrpcOptions = {
   /** Where the RPC endpoint is mounted. Default `/rpc`. */
   readonly prefix?: `/${string}`;
   /**
-   * oRPC handler plugins — CORS, body limits, compression, CSRF. Transport
-   * policy configuring the transport; not a middleware slot for application
-   * logic, which the package still declines.
+   * The CORS policy, off unless this or `HTTP_CORS_ORIGIN` turns it on.
+   *
+   * The origin is decided per field, like every other pin: a record naming
+   * `origin` wins, `HTTP_CORS_ORIGIN` next, and oRPC's own default — reflect
+   * the request's origin — last. So `cors: true` turns CORS on and still takes
+   * the deployment's `HTTP_CORS_ORIGIN` when one is set; `cors: false` is off
+   * whatever the deployment says. Everything else in a
+   * `CORSHandlerPluginOptions` record is verbatim.
+   */
+  readonly cors?: boolean | CORSHandlerPluginOptions<DefaultInitialContext>;
+  /**
+   * Pins `HttpConfig.bodyLimit` instead of reading `HTTP_BODY_LIMIT` (default
+   * {@link DEFAULT_BODY_LIMIT}) — the largest request body a procedure will
+   * read, in bytes; `false` pins the unbounded `0`. Over the limit is oRPC's
+   * `PAYLOAD_TOO_LARGE`, decided on `content-length` when one is sent and while
+   * streaming otherwise.
+   */
+  readonly bodyLimit?: number | false;
+  /**
+   * Response compression, off unless this or `HTTP_COMPRESSION` turns it on. `true`
+   * takes oRPC's own defaults (gzip then deflate, above 1 KB); a record is
+   * `ResponseCompressionHandlerPluginOptions` verbatim and turns it on. Request
+   * DEcompression is not this option — it is `RequestCompressionHandlerPlugin`
+   * through `plugins`.
+   */
+  readonly compression?: boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>;
+  /**
+   * Any other oRPC handler plugin. Transport policy configuring the transport;
+   * not a middleware slot for application logic, which the package still
+   * declines.
    */
   readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
+};
+
+/**
+ * 1 MiB, the `HTTP_BODY_LIMIT` default. An unbounded body is a trust boundary rather
+ * than a convenience, so this one field defaults ON where `HTTP_CORS_ORIGIN` and
+ * `HTTP_COMPRESSION` — policy, not safety — default off. An application serving
+ * uploads raises it.
+ */
+export const DEFAULT_BODY_LIMIT = 1_048_576;
+
+/**
+ * The CORS options the plugin is built with, or `undefined` for no plugin at
+ * all. A record's own `origin` wins over `HTTP_CORS_ORIGIN`, which wins over oRPC's
+ * default of reflecting the request's — explicit beats environment beats
+ * default, per field. `cors: false` is off whatever the environment says, and
+ * `HTTP_CORS_ORIGIN` alone is enough to turn it on.
+ */
+const corsOf = (
+  option: OrpcOptions["cors"],
+  corsOrigin: string,
+): CORSHandlerPluginOptions<DefaultInitialContext> | undefined => {
+  if (option === false) return undefined;
+  if (option === undefined && corsOrigin === "") return undefined;
+  const record = option === undefined || option === true ? {} : option;
+  if (record.origin !== undefined || corsOrigin === "") return record;
+  return { ...record, origin: corsOrigin.split(",").map((origin) => origin.trim()) };
+};
+
+/** The configured policies, ahead of whatever `plugins` the application added. */
+const pluginsOf = (
+  options: OrpcOptions,
+  config: ServiceOf<HttpConfig>,
+): readonly NodeHttpHandlerPlugin<DefaultInitialContext>[] => {
+  const cors = corsOf(options.cors, config.corsOrigin);
+  const compression =
+    options.compression === undefined || typeof options.compression === "boolean"
+      ? {}
+      : options.compression;
+  return [
+    ...(cors === undefined ? [] : [new CORSHandlerPlugin(cors)]),
+    ...(config.bodyLimit === 0
+      ? []
+      : [new RequestLimitHandlerPlugin({ maxBodySize: config.bodyLimit })]),
+    ...(config.compression ? [new ResponseCompressionHandlerPlugin(compression)] : []),
+    ...(options.plugins ?? []),
+  ];
 };
 
 /**
@@ -61,10 +142,10 @@ export type HttpRouterPort = PortInstance<"HttpRouter", Router<Record<never, nev
 export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
   return Provider(HttpHandler)(
-    { router: HttpRouterPort },
+    { router: HttpRouterPort, config: HttpConfig },
     {
-      sync: ({ router }) => {
-        const rpc = new RPCHandler(router, { plugins: [...(options.plugins ?? [])] });
+      sync: ({ router, config }) => {
+        const rpc = new RPCHandler(router, { plugins: [...pluginsOf(options, config)] });
         // The request rides oRPC's initial context so `principalMiddleware` can
         // read its headers; nothing else in this package reads it.
         return (request, response) =>

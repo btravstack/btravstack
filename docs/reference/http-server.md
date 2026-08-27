@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/http-server"
-description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
+description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
 <!-- doctest: prelude
@@ -33,29 +33,29 @@ declare const view: (order: Order) => OrderView;
 
 `packages/http-server/src/index.ts` exports exactly this:
 
-| Export                 | Kind  | What it is                                                                                                                                                                                                                                |
-| ---------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `HttpController`, `HttpRouter` and `authenticators` typed by them                  |
-| `Http`                 | type  | `Http<A>` — what `defineHttp` returns, held as one binding and never destructured                                                                                                                                                         |
-| `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                      |
-| `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                              |
-| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment |
-| `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                               |
-| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                    |
-| `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                    |
-| `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                 |
-| `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                  |
-| `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                          |
-| `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                          |
-| `authenticatorPort`    | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                            |
-| `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                  |
-| `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                  |
-| `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                |
-| `http`                 | value | `http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                         |
-| `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                        |
-| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                |
-| `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string }> {}` — what the socket is bound with, provided by `http()` from `PORT` / `HOST`                                                                           |
-| `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                   |
+| Export                 | Kind  | What it is                                                                                                                                                                                                                                                                                                   |
+| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `HttpController`, `HttpRouter` and `authenticators` typed by them                                                                                     |
+| `Http`                 | type  | `Http<A>` — what `defineHttp` returns, held as one binding and never destructured                                                                                                                                                                                                                            |
+| `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                         |
+| `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
+| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                                   |
+| `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                  |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                                       |
+| `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                                                                                       |
+| `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                                                                                    |
+| `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                                                                                     |
+| `Grant`                | type  | `Grant<P, Scope>` — the branded `{ identity, scopes }` `granted()` returns; unforgeable from outside the package                                                                                                                                                                                             |
+| `AuthenticatorService` | type  | `(headers: IncomingHttpHeaders) => AsyncResult<Granted<P, Scope>, Unauthenticated>` — headers in, credential out                                                                                                                                                                                             |
+| `authenticatorPort`    | value | `authenticatorPort(scheme)` — the di port whose id is `` `HttpAuthenticator:${scheme}` ``; a router declares one per scheme its contract names                                                                                                                                                               |
+| `Unauthenticated`      | value | a `TaggedError` with an empty payload — the refusal itself; the starter surfaces no reason to the client                                                                                                                                                                                                     |
+| `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                     |
+| `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                   |
+| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                           |
+| `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                           |
+| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                                                                                   |
+| `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string; bodyLimit: number; corsOrigin: string; compression: boolean }> {}` — what the transport is bound and configured with, provided by `http()` from `PORT` / `HOST` / `HTTP_BODY_LIMIT` / `HTTP_CORS_ORIGIN` / `HTTP_COMPRESSION` |
+| `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                                                                                      |
 
 `HttpController` and `HttpRouter` are **not** top-level exports: they come off
 `defineHttp`, because that is where the scheme registry that types them is
@@ -73,24 +73,28 @@ inferred at the call, the third is an internal seam.
 
 Everything `Module(name)({...})` takes — `imports`, `provides`, `exports` —
 plus the starter's own fields. It appends
-`http({ prefix, port, hostname, plugins, securityHeaders })` to `imports`,
+`http({ prefix, port, hostname, cors, bodyLimit, compression, plugins, securityHeaders })`
+to `imports`,
 prepends `router` **and the scheme authenticators the router carries** to
 `provides`,
 prepends `HttpRuntime` to `exports`, and hands the augmented tuples to di's own
 `Module(name)`, whose return type is the sugar's. The kernel and both gates see
 a plain module.
 
-| Option            | Required | Default          | What it is                                                                                                                                                                     |
-| ----------------- | -------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `router`          | yes      | —                | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `api.HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
-| `prefix`          | no       | `/rpc`           | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                    |
-| `port`            | no       | read from `PORT` | pins the port instead of reading it                                                                                                                                            |
-| `hostname`        | no       | read from `HOST` | pins the host instead of reading it                                                                                                                                            |
-| `plugins`         | no       | `[]`             | oRPC handler plugins, forwarded to `RPCHandler` — CORS, body limits, compression, CSRF                                                                                         |
-| `securityHeaders` | no       | `true`           | response headers set on the raw listener, before dispatch                                                                                                                      |
-| `imports`         | no       | `[]`             | the application's modules                                                                                                                                                      |
-| `provides`        | no       | `[]`             | the application's own providers                                                                                                                                                |
-| `exports`         | no       | `[]`             | the application's own exports; `HttpRuntime` is added                                                                                                                          |
+| Option            | Required | Default                      | What it is                                                                                                                                                                     |
+| ----------------- | -------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `router`          | yes      | —                            | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `api.HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
+| `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                    |
+| `port`            | no       | read from `PORT`             | pins the port instead of reading it                                                                                                                                            |
+| `hostname`        | no       | read from `HOST`             | pins the host instead of reading it                                                                                                                                            |
+| `cors`            | no       | read from `HTTP_CORS_ORIGIN` | pins the CORS policy — `true` for oRPC's defaults, or its options record                                                                                                       |
+| `bodyLimit`       | no       | read from `HTTP_BODY_LIMIT`  | pins the largest request body a procedure reads, in bytes; `false` is unbounded                                                                                                |
+| `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record                                                                                                  |
+| `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                       |
+| `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch                                                                                                                      |
+| `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                      |
+| `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                |
+| `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` is added                                                                                                                          |
 
 The worked composition root, from `examples/order-api/src/module.ts`:
 
@@ -647,13 +651,16 @@ const http: (
 The primitive `HttpModule` delegates to, for a composition root written by
 hand. `HttpOptions`:
 
-| Option            | Required | Default          | What it is                                                      |
-| ----------------- | -------- | ---------------- | --------------------------------------------------------------- |
-| `prefix`          | no       | `/rpc`           | where the RPC endpoint is mounted                               |
-| `port`            | no       | read from `PORT` | pins the port                                                   |
-| `hostname`        | no       | read from `HOST` | pins the host                                                   |
-| `plugins`         | no       | `[]`             | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler` |
-| `securityHeaders` | no       | `true`           | `boolean \| Record<string, string>`, applied on the listener    |
+| Option            | Required | Default            | What it is                                                      |
+| ----------------- | -------- | ------------------ | --------------------------------------------------------------- |
+| `prefix`          | no       | `/rpc`             | where the RPC endpoint is mounted                               |
+| `port`            | no       | read from `PORT`   | pins the port                                                   |
+| `hostname`        | no       | read from `HOST`   | pins the host                                                   |
+| `cors`            | no       | `HTTP_CORS_ORIGIN` | `boolean \| CORSHandlerPluginOptions`, oRPC's CORS plugin       |
+| `bodyLimit`       | no       | `HTTP_BODY_LIMIT`  | `number \| false`, the largest body a procedure reads, in bytes |
+| `compression`     | no       | `HTTP_COMPRESSION` | `boolean \| ResponseCompressionHandlerPluginOptions`            |
+| `plugins`         | no       | `[]`               | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler` |
+| `securityHeaders` | no       | `true`             | `boolean \| Record<string, string>`, applied on the listener    |
 
 The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
 **needs** `Env` (the kernel discharges it) and the starter's router port
@@ -666,16 +673,80 @@ declared type is the same whether or not a field is pinned: `Env` and
 `ConfigInvalid` stay in the signature, and a pinned config never produces the
 latter.
 
+### `cors`, `bodyLimit`, `compression`
+
+`boolean | CORSHandlerPluginOptions`, `number | false` and
+`boolean | ResponseCompressionHandlerPluginOptions` — three oRPC plugins as
+**named options**, so the ordinary transport policy is configuration a reader
+sees at the composition root:
+
+<!-- doctest: isolate
+import { HttpModule } from "@btravstack/http-server";
+import { orderRouter } from "../../module.js";
+import { CustomersSlice } from "../../slices/customers/module.js";
+import { OrdersSlice } from "../../slices/orders/module.js";
+-->
+
+```ts
+export const OrderApi = HttpModule("OrderApi")({
+  router: orderRouter,
+  imports: [OrdersSlice, CustomersSlice],
+  cors: { origin: "https://orders.example", credentials: true },
+  bodyLimit: 5_000_000,
+  compression: true,
+});
+```
+
+`true` takes the underlying plugin's own defaults; a record is that plugin's
+own options type verbatim, never a `Record<string, unknown>` bag.
+
+**The scalar half of each is a field of
+[`HttpConfig`](#httpconfig-and-the-environment), and the
+option pins it** — exactly as `port` pins `PORT`:
+
+| Variable           | Default     | What it is                                                             |
+| ------------------ | ----------- | ---------------------------------------------------------------------- |
+| `HTTP_BODY_LIMIT`  | `1048576`   | the largest request body a procedure reads, in bytes; `0` is unbounded |
+| `HTTP_CORS_ORIGIN` | unset (off) | comma-separated allowed origins, or `*`                                |
+| `HTTP_COMPRESSION` | `false`     | a flag — `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`               |
+
+So a deployment admits a browser client by setting `HTTP_CORS_ORIGIN`, with no code
+change; a test pins `cors` instead. Explicit beats environment beats default,
+per field: a `CORSHandlerPluginOptions` record naming `origin` wins over
+`HTTP_CORS_ORIGIN`, which wins over oRPC's own default of reflecting the request's
+origin, and `cors: false` is off whatever the environment says.
+
+The **shapes** stay composition-time — a record's allowed methods and headers,
+compression's `encodings` and `threshold`, `plugins` itself — because an
+environment carries no records. `securityHeaders` stays composition-time too,
+and deliberately: a deployment that can silently turn `x-frame-options` off is
+a footgun the other three are not.
+
+**`bodyLimit` defaults to 1 MiB because an unbounded body is a trust boundary
+rather than a convenience.** `cors` and `compression` are policy — who may
+call, and how the bytes travel — and a framework guessing either is worse than
+one that stays quiet; a body nobody bounded is a request that can consume the
+process. Over the limit is oRPC's `PAYLOAD_TOO_LARGE`, decided on
+`content-length` when one is sent and while streaming otherwise. An application
+serving uploads raises it, and `false` — like `BODY_LIMIT=0` — turns it off.
+
+`compression` is the **response** half. Request decompression is a separate
+oRPC plugin (`RequestCompressionHandlerPlugin`), left to `plugins` because
+inflating a body before the limit measures it is a decision an application
+should make in the open.
+
+**CSRF is deliberately not an option here**, though this package's own spec
+once claimed it: oRPC's protection is meaningful only once a request carries a
+`SameSite` cookie, and this package configures no cookies. It stays reachable
+through `plugins`, and becomes an option when cookies do.
+
 ### `plugins`
 
 `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
-`@orpc/server/node`, forwarded straight to `new RPCHandler(service, { plugins })`.
-CORS, body limits, compression and CSRF are transport policy oRPC already
-expresses as handler plugins, so the ordinary use is **configuration** rather
-than a middleware slot for application logic —
-`plugins: [new CORSHandlerPlugin({ origin: () => "https://orders.example" })]`
-on `HttpModule` or `http()`, with the plugin imported from
-`@orpc/server/plugins`.
+`@orpc/server/node`, appended to the three configured above and forwarded
+straight to `new RPCHandler(service, { plugins })` — any oRPC plugin the named
+options do not cover, imported from `@orpc/server/plugins`:
+`plugins: [new BatchHandlerPlugin()]`.
 
 `plugins` is an **honest escape hatch, not a keyhole**. oRPC's
 `StandardHandlerPlugin.init` transforms handler options — including
@@ -713,15 +784,19 @@ own decision — pass a record when you have made those.
 
 ## `HttpConfig`, and the environment
 
-`HttpConfig` is `{ port, hostname }`, bound through
-[`Config.provider`](/reference/config) from the `Env` port the kernel provides.
-`port` / `hostname` in the options **pin** a field: explicit > environment >
-default, per field, so `http({ port: 0 })` still reads `HOST`.
+`HttpConfig` is `{ port, hostname, bodyLimit, corsOrigin, compression }`, bound
+through [`Config.provider`](/reference/config) from the `Env` port the kernel
+provides. Each option **pins** its field: explicit > environment > default, per
+field, so `http({ port: 0 })` still reads `HOST` — and still reads
+`HTTP_BODY_LIMIT`.
 
-| Variable | Default   | Parsed by       | Notes                                                                                                |
-| -------- | --------- | --------------- | ---------------------------------------------------------------------------------------------------- |
-| `PORT`   | `3000`    | `Config.port`   | `0` lets the OS pick; read the bound port back from `RunningApp.runtimeInfo()`                       |
-| `HOST`   | `0.0.0.0` | `Config.string` | the deployment target is a pod; set `127.0.0.1` locally if the server must not be reachable off-host |
+| Variable           | Default     | Parsed by        | Notes                                                                                                      |
+| ------------------ | ----------- | ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| `PORT`             | `3000`      | `Config.port`    | `0` lets the OS pick; read the bound port back from `RunningApp.runtimeInfo()`                             |
+| `HOST`             | `0.0.0.0`   | `Config.string`  | the deployment target is a pod; set `127.0.0.1` locally if the server must not be reachable off-host       |
+| `HTTP_BODY_LIMIT`  | `1048576`   | `Config.integer` | bytes; `0` is unbounded. The one policy whose default is **on** — see [above](#cors-bodylimit-compression) |
+| `HTTP_CORS_ORIGIN` | unset (off) | `Config.string`  | comma-separated origins, or `*`; setting it is what turns CORS on                                          |
+| `HTTP_COMPRESSION` | `false`     | `Config.boolean` | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                            |
 
 An unset variable takes the default; a set-but-empty one, `PORT=abc` and
 `PORT=70000` are each a `ConfigInvalid` — a `startFailed` event and exit `78`
@@ -817,8 +892,9 @@ read as unmarked here. Node `>=22`.
   [`plugins`](#plugins) is an honest
   escape hatch rather than a keyhole — a plugin can reach the handler's
   interceptors — but the ordinary path is configuration visible at the
-  composition root, and an application middleware acting on the handler's
-  `Result` is what this package refuses.
+  composition root ([`cors`, `bodyLimit`, `compression`](#cors-bodylimit-compression),
+  [`securityHeaders`](#securityheaders)), and an application middleware acting
+  on the handler's `Result` is what this package refuses.
 - **`Result` → HTTP status.** The router's `.result()` triage owns it.
 - **Resource-dependent authorization.** A **scope** is checked here, because it
   is a property of the credential and answerable before dispatch. "Is this

@@ -76,6 +76,7 @@ a test. Anywhere else, provide it yourself: `Provider(Env)({ value: process.env 
 | ----------------------------------------------- | --------------------------------------------------------------- |
 | `Config.string(VAR, { default? })`              | a non-empty string                                              |
 | `Config.integer(VAR, { min?, max?, default? })` | a whole number, bounds inclusive                                |
+| `Config.boolean(VAR, { default? })`             | a flag: `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`         |
 | `Config.port(VAR, { default? })`                | a whole number in `0..65535` — `0` (an ephemeral bind) included |
 
 An unset variable takes its `default` (or `is required`); a **set but empty or

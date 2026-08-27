@@ -28,7 +28,12 @@ describe("temporal", () => {
 
     // WHEN the graph has bound `TemporalConfig`
     // THEN both came from the environment
-    expect(configured.bound()).toEqual({ address: server.address, namespace: server.namespace });
+    expect(configured.bound()).toEqual({
+      address: server.address,
+      namespace: server.namespace,
+      gracePeriodMs: 10_000,
+      forceAfterMs: 15_000,
+    });
   });
 
   it("pins what it is given and reads the rest from the environment", async ({
@@ -41,7 +46,12 @@ describe("temporal", () => {
 
     // WHEN the graph has bound `TemporalConfig`
     // THEN the pin won for the address and the environment's default for the rest
-    expect(configured.bound()).toEqual({ address: server.address, namespace: "default" });
+    expect(configured.bound()).toEqual({
+      address: server.address,
+      namespace: "default",
+      gracePeriodMs: 10_000,
+      forceAfterMs: 15_000,
+    });
   });
 
   it("reads nothing from the environment when both are pinned", async ({
@@ -60,7 +70,56 @@ describe("temporal", () => {
 
     // WHEN the graph has bound `TemporalConfig`
     // THEN the pins are what it holds, and the environment was never consulted
-    expect(configured.bound()).toEqual({ address: server.address, namespace: "default" });
+    expect(configured.bound()).toEqual({
+      address: server.address,
+      namespace: "default",
+      gracePeriodMs: 10_000,
+      forceAfterMs: 15_000,
+    });
+  });
+
+  it("binds the shutdown durations from the environment, in milliseconds", async ({
+    server,
+    serve,
+    configured,
+  }) => {
+    // GIVEN a deployment naming both durations, and a starter pinning neither
+    await serve({
+      address: server.address,
+      namespace: server.namespace,
+      env: { TEMPORAL_GRACE_PERIOD_MS: "3000", TEMPORAL_FORCE_AFTER_MS: "4000" },
+      tap: configured.tap,
+    });
+
+    // WHEN the graph has bound `TemporalConfig`
+    // THEN both came from the environment
+    expect(configured.bound()).toEqual({
+      address: server.address,
+      namespace: server.namespace,
+      gracePeriodMs: 3_000,
+      forceAfterMs: 4_000,
+    });
+  });
+
+  it("pins a Duration as the milliseconds it means", async ({ server, serve, configured }) => {
+    // GIVEN a grace period pinned as Temporal's own duration string, against an
+    // environment naming a different one
+    await serve({
+      address: server.address,
+      namespace: server.namespace,
+      gracePeriod: "3 seconds",
+      env: { TEMPORAL_GRACE_PERIOD_MS: "9000" },
+      tap: configured.tap,
+    });
+
+    // WHEN the graph has bound `TemporalConfig`
+    // THEN the pin won, parsed to the milliseconds the worker is given
+    expect(configured.bound()).toEqual({
+      address: server.address,
+      namespace: server.namespace,
+      gracePeriodMs: 3_000,
+      forceAfterMs: 15_000,
+    });
   });
 
   it("fails startup with ConfigInvalid for TemporalConfig when TEMPORAL_NAMESPACE is blank", async ({

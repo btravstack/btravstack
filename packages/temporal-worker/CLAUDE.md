@@ -147,9 +147,11 @@ TemporalConnection, ConfigInvalid | TemporalUnreachable, Env | Scope |
 ActivitiesInstanceOf<C>>`** — the starter, the same shape as `@btravstack/http-server`'s
   `http()`. It provides `Runtime<never, TemporalInfo>` on the **`TemporalRuntime`**
   port (a class over core's `RuntimePort`, the package's own now that the
-  runtime resolves nothing), **`TemporalConfig`** (`{ address, namespace }`) bound
-  through `Config.provider` from `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`)
-  and `TEMPORAL_NAMESPACE` (default `default`) in the kernel's `Env`, and
+  runtime resolves nothing), **`TemporalConfig`**
+  (`{ address, namespace, gracePeriodMs, forceAfterMs }`) bound
+  through `Config.provider` from `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`),
+  `TEMPORAL_NAMESPACE` (default `default`), `TEMPORAL_GRACE_PERIOD_MS`
+  (`10_000`) and `TEMPORAL_FORCE_AFTER_MS` (`15_000`) in the kernel's `Env`, and
   **`TemporalConnection`** (a `NativeConnection`) as a **resourceful** provider
   from `[TemporalConfig]` — `acquire: NativeConnection.connect`, `release:
 close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
@@ -162,8 +164,24 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   environment, and the declared `Env` need and `ConfigInvalid` stay whatever is
   pinned — one signature, no overload pair: the kernel discharges the one, a
   pinned config never produces the other),
-  `forceAfter` (Temporal's `shutdownForceTime`, default `15 seconds`) and
-  `gracePeriod` (`shutdownGraceTime`, default `10 seconds`).
+  `forceAfter` (Temporal's `shutdownForceTime`) and `gracePeriod`
+  (`shutdownGraceTime`) — **also pins**, of `TEMPORAL_FORCE_AFTER_MS` and
+  `TEMPORAL_GRACE_PERIOD_MS`. They are milliseconds on the config because an
+  environment carries strings and Temporal's own `msToNumber` is what turns a
+  `Duration` pin (`"10 seconds"`) into the same number, so the two routes reach
+  the worker identically. Both have to agree with the kernel's `drainTimeoutMs`,
+  which is itself `DRAIN_TIMEOUT_MS` — the whole shutdown budget is set in one
+  manifest or pinned in one composition root, never half in each.
+
+  The four fields share ONE `Config.provider`: the fully-pinned shortcut
+  provider is gone, because `Config.pinned` already reads nothing and a
+  four-field version of that branch would have been unsatisfiable in practice.
+
+  `TemporalTuning` is where `address`/`namespace`/`gracePeriod`/`forceAfter`
+  are declared, and `TemporalOptions` and `TemporalModuleOptions` both
+  intersect it — one spelling, so the sugar cannot drift from the starter it
+  forwards to.
+
 - **The activities port is the starter's, provided by the application, and
   the module's one need.** Its service is `ActivitiesOf<C>` =
   `DeclareActivitiesHandlerOptions<C>["activities"]` — the implementations

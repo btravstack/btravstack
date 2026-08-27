@@ -5,6 +5,7 @@ export { defineHttp } from "./define-http.js";
 export type { Authenticators, Http, SchemesFrom } from "./define-http.js";
 export { HttpModule } from "./http-module.js";
 export type { HttpModuleOptions } from "./http-module.js";
-export { HttpConfig, HttpRuntime, http } from "./http-runtime.js";
+export { HttpConfig } from "./http-config.js";
+export { HttpRuntime, http } from "./http-runtime.js";
 export type { HttpInfo, HttpOptions } from "./http-runtime.js";
 export type { Principal, SchemesOf } from "./principal.js";

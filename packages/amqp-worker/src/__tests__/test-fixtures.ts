@@ -8,16 +8,16 @@ import {
 } from "@amqp-contract/contract";
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
-import type { ConfigInvalid } from "@btravstack/config";
+import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
-import { Module, Port, Provider } from "@btravstack/di";
+import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
 import type { TestAPI } from "vitest";
 import { z } from "zod";
 
 import { AmqpModule } from "../amqp-module.js";
-import { AmqpHandlers, type AmqpInfo, type HandlersPortOf } from "../amqp-runtime.js";
+import { AmqpConfig, AmqpHandlers, type AmqpInfo, type HandlersPortOf } from "../amqp-runtime.js";
 import { AmqpHandler } from "../handler.js";
 
 const echoExchange = defineExchange("amqp-test");
@@ -65,6 +65,25 @@ const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: numbe
     ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
     imports: [AppModule],
   });
+
+/** Captures the `AmqpConfig` the graph actually bound, for the configuration spec. */
+const configuredOf = () => {
+  let bound: ServiceOf<AmqpConfig> | undefined;
+  return {
+    tap: Provider(BoundConfig)(
+      { config: AmqpConfig },
+      {
+        sync: ({ config }) => {
+          bound = config;
+          return config;
+        },
+      },
+    ),
+    bound: (): ServiceOf<AmqpConfig> | undefined => bound,
+  };
+};
+
+class BoundConfig extends Port("BoundAmqpConfig")<ServiceOf<AmqpConfig>> {}
 
 const plainHandlers: EchoProvider = echoHandlers({
   value: { echo: () => OkAsync(undefined) },
@@ -247,6 +266,8 @@ export type AmqpFixtures = {
   /** Boots the starter over `handlers` — a record that acks everything when none is given. */
   readonly serve: (handlers?: EchoProvider, options?: ServeOptions) => Promise<App>;
   readonly serveBroken: () => Promise<App>;
+  /** The `AmqpConfig` a graph binds from `env` alone, nothing pinned. */
+  readonly boundFrom: (env: Environment) => Promise<ServiceOf<AmqpConfig> | undefined>;
   readonly seam: ReturnType<typeof seamOf>;
   readonly gate: ReturnType<typeof gatedHandler>;
   /** A handler that waits on the unit's own `AbortSignal`, read off the ambient record. */
@@ -267,6 +288,22 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       // so the caller's test body never races the worker's own startup.
       await app.runtimeInfo();
       return app;
+    });
+  },
+  boundFrom: async ({ boot }, use) => {
+    await use(async (env) => {
+      const configured = configuredOf();
+      const app = boot(
+        AmqpModule("Bound")({
+          contract: echoContract,
+          handlers: plainHandlers,
+          imports: [AppModule],
+          provides: [configured.tap],
+        }),
+        { env },
+      );
+      await app.runtimeInfo();
+      return configured.bound();
     });
   },
   serveBroken: async ({ boot }, use) => {

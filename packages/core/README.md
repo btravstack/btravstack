@@ -112,10 +112,13 @@ is a module that exports no runtime port at all.
 ## What you get
 
 - **A drain that survives Kubernetes.** On SIGTERM: readiness flips false, the
-  kernel waits `preDrainDelayMs` (default `5_000`) before telling the runtime
-  to stop accepting — endpoint removal is eventually consistent — then
-  in-flight work gets `drainTimeoutMs` (default `20_000`); whatever is still
-  open is aborted and reported `abandoned`. A second signal skips the drain.
+  kernel waits `preDrainDelayMs` (`PRE_DRAIN_DELAY_MS`, default `5_000`) before
+  telling the runtime to stop accepting — endpoint removal is eventually
+  consistent — then in-flight work gets `drainTimeoutMs` (`DRAIN_TIMEOUT_MS`,
+  default `20_000`); whatever is still open is aborted and reported
+  `abandoned`. A second signal skips the drain. Both timings have to agree with
+  the pod's `terminationGracePeriodSeconds`, which is why the deployment can
+  set them and the option only pins them.
 - **Probes from the state machine.** `GET /livez` and `GET /readyz` on
   `PROBE_PORT` (default `9000`), up before the graph is built.
 - **Configuration from the environment, typed.** The kernel provides

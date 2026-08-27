@@ -8,6 +8,7 @@ import {
   type TestRuntimeInfo,
   TestRuntimePort,
 } from "@btravstack/testing";
+import { OkAsync } from "unthrown";
 import { expect, test } from "vitest";
 
 import type { KernelEvent } from "../events.js";
@@ -59,6 +60,14 @@ export type ConfiguredApp = {
   readonly exitCodeFor: (env: Environment, probesFromEnv?: boolean) => Promise<number>;
   /** An in-memory runtime alone, with the kernel binding its probe server from `env`. Shut down by the fixture. */
   readonly probesFrom: (env: Environment) => RunningApp<never, TestRuntimeInfo>;
+  /** The same, with the probe server off — the kernel still reads its other variables. */
+  readonly withoutProbes: (env: Environment) => RunningApp<never, TestRuntimeInfo>;
+  /**
+   * The durations the kernel's own drain slept, with its timings bound from
+   * `env` — the pre-drain delay, then the drain deadline. A stub clock, so the
+   * assertion is on what was asked for rather than on wall time.
+   */
+  readonly drainSleepsFor: (env: Environment) => Promise<readonly number[]>;
 };
 
 const settingsApp = () =>
@@ -111,6 +120,36 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
         const app = start(testRuntime().module, { env, signals: false, onEvent: () => {} });
         started.push(app);
         return app;
+      },
+      withoutProbes: (env) => {
+        const app = start(testRuntime().module, {
+          env,
+          signals: false,
+          probes: false,
+          onEvent: () => {},
+        });
+        started.push(app);
+        return app;
+      },
+      drainSleepsFor: async (env) => {
+        const slept: number[] = [];
+        const app = start(testRuntime().module, {
+          env,
+          signals: false,
+          clock: {
+            now: () => 0,
+            sleep: (ms) => {
+              slept.push(ms);
+              return OkAsync();
+            },
+          },
+          onEvent: () => {},
+        });
+        started.push(app);
+        await app.runtimeInfo();
+        app.requestDrain();
+        await app.exited;
+        return slept;
       },
       exitCodeFor: async (env, probesFromEnv = false) => {
         let code = -1;

@@ -48,10 +48,11 @@ type ConfigField<T> = {
 | ------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `Config.string(variable, options?)`  | a non-empty string                                                                 | `{ default?: string }`                             |
 | `Config.integer(variable, options?)` | a whole number, bounds inclusive                                                   | `{ default?: number; min?: number; max?: number }` |
+| `Config.boolean(variable, options?)` | a flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive        | `{ default?: boolean }`                            |
 | `Config.port(variable, options?)`    | a whole number in `0..65535`, `0` (an ephemeral bind) included                     | `{ default?: number }`                             |
 | `Config.pinned(value, field)`        | `field` unless `value` is given, then a field answering `value` that reads nothing | —                                                  |
 
-There is no `Config.boolean`. Semantics shared by every field, in one place:
+Semantics shared by every field, in one place:
 
 | Raw value                   | Result                                                                   |
 | --------------------------- | ------------------------------------------------------------------------ |
@@ -63,6 +64,11 @@ There is no `Config.boolean`. Semantics shared by every field, in one place:
 | `0` (port)                  | valid — a port's floor is `0` so an ephemeral bind stays expressible     |
 
 Values are trimmed before being read; integers are `Number()` plus
+A flag is `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, in either case.
+Anything else is an **error rather than a falsy reading**: a deployment that
+wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and silently reading that as
+`false` is a configuration bug nothing reports.
+
 `Number.isInteger`; an unbounded `Config.integer` spans the safe-integer
 range. `""` being an error rather than an absent variable is what stops
 `PORT=` binding the ephemeral port through `Number("") === 0`.

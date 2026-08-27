@@ -123,6 +123,9 @@ const integerIn =
     return Ok(parsed);
   };
 
+const TRUTHY = new Set(["true", "1", "yes", "on"]);
+const FALSY = new Set(["false", "0", "no", "off"]);
+
 /**
  * Configuration, the twelve-factor way: typed values bound from the environment,
  * validated once as the graph is built, and injected like any other service.
@@ -146,6 +149,21 @@ export const Config = {
       options,
       integerIn(options.min ?? Number.MIN_SAFE_INTEGER, options.max ?? Number.MAX_SAFE_INTEGER),
     ),
+
+  /**
+   * A flag: `true`/`false`, `1`/`0`, `yes`/`no` or `on`/`off`, case-insensitive.
+   * Anything else is an error rather than a falsy reading — a deployment that
+   * wrote `HTTP_COMPRESSION=enabled` meant to turn it on.
+   */
+  boolean: (variable: string, options: WithDefault<boolean> = {}): ConfigField<boolean> =>
+    present(variable, options, (value) => {
+      const flag = TRUTHY.has(value.toLowerCase())
+        ? true
+        : FALSY.has(value.toLowerCase())
+          ? false
+          : undefined;
+      return flag === undefined ? invalid(`is not a flag: ${JSON.stringify(value)}`) : Ok(flag);
+    }),
 
   /** A TCP port: a whole number the OS will accept, `0` (an ephemeral bind) included. */
   port: (variable: string, options: WithDefault<number> = {}): ConfigField<number> =>

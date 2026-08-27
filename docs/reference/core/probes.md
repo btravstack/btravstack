@@ -89,11 +89,11 @@ There is deliberately **no startup probe**: `/livez` answers `200` from
 
 ## Configuration
 
-| `StartOptions.probes` | Behaviour                                                                                                                                                                                                                                                                        |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| unset                 | The port is bound from **`PROBE_PORT`** in `StartOptions.env` (default `process.env`), through `Config.port("PROBE_PORT", { default: 9000 })`. The one piece of configuration the kernel binds itself, because the probe server is up before the graph — and its `Env` — exists. |
-| `{ port: number }`    | Bind that port. `{ port: 0 }` lets the OS choose; read it back from `RunningApp.probePort()`.                                                                                                                                                                                    |
-| `false`               | No probe server. `probePort()` resolves `undefined`. `ready()` still works — it is what an embedder wires into a health endpoint of its own.                                                                                                                                     |
+| `StartOptions.probes` | Behaviour                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| unset                 | The port is bound from **`PROBE_PORT`** in `StartOptions.env` (default `process.env`), through `Config.port("PROBE_PORT", { default: 9000 })`, alongside `PRE_DRAIN_DELAY_MS` and `DRAIN_TIMEOUT_MS`. These are the configuration the kernel binds itself, because the probe server is up — and the drain is scheduled — before the graph, and its `Env`, exists. |
+| `{ port: number }`    | Bind that port. `{ port: 0 }` lets the OS choose; read it back from `RunningApp.probePort()`.                                                                                                                                                                                                                                                                     |
+| `false`               | No probe server. `probePort()` resolves `undefined`. `ready()` still works — it is what an embedder wires into a health endpoint of its own.                                                                                                                                                                                                                      |
 
 `@btravstack/testing`'s `bootFixture` defaults to `probes: false`, and its
 `bootFixture` defaults to it; a test that needs the real server passes
@@ -119,11 +119,11 @@ A bind failure is a **startup failure**: it stops the graph being built at all
 and lands in `exited` as `Err(RuntimeStartFailed({ runtime: "probes", cause }))`,
 with a `startFailed` event first.
 
-| Cause                                                | `RuntimeStartFailed.cause`                                                | `runMain` code |
-| ---------------------------------------------------- | ------------------------------------------------------------------------- | -------------- |
-| port already in use, permission denied               | Node's `'error'` (`EADDRINUSE`, `EACCES`, …)                              | `1`            |
-| `PROBE_PORT` malformed (`abc`, `3.5`, `70000`, `""`) | a `ConfigInvalid` with `port: "probes"` and one issue at `["PROBE_PORT"]` | `78`           |
-| `{ port }` outside `0..65535` or not an integer      | Node's `ERR_SOCKET_BAD_PORT`, caught rather than let escape as a defect   | `1`            |
+| Cause                                                | `RuntimeStartFailed.cause`                                                                                                                                                                                        | `runMain` code |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| port already in use, permission denied               | Node's `'error'` (`EADDRINUSE`, `EACCES`, …)                                                                                                                                                                      | `1`            |
+| `PROBE_PORT` malformed (`abc`, `3.5`, `70000`, `""`) | a `ConfigInvalid` with `port: "kernel"`, one issue at `["PROBE_PORT"]` — plus an issue for `PRE_DRAIN_DELAY_MS` / `DRAIN_TIMEOUT_MS` if those are wrong too, since the kernel reads its own variables in one pass | `78`           |
+| `{ port }` outside `0..65535` or not an integer      | Node's `ERR_SOCKET_BAD_PORT`, caught rather than let escape as a defect                                                                                                                                           | `1`            |
 
 ## Reading the bound port
 

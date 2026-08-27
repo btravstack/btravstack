@@ -30,10 +30,22 @@ export type AmqpInfo = { readonly queues: readonly string[] };
 
 /**
  * The broker, as a service: `amqp()` binds it from `AMQP_URL` (default
- * `amqp://127.0.0.1:5672`) unless pinned, and anything else in the graph may
- * read it — a publisher sharing the consumer's broker, say.
+ * `amqp://127.0.0.1:5672`) and `AMQP_CONNECT_TIMEOUT_MS` (default `5_000`)
+ * unless pinned, and anything else in the graph may read it — a publisher
+ * sharing the consumer's broker, say.
  */
-export class AmqpConfig extends Port("AmqpConfig")<{ readonly url: string }> {}
+export class AmqpConfig extends Port("AmqpConfig")<{
+  readonly url: string;
+  /** How long `create` waits for the connection before failing. */
+  readonly connectTimeoutMs: number;
+}> {}
+
+/**
+ * Five seconds. The library's own default is 30, which is longer than most
+ * orchestrators wait before restarting the pod — an unreachable broker should
+ * be reported, not sat on.
+ */
+const DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
 
 /** The runtime's port: what `amqp()` provides, and what the module `start` boots must export. */
 export class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}
@@ -83,17 +95,26 @@ export type AmqpOptions<TContract extends AnyAmqpContract> = {
    * built by di from the services it declares.
    */
   readonly contract: TContract;
-  /** Pins the broker instead of reading `AMQP_URL` — a test's container. */
+} & AmqpTuning;
+
+/**
+ * What an AMQP deployment tunes, shared verbatim by `amqp()` and `AmqpModule` —
+ * spelled once so the two cannot drift, which is what a second copy of an
+ * option list always eventually does.
+ */
+export type AmqpTuning = {
+  /** Pins `AmqpConfig.url` instead of reading `AMQP_URL` — a test's container. */
   readonly url?: string;
   /** Connection tuning, `@amqp-contract/worker`'s own type: heartbeat, reconnect interval, `findServers`, TLS/socket options. */
   readonly connectionOptions?: AmqpConnectionOptions;
   /** Consumer defaults applied to every handler, the library's own type: `prefetch`, `priority`, `arguments`, `consumerTag`, `exclusive`. */
   readonly defaultConsumerOptions?: ConsumerOptions;
   /**
-   * How long `create` waits for the connection before failing. Passed straight
-   * through — it is a top-level `CreateWorkerOptions` field, NOT nested under
-   * `connectionOptions`, where setting it is silently inert. Without it an
-   * unreachable broker takes the library's 30s default to report.
+   * Pins `AmqpConfig.connectTimeoutMs` instead of reading
+   * `AMQP_CONNECT_TIMEOUT_MS` (default {@link DEFAULT_CONNECT_TIMEOUT_MS}) —
+   * how long `create` waits for the connection before failing. Passed straight
+   * through as a top-level `CreateWorkerOptions` field, NOT nested under
+   * `connectionOptions`, where setting it is silently inert.
    */
   readonly connectTimeoutMs?: number;
 };
@@ -109,14 +130,18 @@ export type AmqpOptions<TContract extends AnyAmqpContract> = {
 export const amqp = <TContract extends AnyAmqpContract>(
   options: AmqpOptions<TContract>,
 ): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>> => {
-  const config =
-    options.url === undefined
-      ? Config.provider(AmqpConfig)(
-          Config.object({
-            url: Config.string("AMQP_URL", { default: "amqp://127.0.0.1:5672" }),
-          }),
-        )
-      : Provider(AmqpConfig)({ value: { url: options.url } });
+  const config = Config.provider(AmqpConfig)(
+    Config.object({
+      url: Config.pinned(
+        options.url,
+        Config.string("AMQP_URL", { default: "amqp://127.0.0.1:5672" }),
+      ),
+      connectTimeoutMs: Config.pinned(
+        options.connectTimeoutMs,
+        Config.integer("AMQP_CONNECT_TIMEOUT_MS", { default: DEFAULT_CONNECT_TIMEOUT_MS, min: 0 }),
+      ),
+    }),
+  );
   return Module("Amqp")({
     needs: [Env, AmqpHandlersPort as HandlersPortOf<TContract>],
     provides: [
@@ -241,9 +266,7 @@ const createWorker = <TContract extends AnyAmqpContract>(
     ...(options.defaultConsumerOptions === undefined
       ? {}
       : { defaultConsumerOptions: options.defaultConsumerOptions }),
-    ...(options.connectTimeoutMs === undefined
-      ? {}
-      : { connectTimeoutMs: options.connectTimeoutMs }),
+    connectTimeoutMs: config.connectTimeoutMs,
   })
     .map((worker) => consume(worker, queuesOf(options.contract)))
     // `create` reports a connection failure on the DEFECT channel with a

@@ -22,7 +22,7 @@ vi.mock("node:http", async (importOriginal) => {
 
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { connect, type Socket } from "node:net";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
@@ -33,22 +33,15 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
-import { CORSHandlerPlugin } from "@orpc/server/plugins";
 import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
 import { test } from "vitest";
 
 import { HttpAuthenticator, Unauthenticated, authenticatorPort } from "../auth.js";
 import { defineHttp } from "../define-http.js";
 import { HttpHandler } from "../handler.js";
+import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
-import {
-  HttpConfig,
-  HttpRuntime,
-  http,
-  httpModule,
-  type HttpInfo,
-  type HttpOptions,
-} from "../http-runtime.js";
+import { HttpRuntime, http, httpModule, type HttpInfo, type HttpOptions } from "../http-runtime.js";
 
 type Handler = ServiceOf<HttpHandler>;
 
@@ -457,13 +450,56 @@ const corsRouter = publicApi.HttpRouter(corsContract)({
   sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
 });
 
-/** The same starter shape as `rpcAppOf`, with oRPC's CORS plugin configured. */
-const rpcWithCorsAppOf = () =>
-  HttpModule("RpcWithCorsApp")({
+/** The two ways a `rpcPolicy` test calls `greet`: through fetch, and raw enough to see the encoding. */
+type PolicyCalls = {
+  readonly url: string;
+  /** `POST /rpc/greet` with `name` as its input, plus whatever headers the test adds. */
+  readonly greet: (name: string, headers?: Readonly<Record<string, string>>) => Promise<Response>;
+  /**
+   * The same call over `node:http` with `accept-encoding` set, answering the
+   * response's `content-encoding` — fetch decodes and would hide it.
+   */
+  readonly encodingOf: (name: string) => Promise<string | undefined>;
+};
+
+const callsOf = (url: string): PolicyCalls => ({
+  url,
+  greet: (name, headers = {}) =>
+    fetch(`${url}/rpc/greet`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({ json: { name } }),
+    }),
+  encodingOf: (name) =>
+    new Promise((resolve) => {
+      const request = httpRequest(
+        `${url}/rpc/greet`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", "accept-encoding": "gzip, deflate" },
+        },
+        (response) => {
+          response.resume();
+          response.once("end", () => resolve(response.headers["content-encoding"]));
+        },
+      );
+      // Resolved rather than left hanging: the test's own assertion is what
+      // should report the failure, not vitest's timeout.
+      request.once("error", (cause) => resolve(String(cause)));
+      request.end(JSON.stringify({ json: { name } }));
+    }),
+});
+
+/** The transport policy a `rpcPolicy` test configures — `http()`'s own fields. */
+type PolicyOptions = Pick<HttpOptions, "cors" | "bodyLimit" | "compression" | "plugins">;
+
+/** The same starter shape as `rpcAppOf`, over whatever transport policy a test configures. */
+const rpcPolicyAppOf = (options: PolicyOptions) =>
+  HttpModule("RpcPolicyApp")({
     router: corsRouter,
     port: 0,
     hostname: "127.0.0.1",
-    plugins: [new CORSHandlerPlugin({ origin: () => "https://example.test" })],
+    ...options,
   });
 
 /** Whatever `HttpConfig` the graph bound, captured by a provider that depends on it. */
@@ -672,8 +708,11 @@ export type HttpFixtures = {
   readonly rpcVerified: (token: string) => RootMarkedClient;
   /** The same router with the `user` scheme's authenticator substituted on its port. Shut down by the fixture. */
   readonly rpcSubstituted: (token: string) => RootMarkedClient;
-  /** The starter over a router with oRPC's CORS plugin configured. Shut down by the fixture. */
-  readonly rpcWithCors: { readonly url: string };
+  /**
+   * The starter over a one-procedure `greet` router with whatever transport
+   * policy the test configures. Shut down by the fixture.
+   */
+  readonly rpcPolicy: (options: PolicyOptions, env?: Environment) => Promise<PolicyCalls>;
   /** A bare request's headers — the one argument an authenticator is handed. */
   readonly headers: IncomingHttpHeaders;
 };
@@ -952,10 +991,12 @@ export const it = test.extend<HttpFixtures>({
     await use({});
   },
 
-  rpcWithCors: async ({ boot }, use) => {
-    const app = boot(rpcWithCorsAppOf());
-    const info = (await app.runtimeInfo()).get();
-    assert.ok(info !== undefined, "the runtime published no Serving.info");
-    await use({ url: `http://127.0.0.1:${info.port}` });
+  rpcPolicy: async ({ boot }, use) => {
+    await use(async (options, env = {}) => {
+      const app = boot(rpcPolicyAppOf(options), { env });
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return callsOf(`http://127.0.0.1:${info.port}`);
+    });
   },
 });

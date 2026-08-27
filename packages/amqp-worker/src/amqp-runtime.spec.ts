@@ -32,6 +32,21 @@ describe("amqp", () => {
     );
   });
 
+  it("binds the broker and its connect timeout from the environment", async ({
+    boundFrom,
+    amqpConnectionUrl,
+  }) => {
+    // GIVEN a deployment naming both, and a starter pinning neither
+    // WHEN the graph has bound `AmqpConfig`
+    const bound = await boundFrom({
+      AMQP_URL: amqpConnectionUrl,
+      AMQP_CONNECT_TIMEOUT_MS: "1500",
+    });
+
+    // THEN both came from the environment rather than from a default
+    expect(bound).toEqual({ url: amqpConnectionUrl, connectTimeoutMs: 1_500 });
+  });
+
   it("opens one kernel unit per delivery", async ({ serve, seam, publishMessage }) => {
     // GIVEN a worker whose handler records the ambient unit it runs under
     await serve(seam.handlers);

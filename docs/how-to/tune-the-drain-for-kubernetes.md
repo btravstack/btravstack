@@ -1,6 +1,6 @@
 ---
 title: Tune the drain for Kubernetes
-description: Set preDrainDelayMs and drainTimeoutMs against terminationGracePeriodSeconds, wire the probes, and read what the drain reported.
+description: Set PRE_DRAIN_DELAY_MS and DRAIN_TIMEOUT_MS (or their options) against terminationGracePeriodSeconds, wire the probes, and read what the drain reported.
 ---
 
 <!-- doctest: prelude
@@ -26,10 +26,16 @@ grace period, and change both together.
 
 ## The two knobs
 
-| Option            | Default  | What it governs                                                                                         |
-| ----------------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| `preDrainDelayMs` | `5_000`  | how long after SIGTERM the kernel keeps **accepting** before it tells the runtime to stop               |
-| `drainTimeoutMs`  | `20_000` | how long in-flight units then get to finish; whatever is still open is aborted and reported `abandoned` |
+| Option            | Variable             | Default  | What it governs                                                                                         |
+| ----------------- | -------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| `preDrainDelayMs` | `PRE_DRAIN_DELAY_MS` | `5_000`  | how long after SIGTERM the kernel keeps **accepting** before it tells the runtime to stop               |
+| `drainTimeoutMs`  | `DRAIN_TIMEOUT_MS`   | `20_000` | how long in-flight units then get to finish; whatever is still open is aborted and reported `abandoned` |
+
+**Both are readable from the environment**, and that is the point of this
+page: `terminationGracePeriodSeconds` lives in the manifest, so the two values
+it has to agree with belong beside it rather than compiled into the image. The
+option **pins** the field — explicit > environment > default, per field — so a
+test fixes a timing while the deployment sets its own.
 
 `preDrainDelayMs` looks like a pointless sleep and is not. **Kubernetes endpoint
 removal is eventually consistent**: for a moment after SIGTERM, the ingress is
@@ -43,16 +49,32 @@ signal was _received_, so a signal that lands mid-build does not pay it twice.
 default of `30`, leaving headroom for `stopping` (closing the runtime and the
 application scope) before SIGKILL. `5 + 20 = 25` seconds, five in hand.
 
-Raise the grace period and raise the drain with it:
+Raise the grace period and raise the drain with it — in the same manifest,
+which is why they are variables:
+
+```yaml
+spec:
+  terminationGracePeriodSeconds: 60 # > PRE_DRAIN_DELAY_MS + DRAIN_TIMEOUT_MS, with headroom
+  containers:
+    - name: api
+      env:
+        - name: PRE_DRAIN_DELAY_MS
+          value: "10000"
+        - name: DRAIN_TIMEOUT_MS
+          value: "40000"
+```
+
+Pin them in code instead when the value is a decision rather than a
+deployment's — a test, or a runtime whose own shutdown budget they have to
+match:
 
 ```ts
 await runMain(OrderApi, { preDrainDelayMs: 10_000, drainTimeoutMs: 40_000 });
 ```
 
-```yaml
-spec:
-  terminationGracePeriodSeconds: 60 # > preDrainDelayMs + drainTimeoutMs, with headroom
-```
+A variable that is not a whole number, or is set but empty, is a
+`ConfigInvalid` naming it — a `startFailed` event and exit `78`, together with
+any other kernel variable that was wrong, in one report.
 
 ::: warning
 A `drainTimeoutMs` at or above the grace period turns a graceful exit into a

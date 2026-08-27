@@ -13,13 +13,17 @@ the code and `README.md` in the same commit — the package ships no
   duplicate-id warning never fires. Whoever boots a graph provides it — the
   kernel does for every `start`; a bare `Module.scoped` needs
   `Provider(Env)({ value })`, which is what this package's own fixtures do.
-- **`Config.string` / `integer` / `port`** — `ConfigField<T>`
+- **`Config.string` / `integer` / `boolean` / `port`** — `ConfigField<T>`
   factories over one variable: `{ variable, parse(raw: string | undefined) →
 Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
   fixes the shared semantics (unset → default or `is required`; trimmed empty →
   `is set but empty`; otherwise the field's own `read`), so "empty is an
   error, never a default" is decided in one place. `integer`/`port` share
   `integerIn(min, max)`: `Number()` + `Number.isInteger` + inclusive bounds.
+  `boolean` takes `true`/`false`, `1`/`0`, `yes`/`no` and `on`/`off` in either
+  case, and **errors on anything else rather than reading it as falsy** — a
+  deployment that wrote `HTTP_COMPRESSION=enabled` meant to turn it on, and a silent
+  `false` there is the kind of configuration bug nothing reports.
 - **`Config.pinned(value, field)`** — `field` unless `value` is given, then a
   field answering `value` that reads nothing (same `variable`, `parse: () =>
 Ok(value)`). What a starter's options do to its own fields — explicit beats

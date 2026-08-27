@@ -1,4 +1,4 @@
-import { Config, ConfigInvalid, Env, type Environment } from "@btravstack/config";
+import { Config, ConfigInvalid, Env, type ConfigIssue, type Environment } from "@btravstack/config";
 import {
   Module,
   Provider,
@@ -7,7 +7,7 @@ import {
   type Scope,
   type ScopedOptions,
 } from "@btravstack/di";
-import { fromSafePromise, Ok, OkAsync, P, type AsyncResult, type Result } from "unthrown";
+import { Err, fromSafePromise, Ok, OkAsync, type AsyncResult, type Result } from "unthrown";
 
 import { systemClock, type Clock } from "./clock.js";
 import { drainApp, type DrainReport } from "./drain.js";
@@ -41,6 +41,60 @@ export type ExitReport = {
   readonly uptimeMs: number;
 };
 
+/**
+ * What the kernel reads from the environment for itself. Each field is pinned
+ * by the matching `StartOptions` field — explicit beats environment beats
+ * default, per field, exactly as a starter's own configuration is.
+ */
+const KERNEL_DEFAULTS = {
+  probePort: 9000,
+  preDrainDelayMs: 5_000,
+  drainTimeoutMs: 20_000,
+} as const;
+
+type KernelConfig = { readonly [K in keyof typeof KERNEL_DEFAULTS]: number };
+
+const readKernelConfig = (
+  options: Pick<StartOptions<never, never>, "probes" | "preDrainDelayMs" | "drainTimeoutMs">,
+  env: Environment,
+): Result<KernelConfig, RuntimeStartFailed> => {
+  // `probes: false` pins the default and so reads nothing: a deployment that
+  // disabled the probe server should not fail on its port.
+  const probePort =
+    options.probes === undefined
+      ? undefined
+      : options.probes === false
+        ? KERNEL_DEFAULTS.probePort
+        : options.probes.port;
+  const schema = Config.object({
+    probePort: Config.pinned(
+      probePort,
+      Config.port("PROBE_PORT", { default: KERNEL_DEFAULTS.probePort }),
+    ),
+    preDrainDelayMs: Config.pinned(
+      options.preDrainDelayMs,
+      Config.integer("PRE_DRAIN_DELAY_MS", { default: KERNEL_DEFAULTS.preDrainDelayMs, min: 0 }),
+    ),
+    drainTimeoutMs: Config.pinned(
+      options.drainTimeoutMs,
+      Config.integer("DRAIN_TIMEOUT_MS", { default: KERNEL_DEFAULTS.drainTimeoutMs, min: 0 }),
+    ),
+  });
+  // Synchronous by construction — `Config.object` never defers — so the
+  // Promise arm of Standard Schema cannot occur here.
+  const result = schema["~standard"].validate(env) as
+    | { readonly value: KernelConfig; readonly issues?: undefined }
+    | { readonly issues: readonly ConfigIssue[] };
+  return result.issues === undefined
+    ? Ok(result.value)
+    : Err(
+        new RuntimeStartFailed({
+          runtime: "kernel",
+          cause: new ConfigInvalid({ port: "kernel", issues: result.issues }),
+        }),
+      );
+};
+
 export type StartOptions<UnitX = never, UnitNeeds = never> = {
   /**
    * The environment the graph is configured from, provided to it as the `Env`
@@ -66,7 +120,21 @@ export type StartOptions<UnitX = never, UnitNeeds = never> = {
    * (default `9000`); `false` disables the probe server.
    */
   readonly probes?: { readonly port: number } | false;
+  /**
+   * How long readiness stays false before the runtime is told to stop
+   * accepting. Unset, it is bound from `PRE_DRAIN_DELAY_MS` in `env` (default
+   * `5_000`) — the window that covers Kubernetes' eventually-consistent
+   * endpoint removal, which is a property of the cluster rather than of the
+   * code, so a deployment must be able to set it.
+   */
   readonly preDrainDelayMs?: number;
+  /**
+   * How long in-flight work gets before it is aborted and reported
+   * `abandoned`. Unset, it is bound from `DRAIN_TIMEOUT_MS` in `env` (default
+   * `20_000`). Keep it under the pod's `terminationGracePeriodSeconds`, which
+   * is the reason this one belongs in the environment: the two are set
+   * together, in the same manifest.
+   */
   readonly drainTimeoutMs?: number;
   readonly onEvent?: EventSink;
 };
@@ -144,8 +212,12 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
   const shutdown = Promise.withResolvers<ExitReport["reason"]>();
   const teardownErrors: TeardownError[] = [];
   const startedAt = clock.now();
-  const preDrainDelayMs = options.preDrainDelayMs ?? 5_000;
-  const drainTimeoutMs = options.drainTimeoutMs ?? 20_000;
+  // One read for every variable the kernel itself owns, so a deployment that
+  // got two of them wrong is told both at once. The timings fall back to their
+  // defaults when it fails, which changes nothing: the same failure is what
+  // `exited` reports, and no drain happens after it.
+  const kernelConfig = readKernelConfig(options, env);
+  const { preDrainDelayMs, drainTimeoutMs } = kernelConfig.getOrElse(() => KERNEL_DEFAULTS);
   const skipDrain = new AbortController();
   let shutdownRequestedAt = startedAt;
   let shutdownRequested = false;
@@ -193,25 +265,11 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
 
   emit({ type: "building" });
 
+  // Mapped through `kernelConfig` even when probes are off: the read covers
+  // the drain timings too, and short-circuiting on `probes: false` would let a
+  // malformed `DRAIN_TIMEOUT_MS` boot on the defaults with nothing reported.
   const probesOptions: Result<{ readonly port: number } | false, RuntimeStartFailed> =
-    options.probes === undefined
-      ? Config.port("PROBE_PORT", { default: 9000 })
-          .parse(env["PROBE_PORT"])
-          .map((port) => ({ port }))
-          .mapErrCases((matcher) =>
-            matcher.with(
-              P.tag("ConfigFieldInvalid"),
-              ({ reason }) =>
-                new RuntimeStartFailed({
-                  runtime: "probes",
-                  cause: new ConfigInvalid({
-                    port: "probes",
-                    issues: [{ message: reason, path: ["PROBE_PORT"] }],
-                  }),
-                }),
-            ),
-          )
-      : Ok(options.probes);
+    kernelConfig.map(({ probePort }) => (options.probes === false ? false : { port: probePort }));
   if (options.probes === false) probeBound.resolve(undefined);
 
   const probesStarted: AsyncResult<void, RuntimeStartFailed> = probesOptions

@@ -46,7 +46,7 @@ import { NotificationsSlice } from "../../slices/notifications/module.js";
 | `amqp`                  | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                                   |
 | `AmqpOptions`           | type  | `amqp()`'s options                                                                                                                                                                                                         |
 | `AmqpRuntime`           | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                                  |
-| `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string }> {}` — the broker, bound from `AMQP_URL`; a publisher sharing the consumer's broker reads it too                                                              |
+| `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string; connectTimeoutMs: number }> {}` — the broker, bound from `AMQP_URL` and `AMQP_CONNECT_TIMEOUT_MS`; a publisher sharing the consumer's broker reads it too      |
 | `AmqpInfo`              | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                                      |
 
 `HandlersPortOf<C>` / `HandlersInstanceOf<C>` / `HandlerPortOf<C, K>` are
@@ -79,17 +79,17 @@ provider and the starter's own options. It appends
 `handlers` to `provides`, prepends `AmqpRuntime` to `exports`, and hands the
 augmented tuples to di's own `Module(name)`.
 
-| Option                   | Required | Default              | What it is                                                                                                                                                                                                                                        |
-| ------------------------ | -------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract`               | yes      | —                    | an `amqp-contract` contract; the queues consumed are read off its `consumers` and `rpcs`                                                                                                                                                          |
-| `handlers`               | yes      | —                    | the handlers **provider** — a `Provider<HandlersInstanceOf<TContract>, E, N>`, what `AmqpHandlers(contract)(deps, arm)` returns for **this** `contract`, one entry per `consumers` / `rpcs` key; one built for another contract fails at the call |
-| `url`                    | no       | read from `AMQP_URL` | pins the broker — a test's container                                                                                                                                                                                                              |
-| `connectionOptions`      | no       | —                    | `AmqpConnectionOptions`, the connection tuning `TypedAmqpWorker.create` accepts: heartbeat, reconnect interval, `findServers`, TLS/socket options                                                                                                 |
-| `defaultConsumerOptions` | no       | —                    | `@amqp-contract/worker`'s `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob), `priority`, `arguments`, `consumerTag`, `exclusive`                                                                                      |
-| `connectTimeoutMs`       | no       | the library's 30 s   | how long `create` waits for the connection; a **top-level** `CreateWorkerOptions` field, not one under `connectionOptions`, where setting it is silently inert                                                                                    |
-| `imports`                | no       | `[]`                 | the application's modules                                                                                                                                                                                                                         |
-| `provides`               | no       | `[]`                 | the application's own providers                                                                                                                                                                                                                   |
-| `exports`                | no       | `[]`                 | the application's own exports; `AmqpRuntime` is added                                                                                                                                                                                             |
+| Option                   | Required | Default                                              | What it is                                                                                                                                                                                                                                                             |
+| ------------------------ | -------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract`               | yes      | —                                                    | an `amqp-contract` contract; the queues consumed are read off its `consumers` and `rpcs`                                                                                                                                                                               |
+| `handlers`               | yes      | —                                                    | the handlers **provider** — a `Provider<HandlersInstanceOf<TContract>, E, N>`, what `AmqpHandlers(contract)(deps, arm)` returns for **this** `contract`, one entry per `consumers` / `rpcs` key; one built for another contract fails at the call                      |
+| `url`                    | no       | read from `AMQP_URL`                                 | pins the broker — a test's container                                                                                                                                                                                                                                   |
+| `connectionOptions`      | no       | —                                                    | `AmqpConnectionOptions`, the connection tuning `TypedAmqpWorker.create` accepts: heartbeat, reconnect interval, `findServers`, TLS/socket options                                                                                                                      |
+| `defaultConsumerOptions` | no       | —                                                    | `@amqp-contract/worker`'s `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob), `priority`, `arguments`, `consumerTag`, `exclusive`                                                                                                           |
+| `connectTimeoutMs`       | no       | read from `AMQP_CONNECT_TIMEOUT_MS` (default `5000`) | pins how long `create` waits for the connection; a **top-level** `CreateWorkerOptions` field, not one under `connectionOptions`, where setting it is silently inert. The library's own default is 30 s — longer than most orchestrators wait before restarting the pod |
+| `imports`                | no       | `[]`                                                 | the application's modules                                                                                                                                                                                                                                              |
+| `provides`               | no       | `[]`                                                 | the application's own providers                                                                                                                                                                                                                                        |
+| `exports`                | no       | `[]`                                                 | the application's own exports; `AmqpRuntime` is added                                                                                                                                                                                                                  |
 
 The worked composition root, from `examples/order-amqp-worker/src/module.ts`:
 
@@ -290,11 +290,13 @@ contract, is refused at `start` (di's gate). The declared type is the same with 
 
 ## `AmqpConfig`, and the environment
 
-Bound through [`Config.provider`](/reference/config) unless `url` is pinned.
+Bound through [`Config.provider`](/reference/config); each option pins its
+field — explicit > environment > default, per field.
 
-| Variable   | Default                 | Parsed by       |
-| ---------- | ----------------------- | --------------- |
-| `AMQP_URL` | `amqp://127.0.0.1:5672` | `Config.string` |
+| Variable                  | Default                 | Parsed by        | Notes                                                                          |
+| ------------------------- | ----------------------- | ---------------- | ------------------------------------------------------------------------------ |
+| `AMQP_URL`                | `amqp://127.0.0.1:5672` | `Config.string`  | the broker                                                                     |
+| `AMQP_CONNECT_TIMEOUT_MS` | `5000`                  | `Config.integer` | how long `create` waits before an unreachable broker is a `RuntimeStartFailed` |
 
 A blank value is a `ConfigInvalid` — `startFailed` and exit `78` under
 `runMain`.

@@ -8,7 +8,7 @@ the same commit, and with `README.md` — the package ships no
 
 ## Public surface
 
-- **`HttpModule(name)({ router, prefix?, port?, hostname?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
+- **`HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })`**
   (`http-module.ts`) — THE way an application declares an HTTP deployment:
   `Module(name)({...})` plus the router **provider**. It appends
   `http({ prefix?, port?, hostname? })` to `imports`, prepends the provider to
@@ -282,7 +282,7 @@ not cover"` marker, and what the marker names is a procedure path
   scheme resolves to, and an unmarked procedure is public with nothing failing
   if the marker is forgotten.
 
-- **`http({ prefix?, port?, hostname?, plugins?, securityHeaders? })` →
+- **`http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **the one way HTTP is answered here: oRPC, over its own
   node adapter**. The
@@ -296,31 +296,86 @@ arm)`. The starter provides
   `Runtime<never, HttpInfo>` on the **`HttpRuntime`** port (a class over
   core's `RuntimePort`, **an empty `resolves`**), which the composition root imports
   next to the application and exports so `start` finds it, and **`HttpConfig`**
-  (`{ port, hostname }`) bound through `Config.provider` from `PORT` (default
-  `3000`) and `HOST` (default `0.0.0.0` — a pod, not a laptop) in the kernel's
-  `Env`. `port`/`hostname` **pin** a field instead of reading it — explicit >
+  (`{ port, hostname, bodyLimit, corsOrigin, compression }`) bound through
+  `Config.provider` from `PORT` (default `3000`), `HOST` (default `0.0.0.0` — a
+  pod, not a laptop), `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN` and `HTTP_COMPRESSION` in the
+  kernel's `Env`. It is declared in `http-config.ts` rather than
+  `http-runtime.ts` because `orpc.ts` reads it and `http-runtime.ts` imports
+  `orpc` — a leaf module is what keeps that from being a runtime import cycle.
+  Every field **pins** instead of reading — explicit >
   env > default, per field (`Config.pinned(value, field)` swaps the field's
   `parse` for a constant and keeps the variable name). A pinned field reads
   nothing from the environment; the declared `Env` need and `ConfigInvalid`
   stay whatever is pinned — one signature, no overload pair to keep in step
   (the kernel discharges the one, a pinned config never produces the other).
+  There is **no fully-pinned shortcut provider** any more: it existed to skip
+  the `Env` read when `port` and `hostname` were both given, and with five
+  fields it would have been a branch nobody could satisfy — `Config.pinned`
+  already reads nothing.
   `prefix` (default `/rpc`) is where the RPC endpoint is mounted. The worked
   example is `Module("OrderApi")({ imports: [Application, Persistence,
 http()], provides: [orderRouter], exports:
 [HttpRuntime] })` + `runMain(OrderApi)`; a test passes `env: { PORT: "0",
 HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `Serving.info` once bound; `0` lets the OS pick, read back via
-  `runtimeInfo()`. **`plugins`** —
+  `runtimeInfo()`.
+- **`cors`, `bodyLimit`, `compression`** — three oRPC plugins as named
+  options, each typed by the plugin's own options type per the passthrough
+  rule: `boolean | CORSHandlerPluginOptions<DefaultInitialContext>`,
+  `number | false`, and
+  `boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>`.
+
+  **Each SCALAR half is a field of `HttpConfig`, not a closure**, bound from
+  `HTTP_BODY_LIMIT`, `HTTP_CORS_ORIGIN` and `HTTP_COMPRESSION` and **pinned** by the option —
+  explicit beats environment beats default, per field, the same
+  `Config.pinned` shape `PORT`/`HOST` already used. The option is what a test
+  or a fixed decision pins; the variable is what a deployment sets. The
+  SHAPE halves — a `CORSHandlerPluginOptions` record's headers and methods,
+  `ResponseCompressionHandlerPluginOptions`'s `encodings`/`threshold`,
+  `plugins` — stay composition-time and reach the handler through `orpc()`'s
+  closure, because a record is not something an environment can carry.
+  `orpc.ts`'s `pluginsOf(options, config)` is where the two meet, and the oRPC
+  handler provider therefore declares `HttpConfig` as a dependency — which is
+  why `httpModule`'s return type `Exclude`s it from the needs channel: the
+  module provides it.
+
+  Precedence, spelled once in `corsOf`: a record naming `origin` wins,
+  `HTTP_CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.
+  `cors: false` pins `""` and is off whatever the deployment says; `HTTP_CORS_ORIGIN`
+  alone is enough to turn CORS on, which is what lets a deployment admit a
+  browser client without a code change. A comma-separated list becomes the
+  plugin's own origin array, `*` included.
+
+  **`bodyLimit` is the only one whose default is on** (`DEFAULT_BODY_LIMIT`, 1
+  MiB): an unbounded body is a trust boundary, where CORS and compression are
+  policy a framework guessing is worse than one staying quiet. Over the limit
+  is oRPC's `PAYLOAD_TOO_LARGE`, decided on `content-length` when one is sent
+  and while streaming otherwise. `bodyLimit: false` pins `0`, which is
+  unbounded — the one value the environment can also carry.
+
+  **`compression` is the RESPONSE half only.** `RequestCompressionHandlerPlugin`
+  stays in `plugins`: inflating a body before the limit measures it is an
+  application's decision to make in the open.
+
+  **CSRF is deliberately NOT here**, and that is the one narrowing of the
+  claim below rather than a shipment of it: oRPC's
+  `GetMethodCsrfProtectionHandlerPlugin` is meaningful only once a request
+  carries a `SameSite` cookie, and this package configures no cookies. It
+  becomes an option when cookies do; until then it is a `plugins` line.
+
+  **`securityHeaders` stays composition-time on purpose** — a deployment that
+  can silently turn `x-frame-options` off is a footgun the other three are not.
+
+- **`plugins`** —
   `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
-  `@orpc/server/node` — forwards straight to `new RPCHandler(service, {
-plugins })`: CORS, body limits, compression, CSRF are transport policy oRPC
-  already expresses as handler plugins, so the ordinary use is configuration
-  rather than a middleware slot for application logic. It threads through all three surfaces on the same
+  `@orpc/server/node` — any oRPC plugin the three named options do not cover,
+  appended to them and forwarded to `new RPCHandler(service, { plugins })`.
+  Each of the four threads through all three surfaces on the same
   `...(x === undefined ? {} : { x })` spread every other option here uses —
-  `OrpcOptions.plugins` (`orpc.ts`) → `HttpOptions.plugins` (`http-runtime.ts`)
-  → `HttpModuleOptions.plugins` (`http-module.ts`) — and needs no generic
-  parameter on any of the three, since it is a plain optional field like
-  `prefix`. It is an **honest escape hatch, not a keyhole**: oRPC's
+  `OrpcOptions` (`orpc.ts`) → `HttpOptions` (`http-runtime.ts`)
+  → `HttpModuleOptions` (`http-module.ts`) — and needs no generic
+  parameter on any of the three, since each is a plain optional field like
+  `prefix`. `plugins` is an **honest escape hatch, not a keyhole**: oRPC's
   `StandardHandlerPlugin.init` transforms handler options **including
   `StandardHandlerOptions.interceptors`**, so a plugin can wrap execution and
   an application determined to see a procedure's outcome can get there. What
@@ -579,7 +634,19 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
 CORS, body limits, compression, CSRF, security headers and authentication all
 arrive at the same door, and the answer is the same for all of them: **they are
 handler configuration, not a middleware slot.** Thesis #3's refusal survives
-intact, narrowed to what it was always about. An oRPC plugin and the starter's
+intact, narrowed to what it was always about.
+
+**Five of the six are configuration; CSRF is the exception, and it is stated
+rather than glossed.** `cors`, `bodyLimit` and `compression` are options that
+pin `HttpConfig` fields a deployment can set instead; `securityHeaders` is an
+option on the listener; authentication is bound through `defineHttp`'s
+authenticators, which ride the router rather than being an option on `http()`.
+CSRF is reached through `plugins` because oRPC's protection only bites on a
+request carrying a `SameSite` cookie and this package configures no cookies —
+an option over a cookie surface that does not exist would be configuration
+with nothing to configure. The claim used to cover all six while the code
+shipped two, which is the drift the root `CLAUDE.md` names as the failure
+mode it fears most; if cookies arrive, the exception goes with them. An oRPC plugin and the starter's
 own `principalMiddleware` act on the **request/response envelope** — bytes,
 headers, a principal resolved before dispatch. An application middleware would
 act on the handler's **`Result`**, and that is the only one `@btravstack/http-server`

@@ -12,6 +12,7 @@ import {
   type ContractDefinition,
 } from "@temporal-contract/contract";
 import { Client, Connection } from "@temporalio/client";
+import type { Duration } from "@temporalio/common";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { inject, test } from "vitest";
 import { z } from "zod";
@@ -306,6 +307,7 @@ type BootOptions = {
   readonly activities?: ActivitiesProvider;
   readonly address?: string;
   readonly namespace?: string;
+  readonly gracePeriod?: Duration;
   readonly env?: Environment;
   readonly workflows?: WorkflowSource;
   readonly drainTimeoutMs?: number;
@@ -351,6 +353,7 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
     workflows: options.workflows ?? echoWorkflows,
     ...(options.address === undefined ? {} : { address: options.address }),
     ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
+    ...(options.gracePeriod === undefined ? {} : { gracePeriod: options.gracePeriod }),
     provides: [
       Provider(Greeting)({ value: { text: "hello" } }),
       ...(options.tap === undefined ? [] : [options.tap]),
