@@ -55,7 +55,8 @@ through unwrapped. The kernel adds one `TaggedError`, `{ runtime, cause }`,
 for the failures that are genuinely its own — a runtime that would not start,
 a probe port that would not bind. It rules out a `KernelError` hierarchy, and a
 wrapper that would erase the module's modeled type. A probe bind failure uses
-`runtime: "probes"`; a bad `PROBE_PORT` is that error carrying a
+`runtime: "probes"`; a variable the kernel could not read — `PROBE_PORT`,
+`PRE_DRAIN_DELAY_MS`, `DRAIN_TIMEOUT_MS` — is `runtime: "kernel"` carrying a
 `ConfigInvalid` as its `cause`, so `exited`'s error union stays the same width
 for every caller and `runMain` reads the `78` one level down.
 

@@ -86,8 +86,8 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   to work around.
 - **`StartOptions<UnitX, UnitNeeds>`** — `env` (the environment the graph is
   configured from, provided to it as `@btravstack/config`'s `Env` port and
-  what the kernel reads its own `PROBE_PORT` from; default `process.env`, a
-  test hands in a record);
+  what the kernel reads its own `PROBE_PORT`, `PRE_DRAIN_DELAY_MS` and
+  `DRAIN_TIMEOUT_MS` from; default `process.env`, a test hands in a record);
   `unit` (a `Module<UnitX, never, UnitNeeds>` the kernel forks around **every
   unit**: built as the unit opens, torn down as it closes — while the unit's
   ambient record is still open — reading anything the application context
@@ -111,11 +111,13 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   (default `systemClock`); `signals` (default `true`; **`false` disables the
   SIGTERM/SIGINT handlers _and_ the uncaught ones together**); `probes`
   (`{ port }` or `false`; unset, bound from `PROBE_PORT` in `env`, default
-  `9000` — the one piece of configuration the kernel binds itself, because
-  the probe server is up before the graph exists; a bad value is a
-  `RuntimeStartFailed` for `"probes"` whose `cause` is the `ConfigInvalid`,
-  which is what `runMain` reads the `78` off); `preDrainDelayMs` (`5_000`);
-  `drainTimeoutMs` (`20_000`); `onEvent` (default `stderrSink`).
+  `9000`); `preDrainDelayMs` (`PRE_DRAIN_DELAY_MS`, default `5_000`);
+  `drainTimeoutMs` (`DRAIN_TIMEOUT_MS`, default `20_000`) — the three the
+  kernel binds itself, because the probe server is up and the drain is
+  scheduled before the graph exists, each **pinned** by its option; a bad value
+  is a `RuntimeStartFailed` for `"kernel"` whose `cause` is the `ConfigInvalid`
+  naming every variable that was wrong, which is what `runMain` reads the `78`
+  off. `onEvent` (default `stderrSink`).
 - **`RunningApp<E, Info>`** — `exited` (`AsyncResult<ExitReport, E | RuntimeStartFailed>`),
   `stop()`, `requestDrain()`, `phase()`, `ready()`, `probePort()`,
   `runtimeInfo()`.
@@ -157,7 +159,8 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   to publish; that default is what makes publishing optional with no ceremony.
 - **`RuntimeStartFailed`** — the one error the kernel mints, a `TaggedError`
   carrying `{ runtime, cause }`. A probe bind failure uses
-  `runtime: "probes"`.
+  `runtime: "probes"`; a variable the kernel itself could not read uses
+  `runtime: "kernel"`.
 - **`UnitMeta` / `UnitWork` / `UnitRegistry`** — `UnitMeta` is
   `{ kind, id, traceId?, tenantId?, deadline? }`; `traceId` defaults to `id`,
   which is why **`id` must be unique per unit** unless the runtime supplies one
@@ -231,7 +234,7 @@ signal }`. `signal` is the same `AbortSignal` `UnitWork` receives as its
   `main.ts` calls this one function; `start` is for callers that want the
   `RunningApp` itself. It boots the module and sets the exit code:
   `0` clean, `1` a modeled startup `Err`, `78` a `ConfigInvalid` (or a
-  `RuntimeStartFailed` carrying one — the kernel's own `PROBE_PORT`), `2`
+  `RuntimeStartFailed` carrying one — the kernel's own variables), `2`
   drained with work abandoned **or exited with a non-empty
   `teardownErrors`**, `70` an uncaught exception/rejection, `70` a defect.
   Both `70`s are sysexits(3)'s `EX_SOFTWARE`; `78` is its `EX_CONFIG` — the
@@ -421,18 +424,21 @@ Beyond the nine:
   so a caller cannot hang"_.
 
 - **A bad environment is a modeled startup `Err`, exit `78`, and the kernel
-  binds its own `PROBE_PORT` the same way.** The binding itself — field
+  binds its own three variables the same way.** The binding itself — field
   semantics, `Config.object`, `Config.provider` reading `Env` — is
   `@btravstack/config`'s own spec's business; the kernel's `config.spec.ts`
   guards only how the kernel reports it: `Config.provider` through `start`
   (_"fails startup with ConfigInvalid, naming the port and the variables"_ —
   the `configured` fixture's `Settings` port, bound from `StartOptions.env`
   next to an in-memory runtime; _"exits 78 under runMain"_) and the kernel's
-  own `PROBE_PORT`
+  own variables
   (_"binds the probe server from the environment when no option is given"_
-  with `PROBE_PORT=0`, _"exits 78 when PROBE_PORT is not a port"_, and the
-  `RuntimeStartFailed`-for-`"probes"`-carrying-`ConfigInvalid` shape `runMain`
-  reads the `78` off). `start.spec.ts` → _"reaches the exited phase when the
+  with `PROBE_PORT=0`, _"exits 78 when PROBE_PORT is not a port"_, _"reports
+  every variable the kernel itself could not read, in one failure"_ — the
+  `RuntimeStartFailed`-for-`"kernel"`-carrying-`ConfigInvalid` shape `runMain`
+  reads the `78` off — and _"binds the drain timings from the environment when
+  nothing pins them"_, which reads the two sleeps off a stub clock rather than
+  off wall time). `start.spec.ts` → _"reaches the exited phase when the
   runtime refuses to start"_ pins the `startFailed` event's place in the
   sequence (`building`, `startFailed`, `stopping`, `exited`).
 
@@ -490,14 +496,21 @@ from `runtime.ts` or `drain.ts` without failing the gate.
   (`Module<X, E, Scope | Env>` in, `Env` discharged here). `Port("Env")` is
   declared once, in `@btravstack/config`.
 
-- **`PROBE_PORT` is read through the same `Config.port` field the public API
-  ships**, not a private parser — one definition of what a port is — and its
-  failure is wrapped in `RuntimeStartFailed({ runtime: "probes", cause:
+- **The kernel's own variables are read in ONE pass**, by `readKernelConfig`:
+  `PROBE_PORT`, `PRE_DRAIN_DELAY_MS` and `DRAIN_TIMEOUT_MS` through the same
+  `Config.object` + `Config.pinned` the public API ships — not a private
+  parser, so there is one definition of what a port is and one of what a whole
+  number is, and a deployment that got two of them wrong is told both at once.
+  Each `StartOptions` field pins its own variable; `probes: false` pins the
+  default port and so reads nothing, which is why every kernel spec that does
+  not test probes passes `probes: false` (an unset `probes` in a test would
+  try to bind 9000).
+
+  The failure is wrapped in `RuntimeStartFailed({ runtime: "kernel", cause:
 ConfigInvalid })` rather than widening `exited`'s error union for every
-  caller; `runMain`'s `isConfig` reads through that one level. `probes: false`
-  or an explicit `{ port }` skips the read entirely, which is why every kernel
-  spec that does not test probes passes one of them (an unset `probes` in a
-  test would try to bind 9000).
+  caller; `runMain`'s `isConfig` reads through that one level. The timings fall
+  back to their defaults when the read fails, which changes nothing observable:
+  the same failure is what `exited` reports, and no drain happens after it.
 
 - **`startFailed` is emitted from both `tapFailure` sites** — the probe bind's
   and `Module.scoped`'s — because a failed probe bind short-circuits the

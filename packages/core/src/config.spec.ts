@@ -59,23 +59,43 @@ describe("PROBE_PORT", () => {
     expect(code).toBe(78);
   });
 
-  it("reports a bad PROBE_PORT as the probes' start failure, carrying the ConfigInvalid", async ({
+  it("reports every variable the kernel itself could not read, in one failure", async ({
     configured,
   }) => {
-    // GIVEN a probe port the OS would refuse
-    const app = configured.probesFrom({ PROBE_PORT: "70000" });
+    // GIVEN a probe port the OS would refuse and a drain timeout that is not a number
+    const app = configured.probesFrom({ PROBE_PORT: "70000", DRAIN_TIMEOUT_MS: "soon" });
 
     // WHEN the application boots
-    // THEN the failure is the kernel's own, for "probes", with the ConfigInvalid as its cause
+    // THEN the failure is the kernel's own, and names BOTH variables — an
+    // operator fixes the deployment in one round trip
     await expect(app.exited).toBeErrWith(
       expect.objectContaining({
         constructor: RuntimeStartFailed,
-        runtime: "probes",
+        runtime: "kernel",
         cause: expect.objectContaining({
           constructor: ConfigInvalid,
-          issues: [{ message: "must be between 0 and 65535, got 70000", path: ["PROBE_PORT"] }],
+          issues: [
+            { message: "must be between 0 and 65535, got 70000", path: ["PROBE_PORT"] },
+            { message: 'is not a whole number: "soon"', path: ["DRAIN_TIMEOUT_MS"] },
+          ],
         }),
       }),
     );
+  });
+
+  it("binds the drain timings from the environment when nothing pins them", async ({
+    configured,
+  }) => {
+    // GIVEN an application deployed with its own drain timings and no pins
+    // WHEN it drains
+    const slept = await configured.drainSleepsFor({
+      PROBE_PORT: "0",
+      PRE_DRAIN_DELAY_MS: "1000",
+      DRAIN_TIMEOUT_MS: "12345",
+    });
+
+    // THEN the deployment's own values are what the two beats waited, not the
+    // kernel's defaults of 5s and 20s
+    expect(slept).toEqual([1_000, 12_345]);
   });
 });

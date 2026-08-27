@@ -21,7 +21,7 @@ import {
   declareActivitiesHandler,
   type DeclareActivitiesHandlerOptions,
 } from "@temporal-contract/worker/activity";
-import type { Duration } from "@temporalio/common";
+import { msToNumber, type Duration } from "@temporalio/common";
 import { NativeConnection, Worker, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import {
   TaggedError,
@@ -58,6 +58,10 @@ export type WorkflowSource =
 export class TemporalConfig extends Port("TemporalConfig")<{
   readonly address: string;
   readonly namespace: string;
+  /** Temporal's `shutdownGraceTime`, in milliseconds. */
+  readonly gracePeriodMs: number;
+  /** Temporal's `shutdownForceTime`, in milliseconds. */
+  readonly forceAfterMs: number;
 }> {}
 
 /**
@@ -108,7 +112,33 @@ export type ActivitiesInstanceOf<C extends ContractDefinition> = PortInstance<
   ActivitiesOf<C>
 >;
 
-export type TemporalOptions<C extends ContractDefinition> = {
+/**
+ * What a Temporal deployment tunes, shared verbatim by `temporal()` and
+ * `TemporalModule` — spelled once so the two cannot drift, which is what a
+ * second copy of an option list always eventually does.
+ */
+export type TemporalTuning = {
+  /** Pins `TemporalConfig.address` instead of reading `TEMPORAL_ADDRESS`. */
+  readonly address?: string;
+  /** Pins `TemporalConfig.namespace` instead of reading `TEMPORAL_NAMESPACE`. */
+  readonly namespace?: string;
+  /**
+   * Pins `TemporalConfig.forceAfterMs` instead of reading
+   * `TEMPORAL_FORCE_AFTER_MS` (default `15_000`) — Temporal's
+   * `shutdownForceTime`. Keep it at or below the kernel's `drainTimeoutMs`,
+   * which is why it reads the environment: the two are set together, in the
+   * same manifest.
+   */
+  readonly forceAfter?: Duration;
+  /**
+   * Pins `TemporalConfig.gracePeriodMs` instead of reading
+   * `TEMPORAL_GRACE_PERIOD_MS` (default `10_000`) — Temporal's
+   * `shutdownGraceTime`.
+   */
+  readonly gracePeriod?: Duration;
+};
+
+export type TemporalOptions<C extends ContractDefinition> = TemporalTuning & {
   /**
    * The contract; the task queue this worker polls is read off it, and the
    * activities port is typed by it. The starter calls
@@ -116,18 +146,19 @@ export type TemporalOptions<C extends ContractDefinition> = {
    */
   readonly contract: C;
   readonly workflows: WorkflowSource;
-  /** Pins `TemporalConfig.address` instead of reading `TEMPORAL_ADDRESS`. */
-  readonly address?: string;
-  /** Pins `TemporalConfig.namespace` instead of reading `TEMPORAL_NAMESPACE`. */
-  readonly namespace?: string;
-  /** Temporal's `shutdownForceTime`. Default `15 seconds`. Keep it at or below the kernel's `drainTimeoutMs`. */
-  readonly forceAfter?: Duration;
-  /** Temporal's `shutdownGraceTime`. Default `10 seconds`. */
-  readonly gracePeriod?: Duration;
 };
 
-const DEFAULT_GRACE: Duration = "10 seconds";
-const DEFAULT_FORCE: Duration = "15 seconds";
+const DEFAULT_GRACE_MS = 10_000;
+const DEFAULT_FORCE_MS = 15_000;
+
+/**
+ * A `Duration` as the milliseconds a config field holds. Temporal's own
+ * `msToNumber` is what parses its string form, and it is exported for exactly
+ * this — a pin of `"10 seconds"` and a `TEMPORAL_GRACE_PERIOD_MS` of `10000`
+ * have to reach the worker as the same number.
+ */
+const durationMs = (duration: Duration | undefined): number | undefined =>
+  duration === undefined ? undefined : msToNumber(duration);
 
 type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
 
@@ -147,21 +178,26 @@ export const temporal = <C extends ContractDefinition>(
 ): Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C>> => {
   const { address, namespace } = options;
   const activities = TemporalActivitiesPort as ActivitiesPortOf<C>;
-  const config =
-    address !== undefined && namespace !== undefined
-      ? Provider(TemporalConfig)({ value: { address, namespace } })
-      : Config.provider(TemporalConfig)(
-          Config.object({
-            address: Config.pinned(
-              address,
-              Config.string("TEMPORAL_ADDRESS", { default: "127.0.0.1:7233" }),
-            ),
-            namespace: Config.pinned(
-              namespace,
-              Config.string("TEMPORAL_NAMESPACE", { default: "default" }),
-            ),
-          }),
-        );
+  const config = Config.provider(TemporalConfig)(
+    Config.object({
+      address: Config.pinned(
+        address,
+        Config.string("TEMPORAL_ADDRESS", { default: "127.0.0.1:7233" }),
+      ),
+      namespace: Config.pinned(
+        namespace,
+        Config.string("TEMPORAL_NAMESPACE", { default: "default" }),
+      ),
+      gracePeriodMs: Config.pinned(
+        durationMs(options.gracePeriod),
+        Config.integer("TEMPORAL_GRACE_PERIOD_MS", { default: DEFAULT_GRACE_MS, min: 0 }),
+      ),
+      forceAfterMs: Config.pinned(
+        durationMs(options.forceAfter),
+        Config.integer("TEMPORAL_FORCE_AFTER_MS", { default: DEFAULT_FORCE_MS, min: 0 }),
+      ),
+    }),
+  );
   return Module("Temporal")({
     needs: [Env, activities],
     provides: [
@@ -240,8 +276,8 @@ const createWorker = <C extends ContractDefinition>(
           taskQueue,
           ...options.workflows,
           activities: handler,
-          shutdownGraceTime: options.gracePeriod ?? DEFAULT_GRACE,
-          shutdownForceTime: options.forceAfter ?? DEFAULT_FORCE,
+          shutdownGraceTime: config.gracePeriodMs,
+          shutdownForceTime: config.forceAfterMs,
         }),
         startFailed,
       ),

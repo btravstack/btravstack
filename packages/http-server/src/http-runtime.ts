@@ -11,73 +11,48 @@ import {
   type Serving,
   type UnitMeta,
 } from "@btravstack/core";
-import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
-import type { DefaultInitialContext } from "@orpc/server";
-import type { NodeHttpHandlerPlugin } from "@orpc/server/node";
-import type {
-  CORSHandlerPluginOptions,
-  ResponseCompressionHandlerPluginOptions,
-} from "@orpc/server/plugins";
+import { Module, Provider, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 import { HttpHandler } from "./handler.js";
-import { orpc, type HttpRouterPort } from "./orpc.js";
+import { HttpConfig } from "./http-config.js";
+import { DEFAULT_BODY_LIMIT, orpc, type HttpRouterPort, type OrpcOptions } from "./orpc.js";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */
 export type HttpInfo = { readonly port: number };
 
 /**
- * What the socket is bound with, as a service: `http()` binds it from `PORT`
- * (default `3000`; `0` lets the OS pick) and `HOST` (default `0.0.0.0`), and
- * anything else in the graph may read it.
+ * `http()`'s options: `orpc()`'s own — where the router is mounted, and the
+ * transport policy — plus what a caller pins on the socket instead of reading
+ * it from the environment. Declared as one intersection so each option is
+ * spelled ONCE across the three surfaces that take it (`orpc()`, `http()`,
+ * `HttpModule`), which is what the six-concerns claim drifted against when
+ * they were three parallel records.
+ *
+ * The router itself is not an option — it is the provider the composition root
+ * supplies on the starter's router port, which this module needs.
  */
-export class HttpConfig extends Port("HttpConfig")<{
-  readonly port: number;
-  readonly hostname: string;
-}> {}
-
-/**
- * `http()`'s options: where the router is mounted, and what a caller pins
- * instead of reading from the environment. The router itself is not an option —
- * it is the provider the composition root supplies on the starter's router
- * port, which this module needs.
- */
-export type HttpOptions = {
-  /** Where the RPC endpoint is mounted. Default `/rpc`. */
-  readonly prefix?: `/${string}`;
+export type HttpOptions = OrpcOptions & {
+  /** Pins `HttpConfig.port` instead of reading `PORT`. */
   readonly port?: number;
+  /** Pins `HttpConfig.hostname` instead of reading `HOST`. */
   readonly hostname?: string;
-  /**
-   * The CORS policy, off by default. `true` takes oRPC's own defaults — which
-   * reflect the request's origin — and a record is
-   * `CORSHandlerPluginOptions` verbatim.
-   */
-  readonly cors?: boolean | CORSHandlerPluginOptions<DefaultInitialContext>;
-  /**
-   * The largest request body a procedure will read, in bytes. Default 1 MiB;
-   * `false` reads an unbounded body. Over the limit is oRPC's
-   * `PAYLOAD_TOO_LARGE`.
-   */
-  readonly bodyLimit?: number | false;
-  /**
-   * Response compression, off by default. `true` takes oRPC's own defaults
-   * (gzip then deflate, above 1 KB) and a record is
-   * `ResponseCompressionHandlerPluginOptions` verbatim.
-   */
-  readonly compression?: boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>;
-  /**
-   * Any other oRPC handler plugin. Transport policy configuring the transport;
-   * not a middleware slot for application logic, which the package still
-   * declines.
-   */
-  readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
   /**
    * Headers set on every response, before dispatch. `true` (default) applies
    * {@link DEFAULT_SECURITY_HEADERS}; `false` disables the feature; a record
    * replaces the defaults outright.
+   *
+   * **Not** a config field, deliberately: a deployment that can silently turn
+   * `x-frame-options` off is a footgun the other policies are not.
    */
   readonly securityHeaders?: boolean | Readonly<Record<string, string>>;
 };
+
+/** What `httpModule` pins on the config it binds — everything but the router's own. */
+type SocketOptions = Pick<
+  HttpOptions,
+  "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders"
+>;
 
 /**
  * Set before dispatch, so they also cover the runtime's own `404` and `500` —
@@ -110,23 +85,33 @@ const httpRuntime = (
  * only.
  */
 export const httpModule = <N>(
-  options: {
-    readonly port?: number;
-    readonly hostname?: string;
-    readonly securityHeaders?: HttpOptions["securityHeaders"];
-  },
+  options: SocketOptions,
   handler: Provider<HttpHandler, never, N>,
-): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N> => {
-  const { port, hostname, securityHeaders } = options;
-  const config =
-    port !== undefined && hostname !== undefined
-      ? Provider(HttpConfig)({ value: { port, hostname } })
-      : Config.provider(HttpConfig)(
-          Config.object({
-            port: Config.pinned(port, Config.port("PORT", { default: 3000 })),
-            hostname: Config.pinned(hostname, Config.string("HOST", { default: "0.0.0.0" })),
-          }),
-        );
+  // `HttpConfig` is excluded because this module PROVIDES it: the oRPC handler
+  // reads the transport policy off it, which is a need discharged in here.
+): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | Exclude<N, HttpConfig>> => {
+  const { port, hostname, cors, bodyLimit, compression, securityHeaders } = options;
+  const config = Config.provider(HttpConfig)(
+    Config.object({
+      port: Config.pinned(port, Config.port("PORT", { default: 3000 })),
+      hostname: Config.pinned(hostname, Config.string("HOST", { default: "0.0.0.0" })),
+      bodyLimit: Config.pinned(
+        bodyLimit === false ? 0 : bodyLimit,
+        Config.integer("BODY_LIMIT", { default: DEFAULT_BODY_LIMIT, min: 0 }),
+      ),
+      // A record naming its own `origin` is what pins this; `corsOf` prefers
+      // the record either way, so nothing here has to spell that precedence
+      // twice. `cors: false` pins the empty string, which is "off".
+      corsOrigin: Config.pinned(
+        cors === false ? "" : undefined,
+        Config.string("CORS_ORIGIN", { default: "" }),
+      ),
+      compression: Config.pinned(
+        compression === undefined ? undefined : compression !== false,
+        Config.boolean("COMPRESSION", { default: false }),
+      ),
+    }),
+  );
   return Module("Http")({
     // The handler's own `N` is owed too and cannot be spelled here — it is
     // still a type parameter, which is why the gate defers and the options
@@ -143,7 +128,11 @@ export const httpModule = <N>(
       ),
     ],
     exports: [HttpRuntime, HttpConfig],
-  } as never) as unknown as Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | N>;
+  } as never) as unknown as Module<
+    HttpRuntime | HttpConfig,
+    ConfigInvalid,
+    Env | Exclude<N, HttpConfig>
+  >;
 };
 
 /**
@@ -159,17 +148,10 @@ export const httpModule = <N>(
 export const http = (
   options: HttpOptions = {},
 ): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort> => {
-  const { prefix, plugins, cors, bodyLimit, compression, ...socket } = options;
-  return httpModule(
-    socket,
-    orpc({
-      ...(prefix === undefined ? {} : { prefix }),
-      ...(cors === undefined ? {} : { cors }),
-      ...(bodyLimit === undefined ? {} : { bodyLimit }),
-      ...(compression === undefined ? {} : { compression }),
-      ...(plugins === undefined ? {} : { plugins }),
-    }),
-  );
+  // Every field goes to BOTH halves: the scalars pin the config the handler
+  // reads, and the shapes (`cors`'s own record, `compression`'s tuning,
+  // `plugins`) are composition-time and reach the handler through its closure.
+  return httpModule(options, orpc(options));
 };
 
 const listen = (

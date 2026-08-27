@@ -138,6 +138,32 @@ describe("Config.object", () => {
   });
 });
 
+describe("Config.boolean", () => {
+  it("reads every spelling of a flag, in either case, and refuses anything else", () => {
+    // GIVEN a flag field
+    const field = Config.boolean("COMPRESSION", { default: false });
+
+    // WHEN every spelling this stack accepts is read, plus one it does not
+    const read = {
+      on: ["true", "1", "yes", "on", "TRUE", "On"].map((raw) => field.parse(raw).getOrThrow()),
+      off: ["false", "0", "no", "off", "FALSE", "Off"].map((raw) => field.parse(raw).getOrThrow()),
+      absent: field.parse(undefined).getOrThrow(),
+      wrong: field.parse("enabled"),
+    };
+
+    // THEN a spelling it knows is the flag it names, an unset variable is the
+    // default, and a spelling it does not know is an error rather than falsy
+    expect(read).toEqual({
+      on: [true, true, true, true, true, true],
+      off: [false, false, false, false, false, false],
+      absent: false,
+      wrong: expect.objectContaining({
+        error: expect.objectContaining({ reason: 'is not a flag: "enabled"' }),
+      }),
+    });
+  });
+});
+
 describe("Config.pinned", () => {
   it("answers the pin over whatever the environment says, and reads the field otherwise", () => {
     // GIVEN a port field, once pinned and once left alone

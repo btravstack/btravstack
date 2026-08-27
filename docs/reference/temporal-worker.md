@@ -84,18 +84,18 @@ provider and the workflow source. It appends
 `imports`, prepends `activities` to `provides`, prepends `TemporalRuntime` to
 `exports`, and hands the augmented tuples to di's own `Module(name)`.
 
-| Option        | Required | Default                        | What it is                                                                                                                                                                                                           |
-| ------------- | -------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract`    | yes      | —                              | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                          |
-| `activities`  | yes      | —                              | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ name: Dep }, arm)` returns for **this** `contract`; one built for another contract fails at the call |
-| `workflows`   | yes      | —                              | a `WorkflowSource`                                                                                                                                                                                                   |
-| `address`     | no       | read from `TEMPORAL_ADDRESS`   | pins `TemporalConfig.address`                                                                                                                                                                                        |
-| `namespace`   | no       | read from `TEMPORAL_NAMESPACE` | pins `TemporalConfig.namespace`                                                                                                                                                                                      |
-| `gracePeriod` | no       | `"10 seconds"`                 | Temporal's `shutdownGraceTime`, a `Duration`                                                                                                                                                                         |
-| `forceAfter`  | no       | `"15 seconds"`                 | Temporal's `shutdownForceTime`, a `Duration`; keep it at or below the kernel's `drainTimeoutMs`                                                                                                                      |
-| `imports`     | no       | `[]`                           | the application's modules                                                                                                                                                                                            |
-| `provides`    | no       | `[]`                           | the application's own providers                                                                                                                                                                                      |
-| `exports`     | no       | `[]`                           | the application's own exports; `TemporalRuntime` is added                                                                                                                                                            |
+| Option        | Required | Default                              | What it is                                                                                                                                                                                                           |
+| ------------- | -------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract`    | yes      | —                                    | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                          |
+| `activities`  | yes      | —                                    | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ name: Dep }, arm)` returns for **this** `contract`; one built for another contract fails at the call |
+| `workflows`   | yes      | —                                    | a `WorkflowSource`                                                                                                                                                                                                   |
+| `address`     | no       | read from `TEMPORAL_ADDRESS`         | pins `TemporalConfig.address`                                                                                                                                                                                        |
+| `namespace`   | no       | read from `TEMPORAL_NAMESPACE`       | pins `TemporalConfig.namespace`                                                                                                                                                                                      |
+| `gracePeriod` | no       | read from `TEMPORAL_GRACE_PERIOD_MS` | pins Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                                                                                                                              |
+| `forceAfter`  | no       | read from `TEMPORAL_FORCE_AFTER_MS`  | pins Temporal's `shutdownForceTime`, a `Duration` (default `15_000` ms); keep it at or below the kernel's `drainTimeoutMs`                                                                                           |
+| `imports`     | no       | `[]`                                 | the application's modules                                                                                                                                                                                            |
+| `provides`    | no       | `[]`                                 | the application's own providers                                                                                                                                                                                      |
+| `exports`     | no       | `[]`                                 | the application's own exports; `TemporalRuntime` is added                                                                                                                                                            |
 
 The worked composition root, from
 `examples/order-temporal-worker/src/module.ts`:
@@ -371,13 +371,20 @@ The declared type is the same pinned or not: `Env`, `ConfigInvalid` and
 
 ## `TemporalConfig`, and the environment
 
-Bound through [`Config.provider`](/reference/config); `address` / `namespace`
-in the options pin a field — explicit > environment > default, per field.
+Bound through [`Config.provider`](/reference/config); every option pins its
+field — explicit > environment > default, per field.
 
-| Variable             | Default          | Parsed by       | Notes                                             |
-| -------------------- | ---------------- | --------------- | ------------------------------------------------- |
-| `TEMPORAL_ADDRESS`   | `127.0.0.1:7233` | `Config.string` | where the service is                              |
-| `TEMPORAL_NAMESPACE` | `default`        | `Config.string` | a blank value is a `ConfigInvalid`, not a default |
+| Variable                   | Default          | Parsed by        | Notes                                                                  |
+| -------------------------- | ---------------- | ---------------- | ---------------------------------------------------------------------- |
+| `TEMPORAL_ADDRESS`         | `127.0.0.1:7233` | `Config.string`  | where the service is                                                   |
+| `TEMPORAL_NAMESPACE`       | `default`        | `Config.string`  | a blank value is a `ConfigInvalid`, not a default                      |
+| `TEMPORAL_GRACE_PERIOD_MS` | `10000`          | `Config.integer` | Temporal's `shutdownGraceTime`                                         |
+| `TEMPORAL_FORCE_AFTER_MS`  | `15000`          | `Config.integer` | Temporal's `shutdownForceTime`; keep it at or below `DRAIN_TIMEOUT_MS` |
+
+`TemporalConfig` holds the two shutdown budgets as **milliseconds**: an
+environment carries strings, and a `gracePeriod: "10 seconds"` pin is turned
+into the same number by Temporal's own `msToNumber`, so both routes reach the
+worker identically.
 
 A malformed value is a `ConfigInvalid` — `startFailed` and exit `78` under
 `runMain`.

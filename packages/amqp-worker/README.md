@@ -115,14 +115,14 @@ module lists (`imports`, `provides`, `exports`, `needs`). The `amqp()`
 primitive does not take `handlers` as an option — it **needs** the handlers
 provider on its own port, which is how the composition root supplies it:
 
-| Option                   | What it is                                                                                                      |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `contract`               | the `amqp-contract` contract; the queues consumed are read off it                                               |
-| `handlers`               | the handlers provider — what `AmqpHandlers(contract)(...)` returns for this contract                            |
-| `url`                    | pins the broker instead of reading `AMQP_URL` (default `amqp://127.0.0.1:5672`) — a test's container            |
-| `connectionOptions`      | `AmqpConnectionOptions`, the library's own connection tuning: heartbeat, reconnect interval, `findServers`, TLS |
-| `defaultConsumerOptions` | the library's `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob), `priority`, …      |
-| `connectTimeoutMs`       | how long startup waits before an unreachable broker is a `RuntimeStartFailed` (the library defaults to 30 s)    |
+| Option                   | What it is                                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `contract`               | the `amqp-contract` contract; the queues consumed are read off it                                                               |
+| `handlers`               | the handlers provider — what `AmqpHandlers(contract)(...)` returns for this contract                                            |
+| `url`                    | pins `AMQP_URL` (default `amqp://127.0.0.1:5672`) — a test's container                                                          |
+| `connectionOptions`      | `AmqpConnectionOptions`, the library's own connection tuning: heartbeat, reconnect interval, `findServers`, TLS                 |
+| `defaultConsumerOptions` | the library's `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob), `priority`, …                      |
+| `connectTimeoutMs`       | pins `AMQP_CONNECT_TIMEOUT_MS` — how long startup waits before an unreachable broker is a `RuntimeStartFailed` (default `5000`) |
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/amqp-worker),

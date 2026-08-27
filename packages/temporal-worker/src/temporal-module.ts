@@ -10,7 +10,6 @@ import {
   type Scope,
 } from "@btravstack/di";
 import type { ContractDefinition } from "@temporal-contract/contract";
-import type { Duration } from "@temporalio/common";
 
 import {
   TemporalActivitiesPort,
@@ -20,6 +19,7 @@ import {
   type ActivitiesPortOf,
   type TemporalConfig,
   type TemporalConnection,
+  type TemporalTuning,
   type TemporalUnreachable,
   type WorkflowSource,
 } from "./temporal-runtime.js";
@@ -58,20 +58,12 @@ export type TemporalModuleOptions<
   P extends readonly AnyProvider[],
   X extends readonly Exportable<Imports<I, C>, Provides<P, C, ActivitiesError, ActivitiesNeeds>>[],
   N extends readonly AnyPort[],
-> = {
+> = TemporalTuning & {
   /** The `temporal-contract` contract; the task queue this worker polls is read off it. */
   readonly contract: C;
+  readonly workflows: WorkflowSource;
   /** The application's activity implementations — what `TemporalActivities(contract)(…)` returns. */
   readonly activities: Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds>;
-  readonly workflows: WorkflowSource;
-  /** Pins `TemporalConfig.address` instead of reading `TEMPORAL_ADDRESS`. */
-  readonly address?: string;
-  /** Pins `TemporalConfig.namespace` instead of reading `TEMPORAL_NAMESPACE`. */
-  readonly namespace?: string;
-  /** Temporal's `shutdownGraceTime`. Default `10 seconds`. */
-  readonly gracePeriod?: Duration;
-  /** Temporal's `shutdownForceTime`. Default `15 seconds`. Keep it at or below the kernel's `drainTimeoutMs`. */
-  readonly forceAfter?: Duration;
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `TemporalRuntime` is added, since `start` resolves it. */
@@ -116,19 +108,16 @@ export const TemporalModule =
   >(
     options: TemporalModuleOptions<C, ActivitiesError, ActivitiesNeeds, I, P, X, N>,
   ) => {
-    const { contract, activities, workflows, address, namespace, gracePeriod, forceAfter } =
-      options;
+    const { activities } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
-    const starter = temporal({
-      contract,
-      workflows,
-      ...(address === undefined ? {} : { address }),
-      ...(namespace === undefined ? {} : { namespace }),
-      ...(gracePeriod === undefined ? {} : { gracePeriod }),
-      ...(forceAfter === undefined ? {} : { forceAfter }),
-    });
+    // The whole options record, not a field-by-field spread:
+    // `TemporalModuleOptions` IS `TemporalTuning` plus the contract, the
+    // workflows, the activities and the module lists, so an option this sugar
+    // forgets to forward cannot exist. The lists `temporal()` does not know are
+    // ignored rather than rejected.
+    const starter = temporal(options);
     // The assertion is the gate, not the shape: `NeedsGate` defers while the
     // tuples are type parameters, and is computed at the application's own call
     // because the options type re-declares it. Spelled out rather than

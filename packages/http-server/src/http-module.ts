@@ -8,14 +8,9 @@ import {
   type NeedsGate,
   type Provider,
 } from "@btravstack/di";
-import type { DefaultInitialContext } from "@orpc/server";
-import type { NodeHttpHandlerPlugin } from "@orpc/server/node";
-import type {
-  CORSHandlerPluginOptions,
-  ResponseCompressionHandlerPluginOptions,
-} from "@orpc/server/plugins";
 
-import { HttpRuntime, http, type HttpConfig } from "./http-runtime.js";
+import type { HttpConfig } from "./http-config.js";
+import { HttpRuntime, http, type HttpOptions } from "./http-runtime.js";
 import type { HttpRouterPort } from "./orpc.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
@@ -45,7 +40,7 @@ export type HttpModuleOptions<
   P extends readonly AnyProvider[],
   X extends readonly Exportable<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>>[],
   N extends readonly AnyPort[],
-> = {
+> = HttpOptions & {
   /**
    * The application's oRPC router — what `api.HttpRouter(contract)(…)` returns.
    * It carries the scheme authenticators `defineHttp` bound, which is how they
@@ -54,41 +49,6 @@ export type HttpModuleOptions<
   readonly router: Provider<HttpRouterPort, RouterError, RouterNeeds> & {
     readonly authenticators: readonly Auth[];
   };
-  /** Where the RPC endpoint is mounted. Default `/rpc`. */
-  readonly prefix?: `/${string}`;
-  /** Pins for a test — otherwise `PORT`/`HOST` from the environment. */
-  readonly port?: number;
-  readonly hostname?: string;
-  /**
-   * The CORS policy, off by default. `true` takes oRPC's own defaults — which
-   * reflect the request's origin — and a record is
-   * `CORSHandlerPluginOptions` verbatim.
-   */
-  readonly cors?: boolean | CORSHandlerPluginOptions<DefaultInitialContext>;
-  /**
-   * The largest request body a procedure will read, in bytes. Default 1 MiB;
-   * `false` reads an unbounded body. Over the limit is oRPC's
-   * `PAYLOAD_TOO_LARGE`.
-   */
-  readonly bodyLimit?: number | false;
-  /**
-   * Response compression, off by default. `true` takes oRPC's own defaults
-   * (gzip then deflate, above 1 KB) and a record is
-   * `ResponseCompressionHandlerPluginOptions` verbatim.
-   */
-  readonly compression?: boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>;
-  /**
-   * Any other oRPC handler plugin. Transport policy configuring the transport;
-   * not a middleware slot for application logic, which the package still
-   * declines.
-   */
-  readonly plugins?: readonly NodeHttpHandlerPlugin<DefaultInitialContext>[];
-  /**
-   * Headers set on every response, before dispatch — a listener concern, not
-   * oRPC's. `true` (default) applies the package's small helmet-style set;
-   * `false` disables it; a record replaces it outright.
-   */
-  readonly securityHeaders?: boolean | Readonly<Record<string, string>>;
   readonly imports?: I;
   readonly provides?: P;
   /** The application's own exports; `HttpRuntime` is added, since `start` resolves it. */
@@ -129,30 +89,17 @@ export const HttpModule =
   >(
     options: HttpModuleOptions<RouterError, RouterNeeds, Auth, I, P, X, N>,
   ) => {
-    const {
-      router,
-      prefix,
-      port,
-      hostname,
-      cors,
-      bodyLimit,
-      compression,
-      plugins,
-      securityHeaders,
-    } = options;
+    const { router } = options;
     const imports = (options.imports ?? []) as I;
     const provides = (options.provides ?? []) as P;
     const exports = (options.exports ?? []) as X;
-    const starter = http({
-      ...(prefix === undefined ? {} : { prefix }),
-      ...(port === undefined ? {} : { port }),
-      ...(hostname === undefined ? {} : { hostname }),
-      ...(cors === undefined ? {} : { cors }),
-      ...(bodyLimit === undefined ? {} : { bodyLimit }),
-      ...(compression === undefined ? {} : { compression }),
-      ...(plugins === undefined ? {} : { plugins }),
-      ...(securityHeaders === undefined ? {} : { securityHeaders }),
-    });
+    // The whole options record, not a field-by-field spread: `HttpModuleOptions`
+    // IS `HttpOptions` plus the module lists, so an option this sugar forgets
+    // to forward cannot exist — which is the drift this file shipped once. The
+    // lists `http()` does not know are ignored rather than rejected, a rest
+    // destructuring being what `exactOptionalPropertyTypes` cannot type here
+    // (`Omit` over the deferred `NeedsGate` intersection drops the modifiers).
+    const starter = http(options);
     // The assertion is the gate, not the shape: `NeedsGate` defers while the
     // tuples are type parameters, and is computed at the application's own call
     // because `HttpModuleOptions` re-declares it. Spelled out rather than

@@ -161,6 +161,36 @@ describe("http, over a router", () => {
     expect(encoding).toBe("gzip");
   });
 
+  it("reads the policy from the environment when no option pins it", async ({ rpcPolicy }) => {
+    // GIVEN an app that configures no policy at all, deployed with one
+    const { greet, encodingOf } = await rpcPolicy(
+      {},
+      { BODY_LIMIT: "4096", CORS_ORIGIN: "https://allowed.test", COMPRESSION: "true" },
+    );
+
+    // WHEN a body over that limit is sent, and a compressible answer requested
+    const rejected = await greet("x".repeat(8192), { origin: "https://allowed.test" });
+    const encoding = await encodingOf("x".repeat(2048));
+
+    // THEN all three variables were honoured — CORS_ORIGIN alone turns CORS on
+    expect({
+      status: rejected.status,
+      origin: rejected.headers.get("access-control-allow-origin"),
+      encoding,
+    }).toEqual({ status: 413, origin: "https://allowed.test", encoding: "gzip" });
+  });
+
+  it("prefers the option over the environment, per field", async ({ rpcPolicy }) => {
+    // GIVEN an app whose body limit is pinned against an environment saying otherwise
+    const { greet } = await rpcPolicy({ bodyLimit: false }, { BODY_LIMIT: "16" });
+
+    // WHEN a body over the deployed limit is sent
+    const response = await greet("x".repeat(64));
+
+    // THEN the pin won — explicit beats environment beats default
+    expect(response.status).toBe(200);
+  });
+
   it("takes the compression options it was given", async ({ rpcPolicy }) => {
     // GIVEN an app configured with a compression record naming deflate alone
     const { encodingOf } = await rpcPolicy({ compression: { encodings: ["deflate"] } });

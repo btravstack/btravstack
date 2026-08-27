@@ -39,15 +39,9 @@ import { test } from "vitest";
 import { HttpAuthenticator, Unauthenticated, authenticatorPort } from "../auth.js";
 import { defineHttp } from "../define-http.js";
 import { HttpHandler } from "../handler.js";
+import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
-import {
-  HttpConfig,
-  HttpRuntime,
-  http,
-  httpModule,
-  type HttpInfo,
-  type HttpOptions,
-} from "../http-runtime.js";
+import { HttpRuntime, http, httpModule, type HttpInfo, type HttpOptions } from "../http-runtime.js";
 
 type Handler = ServiceOf<HttpHandler>;
 
@@ -718,7 +712,7 @@ export type HttpFixtures = {
    * The starter over a one-procedure `greet` router with whatever transport
    * policy the test configures. Shut down by the fixture.
    */
-  readonly rpcPolicy: (options: PolicyOptions) => Promise<PolicyCalls>;
+  readonly rpcPolicy: (options: PolicyOptions, env?: Environment) => Promise<PolicyCalls>;
   /** A bare request's headers — the one argument an authenticator is handed. */
   readonly headers: IncomingHttpHeaders;
 };
@@ -998,8 +992,8 @@ export const it = test.extend<HttpFixtures>({
   },
 
   rpcPolicy: async ({ boot }, use) => {
-    await use(async (options) => {
-      const app = boot(rpcPolicyAppOf(options));
+    await use(async (options, env = {}) => {
+      const app = boot(rpcPolicyAppOf(options), { env });
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return callsOf(`http://127.0.0.1:${info.port}`);

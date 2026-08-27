@@ -90,7 +90,13 @@ describe("httpRuntime", () => {
     // THEN the config was bound from the environment, parsed, and the runtime
     // published the ephemeral port the OS picked for it
     expect({ config: config(), listening: (info?.port ?? 0) > 0 }).toEqual({
-      config: { port: 0, hostname: "127.0.0.1" },
+      config: {
+        port: 0,
+        hostname: "127.0.0.1",
+        bodyLimit: 1_048_576,
+        corsOrigin: "",
+        compression: false,
+      },
       listening: true,
     });
   });
@@ -105,7 +111,13 @@ describe("httpRuntime", () => {
     // THEN the pin won over the environment for the port, and the environment
     // was still read for the host — explicit beats environment beats default,
     // per field
-    expect(config()).toEqual({ port: 0, hostname: "127.0.0.1" });
+    expect(config()).toEqual({
+      port: 0,
+      hostname: "127.0.0.1",
+      bodyLimit: 1_048_576,
+      corsOrigin: "",
+      compression: false,
+    });
   });
 
   it("fails startup with ConfigInvalid for HttpConfig when PORT is not a port", async ({

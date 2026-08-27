@@ -296,14 +296,22 @@ arm)`. The starter provides
   `Runtime<never, HttpInfo>` on the **`HttpRuntime`** port (a class over
   core's `RuntimePort`, **an empty `resolves`**), which the composition root imports
   next to the application and exports so `start` finds it, and **`HttpConfig`**
-  (`{ port, hostname }`) bound through `Config.provider` from `PORT` (default
-  `3000`) and `HOST` (default `0.0.0.0` — a pod, not a laptop) in the kernel's
-  `Env`. `port`/`hostname` **pin** a field instead of reading it — explicit >
+  (`{ port, hostname, bodyLimit, corsOrigin, compression }`) bound through
+  `Config.provider` from `PORT` (default `3000`), `HOST` (default `0.0.0.0` — a
+  pod, not a laptop), `BODY_LIMIT`, `CORS_ORIGIN` and `COMPRESSION` in the
+  kernel's `Env`. It is declared in `http-config.ts` rather than
+  `http-runtime.ts` because `orpc.ts` reads it and `http-runtime.ts` imports
+  `orpc` — a leaf module is what keeps that from being a runtime import cycle.
+  Every field **pins** instead of reading — explicit >
   env > default, per field (`Config.pinned(value, field)` swaps the field's
   `parse` for a constant and keeps the variable name). A pinned field reads
   nothing from the environment; the declared `Env` need and `ConfigInvalid`
   stay whatever is pinned — one signature, no overload pair to keep in step
   (the kernel discharges the one, a pinned config never produces the other).
+  There is **no fully-pinned shortcut provider** any more: it existed to skip
+  the `Env` read when `port` and `hostname` were both given, and with five
+  fields it would have been a branch nobody could satisfy — `Config.pinned`
+  already reads nothing.
   `prefix` (default `/rpc`) is where the RPC endpoint is mounted. The worked
   example is `Module("OrderApi")({ imports: [Application, Persistence,
 http()], provides: [orderRouter], exports:
@@ -316,16 +324,34 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   rule: `boolean | CORSHandlerPluginOptions<DefaultInitialContext>`,
   `number | false`, and
   `boolean | ResponseCompressionHandlerPluginOptions<DefaultInitialContext>`.
-  `true` takes the plugin's own defaults; a record is that plugin's options
-  verbatim. `orpc.ts`'s `pluginsOf` constructs one only when configured and
-  puts them ahead of `plugins`, which is order-independent anyway — oRPC sorts
-  its own plugins by their `before`/`after` names.
 
-  **`bodyLimit` is the only one that defaults on** (`DEFAULT_BODY_LIMIT`, 1
+  **Each SCALAR half is a field of `HttpConfig`, not a closure**, bound from
+  `BODY_LIMIT`, `CORS_ORIGIN` and `COMPRESSION` and **pinned** by the option —
+  explicit beats environment beats default, per field, the same
+  `Config.pinned` shape `PORT`/`HOST` already used. The option is what a test
+  or a fixed decision pins; the variable is what a deployment sets. The
+  SHAPE halves — a `CORSHandlerPluginOptions` record's headers and methods,
+  `ResponseCompressionHandlerPluginOptions`'s `encodings`/`threshold`,
+  `plugins` — stay composition-time and reach the handler through `orpc()`'s
+  closure, because a record is not something an environment can carry.
+  `orpc.ts`'s `pluginsOf(options, config)` is where the two meet, and the oRPC
+  handler provider therefore declares `HttpConfig` as a dependency — which is
+  why `httpModule`'s return type `Exclude`s it from the needs channel: the
+  module provides it.
+
+  Precedence, spelled once in `corsOf`: a record naming `origin` wins,
+  `CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.
+  `cors: false` pins `""` and is off whatever the deployment says; `CORS_ORIGIN`
+  alone is enough to turn CORS on, which is what lets a deployment admit a
+  browser client without a code change. A comma-separated list becomes the
+  plugin's own origin array, `*` included.
+
+  **`bodyLimit` is the only one whose default is on** (`DEFAULT_BODY_LIMIT`, 1
   MiB): an unbounded body is a trust boundary, where CORS and compression are
   policy a framework guessing is worse than one staying quiet. Over the limit
   is oRPC's `PAYLOAD_TOO_LARGE`, decided on `content-length` when one is sent
-  and while streaming otherwise. `false` is unbounded.
+  and while streaming otherwise. `bodyLimit: false` pins `0`, which is
+  unbounded — the one value the environment can also carry.
 
   **`compression` is the RESPONSE half only.** `RequestCompressionHandlerPlugin`
   stays in `plugins`: inflating a body before the limit measures it is an
@@ -336,6 +362,9 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `GetMethodCsrfProtectionHandlerPlugin` is meaningful only once a request
   carries a `SameSite` cookie, and this package configures no cookies. It
   becomes an option when cookies do; until then it is a `plugins` line.
+
+  **`securityHeaders` stays composition-time on purpose** — a deployment that
+  can silently turn `x-frame-options` off is a footgun the other three are not.
 
 - **`plugins`** —
   `readonly NodeHttpHandlerPlugin<DefaultInitialContext>[]`, from
@@ -607,9 +636,11 @@ arrive at the same door, and the answer is the same for all of them: **they are
 handler configuration, not a middleware slot.** Thesis #3's refusal survives
 intact, narrowed to what it was always about.
 
-**Five of the six are named options; CSRF is the exception, and it is stated
-rather than glossed.** `cors`, `bodyLimit` and `compression` (above),
-`securityHeaders` on the listener, and authentication through `defineHttp`.
+**Five of the six are configuration; CSRF is the exception, and it is stated
+rather than glossed.** `cors`, `bodyLimit` and `compression` are options that
+pin `HttpConfig` fields a deployment can set instead; `securityHeaders` is an
+option on the listener; authentication is bound through `defineHttp`'s
+authenticators, which ride the router rather than being an option on `http()`.
 CSRF is reached through `plugins` because oRPC's protection only bites on a
 request carrying a `SameSite` cookie and this package configures no cookies —
 an option over a cookie surface that does not exist would be configuration

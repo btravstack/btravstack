@@ -189,9 +189,43 @@ module above with `DATABASE_URL` unset and `DATABASE_POOL_SIZE=100`:
 {"type":"exited"}
 ```
 
-The kernel's own `PROBE_PORT` is bound the same way; a bad one is a
-`RuntimeStartFailed` for `"probes"` whose `cause` is the `ConfigInvalid`, and
-`runMain` still exits `78`. See [runMain and exit codes](/reference/core/exit-codes).
+The kernel's own `PROBE_PORT`, `PRE_DRAIN_DELAY_MS` and `DRAIN_TIMEOUT_MS` are
+bound the same way, in one pass; a bad one is a `RuntimeStartFailed` for
+`"kernel"` whose `cause` is the `ConfigInvalid`, and `runMain` still exits
+`78`. See [runMain and exit codes](/reference/core/exit-codes).
+
+## What the framework itself reads
+
+Every starter binds its own configuration this way, and every one of those
+variables is **pinned** by the matching option — explicit beats environment
+beats default, per field — so a value that varies by deployment can move to the
+deployment without a code change, and a value that is a decision stays in the
+composition root.
+
+| Variable                   | Default                 | Bound by                                                    |
+| -------------------------- | ----------------------- | ----------------------------------------------------------- |
+| `PROBE_PORT`               | `9000`                  | the kernel ([probes](/reference/core/probes))               |
+| `PRE_DRAIN_DELAY_MS`       | `5000`                  | the kernel ([drain](/how-to/tune-the-drain-for-kubernetes)) |
+| `DRAIN_TIMEOUT_MS`         | `20000`                 | the kernel                                                  |
+| `PORT` / `HOST`            | `3000` / `0.0.0.0`      | [`http()`](/reference/http-server)                          |
+| `BODY_LIMIT`               | `1048576`               | `http()` — `0` is unbounded                                 |
+| `CORS_ORIGIN`              | unset (CORS off)        | `http()` — comma-separated origins, or `*`                  |
+| `COMPRESSION`              | `false`                 | `http()` — response compression                             |
+| `TEMPORAL_ADDRESS`         | `127.0.0.1:7233`        | [`temporal()`](/reference/temporal-worker)                  |
+| `TEMPORAL_NAMESPACE`       | `default`               | `temporal()`                                                |
+| `TEMPORAL_GRACE_PERIOD_MS` | `10000`                 | `temporal()` — `shutdownGraceTime`                          |
+| `TEMPORAL_FORCE_AFTER_MS`  | `15000`                 | `temporal()` — `shutdownForceTime`                          |
+| `AMQP_URL`                 | `amqp://127.0.0.1:5672` | [`amqp()`](/reference/amqp-worker)                          |
+| `AMQP_CONNECT_TIMEOUT_MS`  | `5000`                  | `amqp()`                                                    |
+| `LOG_LEVEL`                | `info`                  | [`observability()`](/reference/observability)               |
+| `DATABASE_URL`             | required                | [`prismaDatabase()`](/reference/prisma)                     |
+| `REDIS_URL`                | required                | [`cache()` over Redis](/reference/cache)                    |
+| `SMTP_URL`                 | required                | [`mailer()` over SMTP](/reference/mailer)                   |
+| `STORAGE_S3_*`             | see the page            | [`storage()` over S3](/reference/storage)                   |
+
+A **shape** is never a variable: a plugin list, a CORS record's allowed
+headers, a set of security headers. An environment carries strings, so what it
+carries here is scalars.
 
 ## Any Standard Schema
 

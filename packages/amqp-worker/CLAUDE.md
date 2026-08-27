@@ -159,8 +159,9 @@ K]`, which always names the marker — printed as the **bare string**, the
   — the starter, the same shape as `@btravstack/http-server`'s `http()`. It provides
   the runtime on **`AmqpRuntime`** (`extends RuntimePort<Runtime<never,
 AmqpInfo>>` — the runtime resolves **nothing**) and the broker on
-  **`AmqpConfig`** (`{ url }`, bound from `AMQP_URL`, default
-  `amqp://127.0.0.1:5672`), and it **needs** its handlers port, typed for
+  **`AmqpConfig`** (`{ url, connectTimeoutMs }`, bound from `AMQP_URL`, default
+  `amqp://127.0.0.1:5672`, and `AMQP_CONNECT_TIMEOUT_MS`, default `5_000`), and
+  it **needs** its handlers port, typed for
   `contract`, which the application provides. The composition root imports
   it, provides the handlers, exports `AmqpRuntime`; di's `Needs` channel
   carries the port, and `start` refuses a module whose needs channel still
@@ -190,8 +191,18 @@ AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>` either way,
   passthrough block: a key the library does not accept is a compile error at
   the composition root, not a silently ignored setting.
   `connectTimeoutMs` (a top-level `CreateWorkerOptions` field, **not** nested
-  under `connectionOptions`, where setting it is silently inert — an
-  unreachable broker takes the library's 30s default to report without it).
+  under `connectionOptions`, where setting it is silently inert) — a **pin** of
+  `AMQP_CONNECT_TIMEOUT_MS` like `url` is of `AMQP_URL`, since how long a
+  deployment waits for its broker is the deployment's business. The default is
+  `5_000` rather than the library's `30_000`: thirty seconds is longer than
+  most orchestrators wait before restarting the pod, so an unreachable broker
+  should be reported rather than sat on. The fully-pinned shortcut provider is
+  gone with it — `Config.pinned` already reads nothing.
+
+  `AmqpTuning` is where `url`, `connectionOptions`, `defaultConsumerOptions`
+  and `connectTimeoutMs` are declared, and both `AmqpOptions` and
+  `AmqpModuleOptions` intersect it — one spelling, so the sugar cannot drift
+  from the starter it forwards to.
   `AmqpInfo` is `{ queues }`, published on `Serving.info` once consuming.
 
 - **The handlers port's service is `WorkerInferHandlers<TContract>`** —
