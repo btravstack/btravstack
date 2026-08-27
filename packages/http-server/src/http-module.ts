@@ -9,12 +9,17 @@ import {
   type Provider,
 } from "@btravstack/di";
 
+import { HttpHandler } from "./handler.js";
 import type { HttpConfig } from "./http-config.js";
 import { HttpRuntime, http, type HttpOptions } from "./http-runtime.js";
 import type { HttpRouterPort } from "./orpc.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
-type HttpStarter = Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>;
+type HttpStarter = Module<
+  HttpRuntime | HttpConfig | HttpHandler,
+  ConfigInvalid,
+  Env | HttpRouterPort
+>;
 
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */
 type Imports<I extends readonly AnyModule[]> = readonly [...I, HttpStarter];
@@ -112,12 +117,19 @@ export const HttpModule =
         RouterNeeds,
         Auth
       >,
-      exports: [HttpRuntime, ...exports] as readonly [typeof HttpRuntime, ...X],
+      // `HttpHandler` too, and not as a courtesy: the runtime RESOLVES it, so
+      // `start`'s gate refuses a root that does not export it. A second
+      // protocol's answerer lands in the same set from its own module.
+      exports: [HttpRuntime, HttpHandler, ...exports] as readonly [
+        typeof HttpRuntime,
+        typeof HttpHandler,
+        ...X,
+      ],
       needs: (options.needs ?? []) as N,
     } as {
       readonly imports: Imports<I>;
       readonly provides: Provides<P, RouterError, RouterNeeds, Auth>;
-      readonly exports: readonly [typeof HttpRuntime, ...X];
+      readonly exports: readonly [typeof HttpRuntime, typeof HttpHandler, ...X];
       readonly needs: N;
     } & NeedsGate<Imports<I>, Provides<P, RouterError, RouterNeeds, Auth>, N>);
   };

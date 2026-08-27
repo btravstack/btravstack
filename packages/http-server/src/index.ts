@@ -2,6 +2,8 @@ export { HttpAuthenticator, Unauthenticated, authenticatorPort, granted } from "
 export type { Authenticator, AuthenticatorService, Grant, Granted } from "./auth.js";
 export type { ControllerKeyOf, ControllerPortOf } from "./controller.js";
 export { defineHttp } from "./define-http.js";
+export { HttpHandler } from "./handler.js";
+export type { HttpAnswerer } from "./handler.js";
 export type { Authenticators, Http, SchemesFrom } from "./define-http.js";
 export { HttpModule } from "./http-module.js";
 export type { HttpModuleOptions } from "./http-module.js";

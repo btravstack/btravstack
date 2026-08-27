@@ -284,8 +284,10 @@ not cover"` marker, and what the marker names is a procedure path
 
 - **`http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` →
   `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
-  — the starter, and **the one way HTTP is answered here: oRPC, over its own
-  node adapter**. The
+  — the starter, and **oRPC's answerer under the HTTP runtime**: one protocol,
+  over its own node adapter, contributing one member to the `HttpHandler` set
+  port. It used to be "the one way HTTP is answered here" and is not any more —
+  see **Several answerers, one runtime** below. The
   former `@btravstack/orpc` was folded in for that reason — oRPC shares this
   stack's convictions (a contract, typed errors, `Result` at the boundary), so
   it is enforced, not offered among alternatives. The router is not an
@@ -414,8 +416,10 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. Neither is
   di's `UNSATISFIED DEPENDENCIES` dependency gate.
   `examples/order-api/src/needs-gate.test-d.ts` pins both, plus the
-  `StartOptions.unit` halves. There is no `UNSATISFIED RUNTIME PORTS` case for
-  this runtime any more: it declares none.
+  `StartOptions.unit` halves. **`UNSATISFIED RUNTIME PORTS` is live for this
+  runtime again**: `HttpRuntime` resolves `HttpHandler`, so a root that does not
+  export it is refused at `start` — `HttpModule` adds it to `exports` itself, and
+  a hand-written root writes `exports: [HttpRuntime, HttpHandler]`.
 - **What it decides.** A procedure under `prefix` answers with its output or
   the `ORPCError` the router's `.result()` triage mapped its `Result` to
   (`@unthrown/orpc`, in the application — this package maps nothing); a defect
@@ -443,8 +447,9 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `stop()` destroys what is still open. `closeIdleConnections()` alone would
   miss a response with a request in flight; that is why retirement is tracked
   per-response rather than left to it.
-- **Not included, deliberately**: any other router or handler (there is no
-  `handler` option and no listener port to provide — one way), a middleware
+- **Not included, deliberately**: another ROUTER for oRPC's own answerer (there
+  is no `handler` option on `http()`; a second protocol is a second answerer,
+  not a swap of this one), a middleware
   slot for application logic, `Result` → HTTP status, HTTPS, HTTP/2 — see the
   package README's _"What it does not do"_ for why each is a non-goal.
   `plugins` (above) is an honest escape hatch rather than a keyhole — a plugin
@@ -628,6 +633,55 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   next requirement.
   `controller.test-d.ts` is the package's own compile-time gate — see Public
   surface.
+
+## Several answerers, one runtime
+
+**`HttpHandler` is a SET port of `{ prefix, handle }`, and each protocol served
+in this process contributes one member.** oRPC is the only one this package
+ships; GraphQL and htmx fragments are the two the family is being extended for
+(#179). The shape was chosen in #174, and the reason is a constraint rather
+than a preference: **a graph holds exactly one runtime** (thesis #1 — every
+runtime port is declared over the kernel's `RuntimePort`, so a graph can hold
+exactly one), so three protocols cannot be three runtimes. They are three
+answerers under one.
+
+**Routing is by longest matching prefix, and there is no chain.** `/rpc` owns
+`/rpc` and everything under it; a `/` fragment answerer takes the rest. Nesting
+is the expected shape rather than a conflict, so ordering never has to be
+decided — which is the whole reason this beat #174's own option (2), where a
+chain of "answer or decline" would have made ordering a property of provider
+registration across modules and visible in no single line. A path no mount
+point covers is the runtime's own `404`, written before any answerer is
+consulted; a path a mount DOES cover, whose answerer declines, is the same
+`404` it always was.
+
+Three consequences worth stating because each is a decision:
+
+- **A mount point is a path segment, not a string prefix.** `/rpc` does not own
+  `/rpcx`. A trailing slash is the same mount (`/rpc/` and `/rpc` collide), and
+  two answerers on one mount is a `RuntimeStartFailed` at `listen` rather than
+  a coin toss.
+- **The runtime reads the members through `Runtime.resolves`, not through di.**
+  A member contributed by a SIBLING module is not visible from inside the
+  starter's own module, and `resolves` is the mechanism the kernel already ships
+  for "what the runtime reads back out of the built application context". The
+  cost is that a composition root must export `HttpHandler`; `HttpModule` does
+  it for the application, and `start`'s gate names the port when a hand-written
+  root forgets.
+- **`HttpHandler` is public now.** It was internal on the stated grounds that
+  "there is one way to answer HTTP here, oRPC, so nothing outside this package
+  provides or names it". A second protocol's package has to name it, so that
+  sentence is gone from `handler.ts`.
+
+**An answerer outside a contract carries its own authentication, and nothing
+checks that it did.** `@btravstack/contract`'s marker is what says which scheme
+protects an oRPC procedure, and `defineHttp({ authenticators })` is what
+resolves it. A fragment or GraphQL answerer has no such statement of intent, so
+its routes are **public** unless it brings authentication of its own — the same
+way an unmarked procedure is public, and with the same absence of a gate for
+"you forgot". Do not describe a non-oRPC answerer as protected by the
+contract's marker. What the common way across protocols should be is #179's
+question and is deliberately not answered here.
 
 ## Cross-cutting concerns: configuration, not a middleware slot
 

@@ -20,7 +20,7 @@ import {
   type CustomerId,
   type OrderId,
 } from "@btravstack/example-order-domain";
-import type { HttpInfo, HttpRuntime } from "@btravstack/http-server";
+import type { HttpHandler, HttpInfo, HttpRuntime } from "@btravstack/http-server";
 import { LoggerConfig, createLogger, type Line, type Sink } from "@btravstack/observability";
 import { bootFixture, overridden, type Boot } from "@btravstack/testing";
 import request from "supertest";
@@ -198,7 +198,7 @@ export type ApiFixtures = {
    * in the module's own exports.
    */
   readonly serve: <E>(
-    module: Module<HttpRuntime | Logger | Tracer | Meter, E, Scope | Env>,
+    module: Module<HttpRuntime | HttpHandler | Logger | Tracer | Meter, E, Scope | Env>,
     options?: Pick<StartOptions, "drainTimeoutMs" | "probes">,
   ) => RunningApp<E, HttpInfo>;
   /**

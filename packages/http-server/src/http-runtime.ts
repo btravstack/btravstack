@@ -14,7 +14,7 @@ import {
 import { Module, Provider, type ServiceOf } from "@btravstack/di";
 import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
-import { HttpHandler } from "./handler.js";
+import { HttpHandler, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
 import { DEFAULT_BODY_LIMIT, orpc, type HttpRouterPort, type OrpcOptions } from "./orpc.js";
 
@@ -65,31 +65,37 @@ const DEFAULT_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "referrer-policy": "no-referrer",
 };
 
-/** The runtime's port: what `http()` provides, and what the module `start` boots must export. */
-export class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}
+/**
+ * The runtime's port: what `http()` provides, and what the module `start` boots
+ * must export.
+ *
+ * It **resolves `HttpHandler`**, which is why a root exporting it is now part of
+ * `start`'s gate: the answerers are contributed by sibling modules — oRPC here,
+ * a fragment or GraphQL answerer beside it — so they are not visible from
+ * inside this module and have to be read out of the application context.
+ */
+export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}
 
 const httpRuntime = (
   config: ServiceOf<HttpConfig>,
-  handler: ServiceOf<HttpHandler>,
   securityHeaders: HttpOptions["securityHeaders"],
-): Runtime<never, HttpInfo> => ({
+): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
-  resolves: [],
-  start: (host) => listen(host, config, handler, securityHeaders),
+  resolves: [HttpHandler],
+  start: (host) => listen(host, config, host.ctx.get(HttpHandler), securityHeaders),
 });
 
 /**
- * The runtime and its configuration as a module, over whichever `HttpHandler`
- * provider it is handed: `http()` hands it the oRPC one; the package's own
- * transport specs hand it a bare listener. Internal for that second reason
- * only.
+ * The runtime and its configuration as a module, over whichever answerer it is
+ * handed: `http()` hands it the oRPC one; the package's own transport specs
+ * hand it a bare listener. Internal for that second reason only.
  */
 export const httpModule = <N>(
   options: SocketOptions,
   handler: Provider<HttpHandler, never, N>,
   // `HttpConfig` is excluded because this module PROVIDES it: the oRPC handler
   // reads the transport policy off it, which is a need discharged in here.
-): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | Exclude<N, HttpConfig>> => {
+): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | Exclude<N, HttpConfig>> => {
   const { port, hostname, cors, bodyLimit, compression, securityHeaders } = options;
   const config = Config.provider(HttpConfig)(
     Config.object({
@@ -121,177 +127,232 @@ export const httpModule = <N>(
       config,
       handler,
       Provider(HttpRuntime)(
-        { config: HttpConfig, handler: HttpHandler },
-        {
-          sync: ({ config: bound, handler: handle }) => httpRuntime(bound, handle, securityHeaders),
-        },
+        { config: HttpConfig },
+        { sync: ({ config: bound }) => httpRuntime(bound, securityHeaders) },
       ),
     ],
-    exports: [HttpRuntime, HttpConfig],
+    // `HttpHandler` is exported so a SIBLING module's answerer and this one's
+    // land in the same set at the root, which is where the runtime reads them.
+    exports: [HttpRuntime, HttpConfig, HttpHandler],
   } as never) as unknown as Module<
-    HttpRuntime | HttpConfig,
+    HttpRuntime | HttpConfig | HttpHandler,
     ConfigInvalid,
     Env | Exclude<N, HttpConfig>
   >;
 };
 
 /**
- * The HTTP starter, and the one way HTTP is answered here: oRPC. A module
+ * The HTTP starter: oRPC, as ONE answerer under the HTTP runtime. A module
  * providing the runtime, its configuration (bound from `PORT`/`HOST` unless
- * pinned) and the HTTP surface built from the application's router — which this
- * module NEEDS, so a root that imports the starter without providing one owes
- * the port.
+ * pinned) and the oRPC answerer built from the application's router — which
+ * this module NEEDS, so a root that imports the starter without providing one
+ * owes the port. A second protocol is a second module contributing its own
+ * member to `HttpHandler`, not a second runtime.
  *
  * Pin `port`/`hostname` and the module reads nothing from the environment; pin
  * only some and the rest still comes from it.
  */
 export const http = (
   options: HttpOptions = {},
-): Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort> => {
+): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | HttpRouterPort> => {
   // Every field goes to BOTH halves: the scalars pin the config the handler
   // reads, and the shapes (`cors`'s own record, `compression`'s tuning,
   // `plugins`) are composition-time and reach the handler through its closure.
   return httpModule(options, orpc(options));
 };
 
+/**
+ * The answerers, longest prefix first, so the first match is THE match.
+ * Nesting is expected — `/rpc` under a `/` fragment answerer — and only a
+ * duplicate prefix is refused, since two answerers on one mount point is a
+ * coin toss no ordering rule would make legible.
+ */
+const routesOf = (
+  answerers: readonly HttpAnswerer[],
+): Result<readonly HttpAnswerer[], RuntimeStartFailed> => {
+  const seen = new Set<string>();
+  const duplicate = answerers
+    .map(({ prefix }) => normalize(prefix))
+    .find((prefix) => (seen.has(prefix) ? true : (seen.add(prefix), false)));
+  return duplicate === undefined
+    ? Ok([...answerers].sort((a, b) => normalize(b.prefix).length - normalize(a.prefix).length))
+    : Err(
+        new RuntimeStartFailed({
+          runtime: "http",
+          cause: new Error(`two answerers are mounted on ${duplicate}`),
+        }),
+      );
+};
+
+// A trailing slash is the same mount point: `/rpc/` and `/rpc` cannot be two
+// answerers. The root normalises to `""`, which every path starts with.
+const normalize = (prefix: string): string => prefix.replace(/\/+$/, "");
+
+/**
+ * The answerer a path belongs to: the longest prefix it sits at or under.
+ * `/rpc` owns `/rpc` and `/rpc/orders` and NOT `/rpcx`, which is the difference
+ * between a mount point and a string prefix.
+ */
+const answererFor = (
+  routes: readonly HttpAnswerer[],
+  url: string | undefined,
+): HttpAnswerer | undefined => {
+  const path = (url ?? "/").split("?")[0] ?? "/";
+  return routes.find(({ prefix }) => {
+    const mount = normalize(prefix);
+    return path === mount || path.startsWith(`${mount}/`);
+  });
+};
+
 const listen = (
-  host: RuntimeHost<never>,
+  host: RuntimeHost<typeof HttpHandler>,
   options: ServiceOf<HttpConfig>,
-  handler: ServiceOf<HttpHandler>,
+  answerers: readonly HttpAnswerer[],
   securityHeaders: HttpOptions["securityHeaders"],
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
-  fromSafePromise(
-    new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
-      // Resolved once, outside the per-request callback, entries included.
-      const headerRecord: Readonly<Record<string, string>> =
-        securityHeaders === false
-          ? {}
-          : securityHeaders === true || securityHeaders === undefined
-            ? DEFAULT_SECURITY_HEADERS
-            : securityHeaders;
-      const headers = Object.entries(headerRecord);
+  routesOf(answerers)
+    .toAsync()
+    .flatMap((routes) =>
+      fromSafePromise(
+        new Promise<Result<Serving<HttpInfo>, RuntimeStartFailed>>((resolve) => {
+          // Resolved once, outside the per-request callback, entries included.
+          const headerRecord: Readonly<Record<string, string>> =
+            securityHeaders === false
+              ? {}
+              : securityHeaders === true || securityHeaders === undefined
+                ? DEFAULT_SECURITY_HEADERS
+                : securityHeaders;
+          const headers = Object.entries(headerRecord);
 
-      // `close()` waits for every connection to end, and a keep-alive client
-      // holds one open long after its response. Tracking sockets is what lets
-      // `stop` destroy them instead of hanging.
-      const sockets = new Set<Socket>();
+          // `close()` waits for every connection to end, and a keep-alive client
+          // holds one open long after its response. Tracking sockets is what lets
+          // `stop` destroy them instead of hanging.
+          const sockets = new Set<Socket>();
 
-      // Responses still open, so the drain can retire them.
-      // `closeIdleConnections()` reaches every connection idle at that instant
-      // and no others — one with a request in flight survives it.
-      const open = new Set<ServerResponse>();
-      let draining = false;
+          // Responses still open, so the drain can retire them.
+          // `closeIdleConnections()` reaches every connection idle at that instant
+          // and no others — one with a request in flight survives it.
+          const open = new Set<ServerResponse>();
+          let draining = false;
 
-      const retire = (response: ServerResponse): void => {
-        if (!response.headersSent) {
-          response.setHeader("Connection", "close");
-          return;
-        }
-        // Headers already on the wire: no header left to change, so the socket
-        // is ended once the response is out.
-        const { socket } = response;
-        response.once("finish", () => void socket?.end());
-      };
-
-      const server: Server = createServer((request, response) => {
-        // FIRST, before dispatch: covers the runtime's own 404/500 and a
-        // drained response alike, not only what oRPC matched.
-        for (const [name, value] of headers) response.setHeader(name, value);
-        open.add(response);
-        response.once("close", () => open.delete(response));
-        if (draining) retire(response);
-        // `recoverDefect`, not `match`: `E` is statically `never` here, so an
-        // `errCases` arm would be a dead branch with no case to name.
-        void host
-          .run(metaFor(request), (_ctx, signal) => {
-            void answer(handler(request, response, signal), response);
-            // The unit's lifetime IS the response's, which is what makes the
-            // kernel's "flush inside the unit" contract structural here.
-            return closedOf(response);
-          })
-          .recoverDefect((cause) => {
-            // The unit failed outside `answer`'s reach — a synchronous throw, or
-            // a `StartOptions.unit` provider failing to build. Guarded, because
-            // `recoverDefect` would wrap a throw here into a fresh defect that
-            // the `void` below drops.
-            try {
-              end(response, 500, "InternalError");
-              if (!response.writableEnded)
-                response.destroy(cause instanceof Error ? cause : undefined);
-            } catch {
-              // nothing left to try; the socket is already unusable
+          const retire = (response: ServerResponse): void => {
+            if (!response.headersSent) {
+              response.setHeader("Connection", "close");
+              return;
             }
-            return OkAsync();
-          });
-      });
+            // Headers already on the wire: no header left to change, so the socket
+            // is ended once the response is out.
+            const { socket } = response;
+            response.once("finish", () => void socket?.end());
+          };
 
-      server.on("connection", (socket) => {
-        sockets.add(socket);
-        socket.once("close", () => sockets.delete(socket));
-      });
-
-      const closed = new Promise<void>((done) => {
-        server.once("close", () => done());
-      });
-
-      const stopAccepting = (): void => {
-        draining = true;
-        // Marked here rather than in the request callback, which ran before the
-        // drain existed — these are the responses holding a connection open
-        // past `closeIdleConnections()`.
-        for (const response of open) retire(response);
-        if (!server.listening) return;
-        server.close();
-        server.closeIdleConnections();
-      };
-
-      const onBindError = (cause: unknown): void => {
-        resolve(Err(new RuntimeStartFailed({ runtime: "http", cause })));
-      };
-
-      // Permanent, and deliberately not `onBindError`, which could only resolve
-      // an already-settled promise. Zero `'error'` listeners is worse: an
-      // unhandled `'error'` throws, and the kernel's `uncaughtException` handler
-      // turns that into a whole-application teardown over an accept fault.
-      const ignoreServingError = (): void => {};
-
-      server.once("error", onBindError);
-
-      // `listen` validates the port synchronously and THROWS
-      // `ERR_SOCKET_BAD_PORT` rather than emitting `'error'`. Uncaught, that
-      // escapes the executor and reaches the caller as a defect, bypassing the
-      // `RuntimeStartFailed` this function declares.
-      try {
-        server.listen(options.port, options.hostname, () => {
-          server.removeListener("error", onBindError);
-          server.on("error", ignoreServingError);
-
-          const address = server.address();
-          const port =
-            typeof address === "object" && address !== null ? address.port : options.port;
-
-          resolve(
-            Ok({
-              info: { port },
-              drain: (signal) => {
-                void signal;
-                stopAccepting();
+          const server: Server = createServer((request, response) => {
+            // FIRST, before dispatch: covers the runtime's own 404/500 and a
+            // drained response alike, not only what oRPC matched.
+            for (const [name, value] of headers) response.setHeader(name, value);
+            open.add(response);
+            response.once("close", () => open.delete(response));
+            if (draining) retire(response);
+            // `recoverDefect`, not `match`: `E` is statically `never` here, so an
+            // `errCases` arm would be a dead branch with no case to name.
+            const answerer = answererFor(routes, request.url);
+            void host
+              .run(metaFor(request), (_ctx, signal) => {
+                // No answerer owns this path: the runtime's own `404`, written
+                // here rather than after an await, so nothing is in flight.
+                if (answerer === undefined) {
+                  end(response, 404, "NotFound");
+                  return closedOf(response);
+                }
+                void answer(answerer.handle(request, response, signal), response);
+                // The unit's lifetime IS the response's, which is what makes the
+                // kernel's "flush inside the unit" contract structural here.
+                return closedOf(response);
+              })
+              .recoverDefect((cause) => {
+                // The unit failed outside `answer`'s reach — a synchronous throw, or
+                // a `StartOptions.unit` provider failing to build. Guarded, because
+                // `recoverDefect` would wrap a throw here into a fresh defect that
+                // the `void` below drops.
+                try {
+                  end(response, 500, "InternalError");
+                  if (!response.writableEnded)
+                    response.destroy(cause instanceof Error ? cause : undefined);
+                } catch {
+                  // nothing left to try; the socket is already unusable
+                }
                 return OkAsync();
-              },
-              stop: () => {
-                stopAccepting();
-                for (const socket of sockets) socket.destroy();
-                sockets.clear();
-                return fromSafePromise(closed);
-              },
-            }),
-          );
-        });
-      } catch (cause) {
-        onBindError(cause);
-      }
-    }),
-  ).flatMap((result) => result);
+              });
+          });
+
+          server.on("connection", (socket) => {
+            sockets.add(socket);
+            socket.once("close", () => sockets.delete(socket));
+          });
+
+          const closed = new Promise<void>((done) => {
+            server.once("close", () => done());
+          });
+
+          const stopAccepting = (): void => {
+            draining = true;
+            // Marked here rather than in the request callback, which ran before the
+            // drain existed — these are the responses holding a connection open
+            // past `closeIdleConnections()`.
+            for (const response of open) retire(response);
+            if (!server.listening) return;
+            server.close();
+            server.closeIdleConnections();
+          };
+
+          const onBindError = (cause: unknown): void => {
+            resolve(Err(new RuntimeStartFailed({ runtime: "http", cause })));
+          };
+
+          // Permanent, and deliberately not `onBindError`, which could only resolve
+          // an already-settled promise. Zero `'error'` listeners is worse: an
+          // unhandled `'error'` throws, and the kernel's `uncaughtException` handler
+          // turns that into a whole-application teardown over an accept fault.
+          const ignoreServingError = (): void => {};
+
+          server.once("error", onBindError);
+
+          // `listen` validates the port synchronously and THROWS
+          // `ERR_SOCKET_BAD_PORT` rather than emitting `'error'`. Uncaught, that
+          // escapes the executor and reaches the caller as a defect, bypassing the
+          // `RuntimeStartFailed` this function declares.
+          try {
+            server.listen(options.port, options.hostname, () => {
+              server.removeListener("error", onBindError);
+              server.on("error", ignoreServingError);
+
+              const address = server.address();
+              const port =
+                typeof address === "object" && address !== null ? address.port : options.port;
+
+              resolve(
+                Ok({
+                  info: { port },
+                  drain: (signal) => {
+                    void signal;
+                    stopAccepting();
+                    return OkAsync();
+                  },
+                  stop: () => {
+                    stopAccepting();
+                    for (const socket of sockets) socket.destroy();
+                    sockets.clear();
+                    return fromSafePromise(closed);
+                  },
+                }),
+              );
+            });
+          } catch (cause) {
+            onBindError(cause);
+          }
+        }),
+      ).flatMap((result) => result),
+    );
 
 // `closed` is checked first because unit work is not always synchronous with the
 // request: under a `StartOptions.unit` module it runs once the fork is built, and

@@ -141,15 +141,18 @@ export type HttpRouterPort = PortInstance<"HttpRouter", Router<Record<never, nev
  */
 export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
-  return Provider(HttpHandler)(
+  return Provider.member(HttpHandler)(
     { router: HttpRouterPort, config: HttpConfig },
     {
       sync: ({ router, config }) => {
         const rpc = new RPCHandler(router, { plugins: [...pluginsOf(options, config)] });
-        // The request rides oRPC's initial context so `principalMiddleware` can
-        // read its headers; nothing else in this package reads it.
-        return (request, response) =>
-          rpc.handle(request, response, { prefix, context: { request } });
+        return {
+          prefix,
+          // The request rides oRPC's initial context so `principalMiddleware`
+          // can read its headers; nothing else in this package reads it.
+          handle: (request, response) =>
+            rpc.handle(request, response, { prefix, context: { request } }),
+        };
       },
     },
   );
