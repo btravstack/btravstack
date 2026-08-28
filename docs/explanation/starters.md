@@ -50,8 +50,10 @@ them answers the port the kernel resolves.
 
 **oRPC is the one way HTTP is answered here.** `@btravstack/http-server` mounts an
 oRPC router through `@orpc/server/node`'s `RPCHandler` and offers no other
-router, no `handler` option, no listener port to provide yourself. That is not
-a gap awaiting a plugin system. oRPC shares this stack's convictions — a
+router for it and no `handler` option to swap it. That is not a gap awaiting a
+plugin system. (What it does offer is a **second answerer**: `HttpHandler` is a
+set port, so GraphQL or an htmx fragment mounts beside oRPC under the same
+runtime. That is another protocol, not another way to serve this one.) oRPC shares this stack's convictions — a
 contract, typed errors, `Result` at the boundary through `@unthrown/orpc` — so
 it is enforced rather than offered among alternatives. There was once a
 separate `@btravstack/orpc` package sitting on a more general HTTP runtime; it

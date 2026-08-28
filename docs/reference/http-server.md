@@ -64,12 +64,14 @@ declare const view: (order: Order) => OrderView;
 stated. A marked contract reached through anything else would type
 `principal: never`.
 
-`HttpRouterPort` (the starter's router port, `Port("HttpRouter")`),
-`Implementation<C, Schemes>` (the record type `HttpRouter`'s `sync` returns) and
-`HttpHandler` (the node listener port) exist in `src/orpc.ts` and
-`src/handler.ts` but are **not** exported from the package entry point: the
-first is reached as `provider.port` when a caller needs it, the second is
-inferred at the call, the third is an internal seam.
+`HttpRouterPort` (the starter's router port, `Port("HttpRouter")`) and
+`Implementation<C, Schemes>` (the record type `HttpRouter`'s `sync` returns)
+exist in `src/orpc.ts` but are **not** exported from the package entry point:
+the first is reached as `provider.port` when a caller needs it, the second is
+inferred at the call. `HttpHandler` used to be a third — an internal seam, on
+the grounds that oRPC was the only way to answer HTTP here — and is exported
+now, since a second protocol's package has to name the set port it contributes
+to.
 
 ## `HttpModule(name)({...})`
 
@@ -857,8 +859,12 @@ forgot".
 ## `HttpRuntime` and `HttpInfo`
 
 `HttpRuntime` is declared over the kernel's `RuntimePort` with service
-`Runtime<never, HttpInfo>`: the runtime **resolves nothing** — the router is
-a port its provider depends on — so `RuntimeHost.ctx` goes unread. Once
+`Runtime<typeof HttpHandler, HttpInfo>`: the runtime **resolves
+[`HttpHandler`](#httphandler-and-several-answerers)**, and reads its members off
+`RuntimeHost.ctx` — the one thing it reads there, and the reason a composition
+root must export that port. It resolved nothing while the oRPC answerer was the
+only one and its provider could depend on the router directly; a sibling
+module's answerer is not visible that way. Once
 listening it publishes `HttpInfo`, `{ port }`, on `Serving.info`; with `PORT=0`
 that is the only way to learn the port that was actually bound.
 

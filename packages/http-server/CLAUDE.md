@@ -520,31 +520,35 @@ subpath**, so a consumer that never imports it installs neither.
 
 ## Internal seam
 
-- **`HttpHandler`** (`src/handler.ts`, **not** exported from `index.ts`) — a
-  di `Port` whose service is the node listener,
-  `(request, response, signal) => PromiseLike<unknown>`. `http()` provides it
-  from the router port (`orpc.ts`'s `orpc({ prefix })`, a
-  `Provider(HttpHandler)({ router: HttpRouterPort }, …)`: `@orpc/server/node`'s
-  `RPCHandler`, `(request, response) => rpc.handle(request, response, {
-prefix })`, unmatched → resolves unwritten), and the `HttpRuntime` provider depends on it through
-  di. It returns `PromiseLike<unknown>` rather than `void` because the
-  package must know when the listener is finished to write a `404` over a
-  declined request without racing a response still in flight; `unknown`
-  because oRPC's `handle` resolves `{ matched }`, never the unit's result.
+- **`HttpHandler` is NOT internal any more** — it is the set port of
+  **Several answerers, one runtime** below, exported from `index.ts` because a
+  second protocol's package has to name what it contributes to. What stays
+  internal is the oRPC answerer's own wiring: `orpc.ts`'s `orpc({ prefix })` is
+  a `Provider.member(HttpHandler)({ router: HttpRouterPort, config: HttpConfig
+}, …)` answering `{ prefix, handle }`, where `handle` is `@orpc/server/node`'s
+  `RPCHandler` — `(request, response) => rpc.handle(request, response, {
+prefix })`, unmatched → resolves unwritten. `handle` returns
+  `PromiseLike<unknown>` rather than `void` because the package must know when
+  an answerer is finished to write a `404` over a declined request without
+  racing a response still in flight; `unknown` because oRPC's `handle` resolves
+  `{ matched }`, never the unit's result — and the runtime reads "did you
+  answer?" off the response rather than off that, which is what lets an
+  answerer be written against `node:http` alone.
 - **`httpModule(options, handlerProvider)`** (`http-runtime.ts`, exported from
   the file, not from `index.ts`) — the runtime and its configuration as a
   module over whichever `HttpHandler` provider it is handed. `http()` is
   `httpModule(socket, orpc({ prefix }))`; the package's own transport
   specs hand it a bare listener instead. It exists for that second reason
   only. `httpRuntime`, the runtime value's factory, is internal too.
-- **57 specs, 100% lines/functions.** Every app boots through the `boot`
+- **75 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
   failure (`configured`'s `ConfigInvalid`, `occupied`'s port in use) is the
   test's to assert on `app.exited`. `http-runtime.spec.ts` carries 23,
   through `test-fixtures.ts`'s `appOf` — `httpModule({ port: 0, hostname:
-"127.0.0.1" }, Provider(HttpHandler)({ value: handler }))` — so the
+"127.0.0.1" }, answering(handler))`, `answering` being the fixture that mounts
+  a bare handler as the graph's one answerer — so the
   guarantees (`404`/`500` fallbacks, the unit open until `'close'`, the drain,
   streamed responses, keep-alive retirement, the trace-id policy, port
   failures) are exercised with no router in the way; three of them are the
