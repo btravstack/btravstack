@@ -563,9 +563,11 @@ nothing. The drain retires busy keep-alive connections; a client's
 
 ## What it does not do
 
-- **Any other router or handler.** oRPC through `@orpc/server/node`'s
-  `RPCHandler` is the one way HTTP is answered here; there is no `handler`
-  option and no listener port to provide.
+- **Another router in oRPC's answerer.** oRPC through `@orpc/server/node`'s
+  `RPCHandler` is how **this** package answers HTTP, and there is no `handler`
+  option to swap it. A second protocol — GraphQL, htmx fragments — is a second
+  answerer contributing to the `HttpHandler` set port under the same runtime,
+  not a different router in this one.
 - **A middleware slot for application logic.** oRPC's own middleware, inside
   the router's procedures, is where that belongs. The one the package installs
   itself is `principalMiddleware`, on a leaf whose requirements say so. `plugins` is an

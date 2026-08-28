@@ -38,12 +38,17 @@ import { test } from "vitest";
 
 import { HttpAuthenticator, Unauthenticated, authenticatorPort } from "../auth.js";
 import { defineHttp } from "../define-http.js";
-import { HttpHandler } from "../handler.js";
+import { HttpHandler, type HttpAnswerer } from "../handler.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
 import { HttpRuntime, http, httpModule, type HttpInfo, type HttpOptions } from "../http-runtime.js";
 
-type Handler = ServiceOf<HttpHandler>;
+/** What a bare answerer's `handle` is, without the mount point around it. */
+type Handler = HttpAnswerer["handle"];
+
+/** That handler as the one answerer of a graph, mounted at the root. */
+const answering = (handle: Handler, prefix: `/${string}` = "/") =>
+  Provider.member(HttpHandler)({ value: { prefix, handle } });
 
 /** Everything the unmarked fixtures below mint: no authenticators, no schemes. */
 const publicApi = defineHttp();
@@ -61,10 +66,10 @@ const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securi
           hostname: "127.0.0.1",
           ...(securityHeaders === undefined ? {} : { securityHeaders }),
         },
-        Provider(HttpHandler)({ value: handler }),
+        answering(handler),
       ),
     ],
-    exports: [HttpRuntime],
+    exports: [HttpRuntime, HttpHandler],
   });
 
 /** A greeting service, so the router has a real dependency to declare. */
@@ -387,7 +392,7 @@ const rpcSubstitutedAppOf = () =>
         value: () => OkAsync({ userId: "u-stub" }),
       }),
     ],
-    exports: [HttpRuntime],
+    exports: [HttpRuntime, HttpHandler],
   });
 
 /** `Bearer ${token}`, or no credentials at all when `token` is `undefined`. */
@@ -510,7 +515,7 @@ const configuredAppOf = (options: { readonly port?: number; readonly hostname?: 
   let bound: ServiceOf<HttpConfig> | undefined;
   return {
     module: Module("ConfiguredApp")({
-      imports: [httpModule(options, Provider(HttpHandler)({ value: noop }))],
+      imports: [httpModule(options, answering(noop))],
       provides: [
         Provider(BoundConfig)(
           { config: HttpConfig },
@@ -522,7 +527,7 @@ const configuredAppOf = (options: { readonly port?: number; readonly hostname?: 
           },
         ),
       ],
-      exports: [HttpRuntime],
+      exports: [HttpRuntime, HttpHandler],
     }),
     config: () => bound,
   };
@@ -566,6 +571,34 @@ const slowUnitOf = (): SlowUnit => {
 };
 
 type App = RunningApp<ConfigInvalid, HttpInfo>;
+
+/**
+ * A graph serving several answerers at once — what a deployment mounting oRPC,
+ * GraphQL and fragments side by side looks like, with each answerer naming
+ * itself in the body so a test can tell which one took the request.
+ */
+const mountedAppOf = (prefixes: readonly `/${string}`[]) =>
+  Module("MountedApp")({
+    imports: [
+      httpModule(
+        { port: 0, hostname: "127.0.0.1" },
+        answering(
+          (_request, response) =>
+            new Promise<void>((done) => response.end(prefixes[0], () => done())),
+          prefixes[0] ?? "/",
+        ),
+      ),
+    ],
+    provides: prefixes
+      .slice(1)
+      .map((prefix) =>
+        answering(
+          (_request, response) => new Promise<void>((done) => response.end(prefix, () => done())),
+          prefix,
+        ),
+      ),
+    exports: [HttpRuntime, HttpHandler],
+  });
 
 const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
@@ -713,6 +746,16 @@ export type HttpFixtures = {
    * policy the test configures. Shut down by the fixture.
    */
   readonly rpcPolicy: (options: PolicyOptions, env?: Environment) => Promise<PolicyCalls>;
+  /**
+   * An app serving one answerer per prefix, each answering with its own mount
+   * point, plus the origin to call it on. Shut down by the fixture.
+   */
+  readonly mounted: (prefixes: readonly `/${string}`[]) => Promise<{
+    readonly origin: string;
+    readonly at: (path: string) => Promise<{ readonly status: number; readonly body: string }>;
+  }>;
+  /** The same, started but not awaited — for a graph whose mounts collide. */
+  readonly mountedApp: (prefixes: readonly `/${string}`[]) => App;
   /** A bare request's headers — the one argument an authenticator is handed. */
   readonly headers: IncomingHttpHeaders;
 };
@@ -989,6 +1032,26 @@ export const it = test.extend<HttpFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   headers: async ({}, use) => {
     await use({});
+  },
+
+  mountedApp: async ({ boot }, use) => {
+    await use((prefixes) => boot(mountedAppOf(prefixes)));
+  },
+
+  mounted: async ({ boot }, use) => {
+    await use(async (prefixes) => {
+      const app = boot(mountedAppOf(prefixes));
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      return {
+        origin,
+        at: async (path) => {
+          const response = await fetch(`${origin}${path}`);
+          return { status: response.status, body: await response.text() };
+        },
+      };
+    });
   },
 
   rpcPolicy: async ({ boot }, use) => {

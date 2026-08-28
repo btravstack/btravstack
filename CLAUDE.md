@@ -149,6 +149,16 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    per deployment, `tsx watch` on each, output prefixed by workspace — see
    **The local loop** under _Toolchain & conventions_.
 
+   **One runtime does not mean one protocol.** A graph holds exactly one
+   runtime, and that is what bounds the process — not what bounds HTTP itself.
+   `@btravstack/http-server`'s `HttpHandler` is a **set port** of
+   `{ prefix, handle }`: oRPC contributes one answerer, and GraphQL and htmx
+   fragments are the two the package is being extended for (#174, #179). They
+   are answerers under one runtime, routed by longest matching prefix, because
+   three runtimes is the one thing this thesis forbids. The package's own spec
+   used to say "there is one way to answer HTTP here, oRPC"; that was true of
+   the package and was never a consequence of this thesis, and it is gone.
+
    **The transport role map is a decision, not an inventory** (issues #61 and
    #60): answering is `@btravstack/http-server`; orchestration — and with it
    everything job-queue-shaped and everything scheduled — is

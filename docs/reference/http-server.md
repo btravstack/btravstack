@@ -53,7 +53,9 @@ declare const view: (order: Order) => OrderView;
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                   |
 | `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                           |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                           |
-| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<never, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export                                                                                                                                                   |
+| `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export. It **resolves `HttpHandler`**, so the root must export that too                                                                     |
+| `HttpHandler`          | value | `class HttpHandler extends Port.many("HttpHandler")<HttpAnswerer> {}` — the set port every protocol served in this process contributes one member to                                                                                                                                                         |
+| `HttpAnswerer`         | type  | one protocol's answer to HTTP — a mount `prefix` and the `handle` the runtime routes to; see [several answerers](#httphandler-and-several-answerers)                                                                                                                                                         |
 | `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string; bodyLimit: number; corsOrigin: string; compression: boolean }> {}` — what the transport is bound and configured with, provided by `http()` from `PORT` / `HOST` / `HTTP_BODY_LIMIT` / `HTTP_CORS_ORIGIN` / `HTTP_COMPRESSION` |
 | `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                                                                                      |
 
@@ -62,12 +64,14 @@ declare const view: (order: Order) => OrderView;
 stated. A marked contract reached through anything else would type
 `principal: never`.
 
-`HttpRouterPort` (the starter's router port, `Port("HttpRouter")`),
-`Implementation<C, Schemes>` (the record type `HttpRouter`'s `sync` returns) and
-`HttpHandler` (the node listener port) exist in `src/orpc.ts` and
-`src/handler.ts` but are **not** exported from the package entry point: the
-first is reached as `provider.port` when a caller needs it, the second is
-inferred at the call, the third is an internal seam.
+`HttpRouterPort` (the starter's router port, `Port("HttpRouter")`) and
+`Implementation<C, Schemes>` (the record type `HttpRouter`'s `sync` returns)
+exist in `src/orpc.ts` but are **not** exported from the package entry point:
+the first is reached as `provider.port` when a caller needs it, the second is
+inferred at the call. `HttpHandler` used to be a third — an internal seam, on
+the grounds that oRPC was the only way to answer HTTP here — and is exported
+now, since a second protocol's package has to name the set port it contributes
+to.
 
 ## `HttpModule(name)({...})`
 
@@ -802,11 +806,65 @@ An unset variable takes the default; a set-but-empty one, `PORT=abc` and
 `PORT=70000` are each a `ConfigInvalid` — a `startFailed` event and exit `78`
 under `runMain`. Anything in the graph may depend on `HttpConfig`.
 
+## `HttpHandler`, and several answerers
+
+`HttpHandler` is a **set port**: every protocol served in this process
+contributes one `HttpAnswerer`, and the runtime routes each request to the one
+whose `prefix` matches **longest**.
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+type HttpAnswerer = {
+  readonly prefix: `/${string}`;
+  readonly handle: (
+    request: IncomingMessage,
+    response: ServerResponse,
+    signal: AbortSignal,
+  ) => PromiseLike<unknown>;
+};
+```
+
+| Request       | Mounted answerers     | Answers                                                                    |
+| ------------- | --------------------- | -------------------------------------------------------------------------- |
+| `/rpc/orders` | `/` and `/rpc`        | `/rpc` — the longest match                                                 |
+| `/orders/42`  | `/` and `/rpc`        | `/` — everything else                                                      |
+| `/graphql`    | `/graphql`            | `/graphql` — the mount point itself                                        |
+| `/rpcx`       | `/rpc`                | the runtime's `404` — a mount point is a path segment, not a string prefix |
+| `/orders/42`  | `/rpc` and `/graphql` | the runtime's `404` — no mount covers it                                   |
+
+A graph holds exactly one runtime, so several protocols cannot be several
+runtimes; they are several answerers under one. Nesting is expected rather than
+refused, which is why there is no ordering to configure: only a **duplicate**
+mount point is an error, and it is a `RuntimeStartFailed` at `listen` rather
+than a coin toss. A trailing slash is the same mount, so `/rpc` and `/rpc/`
+collide.
+
+The runtime reads the members through `Runtime.resolves` rather than through
+di, because a member contributed by a **sibling** module is not visible from
+inside the starter's own. That is why `HttpRuntime` resolves `HttpHandler` and
+the composition root must export it — [`HttpModule`](#httpmodule-name) adds it
+for you, and `start`'s `UNSATISFIED RUNTIME PORTS` names it when a hand-written
+root forgets.
+
+::: warning
+An answerer outside an oRPC contract carries its **own** authentication.
+`@btravstack/contract`'s marker is what says which scheme protects a procedure,
+and a GraphQL operation or an HTML fragment has no such statement — so its
+routes are public unless the answerer brings authentication itself, exactly as
+an unmarked procedure is public, and with the same absence of a gate for "you
+forgot".
+:::
+
 ## `HttpRuntime` and `HttpInfo`
 
 `HttpRuntime` is declared over the kernel's `RuntimePort` with service
-`Runtime<never, HttpInfo>`: the runtime **resolves nothing** — the router is
-a port its provider depends on — so `RuntimeHost.ctx` goes unread. Once
+`Runtime<typeof HttpHandler, HttpInfo>`: the runtime **resolves
+[`HttpHandler`](#httphandler-and-several-answerers)**, and reads its members off
+`RuntimeHost.ctx` — the one thing it reads there, and the reason a composition
+root must export that port. It resolved nothing while the oRPC answerer was the
+only one and its provider could depend on the router directly; a sibling
+module's answerer is not visible that way. Once
 listening it publishes `HttpInfo`, `{ port }`, on `Serving.info`; with `PORT=0`
 that is the only way to learn the port that was actually bound.
 
@@ -883,9 +941,11 @@ read as unmarked here. Node `>=22`.
 
 ## Deliberately not included
 
-- **Any other router or handler.** oRPC through `@orpc/server/node`'s
-  `RPCHandler` is the one way HTTP is answered; there is no `handler` option
-  and no listener port to provide.
+- **Another router in oRPC's answerer.** oRPC through `@orpc/server/node`'s
+  `RPCHandler` is how this package answers HTTP, and there is no `handler`
+  option to swap it. A second protocol is a second answerer on the
+  [`HttpHandler`](#httphandler-and-several-answerers) set port under the same
+  runtime.
 - **A middleware slot for application logic.** oRPC's own, inside the
   router's procedures. `principalMiddleware` is the one per-request hook the
   package installs, only on a leaf whose requirements say so.
