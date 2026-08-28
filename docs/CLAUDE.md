@@ -85,4 +85,8 @@ was folded in here when the container was merged; nothing under
 - `pnpm --filter @btravstack/docs build` builds the site (TypeDoc, then
   VitePress); `pnpm --filter @btravstack/docs dev` serves it. Neither is in
   the six-command gate — `knip` covers `docs/scripts`, and the deploy
-  workflow is what fails on a dead link.
+  workflow is what fails on a dead link **to a page**. A dead
+  `#fragment` is not checked by anything: `ignoreDeadLinks` validates the path
+  half only, and one had shipped since `9af980d` before anyone noticed
+  (#181, which proposes checking the rendered `dist` — where the ids are
+  ground truth — rather than reimplementing VitePress's slugify).
