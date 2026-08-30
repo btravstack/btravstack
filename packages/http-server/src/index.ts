@@ -11,6 +11,8 @@ export type { ControllerKeyOf, ControllerPortOf } from "./controller.js";
 export { defineHttp } from "./define-http.js";
 export { HttpHandler } from "./handler.js";
 export type { HttpAnswerer } from "./handler.js";
+export { html, raw } from "./html.js";
+export type { Html } from "./html.js";
 export type { Authenticators, Http, SchemesFrom } from "./define-http.js";
 export { HttpModule } from "./http-module.js";
 export type { HttpModuleOptions } from "./http-module.js";
