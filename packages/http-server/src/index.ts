@@ -1,4 +1,11 @@
-export { HttpAuthenticator, Unauthenticated, authenticatorPort, granted } from "./auth.js";
+export {
+  HttpAuthenticator,
+  UnderScoped,
+  Unauthenticated,
+  authenticatorPort,
+  granted,
+  resolvePrincipal,
+} from "./auth.js";
 export type { Authenticator, AuthenticatorService, Grant, Granted } from "./auth.js";
 export type { ControllerKeyOf, ControllerPortOf } from "./controller.js";
 export { defineHttp } from "./define-http.js";

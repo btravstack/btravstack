@@ -2,7 +2,7 @@ import { ErrAsync, OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
-import { Unauthenticated, granted, principalMiddleware } from "./auth.js";
+import { Unauthenticated, granted, principalMiddleware, resolvePrincipal } from "./auth.js";
 
 describe("an authenticated procedure", () => {
   it("hands the handler the identity its scheme resolves", async ({ rpcAuthed }) => {
@@ -317,6 +317,20 @@ describe("a leaf naming several requirements", () => {
 
     // THEN authenticated-but-insufficient is 403, not 401
     await expect(refused).resolves.toEqual(expect.objectContaining({ code: "FORBIDDEN" }));
+  });
+
+  it("answers UnderScoped when the credential is valid but misses a scope", async ({ headers }) => {
+    // GIVEN a scheme whose credential grants nothing, and a requirement naming a scope
+    const authenticators = {
+      user: () => OkAsync(granted({ userId: "u-1" }, [])),
+    };
+
+    // WHEN the walk is asked to resolve a principal for it
+    const resolved = await resolvePrincipal([{ user: ["orders:export"] }], authenticators, headers);
+
+    // THEN it is the under-scoped refusal, distinct from an anonymous one, so a
+    // caller sees 403 rather than 401
+    expect(resolved).toBeErrTagged("UnderScoped");
   });
 
   it("does not fall through to the next requirement on a defect", async ({ headers }) => {

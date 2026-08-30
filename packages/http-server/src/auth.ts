@@ -3,7 +3,7 @@ import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import type { Requirements } from "@btravstack/contract";
 import { Port, type AnyPort, type PortClassOf, type ServiceOf } from "@btravstack/di";
 import { ORPCError } from "@orpc/server";
-import { TaggedError, type AsyncResult } from "unthrown";
+import { Err, Ok, TaggedError, fromSafePromise, type AsyncResult, type Result } from "unthrown";
 
 /**
  * A caller was refused. Carries nothing: the starter surfaces no reason — a
@@ -12,6 +12,13 @@ import { TaggedError, type AsyncResult } from "unthrown";
  * logs it before returning this.
  */
 export class Unauthenticated extends TaggedError("Unauthenticated") {}
+
+/**
+ * A credential was valid but granted none of the scopes the endpoint declared.
+ * Distinct from {@link Unauthenticated} because the answers differ: an
+ * anonymous caller gets `401`, an under-scoped one `403`.
+ */
+export class UnderScoped extends TaggedError("UnderScoped") {}
 
 // Module-private, so `granted` is the only thing that mints a grant. The type
 // parameter is erased at runtime, so structure is all the middleware has to go
@@ -152,10 +159,68 @@ export const HttpAuthenticator = <P, Scope extends string = never>() => {
 };
 
 /**
+ * The authentication walk, protocol-neutral: requirements in the order the
+ * contract declared them, first satisfied wins. Shared by every answerer, so a
+ * scope check cannot drift between protocols.
+ *
+ * A defect from an authenticator is a bug in that authenticator, not a
+ * refusal — it stays on the defect channel rather than falling through, which
+ * would let a broken verifier silently promote every caller to the next scheme.
+ */
+export const resolvePrincipal = (
+  requirements: Requirements,
+  authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
+  headers: IncomingHttpHeaders,
+): AsyncResult<unknown, Unauthenticated | UnderScoped> =>
+  fromSafePromise(walk(requirements, authenticators, headers)).flatMap((result) => result);
+
+const walk = async (
+  requirements: Requirements,
+  authenticators: Readonly<Record<string, AuthenticatorService<unknown>>>,
+  headers: IncomingHttpHeaders,
+  // oxlint-disable-next-line unthrown/prefer-async-result -- module-private; resolvePrincipal wraps it in fromSafePromise, which is the AsyncResult surface callers see
+): Promise<Result<unknown, Unauthenticated | UnderScoped>> => {
+  // More than one SCHEME, not more than one requirement: one requirement may
+  // name several schemes, and counting requirements disagreed with `SchemesOf`,
+  // so the handler typed `Tagged` while this injected bare.
+  const tagged = new Set(requirements.flatMap((requirement) => Object.keys(requirement))).size > 1;
+  let underScoped = false;
+  for (const requirement of requirements) {
+    for (const [scheme, required] of Object.entries(requirement)) {
+      // Asserted, not guarded: the router declares one dep per scheme its
+      // contract names, so di refuses the graph long before a request lands.
+      const authenticate = authenticators[scheme] as AuthenticatorService<unknown>;
+      const resolved = await authenticate(headers);
+      // Returned rather than unwrapped: the defect channel survives the
+      // `flatMap` above, so a broken authenticator reaches the caller as a
+      // defect instead of a refusal.
+      if (resolved.isDefect()) return resolved;
+      if (resolved.isErr()) continue;
+      const answer = resolved.value;
+      // The BRAND, never a structural `"scopes" in answer` test, which misreads
+      // a claims-shaped bare identity as the scoped answer.
+      const scoped =
+        typeof answer === "object" && answer !== null && GRANT in answer
+          ? (answer as Grant<unknown, string>)
+          : undefined;
+      // A requirement naming scopes is NOT satisfied by a credential reporting
+      // none. An empty `required` still passes trivially.
+      const scopesGranted = scoped?.scopes ?? [];
+      if (!required.every((scope) => scopesGranted.includes(scope))) {
+        underScoped = true;
+        continue;
+      }
+      const identity = scoped === undefined ? answer : scoped.identity;
+      return Ok(tagged ? { scheme, identity } : identity);
+    }
+  }
+  return Err(underScoped ? new UnderScoped() : new Unauthenticated());
+};
+
+/**
  * The one middleware this package installs, and only on a leaf whose
- * requirements say so. It reads the request from oRPC's initial context — which
- * is what initial context is for — and tries the requirements in the order the
- * contract declared them, taking the first a caller satisfies.
+ * requirements say so — oRPC's adapter over {@link resolvePrincipal}. It reads
+ * the request from oRPC's initial context, which is what initial context is for.
  */
 export const principalMiddleware =
   (
@@ -168,52 +233,20 @@ export const principalMiddleware =
       readonly context: { readonly principal: unknown };
     }) => Promise<unknown>;
   }): Promise<unknown> => {
-    // More than one SCHEME, not more than one requirement: one requirement may
-    // name several schemes, and counting requirements disagreed with
-    // `SchemesOf`, so the handler typed `Tagged` while this injected bare.
-    const tagged =
-      new Set(requirements.flatMap((requirement) => Object.keys(requirement))).size > 1;
-    let underScoped = false;
-    for (const requirement of requirements) {
-      for (const [scheme, required] of Object.entries(requirement)) {
-        // Asserted, not guarded: the router declares one dep per scheme its
-        // contract names, so every scheme a requirement names is a key here and
-        // di refuses the graph long before a request lands.
-        const authenticate = authenticators[scheme] as AuthenticatorService<unknown>;
-        const resolved = await authenticate(options.context.request.headers);
-        if (resolved.isDefect()) {
-          // A defect is a bug in the authenticator, not a refusal. Falling
-          // through would let a broken verifier silently promote every caller
-          // to the next scheme.
-          // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to oRPC, whose middleware protocol has no returned-error arm
-          throw resolved.cause;
-        }
-        if (resolved.isErr()) continue;
-        // The BRAND, never a structural `"scopes" in answer` test, which
-        // misreads a claims-shaped bare identity as the scoped answer and hands
-        // the handler `undefined`.
-        const answer = resolved.value;
-        const scoped =
-          typeof answer === "object" && answer !== null && GRANT in answer
-            ? (answer as Grant<unknown, string>)
-            : undefined;
-        // A requirement naming scopes is NOT satisfied by a credential
-        // reporting none: skipping the comparison for a bare answer admitted
-        // the caller outright. An empty `required` still passes trivially.
-        const scopesGranted = scoped?.scopes ?? [];
-        if (!required.every((scope) => scopesGranted.includes(scope))) {
-          underScoped = true;
-          continue;
-        }
-        const identity = scoped === undefined ? answer : scoped.identity;
-        return await options.next({
-          context: { principal: tagged ? { scheme, identity } : identity },
-        });
-      }
+    const resolved = await resolvePrincipal(
+      requirements,
+      authenticators,
+      options.context.request.headers,
+    );
+    if (resolved.isDefect()) {
+      // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to oRPC, whose middleware protocol has no returned-error arm
+      throw resolved.cause;
     }
-    // No message: oRPC serializes `message` to the client, and a refusal has
-    // nothing a caller is entitled to. A credential that was valid but
-    // under-scoped is a 403, never the 401 an anonymous caller gets.
-    // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm to use instead
-    throw new ORPCError(underScoped ? "FORBIDDEN" : "UNAUTHORIZED");
+    if (resolved.isErr()) {
+      // No message: oRPC serializes `message` to the client, and a refusal has
+      // nothing a caller is entitled to.
+      // oxlint-disable-next-line unthrown/no-throw -- oRPC terminates a request by throwing an ORPCError; its middleware protocol has no returned-error arm
+      throw new ORPCError(resolved.error._tag === "UnderScoped" ? "FORBIDDEN" : "UNAUTHORIZED");
+    }
+    return await options.next({ context: { principal: resolved.value } });
   };
