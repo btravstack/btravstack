@@ -563,7 +563,7 @@ type SchemePortsOf<C> =
  * Every scheme the contract names, anywhere — the router's scheme
  * dependencies. The type side is `SchemePortsOf<C>`; these two must agree.
  */
-const schemesOf = (contract: unknown): readonly string[] => {
+export const schemesOf = (contract: unknown): readonly string[] => {
   const found = new Set<string>();
   const walk = (node: unknown, seen: WeakSet<object>): void => {
     if (typeof node !== "object" || node === null || seen.has(node)) return;

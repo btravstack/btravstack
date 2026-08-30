@@ -33,12 +33,15 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
-import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 
 import { HttpAuthenticator, Unauthenticated, authenticatorPort } from "../auth.js";
 import { defineHttp } from "../define-http.js";
+import { defineFragments } from "../fragments.js";
 import { HttpHandler, type HttpAnswerer } from "../handler.js";
+import { html } from "../html.js";
+import { HtmxFragmentsPort } from "../htmx-controller.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
 import { HttpRuntime, http, httpServer, type HttpInfo, type HttpOptions } from "../http-runtime.js";
@@ -591,6 +594,67 @@ const mountedAppOf = (prefixes: readonly `/${string}`[]) =>
 const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
+/**
+ * One route inheriting the contract's mark, one likewise, and one overriding
+ * it with a scope of its own — the nearest-mark-wins fold, exercised end to
+ * end. Reuses `api`'s `user` scheme, the registry every marked fixture in this
+ * file is typed by.
+ */
+const htmxFragments = authenticated({ user: [] })(
+  defineFragments({
+    orderRow: { method: "GET", path: "/orders/:id/row" },
+    health: { method: "GET", path: "/health" },
+    adminOnly: authenticated({ user: ["admin"] })({ method: "GET", path: "/admin" }),
+  }),
+);
+
+const orderRowFragment = api.HtmxController(htmxFragments, "orderRow")(
+  { greeter: Greeter },
+  {
+    sync:
+      ({ greeter }) =>
+      (context, params) =>
+        OkAsync(html`<tr>${greeter.greet(context.principal.userId)}:${params.id}</tr>`),
+  },
+);
+
+const healthFragment = api.HtmxController(
+  htmxFragments,
+  "health",
+)({
+  sync: () => () => OkAsync(html`<p>ok</p>`),
+});
+
+const adminOnlyFragment = api.HtmxController(
+  htmxFragments,
+  "adminOnly",
+)({
+  sync: () => () => OkAsync(html`<p>admin</p>`),
+});
+
+const htmxFragmentsProvider = api.HtmxFragments(htmxFragments)([
+  orderRowFragment,
+  healthFragment,
+  adminOnlyFragment,
+]);
+
+/** The composed port, built the way the kernel does — through a scoped graph — and read back. */
+const htmxServiceOf = (): AsyncResult<ServiceOf<typeof HtmxFragmentsPort>, never> =>
+  Module.scoped(
+    Module("HtmxFixture")({
+      provides: [
+        Provider(Greeter)({ value: { greet: (name: string) => `hi ${name}` } }),
+        orderRowFragment,
+        healthFragment,
+        adminOnlyFragment,
+        htmxFragmentsProvider,
+        ...htmxFragmentsProvider.authenticators,
+      ],
+      exports: [HtmxFragmentsPort],
+    }),
+    (ctx) => OkAsync(ctx.get(HtmxFragmentsPort)),
+  );
+
 export type HttpFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
@@ -754,6 +818,11 @@ export type HttpFixtures = {
     prefix: `/${string}`,
     body: string,
   ) => Promise<{ readonly origin: string }>;
+  /** The htmx fragment pieces and the port they compose into. */
+  readonly htmx: {
+    readonly orderRowFragment: typeof orderRowFragment;
+    readonly service: () => AsyncResult<ServiceOf<typeof HtmxFragmentsPort>, never>;
+  };
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1077,5 +1146,10 @@ export const it = test.extend<HttpFixtures>({
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { origin: `http://127.0.0.1:${info.port}` };
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  htmx: async ({}, use) => {
+    await use({ orderRowFragment, service: htmxServiceOf });
   },
 });

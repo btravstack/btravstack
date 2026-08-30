@@ -11,6 +11,8 @@ export type { ControllerKeyOf, ControllerPortOf } from "./controller.js";
 export { defineFragments } from "./fragments.js";
 export type { FragmentRoute, FragmentsContract, ParamsOf } from "./fragments.js";
 export { defineHttp } from "./define-http.js";
+export { HtmxFragmentsPort } from "./htmx-controller.js";
+export type { FragmentAnswer, FragmentHandler } from "./htmx-controller.js";
 export { HttpHandler } from "./handler.js";
 export type { HttpAnswerer } from "./handler.js";
 export { html, raw } from "./html.js";
