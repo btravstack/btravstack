@@ -48,7 +48,7 @@ export type HttpOptions = OrpcOptions & {
   readonly securityHeaders?: boolean | Readonly<Record<string, string>>;
 };
 
-/** What `httpModule` pins on the config it binds — everything but the router's own. */
+/** What `httpServer` pins on the config it binds — everything but the router's own. */
 type SocketOptions = Pick<
   HttpOptions,
   "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders"
@@ -86,16 +86,14 @@ const httpRuntime = (
 });
 
 /**
- * The runtime and its configuration as a module, over whichever answerer it is
- * handed: `http()` hands it the oRPC one; the package's own transport specs
- * hand it a bare listener. Internal for that second reason only.
+ * The socket half: the runtime, its configuration, and nothing that answers.
+ * Answerers are contributed to `HttpHandler` separately — `orpc()` from
+ * `http()`, `htmx()` from a fragment graph — which is what lets an application
+ * serve one protocol, the other, or both.
  */
-export const httpModule = <N>(
-  options: SocketOptions,
-  handler: Provider<HttpHandler, never, N>,
-  // `HttpConfig` is excluded because this module PROVIDES it: the oRPC handler
-  // reads the transport policy off it, which is a need discharged in here.
-): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | Exclude<N, HttpConfig>> => {
+export const httpServer = (
+  options: SocketOptions = {},
+): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env> => {
   const { port, hostname, cors, bodyLimit, compression, securityHeaders } = options;
   const config = Config.provider(HttpConfig)(
     Config.object({
@@ -118,27 +116,17 @@ export const httpModule = <N>(
       ),
     }),
   );
-  return Module("Http")({
-    // The handler's own `N` is owed too and cannot be spelled here — it is
-    // still a type parameter, which is why the gate defers and the options
-    // carry `as never`. The return type states it instead.
+  return Module("HttpServer")({
     needs: [Env],
     provides: [
       config,
-      handler,
       Provider(HttpRuntime)(
         { config: HttpConfig },
         { sync: ({ config: bound }) => httpRuntime(bound, securityHeaders) },
       ),
     ],
-    // `HttpHandler` is exported so a SIBLING module's answerer and this one's
-    // land in the same set at the root, which is where the runtime reads them.
     exports: [HttpRuntime, HttpConfig, HttpHandler],
-  } as never) as unknown as Module<
-    HttpRuntime | HttpConfig | HttpHandler,
-    ConfigInvalid,
-    Env | Exclude<N, HttpConfig>
-  >;
+  } as never) as unknown as Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env>;
 };
 
 /**
@@ -154,12 +142,16 @@ export const httpModule = <N>(
  */
 export const http = (
   options: HttpOptions = {},
-): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | HttpRouterPort> => {
-  // Every field goes to BOTH halves: the scalars pin the config the handler
-  // reads, and the shapes (`cors`'s own record, `compression`'s tuning,
-  // `plugins`) are composition-time and reach the handler through its closure.
-  return httpModule(options, orpc(options));
-};
+): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | HttpRouterPort> =>
+  Module("Http")({
+    imports: [httpServer(options)],
+    provides: [orpc(options)],
+    exports: [HttpRuntime, HttpConfig, HttpHandler],
+  } as never) as unknown as Module<
+    HttpRuntime | HttpConfig | HttpHandler,
+    ConfigInvalid,
+    Env | HttpRouterPort
+  >;
 
 /**
  * The answerers, longest prefix first, so the first match is THE match.

@@ -52,7 +52,7 @@ is the index of the workspaces themselves.
   owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s 57 specs, across
   `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts` and
   `auth.spec.ts`, drive the
-  transport through the internal `httpModule` with a bare listener, the
+  transport through `httpServer` with a bare listener, the
   starter proper through `HttpModule`, the composing router form through the
   `rpcSliced` fixture, and the contract marker's runtime half — the per-scheme
   authenticator ports and the one middleware they install — through
