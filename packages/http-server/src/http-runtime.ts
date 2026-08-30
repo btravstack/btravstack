@@ -117,6 +117,9 @@ export const httpServer = (
     }),
   );
   return Module("HttpServer")({
+    // `as never`/`as unknown as Module<…>`: `exports` includes `HttpHandler`, a
+    // set port, though this module provides no member of it itself — a sibling
+    // module's answerer does.
     needs: [Env],
     provides: [
       config,

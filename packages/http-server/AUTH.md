@@ -155,15 +155,13 @@ The two rules this half exists to state, before the detail:
   authenticators, the no-argument call, an authenticator's own dependency
   riding through), by `auth.test-d.ts`'s arms 7–12, and at runtime by
   `auth.spec.ts`'s `rpcAuthed`, `rpcRootMarked` and `rpcVerified` fixtures.
-- **`principalMiddleware(requirements, authenticators)`** (`auth.ts`, internal —
-  **not** exported from `index.ts`, like `HttpHandler`) — the one middleware this package installs,
-  and only on a leaf whose effective requirements say so. It reads the request
-  off oRPC's **initial
-  context** (`orpc()` passes `context: { request }` to
-  `RPCHandler.handle`, which is what initial context is for) and tries the
-  requirements **in the order the contract declared them**, taking the first a
-  caller satisfies, then injects `{ context: { principal } }` through `next`.
-  Four decisions live here, each pinned by `auth.spec.ts`:
+- **`resolvePrincipal(requirements, authenticators, headers)` →
+  `AsyncResult<unknown, Unauthenticated | UnderScoped>`** (`auth.ts`) — the
+  authentication walk, protocol-neutral: headers in, a principal or a typed
+  refusal out, with no oRPC in the signature. It tries the requirements **in
+  the order the contract declared them**, taking the first a caller satisfies.
+  Every answerer shares this one walk, so a scope check cannot drift between
+  protocols. Four decisions live here, each pinned by `auth.spec.ts`:
   - **Tagged when the leaf names more than one SCHEME**, not more than one
     requirement — `new Set(requirements.flatMap(Object.keys)).size > 1`. One
     requirement may name several schemes, and counting requirements disagreed
@@ -175,18 +173,15 @@ The two rules this half exists to state, before the detail:
     comparison for it admitted the caller outright — the one place in this
     package where the failure direction matters. An empty `required` still
     passes trivially.
-  - **`403` is not `401`.** A credential that was valid but under-scoped gets
-    `FORBIDDEN`; only a caller no requirement accepted at all gets
-    `UNAUTHORIZED`. Both are `throw new ORPCError(...)` — oRPC's
-    middleware protocol has no returned-error arm, which is the one place in
-    this package a `throw` is right, carried by an `unthrown/no-throw` disable
-    naming why — and **neither derives a message from the refusal**: oRPC
-    serializes `message` to the client, so the caller gets oRPC's default and
-    the reason never leaves the process.
+  - **`UnderScoped` is not `Unauthenticated`.** A credential that was valid but
+    under-scoped answers `UnderScoped`; only a caller no requirement accepted
+    at all answers `Unauthenticated`. Neither carries a reason: the refusal is
+    typed, not messaged, so what a caller is told is each answerer's own
+    decision.
   - **A defect short-circuits rather than falling through.** A defect is a bug
     in the authenticator, not a refusal; falling through would let a broken
-    verifier silently promote every caller to the next scheme. It is rethrown
-    as its own cause, so it stays oRPC's `INTERNAL_SERVER_ERROR` collapse.
+    verifier silently promote every caller to the next scheme. It stays on the
+    defect channel rather than becoming an `Err`.
 
   The authenticators arrive as a plain record keyed by scheme, and the lookup
   is **asserted, not guarded**: the router declares one dep per scheme its
@@ -194,6 +189,22 @@ The two rules this half exists to state, before the detail:
   refuses the graph long before a request lands. That is also why
   `noAuthenticator` — the fail-closed stand-in the single-scheme design needed
   — is gone: there is no "marked but unwired" state left for it to cover.
+
+- **`principalMiddleware(requirements, authenticators)`** (`auth.ts`, internal —
+  not exported from `index.ts`) — oRPC's adapter over `resolvePrincipal`, and
+  the one middleware this package installs, only on a leaf whose effective
+  requirements say so. It reads the request off oRPC's **initial context**
+  (`orpc()` passes `context: { request }` to `RPCHandler.handle`, which is what
+  initial context is for), calls `resolvePrincipal` with the headers, and turns
+  its two error cases into `throw new ORPCError("UNAUTHORIZED")` for
+  `Unauthenticated` and `("FORBIDDEN")` for `UnderScoped` — oRPC's middleware
+  protocol has no returned-error arm, which is the one place in this package a
+  `throw` is right, carried by an `unthrown/no-throw` disable naming why, and
+  **neither derives a message from the refusal**: oRPC serializes `message` to
+  the client, so the caller gets oRPC's default and the reason never leaves the
+  process. A defect from the walk is rethrown as its own cause, so it stays
+  oRPC's `INTERNAL_SERVER_ERROR` collapse. On success it injects
+  `{ context: { principal } }` through `next`.
 
 - **A contract may name a scope only if the scheme's authenticator can grant
   it.** `routerFor` intersects `ScopeGate<C, Vocab>` onto its `contract`
