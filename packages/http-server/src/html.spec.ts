@@ -39,6 +39,17 @@ describe("html", () => {
     expect(rendered.value).toBe(`<tr><td>a</td><td>b</td></tr>`);
   });
 
+  it("escapes what a hostile toString produces, not just a hostile string", () => {
+    // GIVEN a value that is not a string and renders as markup
+    const hostile = { toString: () => "<script>alert(1)</script>" };
+
+    // WHEN it is interpolated
+    const rendered = html`<p>${hostile}</p>`;
+
+    // THEN it was coerced and then escaped, never spliced
+    expect(rendered.value).toBe("<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>");
+  });
+
   it("admits markup whole through raw, which is the only way in", () => {
     // GIVEN markup a caller has decided is trusted
     const trusted = raw("<br>");

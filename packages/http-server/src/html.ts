@@ -42,6 +42,11 @@ const render = (value: unknown): string => {
  *
  * A nested `Html` is spliced as it is, and an array of them is concatenated —
  * so a list of rows needs no `join`. Anything else is stringified and escaped.
+ *
+ * The escaping is context-blind: it protects element text and a **quoted**
+ * attribute value, and nothing else. An unquoted attribute, an attribute
+ * name, a URL scheme (`href="${url}"` does not vet `javascript:`), and
+ * `<script>`/`<style>` contents are the caller's own responsibility.
  */
 export const html = (strings: TemplateStringsArray, ...values: readonly unknown[]): Html => ({
   [HTML]: true,
