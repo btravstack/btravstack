@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { Provider } from "@btravstack/di";
-import { Err, Ok, fromExecutor, type AsyncResult } from "unthrown";
+import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 
 import { resolvePrincipal, type AuthenticatorService } from "./auth.js";
 import { matchPath } from "./fragments.js";
@@ -21,9 +21,14 @@ export type HtmxOptions = {
  * answers its own `404`.
  *
  * `routes` is matched in the ORDER the composition root's piece array gave
- * them, first match wins. Two overlapping routes (`/orders/new` and
- * `/orders/:id`) are neither sorted nor disambiguated by specificity —
- * declare the literal route first.
+ * them, first match wins — and that ordering is a SECURITY property, not
+ * only a routing one. An unmarked route declared BEFORE a marked route whose
+ * path can also match the same request answers it itself, and no
+ * authentication ever runs: two contract keys are two port ids, so di has
+ * nothing to see collide, and a specificity rule is deliberately not
+ * provided (the ordering is the composition root's, on purpose). Declare a
+ * route that requires authentication before any unmarked route whose path
+ * could also match its requests.
  */
 export const htmx = (options: HtmxOptions = {}) => {
   const prefix = options.prefix ?? "/";
@@ -81,9 +86,25 @@ const relativePath = (url: string | undefined, prefix: `/${string}`): string => 
  * SOCKET it arrived on, taking the response meant to carry the 413 down with
  * it. A genuine stream fault settles the defect channel; nothing here models
  * it, since it is a bug in the transport rather than an oversized caller.
+ *
+ * `request` may already be destroyed or ended by the time this subscribes —
+ * `respond` reaches here only after `await`ing authentication first for a
+ * marked route, and a client that aborts during that await leaves Node's own
+ * `abortIncoming` destroying the stream with no `'error'` listener attached
+ * to hear it, which SUPPRESSES the emit entirely (measured against Node's
+ * `_http_incoming`). Subscribing to a stream that already fired is this
+ * package's own documented footgun (`closedOf` in `http-runtime.ts`), and
+ * missing it here would leave `readBody`'s promise — and the request, its
+ * listeners and `chunks` — open for the process lifetime. The guard below,
+ * plus `'close'` (which still fires on a stream `'end'` already settled, but
+ * the once-only latch makes that a no-op), are what close it.
  */
 const readBody = (request: IncomingMessage, limit: number): AsyncResult<string, "TooLarge"> =>
   fromExecutor<string, "TooLarge">((settle, defect) => {
+    if (request.destroyed || request.readableEnded) {
+      settle(defect(new Error("the request stream ended before its body was read")));
+      return;
+    }
     const chunks: Buffer[] = [];
     let size = 0;
     request.on("data", (chunk: Buffer) => {
@@ -99,6 +120,7 @@ const readBody = (request: IncomingMessage, limit: number): AsyncResult<string, 
     });
     request.on("end", () => settle(Ok(Buffer.concat(chunks).toString("utf8"))));
     request.on("error", (cause) => settle(defect(cause)));
+    request.on("close", () => settle(defect(new Error("the request closed before it ended"))));
   });
 
 // No body on a refusal: it owes the caller nothing beyond the status.
@@ -123,13 +145,23 @@ const respond = async (
 
   let principal: unknown;
   if (route.requirements !== undefined) {
-    const resolved = await resolvePrincipal(route.requirements, authenticators, request.headers);
+    // Exhaustive on `resolvePrincipal`'s Err union: a third case added there
+    // fails this compile rather than silently falling through to 401.
+    const resolved = await resolvePrincipal(
+      route.requirements,
+      authenticators,
+      request.headers,
+    ).mapErrCases((matcher) =>
+      matcher
+        .with(P.tag("Unauthenticated"), () => 401 as const)
+        .with(P.tag("UnderScoped"), () => 403 as const),
+    );
     if (resolved.isDefect()) {
       // oxlint-disable-next-line unthrown/no-throw -- the only way to hand a defect back to the runtime's own 500 fallback; `handle` has no returned-error channel to carry it
       throw resolved.cause;
     }
     if (resolved.isErr()) {
-      refuse(response, resolved.error._tag === "UnderScoped" ? 403 : 401);
+      refuse(response, resolved.error);
       return;
     }
     principal = resolved.value;

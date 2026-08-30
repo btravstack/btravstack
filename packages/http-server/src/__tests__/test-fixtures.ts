@@ -683,8 +683,12 @@ const htmxServiceOf = (): AsyncResult<ServiceOf<typeof HtmxFragmentsPort>, never
  * `htmx()` over a real listener: an unmarked GET with a path parameter, a POST
  * on the SAME path carrying an input schema (the method-is-part-of-the-match
  * pair the brief for `htmx()` names), a route requiring the scheme with no
- * scope, one requiring a scope its authenticator never grants, and a POST
- * declaring no schema at all — the "hand the decoded record through" arm.
+ * scope, one requiring a scope its authenticator never grants, a POST
+ * declaring no schema at all — the "hand the decoded record through" arm —
+ * and a MARKED POST (`secure`), the one shape none of the others cover: a
+ * route that both authenticates (so `respond` awaits first) and reads a body
+ * (so it reaches `readBody` only after that await yields) — the exact window
+ * a client can abort inside.
  */
 const noteInput = z.object({ note: z.string() });
 
@@ -710,6 +714,7 @@ const htmxRuntimeFragments = defineFragments({
   profile: authenticated({ user: [] })({ method: "GET", path: "/profile" }),
   adminPanel: authenticated({ user: ["admin"] })({ method: "GET", path: "/admin" }),
   echo: { method: "POST", path: "/echo" },
+  secure: authenticated({ user: [] })({ method: "POST", path: "/secure" }),
 });
 
 let htmxRowGetRuns = 0;
@@ -756,12 +761,20 @@ const htmxEchoFragment = htmxRuntimeApi.HtmxController(
   sync: () => (_context, _params, input) => OkAsync(html`<p>${JSON.stringify(input)}</p>`),
 });
 
+const htmxSecureFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "secure",
+)({
+  sync: () => (context) => OkAsync(html`<p>secure ${context.principal.userId}</p>`),
+});
+
 const htmxRuntimeFragmentsProvider = htmxRuntimeApi.HtmxFragments(htmxRuntimeFragments)([
   htmxRowFragment,
   htmxRowUpdateFragment,
   htmxProfileFragment,
   htmxAdminPanelFragment,
   htmxEchoFragment,
+  htmxSecureFragment,
 ]);
 
 const htmxRuntimeAppOf = (bodyLimit?: number) =>
@@ -780,6 +793,7 @@ const htmxRuntimeAppOf = (bodyLimit?: number) =>
       htmxProfileFragment,
       htmxAdminPanelFragment,
       htmxEchoFragment,
+      htmxSecureFragment,
       htmxRuntimeFragmentsProvider,
       ...htmxRuntimeFragmentsProvider.authenticators,
     ],
@@ -813,6 +827,7 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
         htmxProfileFragment,
         htmxAdminPanelFragment,
         htmxEchoFragment,
+        htmxSecureFragment,
         htmxRuntimeFragmentsProvider,
         ...htmxRuntimeFragmentsProvider.authenticators,
       ],

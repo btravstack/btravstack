@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 
 import { describe, expect } from "vitest";
 
@@ -82,18 +82,45 @@ describe("htmx", () => {
     expect(response.status).toBe(403);
   });
 
-  it("answers 413 for a body over the configured limit", async ({ htmxServer }) => {
-    // GIVEN the htmx answerer configured with a small body limit
+  it("answers 413 for an over-limit body sent as many chunks, without resetting the connection", async ({
+    htmxServer,
+  }) => {
+    // GIVEN a small body limit, and a body large enough that a single fetch()
+    // call cannot deliver it as one TCP chunk — a buffer-then-check
+    // implementation and a stream-checking one both pass a small single-chunk
+    // body identically, so only a genuinely multi-chunk body distinguishes them
     const { origin } = await htmxServer(8);
 
-    // WHEN a POST body over that limit is sent
-    const response = await fetch(`${origin}/orders/42/row`, {
-      method: "POST",
-      body: new URLSearchParams({ note: "a".repeat(64) }),
+    // WHEN several MiB are written across multiple writes over a real socket
+    const status = await new Promise<number>((resolve, reject) => {
+      let settled = false;
+      const request = httpRequest(
+        `${origin}/orders/42/row`,
+        { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" } },
+        (response) => {
+          response.resume();
+          response.once("end", () => {
+            // Destroyed once the answer is in hand, rather than left to drain
+            // the rest of a 4 MiB body asynchronously past this test's own
+            // return — an in-flight write racing the next test's server
+            // startup is exactly the kind of EPIPE this avoids.
+            settled = true;
+            resolve(response.statusCode ?? 0);
+            request.destroy();
+          });
+        },
+      );
+      request.on("error", (cause) => {
+        if (!settled) reject(cause);
+      });
+      const chunk = "a".repeat(1024 * 1024);
+      for (let i = 0; i < 4; i += 1) request.write(chunk);
+      request.end();
     });
 
-    // THEN the body is refused as too large
-    expect(response.status).toBe(413);
+    // THEN the oversized body was refused cleanly — a reset connection would
+    // have rejected the promise above instead of resolving a status at all
+    expect(status).toBe(413);
   });
 
   it("answers 422 for a body its schema rejects, without calling the handler", async ({
@@ -201,5 +228,44 @@ describe("htmx", () => {
 
     // THEN the fault propagates rather than being swallowed or mapped to a status
     await expect(handled as Promise<unknown>).rejects.toThrow("stream boom");
+  });
+
+  it("settles rather than hanging when the request is destroyed during authentication", async ({
+    htmxAnswerer,
+  }) => {
+    // GIVEN a MARKED POST route — so `respond` awaits authentication before
+    // ever reaching `readBody` — and a request already destroyed by the time
+    // that await yields, the exact window a client's abort lands in for real
+    const answerer = (await htmxAnswerer()).get();
+    const fakeRequest = Object.assign(new EventEmitter(), {
+      url: "/secure",
+      method: "POST",
+      headers: { authorization: "Bearer good" },
+      destroyed: false,
+    });
+    const request = fakeRequest as unknown as IncomingMessage;
+    const response = {
+      writeHead: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- proves nothing is answered once the stream is known gone
+        throw new Error("must not write once the request is known destroyed");
+      },
+      end: () => {
+        // oxlint-disable-next-line unthrown/no-throw -- see above
+        throw new Error("must not end once the request is known destroyed");
+      },
+    } as unknown as ServerResponse;
+
+    // WHEN the request is marked destroyed in the SAME tick `handle` is
+    // called — before the authenticator's own await ever lets control
+    // return to `readBody`
+    const handled = answerer.handle(request, response, new AbortController().signal);
+    fakeRequest.destroyed = true;
+
+    // THEN `readBody`'s own already-fired guard settles a defect instead of
+    // subscribing to a stream that will never emit 'end' — without it this
+    // promise never settles and the test times out rather than failing clean
+    await expect(handled as Promise<unknown>).rejects.toThrow(
+      "the request stream ended before its body was read",
+    );
   });
 });
