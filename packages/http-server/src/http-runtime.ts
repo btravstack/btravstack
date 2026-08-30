@@ -117,9 +117,6 @@ export const httpServer = (
     }),
   );
   return Module("HttpServer")({
-    // `as never`/`as unknown as Module<…>`: `exports` includes `HttpHandler`, a
-    // set port, though this module provides no member of it itself — a sibling
-    // module's answerer does.
     needs: [Env],
     provides: [
       config,
@@ -129,6 +126,9 @@ export const httpServer = (
       ),
     ],
     exports: [HttpRuntime, HttpConfig, HttpHandler],
+    // `as never`/`as unknown as Module<…>`, below: `exports` includes
+    // `HttpHandler`, a set port, though this module provides no member of it
+    // itself — a sibling module's answerer does.
   } as never) as unknown as Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env>;
 };
 

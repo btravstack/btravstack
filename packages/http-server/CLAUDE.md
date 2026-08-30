@@ -274,8 +274,9 @@ not cover"` marker, and what the marker names is a procedure path
   arrangement `packages/amqp-worker` documents between `handler.ts` and
   `amqp-runtime.ts`.
 - **Authentication — the contract marker, `Principal`/`SchemesOf`,
-  `HttpAuthenticator`, `defineHttp`, `principalMiddleware`, the scope rule and
-  the scheme-dependency wiring — is stated in full in `AUTH.md`.** Read it
+  `HttpAuthenticator`, `defineHttp`, `resolvePrincipal`, `principalMiddleware`,
+  the scope rule and the scheme-dependency wiring — is stated in full in
+  `AUTH.md`.** Read it
   before changing `auth.ts`, `principal.ts`, `define-http.ts` or the contract
   marker. In short: the contract says WHICH SCHEMES protect a route and which
   scopes each must grant, `defineHttp({ authenticators })` says WHAT each
@@ -470,7 +471,15 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   disarm.
 - **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders? })`
   → `Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env>`** — the
-  socket half with no answerer. `http()` is this plus `orpc()`.
+  socket half: the runtime, its config, and no answerer. `http()` is
+  `Module("Http")({ imports: [httpServer(options)], provides: [orpc(options)],
+exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
+  package's own transport specs, and a fragments-only graph, compose
+  `httpServer` directly, with no oRPC router anywhere: a set port makes a
+  single answerer welded to the socket the wrong default, and a fragments-only
+  application would otherwise have to compose `http()` and declare an oRPC
+  router it does not have. `httpRuntime`, the runtime value's factory, stays
+  internal.
 - **`resolvePrincipal(requirements, authenticators, headers)`
   → `AsyncResult<unknown, Unauthenticated | UnderScoped>`** — the authentication
   walk, protocol-neutral, shared by every answerer so a scope check cannot drift
@@ -543,16 +552,6 @@ prefix })`, unmatched → resolves unwritten. `handle` returns
   `{ matched }`, never the unit's result — and the runtime reads "did you
   answer?" off the response rather than off that, which is what lets an
   answerer be written against `node:http` alone.
-- **`httpServer(options)`** (`http-runtime.ts`, exported from `index.ts`) —
-  the socket half alone: the runtime, its config, and no answerer. `http()`
-  is `Module("Http")({ imports: [httpServer(options)], provides: [orpc(options)],
-exports: [HttpRuntime, HttpConfig, HttpHandler] })`; the package's own
-  transport specs, and a fragments-only graph, compose it directly, with no
-  oRPC router anywhere. It exists
-  because a set port makes a single answerer welded to the socket the wrong
-  default — a fragments-only application would otherwise have to compose
-  `http()` and declare an oRPC router it does not have. `httpRuntime`, the
-  runtime value's factory, is internal.
 - **77 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
@@ -690,11 +689,10 @@ Four consequences worth stating because each is a decision:
   "there is one way to answer HTTP here, oRPC, so nothing outside this package
   provides or names it". A second protocol's package has to name it, so that
   sentence is gone from `handler.ts`.
-- **The socket half composes on its own.** `httpServer(options)` provides the
-  runtime, its configuration and the empty `HttpHandler` set; `http(options)`
-  is that plus `orpc(options)`. So an application serves oRPC (`http()`),
-  fragments (`httpServer()` + `htmx()`), or both — the weld between the socket
-  and one answerer was a leftover from when there was exactly one.
+- **The socket half composes on its own** (`httpServer`, in **Public surface**
+  above). An application serves oRPC (`http()`), fragments (`httpServer()` +
+  `htmx()`), or both — the weld between the socket and one answerer was a
+  leftover from when there was exactly one.
 
 **An answerer outside a contract carries its own authentication, and nothing
 checks that it did.** `@btravstack/contract`'s marker is what says which scheme
