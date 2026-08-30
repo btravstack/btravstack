@@ -8,6 +8,8 @@ export {
 } from "./auth.js";
 export type { Authenticator, AuthenticatorService, Grant, Granted } from "./auth.js";
 export type { ControllerKeyOf, ControllerPortOf } from "./controller.js";
+export { defineFragments } from "./fragments.js";
+export type { FragmentRoute, FragmentsContract, ParamsOf } from "./fragments.js";
 export { defineHttp } from "./define-http.js";
 export { HttpHandler } from "./handler.js";
 export type { HttpAnswerer } from "./handler.js";
