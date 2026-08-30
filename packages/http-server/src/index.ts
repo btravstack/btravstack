@@ -15,6 +15,8 @@ export { HtmxFragmentsPort } from "./htmx-controller.js";
 export type { FragmentAnswer, FragmentHandler } from "./htmx-controller.js";
 export { HttpHandler } from "./handler.js";
 export type { HttpAnswerer } from "./handler.js";
+export { htmx } from "./htmx.js";
+export type { HtmxOptions } from "./htmx.js";
 export { html, raw } from "./html.js";
 export type { Html } from "./html.js";
 export type { Authenticators, Http, SchemesFrom } from "./define-http.js";

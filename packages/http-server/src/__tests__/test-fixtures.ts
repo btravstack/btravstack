@@ -35,13 +35,21 @@ import { RPCLink } from "@orpc/client/fetch";
 import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
+import { z } from "zod";
 
-import { HttpAuthenticator, Unauthenticated, authenticatorPort } from "../auth.js";
+import {
+  HttpAuthenticator,
+  Unauthenticated,
+  authenticatorPort,
+  granted,
+  type Grant,
+} from "../auth.js";
 import { defineHttp } from "../define-http.js";
 import { defineFragments } from "../fragments.js";
 import { HttpHandler, type HttpAnswerer } from "../handler.js";
 import { html } from "../html.js";
 import { HtmxFragmentsPort } from "../htmx-controller.js";
+import { htmx } from "../htmx.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
 import { HttpRuntime, http, httpServer, type HttpInfo, type HttpOptions } from "../http-runtime.js";
@@ -671,6 +679,152 @@ const htmxServiceOf = (): AsyncResult<ServiceOf<typeof HtmxFragmentsPort>, never
     (ctx) => OkAsync(ctx.get(HtmxFragmentsPort)),
   );
 
+/**
+ * `htmx()` over a real listener: an unmarked GET with a path parameter, a POST
+ * on the SAME path carrying an input schema (the method-is-part-of-the-match
+ * pair the brief for `htmx()` names), a route requiring the scheme with no
+ * scope, one requiring a scope its authenticator never grants, and a POST
+ * declaring no schema at all — the "hand the decoded record through" arm.
+ */
+const noteInput = z.object({ note: z.string() });
+
+const htmxRuntimeAuthenticator = HttpAuthenticator<{ readonly userId: string }, "admin">()({
+  sync: () => (headers) => {
+    if (headers.authorization === "Bearer boom") {
+      return OkAsync().map((): Grant<{ readonly userId: string }, "admin"> => {
+        // oxlint-disable-next-line unthrown/no-throw -- an authenticator bug IS the subject under test, and a throw inside a combinator is the only way to mint a Defect
+        throw new Error("authenticator bug");
+      });
+    }
+    return headers.authorization === "Bearer good"
+      ? OkAsync(granted<{ readonly userId: string }, "admin">({ userId: "u-1" }, []))
+      : ErrAsync(new Unauthenticated());
+  },
+});
+
+const htmxRuntimeApi = defineHttp({ authenticators: { user: htmxRuntimeAuthenticator } });
+
+const htmxRuntimeFragments = defineFragments({
+  row: { method: "GET", path: "/orders/:id/row" },
+  rowUpdate: { method: "POST", path: "/orders/:id/row", input: noteInput },
+  profile: authenticated({ user: [] })({ method: "GET", path: "/profile" }),
+  adminPanel: authenticated({ user: ["admin"] })({ method: "GET", path: "/admin" }),
+  echo: { method: "POST", path: "/echo" },
+});
+
+let htmxRowGetRuns = 0;
+let htmxRowUpdateRuns = 0;
+
+const htmxRowFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "row",
+)({
+  sync: () => (_context, params) => {
+    htmxRowGetRuns += 1;
+    return OkAsync(html`<tr id="row-${params.id}">row</tr>`);
+  },
+});
+
+const htmxRowUpdateFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "rowUpdate",
+)({
+  sync: () => (_context, params, input) => {
+    htmxRowUpdateRuns += 1;
+    return OkAsync(html`<tr id="row-${params.id}">${input.note}</tr>`);
+  },
+});
+
+const htmxProfileFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "profile",
+)({
+  sync: () => (context) => OkAsync(html`<p>hi ${context.principal.userId}</p>`),
+});
+
+const htmxAdminPanelFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "adminPanel",
+)({
+  sync: () => () => OkAsync(html`<p>admin</p>`),
+});
+
+const htmxEchoFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "echo",
+)({
+  sync: () => (_context, _params, input) => OkAsync(html`<p>${JSON.stringify(input)}</p>`),
+});
+
+const htmxRuntimeFragmentsProvider = htmxRuntimeApi.HtmxFragments(htmxRuntimeFragments)([
+  htmxRowFragment,
+  htmxRowUpdateFragment,
+  htmxProfileFragment,
+  htmxAdminPanelFragment,
+  htmxEchoFragment,
+]);
+
+const htmxRuntimeAppOf = (bodyLimit?: number) =>
+  Module("HtmxRuntimeApp")({
+    imports: [
+      httpServer({
+        port: 0,
+        hostname: "127.0.0.1",
+        ...(bodyLimit === undefined ? {} : { bodyLimit }),
+      }),
+    ],
+    provides: [
+      htmx(),
+      htmxRowFragment,
+      htmxRowUpdateFragment,
+      htmxProfileFragment,
+      htmxAdminPanelFragment,
+      htmxEchoFragment,
+      htmxRuntimeFragmentsProvider,
+      ...htmxRuntimeFragmentsProvider.authenticators,
+    ],
+    exports: [HttpRuntime, HttpHandler],
+  });
+
+/**
+ * The `htmx()` answerer itself, built the way the kernel does, over a
+ * hand-provided `HttpConfig` rather than `httpServer()` — so a defect from a
+ * request stream can be driven straight through `handle` with a synthetic
+ * request, no socket involved. A real socket's premature close is racy
+ * against Node's own default `clientError` response (measured), which is
+ * what this seam avoids.
+ */
+const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
+  Module.scoped(
+    Module("HtmxAnswererFixture")({
+      provides: [
+        Provider(HttpConfig)({
+          value: {
+            port: 0,
+            hostname: "127.0.0.1",
+            bodyLimit: 0,
+            corsOrigin: "",
+            compression: false,
+          },
+        }),
+        htmx(),
+        htmxRowFragment,
+        htmxRowUpdateFragment,
+        htmxProfileFragment,
+        htmxAdminPanelFragment,
+        htmxEchoFragment,
+        htmxRuntimeFragmentsProvider,
+        ...htmxRuntimeFragmentsProvider.authenticators,
+      ],
+      exports: [HttpHandler],
+    }),
+    (ctx) => {
+      const answerer = ctx.get(HttpHandler).at(0);
+      assert.ok(answerer !== undefined, "htmx() contributed no HttpHandler member");
+      return OkAsync(answerer);
+    },
+  );
+
 export type HttpFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
@@ -839,6 +993,18 @@ export type HttpFixtures = {
     readonly orderRowFragment: typeof orderRowFragment;
     readonly service: () => AsyncResult<ServiceOf<typeof HtmxFragmentsPort>, never>;
   };
+  /**
+   * `htmx()` over a real listener — see `htmxRuntimeAppOf` for the routes it
+   * serves. Shut down by the fixture; both run counts are reset before the
+   * test body.
+   */
+  readonly htmxServer: (bodyLimit?: number) => Promise<{
+    readonly origin: string;
+    readonly rowGetRuns: () => number;
+    readonly rowUpdateRuns: () => number;
+  }>;
+  /** The built `htmx()` answerer itself — see `htmxAnswererOf` for why. */
+  readonly htmxAnswerer: () => AsyncResult<HttpAnswerer, never>;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1167,5 +1333,25 @@ export const it = test.extend<HttpFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   htmx: async ({}, use) => {
     await use({ orderRowFragment, service: htmxServiceOf });
+  },
+
+  htmxServer: async ({ boot }, use) => {
+    await use(async (bodyLimit) => {
+      htmxRowGetRuns = 0;
+      htmxRowUpdateRuns = 0;
+      const app = boot(htmxRuntimeAppOf(bodyLimit));
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return {
+        origin: `http://127.0.0.1:${info.port}`,
+        rowGetRuns: () => htmxRowGetRuns,
+        rowUpdateRuns: () => htmxRowUpdateRuns,
+      };
+    });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  htmxAnswerer: async ({}, use) => {
+    await use(htmxAnswererOf);
   },
 });
