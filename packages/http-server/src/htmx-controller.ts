@@ -5,7 +5,6 @@ import {
   type AnyPort,
   type AnyProvider,
   type PortClassOf,
-  type PortInstance,
   type ServiceOf,
 } from "@btravstack/di";
 import type { AsyncResult } from "unthrown";
@@ -13,7 +12,7 @@ import type { AsyncResult } from "unthrown";
 import { authenticatorPort, type AuthenticatorService } from "./auth.js";
 import type { FragmentRoute, FragmentsContract, ParamsOf } from "./fragments.js";
 import type { Html } from "./html.js";
-import { schemesOf, type Effective } from "./orpc.js";
+import { schemesOf, type Effective, type SchemePortsOf } from "./orpc.js";
 import type { Principal, SchemesOf } from "./principal.js";
 
 /** The prefix a piece's port id carries; the composing form strips it to recover the key. */
@@ -30,13 +29,18 @@ type InputOf<R extends FragmentRoute> = R["input"] extends undefined
 
 /**
  * A fragment's handler: a route's path parameters and its decoded input, next
- * to the principal its effective requirements type — `never` where neither the
- * route nor the contract is marked, so a read of `context.principal` there is a
- * compile error. The error channel is `never` deliberately: triage is the
- * slice's own, at the same place the oRPC controller's `mapErrCases` sits.
+ * to the principal its effective requirements type. Where neither the route
+ * nor the contract is marked, `Principal` is `never` and `context` is bare
+ * `object` — not `{ principal: never }`, which would type-check a read but,
+ * worse, would let a marked piece's handler (contravariantly narrower) satisfy
+ * an unmarked slot's type, since `never` is assignable to anything. `object`
+ * has no `principal` property at all, so both holes close at once — mirroring
+ * `orpc.ts`'s `ContextOf`. The error channel is `never` deliberately: triage
+ * is the slice's own, at the same place the oRPC controller's `mapErrCases`
+ * sits.
  */
 export type FragmentHandler<R extends FragmentRoute, Principal> = (
-  context: { readonly principal: Principal },
+  context: [Principal] extends [never] ? object : { readonly principal: Principal },
   params: ParamsOf<R["path"]>,
   input: InputOf<R>,
 ) => AsyncResult<Html, never>;
@@ -54,21 +58,16 @@ type PrincipalOf<F extends FragmentsContract, K extends keyof F & string, Scheme
   ? never
   : Principal<SchemesOf<EffectiveOf<F, K>>, Schemes>;
 
-/** Every requirement the fragment contract carries, anywhere — its own mark and every route's. */
+/**
+ * Every requirement the fragment contract carries, anywhere — its own mark
+ * and every route's. Flat, unlike `orpc.ts`'s recursive `AllRequirementsOf`:
+ * a fragment contract is one level of routes, not a tree, so this is the one
+ * piece that cannot be shared between the two files — `SchemesIn` and
+ * `SchemePortsOf`, both fed by this, are imported from `orpc.ts` instead.
+ */
 type AllRequirementsOf<F extends FragmentsContract> =
   | RequirementsOf<F>
   | { readonly [K in keyof F & string]: RequirementsOf<F[K]> }[keyof F & string];
-
-/** Distributes `SchemesOf` over the union of requirement tuples the walk collected. */
-type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
-
-/** One port instance per scheme any route or the contract itself names. */
-type SchemePortsOf<F extends FragmentsContract> =
-  SchemesIn<AllRequirementsOf<F>> extends infer S extends string
-    ? S extends string
-      ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>>
-      : never
-    : never;
 
 /** The port one route targets. */
 type FragmentPortOf<
@@ -198,7 +197,7 @@ export const htmxFragmentsFor =
     ): Provider<
       InstanceType<typeof HtmxFragmentsPort>,
       never,
-      InstanceType<T[number]["port"]> | SchemePortsOf<F>
+      InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<F>>
     > & { readonly authenticators: readonly Auth[] };
     function build(pieces: unknown): unknown {
       const list = pieces as readonly { readonly port: AnyPort }[];

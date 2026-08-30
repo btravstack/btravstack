@@ -219,10 +219,10 @@ export const routerFor =
           readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
         }) => Implementation<C, Schemes>;
       },
-    ): Built<Auth, InstanceType<D[keyof D]> | SchemePortsOf<C>>;
+    ): Built<Auth, InstanceType<D[keyof D]> | SchemePortsOf<AllRequirementsOf<C>>>;
     function build(options: {
       readonly sync: () => Implementation<C, Schemes>;
-    }): Built<Auth, SchemePortsOf<C>>;
+    }): Built<Auth, SchemePortsOf<AllRequirementsOf<C>>>;
     // Declared LAST on purpose: TypeScript reports the last overload's
     // failure, so a bad array is refused against the markers below rather than
     // degrading to di's `Qualification`, which names nothing (measured in
@@ -246,7 +246,7 @@ export const routerFor =
             "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the (deps, arm) form instead",
             Unsliceable<C>,
           ],
-    ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<C>>;
+    ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>>;
     function build(depsOrPieces: unknown, options?: unknown): unknown {
       const schemes = schemesOf(contract);
       const own = (services: Record<string, unknown>): Record<string, unknown> =>
@@ -506,8 +506,13 @@ type AllRequirementsOf<C> =
           readonly [K in Exclude<keyof C, PrincipalKey>]: AllRequirementsOf<C[K]>;
         }[Exclude<keyof C, PrincipalKey>]);
 
-/** Distributes `SchemesOf` over the union of requirement tuples the walk collected. */
-type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
+/**
+ * Distributes `SchemesOf` over the union of requirement tuples a walk
+ * collected. Exported for `htmx-controller.ts`, which folds a FLAT contract's
+ * requirements rather than a recursive tree — the two share this step, not
+ * the walk that feeds it.
+ */
+export type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
 
 /** Every scope string the contract names for scheme `K`, across every requirement. */
 type ScopesIn<R, K extends string> = R extends Requirements
@@ -549,11 +554,14 @@ type ScopeGate<C, Vocab> = [Ungrantable<C, Vocab>] extends [never]
     };
 
 /**
- * One port instance per scheme the contract names, as the router's needs
- * channel. The runtime side is `schemesOf`; these two must agree.
+ * One port instance per scheme named anywhere in `R`, a union of requirement
+ * tuples — as a router's or `htmx-controller.ts`'s composed provider's needs
+ * channel. Parameterized by the requirements union rather than by a contract,
+ * so the two callers can feed it their own (recursive vs flat)
+ * `AllRequirementsOf`. The runtime side is `schemesOf`; these must agree.
  */
-type SchemePortsOf<C> =
-  SchemesIn<AllRequirementsOf<C>> extends infer S extends string
+export type SchemePortsOf<R> =
+  SchemesIn<R> extends infer S extends string
     ? S extends string
       ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>>
       : never

@@ -595,20 +595,36 @@ const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
 
 /**
+ * Two schemes, dedicated to the fixtures below and kept SEPARATE from `api`'s
+ * own registry: `htmxFragments`' contract mark names "user" and its
+ * `adminOnly` route overrides with "service" — two DIFFERENT scheme names —
+ * so a test can tell "found the contract's mark" from "found the route's
+ * mark" by which scheme key resolved, not merely by requirement identity.
+ */
+const htmxUserAuthenticator = HttpAuthenticator<{ readonly userId: string }>()({
+  sync: () => () => OkAsync({ userId: "u-1" }),
+});
+const htmxServiceAuthenticator = HttpAuthenticator<{ readonly appId: string }>()({
+  sync: () => () => OkAsync({ appId: "a-1" }),
+});
+const htmxApi = defineHttp({
+  authenticators: { user: htmxUserAuthenticator, service: htmxServiceAuthenticator },
+});
+
+/**
  * One route inheriting the contract's mark, one likewise, and one overriding
- * it with a scope of its own — the nearest-mark-wins fold, exercised end to
- * end. Reuses `api`'s `user` scheme, the registry every marked fixture in this
- * file is typed by.
+ * it with a scheme of its own — the nearest-mark-wins fold, exercised end to
+ * end across two distinct schemes.
  */
 const htmxFragments = authenticated({ user: [] })(
   defineFragments({
     orderRow: { method: "GET", path: "/orders/:id/row" },
     health: { method: "GET", path: "/health" },
-    adminOnly: authenticated({ user: ["admin"] })({ method: "GET", path: "/admin" }),
+    adminOnly: authenticated({ service: [] })({ method: "GET", path: "/admin" }),
   }),
 );
 
-const orderRowFragment = api.HtmxController(htmxFragments, "orderRow")(
+const orderRowFragment = htmxApi.HtmxController(htmxFragments, "orderRow")(
   { greeter: Greeter },
   {
     sync:
@@ -618,21 +634,21 @@ const orderRowFragment = api.HtmxController(htmxFragments, "orderRow")(
   },
 );
 
-const healthFragment = api.HtmxController(
+const healthFragment = htmxApi.HtmxController(
   htmxFragments,
   "health",
 )({
   sync: () => () => OkAsync(html`<p>ok</p>`),
 });
 
-const adminOnlyFragment = api.HtmxController(
+const adminOnlyFragment = htmxApi.HtmxController(
   htmxFragments,
   "adminOnly",
 )({
   sync: () => () => OkAsync(html`<p>admin</p>`),
 });
 
-const htmxFragmentsProvider = api.HtmxFragments(htmxFragments)([
+const htmxFragmentsProvider = htmxApi.HtmxFragments(htmxFragments)([
   orderRowFragment,
   healthFragment,
   adminOnlyFragment,

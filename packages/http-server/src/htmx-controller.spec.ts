@@ -18,36 +18,55 @@ describe("HtmxFragments", () => {
     }).toEqual({ portId: "HtmxFragment:orderRow", deps: ["Greeter"] });
   });
 
-  it("composes every route with the contract's shape and nearest-mark requirements, and wires the principal and params into handle", async ({
+  it("composes every route with the contract's shape and nearest-mark requirements, resolving each scheme to its own authenticator", async ({
     htmx,
   }) => {
-    // GIVEN the fragments composed into one port, with a "user" authenticator
-    // discharging the scheme every route names
-    const service = (await htmx.service()).get();
-    const orderRow = service.routes.find((route) => route.path === "/orders/:id/row");
-    assert.ok(orderRow !== undefined, "the orderRow route was not composed");
-    const answered = (await orderRow.handle({ userId: "u-1" }, { id: "42" }, {})).get();
+    // GIVEN the fragments composed into one port over two schemes — "user"
+    // from the contract's own mark, "service" from a route overriding it
+    const composed = (await htmx.service()).get();
+    const userAuth = composed.authenticators["user"];
+    const serviceAuth = composed.authenticators["service"];
+    assert.ok(userAuth !== undefined, 'no authenticator resolved for "user"');
+    assert.ok(serviceAuth !== undefined, 'no authenticator resolved for "service"');
+    const [user, service] = await Promise.all([userAuth({}), serviceAuth({})]);
 
     // WHEN the composed service is inspected end to end
     // THEN every route carries the contract's own shape, an unmarked route
-    // inherits the contract's mark, a marked one overrides it, and the piece's
-    // handler received its principal and params through `handle`
+    // inherits the contract's mark, a marked one overrides it with its own
+    // scheme, and each scheme key resolves to ITS OWN authenticator rather
+    // than to a mismatched or missing one
     expect({
-      routes: service.routes.map((route) => ({
+      routes: composed.routes.map((route) => ({
         path: route.path,
         method: route.method,
         requirements: route.requirements,
       })),
-      schemes: Object.keys(service.authenticators),
-      answer: answered.value,
+      user: user.getOrThrow(),
+      service: service.getOrThrow(),
     }).toEqual({
       routes: [
         { path: "/orders/:id/row", method: "GET", requirements: [{ user: [] }] },
         { path: "/health", method: "GET", requirements: [{ user: [] }] },
-        { path: "/admin", method: "GET", requirements: [{ user: ["admin"] }] },
+        { path: "/admin", method: "GET", requirements: [{ service: [] }] },
       ],
-      schemes: ["user"],
-      answer: "<tr>hi u-1:42</tr>",
+      user: { userId: "u-1" },
+      service: { appId: "a-1" },
     });
+  });
+
+  it("wires a route's principal and params into its own piece's handler through handle", async ({
+    htmx,
+  }) => {
+    // GIVEN the fragments composed into one port, with orderRow's own handler
+    // reading its principal and path parameter
+    const composed = (await htmx.service()).get();
+    const orderRow = composed.routes.find((route) => route.path === "/orders/:id/row");
+    assert.ok(orderRow !== undefined, "the orderRow route was not composed");
+
+    // WHEN its handler is called through `handle`
+    const answered = (await orderRow.handle({ userId: "u-1" }, { id: "42" }, {})).get();
+
+    // THEN it received both, exactly as the piece's own function reads them
+    expect(answered.value).toBe("<tr>hi u-1:42</tr>");
   });
 });
