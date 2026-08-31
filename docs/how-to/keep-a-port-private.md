@@ -133,7 +133,7 @@ channel contains only the exported ports, so `ctx.get(Pool)` has no overload
 that accepts it. The port class itself may be a plain TypeScript `export` (so
 tests can name it); what matters is the DI module's `exports` list.
 
-[Hexagonal order API](/examples/hexagonal-order-api) pins exactly this with a
+[Hexagonal (di alone)](/examples/di-hexagonal) pins exactly this with a
 `@ts-expect-error` in its `index.test-d.ts` — the guarantee is compile-time
 only, so the proof is a type-level test, not a runtime assertion.
 

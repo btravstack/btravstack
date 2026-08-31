@@ -50,12 +50,12 @@ each doing what its transport is for — answering, orchestrating,
 broadcasting — with each transport's contract in a package of its own
 (`order-api-contract`, `order-temporal-contract`, `order-amqp-contract`)
 because a client must be able to take a contract without the server, plus the
-container's own `hexagonal-order-api`, which composes a `Module` and never
+container's own `di-hexagonal`, which composes a `Module` and never
 calls `start`. They are
 consumers, not fixtures: they are part of the gate, and `examples/README.md`
 is their index.
 
-**`hexagonal-order-api` is two things, and the second is why it cannot be
+**`di-hexagonal` is two things, and the second is why it cannot be
 deleted.** The example half is di used alone — ports named by the
 application, a production adapter and an in-memory one. The other half,
 `src/emit-guards.ts` with `tsconfig.emit.json`, is the repository's **only**
@@ -69,7 +69,7 @@ every consumer exporting a port failed to emit, while the repo stayed green
 because the examples carried `declaration: false` — which is the sharpest
 version of "green gate, no consumer can build" this repo has met. Do not
 judge the workspace by the example half; a reader who does concludes it is
-redundant with `order-api`, which is exactly the mistake the name invites. `docs/` is the documentation site (see **Documentation
+redundant with `order-api`, and takes the emit gate with it. `docs/` is the documentation site (see **Documentation
 site** below); it is a workspace but not a published package. `internal/`
 holds one more, `test-infra`, which is neither: it owns the six containers
 the whole gate shares and is documented in its own README.
@@ -892,7 +892,7 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   the handful like them. It used to say that was **the one** such site, which
   was wrong in both directions: eight sites lift an existing `Result`
   legitimately, and thirty-three lifted a fresh literal in violation of this
-  very bullet — across `di`, `observability` and `hexagonal-order-api`, specs
+  very bullet — across `di`, `observability` and `di-hexagonal`, specs
   included. `.toAsync()` on an `Ok(`/`Err(` receiver is what the rule bans, and
   the receiver is what makes it mechanical: no lint rule enforces it here yet
   (btravstack/unthrown#260).

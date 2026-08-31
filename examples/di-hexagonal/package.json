@@ -1,5 +1,5 @@
 {
-  "name": "@btravstack/example-hexagonal-order-api",
+  "name": "@btravstack/example-di-hexagonal",
   "private": true,
   "description": "A hexagonal slice built on @btravstack/di: ports named by the application, a private connection pool, and one application module composed against a production adapter and an in-memory one",
   "license": "MIT",

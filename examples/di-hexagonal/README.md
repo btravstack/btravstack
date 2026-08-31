@@ -1,4 +1,4 @@
-# hexagonal-order-api
+# di-hexagonal
 
 The core story: an application layer that names its own ports and never
 mentions an adapter, a persistence layer with a private connection pool and a
@@ -6,8 +6,8 @@ public repository, and a composition root generic enough to build the same
 application against a production adapter or an in-memory one.
 
 ```sh
-pnpm --filter @btravstack/example-hexagonal-order-api test
-pnpm --filter @btravstack/example-hexagonal-order-api typecheck
+pnpm --filter @btravstack/example-di-hexagonal test
+pnpm --filter @btravstack/example-di-hexagonal typecheck
 ```
 
 > **This workspace is also a gate, and that half is not optional.**

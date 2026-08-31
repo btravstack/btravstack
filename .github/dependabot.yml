@@ -79,7 +79,7 @@ updates:
       - dependency-name: "@amqp-contract/*"
       - dependency-name: "@temporal-contract/*"
       # An alias for the TypeScript a *consumer* is realistically on, compiled
-      # as the second declaration-emit pass in `examples/hexagonal-order-api`.
+      # as the second declaration-emit pass in `examples/di-hexagonal`.
       # Bumping it toward the version this repo builds with defeats its purpose.
       - dependency-name: typescript-consumer
       # `typescript` is two pins with different majors on purpose: 7.0.2 in the
