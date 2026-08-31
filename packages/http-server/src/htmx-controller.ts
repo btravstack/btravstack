@@ -179,14 +179,24 @@ type RouteHandler<P extends `/${string}`, S extends FragmentInputSchema | undefi
 /** The port one route mints, keyed by `${method} ${path}` — GET and POST on one path are distinct, and two routes on one method+path are one port id, di's duplicate-provider defect. */
 type RoutePortOf<Id extends string, H> = PortClassOf<Id, H>;
 
-/** What both `HtmxGet` and `HtmxPost`'s two-arm `build` return; `N` is the only thing that differs. */
-type MintedRoute<Id extends string, H, N> = Provider<InstanceType<RoutePortOf<Id, H>>, never, N> & {
+/**
+ * What both `HtmxGet` and `HtmxPost`'s two-arm `build` return; `N` is the only
+ * thing that differs. `route.requires` carries the LITERAL `R`, not the
+ * widened `Requirements | undefined` — the array arm's needs channel reads it
+ * back through `RequiresOfPiece`, and a widened field would make that
+ * unrecoverable at the type level.
+ */
+type MintedRoute<Id extends string, H, R extends Requirements, N> = Provider<
+  InstanceType<RoutePortOf<Id, H>>,
+  never,
+  N
+> & {
   readonly port: RoutePortOf<Id, H>;
   readonly route: {
     readonly method: "GET" | "POST";
     readonly path: string;
     readonly input: FragmentInputSchema | undefined;
-    readonly requires: Requirements | undefined;
+    readonly requires: [R] extends [never] ? undefined : R;
   };
 };
 
@@ -200,6 +210,19 @@ type AnyRoutePiece = {
     readonly requires: Requirements | undefined;
   };
 };
+
+/**
+ * A piece's own `requires`, read back off its literal type — `never` for a
+ * piece minted with none. `P` is a naked type parameter, so applied to a
+ * UNION of pieces (`T[number]`) this distributes, one arm per piece, which is
+ * what lets `SchemePortsOf` below see every route's own scheme rather than
+ * one collapsed answer.
+ */
+type RequiresOfPiece<P> = P extends {
+  readonly route: { readonly requires: infer R extends Requirements };
+}
+  ? R
+  : never;
 
 /**
  * `HtmxGet` and `HtmxPost`: a route as a provider on a port of its own, minted
@@ -249,6 +272,7 @@ export const htmxRouteFor = <Schemes, Vocab>() => {
     ): MintedRoute<
       `${typeof FRAGMENT_PREFIX}GET ${P}`,
       RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>,
+      R,
       InstanceType<D[keyof D]>
     >;
     (buildOptions: {
@@ -256,6 +280,7 @@ export const htmxRouteFor = <Schemes, Vocab>() => {
     }): MintedRoute<
       `${typeof FRAGMENT_PREFIX}GET ${P}`,
       RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>,
+      R,
       never
     >;
   } => mint("GET", path, undefined, options?.requires as Requirements | undefined) as never;
@@ -278,6 +303,7 @@ export const htmxRouteFor = <Schemes, Vocab>() => {
     ): MintedRoute<
       `${typeof FRAGMENT_PREFIX}POST ${P}`,
       RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>,
+      R,
       InstanceType<D[keyof D]>
     >;
     (buildOptions: {
@@ -285,6 +311,7 @@ export const htmxRouteFor = <Schemes, Vocab>() => {
     }): MintedRoute<
       `${typeof FRAGMENT_PREFIX}POST ${P}`,
       RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>,
+      R,
       never
     >;
   } => mint("POST", path, options?.input, options?.requires as Requirements | undefined) as never;
@@ -404,7 +431,11 @@ export const htmxFragmentsFor = <Schemes, Auth extends AnyProvider = never>(
 ) => {
   function HtmxFragments<const T extends readonly AnyRoutePiece[]>(
     routes: T,
-  ): Provider<InstanceType<typeof HtmxFragmentsPort>, never, InstanceType<T[number]["port"]>> & {
+  ): Provider<
+    InstanceType<typeof HtmxFragmentsPort>,
+    never,
+    InstanceType<T[number]["port"]> | SchemePortsOf<RequiresOfPiece<T[number]>>
+  > & {
     readonly authenticators: readonly Auth[];
   };
   function HtmxFragments<const F extends FragmentsContract>(

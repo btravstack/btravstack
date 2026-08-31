@@ -242,3 +242,64 @@ describe("HtmxGet / HtmxPost", () => {
     });
   });
 });
+
+describe("HtmxFragments array arm scheme needs", () => {
+  type NeedsOf<T> = T extends Provider<infer _P, infer _E, infer N> ? N : never;
+  type SchemePort<S extends string> = S extends string
+    ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>>
+    : never;
+
+  test("declares one port per scheme any route's requires names — two, one, and none, each both ways", () => {
+    const api = defineHttp({
+      authenticators: {
+        user: HttpAuthenticator<{ readonly userId: string }>()({
+          sync: () => () => OkAsync({ userId: "u-1" }),
+        }),
+        service: HttpAuthenticator<{ readonly appId: string }>()({
+          sync: () => () => OkAsync({ appId: "a-1" }),
+        }),
+      },
+    });
+
+    const twoSchemeComposed = api.HtmxFragments([
+      api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+        sync: () => () => OkAsync(html``),
+      }),
+      api.HtmxGet("/admin", { requires: [{ service: [] }] })({
+        sync: () => () => OkAsync(html``),
+      }),
+    ]);
+
+    const oneSchemeComposed = api.HtmxFragments([
+      api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+        sync: () => () => OkAsync(html``),
+      }),
+    ]);
+
+    const noSchemeComposed = api.HtmxFragments([
+      api.HtmxGet("/ping")({ sync: () => () => OkAsync(html``) }),
+    ]);
+
+    // BOTH directions, for each — a one-way check passes on a collapsed
+    // `never`, which is how a broken scheme walk would slip through.
+    type _TwoSchemeNeeds = Expect<
+      [Extract<NeedsOf<typeof twoSchemeComposed>, SchemePort<string>>] extends [
+        SchemePort<"user" | "service">,
+      ]
+        ? [SchemePort<"user" | "service">] extends [NeedsOf<typeof twoSchemeComposed>]
+          ? true
+          : false
+        : false
+    >;
+    type _OneSchemeNeeds = Expect<
+      [Extract<NeedsOf<typeof oneSchemeComposed>, SchemePort<string>>] extends [SchemePort<"user">]
+        ? [SchemePort<"user">] extends [NeedsOf<typeof oneSchemeComposed>]
+          ? true
+          : false
+        : false
+    >;
+    type _NoSchemeNeeds = Expect<
+      [Extract<NeedsOf<typeof noSchemeComposed>, SchemePort<string>>] extends [never] ? true : false
+    >;
+  });
+});
