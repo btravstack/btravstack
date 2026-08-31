@@ -12,6 +12,16 @@ const ref = z.object({ id: z.string() });
 const base = { info: { title: "Orders", version: "1" } };
 
 describe("openApiDocument", () => {
+  it("answers through the Result channel — async, and cannot fail", async () => {
+    // GIVEN any contract
+    // WHEN a document is generated
+    // THEN it arrives as an Ok on an AsyncResult<_, never> — a generator fault
+    // is a defect, never a raw rejection escaping to the caller
+    await expect(
+      openApiDocument({ health: oc.output(z.object({ ok: z.boolean() })) }, { base }),
+    ).toBeOkWith(expect.objectContaining({ info: base.info }));
+  });
+
   it("gives a marked procedure the schemes and scopes its contract names", async () => {
     // GIVEN a contract whose orders are marked and whose health check is not
     const contract = {
@@ -20,10 +30,12 @@ describe("openApiDocument", () => {
     };
 
     // WHEN a document is generated
-    const doc = await openApiDocument(contract, {
-      base,
-      securitySchemes: { user: bearer },
-    });
+    const doc = (
+      await openApiDocument(contract, {
+        base,
+        securitySchemes: { user: bearer },
+      })
+    ).get();
 
     // THEN the marked operation carries its requirement and the unmarked one carries none
     expect({
@@ -50,10 +62,12 @@ describe("openApiDocument", () => {
     };
 
     // WHEN a document is generated
-    const doc = await openApiDocument(contract, {
-      base,
-      securitySchemes: { user: bearer, mtls },
-    });
+    const doc = (
+      await openApiDocument(contract, {
+        base,
+        securitySchemes: { user: bearer, mtls },
+      })
+    ).get();
 
     // THEN each alternative is its own object, which is OpenAPI's own OR
     expect(doc.paths?.["/either/run"]?.post?.security).toEqual([{ user: [] }, { mtls: [] }]);
@@ -69,10 +83,12 @@ describe("openApiDocument", () => {
     };
 
     // WHEN a document is generated
-    const doc = await openApiDocument(contract, {
-      base,
-      securitySchemes: { user: bearer, mtls },
-    });
+    const doc = (
+      await openApiDocument(contract, {
+        base,
+        securitySchemes: { user: bearer, mtls },
+      })
+    ).get();
 
     // THEN the nearest mark wins, and its sibling still inherits the record's
     expect({

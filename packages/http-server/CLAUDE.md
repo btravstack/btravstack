@@ -647,9 +647,16 @@ URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
 
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
-**`openApiDocument(contract, { base?, securitySchemes? })`** (`openapi.ts`) —
-the contract as an OpenAPI document, with the `@btravstack/contract` marker
-folded into each operation's `security`.
+**`openApiDocument(contract, { base?, securitySchemes? })` →
+`AsyncResult<OpenApiDocument, never>`** (`openapi.ts`) — the contract as an
+OpenAPI document, with the `@btravstack/contract` marker folded into each
+operation's `security`. Async, and cannot fail — thesis #6's spelling — through
+`fromSafePromise`: a generator fault is a defect, never a raw rejection. Both
+options are typed by the library per the passthrough rule: `base` is
+`Partial<OpenApiDocument>` and `securitySchemes` is `OpenApiSecuritySchemes`,
+the document's own `components.securitySchemes` shape reached by index off
+`OpenApiDocument` (exported for the same TS4023 reason as the alias itself), so
+a key the generator would ignore is a type error rather than silently inert.
 
 **It is a fold, not a translation**, and that is the whole reason this was
 cheap: `Requirement` is `Readonly<Record<string, readonly string[]>>` and

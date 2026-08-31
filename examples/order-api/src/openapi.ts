@@ -1,5 +1,6 @@
 import { contract } from "@btravstack/example-order-api-contract";
 import { openApiDocument, type OpenApiDocument } from "@btravstack/http-server/openapi";
+import type { AsyncResult } from "unthrown";
 
 /**
  * The API's OpenAPI document.
@@ -15,7 +16,7 @@ import { openApiDocument, type OpenApiDocument } from "@btravstack/http-server/o
  * value from a route of its own, which keeps a UI bundle out of a transport
  * package.
  */
-export const openApi = (): Promise<OpenApiDocument> =>
+export const openApi = (): AsyncResult<OpenApiDocument, never> =>
   openApiDocument(contract, {
     base: {
       info: {
