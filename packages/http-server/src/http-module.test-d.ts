@@ -1,4 +1,4 @@
-// Task 8's "serves nothing" gate: `HttpModule` composes a router, fragments, or
+// The "serves nothing" gate: `HttpModule` composes a router, fragments, or
 // both, and refuses a call that supplies neither. A gate that refuses
 // everything would pass this file on the negative case alone, so all three
 // valid shapes are pinned as positives too. Each `@ts-expect-error` is an

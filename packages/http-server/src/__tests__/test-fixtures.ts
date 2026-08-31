@@ -453,10 +453,10 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
   });
 
 /**
- * An unrelated router and fragments, composed by ONE `HttpModule` call — Task
- * 8's proof that a root can serve both protocols from one runtime on one
- * port. Public and minimal on purpose: the gate under test is the composition,
- * not either protocol's own behaviour, which the rest of this file already
+ * An unrelated router and fragments, composed by ONE `HttpModule` call — a
+ * proof that a root can serve both protocols from one runtime on one port.
+ * Public and minimal on purpose: the gate under test is the composition, not
+ * either protocol's own behaviour, which the rest of this file already
  * covers.
  */
 const bothContract = oc.router({ ping: oc.output(ocType<string>()) });
@@ -477,6 +477,21 @@ const bothProtocolsAppOf = () =>
   HttpModule("BothProtocolsApp")({
     router: bothRouter,
     fragments: bothFragmentsProvider,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [bothStatusFragment],
+  });
+
+/**
+ * The same fragments alone, mounted off a PINNED prefix instead of the
+ * default `/` — proves `fragmentsPrefix` actually reaches `htmx()` rather
+ * than being silently defaulted: the fragment answers under the pinned mount
+ * and nothing answers at `/`, since no router is composed to own it either.
+ */
+const fragmentsOnlyAppOf = () =>
+  HttpModule("FragmentsOnlyApp")({
+    fragments: bothFragmentsProvider,
+    fragmentsPrefix: "/ui",
     port: 0,
     hostname: "127.0.0.1",
     provides: [bothStatusFragment],
@@ -1103,6 +1118,13 @@ export type HttpFixtures = {
     readonly fragment: () => Promise<string>;
   }>;
   /**
+   * The starter over `HttpModule({ fragments, fragmentsPrefix: "/ui" })` —
+   * fragments alone, mounted off the pinned prefix. Shut down by the fixture.
+   */
+  readonly fragmentsOnly: () => Promise<{
+    readonly at: (path: string) => Promise<{ readonly status: number; readonly body: string }>;
+  }>;
+  /**
    * `HttpModule({ router, fragments })` where both share ONE authenticator
    * through one `defineHttp` registry. Shut down by the fixture.
    */
@@ -1475,6 +1497,21 @@ export const it = test.extend<HttpFixtures>({
       return {
         rpc: () => client.ping(),
         fragment: async () => (await fetch(`${origin}/status`)).text(),
+      };
+    });
+  },
+
+  fragmentsOnly: async ({ boot }, use) => {
+    await use(async () => {
+      const app = boot(fragmentsOnlyAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      return {
+        at: async (path) => {
+          const response = await fetch(`${origin}${path}`);
+          return { status: response.status, body: await response.text() };
+        },
       };
     });
   },

@@ -294,4 +294,20 @@ describe("htmx", () => {
     // THEN both resolved the SAME authenticator's principal
     expect(answers).toEqual({ rpc: "u-1", fragment: { status: 200, body: "<p>u-1</p>" } });
   });
+
+  it("threads fragmentsPrefix to htmx() rather than defaulting it", async ({ fragmentsOnly }) => {
+    // GIVEN a fragments-only root pinning `fragmentsPrefix: "/ui"`
+    const { at } = await fragmentsOnly();
+
+    // WHEN the fragment is requested under the pinned mount, and again at the
+    // default `/` no answerer owns
+    const answers = { mounted: await at("/ui/status"), atRoot: await at("/status") };
+
+    // THEN it answered only under the pinned mount, not the default — proving
+    // the option reached `htmx()` rather than being silently defaulted
+    expect(answers).toEqual({
+      mounted: { status: 200, body: "<p>ok</p>" },
+      atRoot: { status: 404, body: '{"error":"NotFound"}' },
+    });
+  });
 });

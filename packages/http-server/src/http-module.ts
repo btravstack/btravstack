@@ -46,7 +46,9 @@ type HtmxAnswerer = ReturnType<typeof htmx>;
  * application's own. `Router`/`Fragments` resolve to `undefined` — every
  * branch gated on them collapsing to `never` — when the matching option is
  * omitted, which is what lets `HttpModule` compose a router, fragments, or
- * both from one declaration.
+ * both from one declaration. A union-element array rather than a tuple:
+ * each authenticator union is one type per scheme, and a tuple takes one
+ * rest element, not two.
  */
 type Provides<P extends readonly AnyProvider[], Router, Fragments> = readonly (
   | ([Router] extends [undefined] ? never : Exclude<Router, undefined> | OrpcAnswerer)
