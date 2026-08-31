@@ -515,7 +515,7 @@ type AllRequirementsOf<C> =
 export type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
 
 /** Every scope string the contract names for scheme `K`, across every requirement. */
-type ScopesIn<R, K extends string> = R extends Requirements
+export type ScopesIn<R, K extends string> = R extends Requirements
   ? {
       // `K extends keyof R[I]` first, never `R[I][K & keyof R[I]]`: indexing a
       // requirement that does not name `K` gives `never`, and inferring `S`

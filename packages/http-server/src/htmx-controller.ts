@@ -10,9 +10,20 @@ import {
 import type { AsyncResult } from "unthrown";
 
 import { authenticatorPort, type AuthenticatorService } from "./auth.js";
-import type { FragmentRoute, FragmentsContract, ParamsOf } from "./fragments.js";
+import type {
+  FragmentInputSchema,
+  FragmentRoute,
+  FragmentsContract,
+  ParamsOf,
+} from "./fragments.js";
 import type { Html } from "./html.js";
-import { schemesOf, type Effective, type SchemePortsOf } from "./orpc.js";
+import {
+  schemesOf,
+  type Effective,
+  type ScopesIn,
+  type SchemePortsOf,
+  type SchemesIn,
+} from "./orpc.js";
 import type { Principal, SchemesOf } from "./principal.js";
 
 /** The prefix a piece's port id carries; the composing form strips it to recover the key. */
@@ -130,6 +141,157 @@ export const htmxControllerFor =
     return build;
   };
 
+/** Every scope string `R` names for scheme `K` — `orpc.ts`'s `ScopesIn`, fed directly since `requires` already IS a requirements union, not a tree to walk. */
+type UngrantableIn<R, Vocab> = {
+  [K in SchemesIn<R>]: K extends keyof Vocab ? Exclude<ScopesIn<R, K>, Vocab[K]> : never;
+}[SchemesIn<R>];
+
+/**
+ * `orpc.ts`'s `ScopeGate` with the contract fold removed: `requires` is data,
+ * not a tree, so there is nothing to walk before checking it.
+ */
+type RequiresGate<R, Vocab> = [UngrantableIn<R, Vocab>] extends [never]
+  ? unknown
+  : {
+      readonly "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it": UngrantableIn<
+        R,
+        Vocab
+      >;
+    };
+
+/** What a route's own schema infers, or the raw decoded form when it declares none — `InputOf`, reparameterised over the schema rather than a route type. */
+type InputOfSchema<S extends FragmentInputSchema | undefined> = S extends undefined
+  ? Readonly<Record<string, string>>
+  : NonNullable<NonNullable<S>["~standard"]["types"]>["output"];
+
+/** What `requires` types on `context.principal` — no contract, so nothing to fold nearest-mark-wins over. */
+type PrincipalFromRequires<R extends Requirements, Schemes> = [R] extends [never]
+  ? never
+  : Principal<SchemesOf<R>, Schemes>;
+
+/** A route-first handler: the path's own params next to the decoded input. */
+type RouteHandler<P extends `/${string}`, S extends FragmentInputSchema | undefined, Principal> = (
+  context: [Principal] extends [never] ? object : { readonly principal: Principal },
+  params: ParamsOf<P>,
+  input: InputOfSchema<S>,
+) => AsyncResult<Html, never>;
+
+/** The port one route mints, keyed by `${method} ${path}` — GET and POST on one path are distinct, and two routes on one method+path are one port id, di's duplicate-provider defect. */
+type RoutePortOf<Id extends string, H> = PortClassOf<Id, H>;
+
+/** What both `HtmxGet` and `HtmxPost`'s two-arm `build` return; `N` is the only thing that differs. */
+type MintedRoute<Id extends string, H, N> = Provider<InstanceType<RoutePortOf<Id, H>>, never, N> & {
+  readonly port: RoutePortOf<Id, H>;
+  readonly route: {
+    readonly method: "GET" | "POST";
+    readonly path: string;
+    readonly input: FragmentInputSchema | undefined;
+    readonly requires: Requirements | undefined;
+  };
+};
+
+/** One piece the array arm of `HtmxFragments` accepts — what `HtmxGet`/`HtmxPost` return. */
+type AnyRoutePiece = {
+  readonly port: AnyPort;
+  readonly route: {
+    readonly method: "GET" | "POST";
+    readonly path: string;
+    readonly input: FragmentInputSchema | undefined;
+    readonly requires: Requirements | undefined;
+  };
+};
+
+/**
+ * `HtmxGet` and `HtmxPost`: a route as a provider on a port of its own, minted
+ * straight from a path — no contract in between. Two separate functions,
+ * deliberately, rather than one `method`-parameterised generic: a discriminated
+ * union threaded through a generic that feeds a gate has already disabled one
+ * silently on this exact surface (`FragmentRoute`, see `fragments.ts`'s own
+ * TSDoc), so `method` here is a plain runtime string, never a type argument.
+ *
+ * ```ts
+ * const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+ *   sync: () => (context, params) => repository.find(params.id).map(rowOf),
+ * });
+ * ```
+ */
+export const htmxRouteFor = <Schemes, Vocab>() => {
+  const mint =
+    (
+      method: "GET" | "POST",
+      path: string,
+      input: FragmentInputSchema | undefined,
+      requires: Requirements | undefined,
+    ) =>
+    (depsOrOptions: unknown, options?: unknown): unknown => {
+      // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
+      const port = class extends Port(`${FRAGMENT_PREFIX}${method} ${path}`)<
+        (context: unknown, params: unknown, input: unknown) => AsyncResult<Html, never>
+      > {};
+      const provider =
+        options === undefined
+          ? Provider(port as never)(depsOrOptions as never)
+          : Provider(port as never)(depsOrOptions as never, options as never);
+      return Object.assign(provider, { route: { method, path, input, requires } });
+    };
+
+  const HtmxGet = <const P extends `/${string}`, const R extends Requirements = never>(
+    path: P,
+    options?: { readonly requires?: R & RequiresGate<R, Vocab> },
+  ): {
+    <const D extends Readonly<Record<string, AnyPort>>>(
+      deps: D,
+      buildOptions: {
+        readonly sync: (services: {
+          readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+        }) => RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>;
+      },
+    ): MintedRoute<
+      `${typeof FRAGMENT_PREFIX}GET ${P}`,
+      RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>,
+      InstanceType<D[keyof D]>
+    >;
+    (buildOptions: {
+      readonly sync: () => RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>;
+    }): MintedRoute<
+      `${typeof FRAGMENT_PREFIX}GET ${P}`,
+      RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>,
+      never
+    >;
+  } => mint("GET", path, undefined, options?.requires as Requirements | undefined) as never;
+
+  const HtmxPost = <
+    const P extends `/${string}`,
+    const R extends Requirements = never,
+    const S extends FragmentInputSchema | undefined = undefined,
+  >(
+    path: P,
+    options?: { readonly requires?: R & RequiresGate<R, Vocab>; readonly input?: S },
+  ): {
+    <const D extends Readonly<Record<string, AnyPort>>>(
+      deps: D,
+      buildOptions: {
+        readonly sync: (services: {
+          readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+        }) => RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>;
+      },
+    ): MintedRoute<
+      `${typeof FRAGMENT_PREFIX}POST ${P}`,
+      RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>,
+      InstanceType<D[keyof D]>
+    >;
+    (buildOptions: {
+      readonly sync: () => RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>;
+    }): MintedRoute<
+      `${typeof FRAGMENT_PREFIX}POST ${P}`,
+      RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>,
+      never
+    >;
+  } => mint("POST", path, options?.input, options?.requires as Requirements | undefined) as never;
+
+  return { HtmxGet, HtmxPost };
+};
+
 /** What the answerer reads back for one route, principal and body erased to `unknown`. */
 export type FragmentAnswer = {
   readonly method: "GET" | "POST";
@@ -178,28 +340,98 @@ type KeyOfPiece<P> = P extends {
   : never;
 
 /**
- * Every route a fragment contract declares, composed from an array of pieces —
- * each an `HtmxController(fragments, key)(…)`. An uncovered route is refused
- * against the `"UNCOVERED FRAGMENTS — …"` marker.
+ * Every scheme any route's `requires` names, walked directly over the raw
+ * data — `schemesOf` cannot be reused here, since it finds a scheme only
+ * through `isAuthenticated`'s marker registry, and route-first `requires` is
+ * never marked (it is `Requirements` data, read straight off `piece.route`).
  */
-export const htmxFragmentsFor =
-  <Schemes, Auth extends AnyProvider = never>(authenticators: readonly Auth[]) =>
-  <const F extends FragmentsContract>(fragments: F) => {
+const schemesInRoutes = (routes: readonly AnyRoutePiece[]): readonly string[] => {
+  const found = new Set<string>();
+  for (const piece of routes)
+    for (const requirement of piece.route.requires ?? [])
+      for (const scheme of Object.keys(requirement)) found.add(scheme);
+  return [...found];
+};
+
+/**
+ * Every route composed from an array of route pieces — each an
+ * `HtmxGet`/`HtmxPost`. Keyed by INDEX rather than by the piece's own port id:
+ * two pieces sharing one method+path share one port id, and keying `deps` by
+ * that id would silently keep only the last, hiding the very collision di's
+ * duplicate-provider defect exists to catch.
+ */
+const htmxRoutesFor =
+  <Auth extends AnyProvider>(authenticators: readonly Auth[]) =>
+  (routes: readonly AnyRoutePiece[]): unknown => {
+    const routeEntries = routes.map((piece, index) => [`route:${index}`, piece.port] as const);
+    const schemes = schemesInRoutes(routes);
+    const deps: Record<string, AnyPort> = {
+      ...Object.fromEntries(routeEntries),
+      ...Object.fromEntries(
+        schemes.map((scheme) => [`${AUTHENTICATOR}${scheme}`, authenticatorPort(scheme)]),
+      ),
+    };
+    const sync = (
+      services: Record<string, unknown>,
+    ): ServiceOf<InstanceType<typeof HtmxFragmentsPort>> => ({
+      routes: routeEntries.map(([key], index) => {
+        const piece = routes[index] as AnyRoutePiece;
+        return {
+          method: piece.route.method,
+          path: piece.route.path,
+          input: piece.route.input,
+          requirements: piece.route.requires,
+          handle: toAnswer(services[key]),
+        };
+      }),
+      authenticators: Object.fromEntries(
+        schemes.map((scheme) => [scheme, services[`${AUTHENTICATOR}${scheme}`]]),
+      ) as Readonly<Record<string, AuthenticatorService<unknown>>>,
+    });
+    return Object.assign(Provider(HtmxFragmentsPort)(deps, { sync } as never), { authenticators });
+  };
+
+/**
+ * Every route composed into one port — either straight from an array of
+ * `HtmxGet`/`HtmxPost` pieces (the route-first arm, `Array.isArray`d), or, for
+ * a `FragmentsContract`, curried over an array of
+ * `HtmxController(fragments, key)(…)` pieces exactly as before. An uncovered
+ * route in the contract form is refused against the `"UNCOVERED FRAGMENTS —
+ * …"` marker.
+ */
+export const htmxFragmentsFor = <Schemes, Auth extends AnyProvider = never>(
+  authenticators: readonly Auth[],
+) => {
+  function HtmxFragments<const T extends readonly AnyRoutePiece[]>(
+    routes: T,
+  ): Provider<InstanceType<typeof HtmxFragmentsPort>, never, InstanceType<T[number]["port"]>> & {
+    readonly authenticators: readonly Auth[];
+  };
+  function HtmxFragments<const F extends FragmentsContract>(
+    fragments: F,
+  ): <const T extends readonly PieceOf<F, Schemes>[]>(
+    pieces: [Uncovered<F, KeyOfPiece<T[number]>>] extends [never]
+      ? T
+      : readonly [
+          "UNCOVERED FRAGMENTS — the contract declares a route this array does not cover",
+          Uncovered<F, KeyOfPiece<T[number]>>,
+        ],
+  ) => Provider<
+    InstanceType<typeof HtmxFragmentsPort>,
+    never,
+    InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<F>>
+  > & { readonly authenticators: readonly Auth[] };
+  function HtmxFragments(fragmentsOrRoutes: unknown): unknown {
+    // A single array argument is never a valid `FragmentsContract` — the
+    // curried form's own argument is always a record — so `Array.isArray`
+    // alone tells the two arms apart.
+    if (Array.isArray(fragmentsOrRoutes)) {
+      return htmxRoutesFor(authenticators)(fragmentsOrRoutes as readonly AnyRoutePiece[]);
+    }
+    const fragments = fragmentsOrRoutes as FragmentsContract;
     const schemes = schemesOf(fragments);
     const contractRequirements = isAuthenticated(fragments as object);
 
-    function build<const T extends readonly PieceOf<F, Schemes>[]>(
-      pieces: [Uncovered<F, KeyOfPiece<T[number]>>] extends [never]
-        ? T
-        : readonly [
-            "UNCOVERED FRAGMENTS — the contract declares a route this array does not cover",
-            Uncovered<F, KeyOfPiece<T[number]>>,
-          ],
-    ): Provider<
-      InstanceType<typeof HtmxFragmentsPort>,
-      never,
-      InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<F>>
-    > & { readonly authenticators: readonly Auth[] };
     function build(pieces: unknown): unknown {
       const list = pieces as readonly { readonly port: AnyPort }[];
       const routeEntries = list.map(
@@ -240,7 +472,9 @@ export const htmxFragmentsFor =
       });
     }
     return build;
-  };
+  }
+  return HtmxFragments;
+};
 
 const toAnswer =
   (handler: unknown): FragmentAnswer["handle"] =>

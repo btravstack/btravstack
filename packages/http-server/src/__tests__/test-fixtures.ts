@@ -464,14 +464,10 @@ const bothRouter = publicApi.HttpRouter(bothContract)({
   sync: () => ({ ping: () => OkAsync("pong") }),
 });
 
-const bothFragments = defineFragments({ status: { method: "GET", path: "/status" } });
-const bothStatusFragment = publicApi.HtmxController(
-  bothFragments,
-  "status",
-)({
+const bothStatusFragment = publicApi.HtmxGet("/status")({
   sync: () => () => OkAsync(html`<p>ok</p>`),
 });
-const bothFragmentsProvider = publicApi.HtmxFragments(bothFragments)([bothStatusFragment]);
+const bothFragmentsProvider = publicApi.HtmxFragments([bothStatusFragment]);
 
 const bothProtocolsAppOf = () =>
   HttpModule("BothProtocolsApp")({
@@ -519,18 +515,10 @@ const sharedAuthRouter = sharedAuthApi.HttpRouter(sharedAuthContract)({
   sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
 });
 
-const sharedAuthFragments = authenticated({ user: [] })(
-  defineFragments({ profile: { method: "GET", path: "/profile" } }),
-);
-const sharedAuthProfileFragment = sharedAuthApi.HtmxController(
-  sharedAuthFragments,
-  "profile",
-)({
+const sharedAuthProfileFragment = sharedAuthApi.HtmxGet("/profile", { requires: [{ user: [] }] })({
   sync: () => (context) => OkAsync(html`<p>${context.principal.userId}</p>`),
 });
-const sharedAuthFragmentsProvider = sharedAuthApi.HtmxFragments(sharedAuthFragments)([
-  sharedAuthProfileFragment,
-]);
+const sharedAuthFragmentsProvider = sharedAuthApi.HtmxFragments([sharedAuthProfileFragment]);
 
 const sharedAuthAppOf = () =>
   HttpModule("SharedAuthApp")({
@@ -801,67 +789,42 @@ const htmxRuntimeAuthenticator = HttpAuthenticator<{ readonly userId: string }, 
 
 const htmxRuntimeApi = defineHttp({ authenticators: { user: htmxRuntimeAuthenticator } });
 
-const htmxRuntimeFragments = defineFragments({
-  row: { method: "GET", path: "/orders/:id/row" },
-  rowUpdate: { method: "POST", path: "/orders/:id/row", input: noteInput },
-  profile: authenticated({ user: [] })({ method: "GET", path: "/profile" }),
-  adminPanel: authenticated({ user: ["admin"] })({ method: "GET", path: "/admin" }),
-  echo: { method: "POST", path: "/echo" },
-  secure: authenticated({ user: [] })({ method: "POST", path: "/secure" }),
-});
-
 let htmxRowGetRuns = 0;
 let htmxRowUpdateRuns = 0;
 
-const htmxRowFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "row",
-)({
+const htmxRowFragment = htmxRuntimeApi.HtmxGet("/orders/:id/row")({
   sync: () => (_context, params) => {
     htmxRowGetRuns += 1;
     return OkAsync(html`<tr id="row-${params.id}">row</tr>`);
   },
 });
 
-const htmxRowUpdateFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "rowUpdate",
-)({
+const htmxRowUpdateFragment = htmxRuntimeApi.HtmxPost("/orders/:id/row", { input: noteInput })({
   sync: () => (_context, params, input) => {
     htmxRowUpdateRuns += 1;
     return OkAsync(html`<tr id="row-${params.id}">${input.note}</tr>`);
   },
 });
 
-const htmxProfileFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "profile",
-)({
+const htmxProfileFragment = htmxRuntimeApi.HtmxGet("/profile", { requires: [{ user: [] }] })({
   sync: () => (context) => OkAsync(html`<p>hi ${context.principal.userId}</p>`),
 });
 
-const htmxAdminPanelFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "adminPanel",
-)({
+const htmxAdminPanelFragment = htmxRuntimeApi.HtmxGet("/admin", {
+  requires: [{ user: ["admin"] }],
+})({
   sync: () => () => OkAsync(html`<p>admin</p>`),
 });
 
-const htmxEchoFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "echo",
-)({
+const htmxEchoFragment = htmxRuntimeApi.HtmxPost("/echo")({
   sync: () => (_context, _params, input) => OkAsync(html`<p>${JSON.stringify(input)}</p>`),
 });
 
-const htmxSecureFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "secure",
-)({
+const htmxSecureFragment = htmxRuntimeApi.HtmxPost("/secure", { requires: [{ user: [] }] })({
   sync: () => (context) => OkAsync(html`<p>secure ${context.principal.userId}</p>`),
 });
 
-const htmxRuntimeFragmentsProvider = htmxRuntimeApi.HtmxFragments(htmxRuntimeFragments)([
+const htmxRuntimeFragmentsProvider = htmxRuntimeApi.HtmxFragments([
   htmxRowFragment,
   htmxRowUpdateFragment,
   htmxProfileFragment,

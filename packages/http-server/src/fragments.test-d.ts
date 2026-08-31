@@ -4,7 +4,7 @@ import { OkAsync } from "unthrown";
 import { describe, test } from "vitest";
 import { z } from "zod";
 
-import { HttpAuthenticator, type AuthenticatorService } from "./auth.js";
+import { HttpAuthenticator, granted, type AuthenticatorService } from "./auth.js";
 import { defineHttp } from "./define-http.js";
 import { defineFragments, type ParamsOf } from "./fragments.js";
 import { html } from "./html.js";
@@ -199,5 +199,46 @@ describe("HtmxFragments scheme needs", () => {
     type _NoSchemeNeeds = Expect<
       [Extract<NeedsOf<typeof noSchemeComposed>, SchemePort<string>>] extends [never] ? true : false
     >;
+  });
+});
+
+describe("HtmxGet / HtmxPost", () => {
+  test("an ungrantable scope on requires is refused, naming the scope", () => {
+    const api = defineHttp({
+      authenticators: {
+        user: HttpAuthenticator<{ readonly userId: string }, "orders:read">()({
+          sync: () => () => OkAsync(granted({ userId: "u" }, ["orders:read"])),
+        }),
+      },
+    });
+    // @ts-expect-error — UNGRANTABLE SCOPE: `user` cannot grant "orders:write"
+    void api.HtmxGet("/orders", { requires: [{ user: ["orders:write"] }] });
+    // The positive twin: a grantable scope compiles.
+    void api.HtmxGet("/orders", { requires: [{ user: ["orders:read"] }] });
+  });
+
+  test("input is unexpressible on a GET route", () => {
+    const api = defineHttp();
+    // @ts-expect-error — HtmxGet's options carry no `input` field
+    void api.HtmxGet("/orders", { input: z.object({ q: z.string() }) });
+    void api.HtmxPost("/orders", { input: z.object({ q: z.string() }) });
+  });
+
+  test("the path literal types the handler's params", () => {
+    const api = defineHttp();
+    void api.HtmxGet("/orders/:id/row")({
+      sync: () => (_context, params) => {
+        const id: string = params.id;
+        return OkAsync(html`${id}`);
+      },
+    });
+  });
+
+  test("a route without requires has no principal to read", () => {
+    const api = defineHttp();
+    void api.HtmxGet("/ping")({
+      // @ts-expect-error — no requires, so `context` has no `principal`
+      sync: () => (context) => OkAsync(html`${context.principal}`),
+    });
   });
 });
