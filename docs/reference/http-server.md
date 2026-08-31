@@ -712,7 +712,7 @@ setting, or its rendered output drifts the moment a formatter runs.
 type RouteHandler<Path extends string, Input, Principal> = (
   context: [Principal] extends [never] ? object : { readonly principal: Principal },
   params: ParamsOf<Path>,
-  input: Input, // only on the handler `HtmxPost` mints, and only when `options.input` is given
+  input: Input, // GET: Readonly<Record<string, string>>, `{}` at runtime; POST: the schema's output, or the raw decoded form when `options.input` is omitted
 ) => AsyncResult<Html, never>;
 ```
 

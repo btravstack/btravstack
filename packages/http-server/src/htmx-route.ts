@@ -1,4 +1,4 @@
-import type { Requirements } from "@btravstack/contract";
+import type { OneScheme, Requirements } from "@btravstack/contract";
 import {
   Port,
   Provider,
@@ -132,7 +132,10 @@ export const htmxRouteFor = <Schemes, Vocab>() => {
       return Object.assign(provider, { route: { method, path, input, requires } });
     };
 
-  const HtmxGet = <const P extends `/${string}`, const R extends Requirements = never>(
+  const HtmxGet = <
+    const P extends `/${string}`,
+    const R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> } = never,
+  >(
     path: P,
     options?: { readonly requires?: R & RequiresGate<R, Vocab> },
   ): {
@@ -161,7 +164,7 @@ export const htmxRouteFor = <Schemes, Vocab>() => {
 
   const HtmxPost = <
     const P extends `/${string}`,
-    const R extends Requirements = never,
+    const R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> } = never,
     const S extends FragmentInputSchema | undefined = undefined,
   >(
     path: P,

@@ -22,13 +22,13 @@ export type HtmxOptions = {
  *
  * `routes` is matched in the ORDER the composition root's piece array gave
  * them, first match wins — and that ordering is a SECURITY property, not
- * only a routing one. An unmarked route declared BEFORE a marked route whose
- * path can also match the same request answers it itself, and no
- * authentication ever runs: two contract keys are two port ids, so di has
- * nothing to see collide, and a specificity rule is deliberately not
- * provided (the ordering is the composition root's, on purpose). Declare a
- * route that requires authentication before any unmarked route whose path
- * could also match its requests.
+ * only a routing one. A public route declared BEFORE a requires-carrying
+ * route whose path can also match the same request answers it itself, and no
+ * authentication ever runs: two routes are two port ids, minted from their
+ * own method and path, so di has nothing to see collide, and a specificity
+ * rule is deliberately not provided (the ordering is the composition root's,
+ * on purpose). Declare a route that requires authentication before any
+ * public route whose path could also match its requests.
  */
 export const htmx = (options: HtmxOptions = {}) => {
   const prefix = options.prefix ?? "/";

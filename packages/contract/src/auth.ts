@@ -22,7 +22,7 @@ type SeveralKeys<K, U = K> = K extends U ? ([U] extends [K] ? false : true) : ne
  * two-key requirement copied out of an OpenAPI document would execute as a
  * WEAKER rule than the one it states. Refused at the mark instead.
  */
-type OneScheme<Q> = SeveralKeys<keyof Q> extends false ? Q : never;
+export type OneScheme<Q> = SeveralKeys<keyof Q> extends false ? Q : never;
 
 /** Requirements are ORed, in order: the first one a caller satisfies wins. */
 export type Requirements = readonly Requirement[];

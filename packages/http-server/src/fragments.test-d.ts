@@ -43,6 +43,23 @@ describe("HtmxGet / HtmxPost", () => {
     void api.HtmxGet("/orders", { requires: [{ user: ["orders:read"] }] });
   });
 
+  test("a requirement naming two schemes is refused; two single-scheme requirements are not", () => {
+    const api = defineHttp({
+      authenticators: {
+        user: HttpAuthenticator<{ readonly userId: string }>()({
+          sync: () => () => OkAsync({ userId: "u-1" }),
+        }),
+        service: HttpAuthenticator<{ readonly appId: string }>()({
+          sync: () => () => OkAsync({ appId: "a-1" }),
+        }),
+      },
+    });
+    // @ts-expect-error — two scheme keys on one requirement is OpenAPI's AND, which the runtime walk executes as OR
+    void api.HtmxGet("/admin", { requires: [{ user: ["admin"], service: [] }] });
+    // The positive twin: two single-scheme requirements — OR across requirements — still compiles.
+    void api.HtmxGet("/admin", { requires: [{ user: [] }, { service: [] }] });
+  });
+
   test("input is unexpressible on a GET route", () => {
     const api = defineHttp();
     // @ts-expect-error — HtmxGet's options carry no `input` field
