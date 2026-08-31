@@ -453,6 +453,80 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
   });
 
 /**
+ * An unrelated router and fragments, composed by ONE `HttpModule` call — Task
+ * 8's proof that a root can serve both protocols from one runtime on one
+ * port. Public and minimal on purpose: the gate under test is the composition,
+ * not either protocol's own behaviour, which the rest of this file already
+ * covers.
+ */
+const bothContract = oc.router({ ping: oc.output(ocType<string>()) });
+const bothRouter = publicApi.HttpRouter(bothContract)({
+  sync: () => ({ ping: () => OkAsync("pong") }),
+});
+
+const bothFragments = defineFragments({ status: { method: "GET", path: "/status" } });
+const bothStatusFragment = publicApi.HtmxController(
+  bothFragments,
+  "status",
+)({
+  sync: () => () => OkAsync(html`<p>ok</p>`),
+});
+const bothFragmentsProvider = publicApi.HtmxFragments(bothFragments)([bothStatusFragment]);
+
+const bothProtocolsAppOf = () =>
+  HttpModule("BothProtocolsApp")({
+    router: bothRouter,
+    fragments: bothFragmentsProvider,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [bothStatusFragment],
+  });
+
+/**
+ * A router and fragments marked with the SAME scheme through ONE `defineHttp`
+ * registry — the shape `HttpModule`'s reference-dedup exists for: both
+ * providers carry the identical `HttpAuthenticator:user` provider object, and
+ * both protocols resolve it end to end.
+ */
+const sharedAuthApi = defineHttp({
+  authenticators: {
+    user: HttpAuthenticator<{ readonly userId: string }>()({
+      sync: () => (headers) =>
+        headers.authorization === "Bearer good"
+          ? OkAsync({ userId: "u-1" })
+          : ErrAsync(new Unauthenticated()),
+    }),
+  },
+});
+
+const sharedAuthContract = { whoami: authenticated({ user: [] })(oc.output(ocType<string>())) };
+const sharedAuthRouter = sharedAuthApi.HttpRouter(sharedAuthContract)({
+  sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
+});
+
+const sharedAuthFragments = authenticated({ user: [] })(
+  defineFragments({ profile: { method: "GET", path: "/profile" } }),
+);
+const sharedAuthProfileFragment = sharedAuthApi.HtmxController(
+  sharedAuthFragments,
+  "profile",
+)({
+  sync: () => (context) => OkAsync(html`<p>${context.principal.userId}</p>`),
+});
+const sharedAuthFragmentsProvider = sharedAuthApi.HtmxFragments(sharedAuthFragments)([
+  sharedAuthProfileFragment,
+]);
+
+const sharedAuthAppOf = () =>
+  HttpModule("SharedAuthApp")({
+    router: sharedAuthRouter,
+    fragments: sharedAuthFragmentsProvider,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [sharedAuthProfileFragment],
+  });
+
+/**
  * A one-procedure `greet` contract, named for the plugin test's own request
  * path: the CORS plugin only decorates a MATCHED response.
  */
@@ -1020,6 +1094,25 @@ export type HttpFixtures = {
   }>;
   /** The built `htmx()` answerer itself — see `htmxAnswererOf` for why. */
   readonly htmxAnswerer: () => AsyncResult<HttpAnswerer, never>;
+  /**
+   * The starter over `HttpModule({ router, fragments })` — both protocols from
+   * one runtime on one port. Shut down by the fixture.
+   */
+  readonly bothProtocols: () => Promise<{
+    readonly rpc: () => Promise<string>;
+    readonly fragment: () => Promise<string>;
+  }>;
+  /**
+   * `HttpModule({ router, fragments })` where both share ONE authenticator
+   * through one `defineHttp` registry. Shut down by the fixture.
+   */
+  readonly sharedAuth: () => Promise<{
+    readonly rpc: (token: string | undefined) => Promise<string>;
+    readonly fragment: (token: string | undefined) => Promise<{
+      readonly status: number;
+      readonly body: string;
+    }>;
+  }>;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1368,5 +1461,42 @@ export const it = test.extend<HttpFixtures>({
   // oxlint-disable-next-line no-empty-pattern -- see above
   htmxAnswerer: async ({}, use) => {
     await use(htmxAnswererOf);
+  },
+
+  bothProtocols: async ({ boot }, use) => {
+    await use(async () => {
+      const app = boot(bothProtocolsAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      const client: RouterContractClient<typeof bothContract> = createORPCClient(
+        new RPCLink({ origin, url: "/rpc" }),
+      );
+      return {
+        rpc: () => client.ping(),
+        fragment: async () => (await fetch(`${origin}/status`)).text(),
+      };
+    });
+  },
+
+  sharedAuth: async ({ boot }, use) => {
+    await use(async () => {
+      const app = boot(sharedAuthAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      const clientWith = (token: string | undefined) =>
+        createORPCClient<RouterContractClient<typeof sharedAuthContract>>(linkOf(origin, token));
+      return {
+        rpc: (token) => clientWith(token).whoami(),
+        fragment: async (token) => {
+          const response = await fetch(
+            `${origin}/profile`,
+            token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } },
+          );
+          return { status: response.status, body: await response.text() };
+        },
+      };
+    });
   },
 });

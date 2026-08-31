@@ -268,4 +268,30 @@ describe("htmx", () => {
       "the request stream ended before its body was read",
     );
   });
+
+  it("serves each protocol's own path from one runtime on one port", async ({ bothProtocols }) => {
+    // GIVEN a root composed with `HttpModule({ router, fragments })`
+    const { rpc, fragment } = await bothProtocols();
+
+    // WHEN each protocol's own path is requested
+    const answers = { rpc: await rpc(), fragment: await fragment() };
+
+    // THEN both answered, from the one runtime the composition started
+    expect(answers).toEqual({ rpc: "pong", fragment: "<p>ok</p>" });
+  });
+
+  it("resolves a scheme shared by the router and fragments through one authenticator", async ({
+    sharedAuth,
+  }) => {
+    // GIVEN a router and fragments marked with the SAME scheme through one
+    // `defineHttp` registry, so both carry the identical authenticator
+    // provider — the shape `HttpModule`'s reference-dedup exists for
+    const { rpc, fragment } = await sharedAuth();
+
+    // WHEN each protocol is called with the credential that scheme grants
+    const answers = { rpc: await rpc("good"), fragment: await fragment("good") };
+
+    // THEN both resolved the SAME authenticator's principal
+    expect(answers).toEqual({ rpc: "u-1", fragment: { status: 200, body: "<p>u-1</p>" } });
+  });
 });
