@@ -201,10 +201,16 @@ export const htmxFragmentsFor =
     > & { readonly authenticators: readonly Auth[] };
     function build(pieces: unknown): unknown {
       const list = pieces as readonly { readonly port: AnyPort }[];
+      const routeEntries = list.map(
+        (piece) => [piece.port.portId.slice(FRAGMENT_PREFIX.length), piece.port] as const,
+      );
+      // The array's own order, not `Object.keys` order: JS reorders an
+      // integer-like string key ("404") ahead of every other key, which would
+      // silently reorder a security-relevant route past its neighbours (see
+      // `htmx.ts`'s own TSDoc on first-match-wins).
+      const keys = routeEntries.map(([key]) => key);
       const deps: Record<string, AnyPort> = {
-        ...Object.fromEntries(
-          list.map((piece) => [piece.port.portId.slice(FRAGMENT_PREFIX.length), piece.port]),
-        ),
+        ...Object.fromEntries(routeEntries),
         ...Object.fromEntries(
           schemes.map((scheme) => [`${AUTHENTICATOR}${scheme}`, authenticatorPort(scheme)]),
         ),
@@ -212,20 +218,18 @@ export const htmxFragmentsFor =
       const sync = (
         services: Record<string, unknown>,
       ): ServiceOf<InstanceType<typeof HtmxFragmentsPort>> => ({
-        routes: Object.entries(services)
-          .filter(([key]) => !key.startsWith(AUTHENTICATOR))
-          .map(([key, handler]) => {
-            // Asserted, not guarded: the composing call is typed so every
-            // remaining service key is a route this contract declares.
-            const route = (fragments as Record<string, unknown>)[key] as FragmentRoute;
-            return {
-              method: route.method,
-              path: route.path,
-              input: route.input,
-              requirements: isAuthenticated(route as object) ?? contractRequirements,
-              handle: toAnswer(handler),
-            };
-          }),
+        routes: keys.map((key) => {
+          // Asserted, not guarded: the composing call is typed so every
+          // remaining service key is a route this contract declares.
+          const route = (fragments as Record<string, unknown>)[key] as FragmentRoute;
+          return {
+            method: route.method,
+            path: route.path,
+            input: route.input,
+            requirements: isAuthenticated(route as object) ?? contractRequirements,
+            handle: toAnswer(services[key]),
+          };
+        }),
         authenticators: Object.fromEntries(
           schemes.map((scheme) => [scheme, services[`${AUTHENTICATOR}${scheme}`]]),
         ) as Readonly<Record<string, AuthenticatorService<unknown>>>,

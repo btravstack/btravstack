@@ -41,6 +41,7 @@ The contract splits into two fragments, `orders` and `customers`, each a
 
 ```ts
 import { authenticated } from "@btravstack/contract";
+import { defineFragments } from "@btravstack/http-server";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
@@ -101,6 +102,16 @@ export const contract = {
   orders: ordersContract,
   customers: customersContract,
 };
+
+// A separate contract, not an oRPC one: a browser navigation answers `Html`,
+// not a typed envelope. Marked the same way as `orders`, so the route gets
+// the same principal and the same 401/403 path — a caller's own credential
+// scopes the row, which is why the path names only `id`.
+export const fragments = authenticated({ user: [] })(
+  defineFragments({
+    orderRow: { method: "GET", path: "/orders/:id/row" },
+  }),
+);
 ```
 
 The wire shapes are **zod schemas**, with the view types inferred from them
@@ -430,6 +441,55 @@ lifted root is
 over `OrdersSlice`, so extracting a slice out of this modulith is a new
 composition root and one fewer import, not a rewrite.
 
+## One htmx route, off the caller's own tenant
+
+Alongside the router, this deployment serves one **htmx route** — not an oRPC
+contract fragment like `orders`/`customers` above; see
+[Serve htmx fragments](/how-to/serve-htmx-fragments) for that distinction in
+full. `slices/orders/fragment.ts`'s `orderRowFragment` is the same two-call
+shape as `api.HttpController(contract, path)`, minted from `api.HtmxController`
+instead:
+
+```ts
+import { html } from "@btravstack/http-server";
+
+export const orderRowFragment = api.HtmxController(fragments, "orderRow")(
+  { find: FindOrder },
+  {
+    sync:
+      ({ find }) =>
+      (context, params) =>
+        find
+          .execute(context.principal.tenantId, params.id)
+          .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
+          .recoverErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
+          ),
+  },
+);
+```
+
+It reads `context.principal.tenantId`, the same tenant `ordersController`
+reads — the route's own path names only `id`, so a caller's credential is
+what scopes the row, never the path. `.recoverErrCases` is this piece's own
+triage, at the place `mapErrCases` sits for the router: there is no declared
+error union for a client to branch on, so `OrderNotFound` becomes a rendered
+row here or not at all.
+
+`module.ts` composes it the same way it composes the router, over the
+package's own `defineFragments`-built export, and the composition root below
+passes the result alongside `router`:
+
+```ts
+export const orderFragments = api.HtmxFragments(fragments)([orderRowFragment]);
+```
+
+`fragments` mounts at `htmx()`'s own default, `/` — a separate mount from the
+router's `/rpc`, since one option cannot carry two defaults. `fragments.spec.ts`
+proves the tenant scoping end to end, over the real root and a real
+credential: a cross-tenant request for an order id another tenant placed
+renders the slice's own not-found row rather than the owner's order.
+
 ## The composition root, and the process
 
 `module.ts` is a list of **slices**, plus what no slice owns:
@@ -439,6 +499,7 @@ composition root and one fewer import, not a rewrite.
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  fragments: orderFragments,
   imports: [
     OrdersSlice,
     CustomersSlice,
@@ -451,14 +512,17 @@ export const OrderApi = HttpModule("OrderApi")({
 });
 ```
 
-The two authenticators are **not** listed, and that is the point: who a caller
-is is one answer per process rather than a slice's question, so they were
-declared once in `auth.ts`, and they ride the router — which is what needs
-them. `HttpModule` puts them in `provides` itself, so a scheme cannot be
-forgotten here and cannot be wired to the wrong router. What is still checked
-is di's own gate: a scheme the contract names with no authenticator behind it
-leaves `HttpAuthenticator:<scheme>` in the root's needs, which `start` refuses,
-naming the port.
+`fragments` rides alongside `router` — supplying one, the other, or both is
+the same call; `HttpModule` mounts each under its own default and
+deduplicates a scheme the two share by reference. The two authenticators are
+**not** listed, and that is the point: who a caller is is one answer per
+process rather than a slice's question, so they were declared once in
+`auth.ts`, and they ride the router and the fragments provider — which are
+what need them. `HttpModule` puts them in `provides` itself, so a scheme
+cannot be forgotten here and cannot be wired to the wrong router. What is
+still checked is di's own gate: a scheme the contract names with no
+authenticator behind it leaves `HttpAuthenticator:<scheme>` in the root's
+needs, which `start` refuses, naming the port.
 
 Each slice imports its own vertical — `OrderApplicationModule`, whose
 repository is an unmet need, and `OrderPersistenceModule`, which provides it —
@@ -473,10 +537,15 @@ export const OrdersSlice = Module("OrdersSlice")({
   // through the imports below.
   needs: [Logger],
   imports: [OrderApplicationModule, OrderPersistenceModule],
-  provides: [ordersController],
-  exports: [ordersController],
+  provides: [ordersController, orderRowFragment],
+  exports: [ordersController, orderRowFragment],
 });
 ```
+
+`orderRowFragment` rides with `ordersController` — the providers, not their
+`.port`s: `HttpController` and `HtmxController` each mint the port for you, so
+there is no class to name. A real slice carries its own htmx route rather
+than leaving it for the root to provide separately.
 
 The customers slice imports `CustomerApplicationModule` and
 `CustomerPersistenceModule` — a different vertical, so a different pair. The
@@ -713,5 +782,6 @@ shape of.
 
 - The same `DuplicateOrder`, orchestrated: [Order Temporal worker](/examples/order-temporal-worker).
 - The marker, `auth.ts`, scopes and the 401/403 split as a recipe: [Protect a procedure](/how-to/protect-a-procedure).
+- `orderRowFragment`'s own recipe, and the answerer's stated limits: [Serve htmx fragments](/how-to/serve-htmx-fragments).
 - The package behind the transport: [`@btravstack/http-server`](/reference/http-server).
 - Why the kernel appears in none of this: [The kernel maps nothing](/explanation/the-kernel-maps-nothing).

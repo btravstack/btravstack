@@ -41,10 +41,18 @@ answerer, a second `HttpHandler` member alongside `orpc()`.
 `HttpModule({ router?, fragments?, fragmentsPrefix?, … })` composes a router,
 fragments, or both — supplying neither is refused at the call against a
 "SERVES NOTHING" gate. A scheme shared between the two is deduplicated by
-reference before it reaches `provides`.
+reference before it reaches `provides`; `HttpModuleOptions`'s leading generic
+parameters go from three (`RouterError, RouterNeeds, Auth`, when `router` was
+required) to two (`Router, Fragments`, both optional) for this.
 
-Two limitations ship stated rather than discovered: the POST body decodes
-through `Object.fromEntries`, so a `<select multiple>` or a checkbox group
-keeps only the last value; and route order is the composition root's — an
-unmarked route declared before a marked route whose path can also match the
-same request answers it, with no authentication run.
+Limitations ship stated rather than discovered: the POST body decodes through
+`Object.fromEntries`, assumed `application/x-www-form-urlencoded` with no
+`content-type` check, so a `<select multiple>` or a checkbox group keeps only
+the last value and a JSON body reads as one garbage key; route order is the
+composition root's — an unmarked route declared before a marked route whose
+path can also match the same request answers it, with no authentication run;
+a route always answers `200` on success, so `HX-Redirect`, `HX-Trigger`,
+`HX-Retarget` and `HX-Reswap` are unreachable and a route cannot answer its
+own `404` or `422`; and every `200` carries `Cache-Control: no-store`,
+unconditional, since the package has no way to know a route's output is safe
+for a shared cache to keep.

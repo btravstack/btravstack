@@ -168,6 +168,19 @@ describe("htmx", () => {
     expect(await response.text()).toBe("<p>hi u-1</p>");
   });
 
+  it("answers no-store on an authenticated fragment response", async ({ htmxServer }) => {
+    // GIVEN a route requiring the "user" scheme
+    const { origin } = await htmxServer();
+
+    // WHEN it is requested with a credential the authenticator grants
+    const response = await fetch(`${origin}/profile`, {
+      headers: { authorization: "Bearer good" },
+    });
+
+    // THEN a shared cache is told never to store this caller's rendered HTML
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
   it("collapses an authenticator's own defect to the runtime's 500, not a 401", async ({
     htmxServer,
   }) => {

@@ -325,7 +325,18 @@ not cover"` marker, and what the marker names is a procedure path
   gives a fragment route the same principal and the same 401/403 path as a
   procedure. `input` is any Standard Schema over the decoded form body, the
   same shape `Config.provider` accepts, so no schema library joins this
-  package for it. `ParamsOf<P>` extracts `:name` segments at the type level
+  package for it — and only a `POST` route may declare one: `defineFragments`
+  refuses a `GET` route that does, against an `"INPUT ON GET — a GET route
+has no body to validate"` marker, the same `ScopeGate`-shaped intersection
+  gate `orpc.ts`'s `routerFor` uses for an ungrantable scope. Without it,
+  `htmx.ts`'s `respond` — which never reads a body for `GET` — would type the
+  handler's third parameter from the schema and hand it `{}` at runtime. A
+  discriminated union on `FragmentRoute` itself was tried first and reverted:
+  it measurably loosened an unrelated compile-time guarantee several generic
+  layers away in `htmx-controller.ts` (a piece minted over a marked route
+  stopped being refused where an unmarked slot expected it), so the shape
+  stays the single object it always was and the gate lives at the
+  declaration site instead. `ParamsOf<P>` extracts `:name` segments at the type level
   (`"/orders/:id/row"` → `{ readonly id: string }`); the runtime counterpart,
   `matchPath(pattern, path)`, is internal to `fragments.ts` and declines a
   segment-count mismatch, an empty parameter or a malformed percent-encoding
@@ -369,7 +380,7 @@ authenticators }`, where `FragmentAnswer.handle` erases the principal and the
   decoded input to `unknown` — the answerer's own concern, not the piece's.
 
 - **`http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` →
-  `Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>`**
+  `Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | HttpRouterPort>`**
   — the starter, and **oRPC's answerer under the HTTP runtime**: one protocol,
   over its own node adapter, contributing one member to the `HttpHandler` set
   port. It used to be "the one way HTTP is answered here" and is not any more —
@@ -602,6 +613,29 @@ URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
   whole first, and an over-limit request keeps draining rather than being
   destroyed: destroying an `IncomingMessage` destroys the socket the `413`
   would ride out on.
+
+  **The decoding assumes `application/x-www-form-urlencoded` and never checks
+  `content-type`.** A JSON body still passes through
+  `new URLSearchParams(body)`, which reads the whole payload as one garbage
+  key with an empty value — form-urlencoded only, the same stated limitation
+  as the repeated-key one above rather than a validated content type.
+
+  **Every `200` carries `Cache-Control: no-store`, unconditional — not keyed
+  on `route.requirements`.** A public route can still render a caller- or
+  resource-scoped fragment off a path parameter alone, and this package has
+  no way to know a route's output is safe for a shared cache to keep, so
+  there is no cheaper signal than "never store" to key the header on.
+
+  **A route always answers `200` on success, and cannot set a header or a
+  status of its own.** `respond`'s success path is unconditional: `HX-Redirect`,
+  `HX-Trigger`, `HX-Retarget` and `HX-Reswap` — htmx's own response mechanics —
+  are unreachable, and a route cannot answer its own `404` or `422`; "not
+  found" is rendered markup (`orderRowFragment`'s own triage in the how-to),
+  never a status. A defensible scope decision, not an oversight.
+
+  **A refusal (`401`/`403`/`413`/`422`) carries no body**, where the runtime's
+  own `404`/`500` fallback carries `application/json` — `refuse` owes the
+  caller nothing beyond the status.
 
 - **`resolvePrincipal(requirements, authenticators, headers)`
   → `AsyncResult<unknown, Unauthenticated | UnderScoped>`** — the authentication

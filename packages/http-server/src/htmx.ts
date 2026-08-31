@@ -192,6 +192,13 @@ const respond = async (
   }
 
   const rendered = await route.handle(principal, params, input).get();
-  response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+  // Unconditional, not keyed on `route.requirements`: a public route can
+  // still render caller- or resource-scoped HTML (a path parameter alone is
+  // enough), and this package has no way to know a route is safe to cache.
+  // A shared cache heuristically stores a bare 200 GET with no directive.
+  response.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+  });
   response.end(rendered.value);
 };

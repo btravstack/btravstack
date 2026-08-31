@@ -711,12 +711,16 @@ const htmxApi = defineHttp({
 /**
  * One route inheriting the contract's mark, one likewise, and one overriding
  * it with a scheme of its own — the nearest-mark-wins fold, exercised end to
- * end across two distinct schemes.
+ * end across two distinct schemes. The middle key is "1", an integer-like
+ * string, deliberately: JS reorders such a key ahead of every other own
+ * property, so `htmx-controller.spec.ts`'s route-order assertion below is
+ * also this fixture's own regression guard against that reordering leaking
+ * into the composed `routes` array.
  */
 const htmxFragments = authenticated({ user: [] })(
   defineFragments({
     orderRow: { method: "GET", path: "/orders/:id/row" },
-    health: { method: "GET", path: "/health" },
+    "1": { method: "GET", path: "/health" },
     adminOnly: authenticated({ service: [] })({ method: "GET", path: "/admin" }),
   }),
 );
@@ -733,7 +737,7 @@ const orderRowFragment = htmxApi.HtmxController(htmxFragments, "orderRow")(
 
 const healthFragment = htmxApi.HtmxController(
   htmxFragments,
-  "health",
+  "1",
 )({
   sync: () => () => OkAsync(html`<p>ok</p>`),
 });

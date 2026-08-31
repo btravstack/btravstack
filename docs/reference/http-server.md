@@ -730,9 +730,12 @@ export const fragments = authenticated({ user: [] })(
 
 `input` is any Standard Schema over the decoded form body — the same shape
 [`Config.provider`](/reference/config) accepts, so no schema library joins
-this package for it. `ParamsOf<P>` extracts the `:name` segments a path
-template names, at the type level: `ParamsOf<"/orders/:id/row">` is
-`{ readonly id: string }`, and a template naming none is an empty record.
+this package for it — and only a `POST` route may declare one:
+`defineFragments` refuses a `GET` route that does, against an
+`"INPUT ON GET — a GET route has no body to validate"` marker, since
+`htmx()` never reads a body for `GET`. `ParamsOf<P>` extracts the `:name`
+segments a path template names, at the type level: `ParamsOf<"/orders/:id/row">`
+is `{ readonly id: string }`, and a template naming none is an empty record.
 
 ## `api.HtmxController(fragments, key)({ name: Dep }, { sync })`
 
@@ -787,7 +790,7 @@ two share, by reference.
 ```ts
 const http: (
   options?: HttpOptions,
-) => Module<HttpRuntime | HttpConfig, ConfigInvalid, Env | HttpRouterPort>;
+) => Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | HttpRouterPort>;
 ```
 
 The primitive `HttpModule` delegates to, for a composition root written by
@@ -963,6 +966,31 @@ URLSearchParams(...))`, which keeps only the last value for a repeated key.**
 A `<select multiple>` or a checkbox group both collapse to their last
 selection rather than an array — a mainstream htmx shape a reader should meet
 here, not discover in production.
+
+**The decoding also assumes `application/x-www-form-urlencoded` and never
+checks `content-type`.** A JSON body still passes through
+`new URLSearchParams(...)`, which reads the whole payload as one garbage key
+with an empty value — form-urlencoded only, the same stated limitation as the
+repeated-key one above rather than a validated content type.
+
+**Every `200` carries `Cache-Control: no-store`, unconditional.** A public
+route can still render a caller- or resource-scoped fragment off a path
+parameter alone, and this package has no way to know a route's output is safe
+for a shared cache to keep — so there is no cheaper signal than "never store"
+to key the header on.
+
+**A route always answers `200` on success, and cannot set a header or a
+status of its own.** `HX-Redirect`, `HX-Trigger`, `HX-Retarget` and
+`HX-Reswap` — htmx's own response mechanics — are unreachable, and a route
+cannot answer its own `404` or `422`: "not found" is rendered markup (see
+[Serve htmx fragments](/how-to/serve-htmx-fragments)'s `orderRow` recipe),
+never a status. A defensible scope decision, not an oversight.
+
+**A refusal — `401`/`403`/`413`/`422` — carries no body**, unlike the
+runtime's own `404`/`500` fallback (see
+[What it decides about a request](#what-it-decides-about-a-request)), which
+carries `application/json`: a refusal owes the caller nothing beyond the
+status.
 
 ## `HttpConfig`, and the environment
 

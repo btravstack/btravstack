@@ -55,15 +55,20 @@ an oRPC contract: the same `resolvePrincipal` walk runs, so a fragment route
 gets the same `401`/`403` path a procedure does. Drop the marker and every
 route is public.
 
-A `FragmentRoute` may also declare `input`, any Standard Schema over the
-decoded form body — the same shape `Config.provider` accepts, so no schema
-library joins this package for it. The decoding itself has a stated limit:
+A `FragmentRoute` may also declare `input` — only on a `POST` route;
+`defineFragments` refuses a `GET` route that declares one, against an
+`"INPUT ON GET — a GET route has no body to validate"` marker, since
+`htmx.ts`'s `respond` never reads a body for `GET`. It is any Standard Schema
+over the decoded form body — the same shape `Config.provider` accepts, so no
+schema library joins this package for it. The decoding itself has two stated
+limits:
 the body decodes through `Object.fromEntries(new URLSearchParams(...))`,
-which keeps only the **last** value for a repeated key — a `<select
-multiple>` or a checkbox group, both mainstream htmx shapes, collapse to
-their last selection rather than an array. Meet that here rather than in
-production: a route wanting every value needs its own decoding ahead of
-`input`.
+assuming `application/x-www-form-urlencoded` with no `content-type` check —
+a JSON body reads as one garbage key — and it keeps only the **last** value
+for a repeated key — a `<select multiple>` or a checkbox group, both
+mainstream htmx shapes, collapse to their last selection rather than an
+array. Meet both here rather than in production: a route wanting every value
+or a different body format needs its own decoding ahead of `input`.
 
 ## Step 2 — the piece
 
@@ -169,6 +174,20 @@ Everything else — `main.ts`, `PORT`/`HOST`, the drain, the trace-id policy —
 is unchanged from
 [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http#step-4-main-ts):
 `await runMain(OrderFragmentsApi, { ... })` is the whole process either way.
+
+## Always 200, never a header of its own
+
+A route always answers `200` on success and cannot set a header or a status
+itself: `HX-Redirect`, `HX-Trigger`, `HX-Retarget` and `HX-Reswap` — htmx's
+own response mechanics — are unreachable, and a route cannot answer its own
+`404` or `422`. "Not found" is rendered markup — `orderRowFragment`'s own
+`.recoverErrCases` above — never a status. A defensible scope decision, not
+an oversight.
+
+Every `200` also carries `Cache-Control: no-store`, unconditional: a public
+route can still render a caller- or resource-scoped fragment off a path
+parameter alone, and there is no cheaper signal than "never store" for this
+package to key the header on.
 
 ## CSRF, one release away
 

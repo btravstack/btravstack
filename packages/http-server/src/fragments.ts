@@ -1,19 +1,52 @@
 import type { ConfigSchema } from "@btravstack/config";
 
+/** The schema a `POST` route may validate its decoded form body against. */
+export type FragmentInputSchema = ConfigSchema<Readonly<Record<string, string>>, unknown>;
+
 /**
  * One route a fragment answers. `path` carries `:name` segments, which
  * {@link ParamsOf} extracts at the type level and {@link matchPath} binds at
  * run time; `input` is any Standard Schema over the decoded form body, exactly
  * as `Config.provider` accepts one, so no schema library joins this package.
+ *
+ * A single object type, `input` optional on BOTH methods, deliberately: a
+ * discriminated union (`GET` without `input` at all, `POST` with it) was
+ * tried, to refuse `input` on `GET` structurally — and it broke a different
+ * compile-time guarantee, several generic layers away in
+ * `htmx-controller.ts` (`fragments.test-d.ts`'s "refused direction" case: a
+ * piece minted over a MARKED route stopped being refused where an UNMARKED
+ * slot expected it, isolated by reverting `FragmentRoute` alone with every
+ * other change held). `NoGetInputGate`, below, refuses `input` on `GET` at
+ * `defineFragments` instead, without touching `FragmentRoute`'s own shape.
  */
 export type FragmentRoute = {
   readonly method: "GET" | "POST";
   readonly path: `/${string}`;
-  readonly input?: ConfigSchema<Readonly<Record<string, string>>, unknown>;
+  readonly input?: FragmentInputSchema;
 };
 
 /** A flat record of routes — the key space a piece names, as every worker's is. */
 export type FragmentsContract = Readonly<Record<string, FragmentRoute>>;
+
+/** Every key of `F` whose route is `GET` and still declares `input`. */
+type GetWithInput<F extends FragmentsContract> = {
+  readonly [K in keyof F]: F[K] extends { readonly method: "GET"; readonly input: unknown }
+    ? K
+    : never;
+}[keyof F];
+
+/**
+ * `defineFragments`'s own gate: `unknown` when no `GET` route in `F` declares
+ * `input`, an object with one required property when one does — the same
+ * shape `orpc.ts`'s `ScopeGate` rides on `routerFor`'s `contract` parameter,
+ * for the same reason: the diagnostic ends on the offending key. `htmx.ts`'s
+ * `respond` never reads a body for `GET`, so an `input` schema there would
+ * type-check the handler's third parameter and hand it `{}` at runtime —
+ * this is what refuses that at the declaration instead.
+ */
+type NoGetInputGate<F extends FragmentsContract> = [GetWithInput<F>] extends [never]
+  ? unknown
+  : { readonly "INPUT ON GET — a GET route has no body to validate": GetWithInput<F> };
 
 /**
  * A fragment contract. Not an oRPC contract: a procedure answers a typed
@@ -30,7 +63,9 @@ export type FragmentsContract = Readonly<Record<string, FragmentRoute>>;
  * );
  * ```
  */
-export const defineFragments = <const F extends FragmentsContract>(fragments: F): F => fragments;
+export const defineFragments = <const F extends FragmentsContract>(
+  fragments: F & NoGetInputGate<F>,
+): F => fragments;
 
 // Collects param names into a union first, rather than intersecting one
 // `{ readonly [K in Name]: string }` per segment: intersecting the terminal

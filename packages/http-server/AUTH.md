@@ -207,16 +207,27 @@ The two rules this half exists to state, before the detail:
   `{ context: { principal } }` through `next`.
 
 - **A contract may name a scope only if the scheme's authenticator can grant
-  it.** `routerFor` intersects `ScopeGate<C, Vocab>` onto its `contract`
-  parameter — `unknown` when satisfied, an object with one required property
-  when not, which is what makes the diagnostic end on the offending scope
-  (measured: `… "UNGRANTABLE SCOPE — its scheme's authenticator cannot grant
-it": "order:export"`). `VocabFrom<A>` reads the vocabulary off the same
-  authenticators `SchemesFrom<A>` reads the principals off — two projections
-  because they answer different questions at different call sites: the
-  principal types the handler, the vocabulary checks the contract.
+  it — for an oRPC contract.** `routerFor` intersects `ScopeGate<C, Vocab>`
+  onto its `contract` parameter — `unknown` when satisfied, an object with one
+  required property when not, which is what makes the diagnostic end on the
+  offending scope (measured: `… "UNGRANTABLE SCOPE — its scheme's
+authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
+  vocabulary off the same authenticators `SchemesFrom<A>` reads the principals
+  off — two projections because they answer different questions at different
+  call sites: the principal types the handler, the vocabulary checks the
+  contract.
 
-  Two cases it catches, and both used to be silent (#90): a typo, and a scope
+  **This gate does not exist on the fragment path.** `VocabFrom` reaches
+  `routerFor` alone — `htmxFragmentsFor` is typed by `SchemesFrom<A>` and
+  `SchemeProviders<A>` only (`define-http.ts`), so `authenticated({ user:
+["orders:export"] })` on a fragment route whose `user` authenticator can never
+  grant that scope compiles cleanly and answers every caller with a permanent
+  403, discovered only in production. Threading `VocabFrom` into
+  `htmxFragmentsFor` is tracked as issue #184; until it lands, a fragment
+  contract's scopes are checked at runtime only, by `resolvePrincipal`'s own
+  walk (below), never at compile time.
+
+  Two cases the oRPC gate catches, and both used to be silent (#90): a typo, and a scope
   asked of a scheme declared with no vocabulary at all — `Scope = never`, so
   everything is ungrantable. Both compiled, passed all six gate commands, and
   then refused every caller on that route with a permanent 403 and no

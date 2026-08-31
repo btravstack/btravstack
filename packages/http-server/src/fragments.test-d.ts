@@ -2,6 +2,7 @@ import { authenticated } from "@btravstack/contract";
 import type { PortInstance, Provider } from "@btravstack/di";
 import { OkAsync } from "unthrown";
 import { describe, test } from "vitest";
+import { z } from "zod";
 
 import { HttpAuthenticator, type AuthenticatorService } from "./auth.js";
 import { defineHttp } from "./define-http.js";
@@ -25,6 +26,18 @@ describe("ParamsOf", () => {
 
   test("a literal path names none", () => {
     type _ = Expect<Equal<ParamsOf<"/orders">, Record<never, never>>>;
+  });
+});
+
+describe("defineFragments", () => {
+  test("refuses input on a GET route — only POST reads a body", () => {
+    // @ts-expect-error — INPUT ON GET: a GET route has no body to validate
+    defineFragments({ orders: { method: "GET", path: "/orders", input: z.object({}) } });
+
+    const post = defineFragments({
+      orders: { method: "POST", path: "/orders", input: z.object({}) },
+    });
+    void post;
   });
 });
 
