@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/http-server"
-description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HtmxFragments, HtmxController, html and raw, HttpAuthenticator, http(), htmx(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
+description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HtmxGet, HtmxPost, HtmxFragments, html and raw, HttpAuthenticator, http(), htmx(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
 <!-- doctest: prelude
@@ -64,21 +64,16 @@ declare const view: (order: Order) => OrderView;
 | `html`                 | value | `` html`<tr>${value}</tr>` `` — a tagged template returning `Html`, escaping every interpolation by default                                                                                                                                                                                                  |
 | `raw`                  | value | `raw(markup)` — the one way past `html`'s escaping, a visible act at the call site                                                                                                                                                                                                                           |
 | `Html`                 | type  | `{ readonly [HTML]: true; readonly value: string }` — the output of `html`/`raw`, and nothing else                                                                                                                                                                                                           |
-| `defineFragments`      | value | `defineFragments({ … })` — a flat record of `{ method, path, input? }` routes, carrying `authenticated(...)` unchanged; superseded by `HtmxGet`/`HtmxPost` below, which need no contract                                                                                                                     |
-| `FragmentRoute`        | type  | one route a fragment answers, in the `defineFragments` shape                                                                                                                                                                                                                                                 |
-| `FragmentsContract`    | type  | `Readonly<Record<string, FragmentRoute>>` — what `defineFragments` takes                                                                                                                                                                                                                                     |
 | `ParamsOf`             | type  | `ParamsOf<Path>` — the `:name` segments a path template names, e.g. `ParamsOf<"/orders/:id/row">` is `{ readonly id: string }`                                                                                                                                                                               |
 | `HtmxFragmentsPort`    | value | `class HtmxFragmentsPort extends Port("HtmxFragments")<{ routes; authenticators }> {}` — every route composed into one port; what `htmx()` answers from                                                                                                                                                      |
 | `FragmentAnswer`       | type  | what the composed port carries for one route — principal and input erased to `unknown`                                                                                                                                                                                                                       |
-| `FragmentHandler`      | type  | `FragmentHandler<Route, Principal>` — a fragment's own handler signature: `(context, params, input) => AsyncResult<Html, never>`                                                                                                                                                                             |
 | `htmx`                 | value | `htmx({ prefix? })` — the second answerer, one `HttpHandler` member serving fragments, mounted under `prefix` (default `/`)                                                                                                                                                                                  |
 | `HtmxOptions`          | type  | `htmx()`'s options                                                                                                                                                                                                                                                                                           |
 
-`HttpController`/`HttpRouter`, `HtmxController`/`HtmxFragments` and
-`HtmxGet`/`HtmxPost` are **not** top-level exports: all six come off
-`defineHttp`, because that is where the scheme registry that types them is
-stated. A marked contract or a marked route reached through anything else
-would type `principal: never`.
+`HttpController`/`HttpRouter` and `HtmxGet`/`HtmxPost`/`HtmxFragments` are
+**not** top-level exports: all five come off `defineHttp`, because that is
+where the scheme registry that types them is stated. A marked contract or a
+marked route reached through anything else would type `principal: never`.
 
 `HttpRouterPort` (the starter's router port, `Port("HttpRouter")`) and
 `Implementation<C, Schemes>` (the record type `HttpRouter`'s `sync` returns)

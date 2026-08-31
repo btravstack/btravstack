@@ -5,24 +5,26 @@ import { describe, expect } from "vitest";
 import { it } from "./__tests__/test-fixtures.js";
 
 describe("HtmxFragments", () => {
-  it("carries the port its route key minted, and the deps it declared", async ({ htmx }) => {
-    // GIVEN a piece minted from the fragments contract and one of its keys
+  it("carries the port its route's method and path minted, and the deps it declared", async ({
+    htmx,
+  }) => {
+    // GIVEN a piece minted from a GET route
     const { orderRowFragment } = htmx;
 
     // WHEN the provider is inspected
-    // THEN its port id carries the FRAGMENT_PREFIX and the key, next to the
-    // deps it declared
+    // THEN its port id carries the FRAGMENT_PREFIX, method and path, next to
+    // the deps it declared
     expect({
       portId: orderRowFragment.port.portId,
       deps: orderRowFragment.deps.map((dep) => dep.portId),
-    }).toEqual({ portId: "HtmxFragment:orderRow", deps: ["Greeter"] });
+    }).toEqual({ portId: "HtmxFragment:GET /orders/:id/row", deps: ["Greeter"] });
   });
 
-  it("composes every route with the contract's shape and nearest-mark requirements, resolving each scheme to its own authenticator", async ({
+  it("composes every route with its own requirements, resolving each scheme to its own authenticator", async ({
     htmx,
   }) => {
-    // GIVEN the fragments composed into one port over two schemes — "user"
-    // from the contract's own mark, "service" from a route overriding it
+    // GIVEN three routes composed into one port over two schemes — "user" for
+    // two of them, "service" for the third
     const composed = (await htmx.service()).get();
     const userAuth = composed.authenticators["user"];
     const serviceAuth = composed.authenticators["service"];
@@ -31,9 +33,8 @@ describe("HtmxFragments", () => {
     const [user, service] = await Promise.all([userAuth({}), serviceAuth({})]);
 
     // WHEN the composed service is inspected end to end
-    // THEN every route carries the contract's own shape, an unmarked route
-    // inherits the contract's mark, a marked one overrides it with its own
-    // scheme, and each scheme key resolves to ITS OWN authenticator rather
+    // THEN every route carries its OWN requirement, in the array's own
+    // order, and each scheme key resolves to ITS OWN authenticator rather
     // than to a mismatched or missing one
     expect({
       routes: composed.routes.map((route) => ({
@@ -57,7 +58,7 @@ describe("HtmxFragments", () => {
   it("wires a route's principal and params into its own piece's handler through handle", async ({
     htmx,
   }) => {
-    // GIVEN the fragments composed into one port, with orderRow's own handler
+    // GIVEN the routes composed into one port, with orderRow's own handler
     // reading its principal and path parameter
     const composed = (await htmx.service()).get();
     const orderRow = composed.routes.find((route) => route.path === "/orders/:id/row");

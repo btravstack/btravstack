@@ -6,7 +6,7 @@ import { Err, Ok, P, fromExecutor, type AsyncResult } from "unthrown";
 import { resolvePrincipal, type AuthenticatorService } from "./auth.js";
 import { matchPath } from "./fragments.js";
 import { HttpHandler } from "./handler.js";
-import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-controller.js";
+import { HtmxFragmentsPort, type FragmentAnswer } from "./htmx-route.js";
 import { HttpConfig } from "./http-config.js";
 
 export type HtmxOptions = {

@@ -45,10 +45,9 @@ import {
   type Grant,
 } from "../auth.js";
 import { defineHttp } from "../define-http.js";
-import { defineFragments } from "../fragments.js";
 import { HttpHandler, type HttpAnswerer } from "../handler.js";
 import { html } from "../html.js";
-import { HtmxFragmentsPort } from "../htmx-controller.js";
+import { HtmxFragmentsPort } from "../htmx-route.js";
 import { htmx } from "../htmx.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
@@ -681,10 +680,10 @@ const noop: Handler = (_request, response, _signal) =>
 
 /**
  * Two schemes, dedicated to the fixtures below and kept SEPARATE from `api`'s
- * own registry: `htmxFragments`' contract mark names "user" and its
- * `adminOnly` route overrides with "service" — two DIFFERENT scheme names —
- * so a test can tell "found the contract's mark" from "found the route's
- * mark" by which scheme key resolved, not merely by requirement identity.
+ * own registry: `orderRowFragment` and `healthFragment` require "user",
+ * `adminOnlyFragment` requires "service" — two DIFFERENT scheme names — so a
+ * test can tell one route's own requirement from another's by which scheme
+ * key resolved, not merely by requirement identity.
  */
 const htmxUserAuthenticator = HttpAuthenticator<{ readonly userId: string }>()({
   sync: () => () => OkAsync({ userId: "u-1" }),
@@ -696,24 +695,7 @@ const htmxApi = defineHttp({
   authenticators: { user: htmxUserAuthenticator, service: htmxServiceAuthenticator },
 });
 
-/**
- * One route inheriting the contract's mark, one likewise, and one overriding
- * it with a scheme of its own — the nearest-mark-wins fold, exercised end to
- * end across two distinct schemes. The middle key is "1", an integer-like
- * string, deliberately: JS reorders such a key ahead of every other own
- * property, so `htmx-controller.spec.ts`'s route-order assertion below is
- * also this fixture's own regression guard against that reordering leaking
- * into the composed `routes` array.
- */
-const htmxFragments = authenticated({ user: [] })(
-  defineFragments({
-    orderRow: { method: "GET", path: "/orders/:id/row" },
-    "1": { method: "GET", path: "/health" },
-    adminOnly: authenticated({ service: [] })({ method: "GET", path: "/admin" }),
-  }),
-);
-
-const orderRowFragment = htmxApi.HtmxController(htmxFragments, "orderRow")(
+const orderRowFragment = htmxApi.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
   { greeter: Greeter },
   {
     sync:
@@ -723,21 +705,15 @@ const orderRowFragment = htmxApi.HtmxController(htmxFragments, "orderRow")(
   },
 );
 
-const healthFragment = htmxApi.HtmxController(
-  htmxFragments,
-  "1",
-)({
+const healthFragment = htmxApi.HtmxGet("/health", { requires: [{ user: [] }] })({
   sync: () => () => OkAsync(html`<p>ok</p>`),
 });
 
-const adminOnlyFragment = htmxApi.HtmxController(
-  htmxFragments,
-  "adminOnly",
-)({
+const adminOnlyFragment = htmxApi.HtmxGet("/admin", { requires: [{ service: [] }] })({
   sync: () => () => OkAsync(html`<p>admin</p>`),
 });
 
-const htmxFragmentsProvider = htmxApi.HtmxFragments(htmxFragments)([
+const htmxFragmentsProvider = htmxApi.HtmxFragments([
   orderRowFragment,
   healthFragment,
   adminOnlyFragment,

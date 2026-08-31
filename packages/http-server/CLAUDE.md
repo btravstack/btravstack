@@ -34,7 +34,7 @@ the same commit, and with `README.md` — the package ships no
   modules' internal ports — TS2883, measured.) `router` is
   `Provider<HttpRouterPort, RouterError, RouterNeeds>` — what
   `api.HttpRouter(contract)(deps, arm)` returns; `fragments` is
-  `Provider<HtmxFragmentsPort, …>` — what `api.HtmxFragments(fragments)([…])`
+  `Provider<HtmxFragmentsPort, …>` — what `api.HtmxFragments([…])`
   returns. A provider of anything else fails at the call, and there is no
   port to read off either: the sugar's job is to provide the port the
   matching starter needs. Covered by the package's own `rpc` fixture (router
@@ -317,68 +317,81 @@ not cover"` marker, and what the marker names is a procedure path
   `embeddedLanguageFormatting: "off"` for exactly that reason, and a consuming
   application must do the same or its output drifts silently the moment a
   formatter runs.
-- **`defineFragments({ … })`, `FragmentRoute`, `FragmentsContract`,
-  `ParamsOf<Path>`** (`fragments.ts`) — a fragment contract: a flat record of
-  routes, each a `{ method: "GET" | "POST", path, input? }`. Not an oRPC
-  contract — a browser navigation is not an RPC call — but it carries
-  `@btravstack/contract`'s `authenticated()` marker unchanged, which is what
-  gives a fragment route the same principal and the same 401/403 path as a
-  procedure. `input` is any Standard Schema over the decoded form body, the
-  same shape `Config.provider` accepts, so no schema library joins this
-  package for it — and only a `POST` route may declare one: `defineFragments`
-  refuses a `GET` route that does, against an `"INPUT ON GET — a GET route
-has no body to validate"` marker, the same `ScopeGate`-shaped intersection
-  gate `orpc.ts`'s `routerFor` uses for an ungrantable scope. Without it,
-  `htmx.ts`'s `respond` — which never reads a body for `GET` — would type the
-  handler's third parameter from the schema and hand it `{}` at runtime. A
-  discriminated union on `FragmentRoute` itself was tried first and reverted:
-  it measurably loosened an unrelated compile-time guarantee several generic
-  layers away in `htmx-controller.ts` (a piece minted over a marked route
-  stopped being refused where an unmarked slot expected it — refused only for
-  a route-level mark; a contract-level mark is not refused today, issue
-  #185), so the shape stays the single object it always was and the gate
-  lives at the declaration site instead. `ParamsOf<P>` extracts `:name` segments at the type level
-  (`"/orders/:id/row"` → `{ readonly id: string }`); the runtime counterpart,
-  `matchPath(pattern, path)`, is internal to `fragments.ts` and declines a
-  segment-count mismatch, an empty parameter or a malformed percent-encoding
-  rather than throwing — the path is client-controlled.
+- **A fragment route declares itself; there is no contract kind for it.**
+  `defineFragments`, `FragmentRoute`, `FragmentsContract` and
+  `api.HtmxController(fragments, key)` are **deleted** — `htmx-route.ts`
+  carries only the route-first mint below.
+  The decision: **a contract earns a package when a client consumes it**. An
+  oRPC procedure gets `@orpc/contract` because `@orpc/client` reads the same
+  object to build a typed call, and a Temporal or AMQP contract gets its own
+  package for the identical reason — a client on the other side needs the
+  shape without the server. A fragment route has no client: a browser
+  navigates to a URL and htmx swaps the response into the DOM, so there is
+  nothing on the other end that would ever import `FragmentsContract`. Its
+  declaration therefore lives with its implementation, exactly where a route
+  handler already is, rather than in a contract package earning its keep for
+  no consumer. The test cuts both ways: GraphQL's SDL **is** client-consumed
+  (a codegen tool, a typed client), so it gets a contract package when it
+  lands, on the same criterion this one failed.
 
-  **`defineFragments` costs a client package the server's whole peer set, and
-  that is an open tension, not an oversight.** It is declared here — a
-  one-line identity function whose only import is a _type_
-  (`@btravstack/config`'s `ConfigSchema`) — so a client-only package that
-  imports it purely for the fragment shape also peers on
-  `@btravstack/core`, `@btravstack/di`, `@orpc/server`, `@unthrown/orpc` and
-  the rest of the oRPC server stack, exactly what "a client must be able to
-  take a contract without the server" (root `CLAUDE.md`, thesis #1) exists to
-  prevent — `examples/order-api-contract` peers on this package today purely
-  for `defineFragments`. Relocating the declaration to a dependency-light
-  package is the open question; it is a cross-package API change with its own
-  review, not something resolved here.
+  This also closes a tension a contract shape declared here would carry:
+  `defineFragments` was a one-line identity function whose only import was a
+  _type_, yet declaring it in this package would mean a client-only package
+  importing it purely for the fragment shape also peers on this package's
+  whole oRPC server stack — exactly what "a client must be able to take a
+  contract without the server" (root `CLAUDE.md`, thesis #1) exists to
+  prevent. `examples/order-api-contract` carries no such peer: with no
+  contract shape here, there is nothing to import it for.
 
-- **`api.HtmxController(fragments, key)({ name: Dep }, { sync })`, or
-  `({ sync })` with no deps** (`htmx-controller.ts`, minted by `defineHttp`)
-  — one route of a fragment contract, as a provider on a port of its own, the
-  same two-call shape as `api.HttpController(contract, path)`. The port id
-  carries the route's key (`` `HtmxFragment:${key}` ``, `FRAGMENT_PREFIX` in
-  `htmx-controller.ts`), and `sync` returns a `FragmentHandler<Route,
-Principal>`: `(context, params, input) => AsyncResult<Html, never>`. The key
-  space is **flat**, unlike `HttpController`'s dotted contract tree, so there
-  is no unsliceable or overlapping path to refuse — two pieces claiming one
-  route are simply di's duplicate-provider defect, via the port id every
-  piece carries.
-- **`api.HtmxFragments(fragments)([piece, …])`** (`htmx-controller.ts`,
-  minted by `defineHttp`) — every route composed from an array of pieces,
-  mirroring `api.HttpRouter(contract)([piece, …])`'s composing form: an
-  uncovered route is refused against the
-  `"UNCOVERED FRAGMENTS — the contract declares a route this array does not
-cover"` marker, and requirements fold nearest-mark-wins exactly as the oRPC
-  side does. The returned provider carries `readonly authenticators` the same
-  way the router does, so `HttpModule` can read both and deduplicate a scheme
-  shared between them by reference. The composed port, `HtmxFragmentsPort`,
-  is what `htmx()` answers from: `{ routes: readonly FragmentAnswer[],
-authenticators }`, where `FragmentAnswer.handle` erases the principal and the
-  decoded input to `unknown` — the answerer's own concern, not the piece's.
+- **`api.HtmxGet(path, options?)` and `api.HtmxPost(path, options?)`**
+  (`htmx-route.ts`, minted by `defineHttp`) — a route as a provider on a port
+  of its own, minted straight from a path template, then `(deps, { sync })`
+  or `({ sync })` with no deps, the same two-call shape as
+  `api.HttpController(contract, path)`. The port id carries the method and
+  path (`` `HtmxFragment:${method} ${path}` ``, `FRAGMENT_PREFIX` in
+  `htmx-route.ts`) — two routes on one method and path are one port id, di's
+  duplicate-provider defect. `options.requires` is any `Requirements`,
+  intersected with `RequiresGate<R, Vocab>` — `orpc.ts`'s `ScopeGate` with the
+  contract fold removed, since `requires` is data rather than a tree to walk
+  — so a scope the scheme's authenticator cannot grant is refused at the mint
+  against the same `"UNGRANTABLE SCOPE — its scheme's authenticator cannot
+grant it"` sentence oRPC's `routerFor` gives. `HtmxPost` additionally takes
+  `options.input`, any Standard Schema over the decoded form body — the same
+  shape `Config.provider` accepts, so no schema library joins this package for
+  it — and `HtmxGet` has no `input` field at all, refusing a `GET` route that
+  tries to declare one structurally rather than through a separate gate.
+  `sync` returns `(context, params, input) => AsyncResult<Html, never>`:
+  `params` typed from the path template's `:name` segments (`ParamsOf<P>`,
+  `fragments.ts`), `context.principal` typed from `requires` exactly as an
+  oRPC leaf's is, `input` typed from the schema or the raw decoded form when
+  none is given. The minted provider carries `.port` and `.route` (`method`,
+  `path`, `input`, `requires`) — what the array arm below reads back to
+  compose without the path or the requirement being spelled twice.
+
+  ```ts
+  const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+    sync: () => (context, params) => repository.find(params.id).map(rowOf),
+  });
+  ```
+
+- **`api.HtmxFragments([piece, …])`** (`htmx-route.ts`, minted by
+  `defineHttp`) — every route composed from an array of `HtmxGet`/`HtmxPost`
+  pieces into one port, keyed by **index** rather than by the piece's own
+  port id: two pieces sharing one method and path share one port id, and
+  keying `deps` by that id would silently keep only the last, hiding the very
+  collision di's duplicate-provider defect exists to catch. The key space has
+  no tree to walk, so there is no uncovered-route or overlapping-piece gate
+  to state — every piece in the array is composed, and the array's own order
+  is the routes' order. Every scheme any piece's `requires` names is walked
+  straight off that data (`schemesInRoutes`) — there is no contract marker to
+  resolve, since a route-first `requires` is never marked, only ever data
+  read straight off `piece.route`. The returned provider carries
+  `readonly authenticators` the same way the router does, so `HttpModule` can
+  read both and deduplicate a scheme shared between them by reference. The
+  composed port, `HtmxFragmentsPort`, is unchanged: `{ routes: readonly
+FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
+  principal and the decoded input to `unknown` — the answerer's own concern,
+  not the piece's.
 
 - **`http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` →
   `Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | HttpRouterPort>`**
@@ -717,7 +730,7 @@ prefix })`, unmatched → resolves unwritten. `handle` returns
   `{ matched }`, never the unit's result — and the runtime reads "did you
   answer?" off the response rather than off that, which is what lets an
   answerer be written against `node:http` alone.
-- **110 specs, 100% lines/functions, across ten spec files.** Every app boots through the `boot`
+- **112 specs, 100% lines/functions, across ten spec files.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
@@ -833,30 +846,28 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   `controller.test-d.ts` is the package's own compile-time gate — see Public
   surface.
 
-- **`fragments.spec.ts` carries 8**: one for `defineFragments` (returns its
-  argument unchanged, by identity — there is nothing else for an identity
-  function to prove), and seven for `matchPath` — binding every named segment,
-  declining a segment-count mismatch, a literal-segment mismatch, a trailing
-  slash that would bind an empty parameter and a malformed percent-encoding,
-  and matching a parameter-free pattern and the literal root each with an
-  empty (not `undefined`) binding, the distinction `htmx.ts`'s "no route
-  matches" check depends on.
+- **`fragments.spec.ts` carries 7**, all for `matchPath` — binding every named
+  segment, declining a segment-count mismatch, a literal-segment mismatch, a
+  trailing slash that would bind an empty parameter and a malformed
+  percent-encoding, and matching a parameter-free pattern and the literal
+  root each with an empty (not `undefined`) binding, the distinction
+  `htmx.ts`'s "no route matches" check depends on.
 - **`html.spec.ts` carries 5**, over `html`/`raw` directly, no app involved:
   every character HTML gives meaning to escaped in both element and quoted
   attribute position, a nested `Html` spliced once rather than escaped twice,
   an array of fragments concatenated with no separator, a hostile
   non-string value's own `toString` output escaped rather than trusted, and
   `raw` as the one way markup survives unescaped.
-- **`htmx-controller.spec.ts` carries 3**, through the `htmx` fixture's own
-  `HtmxFragments` composition over two routes and two schemes: a piece
-  carries the port its route key minted (`HtmxFragment:orderRow`) and the
-  deps it declared; the composed port resolves each route to the nearest
-  mark's requirements and each scheme key to its OWN authenticator — an
-  unmarked route inheriting the contract's mark, a marked one overriding it
-  with a different scheme — proving a scheme shared across routes cannot
-  resolve to the wrong authenticator; and one route's principal and path
-  parameter both reach its own piece's handler through `handle`, the
-  answerer's own erased-to-`unknown` call shape.
+- **`htmx-route.spec.ts` carries 3**, through the `htmx` fixture's own
+  `HtmxFragments` composition over three routes and two schemes: a piece
+  carries the port its route's own method and path minted
+  (`HtmxFragment:GET /orders/:id/row`) and the deps it declared; the composed
+  port carries each route's OWN requirements — two routes requiring "user",
+  one requiring "service" — with each scheme key resolving to its OWN
+  authenticator, proving a scheme shared across routes cannot resolve to the
+  wrong one; and one route's principal and path parameter both reach its own
+  piece's handler through `handle`, the answerer's own erased-to-`unknown`
+  call shape.
 - **`answerers.spec.ts` carries 5**, over a graph composing two bare
   answerers rather than real oRPC or htmx ones, so the routing decision is
   isolated from either protocol: the longest matching prefix wins, a mount
@@ -866,7 +877,7 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   sibling path sharing its first characters is not swallowed), and two
   answerers claiming one mount — a trailing slash included — is a
   `RuntimeStartFailed` at `listen` rather than a coin toss.
-- **`htmx.spec.ts` carries 17.** Nine are the answerer proper, through the
+- **`htmx.spec.ts` carries 19.** Nine are the answerer proper, through the
   `htmxServer` fixture: a GET fragment served with its path parameter bound,
   the `text/html; charset=utf-8` content-type, the runtime's own `404` for a
   path no route declares, a POST on a GET-only path not reaching the GET
@@ -876,27 +887,33 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   buffer-then-check implementation from `readBody`'s own stream-checking
   one — `422` for a body a route's schema rejects with the handler never
   entered, and the handler reached with the schema's own validated output
-  for a body that passes. Two more are over `htmxServer` too: the resolved
-  principal reaching a protected route's handler, and an authenticator's own
-  defect collapsing to the runtime's `500` rather than a `401`. One is the
-  route with no `input` at all, proving the decoded form reaches the handler
-  unvalidated. Two drive the built answerer directly, past `htmxServer`'s
-  app: a genuine request-stream fault propagating rather than being modeled,
-  and a request already destroyed by the time a marked route's authentication
-  `await` yields — `readBody`'s own already-fired guard, without which the
-  promise never settles. The last three are composition-level, through
-  `bothProtocols`/`sharedAuth`/`fragmentsOnly`: each protocol's own path
-  answering from the one runtime `HttpModule({ router, fragments })` starts,
-  a scheme shared by both resolving through one authenticator rather than
-  two, and `fragmentsPrefix` reaching `htmx()` rather than being silently
-  defaulted to `/`.
-- **`openapi.spec.ts` carries 3** — pre-dating this feature set, undocumented
-  here until now: a marked procedure's own scheme and scopes reaching
-  `security` with an unmarked one carrying none, several schemes on one mark
-  round-tripping as one requirement per alternative (OpenAPI's own OR — there
-  is no AND case, since `@btravstack/contract` refuses the multi-scheme
-  requirement OpenAPI would read as AND), and a procedure's own mark shadowing
-  its record's for itself while a sibling still inherits the record's.
+  for a body that passes. Three more are over `htmxServer` too: the resolved
+  principal reaching a protected route's handler, the unconditional
+  `Cache-Control: no-store` on an authenticated response, and an
+  authenticator's own defect collapsing to the runtime's `500` rather than a
+  `401`. One is the route with no `input` at all, proving the decoded form
+  reaches the handler unvalidated. Two drive the built answerer directly,
+  past `htmxServer`'s app: a genuine request-stream fault propagating rather
+  than being modeled, and a request already destroyed by the time a marked
+  route's authentication `await` yields — `readBody`'s own already-fired
+  guard, without which the promise never settles. Three are
+  composition-level, through `bothProtocols`/`sharedAuth`/`fragmentsOnly`:
+  each protocol's own path answering from the one runtime
+  `HttpModule({ router, fragments })` starts, a scheme shared by both
+  resolving through one authenticator rather than two, and `fragmentsPrefix`
+  reaching `htmx()` rather than being silently defaulted to `/`. The last is
+  two `HtmxGet` pieces minted on the same method and path refused as di's
+  duplicate-provider defect — the route-first sibling of the port-id
+  collision `controller.spec.ts` already covers for `HttpController`.
+- **`openapi.spec.ts` carries 4** — pre-dating this feature set, undocumented
+  here until now: `openApiDocument` answering through the `Result` channel —
+  async and cannot fail, never a raw rejection — a marked procedure's own
+  scheme and scopes reaching `security` with an unmarked one carrying none,
+  several schemes on one mark round-tripping as one requirement per
+  alternative (OpenAPI's own OR — there is no AND case, since
+  `@btravstack/contract` refuses the multi-scheme requirement OpenAPI would
+  read as AND), and a procedure's own mark shadowing its record's for itself
+  while a sibling still inherits the record's.
 
 ## Several answerers, one runtime
 

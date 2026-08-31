@@ -10,7 +10,7 @@ import {
 } from "@btravstack/di";
 
 import { HttpHandler } from "./handler.js";
-import type { HtmxFragmentsPort } from "./htmx-controller.js";
+import type { HtmxFragmentsPort } from "./htmx-route.js";
 import { htmx } from "./htmx.js";
 import type { HttpConfig } from "./http-config.js";
 import { HttpRuntime, httpServer, type HttpOptions } from "./http-runtime.js";
@@ -27,7 +27,7 @@ type AnyRouterProvider = Provider<HttpRouterPort, unknown, unknown> & {
   readonly authenticators: readonly AnyProvider[];
 };
 
-/** Whatever `api.HtmxFragments(fragments)(…)` returns. */
+/** Whatever `api.HtmxFragments([…])` returns. */
 type AnyFragmentsProvider = Provider<HtmxFragmentsPort, unknown, unknown> & {
   readonly authenticators: readonly AnyProvider[];
 };
@@ -87,7 +87,7 @@ export type HttpModuleOptions<
    */
   readonly router?: Router;
   /**
-   * The application's htmx fragments — what `api.HtmxFragments(fragments)(…)`
+   * The application's htmx fragments — what `api.HtmxFragments([…])`
    * returns. Carries its own scheme authenticators the same way `router` does.
    * Optional: a root may serve `router` alone. An authenticator provider the
    * two share is deduplicated by reference before it reaches `provides`, so

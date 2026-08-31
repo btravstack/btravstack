@@ -8,11 +8,10 @@ export {
 } from "./auth.js";
 export type { Authenticator, AuthenticatorService, Grant, Granted } from "./auth.js";
 export type { ControllerKeyOf, ControllerPortOf } from "./controller.js";
-export { defineFragments } from "./fragments.js";
-export type { FragmentRoute, FragmentsContract, ParamsOf } from "./fragments.js";
+export type { ParamsOf } from "./fragments.js";
 export { defineHttp } from "./define-http.js";
-export { HtmxFragmentsPort } from "./htmx-controller.js";
-export type { FragmentAnswer, FragmentHandler } from "./htmx-controller.js";
+export { HtmxFragmentsPort } from "./htmx-route.js";
+export type { FragmentAnswer } from "./htmx-route.js";
 export { HttpHandler } from "./handler.js";
 export type { HttpAnswerer } from "./handler.js";
 export { htmx } from "./htmx.js";

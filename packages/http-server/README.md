@@ -530,7 +530,7 @@ supplies it:
 | Option            | What it is                                                                                                             |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `router`          | the router provider — what `api.HttpRouter(contract)(...)` returns                                                     |
-| `fragments`       | the fragments provider — what `api.HtmxFragments(fragments)([...])` returns                                            |
+| `fragments`       | the fragments provider — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces          |
 | `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                                                     |
 | `fragmentsPrefix` | where htmx fragments are mounted (default `/`, `htmx()`'s own default)                                                 |
 | `port`            | pins `PORT`                                                                                                            |
