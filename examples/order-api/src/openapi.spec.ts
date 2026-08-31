@@ -5,7 +5,7 @@ import { openApi } from "./openapi.js";
 describe("the API's OpenAPI document", () => {
   it("protects the marked orders and leaves the customers open", async () => {
     // GIVEN the real contract this deployment serves
-    const document = await openApi();
+    const document = (await openApi()).get();
 
     // WHEN its operations are read back
     const security = Object.fromEntries(

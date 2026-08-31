@@ -1178,11 +1178,20 @@ read as unmarked here. Node `>=22`.
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled by the package's own specs -->
 
 ```ts
-const document = await openApiDocument(contract, {
-  base: { info: { title: "Order API", version: "1.0.0" } },
-  securitySchemes: { user: { type: "http", scheme: "bearer" } },
-});
+const document = (
+  await openApiDocument(contract, {
+    base: { info: { title: "Order API", version: "1.0.0" } },
+    securitySchemes: { user: { type: "http", scheme: "bearer" } },
+  })
+).get();
 ```
+
+It returns `AsyncResult<OpenApiDocument, never>` — async, and cannot fail — so
+`.get()` is the extraction; a generator fault arrives as a defect, never a raw
+rejection. `base` is `Partial<OpenApiDocument>` and `securitySchemes` is
+`OpenApiSecuritySchemes` (the document's own `components.securitySchemes`
+shape), so a key the generator would ignore is a type error rather than
+silently inert.
 
 The contract as an OpenAPI document, with
 [`@btravstack/contract`](/reference/contract)'s marker folded into each

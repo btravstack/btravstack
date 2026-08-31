@@ -2,6 +2,7 @@ import { isAuthenticated, type Requirements } from "@btravstack/contract";
 import type { RouterContract } from "@orpc/contract";
 import { StandardJsonSchemaConverter } from "@orpc/json-schema";
 import { OpenAPIGenerator } from "@orpc/openapi";
+import { fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
  * The OpenAPI document, as `@orpc/openapi` returns it.
@@ -13,6 +14,15 @@ import { OpenAPIGenerator } from "@orpc/openapi";
  * gives that application a name it owns a path to.
  */
 export type OpenApiDocument = Awaited<ReturnType<OpenAPIGenerator["generate"]>>;
+
+/**
+ * The document's own `components.securitySchemes` shape, reached by index off
+ * `OpenApiDocument` for the same TS4023 reason that alias exists: the real
+ * type lives in `@hey-api/spec-types`, which no consumer depends on directly.
+ */
+export type OpenApiSecuritySchemes = NonNullable<
+  NonNullable<OpenApiDocument["components"]>["securitySchemes"]
+>;
 
 export type OpenApiOptions = {
   /**
@@ -26,9 +36,9 @@ export type OpenApiOptions = {
    * the document sees the requirement and an unresolvable reference, which is a
    * louder fault than silently dropping the requirement.
    */
-  readonly securitySchemes?: Readonly<Record<string, unknown>>;
+  readonly securitySchemes?: Readonly<OpenApiSecuritySchemes>;
   /** Merged into the document — `info`, `servers`, and anything else OpenAPI takes. */
-  readonly base?: Record<string, unknown>;
+  readonly base?: Partial<OpenApiDocument>;
 };
 
 /**
@@ -67,10 +77,12 @@ const requirementsByPath = (
  * folded into each operation's `security`.
  *
  * ```ts
- * const document = await openApiDocument(contract, {
- *   base: { info: { title: "Orders", version: "1.0.0" } },
- *   securitySchemes: { user: { type: "http", scheme: "bearer" } },
- * });
+ * const document = (
+ *   await openApiDocument(contract, {
+ *     base: { info: { title: "Orders", version: "1.0.0" } },
+ *     securitySchemes: { user: { type: "http", scheme: "bearer" } },
+ *   })
+ * ).get();
  * ```
  *
  * **The marker IS OpenAPI's shape**, which is why this is a fold rather than a
@@ -85,31 +97,32 @@ const requirementsByPath = (
  * gives. Set `operationId` yourself on a procedure and its requirement is still
  * found, because the walk keys on the contract's own path, not on the document's.
  */
-export const openApiDocument = async (
+export const openApiDocument = (
   contract: Record<string, RouterContract>,
   options: OpenApiOptions = {},
-): Promise<OpenApiDocument> => {
+): AsyncResult<OpenApiDocument, never> => {
   const generator = new OpenAPIGenerator({ converters: [new StandardJsonSchemaConverter()] });
-  const document = await generator.generate(contract, { base: options.base as never });
+  return fromSafePromise(generator.generate(contract, { base: options.base })).map((document) => {
+    const byPath = new Map<string, Requirements>();
+    requirementsByPath(contract, undefined, [], byPath);
+    if (byPath.size === 0 && options.securitySchemes === undefined) return document;
 
-  const byPath = new Map<string, Requirements>();
-  requirementsByPath(contract, undefined, [], byPath);
-  if (byPath.size === 0 && options.securitySchemes === undefined) return document;
-
-  for (const item of Object.values(document.paths ?? {})) {
-    for (const operation of Object.values(item as Record<string, { operationId?: string }>)) {
-      const requirements = byPath.get(operation.operationId ?? "");
-      if (requirements !== undefined) {
-        (operation as { security?: unknown }).security = requirements.map((r) => ({ ...r }));
+    for (const item of Object.values(document.paths ?? {})) {
+      for (const operation of Object.values(item as Record<string, { operationId?: string }>)) {
+        const requirements = byPath.get(operation.operationId ?? "");
+        if (requirements !== undefined) {
+          (operation as { security?: unknown }).security = requirements.map((r) => ({ ...r }));
+        }
       }
     }
-  }
 
-  if (options.securitySchemes !== undefined) {
-    const components = (document.components ?? {}) as Record<string, unknown>;
-    components["securitySchemes"] = { ...options.securitySchemes };
-    (document as { components?: unknown }).components = components;
-  }
+    if (options.securitySchemes !== undefined) {
+      document.components = {
+        ...document.components,
+        securitySchemes: { ...options.securitySchemes },
+      };
+    }
 
-  return document;
+    return document;
+  });
 };
