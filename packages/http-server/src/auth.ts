@@ -14,7 +14,7 @@ import { Err, Ok, TaggedError, fromSafePromise, type AsyncResult, type Result } 
 export class Unauthenticated extends TaggedError("Unauthenticated") {}
 
 /**
- * A credential was valid but granted none of the scopes the endpoint declared.
+ * A credential was valid but lacks one or more scopes the endpoint declared.
  * Distinct from {@link Unauthenticated} because the answers differ: an
  * anonymous caller gets `401`, an under-scoped one `403`.
  */
