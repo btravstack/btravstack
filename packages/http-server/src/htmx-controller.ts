@@ -34,10 +34,11 @@ type InputOf<R extends FragmentRoute> = R["input"] extends undefined
  * `object` — not `{ principal: never }`, which would type-check a read but,
  * worse, would let a marked piece's handler (contravariantly narrower) satisfy
  * an unmarked slot's type, since `never` is assignable to anything. `object`
- * has no `principal` property at all, so both holes close at once — mirroring
- * `orpc.ts`'s `ContextOf`. The error channel is `never` deliberately: triage
- * is the slice's own, at the same place the oRPC controller's `mapErrCases`
- * sits.
+ * has no `principal` property at all, so a bare read is refused outright —
+ * mirroring `orpc.ts`'s `ContextOf`. The composition refusal itself holds for
+ * a ROUTE-level mark; a CONTRACT-level mark is not refused here today. The
+ * error channel is `never` deliberately: triage is the slice's own, at the
+ * same place the oRPC controller's `mapErrCases` sits.
  */
 export type FragmentHandler<R extends FragmentRoute, Principal> = (
   context: [Principal] extends [never] ? object : { readonly principal: Principal },

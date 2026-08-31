@@ -334,9 +334,10 @@ has no body to validate"` marker, the same `ScopeGate`-shaped intersection
   discriminated union on `FragmentRoute` itself was tried first and reverted:
   it measurably loosened an unrelated compile-time guarantee several generic
   layers away in `htmx-controller.ts` (a piece minted over a marked route
-  stopped being refused where an unmarked slot expected it), so the shape
-  stays the single object it always was and the gate lives at the
-  declaration site instead. `ParamsOf<P>` extracts `:name` segments at the type level
+  stopped being refused where an unmarked slot expected it — refused only for
+  a route-level mark; a contract-level mark is not refused today, issue
+  #185), so the shape stays the single object it always was and the gate
+  lives at the declaration site instead. `ParamsOf<P>` extracts `:name` segments at the type level
   (`"/orders/:id/row"` → `{ readonly id: string }`); the runtime counterpart,
   `matchPath(pattern, path)`, is internal to `fragments.ts` and declines a
   segment-count mismatch, an empty parameter or a malformed percent-encoding

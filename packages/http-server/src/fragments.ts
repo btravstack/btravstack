@@ -15,9 +15,11 @@ export type FragmentInputSchema = ConfigSchema<Readonly<Record<string, string>>,
  * compile-time guarantee, several generic layers away in
  * `htmx-controller.ts` (`fragments.test-d.ts`'s "refused direction" case: a
  * piece minted over a MARKED route stopped being refused where an UNMARKED
- * slot expected it, isolated by reverting `FragmentRoute` alone with every
- * other change held). `NoGetInputGate`, below, refuses `input` on `GET` at
- * `defineFragments` instead, without touching `FragmentRoute`'s own shape.
+ * slot expected it — refused only for a route-level mark; a contract-level
+ * mark is not refused today — isolated by reverting `FragmentRoute` alone
+ * with every other change held). `NoGetInputGate`, below, refuses `input` on
+ * `GET` at `defineFragments` instead, without touching `FragmentRoute`'s own
+ * shape.
  */
 export type FragmentRoute = {
   readonly method: "GET" | "POST";
