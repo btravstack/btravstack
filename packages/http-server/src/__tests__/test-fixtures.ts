@@ -792,12 +792,20 @@ const htmxRuntimeApi = defineHttp({ authenticators: { user: htmxRuntimeAuthentic
 let htmxRowGetRuns = 0;
 let htmxRowUpdateRuns = 0;
 
-const htmxRowFragment = htmxRuntimeApi.HtmxGet("/orders/:id/row")({
-  sync: () => (_context, params) => {
-    htmxRowGetRuns += 1;
-    return OkAsync(html`<tr id="row-${params.id}">row</tr>`);
+/** The deps arm's own dependency — a route calling a use case, as a real slice does. */
+class RowGetCounter extends Port("RowGetCounter")<{ readonly increment: () => void }> {}
+
+const htmxRowFragment = htmxRuntimeApi.HtmxGet("/orders/:id/row")(
+  { counter: RowGetCounter },
+  {
+    sync:
+      ({ counter }) =>
+      (_context, params) => {
+        counter.increment();
+        return OkAsync(html`<tr id="row-${params.id}">row</tr>`);
+      },
   },
-});
+);
 
 const htmxRowUpdateFragment = htmxRuntimeApi.HtmxPost("/orders/:id/row", { input: noteInput })({
   sync: () => (_context, params, input) => {
@@ -844,6 +852,7 @@ const htmxRuntimeAppOf = (bodyLimit?: number) =>
     ],
     provides: [
       htmx(),
+      Provider(RowGetCounter)({ value: { increment: () => (htmxRowGetRuns += 1) } }),
       htmxRowFragment,
       htmxRowUpdateFragment,
       htmxProfileFragment,
@@ -878,6 +887,7 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
           },
         }),
         htmx(),
+        Provider(RowGetCounter)({ value: { increment: () => (htmxRowGetRuns += 1) } }),
         htmxRowFragment,
         htmxRowUpdateFragment,
         htmxProfileFragment,

@@ -1,7 +1,7 @@
 import { authenticated } from "@btravstack/contract";
-import type { PortInstance, Provider } from "@btravstack/di";
+import { Port, type PortInstance, type Provider } from "@btravstack/di";
 import { OkAsync } from "unthrown";
-import { describe, test } from "vitest";
+import { describe, expectTypeOf, test } from "vitest";
 import { z } from "zod";
 
 import { HttpAuthenticator, granted, type AuthenticatorService } from "./auth.js";
@@ -300,6 +300,35 @@ describe("HtmxFragments array arm scheme needs", () => {
     >;
     type _NoSchemeNeeds = Expect<
       [Extract<NeedsOf<typeof noSchemeComposed>, SchemePort<string>>] extends [never] ? true : false
+    >;
+  });
+});
+
+describe("HtmxGet / HtmxPost deps arm", () => {
+  test("the deps arm types its service and declares it as a need, both ways", () => {
+    class FindOrder extends Port("FindOrder")<(id: string) => string> {}
+    const api = defineHttp();
+
+    const row = api.HtmxGet("/orders/:id/row")(
+      { find: FindOrder },
+      {
+        sync:
+          ({ find }) =>
+          (_context, params) => {
+            expectTypeOf(find).toEqualTypeOf<(id: string) => string>();
+            return OkAsync(html`${find(params.id)}`);
+          },
+      },
+    );
+
+    type NeedsOf<T> = T extends Provider<infer _P, infer _E, infer N> ? N : never;
+    // BOTH directions — a one-way check passes on a collapsed `never`.
+    type _Needs = Expect<
+      [NeedsOf<typeof row>] extends [InstanceType<typeof FindOrder>]
+        ? [InstanceType<typeof FindOrder>] extends [NeedsOf<typeof row>]
+          ? true
+          : false
+        : false
     >;
   });
 });

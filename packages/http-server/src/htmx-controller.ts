@@ -176,22 +176,21 @@ type RouteHandler<P extends `/${string}`, S extends FragmentInputSchema | undefi
   input: InputOfSchema<S>,
 ) => AsyncResult<Html, never>;
 
-/** The port one route mints, keyed by `${method} ${path}` — GET and POST on one path are distinct, and two routes on one method+path are one port id, di's duplicate-provider defect. */
-type RoutePortOf<Id extends string, H> = PortClassOf<Id, H>;
-
 /**
  * What both `HtmxGet` and `HtmxPost`'s two-arm `build` return; `N` is the only
- * thing that differs. `route.requires` carries the LITERAL `R`, not the
+ * thing that differs. Keyed by `${method} ${path}` — GET and POST on one path
+ * are distinct, and two routes on one method+path are one port id, di's
+ * duplicate-provider defect. `route.requires` carries the LITERAL `R`, not the
  * widened `Requirements | undefined` — the array arm's needs channel reads it
  * back through `RequiresOfPiece`, and a widened field would make that
  * unrecoverable at the type level.
  */
 type MintedRoute<Id extends string, H, R extends Requirements, N> = Provider<
-  InstanceType<RoutePortOf<Id, H>>,
+  InstanceType<PortClassOf<Id, H>>,
   never,
   N
 > & {
-  readonly port: RoutePortOf<Id, H>;
+  readonly port: PortClassOf<Id, H>;
   readonly route: {
     readonly method: "GET" | "POST";
     readonly path: string;
@@ -227,10 +226,8 @@ type RequiresOfPiece<P> = P extends {
 /**
  * `HtmxGet` and `HtmxPost`: a route as a provider on a port of its own, minted
  * straight from a path — no contract in between. Two separate functions,
- * deliberately, rather than one `method`-parameterised generic: a discriminated
- * union threaded through a generic that feeds a gate has already disabled one
- * silently on this exact surface (`FragmentRoute`, see `fragments.ts`'s own
- * TSDoc), so `method` here is a plain runtime string, never a type argument.
+ * deliberately, rather than one `method`-parameterised generic: `method` here
+ * is a plain runtime string, never a type argument.
  *
  * ```ts
  * const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
@@ -401,16 +398,13 @@ const htmxRoutesFor =
     const sync = (
       services: Record<string, unknown>,
     ): ServiceOf<InstanceType<typeof HtmxFragmentsPort>> => ({
-      routes: routeEntries.map(([key], index) => {
-        const piece = routes[index] as AnyRoutePiece;
-        return {
-          method: piece.route.method,
-          path: piece.route.path,
-          input: piece.route.input,
-          requirements: piece.route.requires,
-          handle: toAnswer(services[key]),
-        };
-      }),
+      routes: routes.map((piece, index) => ({
+        method: piece.route.method,
+        path: piece.route.path,
+        input: piece.route.input,
+        requirements: piece.route.requires,
+        handle: toAnswer(services[`route:${index}`]),
+      })),
       authenticators: Object.fromEntries(
         schemes.map((scheme) => [scheme, services[`${AUTHENTICATOR}${scheme}`]]),
       ) as Readonly<Record<string, AuthenticatorService<unknown>>>,
