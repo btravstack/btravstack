@@ -8,16 +8,15 @@
 // goes, long after the use cases grew one.
 //
 // What it does NOT cover is the pages' own contract declarations, whose
-// dependencies belong to the contract workspace — so the fragments are compiled
-// where they live. The controllers here are typed by that contract, so a marker
-// removed from it still fails this file.
+// dependencies belong to the contract workspace. The controllers here are
+// typed by that contract, so a marker removed from it still fails this file;
+// the htmx route below needs no contract at all, so it is pinned directly.
 
 import { Env } from "@btravstack/config";
 import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import {
   contract,
-  fragments,
   type CustomerView,
   type OrderView,
 } from "@btravstack/example-order-api-contract";
@@ -260,14 +259,14 @@ const _docsUserAuth = HttpAuthenticator<
   },
 });
 
-// "Step 1 — the contract" through "Step 4 — the composition root" —
+// "Step 1 — the route" through "Step 3 — the composition root" —
 // docs/how-to/serve-htmx-fragments.md.
 //
-// The real `fragments` route contract (an htmx fragment ROUTE, not an oRPC
-// contract fragment) and the real `FindOrder`, so a drift in either breaks
-// this file rather than only the how-to page's own inline copy.
+// The real `FindOrder`, minted straight from its method and path — an htmx
+// route, not an oRPC contract fragment — so a drift in it breaks this file
+// rather than only the how-to page's own inline copy.
 
-const _docsOrderRowFragment = api.HtmxController(fragments, "orderRow")(
+const _docsOrderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
   { find: FindOrder },
   {
     sync:
@@ -282,7 +281,7 @@ const _docsOrderRowFragment = api.HtmxController(fragments, "orderRow")(
   },
 );
 
-const _docsOrderFragments = api.HtmxFragments(fragments)([_docsOrderRowFragment]);
+const _docsOrderFragments = api.HtmxFragments([_docsOrderRowFragment]);
 
 const _DocsFragmentsApi = HttpModule("DocsFragmentsApi")({
   needs: [Env],

@@ -446,14 +446,13 @@ composition root and one fewer import, not a rewrite.
 Alongside the router, this deployment serves one **htmx route** — not an oRPC
 contract fragment like `orders`/`customers` above; see
 [Serve htmx fragments](/how-to/serve-htmx-fragments) for that distinction in
-full. `slices/orders/fragment.ts`'s `orderRowFragment` is the same two-call
-shape as `api.HttpController(contract, path)`, minted from `api.HtmxController`
-instead:
+full. `slices/orders/fragment.ts`'s `orderRowFragment` is minted straight
+from its method and path, with `api.HtmxGet` — no contract in between:
 
 ```ts
 import { html } from "@btravstack/http-server";
 
-export const orderRowFragment = api.HtmxController(fragments, "orderRow")(
+export const orderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
   { find: FindOrder },
   {
     sync:
@@ -469,19 +468,20 @@ export const orderRowFragment = api.HtmxController(fragments, "orderRow")(
 );
 ```
 
-It reads `context.principal.tenantId`, the same tenant `ordersController`
-reads — the route's own path names only `id`, so a caller's credential is
-what scopes the row, never the path. `.recoverErrCases` is this piece's own
-triage, at the place `mapErrCases` sits for the router: there is no declared
-error union for a client to branch on, so `OrderNotFound` becomes a rendered
-row here or not at all.
+`requires: [{ user: [] }]` marks the route exactly as `contract.orders` marks
+`ordersController` — the tenant comes off `context.principal`, the same
+tenant `ordersController` reads, and the route's own path names only `id`, so
+a caller's credential is what scopes the row, never the path.
+`.recoverErrCases` is this piece's own triage, at the place `mapErrCases`
+sits for the router: there is no declared error union for a client to branch
+on, so `OrderNotFound` becomes a rendered row here or not at all.
 
-`module.ts` composes it the same way it composes the router, over the
-package's own `defineFragments`-built export, and the composition root below
-passes the result alongside `router`:
+`module.ts` composes it the same way it composes the router, over an array of
+its own routes, and the composition root below passes the result alongside
+`router`:
 
 ```ts
-export const orderFragments = api.HtmxFragments(fragments)([orderRowFragment]);
+export const orderFragments = api.HtmxFragments([orderRowFragment]);
 ```
 
 `fragments` mounts at `htmx()`'s own default, `/` — a separate mount from the
@@ -543,7 +543,7 @@ export const OrdersSlice = Module("OrdersSlice")({
 ```
 
 `orderRowFragment` rides with `ordersController` — the providers, not their
-`.port`s: `HttpController` and `HtmxController` each mint the port for you, so
+`.port`s: `HttpController` and `HtmxGet` each mint the port for you, so
 there is no class to name. A real slice carries its own htmx route rather
 than leaving it for the root to provide separately.
 

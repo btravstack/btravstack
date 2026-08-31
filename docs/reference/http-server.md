@@ -64,20 +64,21 @@ declare const view: (order: Order) => OrderView;
 | `html`                 | value | `` html`<tr>${value}</tr>` `` — a tagged template returning `Html`, escaping every interpolation by default                                                                                                                                                                                                  |
 | `raw`                  | value | `raw(markup)` — the one way past `html`'s escaping, a visible act at the call site                                                                                                                                                                                                                           |
 | `Html`                 | type  | `{ readonly [HTML]: true; readonly value: string }` — the output of `html`/`raw`, and nothing else                                                                                                                                                                                                           |
-| `defineFragments`      | value | `defineFragments({ … })` — a flat record of `{ method, path, input? }` routes, carrying `authenticated(...)` unchanged                                                                                                                                                                                       |
-| `FragmentRoute`        | type  | one route a fragment answers                                                                                                                                                                                                                                                                                 |
+| `defineFragments`      | value | `defineFragments({ … })` — a flat record of `{ method, path, input? }` routes, carrying `authenticated(...)` unchanged; superseded by `HtmxGet`/`HtmxPost` below, which need no contract                                                                                                                     |
+| `FragmentRoute`        | type  | one route a fragment answers, in the `defineFragments` shape                                                                                                                                                                                                                                                 |
 | `FragmentsContract`    | type  | `Readonly<Record<string, FragmentRoute>>` — what `defineFragments` takes                                                                                                                                                                                                                                     |
 | `ParamsOf`             | type  | `ParamsOf<Path>` — the `:name` segments a path template names, e.g. `ParamsOf<"/orders/:id/row">` is `{ readonly id: string }`                                                                                                                                                                               |
-| `HtmxFragmentsPort`    | value | `class HtmxFragmentsPort extends Port("HtmxFragments")<{ routes; authenticators }> {}` — every route a fragment contract declares, composed into one port; what `htmx()` answers from                                                                                                                        |
+| `HtmxFragmentsPort`    | value | `class HtmxFragmentsPort extends Port("HtmxFragments")<{ routes; authenticators }> {}` — every route composed into one port; what `htmx()` answers from                                                                                                                                                      |
 | `FragmentAnswer`       | type  | what the composed port carries for one route — principal and input erased to `unknown`                                                                                                                                                                                                                       |
 | `FragmentHandler`      | type  | `FragmentHandler<Route, Principal>` — a fragment's own handler signature: `(context, params, input) => AsyncResult<Html, never>`                                                                                                                                                                             |
 | `htmx`                 | value | `htmx({ prefix? })` — the second answerer, one `HttpHandler` member serving fragments, mounted under `prefix` (default `/`)                                                                                                                                                                                  |
 | `HtmxOptions`          | type  | `htmx()`'s options                                                                                                                                                                                                                                                                                           |
 
-`HttpController`/`HttpRouter` and `HtmxController`/`HtmxFragments` are **not**
-top-level exports: all four come off `defineHttp`, because that is where the
-scheme registry that types them is stated. A marked contract reached through
-anything else would type `principal: never`.
+`HttpController`/`HttpRouter`, `HtmxController`/`HtmxFragments` and
+`HtmxGet`/`HtmxPost` are **not** top-level exports: all six come off
+`defineHttp`, because that is where the scheme registry that types them is
+stated. A marked contract or a marked route reached through anything else
+would type `principal: never`.
 
 `HttpRouterPort` (the starter's router port, `Port("HttpRouter")`) and
 `Implementation<C, Schemes>` (the record type `HttpRouter`'s `sync` returns)
@@ -108,7 +109,7 @@ gates see a plain module.
 | Option            | Required | Default                      | What it is                                                                                                                                                                     |
 | ----------------- | -------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `router`          | no\*     | —                            | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `api.HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
-| `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments(fragments)([...])` returns; likewise typed to its own port                                                  |
+| `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                |
 | `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                    |
 | `fragmentsPrefix` | no       | `/`                          | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                              |
 | `port`            | no       | read from `PORT`             | pins the port instead of reading it                                                                                                                                            |
@@ -708,80 +709,85 @@ and reflow it, inserting real whitespace into rendered output. This repo sets
 `embeddedLanguageFormatting: "off"`; a consuming application needs the same
 setting, or its rendered output drifts the moment a formatter runs.
 
-## `defineFragments({ … })` and `ParamsOf<Path>`
-
-A fragment contract is a flat record of routes, not an oRPC contract — a
-browser navigation is not an RPC call — but it carries
-[`authenticated(...)`](/reference/contract) unchanged, so a route gets the
-same principal and the same 401/403 path as a procedure:
-
-<!-- doctest: isolate
-import { authenticated } from "@btravstack/contract";
-import { defineFragments } from "@btravstack/http-server";
--->
-
-```ts
-export const fragments = authenticated({ user: [] })(
-  defineFragments({
-    orderRow: { method: "GET", path: "/orders/:id/row" },
-  }),
-);
-```
-
-`input` is any Standard Schema over the decoded form body — the same shape
-[`Config.provider`](/reference/config) accepts, so no schema library joins
-this package for it — and only a `POST` route may declare one:
-`defineFragments` refuses a `GET` route that does, against an
-`"INPUT ON GET — a GET route has no body to validate"` marker, since
-`htmx()` never reads a body for `GET`. `ParamsOf<P>` extracts the `:name`
-segments a path template names, at the type level: `ParamsOf<"/orders/:id/row">`
-is `{ readonly id: string }`, and a template naming none is an empty record.
-
-## `api.HtmxController(fragments, key)({ name: Dep }, { sync })`
+## `api.HtmxGet(path, options?)` and `api.HtmxPost(path, options?)`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-type FragmentHandler<Route, Principal> = (
+type RouteHandler<Path extends string, Input, Principal> = (
   context: [Principal] extends [never] ? object : { readonly principal: Principal },
-  params: ParamsOf<Route["path"]>,
-  input: InputOf<Route>,
+  params: ParamsOf<Path>,
+  input: Input, // only on the handler `HtmxPost` mints, and only when `options.input` is given
 ) => AsyncResult<Html, never>;
 ```
 
-One route of a fragment contract, as a provider on a port of its own — the
-same two-call shape as
-[`api.HttpController(contract, path)`](#api-httpcontroller-contract-path).
-The route's key **is** the port's name, minted as `` `HtmxFragment:${key}` ``
-— the same move `HttpController`'s path takes. The key space is **flat**,
-unlike `HttpController`'s dotted contract tree, so two pieces claiming one
-route are simply di's duplicate-provider defect, via the port id every piece
-carries — there is no unsliceable or overlapping path to refuse. See
-[Serve htmx fragments](/how-to/serve-htmx-fragments) for a worked piece.
-
-## `api.HtmxFragments(fragments)([piece, …])`
-
-Every route composed from an array of pieces, mirroring
-[the composing form](#the-composing-form-api-httprouter-contract-piece) of
-`HttpRouter`:
-
-<!-- doctest: isolate
-import { fragments } from "@btravstack/example-order-api-contract";
-import { api } from "../../auth.js";
-import { orderRowFragment } from "../../slices/orders/fragment.js";
--->
+A route as a provider on a port of its own, minted straight from its method
+and path — no contract in between, mirroring htmx's own `hx-get`/`hx-post`:
 
 ```ts
-export const orderFragments = api.HtmxFragments(fragments)([orderRowFragment]);
+import { FindOrder } from "@btravstack/example-order-application";
+import { html } from "@btravstack/http-server";
+import { P } from "unthrown";
+
+export const orderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
+  { find: FindOrder },
+  {
+    sync:
+      ({ find }) =>
+      (context, params) =>
+        find
+          .execute(context.principal.tenantId, params.id)
+          .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
+          .recoverErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
+          ),
+  },
+);
 ```
 
-An uncovered route is refused against the
-`"UNCOVERED FRAGMENTS — the contract declares a route this array does not
-cover"` marker, and requirements fold nearest-mark-wins exactly as the oRPC
-side does — a route's own mark replaces the contract's default, an unmarked
-route inherits it. The returned provider carries `readonly authenticators`
-the same way the router does, so `HttpModule` can deduplicate a scheme the
-two share, by reference.
+`options.requires` marks the route exactly as `authenticated(...)` marks an
+oRPC procedure — the same `resolvePrincipal` walk runs, so a route gets the
+same `401`/`403` path and the same `Principal<S, Schemes>` typing on
+`context.principal`. Omit it and the route is public, with no `principal` on
+`context` at all — reading one is a compile error. A scope the scheme's own
+authenticator never grants fails the compile ending on
+`"UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it"`, naming
+the scope.
+
+Only `HtmxPost`'s `options` carry an `input` field — `HtmxGet`'s options type
+has none, so passing one is a compile error naming the unknown property
+rather than a value refused at the call: unexpressible, not merely refused.
+`input` is any Standard Schema over the decoded form body — the same shape
+[`Config.provider`](/reference/config) accepts. `ParamsOf<P>` extracts the
+`:name` segments a path template names, at the type level:
+`ParamsOf<"/orders/:id/row">` is `{ readonly id: string }`, and a template
+naming none is an empty record.
+
+The route's key is `` `${method} ${path}` ``, minted as the port id
+`` `HtmxFragment:GET /orders/:id/row` `` — the same two-call shape as
+[`api.HttpController(contract, path)`](#api-httpcontroller-contract-path),
+with the path standing in for a contract key. The key space is **flat**, so
+two routes minted for one method and path are simply di's duplicate-provider
+defect, via the port id each carries — there is no unsliceable or
+overlapping path to refuse. See
+[Serve htmx fragments](/how-to/serve-htmx-fragments) for the worked recipe.
+
+## `api.HtmxFragments([piece, …])`
+
+Every route composed from an array of `HtmxGet`/`HtmxPost` pieces, mirroring
+[the composing form](#the-composing-form-api-httprouter-contract-piece) of
+`HttpRouter` minus the coverage it checks — there is no declared route set to
+leave uncovered:
+
+```ts
+export const orderFragments = api.HtmxFragments([orderRowFragment]);
+```
+
+Routes are matched in this array's own **order**, first match wins — see
+[Serve htmx fragments](/how-to/serve-htmx-fragments#step-2-—-compose-the-pieces)
+for why that ordering is a security property, not only a routing one. The
+returned provider carries `readonly authenticators` the same way the router
+does, so `HttpModule` can deduplicate a scheme the two share, by reference.
 
 ## `http(options)`
 
@@ -956,9 +962,9 @@ equivalent.
 **Routes are matched in the composition root's own array order, first match
 wins — and that ordering is a security property, not only a routing one.**
 An unmarked route declared before a marked route whose path can also match
-the same request answers it, and no authentication ever runs: two contract
-keys are two port ids, so di has nothing to see collide, and there is
-deliberately no specificity rule to fall back on.
+the same request answers it, and no authentication ever runs: two routes are
+two port ids, minted from their own method and path, so di has nothing to
+see collide, and there is deliberately no specificity rule to fall back on.
 :::
 
 **The `POST` body decodes through `Object.fromEntries(new
