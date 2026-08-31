@@ -15,7 +15,7 @@ import type { Html } from "./html.js";
 import type { ScopesIn, SchemePortsOf, SchemesIn } from "./orpc.js";
 import type { Principal, SchemesOf } from "./principal.js";
 
-/** The prefix a piece's port id carries; the composing form strips it to recover the key. */
+/** The prefix a piece's port id carries, ahead of its own method and path. */
 export const FRAGMENT_PREFIX = "HtmxFragment:";
 
 /** Every scope string `R` names for scheme `K` — `orpc.ts`'s `ScopesIn`, fed directly since `requires` already IS a requirements union, not a tree to walk. */

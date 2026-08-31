@@ -753,7 +753,7 @@ Only `HtmxPost`'s `options` carry an `input` field — `HtmxGet`'s options type
 has none, so passing one is a compile error naming the unknown property
 rather than a value refused at the call: unexpressible, not merely refused.
 `input` is any Standard Schema over the decoded form body — the same shape
-[`Config.provider`](/reference/config) accepts. `ParamsOf<P>` extracts the
+[`Config.provider`](/reference/config) accepts. `ParamsOf<Path>` extracts the
 `:name` segments a path template names, at the type level:
 `ParamsOf<"/orders/:id/row">` is `{ readonly id: string }`, and a template
 naming none is an empty record.

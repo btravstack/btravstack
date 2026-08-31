@@ -359,11 +359,13 @@ grant it"` sentence oRPC's `routerFor` gives — and each requirement is also
   intersected with `@btravstack/contract`'s `OneScheme`, the same constraint
   `authenticated()` carries, so a two-scheme requirement (OpenAPI's AND, which
   `resolvePrincipal`'s first-match walk would execute as OR) is refused at
-  the same mint. Both checks run only on `requires` written literally at the
-  call: `requires` is data, so a value first widened to `Requirements` or
-  built outside the factories carries no compile-time checking either way —
-  the runtime walk in `auth.ts` is what remains, and that is the trade for
-  deleting the contract kind. `HtmxPost` additionally takes
+  the same mint. Both checks run as far as `requires` survives as a narrow
+  literal type: `const R` infers one from a literal at the call, and an
+  `as const` value declared elsewhere keeps its scheme keys and scopes too,
+  so both still bind. What escapes them is a value **widened** to
+  `Requirements` — `requires` is data, so a widened one carries no
+  compile-time checking either way, and the runtime walk in `auth.ts` is what
+  remains. That is the trade for deleting the contract kind. `HtmxPost` additionally takes
   `options.input`, any Standard Schema over the decoded form body — the same
   shape `Config.provider` accepts, so no schema library joins this package for
   it — and `HtmxGet` has no `input` field at all, refusing a `GET` route that

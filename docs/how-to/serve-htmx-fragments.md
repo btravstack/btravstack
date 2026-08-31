@@ -9,7 +9,7 @@ import { api } from "../../auth.js";
 
 # Serve htmx fragments
 
-> **How-to.** Take a route to an answer that returns `Html`, server rendered
+> **How-to.** Take a route to an answer that returns `Html`, server-rendered
 > and escaped by default, under the same `HttpHandler` set port oRPC answers
 > from. For the package's full surface, see
 > [`@btravstack/http-server`](/reference/http-server); for the oRPC half this
