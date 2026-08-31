@@ -1,5 +1,4 @@
 import { authenticated } from "@btravstack/contract";
-import { defineFragments } from "@btravstack/http-server";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
@@ -105,14 +104,3 @@ const customersContract = {
  * contract change; `defineHttp({ authenticators })` says what each resolves to.
  */
 export const contract = { orders: ordersContract, customers: customersContract };
-
-/**
- * The orders slice's fragment route, marked the same way as the oRPC
- * fragment: an authenticated caller's own principal serves the tenant, so
- * the route names only `id`.
- */
-export const fragments = authenticated({ user: [] })(
-  defineFragments({
-    orderRow: { method: "GET", path: "/orders/:id/row" },
-  }),
-);

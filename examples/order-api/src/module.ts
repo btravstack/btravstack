@@ -1,7 +1,7 @@
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 import { Logger, Meter, Tracer } from "@btravstack/core";
-import { contract, fragments } from "@btravstack/example-order-api-contract";
+import { contract } from "@btravstack/example-order-api-contract";
 import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
@@ -21,8 +21,8 @@ import { OrdersSlice } from "./slices/orders/module.js";
  */
 export const orderRouter = api.HttpRouter(contract)([ordersController, customersController]);
 
-/** The fragments, composed from the orders slice's own piece. */
-export const orderFragments = api.HtmxFragments(fragments)([orderRowFragment]);
+/** The fragments, composed from the orders slice's own route. */
+export const orderFragments = api.HtmxFragments([orderRowFragment]);
 
 /**
  * The composition root, and a list of **slices**: each imports the vertical it

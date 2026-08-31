@@ -41,7 +41,6 @@ The contract splits into two fragments, `orders` and `customers`, each a
 
 ```ts
 import { authenticated } from "@btravstack/contract";
-import { defineFragments } from "@btravstack/http-server";
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
@@ -102,16 +101,6 @@ export const contract = {
   orders: ordersContract,
   customers: customersContract,
 };
-
-// A separate contract, not an oRPC one: a browser navigation answers `Html`,
-// not a typed envelope. Marked the same way as `orders`, so the route gets
-// the same principal and the same 401/403 path — a caller's own credential
-// scopes the row, which is why the path names only `id`.
-export const fragments = authenticated({ user: [] })(
-  defineFragments({
-    orderRow: { method: "GET", path: "/orders/:id/row" },
-  }),
-);
 ```
 
 The wire shapes are **zod schemas**, with the view types inferred from them

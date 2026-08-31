@@ -301,12 +301,13 @@ AuditSlice, observability(), otel()], … })`),
   its controller, in di's provider form (`exports: [ordersController]`, since
   `HttpController` mints the port and there is no class to name; the two
   slices are that form's first call sites). The orders slice also carries
-  `slices/orders/fragment.ts`'s `orderRowFragment` — `api.HtmxController(fragments,
-"orderRow")`, the same two-call shape over the contract's own `fragments`
-  export — reading the same `context.principal.tenantId` the controller does,
-  so a caller's credential is what scopes the row rather than the path, which
-  names only `id`; a cross-tenant test in `fragments.spec.ts` renders the
-  slice's own not-found row for a caller whose tenant never placed the order.
+  `slices/orders/fragment.ts`'s `orderRowFragment` — `api.HtmxGet("/orders/:id/row",
+{ requires: [{ user: [] }] })`, minted straight from its method and path with no
+  contract in between — reading the same `context.principal.tenantId` the
+  controller does, so a caller's credential is what scopes the row rather than
+  the path, which names only `id`; a cross-tenant test in `fragments.spec.ts`
+  renders the slice's own not-found row for a caller whose tenant never placed
+  the order.
   One module per vertical in **both**
   layers, not one per layer: a slice, and each worker, carries its own
   vertical and none of the other's. What the slices still share is the
@@ -317,7 +318,7 @@ AuditSlice, observability(), otel()], … })`),
   (the same walk over the pre-split modules visited 22 for the same 15, and
   the difference is the over-inclusion the split removed). The root composes them —
   `orderRouter = api.HttpRouter(contract)([ordersController,
-customersController])` and `orderFragments = api.HtmxFragments(fragments)([orderRowFragment])`,
+customersController])` and `orderFragments = api.HtmxFragments([orderRowFragment])`,
   each the composing array form — and
   **`HttpModule("OrderApi")({ router: orderRouter, fragments: orderFragments, imports: [OrdersSlice,
 CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`** is the whole

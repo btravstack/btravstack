@@ -262,9 +262,9 @@ const _docsUserAuth = HttpAuthenticator<
 // "Step 1 — the route" through "Step 3 — the composition root" —
 // docs/how-to/serve-htmx-fragments.md.
 //
-// The real `FindOrder`, minted straight from its method and path — an htmx
-// route, not an oRPC contract fragment — so a drift in it breaks this file
-// rather than only the how-to page's own inline copy.
+// The real `FindOrder`, served by a route minted straight from its method
+// and path — an htmx route, not an oRPC contract fragment — so a drift in it
+// breaks this file rather than only the how-to page's own inline copy.
 
 const _docsOrderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
   { find: FindOrder },
