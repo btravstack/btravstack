@@ -43,6 +43,9 @@ export const startProbeServer = (args: ProbeArgs): AsyncResult<ProbeServer, Runt
           // The unit of work is the RESPONSE, so the body is written inside
           // the settle — the same obligation a runtime owes, for the same
           // reason: a report computed and not flushed tells nobody anything.
+          // The `void` is the third audited dropped-Result exception:
+          // `runHealthChecks` recovers every failure AND defect into the
+          // report, so the `.map` always runs and nothing observable is lost.
           void args.health().map((report) => {
             response
               .writeHead(report.status === "healthy" ? 200 : 503, {

@@ -84,6 +84,12 @@ Each check runs on every request; the kernel caches nothing. A check that is
 expensive to run is the adapter's problem to make cheap, since only the adapter
 knows what "cheap" means for it.
 
+A buggy check is contained, not amplified: one that throws instead of
+answering — or whose `AsyncResult` defects — becomes an unhealthy component
+line naming the cause, exactly like a check that failed properly. The request
+always gets its response, and the throw never reaches the process's uncaught
+handler.
+
 There is deliberately **no startup probe**: `/livez` answers `200` from
 `building` onward, so a slow-building graph is covered by `/readyz` alone.
 
