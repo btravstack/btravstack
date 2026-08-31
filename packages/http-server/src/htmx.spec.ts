@@ -1,9 +1,13 @@
 import { EventEmitter } from "node:events";
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 
+import { Module } from "@btravstack/di";
+import { OkAsync } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
+import { defineHttp } from "./define-http.js";
+import { html } from "./html.js";
 
 describe("htmx", () => {
   it("serves a GET fragment with its path parameter bound", async ({ htmxServer }) => {
@@ -322,5 +326,24 @@ describe("htmx", () => {
       mounted: { status: 200, body: "<p>ok</p>" },
       atRoot: { status: 404, body: '{"error":"NotFound"}' },
     });
+  });
+
+  it("refuses two routes on one method and path as a duplicate provider", async () => {
+    // GIVEN two GET routes minted on the same path
+    const api = defineHttp();
+    const first = api.HtmxGet("/dup")({ sync: () => () => OkAsync(html`a`) });
+    const second = api.HtmxGet("/dup")({ sync: () => () => OkAsync(html`b`) });
+    const composed = api.HtmxFragments([first, second]);
+
+    // WHEN a graph composes both — each piece registered alongside the
+    // composed provider, exactly as any other piece is. `Module.build`
+    // directly, not `boot`: the harness's own teardown fails a test on ANY
+    // Defect it sees, which is the exact outcome this test asserts.
+    const built = await Module.build(Module("Dup")({ provides: [first, second, composed] }));
+
+    // THEN di refuses the build: one port id, two providers
+    expect(built).toBeDefectWith(
+      expect.objectContaining({ message: expect.stringContaining("two providers") }),
+    );
   });
 });

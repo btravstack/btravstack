@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/contract"
-description: The contract-level auth marker — authenticated(), Requirement, Requirements, Authenticated, PrincipalKey, IsMarked, RequirementsOf and isAuthenticated — what it puts on a contract node, and what it deliberately does not.
+description: The contract-level auth marker — authenticated(), Requirement, Requirements, OneScheme, Authenticated, PrincipalKey, IsMarked, RequirementsOf and isAuthenticated — what it puts on a contract node, and what it deliberately does not.
 ---
 
 # @btravstack/contract
@@ -30,16 +30,17 @@ the server's view of a caller reaches a client.
 
 `packages/contract/src/index.ts` exports exactly this:
 
-| Export                | Kind  | What it is                                                                                                                                                        |
-| --------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `authenticated`       | value | `<const R extends Requirements>(...requirements: R) => <T extends object>(node: T) => Authenticated<T, R>` — curried; marks a node with the requirements it names |
-| `isAuthenticated`     | value | `(node: object) => Requirements \| undefined` — what **this exact node** requires, or `undefined` when nobody marked it                                           |
-| `Requirement`         | type  | `Readonly<Record<string, readonly string[]>>` — one security scheme's name mapped to the scopes it must grant; a second key is refused at the mark                |
-| `Requirements`        | type  | `readonly Requirement[]` — ORed, tried in declaration order                                                                                                       |
-| `Authenticated<T, R>` | type  | `T & { readonly [PrincipalKey]: R }` — `T`'s own keys plus one phantom key holding the exact requirements, for the type checker only                              |
-| `PrincipalKey`        | type  | `typeof PRINCIPAL`, the marker's key — exported so a consumer's mapped type can `Exclude<keyof C, PrincipalKey>` and land on the contract's own keys              |
-| `IsMarked<T>`         | type  | `T extends { readonly [PrincipalKey]: Requirements } ? true : false` — whether **this exact node** carries the marker, as a yes/no rather than a type             |
-| `RequirementsOf<T>`   | type  | the exact `Requirements` **this exact node** was marked with, `never` when it is unmarked                                                                         |
+| Export                | Kind  | What it is                                                                                                                                                                                                       |
+| --------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `authenticated`       | value | `<const R extends Requirements & { readonly [I in keyof R]: OneScheme<R[I]> }>(...requirements: R) => <T extends object>(node: T) => Authenticated<T, R>` — curried; marks a node with the requirements it names |
+| `isAuthenticated`     | value | `(node: object) => Requirements \| undefined` — what **this exact node** requires, or `undefined` when nobody marked it                                                                                          |
+| `Requirement`         | type  | `Readonly<Record<string, readonly string[]>>` — one security scheme's name mapped to the scopes it must grant; a second key is refused at the mark                                                               |
+| `Requirements`        | type  | `readonly Requirement[]` — ORed, tried in declaration order                                                                                                                                                      |
+| `OneScheme<Q>`        | type  | `SeveralKeys<keyof Q> extends false ? Q : never` — the refusal above as a constraint a consumer can intersect into a requirement-typed surface of its own                                                        |
+| `Authenticated<T, R>` | type  | `T & { readonly [PrincipalKey]: R }` — `T`'s own keys plus one phantom key holding the exact requirements, for the type checker only                                                                             |
+| `PrincipalKey`        | type  | `typeof PRINCIPAL`, the marker's key — exported so a consumer's mapped type can `Exclude<keyof C, PrincipalKey>` and land on the contract's own keys                                                             |
+| `IsMarked<T>`         | type  | `T extends { readonly [PrincipalKey]: Requirements } ? true : false` — whether **this exact node** carries the marker, as a yes/no rather than a type                                                            |
+| `RequirementsOf<T>`   | type  | the exact `Requirements` **this exact node** was marked with, `never` when it is unmarked                                                                                                                        |
 
 ## `authenticated(...requirements)(node)`
 

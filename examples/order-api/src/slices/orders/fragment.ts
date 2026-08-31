@@ -1,4 +1,3 @@
-import { fragments } from "@btravstack/example-order-api-contract";
 import { FindOrder } from "@btravstack/example-order-application";
 import { html } from "@btravstack/http-server";
 import { P } from "unthrown";
@@ -11,7 +10,7 @@ import { api } from "../../auth.js";
  * triage is this slice's own — `recoverErrCases` folds `OrderNotFound` into a
  * rendered row, at the same place `ordersController`'s `mapErrCases` sits.
  */
-export const orderRowFragment = api.HtmxController(fragments, "orderRow")(
+export const orderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
   { find: FindOrder },
   {
     sync:

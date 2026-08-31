@@ -1,12 +1,11 @@
-import { authenticated } from "@btravstack/contract";
-import type { PortInstance, Provider } from "@btravstack/di";
+import { Port, type PortInstance, type Provider } from "@btravstack/di";
 import { OkAsync } from "unthrown";
-import { describe, test } from "vitest";
+import { describe, expectTypeOf, test } from "vitest";
 import { z } from "zod";
 
-import { HttpAuthenticator, type AuthenticatorService } from "./auth.js";
+import { HttpAuthenticator, granted, type AuthenticatorService } from "./auth.js";
 import { defineHttp } from "./define-http.js";
-import { defineFragments, type ParamsOf } from "./fragments.js";
+import type { ParamsOf } from "./fragments.js";
 import { html } from "./html.js";
 
 type Expect<T extends true> = T;
@@ -29,111 +28,61 @@ describe("ParamsOf", () => {
   });
 });
 
-describe("defineFragments", () => {
-  test("refuses input on a GET route — only POST reads a body", () => {
-    // @ts-expect-error — INPUT ON GET: a GET route has no body to validate
-    defineFragments({ orders: { method: "GET", path: "/orders", input: z.object({}) } });
-
-    const post = defineFragments({
-      orders: { method: "POST", path: "/orders", input: z.object({}) },
+describe("HtmxGet / HtmxPost", () => {
+  test("an ungrantable scope on requires is refused, naming the scope", () => {
+    const api = defineHttp({
+      authenticators: {
+        user: HttpAuthenticator<{ readonly userId: string }, "orders:read">()({
+          sync: () => () => OkAsync(granted({ userId: "u" }, ["orders:read"])),
+        }),
+      },
     });
-    void post;
-  });
-});
-
-describe("HtmxFragments", () => {
-  test("refuses an array that leaves a declared key uncovered", () => {
-    const fragments = defineFragments({
-      orderRow: { method: "GET", path: "/orders/:id/row" },
-      orderList: { method: "GET", path: "/orders" },
-    });
-    const api = defineHttp();
-    const row = api.HtmxController(
-      fragments,
-      "orderRow",
-    )({
-      sync: () => () => OkAsync(html`<tr></tr>`),
-    });
-    // @ts-expect-error orderList is declared and no piece covers it
-    void api.HtmxFragments(fragments)([row]);
+    // @ts-expect-error — UNGRANTABLE SCOPE: `user` cannot grant "orders:write"
+    void api.HtmxGet("/orders", { requires: [{ user: ["orders:write"] }] });
+    // The positive twin: a grantable scope compiles.
+    void api.HtmxGet("/orders", { requires: [{ user: ["orders:read"] }] });
   });
 
-  test("accepts an array covering every declared key", () => {
-    const fragments = defineFragments({
-      orderRow: { method: "GET", path: "/orders/:id/row" },
-      orderList: { method: "GET", path: "/orders" },
-    });
-    const api = defineHttp();
-    const row = api.HtmxController(
-      fragments,
-      "orderRow",
-    )({
-      sync: () => () => OkAsync(html`<tr></tr>`),
-    });
-    const list = api.HtmxController(
-      fragments,
-      "orderList",
-    )({
-      sync: () => () => OkAsync(html`<ul></ul>`),
-    });
-    void api.HtmxFragments(fragments)([row, list]);
-  });
-});
-
-describe("HtmxFragments principal typing", () => {
-  test("an unmarked route's context carries no principal at all", () => {
-    const fragments = defineFragments({ ping: { method: "GET", path: "/ping" } });
-    const api = defineHttp();
-    void api.HtmxController(
-      fragments,
-      "ping",
-    )({
-      // @ts-expect-error — the contract is unmarked, so `context` has no `principal` to read
-      sync: () => (context) => OkAsync(html`${context.principal}`),
-    });
-  });
-
-  test("a piece minted over a marked route cannot be composed where an unmarked one is expected", () => {
+  test("a requirement naming two schemes is refused; two single-scheme requirements are not", () => {
     const api = defineHttp({
       authenticators: {
         user: HttpAuthenticator<{ readonly userId: string }>()({
           sync: () => () => OkAsync({ userId: "u-1" }),
         }),
+        service: HttpAuthenticator<{ readonly appId: string }>()({
+          sync: () => () => OkAsync({ appId: "a-1" }),
+        }),
       },
     });
+    // @ts-expect-error — two scheme keys on one requirement is OpenAPI's AND, which the runtime walk executes as OR
+    void api.HtmxGet("/admin", { requires: [{ user: ["admin"], service: [] }] });
+    // The positive twin: two single-scheme requirements — OR across requirements — still compiles.
+    void api.HtmxGet("/admin", { requires: [{ user: [] }, { service: [] }] });
+  });
 
-    // One route marked, one not — the mixed shape `markedOrderRow` and
-    // `unmarkedPing` are minted from.
-    const mixed = defineFragments({
-      orderRow: authenticated({ user: [] })({ method: "GET", path: "/orders/:id/row" }),
-      ping: { method: "GET", path: "/ping" },
-    });
-    const markedOrderRow = api.HtmxController(
-      mixed,
-      "orderRow",
-    )({
-      sync: () => (context) => OkAsync(html`${context.principal.userId}`),
-    });
-    const unmarkedPing = api.HtmxController(
-      mixed,
-      "ping",
-    )({
-      sync: () => () => OkAsync(html``),
-    });
+  test("input is unexpressible on a GET route", () => {
+    const api = defineHttp();
+    // @ts-expect-error — HtmxGet's options carry no `input` field
+    void api.HtmxGet("/orders", { input: z.object({ q: z.string() }) });
+    void api.HtmxPost("/orders", { input: z.object({ q: z.string() }) });
+  });
 
-    // The accepted direction: a handler that reads no principal is
-    // contravariantly fine alongside one that does, under the mixed contract
-    // both pieces were minted from.
-    void api.HtmxFragments(mixed)([markedOrderRow, unmarkedPing]);
-
-    // The refused direction: `markedOrderRow` needs a principal a structurally
-    // identical but fully UNMARKED contract declares nowhere.
-    const fullyUnmarked = defineFragments({
-      orderRow: { method: "GET", path: "/orders/:id/row" },
-      ping: { method: "GET", path: "/ping" },
+  test("the path literal types the handler's params", () => {
+    const api = defineHttp();
+    void api.HtmxGet("/orders/:id/row")({
+      sync: () => (_context, params) => {
+        const id: string = params.id;
+        return OkAsync(html`${id}`);
+      },
     });
-    // @ts-expect-error — `markedOrderRow` needs a principal `fullyUnmarked` declares nowhere
-    void api.HtmxFragments(fullyUnmarked)([markedOrderRow, unmarkedPing]);
+  });
+
+  test("a route without requires has no principal to read", () => {
+    const api = defineHttp();
+    void api.HtmxGet("/ping")({
+      // @ts-expect-error — no requires, so `context` has no `principal`
+      sync: () => (context) => OkAsync(html`${context.principal}`),
+    });
   });
 });
 
@@ -143,7 +92,7 @@ describe("HtmxFragments scheme needs", () => {
     ? PortInstance<`HttpAuthenticator:${S}`, AuthenticatorService<unknown>>
     : never;
 
-  test("declares one port per scheme any route or the contract itself names — two, one, and none, each both ways", () => {
+  test("declares one port per scheme any route's requires names — two, one, and none, each both ways", () => {
     const api = defineHttp({
       authenticators: {
         user: HttpAuthenticator<{ readonly userId: string }>()({
@@ -155,27 +104,23 @@ describe("HtmxFragments scheme needs", () => {
       },
     });
 
-    const twoSchemes = authenticated({ user: [] })(
-      defineFragments({
-        orderRow: { method: "GET", path: "/orders/:id/row" },
-        adminOnly: authenticated({ service: [] })({ method: "GET", path: "/admin" }),
+    const twoSchemeComposed = api.HtmxFragments([
+      api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+        sync: () => () => OkAsync(html``),
       }),
-    );
-    const twoSchemeComposed = api.HtmxFragments(twoSchemes)([
-      api.HtmxController(twoSchemes, "orderRow")({ sync: () => () => OkAsync(html``) }),
-      api.HtmxController(twoSchemes, "adminOnly")({ sync: () => () => OkAsync(html``) }),
+      api.HtmxGet("/admin", { requires: [{ service: [] }] })({
+        sync: () => () => OkAsync(html``),
+      }),
     ]);
 
-    const oneScheme = authenticated({ user: [] })(
-      defineFragments({ orderRow: { method: "GET", path: "/orders/:id/row" } }),
-    );
-    const oneSchemeComposed = api.HtmxFragments(oneScheme)([
-      api.HtmxController(oneScheme, "orderRow")({ sync: () => () => OkAsync(html``) }),
+    const oneSchemeComposed = api.HtmxFragments([
+      api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+        sync: () => () => OkAsync(html``),
+      }),
     ]);
 
-    const noScheme = defineFragments({ ping: { method: "GET", path: "/ping" } });
-    const noSchemeComposed = api.HtmxFragments(noScheme)([
-      api.HtmxController(noScheme, "ping")({ sync: () => () => OkAsync(html``) }),
+    const noSchemeComposed = api.HtmxFragments([
+      api.HtmxGet("/ping")({ sync: () => () => OkAsync(html``) }),
     ]);
 
     // BOTH directions, for each — a one-way check passes on a collapsed
@@ -198,6 +143,35 @@ describe("HtmxFragments scheme needs", () => {
     >;
     type _NoSchemeNeeds = Expect<
       [Extract<NeedsOf<typeof noSchemeComposed>, SchemePort<string>>] extends [never] ? true : false
+    >;
+  });
+});
+
+describe("HtmxGet / HtmxPost deps arm", () => {
+  test("the deps arm types its service and declares it as a need, both ways", () => {
+    class FindOrder extends Port("FindOrder")<(id: string) => string> {}
+    const api = defineHttp();
+
+    const row = api.HtmxGet("/orders/:id/row")(
+      { find: FindOrder },
+      {
+        sync:
+          ({ find }) =>
+          (_context, params) => {
+            expectTypeOf(find).toEqualTypeOf<(id: string) => string>();
+            return OkAsync(html`${find(params.id)}`);
+          },
+      },
+    );
+
+    type NeedsOf<T> = T extends Provider<infer _P, infer _E, infer N> ? N : never;
+    // BOTH directions — a one-way check passes on a collapsed `never`.
+    type _Needs = Expect<
+      [NeedsOf<typeof row>] extends [InstanceType<typeof FindOrder>]
+        ? [InstanceType<typeof FindOrder>] extends [NeedsOf<typeof row>]
+          ? true
+          : false
+        : false
     >;
   });
 });

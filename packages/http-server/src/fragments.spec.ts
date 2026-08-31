@@ -1,19 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { defineFragments, matchPath } from "./fragments.js";
-
-describe("defineFragments", () => {
-  it("returns the given contract unchanged", () => {
-    // GIVEN a fragment contract literal
-    const contract = { orderRow: { method: "GET" as const, path: "/orders/:id/row" as const } };
-
-    // WHEN it is defined
-    const defined = defineFragments(contract);
-
-    // THEN the same object is handed back, by identity
-    expect(defined).toBe(contract);
-  });
-});
+import { matchPath } from "./fragments.js";
 
 describe("matchPath", () => {
   it("binds every named segment of a matching path", () => {

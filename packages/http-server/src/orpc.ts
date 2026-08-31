@@ -508,14 +508,15 @@ type AllRequirementsOf<C> =
 
 /**
  * Distributes `SchemesOf` over the union of requirement tuples a walk
- * collected. Exported for `htmx-controller.ts`, which folds a FLAT contract's
- * requirements rather than a recursive tree — the two share this step, not
- * the walk that feeds it.
+ * collected. Exported for `htmx-route.ts`, which feeds it a route's own
+ * `requires` directly — data read off one piece, never a contract to walk —
+ * both at a route's own mint (`RequiresGate`) and over the array arm's union
+ * of pieces (`RequiresOfPiece`).
  */
 export type SchemesIn<R> = R extends Requirements ? SchemesOf<R> : never;
 
 /** Every scope string the contract names for scheme `K`, across every requirement. */
-type ScopesIn<R, K extends string> = R extends Requirements
+export type ScopesIn<R, K extends string> = R extends Requirements
   ? {
       // `K extends keyof R[I]` first, never `R[I][K & keyof R[I]]`: indexing a
       // requirement that does not name `K` gives `never`, and inferring `S`
@@ -555,10 +556,11 @@ type ScopeGate<C, Vocab> = [Ungrantable<C, Vocab>] extends [never]
 
 /**
  * One port instance per scheme named anywhere in `R`, a union of requirement
- * tuples — as a router's or `htmx-controller.ts`'s composed provider's needs
- * channel. Parameterized by the requirements union rather than by a contract,
- * so the two callers can feed it their own (recursive vs flat)
- * `AllRequirementsOf`. The runtime side is `schemesOf`; these must agree.
+ * tuples — as a router's composed provider's needs channel, fed
+ * `AllRequirementsOf<C>`, or `htmx-route.ts`'s, fed `RequiresOfPiece<T[number]>`
+ * — each piece's own literal `requires`, distributed over the union rather
+ * than folded from a contract. The runtime side is `schemesOf`; these must
+ * agree.
  */
 export type SchemePortsOf<R> =
   SchemesIn<R> extends infer S extends string

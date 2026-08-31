@@ -28,9 +28,9 @@ Authenticated<T, R>`. Call it with one or more `Requirement`s to get back a
 - **`Requirement`** — `Readonly<Record<string, readonly string[]>>`, e.g.
   `{ user: ["orders:export"] }`: one security scheme's name mapped to the
   scopes it must grant. It is the **carrier** — what a marked node holds and
-  `isAuthenticated` reads back — so it says nothing about arity; the
-  module-private `OneScheme<Q>` in `authenticated`'s own constraint is what
-  refuses a second key where one is written. Exactly one scheme deliberately:
+  `isAuthenticated` reads back — so it says nothing about arity; `OneScheme<Q>`
+  in `authenticated`'s own constraint is what refuses a second key where one
+  is written. Exactly one scheme deliberately:
   AND-within-a-requirement is not modelled, because that would put a record
   rather than a single identity on the handler, and a handler wants to know
   which scheme authenticated the caller, not juggle several at once. **The
@@ -38,9 +38,13 @@ Authenticated<T, R>`. Call it with one or more `Requirement`s to get back a
   the rule**: OpenAPI reads `{ user: [], mtls: [] }` as AND, and
   `@btravstack/http-server` walks the entries taking the first that satisfies, which
   is OR — so a requirement copied out of an OpenAPI document would have
-  admitted a caller presenting either. `OneScheme` is
-  `SeveralKeys<keyof Q> extends false ? Q : never`, over the standard
-  distribute-then-compare-back union test; pinned by `auth.test-d.ts`.
+  admitted a caller presenting either.
+- **`OneScheme<Q>`** — `SeveralKeys<keyof Q> extends false ? Q : never`, over
+  the standard distribute-then-compare-back union test; pinned by
+  `auth.test-d.ts`. Exported so a consumer minting its own requirement-typed
+  surface — `@btravstack/http-server`'s `HtmxGet`/`HtmxPost` is the first — can
+  intersect it into that surface's own constraint rather than re-deriving the
+  same refusal.
 - **`Requirements`** — `readonly Requirement[]`. Several requirements on one
   mark are **ORed**, tried in declaration order: the first the caller
   satisfies wins.

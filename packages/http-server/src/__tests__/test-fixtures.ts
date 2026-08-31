@@ -45,10 +45,9 @@ import {
   type Grant,
 } from "../auth.js";
 import { defineHttp } from "../define-http.js";
-import { defineFragments } from "../fragments.js";
 import { HttpHandler, type HttpAnswerer } from "../handler.js";
 import { html } from "../html.js";
-import { HtmxFragmentsPort } from "../htmx-controller.js";
+import { HtmxFragmentsPort } from "../htmx-route.js";
 import { htmx } from "../htmx.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
@@ -464,14 +463,10 @@ const bothRouter = publicApi.HttpRouter(bothContract)({
   sync: () => ({ ping: () => OkAsync("pong") }),
 });
 
-const bothFragments = defineFragments({ status: { method: "GET", path: "/status" } });
-const bothStatusFragment = publicApi.HtmxController(
-  bothFragments,
-  "status",
-)({
+const bothStatusFragment = publicApi.HtmxGet("/status")({
   sync: () => () => OkAsync(html`<p>ok</p>`),
 });
-const bothFragmentsProvider = publicApi.HtmxFragments(bothFragments)([bothStatusFragment]);
+const bothFragmentsProvider = publicApi.HtmxFragments([bothStatusFragment]);
 
 const bothProtocolsAppOf = () =>
   HttpModule("BothProtocolsApp")({
@@ -519,18 +514,10 @@ const sharedAuthRouter = sharedAuthApi.HttpRouter(sharedAuthContract)({
   sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
 });
 
-const sharedAuthFragments = authenticated({ user: [] })(
-  defineFragments({ profile: { method: "GET", path: "/profile" } }),
-);
-const sharedAuthProfileFragment = sharedAuthApi.HtmxController(
-  sharedAuthFragments,
-  "profile",
-)({
+const sharedAuthProfileFragment = sharedAuthApi.HtmxGet("/profile", { requires: [{ user: [] }] })({
   sync: () => (context) => OkAsync(html`<p>${context.principal.userId}</p>`),
 });
-const sharedAuthFragmentsProvider = sharedAuthApi.HtmxFragments(sharedAuthFragments)([
-  sharedAuthProfileFragment,
-]);
+const sharedAuthFragmentsProvider = sharedAuthApi.HtmxFragments([sharedAuthProfileFragment]);
 
 const sharedAuthAppOf = () =>
   HttpModule("SharedAuthApp")({
@@ -693,10 +680,10 @@ const noop: Handler = (_request, response, _signal) =>
 
 /**
  * Two schemes, dedicated to the fixtures below and kept SEPARATE from `api`'s
- * own registry: `htmxFragments`' contract mark names "user" and its
- * `adminOnly` route overrides with "service" — two DIFFERENT scheme names —
- * so a test can tell "found the contract's mark" from "found the route's
- * mark" by which scheme key resolved, not merely by requirement identity.
+ * own registry: `orderRowFragment` and `healthFragment` require "user",
+ * `adminOnlyFragment` requires "service" — two DIFFERENT scheme names — so a
+ * test can tell one route's own requirement from another's by which scheme
+ * key resolved, not merely by requirement identity.
  */
 const htmxUserAuthenticator = HttpAuthenticator<{ readonly userId: string }>()({
   sync: () => () => OkAsync({ userId: "u-1" }),
@@ -708,24 +695,7 @@ const htmxApi = defineHttp({
   authenticators: { user: htmxUserAuthenticator, service: htmxServiceAuthenticator },
 });
 
-/**
- * One route inheriting the contract's mark, one likewise, and one overriding
- * it with a scheme of its own — the nearest-mark-wins fold, exercised end to
- * end across two distinct schemes. The middle key is "1", an integer-like
- * string, deliberately: JS reorders such a key ahead of every other own
- * property, so `htmx-controller.spec.ts`'s route-order assertion below is
- * also this fixture's own regression guard against that reordering leaking
- * into the composed `routes` array.
- */
-const htmxFragments = authenticated({ user: [] })(
-  defineFragments({
-    orderRow: { method: "GET", path: "/orders/:id/row" },
-    "1": { method: "GET", path: "/health" },
-    adminOnly: authenticated({ service: [] })({ method: "GET", path: "/admin" }),
-  }),
-);
-
-const orderRowFragment = htmxApi.HtmxController(htmxFragments, "orderRow")(
+const orderRowFragment = htmxApi.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
   { greeter: Greeter },
   {
     sync:
@@ -735,21 +705,15 @@ const orderRowFragment = htmxApi.HtmxController(htmxFragments, "orderRow")(
   },
 );
 
-const healthFragment = htmxApi.HtmxController(
-  htmxFragments,
-  "1",
-)({
+const healthFragment = htmxApi.HtmxGet("/health", { requires: [{ user: [] }] })({
   sync: () => () => OkAsync(html`<p>ok</p>`),
 });
 
-const adminOnlyFragment = htmxApi.HtmxController(
-  htmxFragments,
-  "adminOnly",
-)({
+const adminOnlyFragment = htmxApi.HtmxGet("/admin", { requires: [{ service: [] }] })({
   sync: () => () => OkAsync(html`<p>admin</p>`),
 });
 
-const htmxFragmentsProvider = htmxApi.HtmxFragments(htmxFragments)([
+const htmxFragmentsProvider = htmxApi.HtmxFragments([
   orderRowFragment,
   healthFragment,
   adminOnlyFragment,
@@ -801,67 +765,50 @@ const htmxRuntimeAuthenticator = HttpAuthenticator<{ readonly userId: string }, 
 
 const htmxRuntimeApi = defineHttp({ authenticators: { user: htmxRuntimeAuthenticator } });
 
-const htmxRuntimeFragments = defineFragments({
-  row: { method: "GET", path: "/orders/:id/row" },
-  rowUpdate: { method: "POST", path: "/orders/:id/row", input: noteInput },
-  profile: authenticated({ user: [] })({ method: "GET", path: "/profile" }),
-  adminPanel: authenticated({ user: ["admin"] })({ method: "GET", path: "/admin" }),
-  echo: { method: "POST", path: "/echo" },
-  secure: authenticated({ user: [] })({ method: "POST", path: "/secure" }),
-});
-
 let htmxRowGetRuns = 0;
 let htmxRowUpdateRuns = 0;
 
-const htmxRowFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "row",
-)({
-  sync: () => (_context, params) => {
-    htmxRowGetRuns += 1;
-    return OkAsync(html`<tr id="row-${params.id}">row</tr>`);
-  },
-});
+/** The deps arm's own dependency — a route calling a use case, as a real slice does. */
+class RowGetCounter extends Port("RowGetCounter")<{ readonly increment: () => void }> {}
 
-const htmxRowUpdateFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "rowUpdate",
-)({
+const htmxRowFragment = htmxRuntimeApi.HtmxGet("/orders/:id/row")(
+  { counter: RowGetCounter },
+  {
+    sync:
+      ({ counter }) =>
+      (_context, params) => {
+        counter.increment();
+        return OkAsync(html`<tr id="row-${params.id}">row</tr>`);
+      },
+  },
+);
+
+const htmxRowUpdateFragment = htmxRuntimeApi.HtmxPost("/orders/:id/row", { input: noteInput })({
   sync: () => (_context, params, input) => {
     htmxRowUpdateRuns += 1;
     return OkAsync(html`<tr id="row-${params.id}">${input.note}</tr>`);
   },
 });
 
-const htmxProfileFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "profile",
-)({
+const htmxProfileFragment = htmxRuntimeApi.HtmxGet("/profile", { requires: [{ user: [] }] })({
   sync: () => (context) => OkAsync(html`<p>hi ${context.principal.userId}</p>`),
 });
 
-const htmxAdminPanelFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "adminPanel",
-)({
+const htmxAdminPanelFragment = htmxRuntimeApi.HtmxGet("/admin", {
+  requires: [{ user: ["admin"] }],
+})({
   sync: () => () => OkAsync(html`<p>admin</p>`),
 });
 
-const htmxEchoFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "echo",
-)({
+const htmxEchoFragment = htmxRuntimeApi.HtmxPost("/echo")({
   sync: () => (_context, _params, input) => OkAsync(html`<p>${JSON.stringify(input)}</p>`),
 });
 
-const htmxSecureFragment = htmxRuntimeApi.HtmxController(
-  htmxRuntimeFragments,
-  "secure",
-)({
+const htmxSecureFragment = htmxRuntimeApi.HtmxPost("/secure", { requires: [{ user: [] }] })({
   sync: () => (context) => OkAsync(html`<p>secure ${context.principal.userId}</p>`),
 });
 
-const htmxRuntimeFragmentsProvider = htmxRuntimeApi.HtmxFragments(htmxRuntimeFragments)([
+const htmxRuntimeFragmentsProvider = htmxRuntimeApi.HtmxFragments([
   htmxRowFragment,
   htmxRowUpdateFragment,
   htmxProfileFragment,
@@ -881,6 +828,7 @@ const htmxRuntimeAppOf = (bodyLimit?: number) =>
     ],
     provides: [
       htmx(),
+      Provider(RowGetCounter)({ value: { increment: () => (htmxRowGetRuns += 1) } }),
       htmxRowFragment,
       htmxRowUpdateFragment,
       htmxProfileFragment,
@@ -915,6 +863,7 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
           },
         }),
         htmx(),
+        Provider(RowGetCounter)({ value: { increment: () => (htmxRowGetRuns += 1) } }),
         htmxRowFragment,
         htmxRowUpdateFragment,
         htmxProfileFragment,

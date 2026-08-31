@@ -23,20 +23,20 @@ element text and a quoted attribute value, and nothing else — an unquoted
 attribute, an attribute name, a URL scheme and `<script>`/`<style>` contents
 are the caller's own responsibility.
 
-`defineFragments({ … })` declares a fragment contract — a flat record of
-`{ method, path, input? }` routes, carrying `@btravstack/contract`'s
-`authenticated()` marker unchanged, so a route gets the same principal and the
-same 401/403 path as a procedure. It is **not** an oRPC contract: a browser
-navigation is not an RPC call, so a route answers `Html` rather than a typed
-envelope, and its errors are the slice's own to recover into a rendered
-fragment rather than a declared union a client branches on. `ParamsOf<Path>`
-extracts a path template's `:name` segments at the type level.
+`api.HtmxGet(path, options?)` and `api.HtmxPost(path, options?)` mint a route
+straight from its path — no contract in between. `options.requires`, typed
+exactly as an oRPC procedure's `authenticated()` mark, gives a route the same
+principal and the same 401/403 path as a procedure. It is **not** an oRPC
+contract: a browser navigation is not an RPC call, so a route answers `Html`
+rather than a typed envelope, and its errors are the slice's own to recover
+into a rendered fragment rather than a declared union a client branches on.
+`HtmxPost` additionally takes `options.input`, the Standard Schema that
+validates the decoded form body. `ParamsOf<Path>` extracts a path template's
+`:name` segments at the type level.
 
-`api.HtmxController(fragments, key)({ name: Dep }, { sync })` and
-`api.HtmxFragments(fragments)([piece, …])` mirror `HttpController`/`HttpRouter`
-— one route as a provider on a port of its own, composed from an array of
-pieces, an uncovered route refused at the call. `htmx({ prefix? })` is the
-answerer, a second `HttpHandler` member alongside `orpc()`.
+`api.HtmxFragments([piece, …])` composes an array of `HtmxGet`/`HtmxPost`
+pieces into one port, keyed by index. `htmx({ prefix? })` is the answerer, a
+second `HttpHandler` member alongside `orpc()`.
 
 `HttpModule({ router?, fragments?, fragmentsPrefix?, … })` composes a router,
 fragments, or both — supplying neither is refused at the call against a

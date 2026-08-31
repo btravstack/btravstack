@@ -217,15 +217,15 @@ authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
   call sites: the principal types the handler, the vocabulary checks the
   contract.
 
-  **This gate does not exist on the fragment path.** `VocabFrom` reaches
-  `routerFor` alone — `htmxFragmentsFor` is typed by `SchemesFrom<A>` and
-  `SchemeProviders<A>` only (`define-http.ts`), so `authenticated({ user:
-["orders:export"] })` on a fragment route whose `user` authenticator can never
-  grant that scope compiles cleanly and answers every caller with a permanent
-  403, discovered only in production. Threading `VocabFrom` into
-  `htmxFragmentsFor` is tracked as issue #184; until it lands, a fragment
-  contract's scopes are checked at runtime only, by `resolvePrincipal`'s own
-  walk (below), never at compile time.
+  **The fragment path carries the same gate, at the route's own mint.**
+  `htmx-route.ts`'s `HtmxGet`/`HtmxPost` intersect `RequiresGate<R, Vocab>`
+  onto their `requires` option — `ScopeGate` with the contract fold removed,
+  since a route's `requires` is data rather than a tree to walk — so
+  `api.HtmxGet("/orders", { requires: [{ user: ["orders:export"] }] })` against
+  a `user` authenticator that can never grant it fails the same
+  `"UNGRANTABLE SCOPE — its scheme's authenticator cannot grant it"` sentence
+  `routerFor` gives an oRPC contract, named at the mint rather than discovered
+  in production.
 
   Two cases the oRPC gate catches, and both used to be silent (#90): a typo, and a scope
   asked of a scheme declared with no vocabulary at all — `Scope = never`, so

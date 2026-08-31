@@ -7,7 +7,6 @@ import { oc } from "@orpc/contract";
 import { OkAsync } from "unthrown";
 
 import { defineHttp } from "./define-http.js";
-import { defineFragments } from "./fragments.js";
 import { html } from "./html.js";
 import { HttpModule } from "./http-module.js";
 
@@ -16,14 +15,8 @@ const api = defineHttp();
 const contract = oc.router({ hello: oc });
 const router = api.HttpRouter(contract)({ sync: () => ({ hello: () => OkAsync("hi") }) });
 
-const fragmentsContract = defineFragments({ row: { method: "GET", path: "/row" } });
-const rowFragment = api.HtmxController(
-  fragmentsContract,
-  "row",
-)({
-  sync: () => () => OkAsync(html`<p>row</p>`),
-});
-const fragments = api.HtmxFragments(fragmentsContract)([rowFragment]);
+const rowFragment = api.HtmxGet("/row")({ sync: () => () => OkAsync(html`<p>row</p>`) });
+const fragments = api.HtmxFragments([rowFragment]);
 
 // @ts-expect-error — neither `router` nor `fragments` is supplied
 void HttpModule("Neither")({ port: 0 });
