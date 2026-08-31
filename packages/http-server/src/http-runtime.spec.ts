@@ -395,4 +395,16 @@ describe("httpRuntime", () => {
     // before its first byte
     await expect(held.closed()).resolves.toBeUndefined();
   });
+
+  it("serves a fragments-only graph, with no oRPC router anywhere", async ({ serveAnswerer }) => {
+    // GIVEN a graph composing the socket half and one bare answerer — no
+    // router, no oRPC, which `http()` would have forced
+    const { origin } = await serveAnswerer("/ui", "hello from a fragment");
+
+    // WHEN the answerer's mount point is requested
+    const response = await fetch(`${origin}/ui`);
+
+    // THEN it was served: the socket half stands on its own
+    expect(await response.text()).toBe("hello from a fragment");
+  });
 });

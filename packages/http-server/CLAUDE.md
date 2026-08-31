@@ -274,8 +274,9 @@ not cover"` marker, and what the marker names is a procedure path
   arrangement `packages/amqp-worker` documents between `handler.ts` and
   `amqp-runtime.ts`.
 - **Authentication — the contract marker, `Principal`/`SchemesOf`,
-  `HttpAuthenticator`, `defineHttp`, `principalMiddleware`, the scope rule and
-  the scheme-dependency wiring — is stated in full in `AUTH.md`.** Read it
+  `HttpAuthenticator`, `defineHttp`, `resolvePrincipal`, `principalMiddleware`,
+  the scope rule and the scheme-dependency wiring — is stated in full in
+  `AUTH.md`.** Read it
   before changing `auth.ts`, `principal.ts`, `define-http.ts` or the contract
   marker. In short: the contract says WHICH SCHEMES protect a route and which
   scopes each must grant, `defineHttp({ authenticators })` says WHAT each
@@ -338,8 +339,8 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   closure, because a record is not something an environment can carry.
   `orpc.ts`'s `pluginsOf(options, config)` is where the two meet, and the oRPC
   handler provider therefore declares `HttpConfig` as a dependency — which is
-  why `httpModule`'s return type `Exclude`s it from the needs channel: the
-  module provides it.
+  why `orpc()`'s `HttpConfig` dependency is discharged by `httpServer()`
+  rather than owed by `http()`'s own needs channel.
 
   Precedence, spelled once in `corsOf`: a record naming `origin` wins,
   `HTTP_CORS_ORIGIN` next, oRPC's own default (reflect the request's origin) last.
@@ -390,7 +391,7 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
 - **`securityHeaders`** — `boolean | Readonly<Record<string, string>>`,
   default `true`. **Not** routed through `orpc()`: it stays on `HttpOptions`
   after `prefix` and `plugins` are destructured out of `http()`'s options, so
-  it lands in `socket` — the rest handed to `httpModule` — and is applied by
+  it lands in `socket` — the rest handed to `httpServer` — and is applied by
   `http-runtime.ts`'s `listen`, on the raw node listener, **before**
   dispatch. That placement, not an oRPC plugin, is deliberate: a plugin only
   runs for a request oRPC **matched**, so the runtime's own `404` and `500`
@@ -468,6 +469,23 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `RPCHandler.handle(req, res, { prefix })` plus the runtime's own `404` do
   with two dependencies fewer — and no `overrideGlobalObjects` footgun to
   disarm.
+- **`httpServer({ port?, hostname?, cors?, bodyLimit?, compression?, securityHeaders? })`
+  → `Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env>`** — the
+  socket half: the runtime, its config, and no answerer. `http()` is
+  `Module("Http")({ imports: [httpServer(options)], provides: [orpc(options)],
+exports: [HttpRuntime, HttpConfig, HttpHandler] })` — this plus `orpc()`. The
+  package's own transport specs, and a fragments-only graph, compose
+  `httpServer` directly, with no oRPC router anywhere: a set port makes a
+  single answerer welded to the socket the wrong default, and a fragments-only
+  application would otherwise have to compose `http()` and declare an oRPC
+  router it does not have. `httpRuntime`, the runtime value's factory, stays
+  internal.
+- **`resolvePrincipal(requirements, authenticators, headers)`
+  → `AsyncResult<unknown, Unauthenticated | UnderScoped>`** — the authentication
+  walk, protocol-neutral, shared by every answerer so a scope check cannot drift
+  between protocols. `principalMiddleware` is oRPC's adapter over it and keeps
+  the throw at the boundary that demands one. `UnderScoped` is the `403` case,
+  distinct from `Unauthenticated`'s `401`.
 
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
@@ -534,21 +552,16 @@ prefix })`, unmatched → resolves unwritten. `handle` returns
   `{ matched }`, never the unit's result — and the runtime reads "did you
   answer?" off the response rather than off that, which is what lets an
   answerer be written against `node:http` alone.
-- **`httpModule(options, handlerProvider)`** (`http-runtime.ts`, exported from
-  the file, not from `index.ts`) — the runtime and its configuration as a
-  module over whichever `HttpHandler` provider it is handed. `http()` is
-  `httpModule(socket, orpc({ prefix }))`; the package's own transport
-  specs hand it a bare listener instead. It exists for that second reason
-  only. `httpRuntime`, the runtime value's factory, is internal too.
-- **75 specs, 100% lines/functions.** Every app boots through the `boot`
+- **77 specs, 100% lines/functions.** Every app boots through the `boot`
   fixture — `@btravstack/testing`'s `bootFixture()`, which `serve`, `rpc`,
   `configured` and `appOnPort` depend on — so it is stopped when the test
   ends, on every exit path, and the teardown is Defect-only: a startup
   failure (`configured`'s `ConfigInvalid`, `occupied`'s port in use) is the
-  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 23,
-  through `test-fixtures.ts`'s `appOf` — `httpModule({ port: 0, hostname:
-"127.0.0.1" }, answering(handler))`, `answering` being the fixture that mounts
-  a bare handler as the graph's one answerer — so the
+  test's to assert on `app.exited`. `http-runtime.spec.ts` carries 24,
+  through `test-fixtures.ts`'s `appOf` — `httpServer({ port: 0, hostname:
+"127.0.0.1" })` imported next to `answering(handler)` in `provides`,
+  `answering` being the fixture that mounts a bare handler as the graph's one
+  answerer — so the
   guarantees (`404`/`500` fallbacks, the unit open until `'close'`, the drain,
   streamed responses, keep-alive retirement, the trace-id policy, port
   failures) are exercised with no router in the way; three of them are the
@@ -659,7 +672,7 @@ point covers is the runtime's own `404`, written before any answerer is
 consulted; a path a mount DOES cover, whose answerer declines, is the same
 `404` it always was.
 
-Three consequences worth stating because each is a decision:
+Four consequences worth stating because each is a decision:
 
 - **A mount point is a path segment, not a string prefix.** `/rpc` does not own
   `/rpcx`. A trailing slash is the same mount (`/rpc/` and `/rpc` collide), and
@@ -676,6 +689,10 @@ Three consequences worth stating because each is a decision:
   "there is one way to answer HTTP here, oRPC, so nothing outside this package
   provides or names it". A second protocol's package has to name it, so that
   sentence is gone from `handler.ts`.
+- **The socket half composes on its own** (`httpServer`, in **Public surface**
+  above). An application serves oRPC (`http()`), fragments (`httpServer()` +
+  `htmx()`), or both — the weld between the socket and one answerer was a
+  leftover from when there was exactly one.
 
 **An answerer outside a contract carries its own authentication, and nothing
 checks that it did.** `@btravstack/contract`'s marker is what says which scheme

@@ -41,7 +41,7 @@ import { defineHttp } from "../define-http.js";
 import { HttpHandler, type HttpAnswerer } from "../handler.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
-import { HttpRuntime, http, httpModule, type HttpInfo, type HttpOptions } from "../http-runtime.js";
+import { HttpRuntime, http, httpServer, type HttpInfo, type HttpOptions } from "../http-runtime.js";
 
 /** What a bare answerer's `handle` is, without the mount point around it. */
 type Handler = HttpAnswerer["handle"];
@@ -60,15 +60,13 @@ const publicApi = defineHttp();
 const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securityHeaders"]) =>
   Module("App")({
     imports: [
-      httpModule(
-        {
-          port,
-          hostname: "127.0.0.1",
-          ...(securityHeaders === undefined ? {} : { securityHeaders }),
-        },
-        answering(handler),
-      ),
+      httpServer({
+        port,
+        hostname: "127.0.0.1",
+        ...(securityHeaders === undefined ? {} : { securityHeaders }),
+      }),
     ],
+    provides: [answering(handler)],
     exports: [HttpRuntime, HttpHandler],
   });
 
@@ -515,8 +513,9 @@ const configuredAppOf = (options: { readonly port?: number; readonly hostname?: 
   let bound: ServiceOf<HttpConfig> | undefined;
   return {
     module: Module("ConfiguredApp")({
-      imports: [httpModule(options, answering(noop))],
+      imports: [httpServer(options)],
       provides: [
+        answering(noop),
         Provider(BoundConfig)(
           { config: HttpConfig },
           {
@@ -579,24 +578,13 @@ type App = RunningApp<ConfigInvalid, HttpInfo>;
  */
 const mountedAppOf = (prefixes: readonly `/${string}`[]) =>
   Module("MountedApp")({
-    imports: [
-      httpModule(
-        { port: 0, hostname: "127.0.0.1" },
-        answering(
-          (_request, response) =>
-            new Promise<void>((done) => response.end(prefixes[0], () => done())),
-          prefixes[0] ?? "/",
-        ),
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    provides: prefixes.map((prefix) =>
+      answering(
+        (_request, response) => new Promise<void>((done) => response.end(prefix, () => done())),
+        prefix,
       ),
-    ],
-    provides: prefixes
-      .slice(1)
-      .map((prefix) =>
-        answering(
-          (_request, response) => new Promise<void>((done) => response.end(prefix, () => done())),
-          prefix,
-        ),
-      ),
+    ),
     exports: [HttpRuntime, HttpHandler],
   });
 
@@ -758,6 +746,14 @@ export type HttpFixtures = {
   readonly mountedApp: (prefixes: readonly `/${string}`[]) => App;
   /** A bare request's headers — the one argument an authenticator is handed. */
   readonly headers: IncomingHttpHeaders;
+  /**
+   * A graph of `httpServer()` plus one bare answerer at `prefix` answering
+   * `body` — the composition `http()` cannot express. Shut down by the fixture.
+   */
+  readonly serveAnswerer: (
+    prefix: `/${string}`,
+    body: string,
+  ) => Promise<{ readonly origin: string }>;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1060,6 +1056,26 @@ export const it = test.extend<HttpFixtures>({
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return callsOf(`http://127.0.0.1:${info.port}`);
+    });
+  },
+
+  serveAnswerer: async ({ boot }, use) => {
+    await use(async (prefix, body) => {
+      const app = boot(
+        Module("AnswererOnly")({
+          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+          provides: [
+            answering(
+              (_request, response) => new Promise<void>((done) => response.end(body, () => done())),
+              prefix,
+            ),
+          ],
+          exports: [HttpRuntime, HttpHandler],
+        }),
+      );
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return { origin: `http://127.0.0.1:${info.port}` };
     });
   },
 });
