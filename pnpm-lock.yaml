@@ -540,6 +540,9 @@ importers:
       '@btravstack/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@btravstack/http-server':
+        specifier: workspace:*
+        version: link:../../packages/http-server
       '@btravstack/tsconfig':
         specifier: 'catalog:'
         version: 0.2.0

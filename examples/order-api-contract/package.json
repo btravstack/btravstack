@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@btravstack/contract": "workspace:*",
+    "@btravstack/http-server": "workspace:*",
     "@btravstack/tsconfig": "catalog:",
     "@orpc/client": "catalog:",
     "@types/node": "catalog:",
@@ -30,6 +31,7 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@btravstack/contract": "workspace:^"
+    "@btravstack/contract": "workspace:^",
+    "@btravstack/http-server": "workspace:^"
   }
 }

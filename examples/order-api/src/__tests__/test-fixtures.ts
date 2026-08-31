@@ -227,6 +227,11 @@ export type ApiFixtures = {
    */
   readonly probesFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<TestAgent>;
   /**
+   * The origin string `supertest` takes directly, for a given served app — the
+   * fragment answerer has no typed client, unlike the oRPC one `clientFor` gives.
+   */
+  readonly originFor: <E>(app: RunningApp<E, HttpInfo>) => Promise<string>;
+  /**
    * The real root, served, as the origin string `supertest` takes directly — for
    * a spec about statuses and headers rather than payloads.
    */
@@ -304,6 +309,11 @@ export const it = test.extend<ApiFixtures>({
       assert.ok(port !== undefined, "the probe server published no port");
       return request(`http://127.0.0.1:${port}`);
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  originFor: async ({}, use) => {
+    await use(originOf);
   },
 
   origin: async ({ serve }, use) => {
