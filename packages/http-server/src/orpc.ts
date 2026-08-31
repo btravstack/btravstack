@@ -569,7 +569,7 @@ export type SchemePortsOf<R> =
 
 /**
  * Every scheme the contract names, anywhere — the router's scheme
- * dependencies. The type side is `SchemePortsOf<C>`; these two must agree.
+ * dependencies. The type side is `SchemePortsOf<R>`; these two must agree.
  */
 export const schemesOf = (contract: unknown): readonly string[] => {
   const found = new Set<string>();

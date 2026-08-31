@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/http-server"
-description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HttpAuthenticator, http(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
+description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HtmxFragments, HtmxController, html and raw, HttpAuthenticator, http(), htmx(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
 <!-- doctest: prelude
@@ -61,11 +61,23 @@ declare const view: (order: Order) => OrderView;
 | `HttpAnswerer`         | type  | one protocol's answer to HTTP — a mount `prefix` and the `handle` the runtime routes to; see [several answerers](#httphandler-and-several-answerers)                                                                                                                                                         |
 | `HttpConfig`           | value | `class HttpConfig extends Port("HttpConfig")<{ port: number; hostname: string; bodyLimit: number; corsOrigin: string; compression: boolean }> {}` — what the transport is bound and configured with, provided by `http()` from `PORT` / `HOST` / `HTTP_BODY_LIMIT` / `HTTP_CORS_ORIGIN` / `HTTP_COMPRESSION` |
 | `HttpInfo`             | type  | `{ readonly port: number }` — what the runtime publishes on `Serving.info` once listening, read back through `RunningApp.runtimeInfo()`                                                                                                                                                                      |
+| `html`                 | value | `` html`<tr>${value}</tr>` `` — a tagged template returning `Html`, escaping every interpolation by default                                                                                                                                                                                                  |
+| `raw`                  | value | `raw(markup)` — the one way past `html`'s escaping, a visible act at the call site                                                                                                                                                                                                                           |
+| `Html`                 | type  | `{ readonly [HTML]: true; readonly value: string }` — the output of `html`/`raw`, and nothing else                                                                                                                                                                                                           |
+| `defineFragments`      | value | `defineFragments({ … })` — a flat record of `{ method, path, input? }` routes, carrying `authenticated(...)` unchanged                                                                                                                                                                                       |
+| `FragmentRoute`        | type  | one route a fragment answers                                                                                                                                                                                                                                                                                 |
+| `FragmentsContract`    | type  | `Readonly<Record<string, FragmentRoute>>` — what `defineFragments` takes                                                                                                                                                                                                                                     |
+| `ParamsOf`             | type  | `ParamsOf<Path>` — the `:name` segments a path template names, e.g. `ParamsOf<"/orders/:id/row">` is `{ readonly id: string }`                                                                                                                                                                               |
+| `HtmxFragmentsPort`    | value | `class HtmxFragmentsPort extends Port("HtmxFragments")<{ routes; authenticators }> {}` — every route a fragment contract declares, composed into one port; what `htmx()` answers from                                                                                                                        |
+| `FragmentAnswer`       | type  | what the composed port carries for one route — principal and input erased to `unknown`                                                                                                                                                                                                                       |
+| `FragmentHandler`      | type  | `FragmentHandler<Route, Principal>` — a fragment's own handler signature: `(context, params, input) => AsyncResult<Html, never>`                                                                                                                                                                             |
+| `htmx`                 | value | `htmx({ prefix? })` — the second answerer, one `HttpHandler` member serving fragments, mounted under `prefix` (default `/`)                                                                                                                                                                                  |
+| `HtmxOptions`          | type  | `htmx()`'s options                                                                                                                                                                                                                                                                                           |
 
-`HttpController` and `HttpRouter` are **not** top-level exports: they come off
-`defineHttp`, because that is where the scheme registry that types them is
-stated. A marked contract reached through anything else would type
-`principal: never`.
+`HttpController`/`HttpRouter` and `HtmxController`/`HtmxFragments` are **not**
+top-level exports: all four come off `defineHttp`, because that is where the
+scheme registry that types them is stated. A marked contract reached through
+anything else would type `principal: never`.
 
 `HttpRouterPort` (the starter's router port, `Port("HttpRouter")`) and
 `Implementation<C, Schemes>` (the record type `HttpRouter`'s `sync` returns)
@@ -79,37 +91,49 @@ to.
 ## `HttpModule(name)({...})`
 
 Everything `Module(name)({...})` takes — `imports`, `provides`, `exports` —
-plus the starter's own fields. It appends
-`http({ prefix, port, hostname, cors, bodyLimit, compression, plugins, securityHeaders })`
-to `imports`,
-prepends `router` **and the scheme authenticators the router carries** to
-`provides`,
-prepends `HttpRuntime` to `exports`, and hands the augmented tuples to di's own
-`Module(name)`, whose return type is the sugar's. The kernel and both gates see
-a plain module.
+plus the starter's own fields. Supply `router`, `fragments`, or both; supplying
+**neither is refused at this call**, against a
+`"SERVES NOTHING — supply a router, fragments, or both"` marker, rather than
+booting a listener with nothing behind it. It appends
+`httpServer({ port, hostname, cors, bodyLimit, compression, securityHeaders })`
+to `imports`; when `router` is given it prepends `router` **and the scheme
+authenticators it carries**, plus `orpc({ prefix, plugins, … })`, to
+`provides`; when `fragments` is given it prepends `fragments` and its own
+authenticators, plus `htmx({ prefix: fragmentsPrefix })`. A scheme both
+provide is deduplicated by reference before it reaches `provides`. It prepends
+`HttpRuntime` and `HttpHandler` to `exports`, and hands the augmented tuples to
+di's own `Module(name)`, whose return type is the sugar's. The kernel and both
+gates see a plain module.
 
 | Option            | Required | Default                      | What it is                                                                                                                                                                     |
 | ----------------- | -------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `router`          | yes      | —                            | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `api.HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
+| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `api.HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
+| `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments(fragments)([...])` returns; likewise typed to its own port                                                  |
 | `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                    |
+| `fragmentsPrefix` | no       | `/`                          | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                              |
 | `port`            | no       | read from `PORT`             | pins the port instead of reading it                                                                                                                                            |
 | `hostname`        | no       | read from `HOST`             | pins the host instead of reading it                                                                                                                                            |
-| `cors`            | no       | read from `HTTP_CORS_ORIGIN` | pins the CORS policy — `true` for oRPC's defaults, or its options record                                                                                                       |
-| `bodyLimit`       | no       | read from `HTTP_BODY_LIMIT`  | pins the largest request body a procedure reads, in bytes; `false` is unbounded                                                                                                |
-| `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record                                                                                                  |
+| `cors`            | no       | read from `HTTP_CORS_ORIGIN` | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                 |
+| `bodyLimit`       | no       | read from `HTTP_BODY_LIMIT`  | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                             |
+| `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                            |
 | `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                       |
-| `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch                                                                                                                      |
+| `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch — covers both answerers                                                                                              |
 | `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                      |
 | `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                |
-| `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` is added                                                                                                                          |
+| `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                       |
+
+\* at least one of `router`/`fragments` is required.
 
 The worked composition root, from `examples/order-api/src/module.ts`:
 
 <!-- doctest: isolate
-import { Logger } from "@btravstack/core";
+import { Logger, Tracer, Meter } from "@btravstack/core";
+import { cache } from "@btravstack/cache";
+import { redisCache } from "@btravstack/cache/redis";
 import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
-import { orderRouter } from "../../module.js";
+import { otel } from "@btravstack/observability/otel";
+import { orderRouter, orderFragments } from "../../module.js";
 import { CustomersSlice } from "../../slices/customers/module.js";
 import { OrdersSlice } from "../../slices/orders/module.js";
 -->
@@ -117,19 +141,28 @@ import { OrdersSlice } from "../../slices/orders/module.js";
 ```ts
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
-  imports: [OrdersSlice, CustomersSlice, observability()],
-  exports: [Logger],
+  fragments: orderFragments,
+  imports: [
+    OrdersSlice,
+    CustomersSlice,
+    cache({ adapter: redisCache() }),
+    observability(),
+    otel(),
+  ],
+  exports: [Logger, Tracer, Meter],
 });
 ```
 
-That is exactly the module
-`Module("OrderApi")({ imports: [OrdersSlice, CustomersSlice, observability(), http()], provides: [orderRouter, ...orderRouter.authenticators], exports: [HttpRuntime, Logger] })`
-would have declared. **There is no `authenticator` option**: the
-authenticators ride the router — which is what needs them — and the sugar
-spreads them into `provides` itself, so an application never lists one and
-cannot list the wrong one. Their own dependencies (a JWT verifier, a key set)
-travel with them, so a root that satisfies none is refused at **this** call by
-di's `NeedsGate`, exactly as a hand-listed provider would be.
+That composes both answerers: the router under `/rpc`, the fragments under
+`/` — `fragmentsPrefix`'s own default. **There is no `authenticator`
+option**: the authenticators ride the router and the fragments provider —
+which is what needs them — and the sugar spreads them into `provides` itself,
+so an application never lists one and cannot list the wrong one. Their own
+dependencies (a JWT verifier, a key set) travel with them, so a root that
+satisfies none is refused at **this** call by di's `NeedsGate`, exactly as a
+hand-listed provider would be. A root serving `router` alone drops
+`fragments`; a fragments-only root drops `router`, and its `prefix`, `cors`,
+`compression` and `plugins` options — oRPC-only — go unused.
 [`observability()`](/reference/observability) is a second
 starter, not this package's business: it brings the `Logger` the application
 writes to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
@@ -645,6 +678,108 @@ deny-by-default here; the contract makes a protected route visible to both
 sides, and that is all it claims. See
 [Protect a procedure](/how-to/protect-a-procedure).
 
+## `html` and `raw`
+
+A fragment's handler returns `Html`, not a string: `` html`…` `` escapes
+every interpolation by default, and `raw(markup)` is the one way past it.
+
+<!-- doctest: isolate
+import { html } from "@btravstack/http-server";
+declare const order: { readonly id: string; readonly quantity: number };
+-->
+
+```ts
+html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`;
+```
+
+A nested `Html` splices as it is — composition needs no `join` — and an array
+of them concatenates with no separator, so a list of rows is as simple as
+`` html`${rows}` `` over an array built with `.map`.
+
+::: warning
+The escaping is **context-blind**: it protects element text and a _quoted_
+attribute value, and nothing else. An unquoted attribute, an attribute name, a
+URL scheme (`href="${url}"` does not vet `javascript:`), and
+`<script>`/`<style>` contents are the caller's own responsibility.
+:::
+
+oxfmt and prettier treat a tagged template named `html` as embeddable markup
+and reflow it, inserting real whitespace into rendered output. This repo sets
+`embeddedLanguageFormatting: "off"`; a consuming application needs the same
+setting, or its rendered output drifts the moment a formatter runs.
+
+## `defineFragments({ … })` and `ParamsOf<Path>`
+
+A fragment contract is a flat record of routes, not an oRPC contract — a
+browser navigation is not an RPC call — but it carries
+[`authenticated(...)`](/reference/contract) unchanged, so a route gets the
+same principal and the same 401/403 path as a procedure:
+
+<!-- doctest: isolate
+import { authenticated } from "@btravstack/contract";
+import { defineFragments } from "@btravstack/http-server";
+-->
+
+```ts
+export const fragments = authenticated({ user: [] })(
+  defineFragments({
+    orderRow: { method: "GET", path: "/orders/:id/row" },
+  }),
+);
+```
+
+`input` is any Standard Schema over the decoded form body — the same shape
+[`Config.provider`](/reference/config) accepts, so no schema library joins
+this package for it. `ParamsOf<P>` extracts the `:name` segments a path
+template names, at the type level: `ParamsOf<"/orders/:id/row">` is
+`{ readonly id: string }`, and a template naming none is an empty record.
+
+## `api.HtmxController(fragments, key)({ name: Dep }, { sync })`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+type FragmentHandler<Route, Principal> = (
+  context: [Principal] extends [never] ? object : { readonly principal: Principal },
+  params: ParamsOf<Route["path"]>,
+  input: InputOf<Route>,
+) => AsyncResult<Html, never>;
+```
+
+One route of a fragment contract, as a provider on a port of its own — the
+same two-call shape as
+[`api.HttpController(contract, path)`](#api-httpcontroller-contract-path).
+The route's key **is** the port's name, minted as `` `HtmxFragment:${key}` ``
+— the same move `HttpController`'s path takes. The key space is **flat**,
+unlike `HttpController`'s dotted contract tree, so two pieces claiming one
+route are simply di's duplicate-provider defect, via the port id every piece
+carries — there is no unsliceable or overlapping path to refuse. See
+[Serve htmx fragments](/how-to/serve-htmx-fragments) for a worked piece.
+
+## `api.HtmxFragments(fragments)([piece, …])`
+
+Every route composed from an array of pieces, mirroring
+[the composing form](#the-composing-form-api-httprouter-contract-piece) of
+`HttpRouter`:
+
+<!-- doctest: isolate
+import { fragments } from "@btravstack/example-order-api-contract";
+import { api } from "../../auth.js";
+import { orderRowFragment } from "../../slices/orders/fragment.js";
+-->
+
+```ts
+export const orderFragments = api.HtmxFragments(fragments)([orderRowFragment]);
+```
+
+An uncovered route is refused against the
+`"UNCOVERED FRAGMENTS — the contract declares a route this array does not
+cover"` marker, and requirements fold nearest-mark-wins exactly as the oRPC
+side does — a route's own mark replaces the contract's default, an unmarked
+route inherits it. The returned provider carries `readonly authenticators`
+the same way the router does, so `HttpModule` can deduplicate a scheme the
+two share, by reference.
+
 ## `http(options)`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
@@ -788,6 +923,46 @@ The set is resolved once per `listen`, not per request. It is deliberately
 small: a default that has to be right for every deployment cannot include a
 CSP, an HSTS max-age or a permissions policy, all of which are a deployment's
 own decision — pass a record when you have made those.
+
+## `htmx(options)`
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+const htmx: (options?: HtmxOptions) => Provider<HttpHandler, never, HtmxFragmentsPort | HttpConfig>;
+```
+
+The second answerer: fragments, mounted under `prefix` (default `/`). It
+matches a request against the composed fragments' routes by method and path,
+resolves the principal through [`resolvePrincipal`](#authentication) when the
+route carries a requirement, reads and validates a `POST` body against the
+route's own schema, and writes the handler's `Html` with
+`content-type: text/html; charset=utf-8`. A request no route claims resolves
+unwritten, exactly like oRPC's answerer, so the runtime's own `404` answers
+it.
+
+| Option   | Required | Default | What it is                  |
+| -------- | -------- | ------- | --------------------------- |
+| `prefix` | no       | `/`     | where fragments are mounted |
+
+Only `bodyLimit`, off the same `HttpConfig` `orpc()` reads, applies to this
+answerer — `cors` and `compression` are oRPC plugins with no fragment
+equivalent.
+
+::: warning
+**Routes are matched in the composition root's own array order, first match
+wins — and that ordering is a security property, not only a routing one.**
+An unmarked route declared before a marked route whose path can also match
+the same request answers it, and no authentication ever runs: two contract
+keys are two port ids, so di has nothing to see collide, and there is
+deliberately no specificity rule to fall back on.
+:::
+
+**The `POST` body decodes through `Object.fromEntries(new
+URLSearchParams(...))`, which keeps only the last value for a repeated key.**
+A `<select multiple>` or a checkbox group both collapse to their last
+selection rather than an array — a mainstream htmx shape a reader should meet
+here, not discover in production.
 
 ## `HttpConfig`, and the environment
 
