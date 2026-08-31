@@ -1,4 +1,4 @@
-import { ErrAsync, OkAsync } from "unthrown";
+import { ErrAsync, OkAsync, type AsyncResult } from "unthrown";
 import { describe, expect, it } from "vitest";
 
 import { HealthCheckFailed, runHealthChecks, type HealthCheck } from "./health.js";
@@ -8,6 +8,23 @@ const healthy = (name: string): HealthCheck => ({ name, check: () => OkAsync() }
 const failing = (name: string, reason: string): HealthCheck => ({
   name,
   check: () => ErrAsync(new HealthCheckFailed({ reason })),
+});
+
+const defecting = (name: string, message: string): HealthCheck => ({
+  name,
+  check: () =>
+    OkAsync().map((): void => {
+      // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject: a buggy check whose AsyncResult defects
+      throw new Error(message);
+    }),
+});
+
+const throwing = (name: string, message: string): HealthCheck => ({
+  name,
+  check: (): AsyncResult<void, HealthCheckFailed> => {
+    // oxlint-disable-next-line unthrown/no-throw -- the throw IS the subject: a check that throws instead of answering
+    throw new Error(message);
+  },
 });
 
 describe("runHealthChecks", () => {
@@ -39,6 +56,35 @@ describe("runHealthChecks", () => {
         { name: "database", status: "unhealthy", reason: "connection refused" },
         { name: "mailer", status: "healthy" },
       ],
+    });
+  });
+
+  it("reports a component whose check defects as unhealthy, instead of losing the report", async () => {
+    // GIVEN a healthy component beside one whose check defects
+    const checks = [healthy("cache"), defecting("database", "client crashed")];
+
+    // WHEN the checks are folded
+    // THEN the buggy check is an unhealthy line naming its cause, and its
+    // sibling is still reported — a defect that escaped here would leave
+    // `/healthz` hanging with nothing written
+    await expect(runHealthChecks(checks)).toBeOkWith({
+      status: "unhealthy",
+      components: [
+        { name: "cache", status: "healthy" },
+        { name: "database", status: "unhealthy", reason: "Error: client crashed" },
+      ],
+    });
+  });
+
+  it("contains a check that throws synchronously, instead of letting it escape the fold", async () => {
+    // GIVEN a check that throws instead of answering
+    // WHEN the checks are folded
+    // THEN the throw becomes an unhealthy line rather than escaping to the
+    // caller — escaped, it would reach the kernel's uncaughtException handler
+    // and tear the application down over its own health endpoint
+    await expect(runHealthChecks([throwing("mailer", "bug in the check")])).toBeOkWith({
+      status: "unhealthy",
+      components: [{ name: "mailer", status: "unhealthy", reason: "Error: bug in the check" }],
     });
   });
 

@@ -255,13 +255,13 @@ is the testing half of that sentence since issue #63 (see the root
 
 ### Health checks
 
-| Export                             | What it is                                                                                                                                                                                         |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HealthChecks`                     | The **set port** every starter contributes to (`Provider.member`). The kernel reads it whole once the graph is built.                                                                              |
-| `HealthCheck`                      | One contribution: `{ name, check: () => AsyncResult<void, HealthCheckFailed> }`.                                                                                                                   |
-| `HealthCheckFailed`                | Modeled, not thrown — a check that throws is a bug in the check; one that fails is the news `/healthz` carries.                                                                                    |
-| `runHealthChecks(checks)`          | Folds them into a `HealthReport`. `AsyncResult<HealthReport, never>` — every check's failure becomes a component line before `allAsync` sees it, so one failing dependency cannot hide the others. |
-| `HealthReport` / `ComponentHealth` | `{ status, components }`, each component `{ name, status, reason? }`.                                                                                                                              |
+| Export                             | What it is                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HealthChecks`                     | The **set port** every starter contributes to (`Provider.member`). The kernel reads it whole once the graph is built.                                                                                                                                                                                                                                                                                      |
+| `HealthCheck`                      | One contribution: `{ name, check: () => AsyncResult<void, HealthCheckFailed> }`.                                                                                                                                                                                                                                                                                                                           |
+| `HealthCheckFailed`                | Modeled, not thrown — a check that throws is a bug in the check; one that fails is the news `/healthz` carries.                                                                                                                                                                                                                                                                                            |
+| `runHealthChecks(checks)`          | Folds them into a `HealthReport`. `AsyncResult<HealthReport, never>` — every check's failure becomes a component line before `allAsync` sees it, so one failing dependency cannot hide the others. A buggy check is contained the same way: each check is started inside the pipeline, so a synchronous throw and a defecting `AsyncResult` alike are recovered into an unhealthy line naming their cause. |
+| `HealthReport` / `ComponentHealth` | `{ status, components }`, each component `{ name, status, reason? }`.                                                                                                                                                                                                                                                                                                                                      |
 
 Served at `GET /healthz` by the probe server, 200 when every component is
 healthy and 503 otherwise, with the same JSON body either way. Deliberately not
@@ -398,19 +398,33 @@ Beyond the nine:
   asserts the success route.
 - **The probe socket is closed at both dispose sites.** `invariants.spec.ts` →
   _"both dispose sites close the probe socket"_.
-- **No `Result` is produced and left unexamined — with exactly two audited
+- **`/healthz` answers whatever the checks do — a buggy check can neither hang
+  the endpoint nor take the application down.** A check whose `AsyncResult`
+  defects, and one that throws synchronously instead of answering, are both
+  recovered into an unhealthy component line inside `runHealthChecks` — each
+  check is started inside the pipeline, so the throw lands in a combinator's
+  net rather than escaping the probe server's request listener into the
+  kernel's own `uncaughtException` handler, and the defect never reaches the
+  dropped `void args.health()` in `probes.ts`, which would otherwise leave the
+  response unwritten. `health.spec.ts` → _"reports a component whose check
+  defects as unhealthy, instead of losing the report"_ and _"contains a check
+  that throws synchronously, instead of letting it escape the fold"_.
+- **No `Result` is produced and left unexamined — with exactly three audited
   exceptions, each carrying its reason inline.** `AsyncResult<T, never>` empties
   the **error** channel only; a `Defect` can still be there, and a `Serving`
   written by a third party is where one comes from. `drain.spec.ts`'s four
   _"propagates a Defect from …"_ tests guard the drain;
   `packages/testing/src/boot-fixture.spec.ts` → _"fails the test on a shutdown
-  defect, and only on a defect"_ the fixture. The two
+  defect, and only on a defect"_ the fixture. The three
   survivors are `start.ts`'s `void server.close()` (our own `fromSafePromise`
   over `server.close(cb)`, so no third-party code can defect inside it — and it
   must not be awaited: the socket is `unref`'d and `close` waits out live
-  keep-alive connections, which would delay or strand the exit report) and
+  keep-alive connections, which would delay or strand the exit report),
   `drain.ts`'s losing race branch (once the timeout has decided the report,
-  `exited` has settled and a late defect has no consumer left). Neither can
+  `exited` has settled and a late defect has no consumer left), and
+  `probes.ts`'s `void args.health()` (`runHealthChecks` recovers every failure
+  and defect into the report, so the `.map` writing the response always
+  runs — see the `/healthz` invariant above). None can
   float: an `AsyncResult` never rejects. `unthrown/no-unhandled-result` cannot
   catch this class — it is deliberately syntactic, and an `await` inside a
   larger expression is not a bare expression statement — so review is the only

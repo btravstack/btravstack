@@ -1,5 +1,5 @@
 import { Port } from "@btravstack/di";
-import { P, TaggedError, allAsync, type AsyncResult } from "unthrown";
+import { Ok, OkAsync, P, TaggedError, allAsync, type AsyncResult } from "unthrown";
 
 /**
  * A component could not answer for itself. Modeled rather than thrown, because
@@ -44,15 +44,18 @@ export type HealthReport = {
  *
  * Each check's failure is recovered into a component line BEFORE `allAsync`
  * sees it, so a failing dependency cannot short-circuit the others: a report
- * naming one component is worth less than one naming all of them. What
- * survives to `allAsync`'s error channel is a `Defect` alone — a check that
- * threw rather than answered, which is a bug in the check.
+ * naming one component is worth less than one naming all of them. A check
+ * that throws rather than answers is a bug in the check, and it is folded in
+ * too: each check is STARTED inside the pipeline, so a synchronous throw and
+ * a defecting `AsyncResult` alike are recovered into an unhealthy line —
+ * escaped, the first would reach the kernel's own `uncaughtException` handler
+ * and the second would leave `/healthz` hanging with nothing written.
  */
 export const runHealthChecks = (checks: readonly HealthCheck[]): AsyncResult<HealthReport, never> =>
   allAsync(
     checks.map((health) =>
-      health
-        .check()
+      OkAsync()
+        .flatMap(() => health.check())
         .map((): ComponentHealth => ({ name: health.name, status: "healthy" }))
         .recoverErrCases((matcher) =>
           matcher.with(P.tag("HealthCheckFailed"), (error): ComponentHealth => ({
@@ -60,6 +63,9 @@ export const runHealthChecks = (checks: readonly HealthCheck[]): AsyncResult<Hea
             status: "unhealthy",
             reason: error.reason,
           })),
+        )
+        .recoverDefect((cause) =>
+          Ok<ComponentHealth>({ name: health.name, status: "unhealthy", reason: String(cause) }),
         ),
     ),
   ).map((components) => ({
