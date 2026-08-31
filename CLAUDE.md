@@ -363,6 +363,19 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    is the only error the kernel mints, because it is genuinely the kernel's own
    (a port in use, a broker unreachable, a probe port taken).
 
+8. **Computation-shaped is out of scope.** This framework's territory is
+   deployment opinions and starters — the drain, exit codes, probes,
+   configuration from the environment, set-port contributions, the transport
+   role map. Generic async control flow is not: no fiber system, no retry
+   algebra, no streaming, no scheduler. A feature request shaped like "generic
+   computation" is answered by Temporal, the platform, or "no" — Effect
+   already exists, and a kernel that grows computation primitives one
+   hand-built piece at a time is re-implementing it with fewer people. The
+   hedge is structural: application code stays plain TypeScript returning
+   `Result` and di stays at composition roots, so an Effect-based runtime
+   could one day be one more starter without touching business code. The
+   kernel being small is the strategy, not a temporary condition.
+
 ## Kernel internals
 
 Two sections live in `packages/core/CLAUDE.md`, which loads only when you work
