@@ -103,9 +103,11 @@ export type StartOptions<UnitX = never, UnitNeeds = never> = {
    */
   readonly env?: Environment;
   /**
-   * A module forked around **every unit**: built as the unit opens, torn down
-   * as it closes — while the unit's ambient record is still open — reading
-   * anything the application context carries.
+   * A module forked around **every unit** — a unit being one bounded piece of
+   * work, whatever the transport calls it: an HTTP request, a Temporal
+   * activity, an AMQP delivery. Built as the unit opens, torn down as it
+   * closes — while the unit's ambient record is still open — reading anything
+   * the application context carries.
    *
    * A failing unit finaliser is reported as a `teardownError` event and never
    * in `ExitReport.teardownErrors`. With this option the unit's work runs only
