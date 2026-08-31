@@ -49,12 +49,13 @@ is the index of the workspaces themselves.
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http-server/src/controller.test-d.ts`
   pins the
   five compile-time gates the composing `HttpRouter(contract)([...])` form
-  owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s 77 specs, across
-  `http-runtime.spec.ts`, `orpc.spec.ts`, `controller.spec.ts`,
-  `answerers.spec.ts`, `openapi.spec.ts` and `auth.spec.ts`, drive the
+  owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s specs (the
+  per-file breakdown and the current total are `packages/http-server/CLAUDE.md`'s own, kept in one
+  place rather than restated here) drive the
   transport through `httpServer` with a bare listener, the
-  starter proper through `HttpModule`, the composing router form through the
-  `rpcSliced` fixture, and the contract marker's runtime half — the per-scheme
+  starter proper through `HttpModule`, the composing router and fragments
+  forms through the `rpcSliced` and `htmx` fixtures, and the contract marker's
+  runtime half — the per-scheme
   authenticator ports and the one middleware they install — through
   `rpcAuthed`. **The contract says WHICH SCHEMES protect a route, and which
   scopes each must grant; the application's `defineHttp({ authenticators })`
@@ -289,8 +290,9 @@ AuditSlice, observability(), otel()], … })`),
   `ShippingUnavailable` is a permanent no and would be the wrong error for "we
   ran out of time".
 - **`examples/order-api` consumes `@btravstack/http-server` rather than
-  hand-rolling a transport, and its HTTP stack is the package's ONE way: oRPC
-  over its own node adapter, `@unthrown/orpc` at the boundary.** It is a
+  hand-rolling a transport, and composes both of the package's answerers: oRPC
+  over its own node adapter (`@unthrown/orpc` at the boundary) for the router,
+  and htmx fragments for one server-rendered route.** It is a
   two-slice modulith on the shape above: `slices/orders/` and
   `slices/customers/`, each its own contract fragment, its own
   `HttpController` and its own di module — which **imports the vertical it
@@ -298,7 +300,14 @@ AuditSlice, observability(), otel()], … })`),
   `CustomerApplicationModule` + `CustomerPersistenceModule`) and exports only
   its controller, in di's provider form (`exports: [ordersController]`, since
   `HttpController` mints the port and there is no class to name; the two
-  slices are that form's first call sites). One module per vertical in **both**
+  slices are that form's first call sites). The orders slice also carries
+  `slices/orders/fragment.ts`'s `orderRowFragment` — `api.HtmxController(fragments,
+"orderRow")`, the same two-call shape over the contract's own `fragments`
+  export — reading the same `context.principal.tenantId` the controller does,
+  so a caller's credential is what scopes the row rather than the path, which
+  names only `id`; a cross-tenant test in `fragments.spec.ts` renders the
+  slice's own not-found row for a caller whose tenant never placed the order.
+  One module per vertical in **both**
   layers, not one per layer: a slice, and each worker, carries its own
   vertical and none of the other's. What the slices still share is the
   internal `DatabaseModule` both persistence modules import: a diamond, not
@@ -308,16 +317,19 @@ AuditSlice, observability(), otel()], … })`),
   (the same walk over the pre-split modules visited 22 for the same 15, and
   the difference is the over-inclusion the split removed). The root composes them —
   `orderRouter = api.HttpRouter(contract)([ordersController,
-customersController])`, the composing array form — and
-  **`HttpModule("OrderApi")({ router: orderRouter, imports: [OrdersSlice,
+customersController])` and `orderFragments = api.HtmxFragments(fragments)([orderRowFragment])`,
+  each the composing array form — and
+  **`HttpModule("OrderApi")({ router: orderRouter, fragments: orderFragments, imports: [OrdersSlice,
 CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`** is the whole
   composition root, a list of slices plus what no slice owns — the
-  sugar imports `http()`, provides the router on the starter's
-  `HttpRouterPort` and
+  sugar imports `http()`, provides the router and the fragments provider on the
+  starter's own ports and
   exports `HttpRuntime`: `OrderApi` is a constant, `PORT`/`HOST`, `DATABASE_URL` and `REDIS_URL` come from the
-  environment inside the graph, and the router is mounted under `/rpc`. The
-  two authenticators are **not** in that list: they ride the router, which is
-  what needs them, and `HttpModule` puts them in `provides` itself. The
+  environment inside the graph, the router is mounted under `/rpc` and the
+  fragments under `/` — `htmx()`'s own default. The
+  two authenticators are **not** in that list: they ride the router and the
+  fragments provider, which are what need them, and `HttpModule` puts them in
+  `provides` itself, deduplicated by reference where both name the same one. The
   **unmarked** `customers` fragment declares `tenantId` on its input, so a
   procedure hands it to the use case and the use case to the repository; the
   **marked** `orders` fragment declares none and its handlers read

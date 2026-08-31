@@ -17,6 +17,7 @@ import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import {
   contract,
+  fragments,
   type CustomerView,
   type OrderView,
 } from "@btravstack/example-order-api-contract";
@@ -32,7 +33,13 @@ import {
   CustomerPersistenceModule,
   OrderPersistenceModule,
 } from "@btravstack/example-order-infrastructure";
-import { HttpAuthenticator, HttpModule, Unauthenticated, granted } from "@btravstack/http-server";
+import {
+  HttpAuthenticator,
+  HttpModule,
+  Unauthenticated,
+  granted,
+  html,
+} from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { ErrAsync, OkAsync, P } from "unthrown";
 
@@ -251,4 +258,36 @@ const _docsUserAuth = HttpAuthenticator<
           ),
         );
   },
+});
+
+// "Step 1 — the contract" through "Step 4 — the composition root" —
+// docs/how-to/serve-htmx-fragments.md.
+//
+// The real `fragments` route contract (an htmx fragment ROUTE, not an oRPC
+// contract fragment) and the real `FindOrder`, so a drift in either breaks
+// this file rather than only the how-to page's own inline copy.
+
+const _docsOrderRowFragment = api.HtmxController(fragments, "orderRow")(
+  { find: FindOrder },
+  {
+    sync:
+      ({ find }) =>
+      (context, params) =>
+        find
+          .execute(context.principal.tenantId, params.id)
+          .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
+          .recoverErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
+          ),
+  },
+);
+
+const _docsOrderFragments = api.HtmxFragments(fragments)([_docsOrderRowFragment]);
+
+const _DocsFragmentsApi = HttpModule("DocsFragmentsApi")({
+  needs: [Env],
+  fragments: _docsOrderFragments,
+  provides: [_docsOrderRowFragment],
+  imports: [OrderApplicationModule, OrderPersistenceModule, observability()],
+  exports: [Logger],
 });

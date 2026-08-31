@@ -1,12 +1,13 @@
 # @btravstack/http-server
 
-> The **serving half** of HTTP for [`@btravstack/core`](../core): oRPC over
-> `node:http`, one unit per request, and a drain that actually stops
-> accepting. A caller reaches this contract with `@orpc/client` and the
-> contract package, not with this one. There is
-> **one** way HTTP is answered here — an oRPC contract, implemented as a
-> `Result`-returning record — and it is enforced, not offered among
-> alternatives.
+> The **serving half** of HTTP for [`@btravstack/core`](../core): one runtime,
+> and a `HttpHandler` set port every protocol contributes one answerer to,
+> routed by longest matching mount prefix. Two ship — oRPC over `node:http`
+> (a caller reaches it with `@orpc/client` and the contract package, not this
+> one) and htmx fragments, server-rendered `Html` escaped by default — each
+> with one unit per request and a drain that actually stops accepting. This
+> README works the oRPC half end to end; for fragments, see
+> [Serve htmx fragments](https://btravstack.github.io/btravstack/how-to/serve-htmx-fragments).
 
 📖 **[Documentation](https://btravstack.github.io/btravstack/how-to/serve-orpc-over-http)** ·
 [Reference](https://btravstack.github.io/btravstack/reference/http-server) ·
@@ -519,22 +520,26 @@ rather than promoting the caller to the next scheme. See
 
 ## Options
 
-`HttpModule(name)({...})` takes `http()`'s options plus `router` and the
-module lists (`imports`, `provides`, `exports`, `needs`). The `http()`
-primitive does not take `router` as an option — it **needs** the router
-provider on its own port, which is how the composition root supplies it:
+`HttpModule(name)({...})` takes `http()`'s options plus `router`, `fragments`,
+`fragmentsPrefix` and the module lists (`imports`, `provides`, `exports`,
+`needs`) — supply `router`, `fragments`, or both; supplying neither is refused
+at the call. Neither `http()` nor `htmx()` takes its answerer's provider as an
+option — each **needs** its own port, which is how the composition root
+supplies it:
 
-| Option            | What it is                                                                                          |
-| ----------------- | --------------------------------------------------------------------------------------------------- |
-| `router`          | the router provider — what `api.HttpRouter(contract)(...)` returns                                  |
-| `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                                  |
-| `port`            | pins `PORT`                                                                                         |
-| `hostname`        | pins `HOST`                                                                                         |
-| `cors`            | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off)       |
-| `bodyLimit`       | pins `HTTP_BODY_LIMIT` — the largest body a procedure reads, in bytes (1 MiB; `false` is unbounded) |
-| `compression`     | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record    |
-| `plugins`         | any other oRPC handler plugin, forwarded to `RPCHandler`                                            |
-| `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                              |
+| Option            | What it is                                                                                                             |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `router`          | the router provider — what `api.HttpRouter(contract)(...)` returns                                                     |
+| `fragments`       | the fragments provider — what `api.HtmxFragments(fragments)([...])` returns                                            |
+| `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                                                     |
+| `fragmentsPrefix` | where htmx fragments are mounted (default `/`, `htmx()`'s own default)                                                 |
+| `port`            | pins `PORT`                                                                                                            |
+| `hostname`        | pins `HOST`                                                                                                            |
+| `cors`            | pins `HTTP_CORS_ORIGIN` — `true` for oRPC's defaults, or its `CORSHandlerPluginOptions` (off); oRPC-only               |
+| `bodyLimit`       | pins `HTTP_BODY_LIMIT` — the largest body a procedure or a fragment POST reads, in bytes (1 MiB; `false` is unbounded) |
+| `compression`     | pins `HTTP_COMPRESSION` — response compression, `true` for oRPC's defaults or its options record; oRPC-only            |
+| `plugins`         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                               |
+| `securityHeaders` | response headers set on the raw listener, before dispatch (default on)                                                 |
 
 `cors`, `bodyLimit` and `compression` **pin** a field of `HttpConfig` that is
 otherwise bound from the environment — explicit beats environment beats
@@ -564,10 +569,10 @@ nothing. The drain retires busy keep-alive connections; a client's
 ## What it does not do
 
 - **Another router in oRPC's answerer.** oRPC through `@orpc/server/node`'s
-  `RPCHandler` is how **this** package answers HTTP, and there is no `handler`
-  option to swap it. A second protocol — GraphQL, htmx fragments — is a second
-  answerer contributing to the `HttpHandler` set port under the same runtime,
-  not a different router in this one.
+  `RPCHandler` is how the oRPC answerer serves HTTP, and there is no `handler`
+  option to swap it. htmx fragments are a **second** answerer contributing to
+  the `HttpHandler` set port under the same runtime, not a different router in
+  this one; GraphQL is next.
 - **A middleware slot for application logic.** oRPC's own middleware, inside
   the router's procedures, is where that belongs. The one the package installs
   itself is `principalMiddleware`, on a leaf whose requirements say so. `plugins` is an

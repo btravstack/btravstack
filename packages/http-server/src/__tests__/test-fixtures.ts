@@ -33,12 +33,23 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
-import { ErrAsync, OkAsync, fromSafePromise } from "unthrown";
+import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
+import { z } from "zod";
 
-import { HttpAuthenticator, Unauthenticated, authenticatorPort } from "../auth.js";
+import {
+  HttpAuthenticator,
+  Unauthenticated,
+  authenticatorPort,
+  granted,
+  type Grant,
+} from "../auth.js";
 import { defineHttp } from "../define-http.js";
+import { defineFragments } from "../fragments.js";
 import { HttpHandler, type HttpAnswerer } from "../handler.js";
+import { html } from "../html.js";
+import { HtmxFragmentsPort } from "../htmx-controller.js";
+import { htmx } from "../htmx.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
 import { HttpRuntime, http, httpServer, type HttpInfo, type HttpOptions } from "../http-runtime.js";
@@ -442,6 +453,95 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
   });
 
 /**
+ * An unrelated router and fragments, composed by ONE `HttpModule` call — a
+ * proof that a root can serve both protocols from one runtime on one port.
+ * Public and minimal on purpose: the gate under test is the composition, not
+ * either protocol's own behaviour, which the rest of this file already
+ * covers.
+ */
+const bothContract = oc.router({ ping: oc.output(ocType<string>()) });
+const bothRouter = publicApi.HttpRouter(bothContract)({
+  sync: () => ({ ping: () => OkAsync("pong") }),
+});
+
+const bothFragments = defineFragments({ status: { method: "GET", path: "/status" } });
+const bothStatusFragment = publicApi.HtmxController(
+  bothFragments,
+  "status",
+)({
+  sync: () => () => OkAsync(html`<p>ok</p>`),
+});
+const bothFragmentsProvider = publicApi.HtmxFragments(bothFragments)([bothStatusFragment]);
+
+const bothProtocolsAppOf = () =>
+  HttpModule("BothProtocolsApp")({
+    router: bothRouter,
+    fragments: bothFragmentsProvider,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [bothStatusFragment],
+  });
+
+/**
+ * The same fragments alone, mounted off a PINNED prefix instead of the
+ * default `/` — proves `fragmentsPrefix` actually reaches `htmx()` rather
+ * than being silently defaulted: the fragment answers under the pinned mount
+ * and nothing answers at `/`, since no router is composed to own it either.
+ */
+const fragmentsOnlyAppOf = () =>
+  HttpModule("FragmentsOnlyApp")({
+    fragments: bothFragmentsProvider,
+    fragmentsPrefix: "/ui",
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [bothStatusFragment],
+  });
+
+/**
+ * A router and fragments marked with the SAME scheme through ONE `defineHttp`
+ * registry — the shape `HttpModule`'s reference-dedup exists for: both
+ * providers carry the identical `HttpAuthenticator:user` provider object, and
+ * both protocols resolve it end to end.
+ */
+const sharedAuthApi = defineHttp({
+  authenticators: {
+    user: HttpAuthenticator<{ readonly userId: string }>()({
+      sync: () => (headers) =>
+        headers.authorization === "Bearer good"
+          ? OkAsync({ userId: "u-1" })
+          : ErrAsync(new Unauthenticated()),
+    }),
+  },
+});
+
+const sharedAuthContract = { whoami: authenticated({ user: [] })(oc.output(ocType<string>())) };
+const sharedAuthRouter = sharedAuthApi.HttpRouter(sharedAuthContract)({
+  sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
+});
+
+const sharedAuthFragments = authenticated({ user: [] })(
+  defineFragments({ profile: { method: "GET", path: "/profile" } }),
+);
+const sharedAuthProfileFragment = sharedAuthApi.HtmxController(
+  sharedAuthFragments,
+  "profile",
+)({
+  sync: () => (context) => OkAsync(html`<p>${context.principal.userId}</p>`),
+});
+const sharedAuthFragmentsProvider = sharedAuthApi.HtmxFragments(sharedAuthFragments)([
+  sharedAuthProfileFragment,
+]);
+
+const sharedAuthAppOf = () =>
+  HttpModule("SharedAuthApp")({
+    router: sharedAuthRouter,
+    fragments: sharedAuthFragmentsProvider,
+    port: 0,
+    hostname: "127.0.0.1",
+    provides: [sharedAuthProfileFragment],
+  });
+
+/**
  * A one-procedure `greet` contract, named for the plugin test's own request
  * path: the CORS plugin only decorates a MATCHED response.
  */
@@ -590,6 +690,248 @@ const mountedAppOf = (prefixes: readonly `/${string}`[]) =>
 
 const noop: Handler = (_request, response, _signal) =>
   new Promise<void>((done) => response.end("ok", () => done()));
+
+/**
+ * Two schemes, dedicated to the fixtures below and kept SEPARATE from `api`'s
+ * own registry: `htmxFragments`' contract mark names "user" and its
+ * `adminOnly` route overrides with "service" — two DIFFERENT scheme names —
+ * so a test can tell "found the contract's mark" from "found the route's
+ * mark" by which scheme key resolved, not merely by requirement identity.
+ */
+const htmxUserAuthenticator = HttpAuthenticator<{ readonly userId: string }>()({
+  sync: () => () => OkAsync({ userId: "u-1" }),
+});
+const htmxServiceAuthenticator = HttpAuthenticator<{ readonly appId: string }>()({
+  sync: () => () => OkAsync({ appId: "a-1" }),
+});
+const htmxApi = defineHttp({
+  authenticators: { user: htmxUserAuthenticator, service: htmxServiceAuthenticator },
+});
+
+/**
+ * One route inheriting the contract's mark, one likewise, and one overriding
+ * it with a scheme of its own — the nearest-mark-wins fold, exercised end to
+ * end across two distinct schemes. The middle key is "1", an integer-like
+ * string, deliberately: JS reorders such a key ahead of every other own
+ * property, so `htmx-controller.spec.ts`'s route-order assertion below is
+ * also this fixture's own regression guard against that reordering leaking
+ * into the composed `routes` array.
+ */
+const htmxFragments = authenticated({ user: [] })(
+  defineFragments({
+    orderRow: { method: "GET", path: "/orders/:id/row" },
+    "1": { method: "GET", path: "/health" },
+    adminOnly: authenticated({ service: [] })({ method: "GET", path: "/admin" }),
+  }),
+);
+
+const orderRowFragment = htmxApi.HtmxController(htmxFragments, "orderRow")(
+  { greeter: Greeter },
+  {
+    sync:
+      ({ greeter }) =>
+      (context, params) =>
+        OkAsync(html`<tr>${greeter.greet(context.principal.userId)}:${params.id}</tr>`),
+  },
+);
+
+const healthFragment = htmxApi.HtmxController(
+  htmxFragments,
+  "1",
+)({
+  sync: () => () => OkAsync(html`<p>ok</p>`),
+});
+
+const adminOnlyFragment = htmxApi.HtmxController(
+  htmxFragments,
+  "adminOnly",
+)({
+  sync: () => () => OkAsync(html`<p>admin</p>`),
+});
+
+const htmxFragmentsProvider = htmxApi.HtmxFragments(htmxFragments)([
+  orderRowFragment,
+  healthFragment,
+  adminOnlyFragment,
+]);
+
+/** The composed port, built the way the kernel does — through a scoped graph — and read back. */
+const htmxServiceOf = (): AsyncResult<ServiceOf<typeof HtmxFragmentsPort>, never> =>
+  Module.scoped(
+    Module("HtmxFixture")({
+      provides: [
+        Provider(Greeter)({ value: { greet: (name: string) => `hi ${name}` } }),
+        orderRowFragment,
+        healthFragment,
+        adminOnlyFragment,
+        htmxFragmentsProvider,
+        ...htmxFragmentsProvider.authenticators,
+      ],
+      exports: [HtmxFragmentsPort],
+    }),
+    (ctx) => OkAsync(ctx.get(HtmxFragmentsPort)),
+  );
+
+/**
+ * `htmx()` over a real listener: an unmarked GET with a path parameter, a POST
+ * on the SAME path carrying an input schema (the method-is-part-of-the-match
+ * pair the brief for `htmx()` names), a route requiring the scheme with no
+ * scope, one requiring a scope its authenticator never grants, a POST
+ * declaring no schema at all — the "hand the decoded record through" arm —
+ * and a MARKED POST (`secure`), the one shape none of the others cover: a
+ * route that both authenticates (so `respond` awaits first) and reads a body
+ * (so it reaches `readBody` only after that await yields) — the exact window
+ * a client can abort inside.
+ */
+const noteInput = z.object({ note: z.string() });
+
+const htmxRuntimeAuthenticator = HttpAuthenticator<{ readonly userId: string }, "admin">()({
+  sync: () => (headers) => {
+    if (headers.authorization === "Bearer boom") {
+      return OkAsync().map((): Grant<{ readonly userId: string }, "admin"> => {
+        // oxlint-disable-next-line unthrown/no-throw -- an authenticator bug IS the subject under test, and a throw inside a combinator is the only way to mint a Defect
+        throw new Error("authenticator bug");
+      });
+    }
+    return headers.authorization === "Bearer good"
+      ? OkAsync(granted<{ readonly userId: string }, "admin">({ userId: "u-1" }, []))
+      : ErrAsync(new Unauthenticated());
+  },
+});
+
+const htmxRuntimeApi = defineHttp({ authenticators: { user: htmxRuntimeAuthenticator } });
+
+const htmxRuntimeFragments = defineFragments({
+  row: { method: "GET", path: "/orders/:id/row" },
+  rowUpdate: { method: "POST", path: "/orders/:id/row", input: noteInput },
+  profile: authenticated({ user: [] })({ method: "GET", path: "/profile" }),
+  adminPanel: authenticated({ user: ["admin"] })({ method: "GET", path: "/admin" }),
+  echo: { method: "POST", path: "/echo" },
+  secure: authenticated({ user: [] })({ method: "POST", path: "/secure" }),
+});
+
+let htmxRowGetRuns = 0;
+let htmxRowUpdateRuns = 0;
+
+const htmxRowFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "row",
+)({
+  sync: () => (_context, params) => {
+    htmxRowGetRuns += 1;
+    return OkAsync(html`<tr id="row-${params.id}">row</tr>`);
+  },
+});
+
+const htmxRowUpdateFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "rowUpdate",
+)({
+  sync: () => (_context, params, input) => {
+    htmxRowUpdateRuns += 1;
+    return OkAsync(html`<tr id="row-${params.id}">${input.note}</tr>`);
+  },
+});
+
+const htmxProfileFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "profile",
+)({
+  sync: () => (context) => OkAsync(html`<p>hi ${context.principal.userId}</p>`),
+});
+
+const htmxAdminPanelFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "adminPanel",
+)({
+  sync: () => () => OkAsync(html`<p>admin</p>`),
+});
+
+const htmxEchoFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "echo",
+)({
+  sync: () => (_context, _params, input) => OkAsync(html`<p>${JSON.stringify(input)}</p>`),
+});
+
+const htmxSecureFragment = htmxRuntimeApi.HtmxController(
+  htmxRuntimeFragments,
+  "secure",
+)({
+  sync: () => (context) => OkAsync(html`<p>secure ${context.principal.userId}</p>`),
+});
+
+const htmxRuntimeFragmentsProvider = htmxRuntimeApi.HtmxFragments(htmxRuntimeFragments)([
+  htmxRowFragment,
+  htmxRowUpdateFragment,
+  htmxProfileFragment,
+  htmxAdminPanelFragment,
+  htmxEchoFragment,
+  htmxSecureFragment,
+]);
+
+const htmxRuntimeAppOf = (bodyLimit?: number) =>
+  Module("HtmxRuntimeApp")({
+    imports: [
+      httpServer({
+        port: 0,
+        hostname: "127.0.0.1",
+        ...(bodyLimit === undefined ? {} : { bodyLimit }),
+      }),
+    ],
+    provides: [
+      htmx(),
+      htmxRowFragment,
+      htmxRowUpdateFragment,
+      htmxProfileFragment,
+      htmxAdminPanelFragment,
+      htmxEchoFragment,
+      htmxSecureFragment,
+      htmxRuntimeFragmentsProvider,
+      ...htmxRuntimeFragmentsProvider.authenticators,
+    ],
+    exports: [HttpRuntime, HttpHandler],
+  });
+
+/**
+ * The `htmx()` answerer itself, built the way the kernel does, over a
+ * hand-provided `HttpConfig` rather than `httpServer()` — so a defect from a
+ * request stream can be driven straight through `handle` with a synthetic
+ * request, no socket involved. A real socket's premature close is racy
+ * against Node's own default `clientError` response (measured), which is
+ * what this seam avoids.
+ */
+const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
+  Module.scoped(
+    Module("HtmxAnswererFixture")({
+      provides: [
+        Provider(HttpConfig)({
+          value: {
+            port: 0,
+            hostname: "127.0.0.1",
+            bodyLimit: 0,
+            corsOrigin: "",
+            compression: false,
+          },
+        }),
+        htmx(),
+        htmxRowFragment,
+        htmxRowUpdateFragment,
+        htmxProfileFragment,
+        htmxAdminPanelFragment,
+        htmxEchoFragment,
+        htmxSecureFragment,
+        htmxRuntimeFragmentsProvider,
+        ...htmxRuntimeFragmentsProvider.authenticators,
+      ],
+      exports: [HttpHandler],
+    }),
+    (ctx) => {
+      const answerer = ctx.get(HttpHandler).at(0);
+      assert.ok(answerer !== undefined, "htmx() contributed no HttpHandler member");
+      return OkAsync(answerer);
+    },
+  );
 
 export type HttpFixtures = {
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
@@ -754,6 +1096,49 @@ export type HttpFixtures = {
     prefix: `/${string}`,
     body: string,
   ) => Promise<{ readonly origin: string }>;
+  /** The htmx fragment pieces and the port they compose into. */
+  readonly htmx: {
+    readonly orderRowFragment: typeof orderRowFragment;
+    readonly service: () => AsyncResult<ServiceOf<typeof HtmxFragmentsPort>, never>;
+  };
+  /**
+   * `htmx()` over a real listener — see `htmxRuntimeAppOf` for the routes it
+   * serves. Shut down by the fixture; both run counts are reset before the
+   * test body.
+   */
+  readonly htmxServer: (bodyLimit?: number) => Promise<{
+    readonly origin: string;
+    readonly rowGetRuns: () => number;
+    readonly rowUpdateRuns: () => number;
+  }>;
+  /** The built `htmx()` answerer itself — see `htmxAnswererOf` for why. */
+  readonly htmxAnswerer: () => AsyncResult<HttpAnswerer, never>;
+  /**
+   * The starter over `HttpModule({ router, fragments })` — both protocols from
+   * one runtime on one port. Shut down by the fixture.
+   */
+  readonly bothProtocols: () => Promise<{
+    readonly rpc: () => Promise<string>;
+    readonly fragment: () => Promise<string>;
+  }>;
+  /**
+   * The starter over `HttpModule({ fragments, fragmentsPrefix: "/ui" })` —
+   * fragments alone, mounted off the pinned prefix. Shut down by the fixture.
+   */
+  readonly fragmentsOnly: () => Promise<{
+    readonly at: (path: string) => Promise<{ readonly status: number; readonly body: string }>;
+  }>;
+  /**
+   * `HttpModule({ router, fragments })` where both share ONE authenticator
+   * through one `defineHttp` registry. Shut down by the fixture.
+   */
+  readonly sharedAuth: () => Promise<{
+    readonly rpc: (token: string | undefined) => Promise<string>;
+    readonly fragment: (token: string | undefined) => Promise<{
+      readonly status: number;
+      readonly body: string;
+    }>;
+  }>;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1076,6 +1461,83 @@ export const it = test.extend<HttpFixtures>({
       const info = (await app.runtimeInfo()).get();
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { origin: `http://127.0.0.1:${info.port}` };
+    });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  htmx: async ({}, use) => {
+    await use({ orderRowFragment, service: htmxServiceOf });
+  },
+
+  htmxServer: async ({ boot }, use) => {
+    await use(async (bodyLimit) => {
+      htmxRowGetRuns = 0;
+      htmxRowUpdateRuns = 0;
+      const app = boot(htmxRuntimeAppOf(bodyLimit));
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return {
+        origin: `http://127.0.0.1:${info.port}`,
+        rowGetRuns: () => htmxRowGetRuns,
+        rowUpdateRuns: () => htmxRowUpdateRuns,
+      };
+    });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  htmxAnswerer: async ({}, use) => {
+    await use(htmxAnswererOf);
+  },
+
+  bothProtocols: async ({ boot }, use) => {
+    await use(async () => {
+      const app = boot(bothProtocolsAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      const client: RouterContractClient<typeof bothContract> = createORPCClient(
+        new RPCLink({ origin, url: "/rpc" }),
+      );
+      return {
+        rpc: () => client.ping(),
+        fragment: async () => (await fetch(`${origin}/status`)).text(),
+      };
+    });
+  },
+
+  fragmentsOnly: async ({ boot }, use) => {
+    await use(async () => {
+      const app = boot(fragmentsOnlyAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      return {
+        at: async (path) => {
+          const response = await fetch(`${origin}${path}`);
+          return { status: response.status, body: await response.text() };
+        },
+      };
+    });
+  },
+
+  sharedAuth: async ({ boot }, use) => {
+    await use(async () => {
+      const app = boot(sharedAuthAppOf());
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      const origin = `http://127.0.0.1:${info.port}`;
+      const clientWith = (token: string | undefined) =>
+        createORPCClient<RouterContractClient<typeof sharedAuthContract>>(linkOf(origin, token));
+      return {
+        rpc: (token) => clientWith(token).whoami(),
+        fragment: async (token) => {
+          const response = await fetch(
+            `${origin}/profile`,
+            token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } },
+          );
+          return { status: response.status, body: await response.text() };
+        },
+      };
     });
   },
 });

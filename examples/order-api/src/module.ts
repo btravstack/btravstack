@@ -1,7 +1,7 @@
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
 import { Logger, Meter, Tracer } from "@btravstack/core";
-import { contract } from "@btravstack/example-order-api-contract";
+import { contract, fragments } from "@btravstack/example-order-api-contract";
 import { HttpModule } from "@btravstack/http-server";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
@@ -10,6 +10,7 @@ import { api } from "./auth.js";
 import { customersController } from "./slices/customers/controller.js";
 import { CustomersSlice } from "./slices/customers/module.js";
 import { ordersController } from "./slices/orders/controller.js";
+import { orderRowFragment } from "./slices/orders/fragment.js";
 import { OrdersSlice } from "./slices/orders/module.js";
 
 /**
@@ -19,6 +20,9 @@ import { OrdersSlice } from "./slices/orders/module.js";
  * uncovered.
  */
 export const orderRouter = api.HttpRouter(contract)([ordersController, customersController]);
+
+/** The fragments, composed from the orders slice's own piece. */
+export const orderFragments = api.HtmxFragments(fragments)([orderRowFragment]);
 
 /**
  * The composition root, and a list of **slices**: each imports the vertical it
@@ -38,6 +42,7 @@ export const orderRouter = api.HttpRouter(contract)([ordersController, customers
  */
 export const OrderApi = HttpModule("OrderApi")({
   router: orderRouter,
+  fragments: orderFragments,
   imports: [OrdersSlice, CustomersSlice, cache({ adapter: redisCache() }), observability(), otel()],
   // All three are exported because `RequestModule`, the per-request fork, reads
   // them out of the application scope.

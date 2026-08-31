@@ -2,6 +2,7 @@ import { Provider, type AnyProvider, type PortInstance } from "@btravstack/di";
 
 import { authenticatorPort, type Authenticator, type AuthenticatorService } from "./auth.js";
 import { controllerFor } from "./controller.js";
+import { htmxControllerFor, htmxFragmentsFor } from "./htmx-controller.js";
 import { routerFor } from "./orpc.js";
 
 /** The authenticators an application declares, keyed by scheme name. */
@@ -43,6 +44,8 @@ export type Http<A extends Authenticators> = {
   readonly HttpRouter: ReturnType<
     typeof routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>
   >;
+  readonly HtmxController: ReturnType<typeof htmxControllerFor<SchemesFrom<A>>>;
+  readonly HtmxFragments: ReturnType<typeof htmxFragmentsFor<SchemesFrom<A>, SchemeProviders<A>>>;
   /**
    * The declarations as given, for a hand-rolled composition or a custom sugar
    * that reads the registry off them the way `defineHttp` does. No in-repo
@@ -78,6 +81,8 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
   return {
     HttpController: controllerFor<SchemesFrom<A>>(),
     HttpRouter: routerFor<SchemesFrom<A>, SchemeProviders<A>, VocabFrom<A>>(providers as never),
+    HtmxController: htmxControllerFor<SchemesFrom<A>>(),
+    HtmxFragments: htmxFragmentsFor<SchemesFrom<A>, SchemeProviders<A>>(providers as never),
     authenticators: declared as A,
   };
 };
