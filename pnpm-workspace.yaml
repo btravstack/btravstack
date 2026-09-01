@@ -91,7 +91,7 @@ catalog:
   tsx: 4.23.12
   turbo: 2.10.11
   typedoc: 0.28.20
-  typedoc-plugin-markdown: 4.12.0
+  typedoc-plugin-markdown: 4.13.0
   testcontainers: 12.1.0
   typescript: 7.0.2
   # The TypeScript a *consumer* is realistically on, for the second
