@@ -25,25 +25,31 @@ describe("ListOrders", () => {
         .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2 })),
     );
 
-    // THEN the page is full, and it hands back the cursor for the rest — the
-    // one field a caller loops on
+    // THEN the page is full, and it hands back A cursor for the rest — the one
+    // field a caller loops on. Its VALUE is deliberately not asserted: a cursor
+    // is opaque above the adapter, and pinning it here would teach that it is
+    // an order id, which is true of this stub and not of Postgres
     expect(result).toBeOkWith({
       items: [expect.objectContaining({ id: A }), expect.objectContaining({ id: B })],
-      nextCursor: B,
+      nextCursor: expect.any(String),
       hasNextPage: true,
     });
   });
 
   it("closes the listing with a null cursor on the last page", async ({ testModule }) => {
     // GIVEN the same three orders
-    // WHEN the page after the second is asked for
+    // WHEN the page after the first page's own cursor is asked for — round
+    // tripped rather than spelled, which is how a caller uses it
     const result = await Module.scoped(testModule, (ctx) =>
       ctx
         .get(PlaceOrder)
         .execute(ACME, A, 1)
         .flatMap(() => ctx.get(PlaceOrder).execute(ACME, B, 5))
         .flatMap(() => ctx.get(PlaceOrder).execute(ACME, C, 9))
-        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2, after: B })),
+        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2 }))
+        .flatMap((page) =>
+          ctx.get(ListOrders).execute(ACME, { limit: 2, after: page.nextCursor ?? "" }),
+        ),
     );
 
     // THEN `nextCursor` is null rather than a cursor that would return nothing
