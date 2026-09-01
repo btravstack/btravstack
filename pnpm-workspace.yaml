@@ -53,8 +53,8 @@ catalog:
   "@orpc/json-schema": 2.0.0-beta.28
   "@orpc/openapi": 2.0.0-beta.28
   "@orpc/server": 2.0.0-beta.28
-  "@prisma/adapter-pg": 7.9.1
-  "@prisma/client": 7.9.1
+  "@prisma/adapter-pg": 7.10.0
+  "@prisma/client": 7.10.0
   "@prisma/instrumentation": 7.10.0
   # `@temporal-contract/*` v8 is still in beta and its `latest` dist-tag is the
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.7.0. 8.x also
@@ -84,7 +84,7 @@ catalog:
   oxlint: 1.79.0
   pino: 10.3.1
   nodemailer: 9.0.5
-  prisma: 7.9.1
+  prisma: 7.10.0
   uuidv7: 1.2.1
   redis: 6.2.1
   tsdown: 0.22.14
