@@ -19,15 +19,15 @@ to stop. It takes about ten minutes.
 ::: code-group
 
 ```sh [pnpm]
-pnpm add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
+pnpm add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc zod
 ```
 
 ```sh [npm]
-npm install @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
+npm install @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc zod
 ```
 
 ```sh [yarn]
-yarn add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server @orpc/contract @unthrown/orpc zod
+yarn add @btravstack/core @btravstack/http-server @btravstack/config @btravstack/di unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc zod
 ```
 
 :::

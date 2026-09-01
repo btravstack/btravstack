@@ -57,7 +57,14 @@
         "@btravstack/temporal-worker#build",
         "@btravstack/amqp-worker#build"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "../packages/*/src/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../packages/*/src/**",
+        "../pnpm-workspace.yaml",
+        "../README.md",
+        "../packages/*/README.md",
+        "../examples/*/README.md"
+      ],
       "outputs": [".vitepress/dist/**", "api/*/**"]
     },
     "db:migrate": {

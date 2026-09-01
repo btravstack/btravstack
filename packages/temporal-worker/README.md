@@ -13,7 +13,7 @@
 ```sh
 pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
   @temporalio/worker @temporalio/activity @temporalio/common \
-  @temporal-contract/worker @temporal-contract/contract
+  @temporal-contract/worker@^8.0.0-beta @temporal-contract/contract@^8.0.0-beta
 ```
 
 All nine are peer dependencies — install them. Node `>=22`.

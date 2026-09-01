@@ -115,18 +115,18 @@ does, the first package alone suffices.
 
 ```sh [HTTP API]
 pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack/di \
-  @btravstack/contract unthrown @orpc/server @orpc/contract @unthrown/orpc
+  @btravstack/contract unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc
 ```
 
 ```sh [Temporal worker]
 pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
   @temporalio/worker @temporalio/activity @temporalio/common \
-  @temporal-contract/worker @temporal-contract/contract
+  @temporal-contract/worker@^8.0.0-beta @temporal-contract/contract@^8.0.0-beta
 ```
 
 ```sh [AMQP worker]
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @amqp-contract/worker @opentelemetry/api
+  @amqp-contract/worker@^3.0.0-beta @opentelemetry/api
 ```
 
 ```sh [Kernel only]
