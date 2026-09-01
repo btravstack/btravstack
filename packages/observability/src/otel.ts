@@ -1,4 +1,14 @@
-import { Instrumentations, Meter, Tracer, currentUnit, type Span } from "@btravstack/core";
+import {
+  Instrumentations,
+  Meter,
+  Observers,
+  SPAN_STATUS,
+  Tracer,
+  currentUnit,
+  type Counter,
+  type Histogram,
+  type Span,
+} from "@btravstack/core";
 import { Module, Port, Provider, type Scope } from "@btravstack/di";
 import { metrics, trace } from "@opentelemetry/api";
 import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
@@ -55,10 +65,72 @@ class OtelSdk extends Port("OtelSdk")<NodeSDK> {}
  */
 export const otel = (
   options?: Partial<NodeSDKConfiguration>,
-): Module<Tracer | Meter, never, Scope> =>
+): Module<Tracer | Meter | Observers, never, Scope> =>
   Module("Otel")({
     provides: [
       Provider.member(Instrumentations)({ inject: {}, value: () => Promise.resolve(undefined) }),
+      // The span, the count and the timing of every observed operation — the
+      // three a component would otherwise hold a `Tracer` and a `Meter` to do
+      // itself. Instruments are minted PER COMPONENT and cached, so a starter
+      // still gets `btravstack.cache.operations` rather than one metric with a
+      // component label: the observer derives the name from the operation, so
+      // nothing had to become uniform to be shared.
+      // **Injects nothing, and reads the OTel globals per operation instead.**
+      // Depending on `Tracer`/`Meter` here is a dependency CYCLE: `OtelSdk`
+      // collects `Instrumentations`, a starter's instrumentation contribution
+      // may read `Observers`, and this member would then close the loop back
+      // onto the SDK. Reading the globals is also what makes the ordering free
+      // — an operation is observed long after `sdk.start()`, so there is
+      // nothing left to order.
+      Provider.member(Observers)({
+        inject: {},
+        sync: () => {
+          const tracer = trace.getTracer("@btravstack/observability");
+          const counters = new Map<string, Counter>();
+          const durations = new Map<string, Histogram>();
+          const instrument = <T>(cache: Map<string, T>, key: string, make: () => T): T => {
+            const existing = cache.get(key);
+            if (existing !== undefined) return existing;
+            const minted = make();
+            cache.set(key, minted);
+            return minted;
+          };
+
+          return ({ component, name, attributes, details, traced }) => {
+            // The METER is read per operation, not once: `trace.getTracer`
+            // answers a proxy that resolves when the SDK registers, and
+            // `metrics.getMeter` does not — read once before `sdk.start()` it
+            // returns the no-op meter and keeps it forever. The instruments it
+            // mints are still cached, which is the part worth doing once.
+            const meter = metrics.getMeter("@btravstack/observability");
+            const span = traced === false ? undefined : tracer.startSpan(`${component}.${name}`);
+            // Details ride the SPAN and not the instruments: a cache key or a
+            // URL is one more field on a span and one more time series on a
+            // metric.
+            span?.setAttributes({ ...attributes, ...details });
+            const startedAt = performance.now();
+            const operations = instrument(counters, component, () =>
+              meter.createCounter(`btravstack.${component}.operations`, {
+                description: `${component} operations, by operation and outcome`,
+              }),
+            );
+            const duration = instrument(durations, component, () =>
+              meter.createHistogram(`btravstack.${component}.duration`, {
+                description: `${component} operation duration`,
+                unit: "ms",
+              }),
+            );
+
+            return ({ outcome, attributes: settled }) => {
+              const all = { ...attributes, ...settled, outcome };
+              operations.add(1, all);
+              duration.record(performance.now() - startedAt, all);
+              if (outcome === "error") span?.setStatus({ code: SPAN_STATUS.error });
+              span?.end();
+            };
+          };
+        },
+      }),
       Provider(OtelSdk)({
         inject: { offered: Instrumentations },
         acquire: ({ offered }) =>
@@ -91,8 +163,8 @@ export const otel = (
         sync: () => metrics.getMeter("@btravstack/observability"),
       }),
     ],
-    exports: [Tracer, Meter],
-  });
+    exports: [Tracer, Meter, Observers],
+  } as never) as unknown as Module<Tracer | Meter | Observers, never, Scope>;
 
 /** The span a unit rides, ended when the unit's fork closes. */
 export class UnitSpan extends Port("UnitSpan")<Span> {}

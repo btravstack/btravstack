@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import type { WorkerMiddleware } from "@amqp-contract/worker";
-import type { MeterService, RuntimeHost, UnitMeta } from "@btravstack/core";
+import {
+  observe,
+  type Operation,
+  type RuntimeHost,
+  type Settle,
+  type UnitMeta,
+} from "@btravstack/core";
 
 /**
  * Open one kernel unit per delivery. It injects nothing — `next()` unchanged is
@@ -14,51 +20,33 @@ import type { MeterService, RuntimeHost, UnitMeta } from "@btravstack/core";
  * `currentUnit()?.signal`.
  */
 export const messageUnits =
-  (host: RuntimeHost<never>, metrics: AmqpMetrics | undefined): WorkerMiddleware =>
+  (
+    host: RuntimeHost<never>,
+    observers: readonly ((operation: Operation) => Settle)[],
+  ): WorkerMiddleware =>
   (args, next) => {
-    // Before the clock is read, not after: uninstrumented means no timing call
-    // per delivery either, which is what "free when no SDK is composed" has to
-    // mean to be worth saying.
-    if (metrics === undefined) return host.run(metaFor(args.rawMessage), () => next());
-    const startedAt = performance.now();
-    const unit = host.run(metaFor(args.rawMessage), () => next());
+    const settle = observe(observers, {
+      component: "amqp",
+      name: "delivery",
+      // The `consumers`/`rpcs` key, so the CONTRACT bounds the cardinality —
+      // the queue name would too, but the key is what a reader of the contract
+      // can look up. The payload is nowhere near the attributes.
+      attributes: { handler: args.handlerName },
+    });
     // `tapFailure`, not an Err-only tap: a defect is a failed delivery too, and
-    // the errors half of RED that omitted it would be the reassuring half.
-    return unit
-      .tap(() => metrics.record({ handler: args.handlerName, outcome: "ok" }, startedAt))
-      .tapFailure(() => metrics.record({ handler: args.handlerName, outcome: "error" }, startedAt));
+    // an errors count that omitted it would be the reassuring half — this
+    // package nacks a defect straight to the dead-letter queue, so a healthy
+    // rate beside a filling DLQ is exactly the lie to avoid.
+    return host
+      .run(metaFor(args.rawMessage), () => next())
+      .tap(() => settle({ outcome: "ok" }))
+      .tapFailure((failure) =>
+        settle({
+          outcome: "error",
+          cause: failure.tag === "Err" ? failure.error : failure.cause,
+        }),
+      );
   };
-
-/**
- * Rate, errors and duration, per delivery.
- *
- * `handler` is the `consumers`/`rpcs` key, so the CONTRACT bounds the
- * cardinality — the queue name would too, but the key is what a reader of the
- * contract can look up. The payload is nowhere near the attributes.
- */
-export type AmqpMetrics = {
-  readonly record: (
-    attributes: { readonly handler: string; readonly outcome: "ok" | "error" },
-    startedAt: number,
-  ) => void;
-};
-
-export const amqpMetrics = (meter: MeterService | undefined): AmqpMetrics | undefined => {
-  if (meter === undefined) return undefined;
-  const deliveries = meter.createCounter("btravstack.amqp.deliveries", {
-    description: "AMQP deliveries, by handler and outcome",
-  });
-  const duration = meter.createHistogram("btravstack.amqp.duration", {
-    description: "AMQP handler duration",
-    unit: "ms",
-  });
-  return {
-    record: (attributes, startedAt) => {
-      deliveries.add(1, attributes);
-      duration.record(performance.now() - startedAt, attributes);
-    },
-  };
-};
 
 /**
  * `UnitMeta.id` must be unique per unit, and a **delivery tag is not one**: tags

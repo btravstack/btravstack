@@ -10,11 +10,12 @@ import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import {
-  Meter,
+  Observers,
   currentUnit,
   type Attributes,
-  type MeterService,
+  type Operation,
   type RunningApp,
+  type Settle,
   type UnitRecord,
 } from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
@@ -66,7 +67,6 @@ type EchoProvider = Provider<InstanceType<EchoHandlers>, never, Greeting>;
  */
 const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: number) =>
   AmqpModule("Consuming")({
-    instrumented: false,
     contract: echoContract,
     handlers,
     url,
@@ -75,36 +75,42 @@ const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: numbe
   });
 
 /** Captures the `AmqpConfig` the graph actually bound, for the configuration spec. */
-/** One recorded measurement: which instrument, what value, and the dimensions. */
-export type Measurement = {
-  readonly instrument: string;
-  readonly value: number;
+/** One observed operation, as an observer saw it settle. */
+export type Observation = {
+  readonly component: string;
+  readonly name: string;
   readonly attributes: Attributes;
+  readonly outcome: "ok" | "error";
 };
 
-/** A meter that keeps what it was given, so a spec asserts on the DIMENSIONS. */
-const recordingMeter = (): { service: MeterService; taken: () => readonly Measurement[] } => {
-  const taken: Measurement[] = [];
-  const instrument = (name: string) => ({
-    add: (value: number, attributes?: Attributes) =>
-      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
-    record: (value: number, attributes?: Attributes) =>
-      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
-  });
+/** An observer that keeps what it was handed, so a spec asserts on the DIMENSIONS. */
+const recordingObserver = (): {
+  member: (operation: Operation) => Settle;
+  taken: () => readonly Observation[];
+} => {
+  const taken: Observation[] = [];
   return {
-    service: { createCounter: instrument, createHistogram: instrument },
+    member:
+      ({ component, name, attributes }) =>
+      ({ outcome, attributes: settled }) => {
+        taken.push({ component, name, attributes: { ...attributes, ...settled }, outcome });
+      },
     taken: () => taken,
   };
 };
 
-/** The starter as a deployment gets it — `instrumented` on — over a recording meter. */
-const metered = (url: string, handlers: EchoProvider, meter: MeterService) =>
-  AmqpModule("Metered")({
+/** The starter over an observer that records — all a graph does to be observed. */
+const observedWorker = (
+  url: string,
+  handlers: EchoProvider,
+  member: (operation: Operation) => Settle,
+) =>
+  AmqpModule("Observed")({
     contract: echoContract,
     handlers,
     url,
     imports: [AppModule],
-    provides: [Provider(Meter)({ inject: {}, value: meter })],
+    provides: [Provider.member(Observers)({ inject: {}, value: member })],
   });
 
 const configuredOf = () => {
@@ -325,10 +331,10 @@ export type AmqpFixtures = {
   readonly deadline: ReturnType<typeof deadlineHandler>;
   readonly slices: ReturnType<typeof slicesOf>;
   readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<App>;
-  /** The starter served with metrics on — the default composition — and a recording meter. */
-  readonly serveMetered: (
+  /** The starter served over an observer that records what it was handed. */
+  readonly serveObserved: (
     handlers?: EchoProvider,
-  ) => Promise<{ readonly app: App; readonly taken: () => readonly Measurement[] }>;
+  ) => Promise<{ readonly app: App; readonly taken: () => readonly Observation[] }>;
   /** The handlers whose one consumer fails in a way nobody modelled. */
   readonly failing: EchoProvider;
 };
@@ -347,12 +353,12 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       return app;
     });
   },
-  serveMetered: async ({ amqpConnectionUrl, boot }, use) => {
+  serveObserved: async ({ amqpConnectionUrl, boot }, use) => {
     await use(async (handlers = plainHandlers) => {
-      const meter = recordingMeter();
-      const app = boot(metered(amqpConnectionUrl, handlers, meter.service));
+      const observer = recordingObserver();
+      const app = boot(observedWorker(amqpConnectionUrl, handlers, observer.member));
       await app.runtimeInfo();
-      return { app, taken: meter.taken };
+      return { app, taken: observer.taken };
     });
   },
   // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
@@ -364,7 +370,6 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       const configured = configuredOf();
       const app = boot(
         AmqpModule("Bound")({
-          instrumented: false,
           contract: echoContract,
           handlers: plainHandlers,
           imports: [AppModule],
@@ -405,7 +410,6 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     await use(async (slices) => {
       const app = boot(
         AmqpModule("Sliced")({
-          instrumented: false,
           contract: slicedContract,
           handlers: slices.handlers,
           url: amqpConnectionUrl,

@@ -1,4 +1,4 @@
-import type { LoggerService, MeterService } from "@btravstack/core";
+import { observe, type Operation, type Settle } from "@btravstack/core";
 
 import type { PrismaLike } from "./prisma.js";
 
@@ -46,30 +46,32 @@ type Extendable = { readonly $extends: (extension: QueryExtension) => unknown };
  */
 export const instrument = <C extends PrismaLike>(
   client: C,
-  logger: LoggerService,
-  meter: MeterService,
+  observers: readonly ((operation: Operation) => Settle)[],
 ): C => {
-  // One counter per scope, read per call: an instrument is built from the meter
-  // once, and it is the ATTRIBUTES that vary — the same per-construction /
-  // per-call split `createLogger` documents for the ambient record.
-  const operations = meter.createCounter("btravstack.database.operations", {
-    description: "Database queries, by model, operation and outcome",
-  });
-
   const extension: QueryExtension = {
     query: {
       $allModels: {
         $allOperations: ({ model, operation, args, query }) => {
           const label = model ?? "raw";
+          const settle = observe(observers, {
+            component: "database",
+            name: operation,
+            attributes: { model: label, operation },
+            // No span, deliberately: `@prisma/instrumentation` traces at the
+            // ENGINE level — the real SQL, the connection acquisition, the
+            // serialisation — all of it below what this wrapper can see, so a
+            // span here would cost one more per query for strictly less
+            // information. Counting and timing still happen.
+            traced: false,
+          });
 
           return query(args).then(
             (value) => {
-              operations.add(1, { model: label, operation, outcome: "ok" });
+              settle({ outcome: "ok" });
               return value;
             },
             (cause: unknown) => {
-              operations.add(1, { model: label, operation, outcome: "error" });
-              logger.error("a database query failed", { model: label, operation }, cause);
+              settle({ outcome: "error", cause });
               return Promise.reject(cause);
             },
           );

@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/cache"
-description: The complete surface of @btravstack/cache — the Cache and CacheBackend ports, CacheUnavailable, the memory and Redis adapters, cache() and its instrumented flag, and REDIS_URL.
+description: The complete surface of @btravstack/cache — the Cache and CacheBackend ports, CacheUnavailable, the memory and Redis adapters, cache(), the Observers seam it reports through, and REDIS_URL.
 ---
 
 <!-- doctest: group=order-api -->
@@ -26,7 +26,7 @@ declare const findCustomer: (id: string) => AsyncResult<CustomerView, never>;
 > **Reference.** A complete, structured description of `@btravstack/cache`:
 > the `Cache` port an application depends on, the `CacheBackend` every adapter
 > provides, the modeled `CacheUnavailable`, the in-memory and Redis adapters,
-> and the two compositions — plain and instrumented — that turn one into the
+> and the composition that turns one into the
 > other.
 
 ## The port
@@ -188,16 +188,17 @@ before a single read is served.
 `@btravstack/cache/redis` subpath, so a consumer composing the memory adapter
 never installs it.
 
-## `cache({ adapter, instrumented? })`
+## `cache({ adapter })`
 
-One function. The adapter it composes and whether that composition is
-instrumented are both decided here, at the composition root, and nowhere
-else.
+One function, and the adapter it composes is the only decision at it.
 
-### `instrumented: false` — the opt-out
-
-The adapter's module, plus `Cache` provided from its backend. No
-observability, none installed, nothing declared:
+**Observation is a set port, not a flag.** Every call is handed to whatever
+contributed to `Observers`, and this module contributes a no-op member of its
+own — so a graph composing no observability owes nothing, installs nothing and
+costs one call per operation. Composing
+[`observability()`](/reference/observability) writes the failures as lines;
+composing `otel()` beside it opens the spans and mints the instruments. Neither
+changes a line of this composition.
 
 ```ts
 export const Plain = Module("PlainCacheApp")({
@@ -206,9 +207,10 @@ export const Plain = Module("PlainCacheApp")({
 });
 ```
 
-### The default
+### What the observers make of it
 
-Every call spanned, counted and — when it fails — logged.
+With `observability()` and `otel()` composed, every call is spanned, counted
+and — when it fails — logged.
 
 | Signal   | Name                                       | Attributes                                                |
 | -------- | ------------------------------------------ | --------------------------------------------------------- |

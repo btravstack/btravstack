@@ -746,3 +746,21 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   the reason an application stopped. There is deliberately no `settled()`
   accessor — nothing asks, and an unread accessor is dead code the compiler
   cannot see.
+
+## `Observers` — the set port every starter reports through
+
+`Observers` (`observation.ts`) is `Port.many<(operation: Operation) => Settle>`,
+with `observe(observers, operation)` starting every member and handing back the
+one finisher that settles them all, and `noObserver` the member a reader
+contributes so the set is never the empty dependency di refuses.
+
+It is declared HERE for the same reason `Logger`, `Tracer` and `Meter` are: a
+contract other framework packages depend on has to be reachable without
+installing an implementation, and `core` is the package all of them already peer
+on. `@btravstack/cache` reports its calls without its consumers installing a
+logging package and an OpenTelemetry SDK to compile.
+
+The reasoning — why a set port replaced an `instrumented` flag on six packages,
+why the observer is called at the start and answers a finisher, why
+`attributes` and `details` are separate, and the dependency cycle that decides
+how `otel()` contributes — is in the root `CLAUDE.md`.

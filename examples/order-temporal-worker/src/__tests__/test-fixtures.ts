@@ -269,7 +269,6 @@ export const it = test.extend<TemporalFixtures>({
               provides: [Provider(StorageBackend)({ inject: {}, value: confirmations })],
               exports: [StorageBackend],
             }),
-            instrumented: false,
           }),
         ],
         provides: [fulfillOrder, chargeOrder],

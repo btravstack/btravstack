@@ -1,6 +1,6 @@
 ---
 title: Observability contracts
-description: The Logger, Tracer and Meter ports the kernel declares — the contracts every framework package may depend on, and which @btravstack/observability implements.
+description: The Logger, Tracer, Meter and Observers ports the kernel declares — the contracts every framework package may depend on, and which @btravstack/observability implements.
 ---
 
 # Observability contracts
@@ -165,3 +165,57 @@ neither starter. Nothing in the kernel changes either way.
 - [`@btravstack/observability`](/reference/observability) — the implementations.
 - [Kernel events](/reference/core/events) — what the kernel writes through, which is not this.
 - [Log and correlate](/how-to/log-and-correlate) — the task, end to end.
+
+## `Observers` — how a starter reports, without holding a logger
+
+<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+
+```ts
+type Operation = {
+  readonly component: string;
+  readonly name: string;
+  readonly attributes: Attributes;
+  readonly details?: Attributes;
+  readonly traced?: boolean;
+};
+type Settled = {
+  readonly outcome: "ok" | "error";
+  readonly attributes?: Attributes;
+  readonly cause?: unknown;
+};
+type Settle = (settled: Settled) => void;
+class Observers extends Port.many("Observers")<(operation: Operation) => Settle> {}
+
+const observe: (
+  observers: readonly ((operation: Operation) => Settle)[],
+  operation: Operation,
+) => Settle;
+const noObserver: () => Settle;
+```
+
+Every starter that reports what it did — the three servers,
+[`cache`](/reference/cache), [`mailer`](/reference/mailer),
+[`storage`](/reference/storage), [`prisma`](/reference/prisma) — hands its
+operations to this port and holds no `Logger`, `Meter` or `Tracer` of its own.
+Composing [`observability()`](/reference/observability) writes the failures as
+lines; composing `otel()` beside it opens the spans and mints the instruments.
+A graph that composes neither owes nothing and pays one call per operation.
+
+**A module that reads the port contributes `noObserver` itself.** A collector
+depending on a set port nothing provides is an unmet dependency, so the no-op
+member is what makes the empty case empty rather than missing.
+
+**The observer is called at the START and answers a finisher**, which is what
+lets it open a span before the work and end it after: a span reconstructed
+afterwards from a duration is not the parent of anything that ran inside it.
+
+**`attributes` are dimensions and `details` are not.** Attributes are bounded
+and ride the instruments; details are unbounded — a cache key, a mail subject —
+and ride the span and the error line only. That split is what lets one observer
+serve every component without making each choose between a useful span and a
+safe metric.
+
+`traced: false` declines the span for a component whose spans come from
+somewhere better — `@btravstack/prisma` says so, because
+`@prisma/instrumentation` traces at the engine level and a client-level span
+would carry strictly less beside it.

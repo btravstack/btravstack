@@ -2,11 +2,12 @@ import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import {
-  Meter,
+  Observers,
   currentUnit,
   type Attributes,
-  type MeterService,
+  type Operation,
   type RunningApp,
+  type Settle,
   type UnitRecord,
 } from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
@@ -344,12 +345,12 @@ export type TemporalFixtures = {
     readonly taskQueue: string;
   }>;
   readonly serveBroken: (options?: BootOptions) => Promise<App>;
-  /** The starter served with metrics on — the default composition — and a recording meter. */
-  readonly serveMetered: (failing?: boolean) => Promise<{
+  /** The starter served over an observer that records what it was handed. */
+  readonly serveObserved: (failing?: boolean) => Promise<{
     readonly app: App;
     readonly client: Client;
     readonly taskQueue: string;
-    readonly taken: () => readonly Measurement[];
+    readonly taken: () => readonly Observation[];
   }>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
@@ -371,38 +372,45 @@ export type TemporalFixtures = {
  * started against this file's own namespace — so every test opens and closes a
  * connection of its own.
  */
-/** One recorded measurement: which instrument, what value, and the dimensions. */
-export type Measurement = {
-  readonly instrument: string;
-  readonly value: number;
+/** One observed operation, as an observer saw it settle. */
+export type Observation = {
+  readonly component: string;
+  readonly name: string;
   readonly attributes: Attributes;
+  readonly outcome: "ok" | "error";
 };
 
-/** A meter that keeps what it was given, so a spec asserts on the DIMENSIONS. */
-const recordingMeter = (): { service: MeterService; taken: () => readonly Measurement[] } => {
-  const taken: Measurement[] = [];
-  const instrument = (name: string) => ({
-    add: (value: number, attributes?: Attributes) =>
-      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
-    record: (value: number, attributes?: Attributes) =>
-      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
-  });
+/** An observer that keeps what it was handed, so a spec asserts on the DIMENSIONS. */
+const recordingObserver = (): {
+  member: (operation: Operation) => Settle;
+  taken: () => readonly Observation[];
+} => {
+  const taken: Observation[] = [];
   return {
-    service: { createCounter: instrument, createHistogram: instrument },
+    member:
+      ({ component, name, attributes }) =>
+      ({ outcome, attributes: settled }) => {
+        taken.push({ component, name, attributes: { ...attributes, ...settled }, outcome });
+      },
     taken: () => taken,
   };
 };
 
-/** The starter as a deployment gets it — `instrumented` on — over a recording meter. */
-const composeMetered = (server: Server, boot: Boot, meter: MeterService, failing: boolean) => {
+/** The starter over an observer that records — all a graph does to be observed. */
+const composeObserved = (
+  server: Server,
+  boot: Boot,
+  member: (operation: Operation) => Settle,
+  failing: boolean,
+) => {
   const taskQueue = nextTaskQueue();
-  const worker = TemporalModule("Metered")({
+  const worker = TemporalModule("Observed")({
     contract: { ...echoContract, taskQueue },
     activities: failing ? failingEcho : echoing,
     workflows: echoWorkflows,
     provides: [
       Provider(Greeting)({ inject: {}, value: { text: "hello" } }),
-      Provider(Meter)({ inject: {}, value: meter }),
+      Provider.member(Observers)({ inject: {}, value: member }),
     ],
   });
   const app: App = boot(worker, {
@@ -414,7 +422,6 @@ const composeMetered = (server: Server, boot: Boot, meter: MeterService, failing
 const compose = (server: Server, boot: Boot, options: BootOptions) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Worker")({
-    instrumented: false,
     contract: { ...echoContract, taskQueue },
     activities: options.activities ?? echoing,
     workflows: options.workflows ?? echoWorkflows,
@@ -461,12 +468,12 @@ export const it = test.extend<TemporalFixtures>({
       return { app, client, taskQueue };
     });
   },
-  serveMetered: async ({ server, client, boot }, use) => {
+  serveObserved: async ({ server, client, boot }, use) => {
     await use(async (failing = false) => {
-      const meter = recordingMeter();
-      const { app, taskQueue } = composeMetered(server, boot, meter.service, failing);
+      const observer = recordingObserver();
+      const { app, taskQueue } = composeObserved(server, boot, observer.member, failing);
       await app.runtimeInfo();
-      return { app, client, taskQueue, taken: meter.taken };
+      return { app, client, taskQueue, taken: observer.taken };
     });
   },
   serveBroken: async ({ server, boot }, use) => {
@@ -513,7 +520,6 @@ export const it = test.extend<TemporalFixtures>({
       const taskQueue = nextTaskQueue();
       const app: App = boot(
         TemporalModule("Sliced")({
-          instrumented: false,
           contract: withTaskQueue(slicedContract, taskQueue),
           activities: slices.activities,
           workflows: echoWorkflows,

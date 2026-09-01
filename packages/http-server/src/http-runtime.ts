@@ -4,13 +4,16 @@ import type { Socket } from "node:net";
 
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
-  Meter,
+  Observers,
   RuntimePort,
   RuntimeStartFailed,
-  type MeterService,
+  noObserver,
+  observe,
+  type Operation,
   type Runtime,
   type RuntimeHost,
   type Serving,
+  type Settle,
   type UnitMeta,
 } from "@btravstack/core";
 import { Module, Provider, type ServiceOf } from "@btravstack/di";
@@ -35,12 +38,6 @@ export type HttpInfo = { readonly port: number };
  * supplies on the starter's router port, which this module needs.
  */
 export type HttpOptions = OrpcOptions & {
-  /**
-   * Record RED metrics per request (default `true`), which puts `Meter` in this
-   * module's needs — so a root without an OTel SDK composes
-   * `http({ instrumented: false })` and pays nothing.
-   */
-  readonly instrumented?: boolean;
   /** Pins `HttpConfig.port` instead of reading `PORT`. */
   readonly port?: number;
   /** Pins `HttpConfig.hostname` instead of reading `HOST`. */
@@ -59,7 +56,7 @@ export type HttpOptions = OrpcOptions & {
 /** What `httpServer` pins on the config it binds — everything but the router's own. */
 type SocketOptions = Pick<
   HttpOptions,
-  "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders" | "instrumented"
+  "port" | "hostname" | "cors" | "bodyLimit" | "compression" | "securityHeaders"
 >;
 
 /**
@@ -86,11 +83,8 @@ export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInf
 
 /**
  * Rate, errors and duration, per request — the three a framework that owns the
- * unit lifecycle gets for free and a consumer otherwise writes by hand.
- *
- * `undefined` when the runtime is composed uninstrumented, which is what keeps
- * the metrics free rather than merely cheap: no meter is needed, no instrument
- * is built, and the request path has one `if` in it.
+ * unit lifecycle gets for free, handed to whatever observers the graph
+ * composed.
  *
  * The dimensions are chosen for CARDINALITY. `answerer` is a mount prefix, so
  * the graph bounds it; `status` is a small integer set; `method` is HTTP's own
@@ -98,39 +92,20 @@ export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInf
  * mint a time series per order, which is the classic way a metrics bill becomes
  * the incident.
  */
-type HttpMetrics = {
-  readonly record: (
-    attributes: { readonly method: string; readonly answerer: string; readonly status: number },
-    durationMs: number,
-  ) => void;
-};
-
-const httpMetrics = (meter: MeterService | undefined): HttpMetrics | undefined => {
-  if (meter === undefined) return undefined;
-  const requests = meter.createCounter("btravstack.http.requests", {
-    description: "HTTP requests, by method, answerer and status",
-  });
-  const duration = meter.createHistogram("btravstack.http.duration", {
-    description: "HTTP request duration",
-    unit: "ms",
-  });
-  return {
-    record: (attributes, durationMs) => {
-      requests.add(1, attributes);
-      duration.record(durationMs, attributes);
-    },
-  };
-};
+const requestOperation = (method: string, answerer: string): Operation => ({
+  component: "http",
+  name: "request",
+  attributes: { method, answerer },
+});
 
 const httpRuntime = (
   config: ServiceOf<HttpConfig>,
   securityHeaders: HttpOptions["securityHeaders"],
-  meter: MeterService | undefined,
+  observers: readonly ((operation: Operation) => Settle)[],
 ): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
   resolves: [HttpHandler],
-  start: (host) =>
-    listen(host, config, host.ctx.get(HttpHandler), securityHeaders, httpMetrics(meter)),
+  start: (host) => listen(host, config, host.ctx.get(HttpHandler), securityHeaders, observers),
 });
 
 /**
@@ -139,14 +114,10 @@ const httpRuntime = (
  * `http()`, `htmx()` from a fragment graph — which is what lets an application
  * serve one protocol, the other, or both.
  */
-export const httpServer = <Instrumented extends boolean = true>(
-  options: SocketOptions & { readonly instrumented?: Instrumented } = {},
-): Module<
-  HttpRuntime | HttpConfig | HttpHandler,
-  ConfigInvalid,
-  Instrumented extends false ? Env : Env | Meter
-> => {
-  const { port, hostname, cors, bodyLimit, compression, securityHeaders, instrumented } = options;
+export const httpServer = (
+  options: SocketOptions = {},
+): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env> => {
+  const { port, hostname, cors, bodyLimit, compression, securityHeaders } = options;
   const config = Config.provider(HttpConfig)(
     Config.object({
       port: Config.pinned(port, Config.port("PORT", { default: 3000 })),
@@ -169,28 +140,22 @@ export const httpServer = <Instrumented extends boolean = true>(
     }),
   );
   return Module("HttpServer")({
-    needs: instrumented === false ? [Env] : [Env, Meter],
+    needs: [Env],
     provides: [
       config,
-      instrumented === false
-        ? Provider(HttpRuntime)({
-            inject: { config: HttpConfig },
-            sync: ({ config: bound }) => httpRuntime(bound, securityHeaders, undefined),
-          })
-        : Provider(HttpRuntime)({
-            inject: { config: HttpConfig, meter: Meter },
-            sync: ({ config: bound, meter }) => httpRuntime(bound, securityHeaders, meter),
-          }),
+      // The no-op member, so the set this module reads is never the empty
+      // dependency di refuses: a graph composing no observability still starts.
+      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      Provider(HttpRuntime)({
+        inject: { config: HttpConfig, observers: Observers },
+        sync: ({ config: bound, observers }) => httpRuntime(bound, securityHeaders, observers),
+      }),
     ],
     exports: [HttpRuntime, HttpConfig, HttpHandler],
     // `as never`/`as unknown as Module<…>`, below: `exports` includes
     // `HttpHandler`, a set port, though this module provides no member of it
     // itself — a sibling module's answerer does.
-  } as never) as unknown as Module<
-    HttpRuntime | HttpConfig | HttpHandler,
-    ConfigInvalid,
-    Instrumented extends false ? Env : Env | Meter
-  >;
+  } as never) as unknown as Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env>;
 };
 
 /**
@@ -204,13 +169,9 @@ export const httpServer = <Instrumented extends boolean = true>(
  * Pin `port`/`hostname` and the module reads nothing from the environment; pin
  * only some and the rest still comes from it.
  */
-export const http = <Instrumented extends boolean = true>(
-  options: HttpOptions & { readonly instrumented?: Instrumented } = {},
-): Module<
-  HttpRuntime | HttpConfig | HttpHandler,
-  ConfigInvalid,
-  Instrumented extends false ? Env | OrpcRouterPort : Env | Meter | OrpcRouterPort
-> =>
+export const http = (
+  options: HttpOptions = {},
+): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | OrpcRouterPort> =>
   Module("Http")({
     imports: [httpServer(options)],
     provides: [orpc(options)],
@@ -218,7 +179,7 @@ export const http = <Instrumented extends boolean = true>(
   } as never) as unknown as Module<
     HttpRuntime | HttpConfig | HttpHandler,
     ConfigInvalid,
-    Instrumented extends false ? Env | OrpcRouterPort : Env | Meter | OrpcRouterPort
+    Env | OrpcRouterPort
   >;
 
 /**
@@ -269,7 +230,7 @@ const listen = (
   options: ServiceOf<HttpConfig>,
   answerers: readonly HttpAnswerer[],
   securityHeaders: HttpOptions["securityHeaders"],
-  metrics: HttpMetrics | undefined,
+  observers: readonly ((operation: Operation) => Settle)[],
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   routesOf(answerers)
     .toAsync()
@@ -314,23 +275,20 @@ const listen = (
             open.add(response);
             response.once("close", () => open.delete(response));
             const answerer = answererFor(routes, request.url);
-            if (metrics !== undefined) {
-              // On `'close'`, not on the unit settling: the unit's own contract
-              // is that the response is flushed inside it, so `'close'` is the
-              // one event that has seen the final status — a 500 written by the
-              // `recoverDefect` arm below included.
-              const startedAt = performance.now();
-              response.once("close", () =>
-                metrics.record(
-                  {
-                    method: request.method ?? "",
-                    answerer: answerer?.prefix ?? "",
-                    status: response.statusCode,
-                  },
-                  performance.now() - startedAt,
-                ),
-              );
-            }
+            // Settled on `'close'`, not when the unit settles: the unit's own
+            // contract is that the response is flushed inside it, so `'close'`
+            // is the one event that has seen the final status — a 500 written
+            // by the `recoverDefect` arm below included.
+            const settle = observe(
+              observers,
+              requestOperation(request.method ?? "", answerer?.prefix ?? ""),
+            );
+            response.once("close", () =>
+              settle({
+                outcome: response.statusCode >= 500 ? "error" : "ok",
+                attributes: { status: response.statusCode },
+              }),
+            );
             if (draining) retire(response);
             // `recoverDefect`, not `match`: `E` is statically `never` here, so an
             // `errCases` arm would be a dead branch with no case to name.

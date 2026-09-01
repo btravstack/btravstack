@@ -101,3 +101,35 @@ meets and costs milliseconds.
 Coverage is 100% lines/functions, `test-fixtures.ts` excluded.
 `src/module.test-d.ts` pins the needs gate and all five flag arms, including
 that a runtime-computed boolean lands on the side that owes the three ports.
+
+## Observation is a set port, not a flag
+
+Every call this package makes observable is handed to whatever contributed to
+`Observers` — `@btravstack/core`'s set port — and this module contributes a
+**no-op member of its own**, so a graph composing no observability owes nothing,
+installs nothing and pays one call per operation.
+
+`instrumented` is gone. It defaulted to `true` and therefore put `Logger`,
+`Meter` and `Tracer` in this module's `Needs`, so a root that wanted a cache and
+no OpenTelemetry SDK got a compile error naming three ports and had to find an
+option to turn something off it never asked for. A set port has the property the
+flag was reaching for and the flag could not have: **on when observability is
+composed, free when it is not, and one composition either way.**
+
+**A reader of the port must contribute a member**, the way `otel()` does for
+`Instrumentations`: a collector depending on a set port nothing provides is an
+unmet dependency, at plan time and in `Needs` alike. Several no-ops in one graph
+cost a call each.
+
+**Dimensions and details are separate, and that split is what lets one observer
+serve every component.** `attributes` are bounded and ride the instruments;
+`details` are unbounded — a cache key, a mail subject, a URL — and ride the span
+and the error line only. Without it every contributor would have to choose
+between a useful span and a safe metric.
+
+What the observers do with an operation belongs to `@btravstack/observability`:
+`observability()` writes a line when one FAILS (never on success — that is what
+the metric is for), and `otel()` opens the span and mints
+`btravstack.<component>.operations` and `btravstack.<component>.duration`. The
+names are derived from the operation's own `component`, so nothing had to become
+uniform to be shared.

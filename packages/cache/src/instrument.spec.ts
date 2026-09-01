@@ -3,7 +3,7 @@ import { describe, expect } from "vitest";
 import { defectiveCache, failingCache, it } from "./__tests__/test-fixtures.js";
 import { memoryCache } from "./memory.js";
 
-describe("cache, instrumented", () => {
+describe("cache, observed", () => {
   it("opens a span per call, named for the operation and carrying the key", async ({
     instrumented,
   }) => {
@@ -24,10 +24,13 @@ describe("cache, instrumented", () => {
     // WHEN an absent key is read
     await instrumented.run(memoryCache(), (service) => service.get("absent"));
 
-    // THEN the one counted point is a miss on a get
+    // THEN the one counted point is a miss on a get. `outcome` is the shared
+    // ok-or-error every observed component reports; `result` is the cache's own
+    // word for what happened, which is what keeps one dashboard query working
+    // across components without losing the detail
     expect(
       instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
-    ).toEqual([{ operation: "get", outcome: "miss", value: 1 }]);
+    ).toEqual([{ operation: "get", result: "miss", outcome: "ok", value: 1 }]);
   });
 
   it("counts a read of a stored key as a hit", async ({ instrumented }) => {
@@ -41,8 +44,8 @@ describe("cache, instrumented", () => {
     expect(
       instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
     ).toEqual([
-      { operation: "set", outcome: "ok", value: 1 },
-      { operation: "get", outcome: "hit", value: 1 },
+      { operation: "set", result: "ok", outcome: "ok", value: 1 },
+      { operation: "get", result: "hit", outcome: "ok", value: 1 },
     ]);
   });
 
@@ -57,8 +60,8 @@ describe("cache, instrumented", () => {
     expect(
       instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
     ).toEqual([
-      { operation: "set", outcome: "ok", value: 1 },
-      { operation: "delete", outcome: "ok", value: 1 },
+      { operation: "set", result: "ok", outcome: "ok", value: 1 },
+      { operation: "delete", result: "ok", outcome: "ok", value: 1 },
     ]);
   });
 
@@ -67,12 +70,17 @@ describe("cache, instrumented", () => {
     // WHEN a key is read
     await instrumented.run(failingCache(), (service) => service.get("k"));
 
-    // THEN the failure is one error line naming the operation and the key
+    // THEN the failure is one error line naming the operation and the key. The
+    // line is `@btravstack/observability`'s now rather than this package's — a
+    // starter says WHAT happened and the observers say how to record it
     expect(instrumented.lines()).toEqual([
       expect.objectContaining({
         level: "error",
-        message: "the cache could not answer",
-        attributes: expect.objectContaining({ operation: "get", key: "k" }),
+        message: "cache.get failed",
+        attributes: expect.objectContaining({
+          operation: "get",
+          "btravstack.cache.key": "k",
+        }),
       }),
     ]);
   });
@@ -98,7 +106,7 @@ describe("cache, instrumented", () => {
   });
 });
 
-describe("cache, instrumented, when the backend defects", () => {
+describe("cache, observed, when the backend defects", () => {
   it("still ends the span and counts the call as an error", async ({ instrumented }) => {
     // GIVEN an instrumented cache over an adapter that defects — the shape a
     // value JSON cannot encode produces, which the port does not model

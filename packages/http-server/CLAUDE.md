@@ -1044,9 +1044,10 @@ transport's hands.
 
 `btravstack.http.requests` (counter) and `btravstack.http.duration`
 (histogram, ms), both dimensioned `{ method, answerer, status }`, recorded at
-the unit seam. `instrumented` defaults to `true` and puts `Meter` in
-`httpServer`'s needs; `http({ instrumented: false })` drops it, builds no
-instrument, and leaves one `if` on the request path.
+the unit seam. Every unit is handed to `Observers`, and this module contributes a no-op
+member of its own — so a graph composing no observability owes nothing and pays
+one call per unit. There is no `instrumented` flag: composing `observability()`
+and `otel()` is what turns the lines and the instruments on.
 
 **Recorded on the response's `'close'`, not on the unit settling.** They would
 usually agree — the unit's own contract is that the response is flushed inside

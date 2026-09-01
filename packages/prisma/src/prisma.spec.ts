@@ -1,6 +1,12 @@
 import { Env } from "@btravstack/config";
-import { HealthChecks, Instrumentations, Logger, Meter, runHealthChecks } from "@btravstack/core";
-import { Module, Provider } from "@btravstack/di";
+import {
+  HealthChecks,
+  Instrumentations,
+  Logger,
+  Observers,
+  runHealthChecks,
+} from "@btravstack/core";
+import { Module, Provider, type ServiceOf } from "@btravstack/di";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { describe, expect } from "vitest";
 
@@ -15,17 +21,36 @@ import { prismaDatabase } from "./prisma.js";
 const connectionStringOf = (adapter: unknown): string =>
   (adapter as { readonly config: { readonly connectionString: string } }).config.connectionString;
 
+/**
+ * The one port this starter still needs: `loadPrismaInstrumentation` says at
+ * `debug` when the optional peer is absent, which is a startup fact rather than
+ * an operation an observer could settle.
+ */
+const silentLoggerService: ServiceOf<Logger> = {
+  log: () => {},
+  trace: () => {},
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  fatal: () => {},
+  with: () => silentLoggerService,
+  isEnabled: () => false,
+};
+
+const silentLogger = Provider(Logger)({ inject: {}, value: silentLoggerService });
+
 describe("prismaDatabase", () => {
   it("opens the client against the URL the environment names", async ({ stub }) => {
     // GIVEN a starter over a stub client, and DATABASE_URL in the environment
     const db = prismaDatabase("OrderDatabase")({
       client: (adapter) => stub.client(connectionStringOf(adapter)),
-      instrumented: false,
     });
     const root = Module("Root")({
       imports: [db],
       provides: [
         Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+        silentLogger,
       ],
       exports: [db.port],
     });
@@ -41,12 +66,12 @@ describe("prismaDatabase", () => {
     // GIVEN a graph holding the client open
     const db = prismaDatabase("OrderDatabase")({
       client: (adapter) => stub.client(connectionStringOf(adapter)),
-      instrumented: false,
     });
     const root = Module("Root")({
       imports: [db],
       provides: [
         Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+        silentLogger,
       ],
       exports: [db.port],
     });
@@ -62,11 +87,10 @@ describe("prismaDatabase", () => {
     // GIVEN the same graph and an environment that names no database
     const db = prismaDatabase("OrderDatabase")({
       client: (adapter) => stub.client(connectionStringOf(adapter)),
-      instrumented: false,
     });
     const root = Module("Root")({
       imports: [db],
-      provides: [Provider(Env)({ inject: {}, value: {} })],
+      provides: [Provider(Env)({ inject: {}, value: {} }), silentLogger],
       exports: [db.port],
     });
 
@@ -79,12 +103,13 @@ describe("prismaDatabase", () => {
     );
   });
 
-  it("instruments by default, so a query through the graph is recorded", async ({
+  it("observes a query through the graph, with no flag and no ports owed", async ({
     stub,
-    telemetry,
+    observed,
   }) => {
-    // GIVEN the starter with no `instrumented` flag at all, in a root that
-    // supplies the three telemetry ports the default arm now depends on
+    // GIVEN the starter in a root that owes it NOTHING beyond `Env` — the
+    // observer is a set-port member, so composing one is the whole of what
+    // makes the queries observed
     const db = prismaDatabase("OrderDatabase")({
       client: (adapter) => stub.client(connectionStringOf(adapter)),
     });
@@ -92,8 +117,10 @@ describe("prismaDatabase", () => {
       imports: [db],
       provides: [
         Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        Provider(Logger)({ inject: {}, value: telemetry.logger }),
-        Provider(Meter)({ inject: {}, value: telemetry.meter }),
+        silentLogger,
+        ...observed.members.map((member) =>
+          Provider.member(Observers)({ inject: {}, value: member }),
+        ),
       ],
       exports: [db.port],
     });
@@ -103,29 +130,29 @@ describe("prismaDatabase", () => {
       fromSafePromise(ctx.get(db.port).query("Order", "findMany", Promise.resolve([]))),
     );
 
-    // THEN it was counted — the client came out wrapped without anyone asking.
-    // No span: engine-level tracing is `@btravstack/prisma/otel`'s job, and a
-    // client-level one would only duplicate it more shallowly.
-    expect(telemetry.recorded()).toEqual(
+    // THEN it was observed — the client came out wrapped without anyone asking.
+    // Untraced: engine-level tracing is `@btravstack/prisma/otel`'s job, and a
+    // client-level span would only duplicate it more shallowly.
+    expect(observed.taken()).toEqual([
       expect.objectContaining({
-        spans: [],
-        counts: [
-          { value: 1, attributes: { model: "Order", operation: "findMany", outcome: "ok" } },
-        ],
+        component: "database",
+        name: "findMany",
+        outcome: "ok",
+        traced: false,
       }),
-    );
+    ]);
   });
 
   it("declares a health check that asks the database to answer", async ({ stub }) => {
     // GIVEN a starter over a reachable stub client
     const db = prismaDatabase("OrderDatabase")({
       client: (adapter) => stub.client(connectionStringOf(adapter)),
-      instrumented: false,
     });
     const root = Module("Root")({
       imports: [db],
       provides: [
         Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+        silentLogger,
       ],
       exports: [db.port, HealthChecks],
     });
@@ -148,12 +175,12 @@ describe("prismaDatabase", () => {
         client.breakQueries("connection refused");
         return client;
       },
-      instrumented: false,
     });
     const root = Module("Root")({
       imports: [db],
       provides: [
         Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+        silentLogger,
       ],
       exports: [db.port, HealthChecks],
     });
@@ -168,11 +195,9 @@ describe("prismaDatabase", () => {
     });
   });
 
-  it("offers its engine instrumentation rather than registering it", async ({
-    stub,
-    telemetry,
-  }) => {
-    // GIVEN the instrumented starter — the arm that can emit telemetry at all
+  it("offers its engine instrumentation rather than registering it", async ({ stub, observed }) => {
+    // GIVEN the starter, which offers its instrumentation unconditionally now
+    // that there is no arm to be on the wrong side of
     const db = prismaDatabase("OrderDatabase")({
       client: (adapter) => stub.client(connectionStringOf(adapter)),
     });
@@ -180,8 +205,10 @@ describe("prismaDatabase", () => {
       imports: [db],
       provides: [
         Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        Provider(Logger)({ inject: {}, value: telemetry.logger }),
-        Provider(Meter)({ inject: {}, value: telemetry.meter }),
+        silentLogger,
+        ...observed.members.map((member) =>
+          Provider.member(Observers)({ inject: {}, value: member }),
+        ),
       ],
       exports: [db.port, Instrumentations],
     });

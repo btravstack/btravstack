@@ -200,18 +200,22 @@ describe("the broadcast deployment", () => {
     // writer's own line is named rather than filtered out by "has no kernel
     // unit": a multi-tenant write runs inside a unit too (that is where its
     // tenant comes from), so carrying a `unit` no longer tells a subscriber's
-    // line from the placement's. The third line is the mailer's own: the
-    // notifying subscriber sends, and an instrumented mailer says so inside
-    // the same unit.
+    // line from the placement's.
+    //
+    // TWO lines, not three: the mailer's own "mail sent" is gone with the
+    // `instrumented` flag. A successful send is what its metric and span are
+    // for, and the starter no longer holds a `Logger` to write a line of its
+    // own — an application that wants an operator to see every send writes
+    // that line where it sends.
     const subscriberLines = () =>
       tapped
         .lines()
         .filter((line) => line.unit !== undefined && line.message !== "placing an order");
-    await vi.waitUntil(() => subscriberLines().length === 3, { timeout: 5_000 });
+    await vi.waitUntil(() => subscriberLines().length === 2, { timeout: 5_000 });
     expect(
       subscriberLines()
         .map((line) => line.message)
         .sort(),
-    ).toEqual(["mail sent", "order placed — notifying", "recording an order change"]);
+    ).toEqual(["order placed — notifying", "recording an order change"]);
   });
 });

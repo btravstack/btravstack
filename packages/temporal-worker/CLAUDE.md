@@ -360,9 +360,10 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
 
 `btravstack.temporal.activity.attempts` (counter) and
 `btravstack.temporal.activity.duration` (histogram, ms), both dimensioned
-`{ activity, outcome }`, recorded in the activity middleware. `instrumented`
-defaults to `true` and puts `Meter` in the module's needs;
-`temporal({ instrumented: false })` drops it and builds no instrument.
+`{ activity, outcome }`, recorded in the activity middleware. Every unit is handed to `Observers`, and this module contributes a no-op
+member of its own — so a graph composing no observability owes nothing and pays
+one call per unit. There is no `instrumented` flag: composing `observability()`
+and `otel()` is what turns the lines and the instruments on.
 
 **Per attempt, not per activity, and that is the point.** An activity is
 retried under the same execution, so a count per activity would hide exactly

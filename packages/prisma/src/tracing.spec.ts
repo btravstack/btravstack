@@ -4,8 +4,8 @@ import { it } from "./__tests__/test-fixtures.js";
 import { loadPrismaInstrumentation } from "./tracing.js";
 
 describe("loadPrismaInstrumentation", () => {
-  it("turns the instrumentation on when it resolves", async ({ telemetry }) => {
-    // GIVEN an instrumentation that loads
+  it("enables the instrumentation when the optional peer is installed", async ({ logs }) => {
+    // GIVEN a loader that resolves an instrumentation
     let enabled = false;
     const load = () =>
       Promise.resolve(
@@ -18,32 +18,29 @@ describe("loadPrismaInstrumentation", () => {
       );
 
     // WHEN tracing is enabled
-    const instrumentation = await loadPrismaInstrumentation(telemetry.logger, load);
+    const instrumentation = await loadPrismaInstrumentation(logs.logger, load);
 
-    // THEN it came on, and nothing was logged about it being absent
-    expect({ enabled, returned: instrumentation !== undefined, ...telemetry.recorded() }).toEqual(
-      expect.objectContaining({ enabled: true, returned: true, debug: [] }),
-    );
+    // THEN it came on, and nothing was said about it being absent
+    expect({ enabled, returned: instrumentation !== undefined, debug: logs.debug() }).toEqual({
+      enabled: true,
+      returned: true,
+      debug: [],
+    });
   });
 
-  it("says so at debug when the optional peer is not installed", async ({ telemetry }) => {
+  it("reports the skip rather than passing silently", async ({ logs }) => {
     // GIVEN a loader that cannot resolve `@prisma/instrumentation`
     const load = () => Promise.reject(new Error("Cannot find package"));
 
     // WHEN tracing is attempted
-    const instrumentation = await loadPrismaInstrumentation(telemetry.logger, load);
+    const instrumentation = await loadPrismaInstrumentation(logs.logger, load);
 
-    // THEN it is skipped, and the skip is stated rather than silent — telemetry
-    // you believe you have and do not is worse than none
-    expect({ returned: instrumentation, ...telemetry.recorded() }).toEqual(
-      expect.objectContaining({
-        returned: undefined,
-        debug: [
-          expect.objectContaining({
-            message: expect.stringContaining("@prisma/instrumentation is not installed"),
-          }),
-        ],
-      }),
-    );
+    // THEN it is skipped, and the skip is stated rather than silent —
+    // telemetry you believe you have and do not is worse than none. `debug`,
+    // not `error`: a missing OPTIONAL peer is a choice rather than a fault
+    expect({ returned: instrumentation, debug: logs.debug() }).toEqual({
+      returned: undefined,
+      debug: [expect.stringContaining("@prisma/instrumentation is not installed")],
+    });
   });
 });

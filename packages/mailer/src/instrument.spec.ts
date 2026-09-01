@@ -4,7 +4,7 @@ import { aMail, defectiveMailer, failingMailer, it } from "./__tests__/test-fixt
 import { mailRecorder } from "./recording.js";
 import { recordingMailer } from "./recording.js";
 
-describe("mailer, instrumented", () => {
+describe("mailer, observed", () => {
   it("opens one span per send, carrying the envelope and not the body", async ({
     instrumented,
   }) => {
@@ -39,21 +39,18 @@ describe("mailer, instrumented", () => {
     ).toEqual([{ operation: "send", outcome: "ok", value: 1 }]);
   });
 
-  it("logs a delivered message without its body", async ({ instrumented }) => {
-    // GIVEN an instrumented mailer that accepts
+  it("writes no line for a delivered message", async ({ instrumented }) => {
+    // GIVEN an observed mailer that accepts
     // WHEN a message is sent
     await instrumented.run(recordingMailer(mailRecorder()), (service) =>
       service.send(aMail("ada@example.test")),
     );
 
-    // THEN the line carries the count and the subject, and no recipient
-    expect(instrumented.lines()).toEqual([
-      expect.objectContaining({
-        level: "info",
-        message: "mail sent",
-        attributes: expect.objectContaining({ recipients: 1, subject: "your order" }),
-      }),
-    ]);
+    // THEN nothing is logged. A successful send is what the metric and the
+    // span are for, and this package no longer holds a `Logger` to write a
+    // line of its own — an application that wants an operator to see every
+    // send writes that line where it sends
+    expect(instrumented.lines()).toEqual([]);
   });
 
   it("counts and logs a relay that refused", async ({ instrumented }) => {
@@ -66,7 +63,7 @@ describe("mailer, instrumented", () => {
       lines: instrumented.lines().map((line) => ({ level: line.level, message: line.message })),
       points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
     }).toEqual({
-      lines: [{ level: "error", message: "the mail could not be sent" }],
+      lines: [{ level: "error", message: "mail.send failed" }],
       points: [{ operation: "send", outcome: "error", value: 1 }],
     });
   });
@@ -85,7 +82,7 @@ describe("mailer, instrumented", () => {
   });
 });
 
-describe("mailer, instrumented, when the transport defects", () => {
+describe("mailer, observed, when the transport defects", () => {
   it("still ends the span and counts the send as an error", async ({ instrumented }) => {
     // GIVEN an instrumented mailer over a transport that throws — the shape
     // the port does not model, because it is a bug rather than an outcome

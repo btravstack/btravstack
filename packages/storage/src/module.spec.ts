@@ -12,7 +12,7 @@ describe("storage", () => {
     // GIVEN a graph composing the memory adapter, opted out of instrumentation
     // — the only arm that needs no observability
     const root = Module("Root")({
-      imports: [storage({ adapter: memoryStorage(), instrumented: false })],
+      imports: [storage({ adapter: memoryStorage() })],
       exports: [Storage],
     });
     const document = aDocument();
@@ -32,7 +32,7 @@ describe("storage", () => {
   it("declares a health check a reachable store answers", async () => {
     // GIVEN a graph over the in-memory adapter
     const root = Module("Root")({
-      imports: [storage({ adapter: memoryStorage(), instrumented: false })],
+      imports: [storage({ adapter: memoryStorage() })],
       exports: [Storage, HealthChecks],
     });
 
@@ -50,7 +50,7 @@ describe("storage", () => {
     // GIVEN a store that DOES hold something at the probe key — the same
     // health answer as an empty store, by a different arm of the check
     const root = Module("Root")({
-      imports: [storage({ adapter: memoryStorage(), instrumented: false })],
+      imports: [storage({ adapter: memoryStorage() })],
       exports: [Storage, HealthChecks],
     });
 
@@ -74,7 +74,7 @@ describe("storage", () => {
   it("reports storage unhealthy when the store cannot be reached", async () => {
     // GIVEN an adapter that reports every operation unavailable
     const root = Module("Root")({
-      imports: [storage({ adapter: failingStorage(), instrumented: false })],
+      imports: [storage({ adapter: failingStorage() })],
       exports: [Storage, HealthChecks],
     });
 

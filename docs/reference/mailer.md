@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/mailer"
-description: The complete surface of @btravstack/mailer — the Mailer and MailerBackend ports, Mail, MailNotSent, the recording and SMTP adapters, mailer() and its instrumented flag, and SMTP_URL.
+description: The complete surface of @btravstack/mailer — the Mailer and MailerBackend ports, Mail, MailNotSent, the recording and SMTP adapters, mailer(), the Observers seam it reports through, and SMTP_URL.
 ---
 
 <!-- doctest: group=order-amqp-worker -->
@@ -135,9 +135,9 @@ secret. Unset or blank is a `ConfigInvalid` naming it — exit `78` under
 `nodemailer` is an **optional** peer, reached only through the
 `@btravstack/mailer/smtp` subpath.
 
-## `mailer({ adapter, instrumented? })`
+## `mailer({ adapter })`
 
-One function. The adapter and whether sends are instrumented are both decided
+One function, and the adapter is the only decision at it. Sends are reported
 at the composition root.
 
 ```ts
@@ -160,11 +160,13 @@ the place for it, while the subject is what an operator recognises a stuck
 mail by. The package's own spec asserts the body text is absent from the
 span's attributes rather than trusting the code to keep being careful.
 
-**Instrumented by default**, `instrumented: false` opts out — the same shape,
-and the same reasoning, as [`@btravstack/cache`](/reference/cache): telemetry
-that is missing gets discovered during an incident, and the loud arm states
-its cost in the type, since instrumenting puts `Logger`, `Meter` and `Tracer`
-in the module's `Needs`.
+**Observation is a set port, not a flag.** Every call is handed to whatever
+contributed to `Observers`, and this module contributes a no-op member of its
+own — so a graph composing no observability owes nothing, installs nothing and
+costs one call per operation. Composing
+[`observability()`](/reference/observability) writes the failures as lines;
+composing `otel()` beside it opens the spans and mints the instruments. Neither
+changes a line of this composition.
 
 ## What it deliberately does not do
 

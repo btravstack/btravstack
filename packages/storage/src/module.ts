@@ -1,26 +1,17 @@
-import { HealthCheckFailed, HealthChecks, Logger, Meter, Tracer } from "@btravstack/core";
+import { HealthCheckFailed, HealthChecks, Observers, noObserver } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { Err, Ok, P } from "unthrown";
 
 import { instrument } from "./instrument.js";
 import { Storage, StorageBackend } from "./storage.js";
 
-export type StorageOptions<E, N, Instrumented extends boolean> = {
+export type StorageOptions<E, N> = {
   /**
-   * The adapter module: `memoryStorage()` from this entry point,
-   * `s3Storage()` from `@btravstack/storage/s3`, or one an application
-   * wrote itself over `StorageBackend`.
+   * The adapter module: `memoryStorage()` from this entry point, `s3Storage()`
+   * from `@btravstack/storage/s3`, or one an application wrote itself over
+   * `StorageBackend`.
    */
   readonly adapter: Module<StorageBackend, E, N>;
-  /**
-   * Span, count and log every operation. **Default `true`**, `false` opts out.
-   *
-   * On by default because telemetry that is missing is discovered during an
-   * incident. The cost is stated rather than hidden: instrumenting puts
-   * `Logger`, `Meter` and `Tracer` in this module's `Needs`, so a root without
-   * `observability()` and `otel()` gets a compile error naming all three.
-   */
-  readonly instrumented?: Instrumented;
 };
 
 /**
@@ -36,14 +27,9 @@ export type StorageOptions<E, N, Instrumented extends boolean> = {
  * application depends on must not be the one an adapter provides, which is also
  * why instrumentation is a flag on the composition rather than a wrapper.
  */
-export const storage = <E, N, Instrumented extends boolean = true>({
+export const storage = <E, N>({
   adapter,
-  instrumented,
-}: StorageOptions<E, N, Instrumented>): Module<
-  Storage | HealthChecks,
-  E,
-  Instrumented extends true ? N | Logger | Meter | Tracer : N
-> => {
+}: StorageOptions<E, N>): Module<Storage | HealthChecks, E, N> => {
   const healthCheck = Provider.member(HealthChecks)({
     inject: { backend: StorageBackend },
     sync: ({ backend }) => ({
@@ -65,36 +51,18 @@ export const storage = <E, N, Instrumented extends boolean = true>({
     }),
   });
 
-  // One signature, two graphs — so the return type is the conditional above
-  // and the implementation casts once, a value-level branch reporting a
-  // type-level one.
-  return (instrumented !== false
-    ? Module("InstrumentedStorage")({
-        needs: [Logger, Meter, Tracer],
-        imports: [adapter],
-        provides: [
-          Provider(Storage)({
-            inject: { backend: StorageBackend, logger: Logger, tracer: Tracer, meter: Meter },
-            sync: ({ backend, logger, tracer, meter }) =>
-              instrument(backend, logger, tracer, meter),
-          }),
-          healthCheck,
-        ],
-        exports: [Storage, HealthChecks],
-      })
-    : Module("Storage")({
-        imports: [adapter],
-        provides: [
-          Provider(Storage)({
-            inject: { backend: StorageBackend },
-            sync: ({ backend }) => backend,
-          }),
-          healthCheck,
-        ],
-        exports: [Storage, HealthChecks],
-      })) as unknown as Module<
-    Storage | HealthChecks,
-    E,
-    Instrumented extends true ? N | Logger | Meter | Tracer : N
-  >;
+  return Module("Storage")({
+    imports: [adapter],
+    provides: [
+      // The no-op member, so the set this module reads is never the empty
+      // dependency di refuses: a graph composing no observability still starts.
+      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      Provider(Storage)({
+        inject: { backend: StorageBackend, observers: Observers },
+        sync: ({ backend, observers }) => instrument(backend, observers),
+      }),
+      healthCheck,
+    ],
+    exports: [Storage, HealthChecks],
+  } as never) as unknown as Module<Storage | HealthChecks, E, N>;
 };

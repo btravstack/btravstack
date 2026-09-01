@@ -1,13 +1,15 @@
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
-  Meter,
+  Observers,
   RuntimePort,
   RuntimeStartFailed,
+  noObserver,
   releasedBy,
-  type MeterService,
+  type Operation,
   type Runtime,
   type RuntimeHost,
   type Serving,
+  type Settle,
 } from "@btravstack/core";
 import {
   Module,
@@ -33,7 +35,7 @@ import {
   type AsyncResult,
 } from "unthrown";
 
-import { activityUnits, temporalMetrics } from "./activity-units.js";
+import { activityUnits } from "./activity-units.js";
 
 /** What the worker publishes once it is polling, read back through `RunningApp.runtimeInfo()`. */
 export type TemporalInfo = {
@@ -138,12 +140,6 @@ export type TemporalTuning = {
    * `shutdownGraceTime`.
    */
   readonly gracePeriod?: Duration;
-  /**
-   * Record RED metrics per activity attempt (default `true`), which puts
-   * `Meter` in this module's needs — so a root without an OTel SDK composes
-   * `temporal({ instrumented: false })` and pays nothing.
-   */
-  readonly instrumented?: boolean;
 };
 
 export type TemporalOptions<C extends ContractDefinition> = TemporalTuning & {
@@ -181,15 +177,9 @@ type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
  * With both configuration fields pinned the module reads nothing from the
  * environment; pin only one and the other still comes from it.
  */
-export const temporal = <C extends ContractDefinition, Instrumented extends boolean = true>(
-  options: TemporalOptions<C> & { readonly instrumented?: Instrumented },
-): Module<
-  Provided,
-  ConfigInvalid | TemporalUnreachable,
-  Instrumented extends false
-    ? Env | Scope | ActivitiesInstanceOf<C>
-    : Env | Scope | Meter | ActivitiesInstanceOf<C>
-> => {
+export const temporal = <C extends ContractDefinition>(
+  options: TemporalOptions<C>,
+): Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C>> => {
   const { address, namespace } = options;
   const activities = TemporalActivitiesPort as ActivitiesPortOf<C>;
   const config = Config.provider(TemporalConfig)(
@@ -212,9 +202,8 @@ export const temporal = <C extends ContractDefinition, Instrumented extends bool
       ),
     }),
   );
-  const uninstrumented = options.instrumented === false;
   return Module("Temporal")({
-    needs: uninstrumented ? [Env, activities] : [Env, Meter, activities],
+    needs: [Env, activities],
     provides: [
       config,
       Provider(TemporalConnection)({
@@ -233,45 +222,33 @@ export const temporal = <C extends ContractDefinition, Instrumented extends bool
             .close()
             .catch((cause: unknown) => (heldByWorker(cause) ? undefined : Promise.reject(cause))),
       }),
-      uninstrumented
-        ? Provider(TemporalRuntime)({
-            inject: { connection: TemporalConnection, config: TemporalConfig, activities },
-            sync: ({
-              connection,
-              config: bound,
-              activities: impls,
-            }): Runtime<never, TemporalInfo> => ({
-              name: "temporal",
-              resolves: [],
-              start: (host) => createWorker(host, connection, bound, impls, options, undefined),
-            }),
-          })
-        : Provider(TemporalRuntime)({
-            inject: {
-              connection: TemporalConnection,
-              config: TemporalConfig,
-              activities,
-              meter: Meter,
-            },
-            sync: ({
-              connection,
-              config: bound,
-              activities: impls,
-              meter,
-            }): Runtime<never, TemporalInfo> => ({
-              name: "temporal",
-              resolves: [],
-              start: (host) => createWorker(host, connection, bound, impls, options, meter),
-            }),
-          }),
+      // The no-op member, so the set this module reads is never the empty
+      // dependency di refuses: a graph composing no observability still starts.
+      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      Provider(TemporalRuntime)({
+        inject: {
+          connection: TemporalConnection,
+          config: TemporalConfig,
+          activities,
+          observers: Observers,
+        },
+        sync: ({
+          connection,
+          config: bound,
+          activities: impls,
+          observers,
+        }): Runtime<never, TemporalInfo> => ({
+          name: "temporal",
+          resolves: [],
+          start: (host) => createWorker(host, connection, bound, impls, options, observers),
+        }),
+      }),
     ],
     exports: [TemporalRuntime, TemporalConfig, TemporalConnection],
   } as never) as unknown as Module<
     Provided,
     ConfigInvalid | TemporalUnreachable,
-    Instrumented extends false
-      ? Env | Scope | ActivitiesInstanceOf<C>
-      : Env | Scope | Meter | ActivitiesInstanceOf<C>
+    Env | Scope | ActivitiesInstanceOf<C>
   >;
 };
 
@@ -287,7 +264,7 @@ const createWorker = <C extends ContractDefinition>(
   config: ServiceOf<TemporalConfig>,
   activities: ActivitiesOf<C>,
   options: TemporalOptions<C>,
-  meter: MeterService | undefined,
+  observers: readonly ((operation: Operation) => Settle)[],
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
   const { taskQueue } = options.contract;
   const { namespace } = config;
@@ -299,7 +276,7 @@ const createWorker = <C extends ContractDefinition>(
     () =>
       declareActivitiesHandler({
         contract: options.contract,
-        middleware: activityUnits(host, temporalMetrics(meter)),
+        middleware: activityUnits(host, observers),
         activities,
       }),
     startFailed,
