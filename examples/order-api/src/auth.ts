@@ -66,7 +66,7 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
  * deployment reads it from a config field bound off `Env`, since a key list in
  * the image is a key list in the repository.
  */
-export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>({
+export const serviceAuth = apiKeyAuthenticator<ServiceIdentity>()({
   keys: [{ key: "reporting", principal: { appId: "reporting" } }],
 });
 

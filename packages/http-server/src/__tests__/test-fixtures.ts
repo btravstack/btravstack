@@ -186,6 +186,14 @@ const issuerOf = async () => {
         .setIssuedAt()
         .setExpirationTime(overrides.expiresIn ?? "5m")
         .sign(privateKey),
+    /** A properly signed token carrying no `exp` — valid forever unless the verifier requires the claim. */
+    signWithoutExpiry: () =>
+      new SignJWT({ sub: "u-1", tenant: "acme" })
+        .setProtectedHeader({ alg: "RS256", kid: "k1" })
+        .setIssuer("https://issuer.test")
+        .setAudience("orders-api")
+        .setIssuedAt()
+        .sign(privateKey),
     /** A token signed by a key this issuer's JWKS does not publish. */
     signWithStranger: (claims: Record<string, unknown> = {}) =>
       new SignJWT(claims)
@@ -216,7 +224,7 @@ export type ServiceIdentity = { readonly appId: string };
 export type JwtIdentity = { readonly tenantId: string; readonly userId: string };
 
 /** Two issued keys, one scoped and one not, so a spec can tell which key answered. */
-const apiKeys = apiKeyAuthenticator<ServiceIdentity, "reports:read">({
+const apiKeys = apiKeyAuthenticator<ServiceIdentity>()({
   keys: [
     { key: "first-secret", principal: { appId: "reporting" }, scopes: ["reports:read"] },
     { key: "second-secret", principal: { appId: "billing" }, scopes: [] },
@@ -224,7 +232,7 @@ const apiKeys = apiKeyAuthenticator<ServiceIdentity, "reports:read">({
 });
 
 /** A scheme with no scope vocabulary, on a header of its own — where `scopes` is not expressible. */
-const bareApiKey = apiKeyAuthenticator<ServiceIdentity>({
+const bareApiKey = apiKeyAuthenticator<ServiceIdentity>()({
   header: "x-service-key",
   keys: [{ key: "plain-secret", principal: { appId: "plain" } }],
 });
@@ -1302,7 +1310,7 @@ export const it = test.extend<HttpFixtures>({
   jwtService: async ({ issuer }, use) => {
     await use(
       serviceOf(
-        jwtAuthenticator<JwtIdentity>({
+        jwtAuthenticator<JwtIdentity>()({
           jwks: issuer.jwks,
           issuer: "https://issuer.test",
           audience: "orders-api",
@@ -1315,7 +1323,7 @@ export const it = test.extend<HttpFixtures>({
   scopedJwtService: async ({ issuer }, use) => {
     await use(
       serviceOf(
-        jwtAuthenticator<JwtIdentity, "orders:export">({
+        jwtAuthenticator<JwtIdentity>()({
           jwks: issuer.jwks,
           issuer: "https://issuer.test",
           audience: "orders-api",

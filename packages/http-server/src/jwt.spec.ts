@@ -78,6 +78,21 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
+  it("refuses a token carrying no `exp` at all", async ({ issuer, jwtService }) => {
+    // GIVEN a properly signed token from the right issuer for the right
+    // audience, with no expiry claim
+    const token = await issuer.signWithoutExpiry();
+
+    // WHEN it is presented
+    const resolved = await jwtService({ authorization: `Bearer ${token}` });
+
+    // THEN it is refused. `jose` validates `exp` only when it is PRESENT, so
+    // without `requiredClaims` this token authenticates and never expires —
+    // which is what the documentation claiming `exp` is required would have
+    // been describing wrongly
+    expect(resolved).toBeErrTagged("Unauthenticated");
+  });
+
   it("refuses a token from another issuer", async ({ issuer, jwtService }) => {
     // GIVEN a token whose `iss` is not the one configured
     const token = await issuer.sign(

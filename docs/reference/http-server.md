@@ -53,7 +53,7 @@ declare const view: (order: Order) => OrderView;
 | `resolvePrincipal`     | value | the protocol-neutral authentication walk, shared by every answerer                                                                                                                                                                                                                                           |
 | `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                     |
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                   |
-| `apiKeyAuthenticator`  | value | `apiKeyAuthenticator({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                        |
+| `apiKeyAuthenticator`  | value | `apiKeyAuthenticator<P>()({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                   |
 | `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                           |
 | `httpServer`           | value | `httpServer(options?)` — the socket half: runtime, config, and the empty answerer set. `http()` is this plus oRPC                                                                                                                                                                                            |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                           |
@@ -204,22 +204,27 @@ of a hand-written one.
 on a secret leaks its prefix through timing, and `timingSafeEqual` refuses two
 buffers of different lengths, which would leak the key's length instead),
 checks every configured key with no early return, and puts a missing header on
-the same path as a wrong one. Keys come from the caller — a config field bound
+the same path as a wrong one. Its vocabulary is the union of what its keys
+grant, inferred rather than declared twice. Keys come from the caller — a config field bound
 off `Env`, a secret store — because a key list in the image is a key list in
 the repository.
 
 **`jwtAuthenticator`**, from `@btravstack/http-server/jwt`, with `jose` as an
 optional peer. It owns JWKS fetch, cache and rotation; an algorithm allowlist
 that is asymmetric-only, because a JWKS publishes **public** keys and accepting
-`HS256` beside them is the algorithm-confusion attack; and `iss`, `aud`, `exp`
-and `nbf`, all required, with clock tolerance defaulting to zero. Every failure
-is the same refusal, so the endpoint is not an oracle for which check the
-attacker got wrong.
+`HS256` beside them is the algorithm-confusion attack; and `iss`, `aud` and `exp`
+required to be PRESENT — jose validates `exp` only when it is, so without that a
+signed token omitting it authenticates and never expires. `nbf` is honoured when
+present and not required, since real issuers often omit it. Clock tolerance
+defaults to zero. Every failure is the same refusal, so the endpoint is not an
+oracle for which check the attacker got wrong.
 
 `principal(claims)` is yours — no standard claim carries a tenant — and
-answering `undefined` refuses the token. `scopes` is the vocabulary, and the
-grant is its **intersection** with the token's `scope` or `scp` claim, so a
-token claiming a scope the scheme does not know grants nothing extra. Nothing
+answering `undefined` refuses the token. `scopes` is the vocabulary and **the
+only place it is written**: the scheme's scope type is inferred from it, so it
+cannot name a scope nothing grants. The grant is its **intersection** with the
+token's `scope` or `scp` claim, so a token claiming a scope the scheme does not
+know grants nothing extra. Nothing
 new checks them: the grant goes through `granted()` and the existing walk
 produces the 403.
 

@@ -684,19 +684,27 @@ one.
 optional peer — the `@btravstack/observability/pino` protocol. JWKS fetch,
 cache and rotation; an allowlist that is asymmetric-only, because a JWKS
 publishes PUBLIC keys and accepting `HS256` beside them is the
-algorithm-confusion attack; `iss`/`aud`/`exp`/`nbf`, all required, clock
-tolerance defaulting to zero. Every failure is one refusal, so the endpoint is
+algorithm-confusion attack; `iss`, `aud` and `exp` required to be
+PRESENT through jose's `requiredClaims` — it validates `exp` only when the claim
+is there, so without that a signed token omitting it authenticates and never
+expires, which `jwt.spec.ts` now pins. `nbf` is honoured when present and not
+required: real issuers often omit it. Clock tolerance defaults to zero. Every failure is one refusal, so the endpoint is
 not an oracle for which check the attacker got wrong. There is a test that
 mints the confusion token and a test that mints one signed by a key the JWKS
 does not publish.
 
-**A declared vocabulary must be grantable, and the types say so.** `scopes` is
-REQUIRED on both authenticators once `Scope` is non-`never`, and not
-expressible when it is — a conditional on the options type. Optional in both
-cases would let a scheme advertise a scope while nothing could ever grant it: a
-route that type-checks and refuses every caller with a permanent 403, which is
-the failure `ScopeGate` exists to catch one layer up and would have walked past
-here. A key or a token that grants nothing says `[]`.
+**A declared vocabulary must be grantable, and the way to guarantee that is to
+stop declaring it twice.** Both authenticators take the curried `<P>()(…)` shape
+`HttpAuthenticator` already uses — the principal stated, the vocabulary
+INFERRED: from `scopes` on the JWT side, from the union of what the keys grant
+on the API-key side. A vocabulary written separately from what is granted can
+name a scope nothing issues, which passes `ScopeGate` and then refuses every
+caller with a permanent 403 — the failure that gate exists to catch, walked past
+one layer down. Inference deletes the second place it could be written.
+
+The API-key scheme is scoped when ANY key grants something, decided once at
+composition so the answer's shape cannot vary per key: a scoped scheme whose
+matched key declared nothing answers an empty grant, never a bare identity.
 
 **No new checking surface.** A grant goes through `granted()` and the existing
 walk produces the 403 — which is why `scopes` is a vocabulary and the grant is

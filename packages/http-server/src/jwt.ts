@@ -6,7 +6,7 @@ import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from 
 /** The verified claims, as `jose` reports them. */
 export type Claims = JWTPayload;
 
-export type JwtOptions<P, Scope extends string> = {
+export type JwtOptions<P, Scopes extends readonly string[]> = {
   /** The issuer's JWKS endpoint. Keys are fetched on demand and cached; a `kid` the cache does not know triggers one refetch, rate-limited by `jose`. */
   readonly jwks: string | URL;
   /** Required `iss`. A token from another issuer is refused. */
@@ -29,20 +29,19 @@ export type JwtOptions<P, Scope extends string> = {
    * as a tenant.
    */
   readonly principal: (claims: Claims) => P | undefined;
-} & ([Scope] extends [never]
-  ? { readonly scopes?: undefined }
-  : {
-      /**
-       * The scopes this scheme can grant. The granted list is the INTERSECTION
-       * of this vocabulary with what the token carries, so a token claiming a
-       * scope the scheme does not know grants nothing extra.
-       *
-       * Required once `Scope` is declared: optional would let a scheme
-       * advertise a scope to `defineHttp` while nothing could ever grant it —
-       * a route that type-checks and refuses every caller with a permanent 403.
-       */
-      readonly scopes: readonly Scope[];
-    });
+  /**
+   * The scopes this scheme can grant, and **the only place they are written**.
+   * The scheme's vocabulary is inferred from this array rather than declared a
+   * second time as a type argument, so it cannot be a superset of what the
+   * scheme grants — a scope named in the type and missing from the array would
+   * pass `ScopeGate` and then refuse every caller with a permanent 403.
+   *
+   * The granted list is the INTERSECTION of this vocabulary with what the token
+   * carries, so a token claiming a scope the scheme does not know grants
+   * nothing extra. Omit it entirely for a scheme with no scopes.
+   */
+  readonly scopes?: Scopes;
+};
 
 /**
  * Asymmetric only, and deliberately.
@@ -107,53 +106,60 @@ const bearer = (value: string | readonly string[] | undefined): string | undefin
  * A refusal carries no reason, which is `Unauthenticated`'s own rule: an
  * authenticator that wants to record why logs it before returning.
  */
-export const jwtAuthenticator = <P, const Scope extends string = never>(
-  options: JwtOptions<P, Scope>,
-): Authenticator<P, Scope, never> => {
-  // Built once, at composition: the key set IS the cache, so one per request
-  // would refetch the issuer's keys on every call.
-  const keys = createRemoteJWKSet(new URL(options.jwks));
-  const header = (options.header ?? "authorization").toLowerCase();
-  const vocabulary = options.scopes;
+export const jwtAuthenticator =
+  <P>() =>
+  <const Scopes extends readonly string[] = readonly []>(
+    options: JwtOptions<P, Scopes>,
+  ): Authenticator<P, Scopes[number], never> => {
+    // Built once, at composition: the key set IS the cache, so one per request
+    // would refetch the issuer's keys on every call.
+    const keys = createRemoteJWKSet(new URL(options.jwks));
+    const header = (options.header ?? "authorization").toLowerCase();
+    const vocabulary = options.scopes;
 
-  return HttpAuthenticator<P, Scope>()({
-    inject: {},
-    sync: () => (headers) => {
-      const token = bearer(headers[header]);
-      if (token === undefined) return ErrAsync(new Unauthenticated());
-      return (
-        fromPromise(
-          jwtVerify(token, keys, {
-            issuer: typeof options.issuer === "string" ? options.issuer : [...options.issuer],
-            audience:
-              typeof options.audience === "string" ? options.audience : [...options.audience],
-            algorithms: [...(options.algorithms ?? DEFAULT_ALGORITHMS)],
-            clockTolerance: options.clockToleranceSec ?? 0,
-          }),
-          // Every failure is the same refusal: a signature that does not
-          // verify, an expired token and an audience mismatch must not be
-          // distinguishable from outside, or the endpoint becomes an oracle
-          // for which of them the attacker got wrong.
-          () => new Unauthenticated(),
-        )
-          .map(({ payload }) => payload)
-          // `flatMap`, not `map`: `principal` answering `undefined` is a
-          // REFUSAL, and mapping it would hand the handler `undefined` as a
-          // principal — an unauthenticated caller with a context that
-          // type-checks.
-          .flatMap((claims) => {
-            const principal = options.principal(claims);
-            if (principal === undefined) return ErrAsync(new Unauthenticated());
-            if (vocabulary === undefined) return OkAsync(principal as never);
-            const held = new Set(claimedScopes(claims));
-            return OkAsync(
-              granted(
-                principal,
-                vocabulary.filter((scope) => held.has(scope)),
-              ) as never,
-            );
-          })
-      );
-    },
-  });
-};
+    return HttpAuthenticator<P, Scopes[number]>()({
+      inject: {},
+      sync: () => (headers) => {
+        const token = bearer(headers[header]);
+        if (token === undefined) return ErrAsync(new Unauthenticated());
+        return (
+          fromPromise(
+            jwtVerify(token, keys, {
+              issuer: typeof options.issuer === "string" ? options.issuer : [...options.issuer],
+              audience:
+                typeof options.audience === "string" ? options.audience : [...options.audience],
+              algorithms: [...(options.algorithms ?? DEFAULT_ALGORITHMS)],
+              clockTolerance: options.clockToleranceSec ?? 0,
+              // `jose` validates `exp` only when it is PRESENT, so without this a
+              // signed token that omits it authenticates and never expires.
+              // `nbf` is deliberately not required: real issuers often omit it,
+              // and it is honoured when present either way.
+              requiredClaims: ["iss", "aud", "exp"],
+            }),
+            // Every failure is the same refusal: a signature that does not
+            // verify, an expired token and an audience mismatch must not be
+            // distinguishable from outside, or the endpoint becomes an oracle
+            // for which of them the attacker got wrong.
+            () => new Unauthenticated(),
+          )
+            .map(({ payload }) => payload)
+            // `flatMap`, not `map`: `principal` answering `undefined` is a
+            // REFUSAL, and mapping it would hand the handler `undefined` as a
+            // principal — an unauthenticated caller with a context that
+            // type-checks.
+            .flatMap((claims) => {
+              const principal = options.principal(claims);
+              if (principal === undefined) return ErrAsync(new Unauthenticated());
+              if (vocabulary === undefined) return OkAsync(principal as never);
+              const held = new Set(claimedScopes(claims));
+              return OkAsync(
+                granted(
+                  principal,
+                  vocabulary.filter((scope) => held.has(scope)),
+                ) as never,
+              );
+            })
+        );
+      },
+    });
+  };

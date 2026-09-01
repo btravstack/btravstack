@@ -7,28 +7,39 @@ import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from 
 /**
  * One issued key, and what presenting it makes the caller.
  *
- * `scopes` is REQUIRED once the scheme declares a vocabulary, and absent
- * otherwise. Optional in both cases would let a scheme advertise a scope to
- * `defineHttp` and the contract's own gate while no key could ever grant it —
- * a route that type-checks and refuses every caller with a permanent 403,
- * which is the exact failure `ScopeGate` exists to catch one layer up. A key
- * that grants nothing says so with `scopes: []`.
+ * `scopes` is **the only place a scope is written**: the scheme's vocabulary is
+ * the union of what its keys grant, inferred rather than declared a second time
+ * as a type argument. A vocabulary stated separately could name a scope no key
+ * grants, which passes `ScopeGate` and then refuses every caller with a
+ * permanent 403 — the failure that gate exists to catch, one layer up.
  */
-export type ApiKey<P, Scope extends string> = {
+export type ApiKey<P> = {
   readonly key: string;
   readonly principal: P;
-} & ([Scope] extends [never]
-  ? { readonly scopes?: undefined }
-  : {
-      /** What this key grants, checked against the endpoint's declared scopes by the existing 403 path. */
-      readonly scopes: readonly Scope[];
-    });
+  /** What this key grants, checked against the endpoint's declared scopes by the existing 403 path. */
+  readonly scopes?: readonly string[];
+};
 
-export type ApiKeyOptions<P, Scope extends string> = {
+export type ApiKeyOptions<P, Keys extends readonly ApiKey<P>[]> = {
   /** Which header carries the key. Default `x-api-key`. */
   readonly header?: string;
-  readonly keys: readonly ApiKey<P, Scope>[];
+  readonly keys: Keys;
 };
+
+/**
+ * The scheme's vocabulary: everything any of its keys grants, and `never` when
+ * none does.
+ *
+ * Matched on a REQUIRED `scopes`, so a key literal that omits it contributes
+ * nothing. Indexing `Keys[number]["scopes"]` instead resolves through the
+ * optional property on the constraint and answers `string` for a scheme with no
+ * scopes at all — a vocabulary of every string, which is worse than none.
+ */
+export type ScopesOf<Keys extends readonly ApiKey<unknown>[]> = Keys[number] extends infer Key
+  ? Key extends { readonly scopes: infer S extends readonly string[] }
+    ? S[number]
+    : never
+  : never;
 
 /** SHA-256 makes every comparison the same fixed width, which is what `timingSafeEqual` requires of its two buffers. */
 const digest = (value: string): Buffer => createHash("sha256").update(value, "utf8").digest();
@@ -59,33 +70,37 @@ const digest = (value: string): Buffer => createHash("sha256").update(value, "ut
  * Keys come from the caller — an `Env`-bound config field, a secret store —
  * because a key list in the image is a key list in the repository.
  */
-export const apiKeyAuthenticator = <P, const Scope extends string = never>(
-  options: ApiKeyOptions<P, Scope>,
-): Authenticator<P, Scope, never> => {
-  const header = (options.header ?? "x-api-key").toLowerCase();
-  // Digested once, at composition: hashing every configured key on every
-  // request would be the same work done per call for no extra secrecy.
-  const issued = options.keys.map((entry) => ({ ...entry, digest: digest(entry.key) }));
+export const apiKeyAuthenticator =
+  <P>() =>
+  <const Keys extends readonly ApiKey<P>[]>(
+    options: ApiKeyOptions<P, Keys>,
+  ): Authenticator<P, ScopesOf<Keys>, never> => {
+    const header = (options.header ?? "x-api-key").toLowerCase();
+    // Digested once, at composition: hashing every configured key on every
+    // request would be the same work done per call for no extra secrecy.
+    const issued = options.keys.map((entry) => ({ ...entry, digest: digest(entry.key) }));
+    // The scheme is scoped when ANY key grants something, decided once here so
+    // the answer's SHAPE cannot vary per key: a scoped scheme whose matched key
+    // declared nothing answers an empty grant, never a bare identity.
+    const scoped = options.keys.some((entry) => entry.scopes !== undefined);
 
-  return HttpAuthenticator<P, Scope>()({
-    inject: {},
-    sync: () => (headers) => {
-      const presented = headers[header];
-      const candidate = digest(typeof presented === "string" ? presented : "");
-      let matched: (typeof issued)[number] | undefined;
-      for (const entry of issued) {
-        // No `break`, and the assignment is unconditional work either way: the
-        // loop costs the same whichever key matched, and the same again when
-        // none did.
-        if (timingSafeEqual(candidate, entry.digest)) matched = entry;
-      }
-      if (matched === undefined || typeof presented !== "string" || presented === "")
-        return ErrAsync(new Unauthenticated());
-      return OkAsync(
-        (matched.scopes === undefined
-          ? matched.principal
-          : granted(matched.principal, matched.scopes)) as never,
-      );
-    },
-  });
-};
+    return HttpAuthenticator<P, ScopesOf<Keys>>()({
+      inject: {},
+      sync: () => (headers) => {
+        const presented = headers[header];
+        const candidate = digest(typeof presented === "string" ? presented : "");
+        let matched: (typeof issued)[number] | undefined;
+        for (const entry of issued) {
+          // No `break`, and the assignment is unconditional work either way: the
+          // loop costs the same whichever key matched, and the same again when
+          // none did.
+          if (timingSafeEqual(candidate, entry.digest)) matched = entry;
+        }
+        if (matched === undefined || typeof presented !== "string" || presented === "")
+          return ErrAsync(new Unauthenticated());
+        return OkAsync(
+          (scoped ? granted(matched.principal, matched.scopes ?? []) : matched.principal) as never,
+        );
+      },
+    });
+  };

@@ -108,7 +108,7 @@ The two rules this half exists to state, before the detail:
   write-only. An authenticator that wants to record why logs it before
   returning. Forwarding a reason would put "no such user" versus "bad
   signature" in a 401 body by default.
-- **`apiKeyAuthenticator({ header?, keys })` → `Authenticator<P, Scope, never>`**
+- **`apiKeyAuthenticator<P>()({ header?, keys })` → `Authenticator<P, ScopesOf<Keys>, never>`**
   (`api-key.ts`, on the main entry point — it has no peer to be optional
   about). Each key carries the principal presenting it makes, and optionally
   what it grants. Three things it does that a hand-written one usually does
@@ -123,20 +123,24 @@ The two rules this half exists to state, before the detail:
   - **A missing header takes the same path as a wrong key**, so "no credential"
     and "bad credential" are not distinguishable by timing either.
 
-  **`scopes` is required on a key once the scheme declares a vocabulary**, and
-  not expressible otherwise. Optional in both cases would let a scheme
-  advertise a scope to `defineHttp` and to the contract's own `ScopeGate` while
-  no key could ever grant it — a route that type-checks and refuses every
-  caller with a permanent 403, which is precisely the failure that gate exists
-  to catch one layer up. A key that grants nothing says `scopes: []`. The same
-  rule holds for `jwtAuthenticator`'s own `scopes`.
+  **The vocabulary is INFERRED from the keys, never declared twice.** It is the
+  union of what the keys grant, so a scheme cannot advertise a scope no key can
+  issue — which would pass the contract's own `ScopeGate` and then refuse every
+  caller with a permanent 403, the failure that gate exists to catch one layer
+  up. The scheme is scoped when any key grants something, decided once at
+  composition so the answer's SHAPE cannot vary per key: a scoped scheme whose
+  matched key declared nothing answers an empty grant, never a bare identity.
+  `jwtAuthenticator` follows the same rule over its single `scopes` array.
+
+  The curried `<P>()(…)` shape is `HttpAuthenticator`'s own, and for the same
+  reason: the principal is stated and the rest is inferred.
 
   The keys come from the caller — an `Env`-bound config field, a secret store —
   because a key list in the image is a key list in the repository.
   `examples/order-api`'s `serviceAuth` is this, not a stand-in.
 
-- **`jwtAuthenticator({ jwks, issuer, audience, algorithms?, clockToleranceSec?, header?, principal, scopes? })`
-  → `Authenticator<P, Scope, never>`, and `DEFAULT_ALGORITHMS`** — from
+- **`jwtAuthenticator<P>()({ jwks, issuer, audience, algorithms?, clockToleranceSec?, header?, principal, scopes? })`
+  → `Authenticator<P, Scopes[number], never>`, and `DEFAULT_ALGORITHMS`** — from
   **`@btravstack/http-server/jwt`**, with `jose` an OPTIONAL peer: a graph that
   never imports the subpath installs nothing. What it owns is the part where
   writing it per application is how CVEs happen:
@@ -148,9 +152,13 @@ The two rules this half exists to state, before the detail:
     them is the **algorithm-confusion** attack — an attacker signs with the
     published public key as the shared secret. There is a test that mints
     exactly that token and is refused.
-  - **`iss`, `aud`, `exp` and `nbf`, all required**, with `clockToleranceSec`
-    defaulting to `0` so leeway is opt-in. `aud` is the one whose absence lets a
-    token minted for a sibling service be replayed here.
+  - **`iss`, `aud` and `exp` are REQUIRED to be present**, through jose's
+    `requiredClaims` — because jose validates `exp` only when it IS present, so
+    without that a signed token omitting it authenticates and never expires.
+    `nbf` is honoured when present and deliberately not required: real issuers
+    often omit it, and requiring it would refuse legitimate tokens.
+    `clockToleranceSec` defaults to `0`, so leeway is opt-in. `aud` is the one
+    whose absence lets a token minted for a sibling service be replayed here.
   - **One refusal for every failure.** A bad signature, an expired token and an
     audience mismatch are indistinguishable from outside — `Unauthenticated`
     carries no reason, so the endpoint is not an oracle for which of them the
