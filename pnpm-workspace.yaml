@@ -143,8 +143,11 @@ overrides:
   # per datasource, where this example's datasource is PostgreSQL
   # (`@prisma/adapter-pg`), so the vulnerable code is installed and never
   # loaded. Installed nonetheless is installed, and `pnpm audit` is right to say
-  # so: prisma@7.10.0 is latest and still resolves 3.15.3, so there is nothing
-  # upstream to take — lift any pre-3.22.0 line to the current 3.24.2.
+  # so. The catalog pins prisma 7.10.0, npm's newest STABLE line — `latest` is
+  # 8.0.0-rc.12, a release candidate, and 7.10.0 carries the `prev` tag — and
+  # 7.10.0 depends on mysql2 3.15.3, so there is nothing upstream to take
+  # without moving to an RC. Lift any pre-3.22.0 line to 3.24.2, which is what
+  # the lockfile then resolves.
   "mysql2@<3.22.0": "3.24.2"
 
 allowBuilds:
