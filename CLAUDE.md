@@ -898,6 +898,43 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   makes composing several slices into one router a starting point rather than a
   trap, and it is the one property marked do-not-break in the design.
 
+  **The LEAF is not yet one shape, and oRPC's is the reference** (issue
+  #207). The mint and compose calls above are uniform; the function a developer
+  actually types is not — `({ errors, context }, input)` on HTTP,
+  `(args, { errors })` on Temporal, and on AMQP a curried single function with
+  no helpers record at all. Someone moving a use case between transports, which
+  is this family's flagship move, relearns the leaf each time.
+
+  **oRPC is the reference because it is the most widely used of the three**, not
+  because helpers-first is inherently better: a developer arriving here has more
+  likely seen oRPC than either of the others, so it is the shape that costs the
+  least to match.
+
+  **The convergence happens UPSTREAM, not in an adapter here** —
+  btravstack/temporal-contract#414 and btravstack/amqp-contract#670, both
+  libraries this org owns and both still in beta, so it is free now and a
+  deprecation cycle after they go stable. A starter could reshape the leaf at
+  the call site it already owns, and should not: the leaf's type is INFERRED
+  from each contract library's own types, so an adapter would re-derive rather
+  than infer it, and it would leave the starter's documentation and the
+  library's documentation describing the same function with two different
+  signatures.
+
+  The AMQP ask is the one that is not merely cosmetic. It is the only leaf with
+  no helpers record, so a handler wanting "infrastructure comes back" imports
+  and constructs `RetryableError` by hand, where an oRPC handler reaches for the
+  `errors` it was handed. A helpers record carrying `errors` and `context` is
+  what makes its triage site the same shape as the other two.
+
+  **The naming asymmetry is a separate, smaller decision and is NOT yet made.**
+  `AmqpHandler`/`AmqpHandlers` differ by one letter, and
+  `TemporalWorkflowActivities`/`TemporalActivities` give the piece the longer
+  name where HTTP gives the composer a different word entirely
+  (`OrpcController`/`OrpcRouter`). The recommendation on the table is HTTP's
+  rule — piece and composer get different words, never singular and plural —
+  but it renames public API on two packages with no obviously-right
+  replacement, so it is recorded here rather than guessed at.
+
   **All three starters share one shape**: mint a piece straight from a
   contract key — HTTP's `api.OrpcController(contract, path)`,
   `@btravstack/amqp-worker`'s `AmqpHandler(contract, key)`,
