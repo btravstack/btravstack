@@ -415,14 +415,12 @@ describe("order-api", () => {
 
     // WHEN the first page is asked for, and then the page after its cursor —
     // chained, so a failed first page cannot be read as a short second one
-    const second = await client.orders
-      .list({ limit: 1 })
-      .flatMap((page) =>
-        client.orders.list({
-          limit: 1,
-          ...(page.nextCursor === null ? {} : { after: page.nextCursor }),
-        }),
-      );
+    const second = await client.orders.list({ limit: 1 }).flatMap((page) =>
+      client.orders.list({
+        limit: 1,
+        ...(page.nextCursor === null ? {} : { after: page.nextCursor }),
+      }),
+    );
 
     // THEN the cursor made the round trip opaque: the client passed back a
     // string it never read, and the listing closed with a null
