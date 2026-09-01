@@ -78,8 +78,8 @@ catalog:
   "@unthrown/prisma": 0.4.0
   "@unthrown/standard-schema": 5.7.0
   "@unthrown/vitest": 5.7.0
-  knip: 6.32.2
-  lefthook: 2.1.10
+  knip: 6.33.0
+  lefthook: 2.1.12
   oxfmt: 0.65.0
   oxlint: 1.80.0
   pino: 10.3.1
@@ -89,7 +89,7 @@ catalog:
   redis: 6.2.1
   tsdown: 0.22.14
   tsx: 4.23.12
-  turbo: 2.10.11
+  turbo: 2.10.12
   typedoc: 0.28.20
   typedoc-plugin-markdown: 4.13.0
   testcontainers: 12.1.0
