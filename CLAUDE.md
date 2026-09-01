@@ -502,9 +502,12 @@ adapter and no repository base type** — a decision, not a backlog item (#156).
 application's ports**, which is the coupling the hexagonal examples exist to
 prevent. A port does not say where its data lives (thesis #2's transaction
 argument), so a `find`/`save`/`remove` supertype the framework owns would be
-asking every store to answer one query language. The four methods each example
-writes by hand are four lines apiece and are the only place its own vocabulary
-appears.
+asking every store to answer one query language. The methods each example writes
+by hand are the only place its own vocabulary appears, and that is what makes
+them worth writing: `prismaOrderRepository.list` is the tenant filter, the
+library's cursor call and the translation of `InvalidCursor` into
+`MalformedCursor` — three decisions this application owns, none of which a
+supertype could have made for it.
 
 **Pagination is expressible once and already is — one layer lower.**
 `@unthrown/prisma`'s `tryPaginate(query).withCursor({ limit, after })` owns the

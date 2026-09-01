@@ -138,14 +138,18 @@ const stubbedApi = () =>
     // One page with more behind it, and a cursor nobody but the stub can read —
     // which is the point: `after` is opaque above the adapter, so the specs
     // assert the round trip rather than the string.
-    list: (_tenantId, { after }) =>
-      after === "not-a-cursor"
-        ? ErrAsync(new MalformedCursor({ cursor: after }))
-        : OkAsync({
-            items: after === undefined ? [anOrder(FIRST_ID, 1)] : [anOrder(SECOND_ID, 2)],
-            nextCursor: after === undefined ? "page-2" : null,
-            hasNextPage: after === undefined,
-          }),
+    //
+    // Only the cursor it ISSUED continues the listing; every other one is
+    // `MalformedCursor`. A stub that accepted any defined cursor would let a
+    // round-trip test pass on an altered cursor, which is the one thing that
+    // test exists to rule out.
+    list: (_tenantId, { after }) => {
+      if (after === undefined)
+        return OkAsync({ items: [anOrder(FIRST_ID, 1)], nextCursor: "page-2", hasNextPage: true });
+      return after === "page-2"
+        ? OkAsync({ items: [anOrder(SECOND_ID, 2)], nextCursor: null, hasNextPage: false })
+        : ErrAsync(new MalformedCursor({ cursor: after }));
+    },
     remove: () => OkAsync(),
   });
 

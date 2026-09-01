@@ -28,8 +28,8 @@ in TanStack Query**, **let the server say who may call it**.
 ## Step 1 — depend on the contract, not the server
 
 ```sh
-pnpm add @orpc/client@^2.0.0-beta @unthrown/orpc @tanstack/react-query \
-  @orpc/tanstack-query@^2.0.0-beta your-api-contract
+pnpm add @orpc/client@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc \
+  @tanstack/react-query @orpc/tanstack-query@^2.0.0-beta your-api-contract
 ```
 
 `@orpc/server` is **not** in that list, and that is the point. A contract
