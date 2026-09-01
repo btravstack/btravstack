@@ -208,8 +208,8 @@ catalogs:
       specifier: 4.1.11
       version: 4.1.11
     zod:
-      specifier: 4.4.3
-      version: 4.4.3
+      specifier: 4.5.1
+      version: 4.5.1
   typedoc:
     typescript:
       specifier: 6.0.3
@@ -319,7 +319,7 @@ importers:
         version: 3.0.0-beta.6
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.5.1
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -484,7 +484,7 @@ importers:
         version: link:../../packages/contract
       '@btravstack/entity':
         specifier: 'catalog:'
-        version: 0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.7.0))(unthrown@5.7.0)(zod@4.4.3)
+        version: 0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.7.0))(unthrown@5.7.0)(zod@4.5.1)
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
@@ -526,7 +526,7 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.5.1
 
   examples/order-api-contract:
     dependencies:
@@ -535,7 +535,7 @@ importers:
         version: 2.0.0-beta.28(@opentelemetry/api@1.9.1)
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.5.1
     devDependencies:
       '@btravstack/contract':
         specifier: workspace:*
@@ -606,13 +606,13 @@ importers:
     dependencies:
       '@btravstack/entity':
         specifier: 'catalog:'
-        version: 0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.7.0))(unthrown@5.7.0)(zod@4.4.3)
+        version: 0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.7.0))(unthrown@5.7.0)(zod@4.5.1)
       unthrown:
         specifier: 'catalog:'
         version: 5.7.0
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.5.1
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -704,7 +704,7 @@ importers:
         version: 8.0.0-beta.5(unthrown@5.7.0)
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.5.1
     devDependencies:
       '@btravstack/tsconfig':
         specifier: 'catalog:'
@@ -823,7 +823,7 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.5.1
 
   internal/test-infra:
     dependencies:
@@ -914,7 +914,7 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.5.1
 
   packages/cache:
     devDependencies:
@@ -1148,7 +1148,7 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.5.1
 
   packages/mailer:
     devDependencies:
@@ -1427,7 +1427,7 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.5.1
 
   packages/testing:
     devDependencies:
@@ -6781,6 +6781,9 @@ packages:
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
+  zod@4.5.1:
+    resolution: {integrity: sha512-P3GqeAEOEDqKvafVGLezbg+39YW/ze4xrD4qdS0adOY8eoI3zfjv1PQM4UwQzgT8mZKXEbqtVt8K+ZKGqkMFKg==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -7143,11 +7146,11 @@ snapshots:
       '@commitlint/cli': 21.2.2(@types/node@26.4.0)(conventional-commits-parser@7.1.2)(typescript@7.0.2)
       '@commitlint/config-conventional': 21.2.0
 
-  '@btravstack/entity@0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.7.0))(unthrown@5.7.0)(zod@4.4.3)':
+  '@btravstack/entity@0.7.0(@unthrown/standard-schema@5.7.0(unthrown@5.7.0))(unthrown@5.7.0)(zod@4.5.1)':
     dependencies:
       '@unthrown/standard-schema': 5.7.0(unthrown@5.7.0)
       unthrown: 5.7.0
-      zod: 4.4.3
+      zod: 4.5.1
 
   '@btravstack/lefthook@0.1.1(lefthook@2.1.10)':
     dependencies:
@@ -9141,13 +9144,13 @@ snapshots:
 
   '@types/docker-modem@3.0.6':
     dependencies:
-      '@types/node': 26.2.0
+      '@types/node': 26.4.0
       '@types/ssh2': 1.15.5
 
   '@types/dockerode@4.0.1':
     dependencies:
       '@types/docker-modem': 3.0.6
-      '@types/node': 26.2.0
+      '@types/node': 26.4.0
       '@types/ssh2': 1.15.5
 
   '@types/estree@1.0.9': {}
@@ -9205,11 +9208,11 @@ snapshots:
 
   '@types/ssh2-streams@0.1.13':
     dependencies:
-      '@types/node': 26.2.0
+      '@types/node': 26.4.0
 
   '@types/ssh2@0.5.52':
     dependencies:
-      '@types/node': 26.2.0
+      '@types/node': 26.4.0
       '@types/ssh2-streams': 0.1.13
 
   '@types/ssh2@1.15.5':
@@ -11150,7 +11153,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
-      '@types/node': 26.2.0
+      '@types/node': 26.4.0
       long: 5.3.2
 
   protobufjs@8.8.0:
@@ -12135,5 +12138,7 @@ snapshots:
       readable-stream: 4.7.0
 
   zod@4.4.3: {}
+
+  zod@4.5.1: {}
 
   zwitch@2.0.4: {}
