@@ -2,7 +2,7 @@ import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
 
-describe("HttpController", () => {
+describe("OrpcController", () => {
   it("carries the port its contract key minted, and the deps it declared", async ({
     controllers,
   }) => {
@@ -15,7 +15,7 @@ describe("HttpController", () => {
     expect({
       portId: controller.port.portId,
       deps: controller.deps.map((dep) => dep.portId),
-    }).toEqual({ portId: "HttpController:greetings", deps: ["Greeter"] });
+    }).toEqual({ portId: "OrpcController:greetings", deps: ["Greeter"] });
   });
 
   it("hands an arm-only router's sync no arguments", async () => {

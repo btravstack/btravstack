@@ -38,7 +38,7 @@ the real two-slice deployment this recipe scales into, see
    `authenticated(...requirements)` where a caller must be known.
 2. Declare this deployment's security schemes once with
    `defineHttp({ authenticators })`.
-3. Implement the contract with `api.HttpRouter(contract)(deps, { sync })`: a
+3. Implement the contract with `api.OrpcRouter(contract)(deps, { sync })`: a
    record shaped like the contract, each leaf a `Result`-returning function.
 4. Compose with
    `HttpModule(name)({ router, imports, provides, exports, needs })`.
@@ -99,7 +99,7 @@ no scheme dependency.
 
 ## Step 2 — the router, as a provider
 
-`api.HttpRouter(ordersContract)` is di's own `Provider(port)` on the starter's
+`api.OrpcRouter(ordersContract)` is di's own `Provider(port)` on the starter's
 router port — there is no name to give, a process serves one router — so the
 call declares the use cases the procedures call and closes over them. **The `mapErrCases` in each procedure is
 the one place a domain error becomes an HTTP answer** — every case named, no
@@ -118,7 +118,7 @@ const view = (order: Order): OrderView => ({
   quantity: order.quantity,
 });
 
-export const ordersRouter = api.HttpRouter(ordersContract)(
+export const ordersRouter = api.OrpcRouter(ordersContract)(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -245,7 +245,7 @@ forgets the starter exports no runtime port and `start` refuses it against
 that imports `http()` without providing the router
 carries an unmet need — the starter's runtime provider depends on its router
 port through di — and `start` refuses the module, naming the port
-(`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`). And a root serving a **marked**
+(`Type 'OrpcRouterPort' is not assignable to type 'Env | Scope'`). And a root serving a **marked**
 contract whose `defineHttp` declared no authenticator for one of its schemes
 carries that scheme's port as a second unmet
 need, refused the same way; drop the marker and that third gate goes with it.
@@ -285,7 +285,7 @@ stream rather than the default JSON on stderr; see
 
 | Option     | Default | What it does                                                |
 | ---------- | ------- | ----------------------------------------------------------- |
-| `router`   | —       | the router **provider** `api.HttpRouter` returned; required |
+| `router`   | —       | the router **provider** `api.OrpcRouter` returned; required |
 | `prefix`   | `/rpc`  | where the RPC endpoint is mounted                           |
 | `port`     | `PORT`  | pins the port instead of reading the variable               |
 | `hostname` | `HOST`  | pins the host instead of reading the variable               |

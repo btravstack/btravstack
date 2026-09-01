@@ -135,7 +135,7 @@ The class expression `class extends Port(id)<S> {}` has an anonymous type that
 declaration emit cannot name across packages; `PortClassOf` is its nameable
 spelling. This is what `Config.provider("Name")(schema)` returns as the type
 of `provider.port`, and how the starters spell their own fixed ports —
-`api.HttpRouter(contract)(…)` returns `PortClassOf<"HttpRouter", …>`,
+`api.OrpcRouter(contract)(…)` returns `PortClassOf<"OrpcRouter", …>`,
 `TemporalActivities` / `AmqpHandlers` a `PortClassOf<"TemporalActivities", …>`
 / `PortClassOf<"AmqpHandlers", …>` typed for the contract — and what a
 consumer that **exports** such a provider needs so its own `.d.ts` can be

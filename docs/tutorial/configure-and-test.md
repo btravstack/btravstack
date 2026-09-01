@@ -153,7 +153,7 @@ const contract = {
     .output(z.object({ message: z.string() })),
 };
 const api = defineHttp();
-const greetingRouter = api.HttpRouter(contract)(
+const greetingRouter = api.OrpcRouter(contract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({
@@ -256,7 +256,7 @@ const contract = {
     .output(z.object({ message: z.string() })),
 };
 const api = defineHttp();
-const greetingRouter = api.HttpRouter(contract)(
+const greetingRouter = api.OrpcRouter(contract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({

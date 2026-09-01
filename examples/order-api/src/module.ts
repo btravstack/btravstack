@@ -19,7 +19,7 @@ import { OrdersSlice } from "./slices/orders/module.js";
  * compile error at the mint and a path with no controller is refused here as
  * uncovered.
  */
-export const orderRouter = api.HttpRouter(contract)([ordersController, customersController]);
+export const orderRouter = api.OrpcRouter(contract)([ordersController, customersController]);
 
 /** The fragments, composed from the orders slice's own route. */
 export const orderFragments = api.HtmxFragments([orderRowFragment]);

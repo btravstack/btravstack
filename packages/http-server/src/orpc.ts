@@ -128,11 +128,11 @@ const pluginsOf = (
  * so a consumer's declaration emit can name the provider's type (TS4023
  * otherwise). Exported for this package's tests, not from `index.ts`.
  */
-export const HttpRouterPort = Port("HttpRouter") as PortClassOf<
-  "HttpRouter",
+export const OrpcRouterPort = Port("OrpcRouter") as PortClassOf<
+  "OrpcRouter",
   Router<Record<never, never>>
 >;
-export type HttpRouterPort = PortInstance<"HttpRouter", Router<Record<never, never>>>;
+export type OrpcRouterPort = PortInstance<"OrpcRouter", Router<Record<never, never>>>;
 
 /**
  * The oRPC starter: a provider of `HttpHandler` built from the router port,
@@ -142,7 +142,7 @@ export type HttpRouterPort = PortInstance<"HttpRouter", Router<Record<never, nev
 export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
   return Provider.member(HttpHandler)(
-    { router: HttpRouterPort, config: HttpConfig },
+    { router: OrpcRouterPort, config: HttpConfig },
     {
       sync: ({ router, config }) => {
         const rpc = new RPCHandler(router, { plugins: [...pluginsOf(options, config)] });
@@ -158,13 +158,13 @@ export const orpc = (options: OrpcOptions = {}) => {
   );
 };
 
-/** What every `HttpRouter` arm returns; only the needs channel `N` differs. */
+/** What every `OrpcRouter` arm returns; only the needs channel `N` differs. */
 type Built<Auth, N> = Provider<
-  PortInstance<"HttpRouter", Router<Record<never, never>>>,
+  PortInstance<"OrpcRouter", Router<Record<never, never>>>,
   never,
   N
 > & {
-  readonly port: PortClassOf<"HttpRouter", Router<Record<never, never>>>;
+  readonly port: PortClassOf<"OrpcRouter", Router<Record<never, never>>>;
   /**
    * The scheme authenticators `defineHttp` bound, carried on the router because
    * the router is what needs them: they discharge its scheme ports.
@@ -177,7 +177,7 @@ type Built<Auth, N> = Provider<
  * handlers are typed by the scheme registry that call inferred.
  *
  * ```ts
- * const orderRouter = api.HttpRouter(orderContract)({ place: PlaceOrder }, {
+ * const orderRouter = api.OrpcRouter(orderContract)({ place: PlaceOrder }, {
  *   sync: ({ place }) => ({
  *     orders: {
  *       place: ({ errors }, input) => place.execute(input.id, input.quantity).map(view),
@@ -191,7 +191,7 @@ type Built<Auth, N> = Provider<
  * key, a missing procedure or a wrong output is a compile error here.
  *
  * The second call also accepts an **array of pieces** in place of
- * `(deps, { sync })` — each an `HttpController(contract, path)` over one node
+ * `(deps, { sync })` — each an `OrpcController(contract, path)` over one node
  * of the contract tree, at any depth, the paths partitioning the contract's
  * procedures: an uncovered leaf is refused against the
  * `"UNCOVERED CONTROLLERS — …"` marker, a piece nested inside another piece's
@@ -291,7 +291,7 @@ export const routerFor =
         );
         const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
           routerFrom(nest(own(services)), services);
-        return Object.assign(Provider(HttpRouterPort)(withSchemes(deps), { sync } as never), {
+        return Object.assign(Provider(OrpcRouterPort)(withSchemes(deps), { sync } as never), {
           authenticators,
         });
       }
@@ -309,7 +309,7 @@ export const routerFor =
         const built = options === undefined ? call() : call(own(services));
         return routerFrom(built as Record<string, unknown>, services);
       };
-      return Object.assign(Provider(HttpRouterPort)(withSchemes(deps), { sync } as never), {
+      return Object.assign(Provider(OrpcRouterPort)(withSchemes(deps), { sync } as never), {
         authenticators,
       });
     }
@@ -353,7 +353,7 @@ const nest = (flat: Record<string, unknown>): Record<string, unknown> => {
 };
 
 /**
- * One piece of the router — what `HttpController(contract, key)(…)` returns, as
+ * One piece of the router — what `OrpcController(contract, key)(…)` returns, as
  * the composing form consumes it. The port stays spelled INLINE rather than as
  * `ControllerPortOf<C, K, Schemes>` — kept as a regression guard, not for a hole
  * open today. On #116's flat `ControllerKeyOf` the alias spelling let TypeScript's
@@ -365,7 +365,7 @@ const nest = (flat: Record<string, unknown>): Record<string, unknown> => {
  * so a future one could reopen it with no test failing; the inline spelling
  * costs one type literal and closes that off. The gate itself is
  * `controller.test-d.ts`'s refused
- * `api.HttpRouter(contract)([markedOrders, markedUsers])`.
+ * `api.OrpcRouter(contract)([markedOrders, markedUsers])`.
  */
 type PieceOf<C extends Record<string, RouterContract>, Schemes> = {
   readonly [K in ControllerKeyOf<C>]: {

@@ -19,13 +19,13 @@ const publicApi = defineHttp();
 
 const contract = { orders: { place: oc }, users: { find: oc } };
 
-const ordersPiece = publicApi.HttpController(
+const ordersPiece = publicApi.OrpcController(
   contract,
   "orders",
 )({
   sync: () => ({ place: () => OkAsync("placed") }),
 });
-const usersPiece = publicApi.HttpController(
+const usersPiece = publicApi.OrpcController(
   contract,
   "users",
 )({
@@ -37,13 +37,13 @@ const usersPiece = publicApi.HttpController(
 //    missing leaf itself is named only once the array's length matches the
 //    marker tuple's own length of 2.
 // @ts-expect-error — the `users` fragment is uncovered
-void publicApi.HttpRouter(contract)([ordersPiece]);
+void publicApi.OrpcRouter(contract)([ordersPiece]);
 
 // 2. A key the contract does not declare is refused at the MINT — there is
 //    nothing to type it by. (The retired keyed record's "UNDECLARED KEY" gate
 //    moved here with the key.)
 // @ts-expect-error — `billing` is not in the contract
-void publicApi.HttpController(contract, "billing");
+void publicApi.OrpcController(contract, "billing");
 
 // 3. A piece cannot sit under the wrong key — by construction, since its key
 //    rides its port id. What the retired "controller under the wrong key" gate
@@ -51,10 +51,10 @@ void publicApi.HttpController(contract, "billing");
 //    match the marker tuple's length, so — coverage being over the leaves —
 //    this diagnostic names the missing PROCEDURE itself: `users.find`.
 // @ts-expect-error — two pieces for `orders` leave `users` uncovered
-void publicApi.HttpRouter(contract)([ordersPiece, ordersPiece]);
+void publicApi.OrpcRouter(contract)([ordersPiece, ordersPiece]);
 
 // 4. A procedure the fragment does not declare is rejected inside the piece.
-void publicApi.HttpController(
+void publicApi.OrpcController(
   contract,
   "orders",
 )({
@@ -68,7 +68,7 @@ void publicApi.HttpController(
 //    deliberate: a fresh `sync` over the fragment would pin only that a
 //    fragment is a valid contract, which says nothing about the piece
 //    surviving the lift.
-void publicApi.HttpRouter(contract.orders)(
+void publicApi.OrpcRouter(contract.orders)(
   { implementation: ordersPiece.port },
   { sync: ({ implementation }) => implementation },
 );
@@ -77,8 +77,8 @@ void publicApi.HttpRouter(contract.orders)(
 // still compile. An array is never a record, so `Array.isArray` alone tells the
 // composing arm from the arm-only one (orpc.ts) — the sync-key ambiguity the
 // retired keyed record needed a discriminator for is gone with it.
-const composed = publicApi.HttpRouter(contract)([ordersPiece, usersPiece]);
-void publicApi.HttpRouter(contract)({
+const composed = publicApi.OrpcRouter(contract)([ordersPiece, usersPiece]);
+void publicApi.OrpcRouter(contract)({
   sync: () => ({
     orders: { place: () => OkAsync("placed") },
     users: { find: () => OkAsync("f") },
@@ -113,13 +113,13 @@ const markedContract = {
   users: contract.users,
 };
 
-const markedOrders = api.HttpController(
+const markedOrders = api.OrpcController(
   markedContract,
   "orders",
 )({
   sync: () => ({ place: (opts) => OkAsync(opts.context.principal.userId) }),
 });
-const markedUsers = api.HttpController(
+const markedUsers = api.OrpcController(
   markedContract,
   "users",
 )({
@@ -128,19 +128,19 @@ const markedUsers = api.HttpController(
 
 // 1. Every contract key must be covered.
 // @ts-expect-error — the `users` fragment is uncovered
-void api.HttpRouter(markedContract)([markedOrders]);
+void api.OrpcRouter(markedContract)([markedOrders]);
 
 // 2. A key the contract does not declare is refused at the mint.
 // @ts-expect-error — `billing` is not in the contract
-void api.HttpController(markedContract, "billing");
+void api.OrpcController(markedContract, "billing");
 
 // 3. The wrong-key gate, by construction, for a marked fragment — same as
 //    above, this diagnostic names `users.find`, not the fragment.
 // @ts-expect-error — two pieces for `orders` leave `users` uncovered
-void api.HttpRouter(markedContract)([markedOrders, markedOrders]);
+void api.OrpcRouter(markedContract)([markedOrders, markedOrders]);
 
 // 4. A procedure the fragment does not declare is rejected inside the piece.
-void api.HttpController(
+void api.OrpcController(
   markedContract,
   "orders",
 )({
@@ -149,7 +149,7 @@ void api.HttpController(
 });
 
 // 5. The do-not-break lift, for a marked fragment.
-void api.HttpRouter(markedContract.orders)(
+void api.OrpcRouter(markedContract.orders)(
   { implementation: markedOrders.port },
   { sync: ({ implementation }) => implementation },
 );
@@ -160,9 +160,9 @@ void api.HttpRouter(markedContract.orders)(
 // fine. The other direction is what has to be refused: a piece whose handler
 // READS a principal cannot be composed under the unmarked contract, where
 // nothing would inject one.
-const markedComposed = api.HttpRouter(markedContract)([markedOrders, markedUsers]);
+const markedComposed = api.OrpcRouter(markedContract)([markedOrders, markedUsers]);
 // @ts-expect-error — `markedOrders` needs a principal the unmarked contract declares nowhere
-void api.HttpRouter(contract)([markedOrders, markedUsers]);
+void api.OrpcRouter(contract)([markedOrders, markedUsers]);
 
 // The inheritance half: a record's requirements are the default for every
 // procedure beneath it, and a procedure's own REPLACE that default rather than
@@ -194,7 +194,7 @@ expectTypeOf<ExportContext["principal"]>().toEqualTypeOf<
 // The router depends on one port per scheme the contract names — so a missing
 // authenticator is di's own unmet-need error naming the port, not a gate this
 // package writes.
-const twoSchemeRouter = api.HttpRouter(grouped)({
+const twoSchemeRouter = api.OrpcRouter(grouped)({
   sync: () => ({ place: () => OkAsync({ id: "o-1" }), export: () => OkAsync({ csv: "" }) }),
 });
 
@@ -238,30 +238,30 @@ type _NoSchemeNeeds = Expect<
 // A FLAT contract slices: its top-level keys are procedures rather than
 // fragments, so a piece owns one procedure and the coverage gate still fires.
 const flat = { place: oc, find: oc };
-const flatPlace = publicApi.HttpController(flat, "place")({ sync: () => () => OkAsync("placed") });
-const flatFind = publicApi.HttpController(flat, "find")({ sync: () => () => OkAsync("found") });
-void publicApi.HttpRouter(flat)([flatPlace, flatFind]);
+const flatPlace = publicApi.OrpcController(flat, "place")({ sync: () => () => OkAsync("placed") });
+const flatFind = publicApi.OrpcController(flat, "find")({ sync: () => () => OkAsync("found") });
+void publicApi.OrpcRouter(flat)([flatPlace, flatFind]);
 // @ts-expect-error — `find` is uncovered, exactly as for a contract of fragments
-void publicApi.HttpRouter(flat)([flatPlace]);
+void publicApi.OrpcRouter(flat)([flatPlace]);
 
 // A DEEP contract slices at ANY depth: a piece may own any node of the tree,
 // named by a dotted path, and the coverage gate is over the LEAVES — an array
 // composes when its paths partition the procedures, at any mix of depths.
 const deep = { v1: { orders: { place: oc, find: oc }, customers: { find: oc } }, health: oc };
-const v1Orders = publicApi.HttpController(
+const v1Orders = publicApi.OrpcController(
   deep,
   "v1.orders",
 )({
   sync: () => ({ place: () => OkAsync("placed"), find: () => OkAsync("found") }),
 });
-const v1Customers = publicApi.HttpController(
+const v1Customers = publicApi.OrpcController(
   deep,
   "v1.customers",
 )({
   sync: () => ({ find: () => OkAsync("found") }),
 });
-const health = publicApi.HttpController(deep, "health")({ sync: () => () => OkAsync("ok") });
-const v1 = publicApi.HttpController(
+const health = publicApi.OrpcController(deep, "health")({ sync: () => () => OkAsync("ok") });
+const v1 = publicApi.OrpcController(
   deep,
   "v1",
 )({
@@ -272,34 +272,34 @@ const v1 = publicApi.HttpController(
 });
 
 // Pieces that PARTITION the leaves compose, at any mix of depths.
-void publicApi.HttpRouter(deep)([v1Orders, v1Customers, health]);
-void publicApi.HttpRouter(deep)([v1, health]);
+void publicApi.OrpcRouter(deep)([v1Orders, v1Customers, health]);
+void publicApi.OrpcRouter(deep)([v1, health]);
 
 // Coverage is over the LEAVES, so what `Uncovered` computes is procedure paths.
 // @ts-expect-error — the `health` procedure is uncovered
-void publicApi.HttpRouter(deep)([v1]);
+void publicApi.OrpcRouter(deep)([v1]);
 
 // Two elements match the marker tuple's length, so this diagnostic names the
 // missing PROCEDURE itself: `v1.customers.find`.
 // @ts-expect-error — `v1.customers.find` is uncovered
-void publicApi.HttpRouter(deep)([v1Orders, health]);
+void publicApi.OrpcRouter(deep)([v1Orders, health]);
 
 // @ts-expect-error — `v1.orders` sits inside `v1`: two pieces implementing one procedure
-void publicApi.HttpRouter(deep)([v1, v1Orders, v1Customers, health]);
+void publicApi.OrpcRouter(deep)([v1, v1Orders, v1Customers, health]);
 
 // @ts-expect-error — a path the contract does not declare
-void publicApi.HttpController(deep, "v1.billing");
+void publicApi.OrpcController(deep, "v1.billing");
 
 // The port id carries the whole path.
 type _PathPortId = Expect<
-  typeof v1Orders.port.portId extends "HttpController:v1.orders" ? true : false
+  typeof v1Orders.port.portId extends "OrpcController:v1.orders" ? true : false
 >;
 
 // The requirements fold down a dotted path: a mark on `v1` reaches a piece
 // minted at `v1.orders`, exactly as `routerOf`'s `inherited` walk pushes it at
 // runtime — a handler there reads the principal the ancestor's mark typed.
 const markedDeep = { v1: authenticated({ user: [] })(deep.v1), health: oc };
-void api.HttpController(
+void api.OrpcController(
   markedDeep,
   "v1.orders",
 )({
@@ -317,30 +317,30 @@ void api.HttpController(
 const dotted = { "a.b": oc, plain: oc };
 
 // @ts-expect-error — `a.b` carries a literal dot: no piece path can name it
-void publicApi.HttpController(dotted, "a.b");
+void publicApi.OrpcController(dotted, "a.b");
 
 // …and the refusal SAYS WHY. Dropping the key from `ControllerKeyOf` alone
 // leaves `not assignable to parameter of type '"plain"'`, which reads as a
 // typo hint and sends a reader hunting for the wrong thing; the gate rides the
 // `key` parameter so the sentence is in the diagnostic.
 type _MintSaysWhy = Expect<
-  Parameters<typeof publicApi.HttpController<typeof dotted, "a.b">>[1] extends {
+  Parameters<typeof publicApi.OrpcController<typeof dotted, "a.b">>[1] extends {
     readonly "UNSLICEABLE CONTRACT KEY — this path names a key containing a literal dot, which a piece path cannot encode; serve this contract with the (deps, arm) form instead": "a.b";
   }
     ? true
     : false
 >;
 
-const plainPiece = publicApi.HttpController(dotted, "plain")({ sync: () => () => OkAsync("ok") });
+const plainPiece = publicApi.OrpcController(dotted, "plain")({ sync: () => () => OkAsync("ok") });
 
 // @ts-expect-error — the contract carries an unsliceable key
-void publicApi.HttpRouter(dotted)([plainPiece]);
+void publicApi.OrpcRouter(dotted)([plainPiece]);
 
 // …and the diagnostic says UNSLICEABLE, not UNCOVERED: `a.b` is not a leaf some
 // piece forgot, it is a leaf no piece can name. Reading the last overload's
 // parameter is what tells the two markers apart, which `@ts-expect-error` alone
 // cannot do.
-const dottedRouter = publicApi.HttpRouter(dotted);
+const dottedRouter = publicApi.OrpcRouter(dotted);
 type _Unsliceable = Expect<
   Parameters<typeof dottedRouter>[0] extends readonly [
     `UNSLICEABLE CONTRACT KEY${string}`,
@@ -352,7 +352,7 @@ type _Unsliceable = Expect<
 
 // The escape hatch the marker points at: the `(deps, arm)` form splits nothing,
 // so it serves such a contract correctly and stays open.
-void publicApi.HttpRouter(dotted)({
+void publicApi.OrpcRouter(dotted)({
   sync: () => ({ "a.b": () => OkAsync("ok"), plain: () => OkAsync("ok") }),
 });
 
@@ -363,16 +363,16 @@ void publicApi.HttpRouter(dotted)({
 const dottedDeep = { v1: { "a.b": oc }, health: oc };
 
 // @ts-expect-error — `v1.a.b` still cannot say which dot is the separator
-void publicApi.HttpController(dottedDeep, "v1.a.b");
+void publicApi.OrpcController(dottedDeep, "v1.a.b");
 
 // The parent IS nameable, and composing over it is exactly how such a contract
 // is served by the array form.
-const v1Dotted = publicApi.HttpController(
+const v1Dotted = publicApi.OrpcController(
   dottedDeep,
   "v1",
 )({ sync: () => ({ "a.b": () => OkAsync("ok") }) });
-const healthDotted = publicApi.HttpController(
+const healthDotted = publicApi.OrpcController(
   dottedDeep,
   "health",
 )({ sync: () => () => OkAsync("ok") });
-void publicApi.HttpRouter(dottedDeep)([v1Dotted, healthDotted]);
+void publicApi.OrpcRouter(dottedDeep)([v1Dotted, healthDotted]);

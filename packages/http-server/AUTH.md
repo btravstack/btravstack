@@ -108,8 +108,8 @@ The two rules this half exists to state, before the detail:
   write-only. An authenticator that wants to record why logs it before
   returning. Forwarding a reason would put "no such user" versus "bad
   signature" in a 401 body by default.
-- **`defineHttp({ authenticators })` → `Http<A>`, carrying `HttpController`,
-  `HttpRouter` and `authenticators`** (`define-http.ts`) — **the one door** to
+- **`defineHttp({ authenticators })` → `Http<A>`, carrying `OrpcController`,
+  `OrpcRouter` and `authenticators`** (`define-http.ts`) — **the one door** to
   the marker-typed entities, and the place a scheme registry is stated.
   **The contract says which schemes protect a route; this says what each one
   resolves to.** `SchemesFrom<A>` reads the registry off the authenticators
@@ -123,7 +123,7 @@ The two rules this half exists to state, before the detail:
   compile error** (measured: TS2339 on a property of `never`). That is the
   "use the factory" signal. `controllerFor` and
   `routerFor` are exported from their own files for this factory alone, not
-  from `index.ts`, and there is **no** top-level `HttpController` / `HttpRouter`
+  from `index.ts`, and there is **no** top-level `OrpcController` / `OrpcRouter`
   any more: a form whose principal could only ever be `never` was a trap with
   no correct use.
   The default type argument is `Record<never, never>`, **not**
@@ -264,7 +264,7 @@ authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
   from parting:
   - **The walk is seeded with `isAuthenticated(contract)`, not `undefined`.** The
     root node has no `contract[key]` to be read from, so a marked **root** —
-    `api.HttpRouter(authenticated({ user: [] })(contract))` — would otherwise wrap nothing at
+    `api.OrpcRouter(authenticated({ user: [] })(contract))` — would otherwise wrap nothing at
     all while `Implementation<C, Schemes>`'s record arm typed every leaf with a
     principal that never arrived. Pinned by `auth.spec.ts`'s
     `rpcRootMarked` fixture, mutation-verified.

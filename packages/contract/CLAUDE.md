@@ -104,7 +104,7 @@ Identity is exactly why a consumer takes this package as a **peer** rather
 than an ordinary dependency — `@btravstack/http-server` and
 `examples/order-api-contract` both do. Two copies in one install would each
 hold their own registry, a contract marked by one would read unmarked to the
-other, `HttpRouter` would declare no scheme dependency at all and the
+other, `OrpcRouter` would declare no scheme dependency at all and the
 protected route would be served **open**. So the registry is copy-proof: it hangs off
 `globalThis` under `Symbol.for("@btravstack/contract/requirements")`, and
 every copy shares the one `WeakMap`. The key changed from the earlier

@@ -73,7 +73,7 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   `TemporalRuntime`/`temporal()`, `AmqpRuntime`/`amqp()` — and none of them
   has a `resolves` any more: each takes the application's router / activities /
   handlers as a **port its runtime provider depends on** through di — the
-  starter's own fixed port (`HttpRouterPort`, `TemporalActivitiesPort`,
+  starter's own fixed port (`OrpcRouterPort`, `TemporalActivitiesPort`,
   `AmqpHandlersPort`, one id each; the temporal and amqp ones typed per
   contract at the type level, the same generic-value move `RuntimePort`
   itself makes), which the application provides and never names — so their

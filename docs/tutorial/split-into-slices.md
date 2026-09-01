@@ -92,7 +92,7 @@ its controller changing ([the property](/reference/http-server)).
 
 ## Step 2 — A controller per fragment
 
-`api.HttpController(contract, path)` is `api.HttpRouter`'s slice-sized form:
+`api.OrpcController(contract, path)` is `api.OrpcRouter`'s slice-sized form:
 the same deps record, the same `sync` arm, typed by **one node** of the
 contract tree — and it mints a port from the path itself, so there is no
 class to name:
@@ -106,7 +106,7 @@ import { api } from "../../auth.js";
 import { contract } from "../../contract.js";
 import { Greeter } from "../../greeter.js";
 
-export const greetingsController = api.HttpController(contract, "greetings")(
+export const greetingsController = api.OrpcController(contract, "greetings")(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({
@@ -128,7 +128,7 @@ import { api } from "../../auth.js";
 import { contract } from "../../contract.js";
 import { Greeter } from "../../greeter.js";
 
-export const farewellsController = api.HttpController(contract, "farewells")(
+export const farewellsController = api.OrpcController(contract, "farewells")(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({
@@ -206,7 +206,7 @@ import { FarewellsSlice } from "./slices/farewells/module.js";
 import { greetingsController } from "./slices/greetings/controller.js";
 import { GreetingsSlice } from "./slices/greetings/module.js";
 
-export const greetingRouter = api.HttpRouter(contract)([
+export const greetingRouter = api.OrpcRouter(contract)([
   greetingsController,
   farewellsController,
 ]);
@@ -230,7 +230,7 @@ mint** — there is nothing to type the key by:
 
 ```ts
 // @ts-expect-error — the contract declares no fragment under `ceremonies`
-api.HttpController(contract, "ceremonies");
+api.OrpcController(contract, "ceremonies");
 ```
 
 ## Step 5 — Run it

@@ -92,7 +92,7 @@ domain failure becomes a status code here, and nowhere else.
 ```ts
 import { P } from "unthrown";
 
-export const ordersRouter = api.HttpRouter(ordersContract)(
+export const ordersRouter = api.OrpcRouter(ordersContract)(
   { place: PlaceOrder },
   {
     sync: ({ place }) => ({

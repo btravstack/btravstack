@@ -28,7 +28,7 @@ const view = (order: Order): OrderView => ({ id: order.id, quantity: order.quant
  * tenant it is served. The unmarked `customers` fragment still names one, which
  * is where that contrast is legible.
  */
-export const ordersController = api.HttpController(contract, "orders")(
+export const ordersController = api.OrpcController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({

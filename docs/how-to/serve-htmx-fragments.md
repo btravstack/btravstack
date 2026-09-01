@@ -77,7 +77,7 @@ scope.
 
 The route's key is `` `${method} ${path}` ``, minted as the port id
 `` `HtmxFragment:GET /orders/:id/row` `` — the same move a piece's path takes
-under `api.HttpController(contract, path)`. `.recoverErrCases` is this
+under `api.OrpcController(contract, path)`. `.recoverErrCases` is this
 route's own triage, at the place a router's `mapErrCases` sits: there is no
 declared error union for a client to branch on, so a domain error becomes
 rendered markup here or not at all.
@@ -117,7 +117,7 @@ export const orderFragments = api.HtmxFragments([orderRowFragment]);
 ```
 
 An array of pieces, no contract argument — mirroring the composing form of
-`api.HttpRouter`, minus the coverage it checks: there is no declared route
+`api.OrpcRouter`, minus the coverage it checks: there is no declared route
 set to leave uncovered, so a route not listed here is simply not served.
 Two routes minted for the same method and path are two providers for one
 port id — di's duplicate-provider defect, exactly as two controllers

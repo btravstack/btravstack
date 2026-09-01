@@ -122,7 +122,7 @@ What `Provider(port)(…)` returns is `Provider<P, E, N> & { readonly port: P }`
 — the port class, typed, rides on the provider. It exists for the helpers that
 hand back a provider on a port the application never declared —
 `Config.provider("Name")(schema)`, which mints one; a starter's
-`api.HttpRouter(contract)({ name: Dep }, arm)` / `TemporalActivities(…)` /
+`api.OrpcRouter(contract)({ name: Dep }, arm)` / `TemporalActivities(…)` /
 `AmqpHandlers(…)`, which target the starter's own fixed port — so the
 application holds one value and reads the port off it: `provider.port` is
 what another provider lists in its `deps`, what a module lists in `exports`,

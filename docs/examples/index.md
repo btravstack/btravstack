@@ -120,7 +120,7 @@ two kinds of type test that keep the arrows pointing the right way.
 
 ### [Order API (HTTP)](/examples/order-api)
 
-`api.HttpRouter(contract)` — every procedure a plain
+`api.OrpcRouter(contract)` — every procedure a plain
 `Result`-returning function and one exhaustive `mapErrCases` where a domain
 `Err` becomes a typed `ORPCError`; `HttpModule("OrderApi")` as the whole
 composition root; `RequestModule` forked per request through

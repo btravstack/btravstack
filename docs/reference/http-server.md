@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/http-server"
-description: The HTTP starter — defineHttp, HttpModule, HttpRouter, HttpController, HtmxGet, HtmxPost, HtmxFragments, html and raw, HttpAuthenticator, http(), htmx(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
+description: The HTTP starter — defineHttp, HttpModule, OrpcRouter, OrpcController, HtmxGet, HtmxPost, HtmxFragments, html and raw, HttpAuthenticator, http(), htmx(), HttpRuntime, HttpConfig and HttpInfo, named security schemes and scopes, cors, bodyLimit, compression, plugins and securityHeaders, what each request is answered with, and how the drain retires a keep-alive connection.
 ---
 
 <!-- doctest: prelude
@@ -35,7 +35,7 @@ declare const view: (order: Order) => OrderView;
 
 | Export                 | Kind  | What it is                                                                                                                                                                                                                                                                                                   |
 | ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `HttpController`, `HttpRouter` and `authenticators` typed by them                                                                                     |
+| `defineHttp`           | value | `defineHttp({ authenticators })`, or `defineHttp()` for a public API — **the one door**: it declares this deployment's security schemes and hands back `OrpcController`, `OrpcRouter` and `authenticators` typed by them                                                                                     |
 | `Http`                 | type  | `Http<A>` — what `defineHttp` returns, held as one binding and never destructured                                                                                                                                                                                                                            |
 | `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                         |
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
@@ -70,13 +70,13 @@ declare const view: (order: Order) => OrderView;
 | `htmx`                 | value | `htmx({ prefix? })` — the second answerer, one `HttpHandler` member serving fragments, mounted under `prefix` (default `/`)                                                                                                                                                                                  |
 | `HtmxOptions`          | type  | `htmx()`'s options                                                                                                                                                                                                                                                                                           |
 
-`HttpController`/`HttpRouter` and `HtmxGet`/`HtmxPost`/`HtmxFragments` are
+`OrpcController`/`OrpcRouter` and `HtmxGet`/`HtmxPost`/`HtmxFragments` are
 **not** top-level exports: all five come off `defineHttp`, because that is
 where the scheme registry that types them is stated. A marked contract or a
 marked route reached through anything else would type `principal: never`.
 
-`HttpRouterPort` (the starter's router port, `Port("HttpRouter")`) and
-`Implementation<C, Schemes>` (the record type `HttpRouter`'s `sync` returns)
+`OrpcRouterPort` (the starter's router port, `Port("OrpcRouter")`) and
+`Implementation<C, Schemes>` (the record type `OrpcRouter`'s `sync` returns)
 exist in `src/orpc.ts` but are **not** exported from the package entry point:
 the first is reached as `provider.port` when a caller needs it, the second is
 inferred at the call. `HttpHandler` used to be a third — an internal seam, on
@@ -103,7 +103,7 @@ gates see a plain module.
 
 | Option            | Required | Default                      | What it is                                                                                                                                                                     |
 | ----------------- | -------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<HttpRouterPort, E, N>`, what `api.HttpRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
+| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
 | `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                |
 | `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                    |
 | `fragmentsPrefix` | no       | `/`                          | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                              |
@@ -164,7 +164,7 @@ starter, not this package's business: it brings the `Logger` the application
 writes to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
 carrying the trace id of the unit this runtime opened.
 
-## `api.HttpRouter(contract)(deps, { sync })`
+## `api.OrpcRouter(contract)(deps, { sync })`
 
 Contract-first: `contract` is an oRPC router record (`Record<string,
 RouterContract>` — a record, not a bare procedure), and the second call is
@@ -181,10 +181,10 @@ a wrong output type is a compile error at the call. `implement(contract)`,
 `os.…`, `.result(...)` and `os.router(...)` are what the call does for you.
 
 There is no name to give: a process serves one router as it boots one
-runtime, so the port is the starter's — `Port("HttpRouter")`, declared once,
+runtime, so the port is the starter's — `Port("OrpcRouter")`, declared once,
 framework-owned like `HttpConfig` — and two router providers in one graph are
 di's duplicate-provider defect at build. Returns
-`Provider<PortInstance<"HttpRouter", Router<…>>, never, InstanceType<D[keyof D]>> & { readonly port: PortClassOf<"HttpRouter", Router<…>> }` —
+`Provider<PortInstance<"OrpcRouter", Router<…>>, never, InstanceType<D[keyof D]>> & { readonly port: PortClassOf<"OrpcRouter", Router<…>> }` —
 `provider.port` is the port class, for a hand-declared provider or a type
 test, and `provider.authenticators` carries the scheme providers `defineHttp`
 bound. The implementation below is the one in
@@ -198,7 +198,7 @@ comes off `context.principal` rather than off the input:
 <!-- doctest: defer -->
 
 ```ts
-export const ordersRouter = api.HttpRouter(contract.orders)(
+export const ordersRouter = api.OrpcRouter(contract.orders)(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -263,17 +263,17 @@ export const ordersRouter = api.HttpRouter(contract.orders)(
 An implementation key the contract does not declare is unreachable through
 the types; if one is smuggled past them it is dropped, not defected on.
 
-### The composing form: `api.HttpRouter(contract)([piece, …])`
+### The composing form: `api.OrpcRouter(contract)([piece, …])`
 
-For a `contract` shaped `Record<string, RouterContract>`, `HttpRouter`
+For a `contract` shaped `Record<string, RouterContract>`, `OrpcRouter`
 also takes an **array of pieces** — each an
-[`HttpController(contract, path)`](#api-httpcontroller-contract-path) over one
+[`OrpcController(contract, path)`](#api-orpccontroller-contract-path) over one
 node of the contract tree, at any depth — instead of `(deps, { sync })`:
 
 <!-- doctest: defer -->
 
 ```ts
-export const orderRouter = api.HttpRouter(contract)([
+export const orderRouter = api.OrpcRouter(contract)([
   ordersController,
   customersController,
 ]);
@@ -323,13 +323,13 @@ of its own, in which case that one wins. Five compile-time gates are pinned by
 `packages/http-server/src/controller.test-d.ts`: every procedure must be
 covered (the marker above); a path the contract does not declare is refused
 **at the mint**, not at the router (see
-[`HttpController`](#api-httpcontroller-contract-path) below); a piece under
+[`OrpcController`](#api-orpccontroller-contract-path) below); a piece under
 the wrong path is impossible **by construction**, since the path rides the
 piece's own port id — what that would have meant is now an array leaving a
 procedure uncovered; a procedure a piece's own fragment does not declare is
 rejected inside the piece, before the router ever sees it; and a slice lifts
 into a process of its own with its piece untouched —
-`api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
+`api.OrpcRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
 compiles — the property a slice's independent deployability rests on. The
 `(deps, { sync })` form is unchanged and stays correct for a small API — an
 array is never a valid `(deps, arm)` or `(arm)` call, so `Array.isArray` alone
@@ -338,12 +338,12 @@ other by plain arity, as everywhere else in the family. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the worked recipe.
 
-## `api.HttpController(contract, path)`
+## `api.OrpcController(contract, path)`
 
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-const HttpController: <
+const OrpcController: <
   const C extends Record<string, RouterContract>,
   const K extends ControllerKeyOf<C>,
 >(
@@ -358,14 +358,14 @@ const HttpController: <
   },
 ) => Provider<
   PortInstance<
-    `HttpController:${K}`,
+    `OrpcController:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>
   >,
   never,
   InstanceType<D[keyof D]>
 > & {
   readonly port: PortClassOf<
-    `HttpController:${K}`,
+    `OrpcController:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>
   >;
 };
@@ -373,7 +373,7 @@ const HttpController: <
 
 One node of a contract, at any depth, as a provider over a port minted for
 it — the same two-call shape as
-`api.HttpRouter(contract)({ name: Dep }, { sync })`, aimed at one `path` into
+`api.OrpcRouter(contract)({ name: Dep }, { sync })`, aimed at one `path` into
 `contract` rather than the whole tree: a top-level fragment (`"orders"`), a
 nested one (`"v1.orders"`), or a bare procedure (`"health"`). `contract` is
 read for its **type** only: `path` is checked against `ControllerKeyOf<C>` —
@@ -387,7 +387,7 @@ error TS2345: Argument of type '"billing"' is not assignable to parameter of typ
 `path` also shapes `sync`'s return through `FragmentAt<C, K>`, so a procedure
 the node does not declare, or a handler whose input or output has drifted, is
 a compile error inside the piece. There is no name to give: the path **is**
-the port's name, minted as `` `HttpController:${path}` `` — the same move
+the port's name, minted as `` `OrpcController:${path}` `` — the same move
 `AmqpHandler(contract, key)` makes — and carried back on `provider.port`, the
 shape `Config.provider("RelayConfig")(schema)` already uses, so a slice's
 module exports `controller.port` rather than naming a port of its own:
@@ -405,7 +405,7 @@ export const OrdersSlice = Module("OrdersSlice")({
 
 `Schemes` is fixed by the `defineHttp` call the piece was minted from, which is
 what gives a marked fragment's handlers a readable `context.principal`. The
-piece does no oRPC work: it is a plain record, and `HttpRouter`'s own walk
+piece does no oRPC work: it is a plain record, and `OrpcRouter`'s own walk
 wraps each leaf in `.result(...)` when the composing form builds the router.
 **A fragment is itself a valid contract**, so a slice lifts out into a
 process of its own without its piece changing at all — the lifted root
@@ -418,7 +418,7 @@ import { ordersController } from "../../slices/orders/controller.js";
 -->
 
 ```ts
-export const ordersRouter = api.HttpRouter(contract.orders)(
+export const ordersRouter = api.OrpcRouter(contract.orders)(
   { implementation: ordersController.port },
   { sync: ({ implementation }) => implementation },
 );
@@ -449,7 +449,7 @@ wrapper around `.result()`. An unmarked
 leaf's context is unchanged, which is what makes reading a principal there a
 compile error.
 
-**At runtime.** `HttpRouter`'s walk carries the effective requirements down the
+**At runtime.** `OrpcRouter`'s walk carries the effective requirements down the
 contract exactly as the types do, and a protected leaf is built as
 `node.use(principalMiddleware(requirements, authenticators)).result(fn)` —
 `.use` before `.result`, which is the only order oRPC leaves available. The
@@ -604,7 +604,7 @@ right principal with no annotation of their own; nothing else about a
 controller changes.
 
 ::: warning Hold it whole — never destructure it
-`const { HttpController } = defineHttp(...)` is **TS2527**: each binding of a
+`const { OrpcController } = defineHttp(...)` is **TS2527**: each binding of a
 destructured member expands to a type mentioning `@btravstack/contract`'s
 inaccessible `unique symbol`, which the file cannot emit. Held whole, the
 inferred type collapses to `Http<A>`, which is nameable — which is why the
@@ -624,7 +624,7 @@ scope where the handler is.
 
 ### The gate: one dependency per scheme
 
-For every scheme its contract names anywhere, `HttpRouter` adds that scheme's
+For every scheme its contract names anywhere, `OrpcRouter` adds that scheme's
 port — `` `HttpAuthenticator:${scheme}` `` — to the router provider's deps
 record under a **namespaced** key (so it cannot collide with one you wrote),
 strips those keys back out before your own `sync` sees the record, and adds
@@ -760,7 +760,7 @@ naming none is an empty record.
 
 The route's key is `` `${method} ${path}` ``, minted as the port id
 `` `HtmxFragment:GET /orders/:id/row` `` — the same two-call shape as
-[`api.HttpController(contract, path)`](#api-httpcontroller-contract-path),
+[`api.OrpcController(contract, path)`](#api-orpccontroller-contract-path),
 with the path standing in for a contract key. The key space is **flat**, so
 two routes minted for one method and path are simply di's duplicate-provider
 defect, via the port id each carries — there is no unsliceable or
@@ -770,8 +770,8 @@ overlapping path to refuse. See
 ## `api.HtmxFragments([piece, …])`
 
 Every route composed from an array of `HtmxGet`/`HtmxPost` pieces, mirroring
-[the composing form](#the-composing-form-api-httprouter-contract-piece) of
-`HttpRouter` minus the coverage it checks — there is no declared route set to
+[the composing form](#the-composing-form-api-orpcrouter-contract-piece) of
+`OrpcRouter` minus the coverage it checks — there is no declared route set to
 leave uncovered:
 
 ```ts
@@ -791,7 +791,7 @@ does, so `HttpModule` can deduplicate a scheme the two share, by reference.
 ```ts
 const http: (
   options?: HttpOptions,
-) => Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | HttpRouterPort>;
+) => Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | OrpcRouterPort>;
 ```
 
 The primitive `HttpModule` delegates to, for a composition root written by
@@ -810,7 +810,7 @@ hand. `HttpOptions`:
 
 The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
 **needs** `Env` (the kernel discharges it) and the starter's router port
-(`HttpRouterPort`, the port `api.HttpRouter(contract)(deps, arm)` provides on) —
+(`OrpcRouterPort`, the port `api.OrpcRouter(contract)(deps, arm)` provides on) —
 the runtime provider depends on the router through di, which is why a
 composition that imports `http()` without providing the router carries an
 unmet need `start` refuses (di's gate, not the kernel's). The router is not an

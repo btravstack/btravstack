@@ -61,7 +61,7 @@ const customerViewOf = (customer: Customer): CustomerView => ({
 // read the identity bare — one scheme — while `export` narrows a tagged union,
 // which is the contrast every page draws.
 
-const ordersController = api.HttpController(contract, "orders")(
+const ordersController = api.OrpcController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -112,7 +112,7 @@ const ordersController = api.HttpController(contract, "orders")(
 
 // The unmarked half, and the contrast every page draws: no `principal` on the
 // context at all, the tenant off the input instead.
-const customersController = api.HttpController(contract, "customers")(
+const customersController = api.OrpcController(contract, "customers")(
   { find: FindCustomer },
   {
     sync: ({ find }) => ({
@@ -146,7 +146,7 @@ const DocsCustomersSlice = Module("DocsCustomersSlice")({
 // "Step 3 — the composed root" — docs/how-to/split-a-router-into-controllers.md;
 // "The router" and "The composition root" — docs/examples/order-api.md.
 
-const docsRouter = api.HttpRouter(contract)([ordersController, customersController]);
+const docsRouter = api.OrpcRouter(contract)([ordersController, customersController]);
 
 const _DocsOrderApi = HttpModule("DocsOrderApi")({
   needs: [Env],
@@ -164,7 +164,7 @@ const _DocsOrderApi = HttpModule("DocsOrderApi")({
 // rewrite. The lifted fragment carries its marker, and the router brings the
 // same schemes with it.
 
-const liftedOrdersRouter = api.HttpRouter(contract.orders)(
+const liftedOrdersRouter = api.OrpcRouter(contract.orders)(
   { implementation: ordersController.port },
   { sync: ({ implementation }) => implementation },
 );
@@ -176,12 +176,12 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
 });
 
 // "Step 2 — the router, as a provider" — docs/how-to/serve-orpc-over-http.md;
-// "`HttpRouter(contract)({ name: Dep }, arm)`" — docs/reference/http-server.md; "At a
+// "`OrpcRouter(contract)({ name: Dep }, arm)`" — docs/reference/http-server.md; "At a
 // glance" — docs/index.md. The deps form over the same marked fragment, with no
 // controller layer: the three pages that show a router rather than a
 // controller all reduce to this call.
 
-const depsOrdersRouter = api.HttpRouter(contract.orders)(
+const depsOrdersRouter = api.OrpcRouter(contract.orders)(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({

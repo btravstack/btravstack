@@ -25,14 +25,14 @@ declare const view: (order: Order) => { id: string; quantity: number };
 > For an API that has outgrown one `sync`. For the shape of a
 > single-slice router, see [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http).
 
-`api.HttpRouter(contract)(deps, { sync })` puts every procedure's implementation in
+`api.OrpcRouter(contract)(deps, { sync })` puts every procedure's implementation in
 one function. That is right for a small API and wrong for a large one: a
 fifty-procedure contract would mean fifty injected services in one `sync`, one
 slice's typo failing the whole router's type-check, and no way to serve one
 slice without the rest. A **controller** is the fix: an ordinary di provider
 over one path of the contract — a fragment or a single procedure — minted its
 own port, composed by the root through an array
-`api.HttpRouter(contract)([...])` call. Everything below is
+`api.OrpcRouter(contract)([...])` call. Everything below is
 lifted from `examples/order-api`, which serves an `orders` slice and a
 `customers` slice this way.
 
@@ -109,8 +109,8 @@ public half and a protected one stop being one undifferentiated surface.
 
 ## Step 2 — a controller per slice
 
-`api.HttpController(contract, path)({ name: Dep }, { sync })` is
-`api.HttpRouter`'s own
+`api.OrpcController(contract, path)({ name: Dep }, { sync })` is
+`api.OrpcRouter`'s own
 shape, aimed at one node of the contract tree: the first call fixes the
 contract's type and mints a port under the path — `"orders"`, or a nested one
 like `"v1.orders"`; the second is di's
@@ -123,7 +123,7 @@ is nothing to type the key by:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(contract, "orders")(
+export const ordersController = api.OrpcController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -171,7 +171,7 @@ export const ordersController = api.HttpController(contract, "orders")(
 );
 ```
 
-`HttpController` comes off the application's own `api` in `auth.ts`, not from
+`OrpcController` comes off the application's own `api` in `auth.ts`, not from
 `@btravstack/http-server` — there is no top-level one: the marker on the fragment says
 which schemes protect the route, and
 `defineHttp({ authenticators })` in that one file is what says what each scheme
@@ -182,8 +182,8 @@ The unmarked `customers` controller is unaffected either way — its context has
 no `principal` at all. See [Protect a procedure](/how-to/protect-a-procedure).
 
 The controller does no oRPC work of its own — it stores a plain record, and
-`api.HttpRouter` wraps each leaf in `.result(...)` when it composes the router.
-`api.HttpController` mints the port from the path itself and carries it back
+`api.OrpcRouter` wraps each leaf in `.result(...)` when it composes the router.
+`api.OrpcController` mints the port from the path itself and carries it back
 on `.port`, which the composing form reads — stripping the port id's own
 prefix back off — to recover each piece's path and order its construction
 before the router's — there is nothing to name by hand. A slice ships its controller as a module
@@ -204,7 +204,7 @@ export const OrdersSlice = Module("OrdersSlice")({
 ```
 
 `exports` takes the provider itself, not `ordersController.port`: the port was
-minted inside `HttpController`, so there is no class to spell back off it.
+minted inside `OrpcController`, so there is no class to spell back off it.
 Importing the vertical here rather than leaving `PlaceOrder` and `FindOrder`
 as needs for the root is what makes the slice a unit — the reason to open this
 directory is the whole reason it exists. A vertical is a pair of modules of
@@ -217,13 +217,13 @@ is built.
 
 ## Step 3 — the composed root
 
-`api.HttpRouter(contract)([...])` — an **array** of pieces, each an
-`HttpController(contract, path)` — replaces the
+`api.OrpcRouter(contract)([...])` — an **array** of pieces, each an
+`OrpcController(contract, path)` — replaces the
 `(deps, { sync })` call at the root. An array is never a valid `(deps, arm)`
 or `(arm)` call, so `Array.isArray` alone tells this arm from the other two:
 
 ```ts
-export const orderRouter = api.HttpRouter(contract)([
+export const orderRouter = api.OrpcRouter(contract)([
   ordersController,
   customersController,
 ]);
@@ -258,7 +258,7 @@ top-level keys: the pieces' paths must partition every procedure the contract
 declares, so a missing piece, a path the contract does not declare, and a
 piece wired under the wrong path — impossible by construction, since the path
 rides the piece's own port id — are all compile errors, the last two at
-`api.HttpController(contract, path)` itself, not runtime surprises the first
+`api.OrpcController(contract, path)` itself, not runtime surprises the first
 time a client hits the missing slice. Because paths can nest (`"v1"` next to
 `"v1.orders"`), a **second** gate refuses an array where one piece's path
 sits inside another's — two pieces would otherwise implement the same
@@ -272,7 +272,7 @@ controller's own port as its single dependency and hands back what that
 controller built:
 
 ```ts
-export const ordersRouter = api.HttpRouter(contract.orders)(
+export const ordersRouter = api.OrpcRouter(contract.orders)(
   { implementation: ordersController.port },
   { sync: ({ implementation }) => implementation },
 );
@@ -299,8 +299,8 @@ composing slices into one router a starting point rather than a trap.
 
 - [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http) — the
   one-router form, and everything the starter itself decides.
-- [`@btravstack/http-server`](/reference/http-server) — `defineHttp`, `HttpController` and
-  `HttpRouter`'s full signatures.
+- [`@btravstack/http-server`](/reference/http-server) — `defineHttp`, `OrpcController` and
+  `OrpcRouter`'s full signatures.
 - [Protect a procedure](/how-to/protect-a-procedure) — `auth.ts`, the
   authenticators, and what a marked fragment does to a controller.
 - [Order API (HTTP)](/examples/order-api) — the two-slice example these

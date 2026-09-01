@@ -172,8 +172,8 @@ ships over the kernel's `RuntimePort` (`HttpRuntime`, `TemporalRuntime`,
 resolve is now a **port its provider depends on** through di — the starter's
 own fixed port, provided with the starter's own sugar and never named (a
 process serves one router / activities record / handlers record as it boots
-one runtime): `order-api`'s `orderRouter = HttpRouter(contract)([ordersController,
-customersController])`, one `HttpController` piece per slice, minted by
+one runtime): `order-api`'s `orderRouter = OrpcRouter(contract)([ordersController,
+customersController])`, one `OrpcController` piece per slice, minted by
 contract path (below); `order-temporal-worker`'s `orderActivities =
 TemporalActivities(orderContract)([fulfillOrder, chargeOrder])`, one
 `TemporalWorkflowActivities` piece per saga slice; `order-amqp-worker`'s
@@ -227,16 +227,16 @@ same three-package vertical below it.
 order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
                             │                        │
 order-api              slices/orders/           slices/customers/
-                         controller.ts            controller.ts     ← HttpController(contract, "orders")({ name: Dep }, { sync })
+                         controller.ts            controller.ts     ← OrpcController(contract, "orders")({ name: Dep }, { sync })
                          module.ts                module.ts         ← the slice's own di module
                             └───────────┬────────────┘
-                                   module.ts                        ← HttpRouter(contract)([ordersController, customersController])
+                                   module.ts                        ← OrpcRouter(contract)([ordersController, customersController])
                             ┌───────────┴────────────┐
                        PlaceOrder / FindOrder    FindCustomer       ← use cases, entities, Prisma adapters — the same three packages
 ```
 
-A **controller** is `HttpController(contract, "orders")({ place:
-PlaceOrder, find: FindOrder }, { sync })` — an ordinary di provider on a port `HttpController`
+A **controller** is `OrpcController(contract, "orders")({ place:
+PlaceOrder, find: FindOrder }, { sync })` — an ordinary di provider on a port `OrpcController`
 mints from the path itself and hands back on `.port`. A **slice** is an ordinary di `Module` that
 **imports the vertical it needs**, provides its controller and exports
 **only** that controller, so nothing outside the slice can reach anything else
@@ -250,18 +250,18 @@ entity to its own wire shape. Each imports its **own** vertical —
   halves import: a diamond, not duplication, since di flattens the tree into a
   `Set` keyed by provider reference and builds one database. The **root** is then a list of
   slices plus what no slice owns (`observability()`), composed with the array
-  `HttpRouter(contract)([ordersController, customersController])` form, which
+  `OrpcRouter(contract)([ordersController, customersController])` form, which
   is exact against the contract — a piece missing from the array, a path the
   contract does not declare, and a piece under the wrong path are all compile
-  errors, the last two at `HttpController(contract, path)` itself.
+  errors, the last two at `OrpcController(contract, path)` itself.
 
 Nothing here is a new concept: a controller is a provider, a slice is a
 module, a modulith is several slice modules in one root — and `exports:
-[ordersController]` is di's provider form, since `HttpController` mints the
+[ordersController]` is di's provider form, since `OrpcController` mints the
 port and there is no class to name. And because a
 fragment is itself a valid contract, lifting `orders` into a process of its
 own leaves the slice untouched —
-`HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
+`OrpcRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
 is the whole of the lifted root's router. `packages/http-server/src/controller.test-d.ts`
 pins that, and the four other gates, at compile time.
 

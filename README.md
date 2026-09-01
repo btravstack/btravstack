@@ -155,7 +155,7 @@ import { P } from "unthrown";
 // security scheme, so it takes no argument.
 const api = defineHttp();
 
-export const ordersRouter = api.HttpRouter(ordersContract)(
+export const ordersRouter = api.OrpcRouter(ordersContract)(
   { place: PlaceOrder },
   {
     sync: ({ place }) => ({
@@ -224,7 +224,7 @@ deployments.
 | [`@btravstack/di`](./packages/di)                           | The container: ports, providers, modules, and wiring checked by the compiler. Depends on nothing but `unthrown`.                                                         |
 | [`@btravstack/config`](./packages/config)                   | Configuration from the environment as providers: `Config.string/integer/port`, `Config.object`, `Config.provider`, `ConfigInvalid` → `78`.                               |
 | [`@btravstack/testing`](./packages/testing)                 | The test harness: `bootFixture` for `test.extend`, `tapped` to read services out of a booted app, `testRuntime`, `createFakeClock`, `withApp`.                           |
-| [`@btravstack/http-server`](./packages/http-server)         | The HTTP starter: oRPC over `node:http`, `HttpRouter` / `HttpModule`, one unit per request, a drain that retires keep-alive connections.                                 |
+| [`@btravstack/http-server`](./packages/http-server)         | The HTTP starter: oRPC over `node:http`, `OrpcRouter` / `HttpModule`, one unit per request, a drain that retires keep-alive connections.                                 |
 | [`@btravstack/temporal-worker`](./packages/temporal-worker) | The Temporal starter: `TemporalActivities` / `TemporalWorkflowActivities` / `TemporalModule`, one unit per activity attempt, a drain that honours the kernel's deadline. |
 | [`@btravstack/amqp-worker`](./packages/amqp-worker)         | The AMQP starter: `AmqpHandlers` / `AmqpHandler` / `AmqpModule`, one unit per delivery, one drain deadline.                                                              |
 | [`@btravstack/contract`](./packages/contract)               | Contract-level markers a client and its server share: which schemes protect a route, and which scopes each must grant. Zero dependencies.                                |

@@ -23,7 +23,7 @@ import { orderRowFragment } from "./fragment.js";
  * provider **reference**, so the diamond yields one connection, not two.
  *
  * `exports: [ordersController, orderRowFragment]` are the providers, not their
- * `.port`s: `HttpController` and `HtmxGet` each mint the port for you,
+ * `.port`s: `OrpcController` and `HtmxGet` each mint the port for you,
  * so there is no class to name.
  */
 export const OrdersSlice = Module("OrdersSlice")({

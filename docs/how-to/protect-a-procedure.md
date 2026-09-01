@@ -17,7 +17,7 @@ import { createOrderApiClient } from "../../client.js";
 import { Module } from "@btravstack/di";
 declare const OrdersSlice: Module<InstanceType<(typeof ordersController)["port"]>, never, never>;
 declare const CustomersSlice: Module<InstanceType<(typeof customersController)["port"]>, never, never>;
-const customersController = api.HttpController(
+const customersController = api.OrpcController(
   { customers: { find: oc.input(z.object({ id: z.uuidv7() })).output(z.object({ name: z.string() })) } },
   "customers",
 )({}, { sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) });
@@ -221,7 +221,7 @@ identity bare — which is exactly what a handler under a single unscoped scheme
 then reads.
 
 ::: warning Hold `api` whole — never destructure it
-`const { HttpController } = defineHttp(...)` is **TS2527**: each binding of a
+`const { OrpcController } = defineHttp(...)` is **TS2527**: each binding of a
 destructured member expands to a type mentioning `@btravstack/contract`'s
 inaccessible `unique symbol`, which the file cannot emit. Held whole, the
 inferred type collapses to `Http<A>`, which is nameable — which is why the file
@@ -276,7 +276,7 @@ readable type — and its **shape follows the requirements**:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(contract, "orders")(
+export const ordersController = api.OrpcController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -357,7 +357,7 @@ There is **no authenticator to pass**. The authenticators ride the router —
 which is what needs them — and `HttpModule` puts them in `provides` itself:
 
 ```ts
-export const orderRouter = api.HttpRouter(contract)([
+export const orderRouter = api.OrpcRouter(contract)([
   ordersController,
   customersController,
 ]);
@@ -370,7 +370,7 @@ export const OrderApi = HttpModule("OrderApi")({
 ```
 
 What is still checked, and it is di's own gate rather than one this package
-invented: `HttpRouter` declares **one dependency per scheme its contract
+invented: `OrpcRouter` declares **one dependency per scheme its contract
 names**, so a scheme with no authenticator behind it is an unmet need refused
 at `start`, and the diagnostic names the port —
 

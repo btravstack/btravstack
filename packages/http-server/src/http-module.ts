@@ -14,7 +14,7 @@ import type { HtmxFragmentsPort } from "./htmx-route.js";
 import { htmx } from "./htmx.js";
 import type { HttpConfig } from "./http-config.js";
 import { HttpRuntime, httpServer, type HttpOptions } from "./http-runtime.js";
-import { orpc, type HttpRouterPort } from "./orpc.js";
+import { orpc, type OrpcRouterPort } from "./orpc.js";
 
 /** The starter's own module, as the sugar adds it to the application's imports. */
 type HttpStarter = Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env>;
@@ -22,8 +22,8 @@ type HttpStarter = Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid,
 /** The application's imports plus the starter — the tuple `Module(name)` is handed. */
 type Imports<I extends readonly AnyModule[]> = readonly [...I, HttpStarter];
 
-/** Whatever `api.HttpRouter(contract)(…)` returns. */
-type AnyRouterProvider = Provider<HttpRouterPort, unknown, unknown> & {
+/** Whatever `api.OrpcRouter(contract)(…)` returns. */
+type AnyRouterProvider = Provider<OrpcRouterPort, unknown, unknown> & {
   readonly authenticators: readonly AnyProvider[];
 };
 
@@ -80,7 +80,7 @@ export type HttpModuleOptions<
   N extends readonly AnyPort[],
 > = HttpOptions & {
   /**
-   * The application's oRPC router — what `api.HttpRouter(contract)(…)` returns.
+   * The application's oRPC router — what `api.OrpcRouter(contract)(…)` returns.
    * It carries the scheme authenticators `defineHttp` bound, which is how they
    * reach `provides` without an application listing them. Optional: a root may
    * serve `fragments` alone.

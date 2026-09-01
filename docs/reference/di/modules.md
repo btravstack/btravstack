@@ -69,7 +69,7 @@ All four lists are optional and default to empty.
 Exporting a provider means exactly what exporting its port class means — same
 `Exports` channel, same gates — and it is the only spelling available when the
 port was minted inside a helper (`Config.provider("RelayConfig")(schema)`,
-`api.HttpController(contract, path)`), where there is no class to name:
+`api.OrpcController(contract, path)`), where there is no class to name:
 
 <!-- doctest: skip — an exports-line excerpt of the module shown in full below -->
 

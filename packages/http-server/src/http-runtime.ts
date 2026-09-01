@@ -16,7 +16,7 @@ import { Err, Ok, OkAsync, fromSafePromise, type AsyncResult, type Result } from
 
 import { HttpHandler, type HttpAnswerer } from "./handler.js";
 import { HttpConfig } from "./http-config.js";
-import { DEFAULT_BODY_LIMIT, orpc, type HttpRouterPort, type OrpcOptions } from "./orpc.js";
+import { DEFAULT_BODY_LIMIT, orpc, type OrpcRouterPort, type OrpcOptions } from "./orpc.js";
 
 /** What the runtime publishes once it is listening, read back through `RunningApp.runtimeInfo()`. */
 export type HttpInfo = { readonly port: number };
@@ -145,7 +145,7 @@ export const httpServer = (
  */
 export const http = (
   options: HttpOptions = {},
-): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | HttpRouterPort> =>
+): Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | OrpcRouterPort> =>
   Module("Http")({
     imports: [httpServer(options)],
     provides: [orpc(options)],
@@ -153,7 +153,7 @@ export const http = (
   } as never) as unknown as Module<
     HttpRuntime | HttpConfig | HttpHandler,
     ConfigInvalid,
-    Env | HttpRouterPort
+    Env | OrpcRouterPort
   >;
 
 /**

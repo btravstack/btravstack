@@ -80,7 +80,7 @@ export const prismaDatabase =
     );
 
     // A CAST, not a class expression, and this is the same TS4023 that shapes
-    // `HttpRouterPort`: a class expression's type expands di's brand keys into
+    // `OrpcRouterPort`: a class expression's type expands di's brand keys into
     // a consumer's declaration emit, where they cannot be named. Spelling the
     // port through `PortClassOf` keeps the emitted type nameable. Without it,
     // `pnpm build` fails here — measured, not anticipated.

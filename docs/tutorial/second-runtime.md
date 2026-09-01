@@ -100,7 +100,7 @@ queue — the starter reads it from here rather than taking it as an option.
 
 ## Step 3 — Implement the activity
 
-`TemporalActivities(contract)` is the Temporal twin of `HttpRouter`: di's own
+`TemporalActivities(contract)` is the Temporal twin of `OrpcRouter`: di's own
 `Provider(port)` on the starter's activities port, typed for the contract —
 its service is the contract's activities record — so the next call declares
 its dependencies exactly as the router did:

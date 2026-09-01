@@ -85,7 +85,7 @@ void _none;
 // act, so there is no authenticator to forget and no identity pair to compare —
 // what is left is di's own unmet need, on the port whose id carries the scheme
 // name.
-const markedRouter = api.HttpRouter({ orders: contract.orders, health: contract.health })({
+const markedRouter = api.OrpcRouter({ orders: contract.orders, health: contract.health })({
   sync: () => ({
     orders: { place: ({ context }) => OkAsync({ id: context.principal.userId }) },
     health: { ping: () => OkAsync({ ok: true as const }) },
@@ -117,7 +117,7 @@ void _wired;
 //    `HttpAuthenticator:user` reaches nobody.
 const openApi = defineHttp();
 const strandedFragment = { orders: authenticated({ user: [] })({ place: oc }) };
-const strandedRouter = openApi.HttpRouter(strandedFragment)({
+const strandedRouter = openApi.OrpcRouter(strandedFragment)({
   // The handler reads no principal — under `defineHttp()` it would be `never`.
   sync: () => ({ orders: { place: () => OkAsync({ id: "o-1" }) } }),
 });
@@ -132,7 +132,7 @@ void HttpModule("Stranded")({ needs: [Env], router: strandedRouter });
 //     in this `sync` IS that assertion). `contract.orders` above marks a KEY,
 //     so neither omission would show there.
 const rootMarkedContract = authenticated({ user: [] })({ orders: { whoami: oc } });
-const rootOrders = api.HttpController(
+const rootOrders = api.OrpcController(
   rootMarkedContract,
   "orders",
 )({
@@ -140,7 +140,7 @@ const rootOrders = api.HttpController(
 });
 const _rootComposed = HttpModule("RootComposed")({
   needs: [Env],
-  router: api.HttpRouter(rootMarkedContract)([rootOrders]),
+  router: api.OrpcRouter(rootMarkedContract)([rootOrders]),
   // The piece is provided too: the composed router depends on its PORT, and
   // a root that names no slice still owes it.
   provides: [rootOrders],
@@ -169,7 +169,7 @@ const verifying = defineHttp({
   },
 });
 
-const verifiedRouter = verifying.HttpRouter({ orders: contract.orders })({
+const verifiedRouter = verifying.OrpcRouter({ orders: contract.orders })({
   sync: () => ({ orders: { place: ({ context }) => OkAsync({ id: context.principal.tenantId }) } }),
 });
 
@@ -250,23 +250,23 @@ const scopedApi = defineHttp({
 });
 
 // Positive: the declared vocabulary is accepted.
-void scopedApi.HttpRouter(authenticated({ user: ["orders:export"] })({ csv: oc }))({
+void scopedApi.OrpcRouter(authenticated({ user: ["orders:export"] })({ csv: oc }))({
   sync: () => ({ csv: () => OkAsync(undefined) }),
 });
 
 // Positive, and the case that must stay free: no scopes named at all.
-void scopedApi.HttpRouter(authenticated({ user: [] })({ csv: oc }))({
+void scopedApi.OrpcRouter(authenticated({ user: [] })({ csv: oc }))({
   sync: () => ({ csv: () => OkAsync(undefined) }),
 });
 
 // Negative: a typo. `"order:export"` is not in the vocabulary.
-void scopedApi.HttpRouter(
+void scopedApi.OrpcRouter(
   // @ts-expect-error — UNGRANTABLE SCOPE: "order:export" is not one `user` can grant
   authenticated({ user: ["order:export"] })({ csv: oc }),
 )({ sync: () => ({ csv: () => OkAsync(undefined) }) });
 
 // Negative: a scope named for a scheme whose authenticator declares no vocabulary.
-void scopedApi.HttpRouter(
+void scopedApi.OrpcRouter(
   // @ts-expect-error — UNGRANTABLE SCOPE: `service` grants nothing
   authenticated({ service: ["reports:read"] })({ csv: oc }),
 )({ sync: () => ({ csv: () => OkAsync(undefined) }) });
@@ -274,7 +274,7 @@ void scopedApi.HttpRouter(
 // A misspelled SCHEME naming scopes is not this gate's to report. The router
 // mint accepts it — di refuses the composition, naming the port it cannot
 // discharge, which is the diagnostic that says what is actually wrong.
-const misspelledScheme = scopedApi.HttpRouter(
+const misspelledScheme = scopedApi.OrpcRouter(
   authenticated({ usre: ["orders:export"] })({ csv: oc }),
 )({ sync: () => ({ csv: () => OkAsync(undefined) }) });
 
