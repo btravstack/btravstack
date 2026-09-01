@@ -81,6 +81,31 @@ was folded in here when the container was merged; nothing under
   is a real feature and not yet worth building; until it is, this paragraph is
   the reminder.
 
+- **Two link gates, and each one's soundness is the other's behaviour.**
+  `extract-doc-samples.ts` checks RELATIVE links and deliberately skips
+  root-relative ones, on the grounds that VitePress fails its own build on
+  those. VitePress's `ignoreDeadLinks` carried a fourth pattern, `/^\/api\//`,
+  exempting every root-relative link into the generated API tree — so each gate
+  deferred to the other and three dead links sat in the gap: `/api/http/`,
+  `/api/temporal/`, `/api/amqp/`, three packages renamed long before. Measured
+  on removal, those three were the **only** links the pattern was suppressing,
+  so it cost nothing and hid exactly one bug.
+
+  The rule that generalises: **an exemption justified by another gate's
+  behaviour is only as true as that behaviour**, and nothing re-checks it. The
+  `doctest: skip` paragraph below is the same shape. If a third gate is ever
+  given a reason of this kind, verify the claim rather than the reason.
+
+  **The API hub is generated for the same reason** — `docs/scripts/build-api.ts`
+  emits `api/index.md` from the `typedoc.*.json` files on disk, each entry
+  carrying the package's own `description` and the subpaths its `exports` map
+  declares. It had listed 8 of 13 packages and three pre-rename names, because
+  it was the one list nothing generated and nothing checked; the sidebar and
+  `turbo.json`, which a reader touches, were both correct. The ordered list in
+  the script stays written down — dependency order is information a glob cannot
+  recover — but it is now checked against those files rather than asked to stay
+  in sync.
+
 - **The same script resolves every RELATIVE link in those files, and a link
   that resolves to nothing fails the generate task.** It reports the count it
   checked, so a silent no-op is visible. Root-relative links
