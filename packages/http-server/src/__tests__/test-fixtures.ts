@@ -45,6 +45,7 @@ import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
 
+import { apiKeyAuthenticator } from "../api-key.js";
 import {
   HttpAuthenticator,
   Unauthenticated,
@@ -62,6 +63,7 @@ import { htmx } from "../htmx.js";
 import { HttpConfig } from "../http-config.js";
 import { HttpModule } from "../http-module.js";
 import { HttpRuntime, http, httpServer, type HttpInfo, type HttpOptions } from "../http-runtime.js";
+import { jwtAuthenticator } from "../jwt.js";
 
 /** What a bare answerer's `handle` is, without the mount point around it. */
 type Handler = HttpAnswerer["handle"];
@@ -143,7 +145,7 @@ const observedAppOf = (handler: Handler, member: (operation: Operation) => Settl
  * through that erasure. It is the one cast here, and it is the shape
  * `defineHttp` itself reads.
  */
-export const serviceOf = <P, Scope extends string>(
+const serviceOf = <P, Scope extends string>(
   authenticator: Authenticator<P, Scope, never>,
 ): AuthenticatorService<P, Scope> =>
   (
@@ -208,6 +210,29 @@ const issuerOf = async () => {
     close: () => new Promise<void>((done) => server.close(() => done())),
   };
 };
+
+/** What both shipped authenticators resolve to in these specs. */
+export type ServiceIdentity = { readonly appId: string };
+export type JwtIdentity = { readonly tenantId: string; readonly userId: string };
+
+/** Two issued keys, one scoped and one not, so a spec can tell which key answered. */
+const apiKeys = apiKeyAuthenticator<ServiceIdentity, "reports:read">({
+  keys: [
+    { key: "first-secret", principal: { appId: "reporting" }, scopes: ["reports:read"] },
+    { key: "second-secret", principal: { appId: "billing" }, scopes: [] },
+  ],
+});
+
+/** A scheme with no scope vocabulary, on a header of its own — where `scopes` is not expressible. */
+const bareApiKey = apiKeyAuthenticator<ServiceIdentity>({
+  header: "x-service-key",
+  keys: [{ key: "plain-secret", principal: { appId: "plain" } }],
+});
+
+const jwtPrincipal = (claims: { sub?: string; [key: string]: unknown }): JwtIdentity | undefined =>
+  typeof claims["tenant"] === "string" && typeof claims.sub === "string"
+    ? { tenantId: claims["tenant"], userId: claims.sub }
+    : undefined;
 
 /** A greeting service, so the router has a real dependency to declare. */
 class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
@@ -1234,6 +1259,14 @@ export type HttpFixtures = {
 
   /** A local JWT issuer: a served JWKS, and signers for every token a spec needs. */
   readonly issuer: Awaited<ReturnType<typeof issuerOf>>;
+  /** The API-key scheme with two issued keys, resolved. */
+  readonly apiKeyService: AuthenticatorService<ServiceIdentity, "reports:read">;
+  /** The API-key scheme with no scope vocabulary, resolved. */
+  readonly bareApiKeyService: AuthenticatorService<ServiceIdentity>;
+  /** The JWT scheme with no scope vocabulary, over this test's own issuer. */
+  readonly jwtService: AuthenticatorService<JwtIdentity>;
+  /** The JWT scheme declaring `orders:export`, where `scopes` is required. */
+  readonly scopedJwtService: AuthenticatorService<JwtIdentity, "orders:export">;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1254,6 +1287,43 @@ export const it = test.extend<HttpFixtures>({
     const local = await issuerOf();
     await use(local);
     await local.close();
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  apiKeyService: async ({}, use) => {
+    await use(serviceOf(apiKeys));
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  bareApiKeyService: async ({}, use) => {
+    await use(serviceOf(bareApiKey));
+  },
+
+  jwtService: async ({ issuer }, use) => {
+    await use(
+      serviceOf(
+        jwtAuthenticator<JwtIdentity>({
+          jwks: issuer.jwks,
+          issuer: "https://issuer.test",
+          audience: "orders-api",
+          principal: jwtPrincipal,
+        }),
+      ),
+    );
+  },
+
+  scopedJwtService: async ({ issuer }, use) => {
+    await use(
+      serviceOf(
+        jwtAuthenticator<JwtIdentity, "orders:export">({
+          jwks: issuer.jwks,
+          issuer: "https://issuer.test",
+          audience: "orders-api",
+          scopes: ["orders:export"],
+          principal: jwtPrincipal,
+        }),
+      ),
+    );
   },
 
   serve: async ({ boot }, use) => {

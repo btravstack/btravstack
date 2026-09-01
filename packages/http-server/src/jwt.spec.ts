@@ -1,41 +1,17 @@
 import { describe, expect } from "vitest";
 
-import { it, serviceOf } from "./__tests__/test-fixtures.js";
-import { jwtAuthenticator } from "./jwt.js";
-
-type Identity = { readonly tenantId: string; readonly userId: string };
-
-const principal = (claims: { sub?: string; [key: string]: unknown }): Identity | undefined =>
-  typeof claims["tenant"] === "string" && typeof claims.sub === "string"
-    ? { tenantId: claims["tenant"], userId: claims.sub }
-    : undefined;
-
-/** A scheme with no scope vocabulary, so `scopes` is not expressible on it. */
-const authenticatorFor = (issuer: { jwks: string }) =>
-  jwtAuthenticator<Identity>({
-    jwks: issuer.jwks,
-    issuer: "https://issuer.test",
-    audience: "orders-api",
-    principal,
-  });
-
-/** A scheme that declares one, where `scopes` is REQUIRED — a vocabulary nothing can grant is a permanent 403. */
-const scopedAuthenticatorFor = (issuer: { jwks: string }) =>
-  jwtAuthenticator<Identity, "orders:export">({
-    jwks: issuer.jwks,
-    issuer: "https://issuer.test",
-    audience: "orders-api",
-    scopes: ["orders:export"],
-    principal,
-  });
+import { it } from "./__tests__/test-fixtures.js";
 
 describe("jwtAuthenticator", () => {
-  it("names the caller its claims describe, over a real JWKS fetch", async ({ issuer }) => {
+  it("names the caller its claims describe, over a real JWKS fetch", async ({
+    issuer,
+    jwtService,
+  }) => {
     // GIVEN a token this issuer signed, and its JWKS served over HTTP
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" });
 
     // WHEN it is presented
-    const resolved = await serviceOf(authenticatorFor(issuer))({
+    const resolved = await jwtService({
       authorization: `Bearer ${token}`,
     });
 
@@ -46,6 +22,7 @@ describe("jwtAuthenticator", () => {
 
   it("grants only the scopes the scheme declares, whatever the token claims", async ({
     issuer,
+    scopedJwtService,
   }) => {
     // GIVEN a token claiming a scope the scheme knows and one it does not
     const token = await issuer.sign({
@@ -55,7 +32,7 @@ describe("jwtAuthenticator", () => {
     });
 
     // WHEN it is presented to a scheme whose vocabulary is the first alone
-    const resolved = await serviceOf(scopedAuthenticatorFor(issuer))({
+    const resolved = await scopedJwtService({
       authorization: `Bearer ${token}`,
     });
 
@@ -70,12 +47,15 @@ describe("jwtAuthenticator", () => {
     );
   });
 
-  it("reads an array `scp` claim as well as a space-delimited `scope`", async ({ issuer }) => {
+  it("reads an array `scp` claim as well as a space-delimited `scope`", async ({
+    issuer,
+    scopedJwtService,
+  }) => {
     // GIVEN a token in the shape Entra and Okta mint
     const token = await issuer.sign({ sub: "u-1", tenant: "acme", scp: ["orders:export"] });
 
     // WHEN it is presented
-    const resolved = await serviceOf(scopedAuthenticatorFor(issuer))({
+    const resolved = await scopedJwtService({
       authorization: `Bearer ${token}`,
     });
 
@@ -84,12 +64,12 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeOkWith(expect.objectContaining({ scopes: ["orders:export"] }));
   });
 
-  it("refuses a token minted for another audience", async ({ issuer }) => {
+  it("refuses a token minted for another audience", async ({ issuer, jwtService }) => {
     // GIVEN a token this issuer signed for a sibling service
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" }, { audience: "billing-api" });
 
     // WHEN it is presented here
-    const resolved = await serviceOf(authenticatorFor(issuer))({
+    const resolved = await jwtService({
       authorization: `Bearer ${token}`,
     });
 
@@ -98,7 +78,7 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
-  it("refuses a token from another issuer", async ({ issuer }) => {
+  it("refuses a token from another issuer", async ({ issuer, jwtService }) => {
     // GIVEN a token whose `iss` is not the one configured
     const token = await issuer.sign(
       { sub: "u-1", tenant: "acme" },
@@ -106,7 +86,7 @@ describe("jwtAuthenticator", () => {
     );
 
     // WHEN it is presented
-    const resolved = await serviceOf(authenticatorFor(issuer))({
+    const resolved = await jwtService({
       authorization: `Bearer ${token}`,
     });
 
@@ -114,12 +94,12 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
-  it("refuses an expired token", async ({ issuer }) => {
+  it("refuses an expired token", async ({ issuer, jwtService }) => {
     // GIVEN a token whose `exp` is in the past
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" }, { expiresIn: "-1s" });
 
     // WHEN it is presented
-    const resolved = await serviceOf(authenticatorFor(issuer))({
+    const resolved = await jwtService({
       authorization: `Bearer ${token}`,
     });
 
@@ -128,13 +108,16 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
-  it("refuses a token signed by a key the JWKS does not publish", async ({ issuer }) => {
+  it("refuses a token signed by a key the JWKS does not publish", async ({
+    issuer,
+    jwtService,
+  }) => {
     // GIVEN a token signed with a private key whose public half is not served,
     // presented with a `kid` the JWKS does publish
     const token = await issuer.signWithStranger({ sub: "u-1", tenant: "acme" });
 
     // WHEN it is presented
-    const resolved = await serviceOf(authenticatorFor(issuer))({
+    const resolved = await jwtService({
       authorization: `Bearer ${token}`,
     });
 
@@ -142,14 +125,14 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
-  it("refuses an HMAC token signed with a published public key", async ({ issuer }) => {
+  it("refuses an HMAC token signed with a published public key", async ({ issuer, jwtService }) => {
     // GIVEN the algorithm-confusion attack: a JWKS publishes PUBLIC keys, so an
     // attacker signs `HS256` using the very JWK this issuer serves as the
     // shared secret — no key they do not already have
     const token = await issuer.signHmacWithPublicKey();
 
     // WHEN it is presented
-    const resolved = await serviceOf(authenticatorFor(issuer))({
+    const resolved = await jwtService({
       authorization: `Bearer ${token}`,
     });
 
@@ -159,12 +142,15 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
-  it("refuses a valid token whose claims the application will not accept", async ({ issuer }) => {
+  it("refuses a valid token whose claims the application will not accept", async ({
+    issuer,
+    jwtService,
+  }) => {
     // GIVEN a properly signed token with no `tenant` claim
     const token = await issuer.sign({ sub: "u-1" });
 
     // WHEN it is presented
-    const resolved = await serviceOf(authenticatorFor(issuer))({
+    const resolved = await jwtService({
       authorization: `Bearer ${token}`,
     });
 
@@ -174,22 +160,25 @@ describe("jwtAuthenticator", () => {
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
-  it("refuses a request carrying no bearer token", async ({ issuer }) => {
+  it("refuses a request carrying no bearer token", async ({ jwtService }) => {
     // GIVEN a header in the wrong scheme
     // WHEN it is presented
-    const resolved = await serviceOf(authenticatorFor(issuer))({ authorization: "Basic abc" });
+    const resolved = await jwtService({ authorization: "Basic abc" });
 
     // THEN it is refused before the JWKS is ever consulted
     expect(resolved).toBeErrTagged("Unauthenticated");
   });
 
-  it("grants nothing when the token carries no scope claim at all", async ({ issuer }) => {
+  it("grants nothing when the token carries no scope claim at all", async ({
+    issuer,
+    scopedJwtService,
+  }) => {
     // GIVEN a scoped scheme and a token claiming neither `scope` nor `scp` —
     // the ordinary shape of a token from an issuer that does not do scopes
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" });
 
     // WHEN it is presented
-    const resolved = await serviceOf(scopedAuthenticatorFor(issuer))({
+    const resolved = await scopedJwtService({
       authorization: `Bearer ${token}`,
     });
 
