@@ -180,6 +180,9 @@ catalogs:
     tsx:
       specifier: 4.23.12
       version: 4.23.12
+    turbo:
+      specifier: 2.10.12
+      version: 2.10.12
     typedoc:
       specifier: 0.28.20
       version: 0.28.20
@@ -251,7 +254,7 @@ importers:
         specifier: 'catalog:'
         version: 1.80.0
       turbo:
-        specifier: 2.10.12
+        specifier: 'catalog:'
         version: 2.10.12
 
   docs:
