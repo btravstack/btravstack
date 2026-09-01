@@ -219,6 +219,13 @@ present and not required, since real issuers often omit it. Clock tolerance
 defaults to zero. Every failure is the same refusal, so the endpoint is not an
 oracle for which check the attacker got wrong.
 
+**The `/jwt` subpath needs Node ≥22.12 under CommonJS.** `jose` is ESM-only,
+so the CJS build's `require("jose")` depends on `require(esm)`, which Node
+enables by default from 22.12. ESM consumers are unaffected on any Node 22, and
+so is every consumer that never imports the subpath — which is why this is
+stated here rather than paid for by raising the package's own `engines` floor,
+a breaking change for the many to serve the few.
+
 `principal(claims)` is yours — no standard claim carries a tenant — and
 answering `undefined` refuses the token. `scopes` is the vocabulary and **the
 only place it is written**: the scheme's scope type is inferred from it, so it

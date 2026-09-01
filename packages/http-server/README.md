@@ -520,15 +520,18 @@ Two ship, because these are the ones where writing it per application is how
 CVEs happen — both are ordinary `Authenticator` values bound by name in
 `defineHttp({ authenticators })`:
 
-- **`apiKeyAuthenticator<P>()({ keys })`**, on the main entry point. Constant-time
+- **`apiKeyAuthenticator<P>()({ keys, header? })`**, on the main entry point. Constant-time
   compare over SHA-256 digests, every key checked with no early return, and a
   missing header on the same path as a wrong one.
-- **`jwtAuthenticator<P>()({ jwks, issuer, audience, principal, scopes? })`**, from
+- **`jwtAuthenticator<P>()({ jwks, issuer, audience, principal, scopes?, algorithms?, clockToleranceSec?, header? })`**, from
   `@btravstack/http-server/jwt`, with `jose` as an optional peer. JWKS fetch,
   cache and rotation; an asymmetric-only algorithm allowlist, because a JWKS
   publishes public keys and accepting `HS256` beside them is the
   algorithm-confusion attack; `iss`, `aud` and `exp` required to be present,
   `nbf` honoured when present.
+
+The `/jwt` subpath needs Node ≥22.12 under CommonJS: `jose` is ESM-only, so the
+CJS build's `require` depends on `require(esm)`. ESM consumers are unaffected.
 
 Password hashing and credential issuing are out of scope — both of the above
 are on the verifying side. Details:

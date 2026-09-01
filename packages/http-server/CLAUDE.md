@@ -693,6 +693,14 @@ not an oracle for which check the attacker got wrong. There is a test that
 mints the confusion token and a test that mints one signed by a key the JWKS
 does not publish.
 
+**`jose` is ESM-only, and that lands on ONE subpath under ONE module format.**
+The CJS build's `require("jose")` needs `require(esm)`, on by default from Node
+22.12; ESM is fine on any Node 22, and a consumer that never imports
+`@btravstack/http-server/jwt` is unaffected either way. So it is documented
+where the subpath is, rather than paid for by raising the package's `engines`
+floor from `>=22` — which is a breaking change for every consumer, to serve the
+CJS ones on 22.0–22.11.
+
 **A declared vocabulary must be grantable, and the way to guarantee that is to
 stop declaring it twice.** Both authenticators take the curried `<P>()(…)` shape
 `HttpAuthenticator` already uses — the principal stated, the vocabulary
