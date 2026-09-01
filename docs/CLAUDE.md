@@ -57,11 +57,23 @@ was folded in here when the container was merged; nothing under
   fences are the negative samples, exactly as in the `needs-gate` files. The
   one sample that cannot compile anywhere is `pinoSink`'s — no example
   workspace installs `pino` — held by `packages/observability/src/pino.spec.ts`
-  and skipped with that reason. The kernel-only README samples are
+  and skipped with that reason.
+
+  **A ` ```tsx ` fence must carry a skip reason.** JSX compiles in no workspace
+  here — none installs React — so the extractor admits the fence only to refuse
+  it unless a `skip` says why. Letting the fence LANGUAGE decide what is gated
+  is the silent channel a stated reason exists to close, and `tsx` was the one
+  spelling that would have opened it by accident. Regression-proved: removing
+  the marker above the React component on
+  `docs/how-to/consume-the-contract-from-react.md` fails `generate` with
+  `a \`\`\`tsx fence compiles nowhere`.
+
+  The kernel-only README samples are
   additionally held by `packages/core/src/docs-examples.test-d.ts`, and
   `examples/order-api/src/docs-examples.test-d.ts` still pins the
   application-reality coupling the extraction cannot (its samples call the
   real use cases through the real `auth.ts` by hand).
+
 - **The skip escape hatch is unguarded, and the biggest class inside it is
   signature displays.** `doctest: skip` is what a fence uses when it is not a
   program, and 109 fences carry one; **54** of those give the same reason —

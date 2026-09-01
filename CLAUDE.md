@@ -493,6 +493,40 @@ removes a pod from its Service's endpoints; failing it on a dependency the
 replicas share removes all of them at once, turning a degraded system into an
 outage. The kernel reports; an operator decides.
 
+## Persistence: one starter, and pagination is the adapter's
+
+`@btravstack/prisma` is the only persistence starter, and there is **no second
+adapter and no repository base type** — a decision, not a backlog item (#156).
+
+**A repository base class would smuggle a persistence shape into the
+application's ports**, which is the coupling the hexagonal examples exist to
+prevent. A port does not say where its data lives (thesis #2's transaction
+argument), so a `find`/`save`/`remove` supertype the framework owns would be
+asking every store to answer one query language. The four methods each example
+writes by hand are four lines apiece and are the only place its own vocabulary
+appears.
+
+**Pagination is expressible once and already is — one layer lower.**
+`@unthrown/prisma`'s `tryPaginate(query).withCursor({ limit, after })` owns the
+cursor arithmetic, in the adapter, and answers `[rows, meta]` with
+`InvalidCursor` as its one modeled failure. `examples/order-infrastructure`'s
+`list` is the worked case: the library's shape stops at the adapter exactly as
+`UniqueConstraintViolation` does, and the application declares its own
+`Page<T>` / `PageRequest` / `MalformedCursor` (`order-application`'s
+`pagination.ts`) — declared once for the layer rather than per repository, with
+no framework type in any port. Nothing here needs to ship for that to be true,
+which is why nothing does.
+
+**The filter is a field, never a query object.** `OrderQuery` is
+`PageRequest & { minQuantity? }`. A port taking a predicate or a `where` record
+would be the application speaking the adapter's language, and the next store
+would have to implement it.
+
+A second adapter (Drizzle, Kysely) is a real gap against the frameworks this
+competes with and is deliberately not closed yet: it is a new package with its
+own health check, instrumentation and container on the gate, and the shape
+above is what it would have to satisfy — an adapter, not a base class.
+
 ## Cross-cutting concerns: configuration, not a middleware slot
 
 CORS, body limits, compression, security headers and authentication are
