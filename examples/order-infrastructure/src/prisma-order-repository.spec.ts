@@ -5,6 +5,7 @@ import { TenantId } from "@btravstack/example-order-domain";
 import { observability } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { fromSafePromise } from "unthrown";
+import { uuidv7 } from "uuidv7";
 import { describe, expect, inject, vi } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -175,6 +176,78 @@ describe("the read path's error channel", () => {
 });
 
 describe("OrderPersistenceModule", () => {
+  it("pages with the cursor the previous page handed back", async ({
+    tenant,
+    repository,
+    anOrder,
+  }) => {
+    // GIVEN three orders under this test's own tenant
+    // WHEN a page of two is taken, then the page after its cursor
+    const second = await repository
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000101", 1))
+      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000102", 5)))
+      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000103", 9)))
+      .flatMap(() => repository.list(tenant, { limit: 2 }))
+      .flatMap((page) => repository.list(tenant, { limit: 2, after: page.nextCursor ?? "" }));
+
+    // THEN the remainder arrives once, with no cursor after it: `nextCursor` is
+    // null on a last page even though the library's `endCursor` is not
+    expect(second).toBeOkWith({
+      items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000103" })],
+      nextCursor: null,
+      hasNextPage: false,
+    });
+  });
+
+  it("filters inside the page rather than after it", async ({ tenant, repository, anOrder }) => {
+    // GIVEN three orders of different sizes
+    // WHEN a page of two is taken with a minimum
+    const page = await repository
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000111", 1))
+      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000112", 5)))
+      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000113", 9)))
+      .flatMap(() => repository.list(tenant, { limit: 2, minQuantity: 5 }));
+
+    // THEN the page is FULL of matches — a filter applied after paging would
+    // have answered one row and claimed the page was short
+    expect(page).toBeOkWith({
+      items: [
+        expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000112" }),
+        expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000113" }),
+      ],
+      nextCursor: null,
+      hasNextPage: false,
+    });
+  });
+
+  it("never pages into another tenant's orders", async ({ tenant, repository, anOrder }) => {
+    // GIVEN an order under this test's tenant and one under a tenant it invents
+    // WHEN this tenant lists
+    const page = await repository
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000121", 1))
+      .flatMap(() =>
+        repository.save(TenantId(uuidv7()), anOrder("0199a1e0-0000-7000-8000-000000000122", 1)),
+      )
+      .flatMap(() => repository.list(tenant, { limit: 10 }));
+
+    // THEN it sees its own row only, on a server every other spec is writing to
+    expect(page).toBeOkWith({
+      items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000121" })],
+      nextCursor: null,
+      hasNextPage: false,
+    });
+  });
+
+  it("answers MalformedCursor for a cursor it cannot read", async ({ tenant, repository }) => {
+    // GIVEN nothing saved — the cursor is refused before any row is read
+    // WHEN a page is asked for after a cursor the client made up
+    const page = await repository.list(tenant, { limit: 10, after: "not-a-cursor" });
+
+    // THEN it is a modeled error carrying the offending string, not a defect:
+    // a cursor is the one part of the query that came from outside
+    expect(page).toBeErrTagged("MalformedCursor", { cursor: "not-a-cursor" });
+  });
+
   it("satisfies the application's OrderRepository need inside a scope", async ({
     tenant,
     anOrder,

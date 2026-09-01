@@ -19,9 +19,11 @@ import {
   CustomerRepository,
   FindCustomer,
   FindOrder,
+  ListOrders,
   OrderApplicationModule,
   OrderRepository,
   PlaceOrder,
+  type OrderQuery,
 } from "../index.js";
 
 /**
@@ -54,6 +56,23 @@ const stubRepository = Provider(OrderRepository)({
         return row === undefined
           ? ErrAsync(new OrderNotFound({ id: id as OrderId }))
           : OkAsync(row);
+      },
+      // Insertion-ordered, cursor = the order id: enough to page over, and the
+      // real cursor arithmetic is `@unthrown/prisma`'s, exercised against
+      // Postgres by examples/order-infrastructure.
+      list: (tenantId: TenantId, { limit, after, minQuantity }: OrderQuery) => {
+        const scoped = [...rows.entries()]
+          .filter(([rowKey]) => rowKey.startsWith(`${tenantId}/`))
+          .map(([, order]) => order)
+          .filter((order) => minQuantity === undefined || order.quantity >= minQuantity);
+        const from = after === undefined ? 0 : scoped.findIndex((o) => o.id === after) + 1;
+        const items = scoped.slice(from, from + limit);
+        const hasNextPage = from + limit < scoped.length;
+        return OkAsync({
+          items,
+          nextCursor: hasNextPage ? (items.at(-1)?.id ?? null) : null,
+          hasNextPage,
+        });
       },
       remove: (tenantId: TenantId, id: string) =>
         rows.delete(key(tenantId, id))
@@ -99,7 +118,7 @@ const testModuleWith = (sink: Sink) =>
       observability({ sink, level: "trace" }),
     ],
     provides: [stubRepository, stubCustomerRepository, Provider(Env)({ inject: {}, value: {} })],
-    exports: [PlaceOrder, FindOrder, FindCustomer],
+    exports: [PlaceOrder, FindOrder, ListOrders, FindCustomer],
   });
 
 /** A sink that keeps what it was given, so a spec asserts on the line's fields rather than on a string. */

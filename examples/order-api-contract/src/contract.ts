@@ -69,6 +69,35 @@ const ordersContract = authenticated({ user: [] })({
     .output(orderView)
     .errors({ NOT_FOUND: { data: orderRef } }),
 
+  // The shape 80% of a real API has, and the one that decides whether a client
+  // can be written at all.
+  //
+  // `after` is an OPAQUE string — the cursor a previous page handed back — so
+  // it is `z.string()` and nothing narrower: the server owns its meaning, and a
+  // contract that described it would be publishing the adapter's ordering. It
+  // is also the only part of this input that did not come from the caller's own
+  // vocabulary, which is why `BAD_REQUEST` is declared here and names it.
+  //
+  // `nextCursor` is nullable rather than optional: a client loops until it is
+  // `null`, and an absent field would make "no more pages" and "the server
+  // forgot" the same value.
+  list: oc
+    .input(
+      z.object({
+        limit: z.number().int().min(1).max(100).default(20),
+        after: z.string().optional(),
+        minQuantity: z.number().int().min(1).optional(),
+      }),
+    )
+    .output(
+      z.object({
+        items: z.array(orderView),
+        nextCursor: z.string().nullable(),
+        hasNextPage: z.boolean(),
+      }),
+    )
+    .errors({ BAD_REQUEST: { data: z.object({ cursor: z.string() }) } }),
+
   // Overrides the group default for itself: a service token may export too,
   // and a user token needs the scope.
   export: authenticated(

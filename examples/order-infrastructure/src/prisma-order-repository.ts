@@ -1,12 +1,12 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
-import { OrderRepository } from "@btravstack/example-order-application";
+import { MalformedCursor, OrderRepository } from "@btravstack/example-order-application";
 import {
   DuplicateOrder,
   Order,
   OrderNotFound,
   type OrderId,
 } from "@btravstack/example-order-domain";
-import { Err, P, type Result } from "unthrown";
+import { all, Err, P, type Result } from "unthrown";
 
 import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
 
@@ -68,6 +68,46 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
       .tryFindUnique({ where: { tenantId_orderId: { tenantId, orderId: id } } })
       .flatMap((row) =>
         row === null ? Err(new OrderNotFound({ id: id as OrderId })) : hydrate(row),
+      ),
+
+  /**
+   * The listing, and the one place this repository does not write its own
+   * pagination. `@unthrown/prisma`'s `tryPaginate(...).withCursor(...)` owns the
+   * cursor arithmetic — including the off-by-one this example would otherwise
+   * have shipped, where a cursor pointing at a row the filter no longer matches
+   * skips the first element of the page.
+   *
+   * `InvalidCursor` is its ONLY modeled failure, and translating it into the
+   * application's `MalformedCursor` is the same move as `UniqueConstraintViolation`
+   * into `DuplicateOrder` two methods up: the library's vocabulary stops here.
+   * The cursor travels on the application's error because the library's carries
+   * only a `cause` — and the value a 400 has to name is the string the caller
+   * sent.
+   *
+   * `nextCursor` folds `hasNextPage` into `endCursor`, which the library
+   * deliberately keeps apart: a LAST page has a non-null `endCursor`, so handing
+   * it back unfolded gives a client a cursor that returns nothing and a loop
+   * that never ends.
+   */
+  list: (tenantId, { limit, after, minQuantity }) =>
+    db.order
+      .tryPaginate({
+        where: {
+          tenantId,
+          ...(minQuantity === undefined ? {} : { quantity: { gte: minQuantity } }),
+        },
+        orderBy: { id: "asc" },
+      })
+      .withCursor({ limit, ...(after === undefined ? {} : { after }) })
+      .mapErrCases((matcher) =>
+        matcher.with(P.tag("InvalidCursor"), () => new MalformedCursor({ cursor: after ?? "" })),
+      )
+      .flatMap(([rows, meta]) =>
+        all(rows.map(hydrate)).map((items) => ({
+          items,
+          nextCursor: meta.hasNextPage ? meta.endCursor : null,
+          hasNextPage: meta.hasNextPage,
+        })),
       ),
 
   // Compensation's persistence arm. `delete`, not `deleteMany`: `tryDelete`

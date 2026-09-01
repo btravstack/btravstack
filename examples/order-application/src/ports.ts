@@ -14,6 +14,8 @@ import type {
 } from "@btravstack/example-order-domain";
 import type { AsyncResult } from "unthrown";
 
+import type { MalformedCursor, Page, PageRequest } from "./pagination.js";
+
 /**
  * The port the infrastructure layer fills, declared here rather than in the
  * adapter because the use cases own the shape they need.
@@ -31,8 +33,21 @@ import type { AsyncResult } from "unthrown";
 export class OrderRepository extends Port("OrderRepository")<{
   readonly save: (tenantId: TenantId, order: Order) => AsyncResult<Order, DuplicateOrder>;
   readonly find: (tenantId: TenantId, id: string) => AsyncResult<Order, OrderNotFound>;
+  readonly list: (
+    tenantId: TenantId,
+    query: OrderQuery,
+  ) => AsyncResult<Page<Order>, MalformedCursor>;
   readonly remove: (tenantId: TenantId, id: string) => AsyncResult<void, OrderNotFound>;
 }> {}
+
+/**
+ * A page of orders, plus the one filter this listing supports.
+ *
+ * The filter is a FIELD rather than a free-form predicate: a port that took a
+ * query object would be asking the application layer to speak the adapter's
+ * query language, and every store would then have to answer it.
+ */
+export type OrderQuery = PageRequest & { readonly minQuantity?: number | undefined };
 
 /**
  * The customers slice's own port. It needs the **entity** — never
@@ -115,6 +130,13 @@ export class PlaceOrder extends Port("PlaceOrder")<{
 
 export class FindOrder extends Port("FindOrder")<{
   readonly execute: (tenantId: TenantId, id: string) => AsyncResult<Order, OrderNotFound>;
+}> {}
+
+export class ListOrders extends Port("ListOrders")<{
+  readonly execute: (
+    tenantId: TenantId,
+    query: OrderQuery,
+  ) => AsyncResult<Page<Order>, MalformedCursor>;
 }> {}
 
 export class FindCustomer extends Port("FindCustomer")<{

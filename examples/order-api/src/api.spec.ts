@@ -405,6 +405,52 @@ describe("order-api", () => {
     );
   });
 
+  it("carries a page and the cursor that continues it over the wire", async ({
+    serve,
+    clientFor,
+    stubbed,
+  }) => {
+    // GIVEN a root whose repository holds more orders than one page
+    const client = await clientFor(serve(stubbed));
+
+    // WHEN the first page is asked for, and then the page after its cursor —
+    // chained, so a failed first page cannot be read as a short second one
+    const second = await client.orders
+      .list({ limit: 1 })
+      .flatMap((page) => client.orders.list({ limit: 1, after: page.nextCursor ?? "" }));
+
+    // THEN the cursor made the round trip opaque: the client passed back a
+    // string it never read, and the listing closed with a null
+    expect(second).toBeOkWith({
+      items: [{ id: "0199a1e0-0000-7000-8000-00000000000b", quantity: 2 }],
+      nextCursor: null,
+      hasNextPage: false,
+    });
+  });
+
+  it("turns an unreadable cursor into a typed, inferable BAD_REQUEST", async ({
+    serve,
+    clientFor,
+    stubbed,
+  }) => {
+    // GIVEN the same root
+    const client = await clientFor(serve(stubbed));
+
+    // WHEN a page is asked for after a cursor the caller made up
+    const refused = await client.orders.list({ limit: 1, after: "not-a-cursor" });
+
+    // THEN it arrives on the error channel carrying the offending string — a
+    // value the client can match on, not a 500: the cursor is input
+    expect(refused).toBeErrWith(
+      expect.objectContaining({
+        constructor: ORPCError,
+        code: "BAD_REQUEST",
+        inferable: true,
+        data: { cursor: "not-a-cursor" },
+      }),
+    );
+  });
+
   it("refuses a malformed input before the use case is reached", async ({
     serve,
     clientFor,

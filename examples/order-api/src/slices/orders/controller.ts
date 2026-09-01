@@ -1,6 +1,6 @@
 import { Logger } from "@btravstack/core";
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
-import { FindOrder, PlaceOrder } from "@btravstack/example-order-application";
+import { FindOrder, ListOrders, PlaceOrder } from "@btravstack/example-order-application";
 import type { Order } from "@btravstack/example-order-domain";
 import { OkAsync, P } from "unthrown";
 
@@ -32,8 +32,8 @@ export const ordersController = api.OrpcController(
   contract,
   "orders",
 )({
-  inject: { place: PlaceOrder, find: FindOrder, logger: Logger },
-  sync: ({ place, find, logger }) => ({
+  inject: { place: PlaceOrder, find: FindOrder, list: ListOrders, logger: Logger },
+  sync: ({ place, find, list, logger }) => ({
     place: ({ errors, context }, input) => {
       logger.info("order placement requested", { userId: context.principal.userId });
       return place
@@ -69,6 +69,32 @@ export const ordersController = api.OrpcController(
             errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
           ),
         ),
+    // The listing. `input` reaches the use case unchanged — its three fields
+    // are already the application's `OrderQuery`, which is what a filter being
+    // a FIELD rather than a query object buys: no translation, and no place for
+    // one to drift.
+    //
+    // The tenant is still not among them. A page of somebody else's orders is
+    // not a request this controller can express, because the caller has no slot
+    // to name a tenant in and `principal.tenantId` is the only value that
+    // reaches the port.
+    list: ({ errors, context }, input) =>
+      list
+        .execute(context.principal.tenantId, input)
+        .map((page) => ({
+          items: page.items.map(view),
+          nextCursor: page.nextCursor,
+          hasNextPage: page.hasNextPage,
+        }))
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("MalformedCursor"), (error) =>
+            errors.BAD_REQUEST({
+              message: "the cursor could not be read",
+              data: { cursor: error.cursor },
+            }),
+          ),
+        ),
+
     // A stand-in body naming the arm that produced it, so a spec pins which
     // scheme served the call. A missing arm leaves a path returning nothing,
     // which the handler's return type refuses.

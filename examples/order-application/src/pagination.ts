@@ -1,0 +1,45 @@
+import { TaggedError } from "unthrown";
+
+/**
+ * One page of a listing, in the application's own words.
+ *
+ * Declared **once** for the whole layer rather than per repository, and
+ * deliberately not by the framework: `@unthrown/prisma`'s `tryPaginate` does
+ * the cursor arithmetic in the adapter, and its
+ * `[rows, { hasNextPage, endCursor, … }]` shape stops there. A port that spoke
+ * that shape would name a persistence library in the application's vocabulary,
+ * which is the same mistake as a port naming a transaction.
+ *
+ * `nextCursor` is `null` exactly when there is nothing after this page — which
+ * is NOT what the underlying `endCursor` means (a last page has a non-null one),
+ * so the adapter folds the flag in and a caller gets one field to loop on.
+ */
+export type Page<T> = {
+  readonly items: readonly T[];
+  readonly nextCursor: string | null;
+  readonly hasNextPage: boolean;
+};
+
+/**
+ * What a caller asks for. `after` is an **opaque** string: it is the cursor a
+ * previous page handed back, and nothing above the adapter may read it.
+ */
+export type PageRequest = {
+  readonly limit: number;
+  readonly after?: string | undefined;
+};
+
+/**
+ * The cursor could not be read.
+ *
+ * The one modeled failure of a listing, and it is modeled because the cursor is
+ * the only part of the query that came from **outside** — a client sending
+ * garbage is input you answer with a 400, not a bug. Every other pagination
+ * failure is a defect like any other query.
+ *
+ * It lives in the application layer rather than the domain: a cursor is an
+ * artifact of how a listing is served, and the domain has no listings.
+ */
+export class MalformedCursor extends TaggedError("MalformedCursor")<{
+  readonly cursor: string;
+}> {}

@@ -24,6 +24,7 @@ import {
   CustomerApplicationModule,
   FindCustomer,
   FindOrder,
+  ListOrders,
   OrderApplicationModule,
   PlaceOrder,
 } from "@btravstack/example-order-application";
@@ -65,8 +66,8 @@ const ordersController = api.OrpcController(
   contract,
   "orders",
 )({
-  inject: { place: PlaceOrder, find: FindOrder, logger: Logger },
-  sync: ({ place, find, logger }) => ({
+  inject: { place: PlaceOrder, find: FindOrder, list: ListOrders, logger: Logger },
+  sync: ({ place, find, list, logger }) => ({
     place: ({ errors, context }, input) => {
       logger.info("order placement requested", { userId: context.principal.userId });
       return place
@@ -92,6 +93,22 @@ const ordersController = api.OrpcController(
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
             errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+          ),
+        ),
+    list: ({ errors, context }, input) =>
+      list
+        .execute(context.principal.tenantId, input)
+        .map((page) => ({
+          items: page.items.map(view),
+          nextCursor: page.nextCursor,
+          hasNextPage: page.hasNextPage,
+        }))
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("MalformedCursor"), (error) =>
+            errors.BAD_REQUEST({
+              message: "the cursor could not be read",
+              data: { cursor: error.cursor },
+            }),
           ),
         ),
     export: ({ context }) => {
@@ -184,8 +201,8 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
 // controller all reduce to this call.
 
 const depsOrdersRouter = api.OrpcRouter(contract.orders)({
-  inject: { place: PlaceOrder, find: FindOrder },
-  sync: ({ place, find }) => ({
+  inject: { place: PlaceOrder, find: FindOrder, list: ListOrders },
+  sync: ({ place, find, list }) => ({
     place: ({ errors, context }, input) =>
       place
         .execute(context.principal.tenantId, input.id, input.quantity)
@@ -209,6 +226,22 @@ const depsOrdersRouter = api.OrpcRouter(contract.orders)({
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OrderNotFound"), (error) =>
             errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+          ),
+        ),
+    list: ({ errors, context }, input) =>
+      list
+        .execute(context.principal.tenantId, input)
+        .map((page) => ({
+          items: page.items.map(view),
+          nextCursor: page.nextCursor,
+          hasNextPage: page.hasNextPage,
+        }))
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("MalformedCursor"), (error) =>
+            errors.BAD_REQUEST({
+              message: "the cursor could not be read",
+              data: { cursor: error.cursor },
+            }),
           ),
         ),
     export: ({ context }) => {
