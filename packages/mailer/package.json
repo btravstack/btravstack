@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/mailer",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "A Mailer port for @btravstack/core: a recording adapter a spec asserts against, an SMTP adapter, and a composition that spans, counts and logs every send",
   "keywords": [
     "dependency-injection",
