@@ -171,6 +171,44 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    oRPC"; that was true of the package and was never a consequence of this
    thesis, and it is gone.
 
+   **"HTML" here means fragments, and only fragments** (#179's open question).
+   Four things were being called HTML support: a template engine's rendered
+   pages, an endpoint answering `text/html` for a partial, static assets with
+   an SPA fallback, and JSX/SSR with a component model. `htmx()` is the second
+   — the one closest to a procedure and hardest to tell apart from one, which
+   is why it sharpened the second-answerer question rather than dodging it. The
+   first and fourth are #166's rendering layer; the third is #161, and its own
+   counter-argument (that it may still be the ingress's job) stands.
+
+   **The auth cluster was sequenced behind this, and the sequencing paid off in
+   a way worth recording**: the seam generalised the moment a second answerer
+   landed, rather than needing to be redesigned. `resolvePrincipal` is one walk
+   both answerers share, so a scope check cannot drift between protocols — and
+   a protocol with **no contract** declares its requirements as **data on the
+   route** (`api.HtmxGet(path, { requires: [{ user: [] }] })`), gated by
+   `RequiresGate`, the contract-less analogue of oRPC's `ScopeGate`. So
+   `AuthenticatorService` is protocol-neutral by construction: it is
+   `(headers) => AsyncResult<Granted<P, Scope>, Unauthenticated>` and names no
+   protocol at all. A GraphQL answerer inherits that seam by declaring
+   requirements the same way; it is not a redesign waiting to happen, which is
+   what #179 could not know before the second answerer existed.
+
+   Three consequences for the cluster, and they are not the same:
+
+   - **#157 (authenticators) is not blocked.** Its verification half — JWKS
+     fetch and cache, `iss`/`aud`/`exp`, key rotation, constant-time API-key
+     compare — never was, and its binding half stopped being blocked when
+     `requires`-as-data shipped.
+   - **#160 (cookies and sessions) unblocked when `htmx()` landed**, and so did
+     the CSRF deferral #164 made on the stated grounds that "this package
+     configures no cookies". A session cookie now has a legitimate consumer —
+     a browser navigating fragments — which is exactly what it lacked. The two
+     move together, and CSRF cannot be reconsidered before cookies exist.
+   - **#158 (authorization) was never blocked by any of this.** It is
+     `(principal, resource) → decision` in the application layer, above the
+     transport; only its `principal` input is protocol-shaped, and nothing it
+     decides turns on the number of protocols.
+
    **The transport role map is a decision, not an inventory** (issues #61 and
    #60): answering is `@btravstack/http-server`; orchestration — and with it
    everything job-queue-shaped and everything scheduled — is
