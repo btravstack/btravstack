@@ -54,8 +54,6 @@ declare const view: (order: Order) => OrderView;
 | `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                     |
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                   |
 | `apiKeyAuthenticator`  | value | `apiKeyAuthenticator({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                        |
-| `jwtAuthenticator`     | value | `jwtAuthenticator({ jwks, issuer, audience, algorithms?, clockToleranceSec?, header?, principal, scopes? })` — from `@btravstack/http-server/jwt`; JWKS fetch/cache/rotation, an asymmetric-only algorithm allowlist, `iss`/`aud`/`exp`/`nbf`                                                                |
-| `DEFAULT_ALGORITHMS`   | value | `readonly string[]` — `RS256`/`RS384`/`RS512`/`ES256`/`ES384`; HMAC is absent because a JWKS publishes public keys                                                                                                                                                                                           |
 | `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                           |
 | `httpServer`           | value | `httpServer(options?)` — the socket half: runtime, config, and the empty answerer set. `http()` is this plus oRPC                                                                                                                                                                                            |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                           |
@@ -86,6 +84,11 @@ inferred at the call. `HttpHandler` used to be a third — an internal seam, on
 the grounds that oRPC was the only way to answer HTTP here — and is exported
 now, since a second protocol's package has to name the set port it contributes
 to.
+
+**Two subpaths export more**, each behind an optional peer so a graph that never
+imports it installs nothing: `@btravstack/http-server/jwt` (`jwtAuthenticator`,
+`DEFAULT_ALGORITHMS` — `jose`) and `@btravstack/http-server/openapi`
+(`openApiDocument` — `@orpc/openapi`). Both have sections of their own below.
 
 ## `HttpModule(name)({...})`
 

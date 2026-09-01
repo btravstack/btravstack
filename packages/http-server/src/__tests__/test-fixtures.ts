@@ -159,9 +159,7 @@ export const serviceOf = <P, Scope extends string>(
  */
 const issuerOf = async () => {
   const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
-  const { publicKey: otherPublic, privateKey: otherPrivate } = await generateKeyPair("RS256", {
-    extractable: true,
-  });
+  const { privateKey: otherPrivate } = await generateKeyPair("RS256", { extractable: true });
   const jwk = { ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" };
   const server = createServer((_request, response) => {
     response.setHeader("content-type", "application/json");
@@ -194,14 +192,19 @@ const issuerOf = async () => {
         .setAudience("orders-api")
         .setExpirationTime("5m")
         .sign(otherPrivate),
-    /** The public key as an HMAC secret — the algorithm-confusion attack's own payload. */
-    signHmacWithPublicKey: async (claims: Record<string, unknown> = {}) =>
-      new SignJWT(claims)
+    /**
+     * The algorithm-confusion attack's own payload: `HS256` signed with the
+     * PUBLISHED public key as the shared secret — the very JWK this issuer
+     * serves, which is what makes it an attack anyone can mount rather than one
+     * needing a key they do not have.
+     */
+    signHmacWithPublicKey: () =>
+      new SignJWT({ sub: "u-1", tenant: "acme" })
         .setProtectedHeader({ alg: "HS256", kid: "k1" })
         .setIssuer("https://issuer.test")
         .setAudience("orders-api")
         .setExpirationTime("5m")
-        .sign(new TextEncoder().encode(JSON.stringify(await exportJWK(otherPublic)))),
+        .sign(new TextEncoder().encode(JSON.stringify(jwk))),
     close: () => new Promise<void>((done) => server.close(() => done())),
   };
 };

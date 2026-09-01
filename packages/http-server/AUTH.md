@@ -123,6 +123,14 @@ The two rules this half exists to state, before the detail:
   - **A missing header takes the same path as a wrong key**, so "no credential"
     and "bad credential" are not distinguishable by timing either.
 
+  **`scopes` is required on a key once the scheme declares a vocabulary**, and
+  not expressible otherwise. Optional in both cases would let a scheme
+  advertise a scope to `defineHttp` and to the contract's own `ScopeGate` while
+  no key could ever grant it — a route that type-checks and refuses every
+  caller with a permanent 403, which is precisely the failure that gate exists
+  to catch one layer up. A key that grants nothing says `scopes: []`. The same
+  rule holds for `jwtAuthenticator`'s own `scopes`.
+
   The keys come from the caller — an `Env`-bound config field, a secret store —
   because a key list in the image is a key list in the repository.
   `examples/order-api`'s `serviceAuth` is this, not a stand-in.

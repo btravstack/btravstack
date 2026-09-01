@@ -5,16 +5,28 @@ import { jwtAuthenticator } from "./jwt.js";
 
 type Identity = { readonly tenantId: string; readonly userId: string };
 
-const authenticatorFor = (issuer: { jwks: string }, scopes?: readonly "orders:export"[]) =>
+const principal = (claims: { sub?: string; [key: string]: unknown }): Identity | undefined =>
+  typeof claims["tenant"] === "string" && typeof claims.sub === "string"
+    ? { tenantId: claims["tenant"], userId: claims.sub }
+    : undefined;
+
+/** A scheme with no scope vocabulary, so `scopes` is not expressible on it. */
+const authenticatorFor = (issuer: { jwks: string }) =>
+  jwtAuthenticator<Identity>({
+    jwks: issuer.jwks,
+    issuer: "https://issuer.test",
+    audience: "orders-api",
+    principal,
+  });
+
+/** A scheme that declares one, where `scopes` is REQUIRED — a vocabulary nothing can grant is a permanent 403. */
+const scopedAuthenticatorFor = (issuer: { jwks: string }) =>
   jwtAuthenticator<Identity, "orders:export">({
     jwks: issuer.jwks,
     issuer: "https://issuer.test",
     audience: "orders-api",
-    ...(scopes === undefined ? {} : { scopes }),
-    principal: (claims) =>
-      typeof claims["tenant"] === "string" && typeof claims.sub === "string"
-        ? { tenantId: claims["tenant"], userId: claims.sub }
-        : undefined,
+    scopes: ["orders:export"],
+    principal,
   });
 
 describe("jwtAuthenticator", () => {
@@ -43,7 +55,7 @@ describe("jwtAuthenticator", () => {
     });
 
     // WHEN it is presented to a scheme whose vocabulary is the first alone
-    const resolved = await serviceOf(authenticatorFor(issuer, ["orders:export"]))({
+    const resolved = await serviceOf(scopedAuthenticatorFor(issuer))({
       authorization: `Bearer ${token}`,
     });
 
@@ -63,7 +75,7 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1", tenant: "acme", scp: ["orders:export"] });
 
     // WHEN it is presented
-    const resolved = await serviceOf(authenticatorFor(issuer, ["orders:export"]))({
+    const resolved = await serviceOf(scopedAuthenticatorFor(issuer))({
       authorization: `Bearer ${token}`,
     });
 
@@ -132,8 +144,9 @@ describe("jwtAuthenticator", () => {
 
   it("refuses an HMAC token signed with a published public key", async ({ issuer }) => {
     // GIVEN the algorithm-confusion attack: a JWKS publishes PUBLIC keys, so an
-    // attacker signs `HS256` using one as the shared secret
-    const token = await issuer.signHmacWithPublicKey({ sub: "u-1", tenant: "acme" });
+    // attacker signs `HS256` using the very JWK this issuer serves as the
+    // shared secret — no key they do not already have
+    const token = await issuer.signHmacWithPublicKey();
 
     // WHEN it is presented
     const resolved = await serviceOf(authenticatorFor(issuer))({
@@ -176,7 +189,7 @@ describe("jwtAuthenticator", () => {
     const token = await issuer.sign({ sub: "u-1", tenant: "acme" });
 
     // WHEN it is presented
-    const resolved = await serviceOf(authenticatorFor(issuer, ["orders:export"]))({
+    const resolved = await serviceOf(scopedAuthenticatorFor(issuer))({
       authorization: `Bearer ${token}`,
     });
 

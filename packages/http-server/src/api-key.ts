@@ -4,13 +4,25 @@ import { ErrAsync, OkAsync } from "unthrown";
 
 import { HttpAuthenticator, Unauthenticated, granted, type Authenticator } from "./auth.js";
 
-/** One issued key, and what presenting it makes the caller. */
+/**
+ * One issued key, and what presenting it makes the caller.
+ *
+ * `scopes` is REQUIRED once the scheme declares a vocabulary, and absent
+ * otherwise. Optional in both cases would let a scheme advertise a scope to
+ * `defineHttp` and the contract's own gate while no key could ever grant it —
+ * a route that type-checks and refuses every caller with a permanent 403,
+ * which is the exact failure `ScopeGate` exists to catch one layer up. A key
+ * that grants nothing says so with `scopes: []`.
+ */
 export type ApiKey<P, Scope extends string> = {
   readonly key: string;
   readonly principal: P;
-  /** What this key grants, checked against the endpoint's declared scopes by the existing 403 path. */
-  readonly scopes?: readonly Scope[];
-};
+} & ([Scope] extends [never]
+  ? { readonly scopes?: undefined }
+  : {
+      /** What this key grants, checked against the endpoint's declared scopes by the existing 403 path. */
+      readonly scopes: readonly Scope[];
+    });
 
 export type ApiKeyOptions<P, Scope extends string> = {
   /** Which header carries the key. Default `x-api-key`. */

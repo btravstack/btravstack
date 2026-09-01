@@ -29,13 +29,20 @@ export type JwtOptions<P, Scope extends string> = {
    * as a tenant.
    */
   readonly principal: (claims: Claims) => P | undefined;
-  /**
-   * The scopes this scheme can grant. The granted list is the INTERSECTION of
-   * this vocabulary with what the token carries, so a token claiming a scope
-   * the scheme does not know grants nothing extra.
-   */
-  readonly scopes?: readonly Scope[];
-};
+} & ([Scope] extends [never]
+  ? { readonly scopes?: undefined }
+  : {
+      /**
+       * The scopes this scheme can grant. The granted list is the INTERSECTION
+       * of this vocabulary with what the token carries, so a token claiming a
+       * scope the scheme does not know grants nothing extra.
+       *
+       * Required once `Scope` is declared: optional would let a scheme
+       * advertise a scope to `defineHttp` while nothing could ever grant it —
+       * a route that type-checks and refuses every caller with a permanent 403.
+       */
+      readonly scopes: readonly Scope[];
+    });
 
 /**
  * Asymmetric only, and deliberately.
@@ -117,8 +124,9 @@ export const jwtAuthenticator = <P, const Scope extends string = never>(
       return (
         fromPromise(
           jwtVerify(token, keys, {
-            issuer: options.issuer as string | string[],
-            audience: options.audience as string | string[],
+            issuer: typeof options.issuer === "string" ? options.issuer : [...options.issuer],
+            audience:
+              typeof options.audience === "string" ? options.audience : [...options.audience],
             algorithms: [...(options.algorithms ?? DEFAULT_ALGORITHMS)],
             clockTolerance: options.clockToleranceSec ?? 0,
           }),

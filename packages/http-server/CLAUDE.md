@@ -690,6 +690,14 @@ not an oracle for which check the attacker got wrong. There is a test that
 mints the confusion token and a test that mints one signed by a key the JWKS
 does not publish.
 
+**A declared vocabulary must be grantable, and the types say so.** `scopes` is
+REQUIRED on both authenticators once `Scope` is non-`never`, and not
+expressible when it is — a conditional on the options type. Optional in both
+cases would let a scheme advertise a scope while nothing could ever grant it: a
+route that type-checks and refuses every caller with a permanent 403, which is
+the failure `ScopeGate` exists to catch one layer up and would have walked past
+here. A key or a token that grants nothing says `[]`.
+
 **No new checking surface.** A grant goes through `granted()` and the existing
 walk produces the 403 — which is why `scopes` is a vocabulary and the grant is
 its INTERSECTION with the token's claim: a token claiming a scope the scheme
