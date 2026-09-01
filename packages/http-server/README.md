@@ -514,6 +514,25 @@ that wants to record why logs it before returning `Unauthenticated`. A
 rather than promoting the caller to the next scheme. See
 [Protect a procedure](https://btravstack.github.io/btravstack/how-to/protect-a-procedure).
 
+## Authenticators
+
+Two ship, because these are the ones where writing it per application is how
+CVEs happen — both are ordinary `Authenticator` values bound by name in
+`defineHttp({ authenticators })`:
+
+- **`apiKeyAuthenticator({ keys })`**, on the main entry point. Constant-time
+  compare over SHA-256 digests, every key checked with no early return, and a
+  missing header on the same path as a wrong one.
+- **`jwtAuthenticator({ jwks, issuer, audience, principal, scopes? })`**, from
+  `@btravstack/http-server/jwt`, with `jose` as an optional peer. JWKS fetch,
+  cache and rotation; an asymmetric-only algorithm allowlist, because a JWKS
+  publishes public keys and accepting `HS256` beside them is the
+  algorithm-confusion attack; `iss`/`aud`/`exp`/`nbf`, all required.
+
+Password hashing and credential issuing are out of scope — both of the above
+are on the verifying side. Details:
+[the reference page](https://btravstack.github.io/btravstack/reference/http-server).
+
 ## Options
 
 `HttpModule(name)({...})` takes `http()`'s options plus `router`, `fragments`,

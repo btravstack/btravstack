@@ -52,11 +52,21 @@
         "default": "./dist/openapi.cjs"
       }
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./jwt": {
+      "import": {
+        "types": "./dist/jwt.d.mts",
+        "default": "./dist/jwt.mjs"
+      },
+      "require": {
+        "types": "./dist/jwt.d.cts",
+        "default": "./dist/jwt.cjs"
+      }
+    }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/openapi.ts --format cjs,esm --dts --clean",
-    "dev": "tsdown src/index.ts src/openapi.ts --format cjs,esm --dts --watch",
+    "build": "tsdown src/index.ts src/jwt.ts src/openapi.ts --format cjs,esm --dts --clean",
+    "dev": "tsdown src/index.ts src/jwt.ts src/openapi.ts --format cjs,esm --dts --watch",
     "test": "vitest run --coverage",
     "test:types": "tsc --noEmit -p tsconfig.test-d.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-d.json"
@@ -77,6 +87,7 @@
     "@unthrown/orpc": "catalog:",
     "@unthrown/vitest": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "jose": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "unthrown": "catalog:",
@@ -93,13 +104,17 @@
     "@orpc/openapi": "^2.0.0-beta",
     "@orpc/server": "^2.0.0-beta",
     "@unthrown/orpc": "^0.1.0",
+    "jose": "^6",
     "unthrown": "^5.0.0"
   },
   "peerDependenciesMeta": {
+    "@orpc/json-schema": {
+      "optional": true
+    },
     "@orpc/openapi": {
       "optional": true
     },
-    "@orpc/json-schema": {
+    "jose": {
       "optional": true
     }
   },

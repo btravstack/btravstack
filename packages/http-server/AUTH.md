@@ -108,6 +108,61 @@ The two rules this half exists to state, before the detail:
   write-only. An authenticator that wants to record why logs it before
   returning. Forwarding a reason would put "no such user" versus "bad
   signature" in a 401 body by default.
+- **`apiKeyAuthenticator({ header?, keys })` → `Authenticator<P, Scope, never>`**
+  (`api-key.ts`, on the main entry point — it has no peer to be optional
+  about). Each key carries the principal presenting it makes, and optionally
+  what it grants. Three things it does that a hand-written one usually does
+  not, each with a test:
+  - **It compares SHA-256 digests, not strings.** `===` on a secret leaks its
+    prefix through timing, and `timingSafeEqual` refuses two buffers of
+    different lengths — which would leak the key's length instead. Hashing
+    first makes every comparison 32 bytes wide whatever was presented.
+  - **It checks every configured key with no early return.** A loop that
+    `break`s on the first match takes longer for a key configured late, which
+    is a slower oracle but an oracle.
+  - **A missing header takes the same path as a wrong key**, so "no credential"
+    and "bad credential" are not distinguishable by timing either.
+
+  The keys come from the caller — an `Env`-bound config field, a secret store —
+  because a key list in the image is a key list in the repository.
+  `examples/order-api`'s `serviceAuth` is this, not a stand-in.
+
+- **`jwtAuthenticator({ jwks, issuer, audience, algorithms?, clockToleranceSec?, header?, principal, scopes? })`
+  → `Authenticator<P, Scope, never>`, and `DEFAULT_ALGORITHMS`** — from
+  **`@btravstack/http-server/jwt`**, with `jose` an OPTIONAL peer: a graph that
+  never imports the subpath installs nothing. What it owns is the part where
+  writing it per application is how CVEs happen:
+  - **JWKS fetch, cache and rotation** — `jose`'s `createRemoteJWKSet` fetches
+    on demand and refetches when a token names an unseen `kid`, rate-limited so
+    unknown `kid`s cannot be turned into a request amplifier against the issuer.
+  - **An algorithm allowlist that excludes HMAC.** `DEFAULT_ALGORITHMS` is
+    `RS*`/`ES*` only. A JWKS publishes PUBLIC keys, so accepting `HS256` beside
+    them is the **algorithm-confusion** attack — an attacker signs with the
+    published public key as the shared secret. There is a test that mints
+    exactly that token and is refused.
+  - **`iss`, `aud`, `exp` and `nbf`, all required**, with `clockToleranceSec`
+    defaulting to `0` so leeway is opt-in. `aud` is the one whose absence lets a
+    token minted for a sibling service be replayed here.
+  - **One refusal for every failure.** A bad signature, an expired token and an
+    audience mismatch are indistinguishable from outside — `Unauthenticated`
+    carries no reason, so the endpoint is not an oracle for which of them the
+    attacker got wrong.
+
+  `principal(claims)` is the application's, and answering `undefined` is a
+  **refusal** rather than a principal of `undefined`: no standard claim carries
+  a tenant, and this is where one enters. `scopes` is the vocabulary, and the
+  grant is its **intersection** with the token's `scope` (space-delimited, RFC 8693) or `scp` (an array — Entra, Okta); a token claiming a scope the scheme
+  does not know grants nothing extra. Nothing new checks them: the grant goes
+  through `granted()` and the existing walk produces the 403.
+
+- **Password hashing and credential ISSUING are out of scope, deliberately.**
+  Both authenticators above are on the **verifying** side. Issuing needs a
+  place to put a credential and a session to carry it, and this package
+  configures no cookies and has no sessions (#160) — so a password hasher here
+  would be a primitive with no surface calling it. Reach for `argon2` or
+  `@node-rs/argon2` directly at whatever mints your tokens; that is one
+  dependency and no framework opinion, which is the right size for it.
+
 - **`defineHttp({ authenticators })` → `Http<A>`, carrying `OrpcController`,
   `OrpcRouter` and `authenticators`** (`define-http.ts`) — **the one door** to
   the marker-typed entities, and the place a scheme registry is stated.

@@ -23,7 +23,7 @@ vi.mock("node:http", async (importOriginal) => {
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer, request as httpRequest } from "node:http";
-import { connect, type Socket } from "node:net";
+import { connect, type AddressInfo, type Socket } from "node:net";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
@@ -40,6 +40,7 @@ import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { oc, type as ocType, type RouterContractClient } from "@orpc/contract";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { ErrAsync, OkAsync, fromSafePromise, type AsyncResult } from "unthrown";
 import { test } from "vitest";
 import { z } from "zod";
@@ -49,6 +50,8 @@ import {
   Unauthenticated,
   authenticatorPort,
   granted,
+  type Authenticator,
+  type AuthenticatorService,
   type Grant,
 } from "../auth.js";
 import { defineHttp } from "../define-http.js";
@@ -131,6 +134,77 @@ const observedAppOf = (handler: Handler, member: (operation: Operation) => Settl
     ],
     exports: [HttpRuntime, HttpHandler],
   });
+
+/**
+ * The `AuthenticatorService` inside a description, without a graph.
+ *
+ * `Authenticator` erases `options` to `unknown` on purpose — `defineHttp` is
+ * what binds it to a port — so a unit test of an authenticator has to reach
+ * through that erasure. It is the one cast here, and it is the shape
+ * `defineHttp` itself reads.
+ */
+export const serviceOf = <P, Scope extends string>(
+  authenticator: Authenticator<P, Scope, never>,
+): AuthenticatorService<P, Scope> =>
+  (
+    authenticator.options as {
+      readonly sync: (services: Record<never, never>) => AuthenticatorService<P, Scope>;
+    }
+  ).sync({});
+
+/**
+ * A local issuer: one generated key pair, its JWKS on an ephemeral port, and a
+ * signer. A real fetch against a real JWKS document is what makes the rotation
+ * and caching under test the library's own rather than a double's.
+ */
+const issuerOf = async () => {
+  const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
+  const { publicKey: otherPublic, privateKey: otherPrivate } = await generateKeyPair("RS256", {
+    extractable: true,
+  });
+  const jwk = { ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" };
+  const server = createServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ keys: [jwk] }));
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", () => done()));
+  const { port } = server.address() as AddressInfo;
+
+  return {
+    jwks: `http://127.0.0.1:${port}/jwks.json`,
+    issuer: "https://issuer.test",
+    audience: "orders-api",
+    /** A token this issuer signed, with whatever claims and overrides a test needs. */
+    sign: (
+      claims: Record<string, unknown> = {},
+      overrides: { issuer?: string; audience?: string; expiresIn?: string } = {},
+    ) =>
+      new SignJWT(claims)
+        .setProtectedHeader({ alg: "RS256", kid: "k1" })
+        .setIssuer(overrides.issuer ?? "https://issuer.test")
+        .setAudience(overrides.audience ?? "orders-api")
+        .setIssuedAt()
+        .setExpirationTime(overrides.expiresIn ?? "5m")
+        .sign(privateKey),
+    /** A token signed by a key this issuer's JWKS does not publish. */
+    signWithStranger: (claims: Record<string, unknown> = {}) =>
+      new SignJWT(claims)
+        .setProtectedHeader({ alg: "RS256", kid: "k1" })
+        .setIssuer("https://issuer.test")
+        .setAudience("orders-api")
+        .setExpirationTime("5m")
+        .sign(otherPrivate),
+    /** The public key as an HMAC secret — the algorithm-confusion attack's own payload. */
+    signHmacWithPublicKey: async (claims: Record<string, unknown> = {}) =>
+      new SignJWT(claims)
+        .setProtectedHeader({ alg: "HS256", kid: "k1" })
+        .setIssuer("https://issuer.test")
+        .setAudience("orders-api")
+        .setExpirationTime("5m")
+        .sign(new TextEncoder().encode(JSON.stringify(await exportJWK(otherPublic)))),
+    close: () => new Promise<void>((done) => server.close(() => done())),
+  };
+};
 
 /** A greeting service, so the router has a real dependency to declare. */
 class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
@@ -1154,6 +1228,9 @@ export type HttpFixtures = {
     readonly origin: string;
     readonly taken: () => readonly Observation[];
   }>;
+
+  /** A local JWT issuer: a served JWKS, and signers for every token a spec needs. */
+  readonly issuer: Awaited<ReturnType<typeof issuerOf>>;
 };
 
 export const it = test.extend<HttpFixtures>({
@@ -1167,6 +1244,13 @@ export const it = test.extend<HttpFixtures>({
       assert.ok(info !== undefined, "the runtime published no Serving.info");
       return { origin: `http://127.0.0.1:${info.port}`, taken: observer.taken };
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  issuer: async ({}, use) => {
+    const local = await issuerOf();
+    await use(local);
+    await local.close();
   },
 
   serve: async ({ boot }, use) => {

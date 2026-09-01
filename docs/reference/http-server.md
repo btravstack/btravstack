@@ -53,6 +53,9 @@ declare const view: (order: Order) => OrderView;
 | `resolvePrincipal`     | value | the protocol-neutral authentication walk, shared by every answerer                                                                                                                                                                                                                                           |
 | `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                     |
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                   |
+| `apiKeyAuthenticator`  | value | `apiKeyAuthenticator({ header?, keys })` — an API-key scheme with a constant-time compare over SHA-256 digests, no early return, and a missing header on the same path as a wrong key                                                                                                                        |
+| `jwtAuthenticator`     | value | `jwtAuthenticator({ jwks, issuer, audience, algorithms?, clockToleranceSec?, header?, principal, scopes? })` — from `@btravstack/http-server/jwt`; JWKS fetch/cache/rotation, an asymmetric-only algorithm allowlist, `iss`/`aud`/`exp`/`nbf`                                                                |
+| `DEFAULT_ALGORITHMS`   | value | `readonly string[]` — `RS256`/`RS384`/`RS512`/`ES256`/`ES384`; HMAC is absent because a JWKS publishes public keys                                                                                                                                                                                           |
 | `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                           |
 | `httpServer`           | value | `httpServer(options?)` — the socket half: runtime, config, and the empty answerer set. `http()` is this plus oRPC                                                                                                                                                                                            |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                           |
@@ -185,6 +188,42 @@ failures as lines; composing `otel()` beside it opens the spans and mints
 
 **The dimensions are chosen for cardinality, and what is absent matters more
 than what is present.** The request **path** is not a dimension: `/orders/42` would mint a time series per order, which is the classic way a metrics bill becomes the incident. `answerer` is a mount prefix, so the graph bounds it. Recording happens on the response's `'close'`, which is the one event that has seen the final status — the runtime's own `404` and `500` included, which no answerer ever sees.
+
+### The authenticators that ship
+
+Two, because these are the ones where writing it per application is how CVEs
+happen. Both are `Authenticator` values an application binds by name in
+`defineHttp({ authenticators })`, exactly like one it wrote itself — the same
+`defineHttp` call shown above, with a shipped authenticator under a key instead
+of a hand-written one.
+
+**`apiKeyAuthenticator`** compares SHA-256 digests rather than strings (`===`
+on a secret leaks its prefix through timing, and `timingSafeEqual` refuses two
+buffers of different lengths, which would leak the key's length instead),
+checks every configured key with no early return, and puts a missing header on
+the same path as a wrong one. Keys come from the caller — a config field bound
+off `Env`, a secret store — because a key list in the image is a key list in
+the repository.
+
+**`jwtAuthenticator`**, from `@btravstack/http-server/jwt`, with `jose` as an
+optional peer. It owns JWKS fetch, cache and rotation; an algorithm allowlist
+that is asymmetric-only, because a JWKS publishes **public** keys and accepting
+`HS256` beside them is the algorithm-confusion attack; and `iss`, `aud`, `exp`
+and `nbf`, all required, with clock tolerance defaulting to zero. Every failure
+is the same refusal, so the endpoint is not an oracle for which check the
+attacker got wrong.
+
+`principal(claims)` is yours — no standard claim carries a tenant — and
+answering `undefined` refuses the token. `scopes` is the vocabulary, and the
+grant is its **intersection** with the token's `scope` or `scp` claim, so a
+token claiming a scope the scheme does not know grants nothing extra. Nothing
+new checks them: the grant goes through `granted()` and the existing walk
+produces the 403.
+
+**Password hashing and credential issuing are out of scope.** Both of these are
+on the verifying side; issuing needs somewhere to put a credential and a
+session to carry it, and this package configures no cookies and has no
+sessions. Reach for `argon2` directly at whatever mints your tokens.
 
 ## `api.OrpcRouter(contract)({ inject: deps, sync })`
 

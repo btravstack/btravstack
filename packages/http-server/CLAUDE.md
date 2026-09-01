@@ -666,6 +666,43 @@ URLSearchParams(...))`, which keeps only the LAST value for a repeated key.**
   the throw at the boundary that demands one. `UnderScoped` is the `403` case,
   distinct from `Unauthenticated`'s `401`.
 
+## The two authenticators that ship
+
+The seam was here and none of the implementations were, so every application
+wrote the same four things by hand — and this is the one area of the framework
+where "the application writes it" carries a security cost rather than a
+keystroke cost (issue #157). Two ship; the full surface is in `AUTH.md`.
+
+**`apiKeyAuthenticator`** is on the main entry point, because it has no peer to
+be optional about. What it owns is the constant-time compare: SHA-256 digests
+rather than strings (`===` leaks a prefix through timing, and `timingSafeEqual`
+refuses unequal lengths, which would leak the key's length instead), every key
+checked with no early return, and a missing header on the same path as a wrong
+one.
+
+**`jwtAuthenticator`** is behind `@btravstack/http-server/jwt` with `jose` an
+optional peer — the `@btravstack/observability/pino` protocol. JWKS fetch,
+cache and rotation; an allowlist that is asymmetric-only, because a JWKS
+publishes PUBLIC keys and accepting `HS256` beside them is the
+algorithm-confusion attack; `iss`/`aud`/`exp`/`nbf`, all required, clock
+tolerance defaulting to zero. Every failure is one refusal, so the endpoint is
+not an oracle for which check the attacker got wrong. There is a test that
+mints the confusion token and a test that mints one signed by a key the JWKS
+does not publish.
+
+**No new checking surface.** A grant goes through `granted()` and the existing
+walk produces the 403 — which is why `scopes` is a vocabulary and the grant is
+its INTERSECTION with the token's claim: a token claiming a scope the scheme
+does not know grants nothing extra, and nothing had to learn a second way to
+compare.
+
+**Password hashing and credential ISSUING are declined, not deferred.** Both of
+these are on the verifying side. Issuing needs somewhere to put a credential
+and a session to carry it, and this package configures no cookies and has no
+sessions (#160) — so a hasher here would be a primitive with nothing calling
+it. `argon2` directly, at whatever mints your tokens, is one dependency and no
+framework opinion, which is the right size for it.
+
 ## `openApiDocument` — from `@btravstack/http-server/openapi`
 
 **`openApiDocument(contract, { base?, securitySchemes? })` →
