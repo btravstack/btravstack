@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/testing",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Test the applications @btravstack/core boots: an in-memory runtime, a fake clock, a boot fixture that stops what it started, and a tap into a running graph",
   "keywords": [
     "dependency-injection",

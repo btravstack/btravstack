@@ -1,5 +1,193 @@
 # @btravstack/contract
 
+## 0.8.0
+
+### Minor Changes
+
+- 525ab53: htmx fragments: a second `HttpHandler` answerer, serving `Html` escaped by default.
+
+  `html`/`raw` (`Html`, an object rather than a bare string) escape every
+  interpolation by default; `raw(markup)` is the one way past the escaping, a
+  visible act at the call site. The escaping is context-blind: it protects
+  element text and a quoted attribute value, and nothing else — an unquoted
+  attribute, an attribute name, a URL scheme and `<script>`/`<style>` contents
+  are the caller's own responsibility.
+
+  `api.HtmxGet(path, options?)` and `api.HtmxPost(path, options?)` mint a route
+  straight from its path — no contract in between. `options.requires`, typed
+  exactly as an oRPC procedure's `authenticated()` mark, gives a route the same
+  principal and the same 401/403 path as a procedure. It is **not** an oRPC
+  contract: a browser navigation is not an RPC call, so a route answers `Html`
+  rather than a typed envelope, and its errors are the slice's own to recover
+  into a rendered fragment rather than a declared union a client branches on.
+  `HtmxPost` additionally takes `options.input`, the Standard Schema that
+  validates the decoded form body. `ParamsOf<Path>` extracts a path template's
+  `:name` segments at the type level.
+
+  `api.HtmxFragments([piece, …])` composes an array of `HtmxGet`/`HtmxPost`
+  pieces into one port, keyed by index. `htmx({ prefix? })` is the answerer, a
+  second `HttpHandler` member alongside `orpc()`.
+
+  `HttpModule({ router?, fragments?, fragmentsPrefix?, … })` composes a router,
+  fragments, or both — supplying neither is refused at the call against a
+  "SERVES NOTHING" gate. A scheme shared between the two is deduplicated by
+  reference before it reaches `provides`; `HttpModuleOptions`'s leading generic
+  parameters go from three (`RouterError, RouterNeeds, Auth`, when `router` was
+  required) to two (`Router, Fragments`, both optional) for this.
+
+  Limitations ship stated rather than discovered: the POST body decodes through
+  `Object.fromEntries`, assumed `application/x-www-form-urlencoded` with no
+  `content-type` check, so a `<select multiple>` or a checkbox group keeps only
+  the last value and a JSON body reads as one garbage key; route order is the
+  composition root's — an unmarked route declared before a marked route whose
+  path can also match the same request answers it, with no authentication run;
+  a route always answers `200` on success, so `HX-Redirect`, `HX-Trigger`,
+  `HX-Retarget` and `HX-Reswap` are unreachable and a route cannot answer its
+  own `404` or `422`; and every `200` carries `Cache-Control: no-store`,
+  unconditional, since the package has no way to know a route's output is safe
+  for a shared cache to keep.
+
+- a38697e: The authentication walk and the socket half are reusable by a second answerer.
+
+  `resolvePrincipal(requirements, authenticators, headers)` is the walk oRPC's
+  `principalMiddleware` used to hold — requirements in declared order, the scope
+  comparison, the grant brand test — answering an `AsyncResult` instead of
+  calling oRPC's `next()`. `principalMiddleware` is now the oRPC adapter over it.
+  A second protocol therefore shares one scope check rather than copying it.
+
+  `httpServer(options)` is the socket, runtime and configuration with **no**
+  answerer; `http(options)` is `httpServer(options)` plus `orpc(options)` and is
+  unchanged in both behaviour and signature. This is what makes a graph serving
+  only fragments expressible: it would otherwise have had to compose `http()`
+  and declare an oRPC router it does not have.
+
+  `UnderScoped` is exported: the `403` case, distinct from `Unauthenticated`'s
+  `401`. It was already tracked inside the walk and collapsed at the end.
+
+- 06ba8c7: `HttpHandler` is a set port, so HTTP can carry more than one protocol.
+
+  It was a single function, and its own TSDoc said why: "there is one way to
+  answer HTTP here, oRPC, so nothing outside this package provides or names it."
+  That was true of the package and is no longer the intent — GraphQL and htmx
+  fragments are coming, and neither is an oRPC procedure.
+
+  ```ts
+  type HttpAnswerer = {
+    readonly prefix: `/${string}`;
+    readonly handle: (request, response, signal) => PromiseLike<unknown>;
+  };
+  ```
+
+  Every protocol served in the process contributes one member, and the runtime
+  routes each request to the one whose prefix matches **longest**. `/rpc` owns
+  `/rpc` and everything under it; a `/` fragment answerer takes the rest.
+
+  ## Why routing rather than a chain
+
+  A graph holds exactly one runtime (thesis #1), so several protocols cannot be
+  several runtimes — they are several answerers under one. The open question was
+  how a request finds its answerer. A chain of "answer or decline" would have
+  made ordering a property of provider registration across modules, visible in no
+  single line, and would have needed the matched signal the port deliberately
+  discards. Longest-prefix routing needs neither: nesting is the expected shape,
+  so there is nothing to order.
+
+  - A mount point is a **path segment**, not a string prefix — `/rpc` does not
+    own `/rpcx`.
+  - A trailing slash is the same mount, so `/rpc` and `/rpc/` collide, and two
+    answerers on one mount is a `RuntimeStartFailed` at `listen` rather than a
+    coin toss.
+  - A path no mount covers is the runtime's own `404`, written before any
+    answerer is consulted. A path a mount does cover, whose answerer declines, is
+    the same `404` it always was — oRPC's behaviour is unchanged.
+
+  ## What a composition root has to change
+
+  **`HttpRuntime` now resolves `HttpHandler`**, because a member contributed by a
+  sibling module is not visible from inside the starter's own — `resolves` is the
+  kernel's existing mechanism for what a runtime reads out of the application
+  context. So the root must export it:
+
+  ```ts
+  Module("OrderApi")({ imports: [http()], exports: [HttpRuntime, HttpHandler] });
+  ```
+
+  `HttpModule` adds it for you, and `start`'s `UNSATISFIED RUNTIME PORTS` names
+  the port when a hand-written root forgets — that arm had no shipped starter
+  declaring anything until now.
+
+  `HttpHandler` is exported from the package for the first time, since a second
+  protocol's package has to name it.
+
+  ## An answerer outside a contract is public
+
+  `@btravstack/contract`'s marker is what says which scheme protects an oRPC
+  procedure. A GraphQL operation or an HTML fragment has no such statement, so
+  its routes are public unless the answerer brings authentication of its own —
+  exactly as an unmarked procedure is public, and with the same absence of a gate
+  for "you forgot". What the common way across protocols should be is #179's
+  question, and is deliberately not answered here.
+
+- e749953: `HttpController` and `HttpRouter` are renamed `OrpcController` and `OrpcRouter`.
+
+  A name is qualified by the half it implements — the rule that made the package
+  `http-server` rather than `http`, applied one level down. `HttpHandler` became a
+  set port carrying several protocols, and the oRPC pieces were the only ones
+  still claiming the umbrella: the answerer factories were already `orpc()` and
+  `htmx()`, and the htmx pieces were already `HtmxGet`/`HtmxPost`/`HtmxFragments`,
+  while the oRPC pieces read as the transport's own. `HttpRouterPort` held an
+  oRPC `Router` — the HTTP router is `HttpHandler`, which routes each request to
+  the answerer whose prefix matches longest.
+
+  The line the rename draws: `Http*` is the **transport** — `HttpRuntime`,
+  `HttpModule`, `HttpConfig`, `HttpHandler`, `defineHttp`, `http()`, all
+  unchanged — and a protocol prefix is **one answerer's pieces**,
+  `OrpcController`/`OrpcRouter` beside `HtmxGet`/`HtmxPost`/`HtmxFragments`, and
+  whatever GraphQL brings next.
+
+  Migration is two identifiers, including the di port id `"HttpRouter"` and the
+  controller port-id prefix `"HttpController:"`, which become `"OrpcRouter"` and
+  `"OrpcController:"`:
+
+  ```text
+  api.HttpController(contract, path)  →  api.OrpcController(contract, path)
+  api.HttpRouter(contract)([…])       →  api.OrpcRouter(contract)([…])
+  HttpRouterPort                      →  OrpcRouterPort
+  ControllerKeyOf / ControllerPortOf  →  unchanged
+  ```
+
+  The `"UNCOVERED CONTROLLERS — …"` and `"OVERLAPPING CONTROLLERS — …"` gate
+  markers are unchanged: only the `Http` prefix was the lie, "controller" was
+  never one.
+
+- e34d7a8: htmx fragments: the contract kind is deleted, routes declare themselves.
+
+  `defineFragments`, `FragmentRoute`, `FragmentsContract` and
+  `api.HtmxController(fragments, key)` are gone. A contract earns a package
+  when a client consumes it — an oRPC procedure gets one because `@orpc/client`
+  reads it to build a typed call. A fragment has no client: a browser navigates
+  and htmx swaps the response in, so there was never a consumer for the shape
+  to serve.
+
+  `api.HtmxGet(path, options?)` and `api.HtmxPost(path, options?)` mint a route
+  straight from its path, `options.requires` typed exactly as an oRPC
+  procedure's mark; `HtmxPost` also takes `options.input`, the Standard Schema
+  that validates the decoded form body (`GET` has no `input` field at all).
+  `api.HtmxFragments([piece, …])` composes an array of them, keyed by index
+  rather than a contract's key space.
+
+  Two gaps the contract shape carried are closed by this shape rather than
+  patched: an ungrantable scope on `requires` now fails the same
+  `"UNGRANTABLE SCOPE"` compile-time check an oRPC contract gets, checked at
+  each route's own mint instead of only at runtime (#184) — narrowly: the gate
+  fires on the literal `requires` given at the mint, and a value first widened
+  to `Requirements`, or a route record hand-built without the factories,
+  bypasses it and falls back to the runtime walk, a `403` rather than an
+  admission; and a piece minted over a marked route composed under an
+  unrelated unmarked slot has no second contract instantiation left to
+  construct it from, so that hole closes by construction rather than by a new
+  gate (#185).
+
 ## 0.7.0
 
 ### Minor Changes
