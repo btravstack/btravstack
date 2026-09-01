@@ -11,6 +11,10 @@ unit — `btravstack.http.{requests,duration}` by method, answerer and status;
 the `Meter` port, on by default.
 
 **Breaking for a root that composes no OTel SDK**: `instrumented` defaults to
-`true`, which puts `Meter` in the starter's needs. Pass
-`instrumented: false` to drop it — no meter, no instrument built, one `if` on
-the request path.
+`true`, which puts `Meter` in the starter's needs. Pass `instrumented: false` to
+drop it — no meter, no instrument built, and no clock read on the hot path.
+
+A `minor` rather than a `major` because the line is still `0.x`, where changesets
+turns a major into `1.0.0` for the whole fixed group. Reaching `1.0.0` is a
+decision here rather than a side effect of a breaking change, which
+`.changeset/CLAUDE.md` records.

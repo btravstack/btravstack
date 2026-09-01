@@ -17,9 +17,11 @@ import { activityInfo } from "@temporalio/activity";
 export const activityUnits =
   (host: RuntimeHost<never>, metrics: TemporalMetrics | undefined): ActivityMiddleware =>
   (_invocation, next) => {
+    // Before the clock is read, and before `activityInfo()` is: uninstrumented
+    // pays for neither.
+    if (metrics === undefined) return host.run(metaFor(), () => next());
     const startedAt = performance.now();
     const unit = host.run(metaFor(), () => next());
-    if (metrics === undefined) return unit;
     const activity = activityInfo().activityType;
     return unit
       .tap(() => metrics.record({ activity, outcome: "ok" }, startedAt))

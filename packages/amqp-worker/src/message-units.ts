@@ -16,9 +16,12 @@ import type { MeterService, RuntimeHost, UnitMeta } from "@btravstack/core";
 export const messageUnits =
   (host: RuntimeHost<never>, metrics: AmqpMetrics | undefined): WorkerMiddleware =>
   (args, next) => {
+    // Before the clock is read, not after: uninstrumented means no timing call
+    // per delivery either, which is what "free when no SDK is composed" has to
+    // mean to be worth saying.
+    if (metrics === undefined) return host.run(metaFor(args.rawMessage), () => next());
     const startedAt = performance.now();
     const unit = host.run(metaFor(args.rawMessage), () => next());
-    if (metrics === undefined) return unit;
     // `tapFailure`, not an Err-only tap: a defect is a failed delivery too, and
     // the errors half of RED that omitted it would be the reassuring half.
     return unit
