@@ -57,9 +57,9 @@ The two rules this half exists to state, before the detail:
   `principal.test-d.ts` — the last of them asserting `SchemesOf` in **both**
   directions, since a one-way assignment out of a collapsed `never` passes and
   is how the first cut of that test missed a broken `SchemesOf` entirely.
-- **`HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` — or `({ sync })`, the
-  common shape, since an authenticator reading only headers declares no
-  dependencies — plus `authenticatorPort(scheme)`,
+- **`HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` — or
+  `({ inject: {}, sync })`, the common shape, since an authenticator reading
+  only headers declares no dependencies — plus `authenticatorPort(scheme)`,
   `Unauthenticated`, `granted(identity, scopes)`, `Grant<P, Scope>`,
   `Granted<P, Scope>`, `AuthenticatorService<P, Scope>`**
   (`auth.ts`) — how one **security scheme** is implemented.

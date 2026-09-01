@@ -41,7 +41,7 @@ declare const view: (order: Order) => OrderView;
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
 | `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                                   |
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                  |
-| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })`, or `({ sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                               |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })`, or `({ inject: {}, sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                   |
 | `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                                                                                       |
 | `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                                                                                    |
 | `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                                                                                     |
@@ -331,8 +331,7 @@ into a process of its own with its piece untouched —
 compiles — the property a slice's independent deployability rests on. The
 `{ inject, sync }` form is unchanged and stays correct for a small API — an
 array is never a valid `{ inject, ...arm }` call, so `Array.isArray` alone
-tells the composing arm from the other two, which are told apart from each
-other by plain arity, as everywhere else in the family. See
+tells the two arms apart, and there is nothing else left to discriminate. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the worked recipe.
 
@@ -481,7 +480,7 @@ export: ({ context }) => {
 };
 ```
 
-### `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` / `({ sync })`
+### `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })`
 
 How **one scheme** is implemented. It hands back a description `defineHttp`
 binds to that scheme's port; the scheme's **name** is not stated here, because

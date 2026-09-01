@@ -258,8 +258,8 @@ const orderRouter = api.OrpcRouter(orderContract)([
 ]);
 ```
 
-`api.OrpcController(contract, key)({ inject: { name: Dep }, sync })` — or just
-`({ sync })` when the slice calls nothing — is the same two-call shape as
+`api.OrpcController(contract, key)({ inject: { name: Dep }, sync })` — with
+`inject: {}` when the slice calls nothing — is the same two-call shape as
 `api.OrpcRouter`, aimed at one node of the contract tree: the key is a
 **dotted path** (`"orders"`, `"v1.orders"`), the path IS the port's name, so
 there is nothing to name, and the provider carries the minted port on

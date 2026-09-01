@@ -70,10 +70,10 @@ void publicApi.OrpcRouter(contract.orders)({
   sync: ({ implementation }) => implementation,
 });
 
-// The correct composition and the ARM-ONLY form, over the same contract, both
-// still compile. An array is never a record, so `Array.isArray` alone tells the
-// composing arm from the arm-only one (orpc.ts) — the sync-key ambiguity the
-// retired keyed record needed a discriminator for is gone with it.
+// The correct composition and the WHOLE-ROUTER form, over the same contract,
+// both still compile. An array is never a record, so `Array.isArray` alone
+// tells the two apart (orpc.ts) — the sync-key ambiguity the retired keyed
+// record needed a discriminator for is gone with it.
 const composed = publicApi.OrpcRouter(contract)([ordersPiece, usersPiece]);
 void publicApi.OrpcRouter(contract)({
   inject: {},

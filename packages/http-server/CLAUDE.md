@@ -232,7 +232,8 @@ not cover"` marker, and what the marker names is a procedure path
   request — and by `rpcDeep`, two pieces sharing the nested `"v1"` parent
   plus one at the bare procedure path `"health"`.
 - **`api.OrpcController(contract, key)({ inject: { name: Dep }, sync })`, or
-  `({ sync })` with no deps** (`controller.ts`, minted by `defineHttp`) — one
+  `({ inject: {}, sync })` with no deps** (`controller.ts`, minted by
+  `defineHttp`) — one
   node of a contract, at any depth, as a provider on a port of its own. There
   is no name to give: the dotted path IS the port's name, minted as
   `` `${CONTROLLER_PREFIX}${key}` `` (`CONTROLLER_PREFIX = "OrpcController:"`,
@@ -345,7 +346,7 @@ not cover"` marker, and what the marker names is a procedure path
 - **`api.HtmxGet(path, options?)` and `api.HtmxPost(path, options?)`**
   (`htmx-route.ts`, minted by `defineHttp`) — a route as a provider on a port
   of its own, minted straight from a path template, then `{ inject, sync }`
-  or `({ sync })` with no deps, the same two-call shape as
+  — `inject: {}` when the route calls nothing — the same two-call shape as
   `api.OrpcController(contract, path)`. The port id carries the method and
   path (`` `HtmxFragment:${method} ${path}` ``, `FRAGMENT_PREFIX` in
   `htmx-route.ts`) — two routes on one method and path are one port id, di's

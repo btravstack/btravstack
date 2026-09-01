@@ -96,7 +96,7 @@ export type ControllerPortOf<
 /** The prefix a piece's port id carries; the composing form strips it to recover the path. */
 export const CONTROLLER_PREFIX = "OrpcController:";
 
-/** What both arms of a minted controller return; `N` is the only thing that differs. */
+/** What a minted controller returns. */
 type Minted<
   C extends Record<string, RouterContract>,
   K extends ControllerKeyOf<C>,
