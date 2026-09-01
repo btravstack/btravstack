@@ -906,8 +906,8 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   is this family's flagship move, relearns the leaf each time.
 
   **oRPC is the reference because it is the most widely used of the three**, not
-  because helpers-first is inherently better: a developer arriving here has more
-  likely seen oRPC than either of the others, so it is the shape that costs the
+  because helpers-first is inherently better: a developer arriving here is more
+  likely to have seen oRPC than either of the others, so it is the shape that costs the
   least to match.
 
   **The convergence happens UPSTREAM, not in an adapter here** —
@@ -921,10 +921,13 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   signatures.
 
   The AMQP ask is the one that is not merely cosmetic. It is the only leaf with
-  no helpers record, so a handler wanting "infrastructure comes back" imports
-  and constructs `RetryableError` by hand, where an oRPC handler reaches for the
-  `errors` it was handed. A helpers record carrying `errors` and `context` is
-  what makes its triage site the same shape as the other two.
+  no helpers record at all, so a handler wanting "infrastructure comes back"
+  imports and constructs `RetryableError` by hand, where an oRPC handler reaches
+  for the `errors` it was handed. A helpers record carrying `errors` — and
+  `context`, which oRPC has and Temporal does not — is what makes its triage
+  site read like HTTP's; on Temporal the record stays `{ errors }`, since an
+  activity's own context is Temporal's and reaching it through a second name
+  would be a third spelling rather than a shared one.
 
   **The naming asymmetry is a separate, smaller decision and is NOT yet made.**
   `AmqpHandler`/`AmqpHandlers` differ by one letter, and
