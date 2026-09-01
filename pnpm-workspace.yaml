@@ -83,7 +83,7 @@ catalog:
   oxfmt: 0.64.0
   oxlint: 1.79.0
   pino: 10.3.1
-  nodemailer: 9.0.5
+  nodemailer: 9.0.6
   prisma: 7.10.0
   uuidv7: 1.2.1
   redis: 6.2.1
