@@ -19,7 +19,7 @@ catalog:
   # release candidate it was measured against (put, get with content type,
   # presigned GET, idempotent delete — all verified before the port was
   # written). Raise it deliberately, not on a bot bump.
-  "@aws-sdk/client-s3": 3.1117.0
+  "@aws-sdk/client-s3": 3.1121.0
   "@aws-sdk/s3-request-presigner": 3.1117.0
   "@amqp-contract/client": 3.0.0-beta.6
   "@amqp-contract/contract": 3.0.0-beta.6
