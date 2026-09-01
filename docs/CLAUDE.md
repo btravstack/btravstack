@@ -48,7 +48,8 @@ was folded in here when the container was merged; nothing under
   (page-level context; a prelude may import the REAL artifact a page
   describes, since the generated module lives inside the workspace's `src/`),
   `<!-- doctest: skip — <reason> -->` (reason mandatory, printed at generate
-  time), `<!-- doctest: defer -->` (same module, emitted after the unmarked
+  time — and see **the skip escape hatch is unguarded** below),
+  `<!-- doctest: defer -->` (same module, emitted after the unmarked
   fences, for a composition root shown before its parts), and
   `<!-- doctest: isolate … -->` (own module; a body after `isolate` is that
   fence's private prelude and makes it fully self-contained). A marker not
@@ -61,6 +62,25 @@ was folded in here when the container was merged; nothing under
   `examples/order-api/src/docs-examples.test-d.ts` still pins the
   application-reality coupling the extraction cannot (its samples call the
   real use cases through the real `auth.ts` by hand).
+- **The skip escape hatch is unguarded, and the biggest class inside it is
+  signature displays.** `doctest: skip` is what a fence uses when it is not a
+  program, and 109 fences carry one; **54** of those give the same reason —
+  _"a signature display, not a program: the surface it quotes is compiled as
+  the package itself."_ That reason is a **claim about a different file**, and
+  nothing checks it: the displayed signature is free to drift from the real
+  one, silently, forever. It has already happened once —
+  `docs/reference/http-server.md`'s `OrpcController` display still showed the
+  two-argument `(deps: D, options: {...})` form after issue #227 moved
+  dependencies into a required `inject` key, and it survived a sweep that
+  compiled every other fence on the site (caught in review on #228, not by the
+  gate).
+
+  So when a public call signature changes, **grep the skip blocks by hand** —
+  they are the one surface `pnpm typecheck` cannot speak for. Gating them
+  properly would mean comparing a display against the emitted `.d.ts`, which
+  is a real feature and not yet worth building; until it is, this paragraph is
+  the reminder.
+
 - **The same script resolves every RELATIVE link in those files, and a link
   that resolves to nothing fails the generate task.** It reports the count it
   checked, so a silent no-op is visible. Root-relative links
