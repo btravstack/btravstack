@@ -54,7 +54,7 @@ that has no `version` field. `@btravstack/internal-test-infra` is `private: true
 and had none, which is why the `0.3.0` release published `@btravstack/di` and
 then failed on the five packages that devDepend on it:
 
-```
+```text
 ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL: Cannot resolve workspace protocol
 of dependency "@btravstack/internal-test-infra" because this dependency is not
 installed. Try running "pnpm install".

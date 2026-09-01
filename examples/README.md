@@ -26,7 +26,7 @@ calls `start`.
 
 ## The layering, and which way the arrows point
 
-```
+```text
   order-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
        └────────────────┼──────────────────┘  ─────▶ Config (the kernel's)  ← how all three read the environment
                         ▼
@@ -55,7 +55,7 @@ gate is an arity error, and the port is in the parameter's type.
 A transport's contract is a **shared artifact**, so each one is a package of its
 own:
 
-```
+```text
    order-api      any API client        order-temporal-worker   any workflow client        order-amqp-worker     any publisher
        └──────────────┬───────┘              └───────────────┬───────┘                  └────────────┬────────┘
                       ▼                                      ▼                                        ▼
@@ -223,7 +223,7 @@ is: `src/slices/orders/` and `src/slices/customers/`, each owning a fragment
 of the contract and a controller over that fragment, and each backed by the
 same three-package vertical below it.
 
-```
+```text
 order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
                             │                        │
 order-api              slices/orders/           slices/customers/

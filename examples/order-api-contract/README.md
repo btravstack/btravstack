@@ -3,7 +3,7 @@
 The oRPC contract — the wire shapes and the declared error codes — in a package
 of its own, depending on `@orpc/contract` and nothing else.
 
-```
+```text
 src/contract.ts        the contract: inputs, outputs, and the errors a client may branch on
 src/layering.test-d.ts the dependency rule, as a compile error
 src/__tests__/test-fixtures.ts   a client built from this package alone, over a stub `fetch`
@@ -19,7 +19,7 @@ repository, the kernel — none of which it has any business installing.
 
 So the arrow points the other way from every other one in this example set:
 
-```
+```text
    order-api          any client
        └────────┬─────────┘
                 ▼

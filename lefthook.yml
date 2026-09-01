@@ -9,3 +9,9 @@ pre-commit:
     lint:
       exclude:
         - "*.test-d.ts"
+    # Passing `{staged_files}` buys nothing: markdownlint-cli2 ADDS explicit
+    # arguments to the configured `globs` rather than replacing them, so it
+    # lints all 118 files either way. Run it plainly, gated on a staged `.md`.
+    lint-md:
+      glob: "*.md"
+      run: pnpm exec markdownlint-cli2

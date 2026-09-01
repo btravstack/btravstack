@@ -19,7 +19,7 @@ infrastructure trouble a compensation hits stays undeclared and Temporal
 retries it until it works. `refundPayment` follows the same rule for the same
 reason `releaseStock` does — there is nothing saga-specific about it.
 
-```
+```text
 src/contract.ts        the contract: schemas, declared errors, activity options, task queue
 src/layering.test-d.ts the dependency rule, as a compile error
 src/__tests__/test-fixtures.ts   the contract's own schema, as a validator returning a Result
@@ -33,7 +33,7 @@ the activity, the workflow that runs in the sandbox, and the client that starts
 the execution. Only the first of those wants a di container, a Prisma-backed
 repository and the kernel.
 
-```
+```text
    order-temporal-worker        any client starting a workflow
          └──────────┬──────────┘
                     ▼

@@ -1,0 +1,48 @@
+{
+  "globs": ["**/*.md"],
+  "ignores": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/src/generated/**",
+    "docs/api/**",
+    "docs/.vitepress/cache/**",
+    "**/CHANGELOG.md",
+  ],
+  "config": {
+    "default": true,
+
+    // oxfmt owns markdown width — its `**/*.md` override sets `printWidth: 80`.
+    // Two tools arguing over one property is how a gate starts fighting itself.
+    "MD013": false,
+
+    // MD051 resolves an anchor with GitHub's slug rules; this site is VitePress,
+    // which keeps a separator where an apostrophe was. Measured against the
+    // BUILT html rather than assumed: the page emits `id="the-kernel-s-own-gate"`
+    // and `id="api-orpccontroller-contract-path"`, which is exactly what the
+    // links spell. Enabling it would report eight working links as broken —
+    // and "fixing" them would break all eight. Relative links are checked for
+    // real by `docs/scripts/extract-doc-samples.ts`, which fails the generate
+    // task on one that resolves to nothing.
+    "MD051": false,
+
+    // VitePress markdown is Vue-enabled: `docs/index.md` mounts
+    // `<CompileErrorDemo />`, and the root README opens with a centred header
+    // block. Inline HTML is part of the format here, not a smell.
+    "MD033": false,
+    "MD041": false,
+
+    // The spec files number a rule set across intervening prose — `CLAUDE.md`'s
+    // test conventions run 1-5, then "A sixth rule is…", then 6 and 7. Each
+    // continuation reads as a fresh list starting at 6, which no `ol-prefix`
+    // style can express, and the numbers carry meaning.
+    "MD029": false,
+
+    // VitePress pages carry a frontmatter `title:` AND their own `# H1`; the
+    // default counts the first as a heading and calls the second a duplicate.
+    "MD025": { "front_matter_title": "" },
+
+    // A reference page repeats `## Options` under each surface it documents.
+    // Only a repeat among SIBLINGS is a real collision.
+    "MD024": { "siblings_only": true },
+  },
+}

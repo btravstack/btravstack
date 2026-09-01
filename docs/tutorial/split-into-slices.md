@@ -261,7 +261,7 @@ shape. `greetMe` still wants its bearer, exactly as in lesson three.
 
 ## What you now have
 
-```
+```text
 src/contract.ts                     two fragments under one contract
 src/auth.ts                         unchanged since lesson three
 src/slices/greetings/controller.ts  the fragment's implementation

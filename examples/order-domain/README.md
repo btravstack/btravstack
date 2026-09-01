@@ -7,7 +7,7 @@ The entity is modelled with
 [`@btravstack/entity`](https://github.com/btravstack/entity), which is the
 library built for exactly this layer.
 
-```
+```text
 src/order.ts          the Order entity, its vocabulary, placeOrder, and the domain errors
 src/customer.ts       the Customer entity and CustomerNotFound
 src/fulfillment.ts    the three failures fulfillment answers with

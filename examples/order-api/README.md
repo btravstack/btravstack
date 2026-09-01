@@ -8,7 +8,7 @@ the `Result` bridge, the `http` starter owns oRPC's node adapter and the
 socket, and the router itself is a di-provided service. The contract lives in
 its own package, because a client needs it and needs none of this.
 
-```
+```text
 src/auth.ts                           the two schemes (user, service), their authenticators, and the one api = defineHttp({ authenticators }) call
 src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { place: PlaceOrder, find: FindOrder, logger: Logger }, sync }) — where the orders slice's own domain error becomes an ORPCError
 src/slices/orders/module.ts           OrdersSlice — provides the controller, exports only it

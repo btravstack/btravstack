@@ -35,7 +35,7 @@ fails assignability. The fix is always to satisfy the need.
 
 **What it prints, measured:**
 
-```
+```text
 error TS2345: Argument of type 'Module<Repo, never, Cfg>' is not assignable to parameter of type 'Module<Repo, never, Cfg> & { readonly "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'.
   Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type 'Module<Repo, never, Cfg>' but required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'.
 ```

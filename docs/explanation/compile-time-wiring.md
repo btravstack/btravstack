@@ -66,7 +66,7 @@ module **signed for it**. A provider reading a port nothing here satisfies has
 to be answered by a `needs` entry, and a module that does not is refused where
 it is written:
 
-```
+```text
 Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
   '{ provides: [...]; exports: [...]; }' but required in type
   '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.
@@ -105,7 +105,7 @@ parent supplies those).
 
 **What it prints, measured:**
 
-```
+```text
 error TS2345: Argument of type 'Module<Repo, never, Cfg>' is not assignable to parameter of type 'Module<Repo, never, Cfg> & { readonly "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'.
   Property '"UNSATISFIED DEPENDENCIES — nothing provides"' is missing in type 'Module<Repo, never, Cfg>' but required in type '{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": Cfg; }'.
 ```
@@ -136,7 +136,7 @@ declaration and build can drop an entry is variance — the package's one rule:
 compiler whether `Database` is assignable to `never` — it is not, and the
 laundering fails:
 
-```
+```text
 error TS2322: Type 'Module<OrderRepository, never, Database>' is not assignable to type 'Module<OrderRepository, never, never>'.
   Type 'Database' is not assignable to type 'never'.
 ```
@@ -188,7 +188,7 @@ start(Application);
 
 **What it prints, measured:**
 
-```
+```text
 error TS2345: Argument of type 'Module<Greeter, never, never>' is not assignable to parameter of type 'Module<Greeter, never, Env | Scope> & "NO RUNTIME — the module exports no port declared over RuntimePort"'.
   Type 'Module<Greeter, never, never>' is not assignable to type '"NO RUNTIME — the module exports no port declared over RuntimePort"'.
 ```
@@ -203,8 +203,8 @@ infers from the `Module<X, …>` half of the intersection. What the tuple cost w
 the diagnostic: a missing rest argument is an arity error, `NO RUNTIME` never
 reached a reader, and TypeScript's related information pointed at the wrong fix
 ("an argument for 'options' was not provided"). di's entry points
-[made the same move](#the-gate-ends-on-the-missing-port) afterwards — issue
-#93 — so the two gates are the same shape again, and this time on purpose.
+[made the same move](#the-gate-ends-on-the-missing-port) afterwards, in
+issue #93 — so the two gates are the same shape again, and this time on purpose.
 
 One thing went with the tuple: the hand-spelled bypass. `start`'s gate is still
 **bypassable on purpose**, but only by a cast (`start(App as never)`), which is

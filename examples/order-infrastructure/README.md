@@ -3,7 +3,7 @@
 The adapter side. This layer speaks Prisma, PostgreSQL and P-codes, and its job is
 to make sure none of that vocabulary reaches the layers above it.
 
-```
+```text
 prisma/schema.prisma               the Order, Customer and OutboxMessage models
 prisma/migrations/                 generated from the schema, committed, applied by db:migrate
 src/database.ts                    the client, the OrderDatabase port, the acquire/release provider
@@ -79,7 +79,7 @@ code is wrong, not the request. That is the defect channel, not `E`.
 
 Try to pass a Prisma error through untranslated and it does not compile:
 
-```
+```text
 Type 'AsyncResult<Order, UniqueConstraintViolation>' is not assignable to
 type 'AsyncResult<Order, DuplicateOrder>'.
 ```

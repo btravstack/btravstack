@@ -174,7 +174,7 @@ curl -i -X POST http://localhost:3000/rpc/greetMe \
   -H 'content-type: application/json' -d '{}'
 ```
 
-```
+```text
 HTTP/1.1 401 Unauthorized
 ```
 
@@ -198,7 +198,7 @@ the contract, not a gate in front of the server.
 
 ## What you now have
 
-```
+```text
 src/contract.ts   hello public, greetMe marked { user: [] }
 src/auth.ts       Identity + the user scheme's resolver + the one defineHttp
 src/router.ts     greetMe reads context.principal, typed

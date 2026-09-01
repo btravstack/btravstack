@@ -11,7 +11,7 @@
     "dev": "turbo run dev --filter=./examples/*",
     "format": "oxfmt .",
     "knip": "knip",
-    "lint": "oxlint .",
+    "lint": "oxlint . && markdownlint-cli2",
     "prepare": "lefthook install",
     "release": "pnpm build && changeset publish",
     "test": "turbo run test",
@@ -28,6 +28,7 @@
     "@unthrown/oxlint": "catalog:",
     "knip": "catalog:",
     "lefthook": "catalog:",
+    "markdownlint-cli2": "0.23.2",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "turbo": "catalog:"

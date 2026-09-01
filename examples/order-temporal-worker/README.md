@@ -12,7 +12,7 @@ it. The worker is served by
 [`order-temporal-contract`](../order-temporal-contract), because a client that
 starts these workflows needs it and needs none of this.
 
-```
+```text
 src/workflows.ts                    fulfillOrder and chargeOrder — both sagas, in Temporal's deterministic sandbox
 src/slices/fulfillment/activities.ts  fulfillOrder's five activities, one piece on the "fulfillOrder" key, built by
                                      TemporalWorkflowActivities from PlaceOrder, OrderRepository, StockService, ShippingService
@@ -106,7 +106,7 @@ Three forward steps, each an activity calling into the application layer, and
 two compensations the workflow runs **in reverse order of the steps they
 undo**:
 
-```
+```text
 place ──▶ reserveStock ──▶ arrangeShipping ──▶ done
   ▲             ▲ OutOfStock?                 ▲ ShippingUnavailable?
   │             └── cancelPlacement            └── releaseStock, then cancelPlacement
@@ -117,7 +117,7 @@ place ──▶ reserveStock ──▶ arrangeShipping ──▶ done
 The smallest saga that still has a compensation: authorize, then capture —
 and if the capture fails, refund, in reverse order of the step it undoes.
 
-```
+```text
 authorizePayment ──▶ capturePayment ──▶ done
                           │ activity failure?
                           └── refundPayment

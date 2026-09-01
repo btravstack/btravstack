@@ -260,7 +260,7 @@ const Root = Module("Root")({
 const rootNeedsNothing: Equal<Channels<typeof Root>[2], never> = true; // compiled
 ```
 
-```
+```text
 ✓ a slice's provider receives the ROOT's service, importing nothing
 ```
 
@@ -277,7 +277,7 @@ the parameter type is untouched; an object with one required property when
 not. **The property, rather than `StartGate`'s bare string, is what makes the
 diagnostic name the port** (measured, both ways):
 
-```
+```text
 Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
   '{ provides: [...]; exports: [...]; }' but required in type
   '{ readonly "UNDECLARED NEEDS — name it in `needs`": Logger; }'.

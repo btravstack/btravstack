@@ -141,7 +141,7 @@ enriching it is never a contract change.
 
 One file, at the root of `src/`, belonging to no slice:
 
-```
+```text
 src/auth.ts             the two schemes, and the one defineHttp call that declares them
 ```
 
@@ -262,7 +262,7 @@ one file deep, because both are backed by the same three-package vertical:
 use cases in [`order-application`](/examples/order-application), and the
 entities and Prisma adapters behind it.
 
-```
+```text
 src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { place: PlaceOrder, find: FindOrder, logger: Logger }, sync })
 src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
 src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ inject: { find: FindCustomer }, sync })

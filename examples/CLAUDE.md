@@ -33,7 +33,7 @@ is the index of the workspaces themselves.
   di's `NeedsGate`, which fires when a module's OWN provider reads a port
   nothing local satisfies and `needs` does not name it —
   `order-temporal-worker`'s `FulfillmentlessSlice`, printing
-  `'{ readonly "UNDECLARED NEEDS — name it in `needs`": StockService | ShippingService; }'`.
+  ``'{ readonly "UNDECLARED NEEDS — name it in `needs`": StockService | ShippingService; }'``.
   **Four** mechanisms, easy to conflate — and since #93 every one of them
   prints a name. Do not call the second "di's `UNSATISFIED DEPENDENCIES` gate": an
   earlier revision of this file did, and it is wrong in both halves. `start`'s

@@ -130,7 +130,7 @@ Three forward steps, each an activity calling into the application layer, and
 two compensations the workflow runs **in reverse order of the steps they
 undo**:
 
-```
+```text
 place ──▶ reserveStock ──▶ arrangeShipping ──▶ done
   ▲             ▲ OutOfStock?                 ▲ ShippingUnavailable?
   │             └── cancelPlacement            └── releaseStock, then cancelPlacement
@@ -153,7 +153,7 @@ activity Temporal may re-run has to answer the same both times.
 
 The smallest saga in the example that still has a compensation:
 
-```
+```text
 authorizePayment ──▶ capturePayment ──▶ done
                           │ activity failure?
                           └── refundPayment

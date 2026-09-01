@@ -6,7 +6,7 @@ subscriber queues (`orderNotifications`, `orderAudit`) each with its own
 dead-letter exchange and retry policy — in a package of its own, depending on
 `@amqp-contract/contract` and `zod`.
 
-```
+```text
 src/contract.ts        the contract: exchange, queue, retry/dead-letter policy, message, publisher, consumer
 src/layering.test-d.ts the dependency rule, as a compile error
 src/__tests__/test-fixtures.ts   the contract itself, and its message schema as a validator returning a Result
@@ -34,7 +34,7 @@ worker whose relay publishes `order.changed` and whose two slices read
 to subscribe to the broadcast — none of them wants a di container, a
 Prisma-backed repository or the kernel.
 
-```
+```text
    order-amqp-worker          any subscriber to order.changed
          └──────────┬──────────┘
                     ▼

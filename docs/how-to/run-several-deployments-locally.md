@@ -76,7 +76,7 @@ to start with
 
 **So both are `0` — bind an ephemeral port, and read back which one you got.**
 `Config.port`'s floor is `0` precisely so this stays expressible, and since
-#117 the `serving` event says what was bound:
+issue #117 the `serving` event says what was bound:
 
 ```json
 {

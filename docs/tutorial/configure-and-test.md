@@ -309,7 +309,7 @@ own tests are slow gets tested badly, so timing is never real in a test
 
 ## What you now have
 
-```
+```text
 src/greeter.ts     GreetingModule — reads GREETING inside the graph
 src/app.spec.ts    boots the real App on port 0, asserts through real HTTP
 src/drain.spec.ts  drains it on a fake clock, asserts the exit report
