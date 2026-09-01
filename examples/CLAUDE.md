@@ -10,7 +10,7 @@ is the index of the workspaces themselves.
 - **`examples/` is part of the gate, not a folder of illustrations.** All
   ten workspaces run under the same six commands as the kernel — their specs
   plus four `needs-gate.test-d.ts` files, four `layering.test-d.ts` ones and
-  `hexagonal-order-api`'s `index.test-d.ts` —
+  `di-hexagonal`'s `index.test-d.ts` —
   so an example that stops compiling, stops linting or stops passing fails CI
   exactly as `packages/core` would. Three of the four needs-gate files pin
   **`start`'s** gate (`order-api`, `order-temporal-worker`,

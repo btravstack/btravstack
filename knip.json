@@ -17,7 +17,7 @@
     "packages/core": {
       "ignoreDependencies": ["@btravstack/testing"]
     },
-    "examples/hexagonal-order-api": {
+    "examples/di-hexagonal": {
       "entry": ["src/emit-guards.ts"],
       "project": ["src/**/*.ts"]
     },

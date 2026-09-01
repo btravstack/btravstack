@@ -167,7 +167,7 @@ reachable, and a year later the adapter cannot change without breaking its
 callers.
 
 Because the guarantee lives entirely in the types, its regression tests do
-too: [Hexagonal order API](/examples/hexagonal-order-api) pins "`ctx.get(Pool)`
+too: [Hexagonal (di alone)](/examples/di-hexagonal) pins "`ctx.get(Pool)`
 does not compile" with a `@ts-expect-error` in a `.test-d.ts` file. A runtime
 test could only prove the opposite — the flat map genuinely holds the pool —
 which is true, and not the point.

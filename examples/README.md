@@ -8,7 +8,7 @@ Temporal worker and once as an AMQP consumer, with each transport's contract in 
 package of its own — and, at the same time, exercising `@btravstack/core` end to
 end from a consumer's own workspace, `workspace:*` and all.
 
-The **tenth**, [`hexagonal-order-api`](#the-containers-one), came with
+The **tenth**, [`di-hexagonal`](#the-containers-one), came with
 `@btravstack/di` and is the container's own: it composes a `Module` and never
 calls `start`.
 
@@ -335,7 +335,7 @@ kernel via `workspace:*`.
 
 ## The container's one
 
-[`hexagonal-order-api`](./hexagonal-order-api) came in with `@btravstack/di` when
+[`di-hexagonal`](./di-hexagonal) came in with `@btravstack/di` when
 it was merged into this repository, and it is about wiring rather than lifecycle:
 it composes a `Module` and asserts what the container did, without booting a
 process — ports named by the application, a private internal beside a public

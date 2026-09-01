@@ -243,7 +243,7 @@ booted under **three runtimes**: `order-api` answers over HTTP,
 committed write from a transactional outbox — and the same `DuplicateOrder`
 becomes a typed `CONFLICT` on the first and a non-retryable contract error on
 the second, with no mapping anywhere near the kernel. Plus the
-container's own `hexagonal-order-api`, which never calls `start`. Each is
+container's own `di-hexagonal`, which never calls `start`. Each is
 compiled, linted and tested by CI like a package. See the
 [annotated walkthroughs](https://btravstack.github.io/btravstack/examples/).
 

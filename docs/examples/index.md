@@ -144,7 +144,7 @@ with its own `RelayConfig` and a modeled `BrokerUnreachable`; a tombstone
 behind every cancellation; a foreign queue receiving the same event; and a
 real RabbitMQ container per run.
 
-### [Hexagonal order API (di alone)](/examples/hexagonal-order-api)
+### [Hexagonal (di alone)](/examples/di-hexagonal)
 
 The container alone: a `Module` composed and asserted, never booted — ports
 named by the domain, a private connection pool beside a public repository,

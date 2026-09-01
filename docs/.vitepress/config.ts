@@ -196,7 +196,7 @@ const EXAMPLES_SIDEBAR = [
       { text: "Order API (HTTP)", link: "/examples/order-api" },
       { text: "Order Temporal worker", link: "/examples/order-temporal-worker" },
       { text: "Order AMQP worker", link: "/examples/order-amqp-worker" },
-      { text: "Hexagonal order API (di alone)", link: "/examples/hexagonal-order-api" },
+      { text: "Hexagonal (di alone)", link: "/examples/di-hexagonal" },
     ],
   },
 ];

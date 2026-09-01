@@ -95,7 +95,7 @@ catalog:
   testcontainers: 12.1.0
   typescript: 7.0.2
   # The TypeScript a *consumer* is realistically on, for the second
-  # declaration-emit pass in `examples/hexagonal-order-api`
+  # declaration-emit pass in `examples/di-hexagonal`
   # (`tsconfig.emit.json`, compiled once by each version). 7.0.2 is the native
   # port and the one this repo builds with; a published package has to be
   # readable by the stable line too, and the two emitters do not agree on

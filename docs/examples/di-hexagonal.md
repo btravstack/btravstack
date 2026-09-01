@@ -1,5 +1,5 @@
 ---
-title: Hexagonal order API example
+title: Hexagonal example (di alone)
 description: The container on its own — application-named ports, a private connection pool behind a public repository, one application module wired against a production adapter or an in-memory one, and the two guarantees that exist only at compile time, pinned by a type test.
 ---
 
@@ -26,9 +26,9 @@ import { expect } from "vitest";
 declare const options: { readonly onTeardownError: (portId: string, cause: unknown) => void };
 -->
 
-# Hexagonal order API (di alone)
+# Hexagonal (di alone)
 
-[`examples/hexagonal-order-api`](https://github.com/btravstack/btravstack/tree/main/examples/hexagonal-order-api)
+[`examples/di-hexagonal`](https://github.com/btravstack/btravstack/tree/main/examples/di-hexagonal)
 — `@btravstack/di` without the kernel: one use case, one port for its
 repository, a resourceful production adapter and a resource-free in-memory
 one, and a composition seam generic enough to wire the same application
@@ -38,7 +38,7 @@ makes it the container's own test rather than the framework's. It is
 [Keep a port private](/how-to/keep-a-port-private)'s material, as real code.
 
 ```sh
-pnpm turbo run test --filter=@btravstack/example-hexagonal-order-api
+pnpm turbo run test --filter=@btravstack/example-di-hexagonal
 ```
 
 Everything is in memory; nothing else is needed.

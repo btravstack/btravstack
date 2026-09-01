@@ -47,7 +47,7 @@ backed by a real pool, an in-memory one for tests — swappable at the
 composition root without touching the application.
 
 This is the seam `di` is built around. The full version, compiled and tested,
-is [Hexagonal order API](/examples/hexagonal-order-api); the samples below are
+is [Hexagonal (di alone)](/examples/di-hexagonal); the samples below are
 lifted from it.
 
 ## The port both adapters implement

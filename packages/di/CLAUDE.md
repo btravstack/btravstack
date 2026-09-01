@@ -131,7 +131,7 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   `PortClass`/`ManyPortClass` are exported so declaration emit **names** what
   a consumer's exported port extends. Not so it works at all — measured, and the earlier
   claim that it was load-bearing for correctness was wrong: with the export
-  removed, `examples/hexagonal-order-api`'s emit gate still passes, because
+  removed, `examples/di-hexagonal`'s emit gate still passes, because
   the emitter falls back to inlining the structural shape
   (`{ new <Service>(): PortInstance<Id, Service>; readonly portId: Id }`)
   and that compiles. What the export buys is that the blob stays out of every
@@ -177,7 +177,7 @@ helper, excluded from knip.
 
 The catalog pins `typescript` 7.0.2 (what the repo builds with) and
 `typescript-consumer` (alias for 5.9.3 — what a consumer is realistically on).
-`examples/hexagonal-order-api`'s `typecheck` compiles declaration emit with
+`examples/di-hexagonal`'s `typecheck` compiles declaration emit with
 _both_ and re-checks the emitted `.d.ts` under the consumer version;
 `src/emit-guards.ts` there is the fixture keeping the emitted declarations free
 of unnameable private types (the TS4020 class of bug). It is the only workspace
@@ -186,7 +186,7 @@ entry exists.
 
 ### The one example that came with it
 
-`examples/hexagonal-order-api` exercises the container from a real consumer
+`examples/di-hexagonal` exercises the container from a real consumer
 workspace (`workspace:*`, own `unthrown` dep since it's a peer) and predates the
 kernel — it composes a `Module` and never calls `start`, which is what makes it
 the container's own test rather than the framework's. It survived the merge on
