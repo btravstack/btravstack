@@ -55,7 +55,7 @@ arm, whether it owes teardown (`Scope`). Every module aggregates those into a
 its imports' exports. What survives the subtraction propagates upward, module
 by module, exactly like an unpaid balance:
 
-```
+```text
 Provider(OrderRepository)({ inject: { pool: Pool }, ... }) Needs: Pool
 Persistence (provides Pool, exports OrderRepository)  Needs: Scope   ← Pool netted out; Pool's acquire owes Scope
 App (imports Persistence)                             Needs: Scope   ← still unpaid

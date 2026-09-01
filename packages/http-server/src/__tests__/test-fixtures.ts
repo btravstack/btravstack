@@ -129,7 +129,7 @@ const echoesController = publicApi.OrpcController(
  * `inject: {}` still yields one services record — empty — which an arrow
  * ignores and a rest parameter sees.
  */
-export const noDepsRouterRecording = () => {
+const noDepsRouterRecording = () => {
   let seen: readonly unknown[] = [];
   const provider = publicApi.OrpcRouter(oc.router({ greetings: helloFragment }))({
     inject: {},
@@ -969,6 +969,11 @@ export type HttpFixtures = {
     readonly controller: typeof helloController;
     readonly unmarkedRouterDeps: readonly string[];
   };
+  /** A router declaring `inject: {}`, and what its `sync` was handed. */
+  readonly noDepsRouter: {
+    readonly provider: ReturnType<typeof noDepsRouterRecording>["provider"];
+    readonly handed: () => readonly unknown[];
+  };
   /**
    * The starter over a router composed from an array of pieces — the same
    * shape as `rpc`, but built from `slicedRouter`. Shut down by the fixture.
@@ -1273,6 +1278,11 @@ export const it = test.extend<HttpFixtures>({
       controller: helloController,
       unmarkedRouterDeps: slicedRouter.deps.map((dep) => dep.portId),
     });
+  },
+
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  noDepsRouter: async ({}, use) => {
+    await use(noDepsRouterRecording());
   },
 
   rpcSliced: async ({ boot }, use) => {

@@ -18,10 +18,9 @@ describe("OrpcController", () => {
     }).toEqual({ portId: "OrpcController:greetings", deps: ["Greeter"] });
   });
 
-  it("hands a no-deps router's sync one empty services record", async () => {
+  it("hands a no-deps router's sync one empty services record", async ({ noDepsRouter }) => {
     // GIVEN a router declaring `inject: {}`, whose `sync` records its arguments
-    const { noDepsRouterRecording } = await import("./__tests__/test-fixtures.js");
-    const { provider, handed } = noDepsRouterRecording();
+    const { provider, handed } = noDepsRouter;
 
     // WHEN the graph constructs it
     await provider.construct([]);

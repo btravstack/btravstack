@@ -584,8 +584,10 @@ in its place.
 
   **Three import forms break when one of these files moves, and only the
   first is caught by the compiler**: a static `from "./x.js"`, a dynamic
-  `await import("./x.js")` (a string — `di`'s `scoped.spec.ts` and
-  `http-server`'s `controller.spec.ts` each have one, both deliberate), and an
+  `await import("./x.js")` (a string — `di`'s `scoped.spec.ts` has the one
+  that remains, and it is not a helper reach but the surface under test: it
+  imports `index.js` as a RECORD to assert what the package exports, which no
+  static import expresses), and an
   `import.meta.url` anchor, which no type checker can see at all and which
   only the test run reports. The temporal fixtures carry two of the third
   kind; `fixturePath(callerUrl, name)` appends the **caller's** extension, so
