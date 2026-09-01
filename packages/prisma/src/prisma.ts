@@ -102,24 +102,21 @@ export const prismaDatabase =
     // second port layering over the adapter's, because di allows one provider
     // per port per graph. Here a `query` extension wraps the client at
     // construction, so one port suffices and the branch lives inside `acquire`.
-    const instrumentedProvider = Provider(port)(
-      { settings: config.port, logger: Logger, meter: Meter },
-      {
-        // `Meter` is what orders this after `otel()`: it sets the global meter
-        // provider while building that very port. The engine instrumentation
-        // no longer needs ordering of its own — the SDK collects and registers
-        // it, so composing `otel()` is what turns it on.
-        acquire: ({ settings, logger, meter }): AsyncResult<C, never> => {
-          // Cast because `C` is only constrained by `PrismaLike`, so unthrown's
-          // `NotThenable` guard cannot prove a client is not a promise. It is
-          // whatever the application's `client` arrow returned.
-          return fromSafePromise(
-            Promise.resolve(instrument(open(settings.url), logger, meter)),
-          ) as AsyncResult<C, never>;
-        },
-        release: (db: C) => db.$disconnect(),
+    const instrumentedProvider = Provider(port)({
+      inject: { settings: config.port, logger: Logger, meter: Meter }, // `Meter` is what orders this after `otel()`: it sets the global meter
+      // provider while building that very port. The engine instrumentation
+      // no longer needs ordering of its own — the SDK collects and registers
+      // it, so composing `otel()` is what turns it on.
+      acquire: ({ settings, logger, meter }): AsyncResult<C, never> => {
+        // Cast because `C` is only constrained by `PrismaLike`, so unthrown's
+        // `NotThenable` guard cannot prove a client is not a promise. It is
+        // whatever the application's `client` arrow returned.
+        return fromSafePromise(
+          Promise.resolve(instrument(open(settings.url), logger, meter)),
+        ) as AsyncResult<C, never>;
       },
-    );
+      release: (db: C) => db.$disconnect(),
+    });
 
     // Both callbacks are annotated, and that is load-bearing rather than
     // decoration: `PortClassOf<N, C>` leaves the service type a conditional
@@ -128,13 +125,11 @@ export const prismaDatabase =
     //
     // Opening cannot fail in the application's terms — Prisma dials on the
     // first statement, not here — which is why the error channel is empty.
-    const plainProvider = Provider(port)(
-      { settings: config.port },
-      {
-        acquire: ({ settings }): AsyncResult<C, never> => OkAsync(open(settings.url)),
-        release: (db: C) => db.$disconnect(),
-      },
-    );
+    const plainProvider = Provider(port)({
+      inject: { settings: config.port },
+      acquire: ({ settings }): AsyncResult<C, never> => OkAsync(open(settings.url)),
+      release: (db: C) => db.$disconnect(),
+    });
 
     // A MODULE, not three loose pieces. An application writes
     // `imports: [database]` and reads `database.port`; the config provider and
@@ -144,33 +139,29 @@ export const prismaDatabase =
     // `SELECT 1` rather than `$connect()`: a pooled client reports connected
     // while the server behind it is gone, so the probe has to make the server
     // answer something.
-    const healthCheck = Provider.member(HealthChecks)(
-      { db: port },
-      {
-        sync: ({ db }) => ({
-          name,
-          check: () =>
-            fromPromise(
-              db.$queryRaw`SELECT 1`,
-              (cause: unknown) =>
-                new HealthCheckFailed({
-                  reason: cause instanceof Error ? cause.message : "database unreachable",
-                }),
-            ).map((): void => undefined),
-        }),
-      },
-    );
+    const healthCheck = Provider.member(HealthChecks)({
+      inject: { db: port },
+      sync: ({ db }) => ({
+        name,
+        check: () =>
+          fromPromise(
+            db.$queryRaw`SELECT 1`,
+            (cause: unknown) =>
+              new HealthCheckFailed({
+                reason: cause instanceof Error ? cause.message : "database unreachable",
+              }),
+          ).map((): void => undefined),
+      }),
+    });
 
     // Offered, not registered: nothing loads it unless an OTel SDK is composed.
-    const instrumentation = Provider.member(Instrumentations)(
-      { logger: Logger },
-      {
-        sync:
-          ({ logger }) =>
-          () =>
-            loadPrismaInstrumentation(logger),
-      },
-    );
+    const instrumentation = Provider.member(Instrumentations)({
+      inject: { logger: Logger },
+      sync:
+        ({ logger }) =>
+        () =>
+          loadPrismaInstrumentation(logger),
+    });
 
     const instrumentedModule = Module(name)({
       needs: [Env, Logger, Meter],

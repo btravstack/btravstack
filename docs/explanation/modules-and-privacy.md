@@ -13,28 +13,34 @@ class OrderRepository extends Port("OrderRepository")<{
 }> {}
 class Pool extends Port("Pool")<{ readonly close: () => void }> {}
 declare const ctx: Context<OrderRepository>;
-class Logger extends Port("Logger")<{ readonly info: (message: string) => void }> {}
-const orderAudit = Provider(Port("OrderAudit")<{ readonly record: () => void }>)(
-  { logger: Logger },
-  { sync: ({ logger }) => ({ record: () => logger.info("audited") }) },
-);
-class OrderDatabase extends Port("OrderDatabase")<{ readonly query: () => void }> {}
+class Logger extends Port("Logger")<{
+  readonly info: (message: string) => void;
+}> {}
+const orderAudit = Provider(
+  Port("OrderAudit")<{ readonly record: () => void }>,
+)({
+  inject: { logger: Logger },
+  sync: ({ logger }) => ({ record: () => logger.info("audited") }),
+});
+class OrderDatabase extends Port("OrderDatabase")<{
+  readonly query: () => void;
+}> {}
 class Outbox extends Port("Outbox")<{ readonly push: () => void }> {}
 const databaseConfig = Config.provider("DatabaseConfig")(
   Config.object({ url: Config.string("DATABASE_URL") }),
 );
-const orderDatabaseProvider = Provider(OrderDatabase)(
-  { config: databaseConfig.port },
-  { sync: () => ({ query: () => {} }) },
-);
-const orderRepositoryProvider = Provider(OrderRepository)(
-  { db: OrderDatabase },
-  { sync: () => ({ find: () => undefined as never }) },
-);
-const outboxProvider = Provider(Outbox)(
-  { db: OrderDatabase },
-  { sync: () => ({ push: () => {} }) },
-);
+const orderDatabaseProvider = Provider(OrderDatabase)({
+  inject: { config: databaseConfig.port },
+  sync: () => ({ query: () => {} }),
+});
+const orderRepositoryProvider = Provider(OrderRepository)({
+  inject: { db: OrderDatabase },
+  sync: () => ({ find: () => undefined as never }),
+});
+const outboxProvider = Provider(Outbox)({
+  inject: { db: OrderDatabase },
+  sync: () => ({ push: () => {} }),
+});
 -->
 
 # Modules and privacy
@@ -78,7 +84,7 @@ ctx.get(Pool); // does not compile — Pool is not in X
 
 The `Pool` service is present in the map; the **type that would let you ask
 for it** is not in scope. The same withholding governs wiring: a provider in
-`App` cannot list `Pool` in its `deps`, because what `App` can see — its own
+`App` cannot list `Pool` in its `inject`, because what `App` can see — its own
 provides, its imports' exports — does not include it, and the dependency would
 surface as [`UNSATISFIED DEPENDENCIES`](/explanation/compile-time-wiring) at
 the entry point. Privacy and dependency-checking are one mechanism, not two.

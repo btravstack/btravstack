@@ -90,34 +90,32 @@ name, since the contract key IS the port's name:
 export const orderNotifications = AmqpHandler(
   orderContract,
   "orderNotifications",
-)(
-  { logger: Logger },
-  {
-    sync:
-      ({ logger }) =>
-      (message) => {
-        const { tenantId, id, payload } = message.payload;
-        if (currentUnit()?.signal.aborted === true) {
-          return ErrAsync(
-            new RetryableError(
-              `the drain deadline passed before order ${id} was notified`,
-            ),
-          );
-        }
-        logger.info(
-          payload === null
-            ? "order gone — notifying"
-            : "order placed — notifying",
-          {
-            tenantId,
-            orderId: id,
-            ...(payload === null ? {} : { quantity: payload.quantity }),
-          },
+)({
+  inject: { logger: Logger },
+  sync:
+    ({ logger }) =>
+    (message) => {
+      const { tenantId, id, payload } = message.payload;
+      if (currentUnit()?.signal.aborted === true) {
+        return ErrAsync(
+          new RetryableError(
+            `the drain deadline passed before order ${id} was notified`,
+          ),
         );
-        return OkAsync();
-      },
-  },
-);
+      }
+      logger.info(
+        payload === null
+          ? "order gone — notifying"
+          : "order placed — notifying",
+        {
+          tenantId,
+          orderId: id,
+          ...(payload === null ? {} : { quantity: payload.quantity }),
+        },
+      );
+      return OkAsync();
+    },
+});
 ```
 
 The audit slice is the same shape over `"orderAudit"`, minus the deadline
@@ -221,30 +219,28 @@ relay itself is acquired as the graph builds and released when the
 application scope closes:
 
 ```ts
-export const outboxRelay = Provider(OutboxRelay)(
-  {
+export const outboxRelay = Provider(OutboxRelay)({
+  inject: {
     outbox: Outbox,
     logger: Logger,
     meter: Meter,
     broker: AmqpConfig,
     config: relayConfig.port,
   },
-  {
-    acquire: ({
-      outbox,
-      logger,
-      meter,
-      broker: { url },
-      config: { pollMs, tenants },
-    }) =>
-      startOutboxRelay(outbox, logger, meter, {
-        url,
-        pollMs,
-        tenants: tenantsOf(tenants),
-      }),
-    release: (running) => running.stop().get(),
-  },
-);
+  acquire: ({
+    outbox,
+    logger,
+    meter,
+    broker: { url },
+    config: { pollMs, tenants },
+  }) =>
+    startOutboxRelay(outbox, logger, meter, {
+      url,
+      pollMs,
+      tenants: tenantsOf(tenants),
+    }),
+  release: (running) => running.stop().get(),
+});
 ```
 
 It depends on `AmqpConfig` — the broker `amqp()` bound — so the relay and the

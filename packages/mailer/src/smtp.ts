@@ -57,19 +57,17 @@ export const smtpMailer = (): Module<MailerBackend, ConfigInvalid, Env | Scope> 
     needs: [Env],
     provides: [
       Config.provider(MailerConfig)(smtpSchema),
-      Provider(SmtpTransport)(
-        { config: MailerConfig },
-        {
-          acquire: ({ config }) => fromSafePromise(Promise.resolve(createTransport(config.url))),
-          release: (transport) => {
-            transport.close();
-          },
+      Provider(SmtpTransport)({
+        inject: { config: MailerConfig },
+        acquire: ({ config }) => fromSafePromise(Promise.resolve(createTransport(config.url))),
+        release: (transport) => {
+          transport.close();
         },
-      ),
-      Provider(MailerBackend)(
-        { transport: SmtpTransport },
-        { sync: ({ transport }) => smtpMailerBackend(transport) },
-      ),
+      }),
+      Provider(MailerBackend)({
+        inject: { transport: SmtpTransport },
+        sync: ({ transport }) => smtpMailerBackend(transport),
+      }),
     ],
     exports: [MailerBackend],
   });

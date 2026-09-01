@@ -26,23 +26,21 @@ export const RequestModule = Module("Request")({
   needs: [Logger, Meter],
   imports: [UnitSpanModule],
   provides: [
-    Provider(RequestSpan)(
-      { logger: Logger, meter: Meter },
-      {
-        sync: ({ logger, meter }) => {
-          const startedAt = Date.now();
-          const duration = meter.createHistogram("btravstack.request.duration", { unit: "ms" });
-          return {
-            finish: () => {
-              const durationMs = Date.now() - startedAt;
-              duration.record(durationMs);
-              logger.info("request finished", { durationMs });
-            },
-          };
-        },
-        onStop: (span) => span.finish(),
+    Provider(RequestSpan)({
+      inject: { logger: Logger, meter: Meter },
+      sync: ({ logger, meter }) => {
+        const startedAt = Date.now();
+        const duration = meter.createHistogram("btravstack.request.duration", { unit: "ms" });
+        return {
+          finish: () => {
+            const durationMs = Date.now() - startedAt;
+            duration.record(durationMs);
+            logger.info("request finished", { durationMs });
+          },
+        };
       },
-    ),
+      onStop: (span) => span.finish(),
+    }),
   ],
   exports: [RequestSpan],
 });

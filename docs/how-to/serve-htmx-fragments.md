@@ -28,8 +28,8 @@ method and path as arguments to the mint call itself.
 
 ## Recipe
 
-1. Implement a route with `api.HtmxGet(path, options?)(deps, { sync })` or
-   `api.HtmxPost(path, options?)(deps, { sync })`, returning `Html` from
+1. Implement a route with `api.HtmxGet(path, options?)({ inject: deps, sync })` or
+   `api.HtmxPost(path, options?)({ inject: deps, sync })`, returning `Html` from
    [`html`](/reference/http-server#html-and-raw). `options.requires` marks it
    exactly like an oRPC procedure; `options.input` — `HtmxPost` only —
    validates the decoded form body.
@@ -45,20 +45,31 @@ import { FindOrder } from "@btravstack/example-order-application";
 import { html } from "@btravstack/http-server";
 import { P } from "unthrown";
 
-export const orderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
-  { find: FindOrder },
-  {
-    sync:
-      ({ find }) =>
-      (context, params) =>
-        find
-          .execute(context.principal.tenantId, params.id)
-          .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
+export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
+  requires: [{ user: [] }],
+})({
+  inject: { find: FindOrder },
+  sync:
+    ({ find }) =>
+    (context, params) =>
+      find
+        .execute(context.principal.tenantId, params.id)
+        .map(
+          (order) =>
+            html`<tr id="order-${order.id}">
+              <td>${order.quantity}</td>
+            </tr>`,
+        )
+        .recoverErrCases((matcher) =>
+          matcher.with(
+            P.tag("OrderNotFound"),
+            () =>
+              html`<tr>
+                <td>not found</td>
+              </tr>`,
           ),
-  },
-);
+        ),
+});
 ```
 
 `path` carries `:name` segments — `ParamsOf<"/orders/:id/row">` is

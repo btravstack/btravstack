@@ -57,32 +57,30 @@ class Invoices extends InvoicePort("ReadmeInvoices")<{
 const keyFor = (tenantId: string, id: string) =>
   `invoices/${tenantId}/${id}.pdf`;
 
-export const invoices = InvoiceProvider(Invoices)(
-  { storage: Storage },
-  {
-    sync: ({ storage }) => ({
-      store: (tenantId, id, pdf) =>
-        storage
-          .put(keyFor(tenantId, id), pdf, { contentType: "application/pdf" })
-          // A document that failed to store is YOUR decision to make; here it
-          // is swallowed because the instrumented store already logged and
-          // counted it one layer down.
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("StorageUnavailable"), () => undefined),
-          ),
-      // Serving bytes through your own process is the anti-pattern this arm
-      // exists to avoid: the caller fetches the object directly, for a minute.
-      link: (tenantId, id) =>
-        storage
-          .presignedUrl(keyFor(tenantId, id), { ttlMs: 60_000 })
-          .recoverErrCases((matcher) =>
-            matcher
-              .with(P.tag("StorageUnavailable"), () => undefined)
-              .with(P.tag("PresignNotSupported"), () => undefined),
-          ),
-    }),
-  },
-);
+export const invoices = InvoiceProvider(Invoices)({
+  inject: { storage: Storage },
+  sync: ({ storage }) => ({
+    store: (tenantId, id, pdf) =>
+      storage
+        .put(keyFor(tenantId, id), pdf, { contentType: "application/pdf" })
+        // A document that failed to store is YOUR decision to make; here it
+        // is swallowed because the instrumented store already logged and
+        // counted it one layer down.
+        .recoverErrCases((matcher) =>
+          matcher.with(P.tag("StorageUnavailable"), () => undefined),
+        ),
+    // Serving bytes through your own process is the anti-pattern this arm
+    // exists to avoid: the caller fetches the object directly, for a minute.
+    link: (tenantId, id) =>
+      storage
+        .presignedUrl(keyFor(tenantId, id), { ttlMs: 60_000 })
+        .recoverErrCases((matcher) =>
+          matcher
+            .with(P.tag("StorageUnavailable"), () => undefined)
+            .with(P.tag("PresignNotSupported"), () => undefined),
+        ),
+  }),
+});
 ```
 
 The composition — the adapter, and whether operations are instrumented,

@@ -146,16 +146,14 @@ export const amqp = <TContract extends AnyAmqpContract>(
     needs: [Env, AmqpHandlersPort as HandlersPortOf<TContract>],
     provides: [
       config,
-      Provider(AmqpRuntime)(
-        { config: AmqpConfig, handlers: AmqpHandlersPort as HandlersPortOf<TContract> },
-        {
-          sync: ({ config: bound, handlers }): Runtime<never, AmqpInfo> => ({
-            name: "amqp",
-            resolves: [],
-            start: (host) => createWorker(host, bound, options, handlers),
-          }),
-        },
-      ),
+      Provider(AmqpRuntime)({
+        inject: { config: AmqpConfig, handlers: AmqpHandlersPort as HandlersPortOf<TContract> },
+        sync: ({ config: bound, handlers }): Runtime<never, AmqpInfo> => ({
+          name: "amqp",
+          resolves: [],
+          start: (host) => createWorker(host, bound, options, handlers),
+        }),
+      }),
     ],
     exports: [AmqpRuntime, AmqpConfig],
   });
@@ -200,15 +198,15 @@ type Compose<C extends AnyAmqpContract> = <const T extends readonly PieceOf<C>[]
 };
 
 /**
- * The handlers as a provider, from the contract. Three call forms, one port.
+ * The handlers as a provider, from the contract. Two call forms, one port.
  *
  * ```ts
- * AmqpHandlers(orderContract)({ logger: Logger }, { sync: ({ logger }) => ({ orderNotifications: (m) => … }) })
+ * AmqpHandlers(orderContract)({ inject: { logger: Logger }, sync: ({ logger }) => ({ orderNotifications: (m) => … }) })
  * AmqpHandlers(orderContract)([orderNotifications, orderAudit])
  * ```
  *
- * The first two are di's own `Provider(port)` on the starter's handlers port
- * typed for the contract. The third takes the pieces `AmqpHandler(contract,
+ * The first is di's own `Provider(port)` on the starter's handlers port
+ * typed for the contract. The second takes the pieces `AmqpHandler(contract,
  * key)` builds: they are the provider's deps, keyed by the contract key each
  * piece's port id carries, so the services record IS the handlers record. Every
  * declared key must be covered, and two slices claiming one key are di's
@@ -220,18 +218,18 @@ export const AmqpHandlers = <C extends AnyAmqpContract>(
   void contract;
   const build = Provider(AmqpHandlersPort as HandlersPortOf<C>);
   const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
-    build(
-      Object.fromEntries(
+    build({
+      inject: Object.fromEntries(
         pieces.map((piece) => [piece.port.portId.slice(HANDLER_PREFIX.length), piece.port]),
-      ) as never,
-      { sync: (services: unknown) => services } as never,
-    );
-  // One array argument is never a valid `Provider(port)` call — both its arms
-  // take records — so `Array.isArray` alone identifies the composing arm.
-  return ((first: unknown, second?: unknown) =>
-    second === undefined && Array.isArray(first)
+      ),
+      sync: (services: unknown) => services,
+    } as never);
+  // An array is never a valid `Provider(port)` call — its one argument is a
+  // record — so `Array.isArray` alone identifies the composing arm.
+  return ((first: unknown) =>
+    Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])
-      : (build as (a: never, b?: never) => unknown)(first as never, second as never)) as never;
+      : (build as (a: never) => unknown)(first as never)) as never;
 };
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>

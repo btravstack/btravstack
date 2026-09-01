@@ -16,30 +16,28 @@ import { OkAsync } from "unthrown";
 export const BillingModule = Module("Billing")({
   needs: [Logger, Meter],
   provides: [
-    Provider(PaymentService)(
-      { logger: Logger, meter: Meter },
-      {
-        sync: ({ logger, meter }) => {
-          // Counted at the adapter, the seam metrics share with the logger.
-          const authorized = meter.createCounter("btravstack.payments.authorized");
-          return {
-            authorize: (orderId, amount) => {
-              authorized.add(1);
-              logger.info("authorized the payment", { orderId, amount });
-              return OkAsync(`auth-${orderId}`);
-            },
-            capture: (authorizationId) => {
-              logger.info("captured the payment", { authorizationId });
-              return OkAsync();
-            },
-            refund: (authorizationId) => {
-              logger.info("refunded the payment", { authorizationId });
-              return OkAsync();
-            },
-          };
-        },
+    Provider(PaymentService)({
+      inject: { logger: Logger, meter: Meter },
+      sync: ({ logger, meter }) => {
+        // Counted at the adapter, the seam metrics share with the logger.
+        const authorized = meter.createCounter("btravstack.payments.authorized");
+        return {
+          authorize: (orderId, amount) => {
+            authorized.add(1);
+            logger.info("authorized the payment", { orderId, amount });
+            return OkAsync(`auth-${orderId}`);
+          },
+          capture: (authorizationId) => {
+            logger.info("captured the payment", { authorizationId });
+            return OkAsync();
+          },
+          refund: (authorizationId) => {
+            logger.info("refunded the payment", { authorizationId });
+            return OkAsync();
+          },
+        };
       },
-    ),
+    }),
   ],
   exports: [PaymentService],
 });

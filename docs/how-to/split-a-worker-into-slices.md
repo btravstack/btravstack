@@ -27,13 +27,13 @@ import { AuditSlice } from "../../slices/audit/module.js";
 # Split a worker into slices
 
 > **How-to.** For an AMQP consumer or a Temporal worker that has outgrown one
-> `AmqpHandlers(contract)(deps, arm)` or `TemporalActivities(contract)(deps, arm)`.
+> `AmqpHandlers(contract)({ inject, ...arm })` or `TemporalActivities(contract)({ inject, ...arm })`.
 > For the single-record shape, see
 > [Consume AMQP messages](/how-to/consume-amqp-messages) and
 > [Run a Temporal worker](/how-to/run-a-temporal-worker).
 
-`AmqpHandlers(contract)(deps, arm)` and `TemporalActivities(contract)(deps,
-arm)` put every consumer's or every workflow's implementation in one
+`AmqpHandlers(contract)({ inject, ...arm })` and
+`TemporalActivities(contract)({ inject, ...arm })` put every consumer's or every workflow's implementation in one
 function — right for a worker with one or two of them, wrong once a worker
 grows enough consumers or workflows that one function means one slice's typo
 failing the whole record's type-check. A **piece** is the fix: one consumer or
@@ -65,7 +65,7 @@ three transports; the one degree of freedom HTTP alone has is depth.
 are `AmqpHandlers(contract)` / `TemporalActivities(contract)`'s own shape,
 aimed at one key: the first call fixes the key's type and mints a port under
 it — there is no name to give, since the contract key **is** the port's
-name — and the second is di's own `Provider(port)(deps, { sync })`, so
+name — and the second is di's own `Provider(port)({ inject: deps, sync })`, so
 `sync`'s return is typed by that one key alone. A handler or an activity
 record whose message or input has drifted is a compile error inside the
 piece's own file, not at the root:
@@ -78,26 +78,24 @@ piece's own file, not at the root:
 export const orderNotifications = AmqpHandler(
   orderContract,
   "orderNotifications",
-)(
-  { logger: Logger },
-  {
-    sync:
-      ({ logger }) =>
-      (message) => {
-        const { tenantId, id, payload } = message.payload;
-        logger.info(
-          payload === null
-            ? "order gone — notifying"
-            : "order placed — notifying",
-          {
-            tenantId,
-            orderId: id,
-          },
-        );
-        return OkAsync();
-      },
-  },
-);
+)({
+  inject: { logger: Logger },
+  sync:
+    ({ logger }) =>
+    (message) => {
+      const { tenantId, id, payload } = message.payload;
+      logger.info(
+        payload === null
+          ? "order gone — notifying"
+          : "order placed — notifying",
+        {
+          tenantId,
+          orderId: id,
+        },
+      );
+      return OkAsync();
+    },
+});
 ```
 
 **`slices/billing/activities.ts`**
@@ -108,24 +106,22 @@ export const orderNotifications = AmqpHandler(
 export const chargeOrder = TemporalWorkflowActivities(
   orderContract,
   "chargeOrder",
-)(
-  { payments: PaymentService },
-  {
-    sync: ({ payments }) => ({
-      authorizePayment: (args, { errors }) =>
-        payments
-          .authorize(args.orderId, args.amount)
-          .map((authorizationId) => ({ authorizationId }))
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("PaymentDeclined"), (error) =>
-              errors.PaymentDeclined({ id: error.id }),
-            ),
+)({
+  inject: { payments: PaymentService },
+  sync: ({ payments }) => ({
+    authorizePayment: (args, { errors }) =>
+      payments
+        .authorize(args.orderId, args.amount)
+        .map((authorizationId) => ({ authorizationId }))
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("PaymentDeclined"), (error) =>
+            errors.PaymentDeclined({ id: error.id }),
           ),
-      capturePayment: (args) => payments.capture(args.authorizationId),
-      refundPayment: (args) => payments.refund(args.authorizationId),
-    }),
-  },
-);
+        ),
+    capturePayment: (args) => payments.capture(args.authorizationId),
+    refundPayment: (args) => payments.refund(args.authorizationId),
+  }),
+});
 ```
 
 Each piece declares only the ports **it** calls: `orderNotifications` takes

@@ -25,7 +25,7 @@ const failingBackend: MailerService = {
 
 export const failingMailer = (): Module<MailerBackend, never, never> =>
   Module("FailingMailer")({
-    provides: [Provider(MailerBackend)({ value: failingBackend })],
+    provides: [Provider(MailerBackend)({ inject: {}, value: failingBackend })],
     exports: [MailerBackend],
   });
 
@@ -43,7 +43,7 @@ const defectiveBackend: MailerService = {
 
 export const defectiveMailer = (): Module<MailerBackend, never, never> =>
   Module("DefectiveMailer")({
-    provides: [Provider(MailerBackend)({ value: defectiveBackend })],
+    provides: [Provider(MailerBackend)({ inject: {}, value: defectiveBackend })],
     exports: [MailerBackend],
   });
 
@@ -113,7 +113,7 @@ export const it = test.extend<MailerFixtures>({
     const served = await Module.scoped(
       Module("SmtpFixture")({
         imports: [smtpMailer()],
-        provides: [Provider(Env)({ value: env })],
+        provides: [Provider(Env)({ inject: {}, value: env })],
         exports: [MailerBackend],
       }),
       // `use` runs INSIDE the scope, so the transport the provider opened is
@@ -192,7 +192,10 @@ export const it = test.extend<MailerFixtures>({
             mailer({ adapter }),
             Module("RecordingLogger")({
               provides: [
-                Provider(Logger)({ value: createLogger((line) => lines.push(line), "debug") }),
+                Provider(Logger)({
+                  inject: {},
+                  value: createLogger((line) => lines.push(line), "debug"),
+                }),
               ],
               exports: [Logger],
             }),

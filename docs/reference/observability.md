@@ -298,7 +298,7 @@ export const OrderApi = HttpModule("OrderApi")({
 ```
 
 It needs `Env`, which `start` provides to every graph it boots; outside the
-kernel, provide it yourself with `Provider(Env)({ value: {} })`. Its error
+kernel, provide it yourself with `Provider(Env)({ inject: {}, value: {} })`. Its error
 channel is `ConfigInvalid`, which is how a bad `LOG_LEVEL` reaches
 [exit code `78`](/reference/core/exit-codes).
 
@@ -483,6 +483,7 @@ declare const loadOptionalPeer: () => Promise<{ new (): SomeInstrumentation }>;
 
 ```ts
 Provider.member(Instrumentations)({
+  inject: {},
   value: async () => new (await loadOptionalPeer())(),
 });
 ```

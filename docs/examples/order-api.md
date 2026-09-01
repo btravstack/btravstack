@@ -163,7 +163,6 @@ import {
   granted,
 } from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
-
 /** What this deployment knows about a caller under the `user` scheme. */
 export type Identity = {
   readonly tenantId: TenantId;
@@ -174,6 +173,7 @@ export type Identity = {
 export type ServiceIdentity = { readonly appId: string };
 
 export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
+  inject: {},
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
@@ -203,6 +203,7 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
 
 /** The second scheme: an API key, no scopes — what a reporting job presents. */
 export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  inject: {},
   sync: () => (headers) => {
     const key = headers["x-api-key"];
     return typeof key === "string" && key !== ""
@@ -247,7 +248,7 @@ the other way round. The scope **vocabulary** is declared at the call
 (`HttpAuthenticator<Identity, "orders:export">()`), so the granted list is
 checked against it here rather than compared as loose strings at the endpoint.
 Neither authenticator needs a service; a JWT verifier, a key set
-or a user directory would be named in a `deps` record and injected the way any
+or a user directory would be named in an `inject` record and injected the way any
 provider's
 dependencies are, and that need would travel with the authenticator into the
 graph — so a root satisfying none is refused at the `HttpModule(...)` call. See
@@ -262,9 +263,9 @@ use cases in [`order-application`](/examples/order-application), and the
 entities and Prisma adapters behind it.
 
 ```
-src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
+src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ inject: { place: PlaceOrder, find: FindOrder, logger: Logger }, sync })
 src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
-src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ find: FindCustomer }, { sync })
+src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ inject: { find: FindCustomer }, sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 ```
 
@@ -275,77 +276,78 @@ below does the same for its own slice:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.OrpcController(contract, "orders")(
-  { place: PlaceOrder, find: FindOrder, logger: Logger },
-  {
-    sync: ({ place, find, logger }) => ({
-      place: ({ errors, context }, input) => {
-        logger.info("order placement requested", {
-          userId: context.principal.userId,
-        });
-        return place
-          .execute(context.principal.tenantId, input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              // A malformed id is the caller's mistake, so 400 — not the
-              // 409 a duplicate gets.
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          );
-      },
-      find: ({ errors, context }, input) =>
-        find
-          .execute(context.principal.tenantId, input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
+export const ordersController = api.OrpcController(
+  contract,
+  "orders",
+)({
+  inject: { place: PlaceOrder, find: FindOrder, logger: Logger },
+  sync: ({ place, find, logger }) => ({
+    place: ({ errors, context }, input) => {
+      logger.info("order placement requested", {
+        userId: context.principal.userId,
+      });
+      return place
+        .execute(context.principal.tenantId, input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            // A malformed id is the caller's mistake, so 400 — not the
+            // 409 a duplicate gets.
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
+        );
+    },
+    find: ({ errors, context }, input) =>
+      find
+        .execute(context.principal.tenantId, input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({
+              message: error.message,
+              data: { id: error.id },
+            }),
           ),
-      // Two schemes, so the principal is a discriminated union — and the
-      // switch is exhaustive or the build fails. The body names the arm that
-      // produced it, so a spec can pin which scheme served the call.
-      export: ({ context }) => {
-        switch (context.principal.scheme) {
-          case "user":
-            logger.info("order export requested", {
-              userId: context.principal.identity.userId,
-            });
-            return OkAsync({
-              csv: `user,${context.principal.identity.userId}`,
-            });
-          case "service":
-            logger.info("order export requested", {
-              appId: context.principal.identity.appId,
-            });
-            return OkAsync({
-              csv: `service,${context.principal.identity.appId}`,
-            });
-        }
-      },
-    }),
-  },
-);
+        ),
+    // Two schemes, so the principal is a discriminated union — and the
+    // switch is exhaustive or the build fails. The body names the arm that
+    // produced it, so a spec can pin which scheme served the call.
+    export: ({ context }) => {
+      switch (context.principal.scheme) {
+        case "user":
+          logger.info("order export requested", {
+            userId: context.principal.identity.userId,
+          });
+          return OkAsync({
+            csv: `user,${context.principal.identity.userId}`,
+          });
+        case "service":
+          logger.info("order export requested", {
+            appId: context.principal.identity.appId,
+          });
+          return OkAsync({
+            csv: `service,${context.principal.identity.appId}`,
+          });
+      }
+    },
+  }),
+});
 ```
 
 Each leaf is the `.result()` handler `@unthrown/orpc` gives that procedure's
@@ -426,7 +428,7 @@ the recipe, and `packages/http-server/src/controller.test-d.ts` for the six gate
 that pin these errors and the lift below. Because a fragment is itself a valid
 contract, `ordersController` serves `contract.orders` alone unchanged: the
 lifted root is
-`api.OrpcRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
+`api.OrpcRouter(contract.orders)({ inject: { implementation: ordersController.port }, sync: ({ implementation }) => implementation })`
 over `OrdersSlice`, so extracting a slice out of this modulith is a new
 composition root and one fewer import, not a rewrite.
 
@@ -441,20 +443,31 @@ from its method and path, with `api.HtmxGet` — no contract in between:
 ```ts
 import { html } from "@btravstack/http-server";
 
-export const orderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
-  { find: FindOrder },
-  {
-    sync:
-      ({ find }) =>
-      (context, params) =>
-        find
-          .execute(context.principal.tenantId, params.id)
-          .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
+export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
+  requires: [{ user: [] }],
+})({
+  inject: { find: FindOrder },
+  sync:
+    ({ find }) =>
+    (context, params) =>
+      find
+        .execute(context.principal.tenantId, params.id)
+        .map(
+          (order) =>
+            html`<tr id="order-${order.id}">
+              <td>${order.quantity}</td>
+            </tr>`,
+        )
+        .recoverErrCases((matcher) =>
+          matcher.with(
+            P.tag("OrderNotFound"),
+            () =>
+              html`<tr>
+                <td>not found</td>
+              </tr>`,
           ),
-  },
-);
+        ),
+});
 ```
 
 `requires: [{ user: [] }]` marks the route exactly as `contract.orders` marks
@@ -600,28 +613,23 @@ export const RequestModule = Module("Request")({
   needs: [Logger, Meter],
   imports: [UnitSpanModule],
   provides: [
-    Provider(RequestSpan)(
-      { logger: Logger, meter: Meter },
-      {
-        sync: ({ logger, meter }) => {
-          const startedAt = Date.now();
-          const duration = meter.createHistogram(
-            "btravstack.request.duration",
-            {
-              unit: "ms",
-            },
-          );
-          return {
-            finish: () => {
-              const durationMs = Date.now() - startedAt;
-              duration.record(durationMs);
-              logger.info("request finished", { durationMs });
-            },
-          };
-        },
-        onStop: (span) => span.finish(),
+    Provider(RequestSpan)({
+      inject: { logger: Logger, meter: Meter },
+      sync: ({ logger, meter }) => {
+        const startedAt = Date.now();
+        const duration = meter.createHistogram("btravstack.request.duration", {
+          unit: "ms",
+        });
+        return {
+          finish: () => {
+            const durationMs = Date.now() - startedAt;
+            duration.record(durationMs);
+            logger.info("request finished", { durationMs });
+          },
+        };
       },
-    ),
+      onStop: (span) => span.finish(),
+    }),
   ],
   exports: [RequestSpan],
 });

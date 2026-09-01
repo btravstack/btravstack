@@ -186,12 +186,10 @@ any other dependency. The interactors are classes provided with di's `class`
 arm:
 
 ```ts
-export const placeOrderProvider = Provider(PlaceOrder)(
-  { repository: OrderRepository, logger: Logger },
-  {
-    class: PlaceOrderInteractor,
-  },
-);
+export const placeOrderProvider = Provider(PlaceOrder)({
+  inject: { repository: OrderRepository, logger: Logger },
+  class: PlaceOrderInteractor,
+});
 ```
 
 The module — one per vertical, not one for the layer — provides neither
@@ -414,7 +412,7 @@ the type tests: a graph that provides `OrderRepository` still cannot scope
 alone cannot scope the orders half — nor can the orders repository alone,
 which leaves `Logger` open. The positive halves compose each module with its
 own stub — plus, for orders, a
-`Provider(Logger)({ value: createLogger(() => {}) })`, since the starter is
+`Provider(Logger)({ inject: {}, value: createLogger(() => {}) })`, since the starter is
 the default and not the only way — and call `Module.scoped` as an ordinary
 two-argument call. The three deployment
 pages carry the other kind — `start`'s gate.

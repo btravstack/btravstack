@@ -73,7 +73,7 @@ a unit carries that unit's ids.
 ## Log from a use case
 
 `Logger` is an ordinary port, so it arrives the ordinary way — named in the
-provider's `deps` record, never from a global or an ambient read:
+provider's `inject` record, never from a global or an ambient read:
 
 ```ts
 class PlaceOrderInteractor {
@@ -99,10 +99,10 @@ class PlaceOrderInteractor {
   }
 }
 
-export const placeOrderProvider = Provider(PlaceOrder)(
-  { repository: OrderRepository, logger: Logger },
-  { class: PlaceOrderInteractor },
-);
+export const placeOrderProvider = Provider(PlaceOrder)({
+  inject: { repository: OrderRepository, logger: Logger },
+  class: PlaceOrderInteractor,
+});
 ```
 
 The tenant is an **argument**, not something read back out of the ambient
@@ -268,7 +268,7 @@ or an application with a logger of its own, provides the port directly and
 nothing else in the graph can tell:
 
 ```ts
-Provider(Logger)({ value: createLogger(() => {}) });
+Provider(Logger)({ inject: {}, value: createLogger(() => {}) });
 ```
 
 More usefully, keep the shipped implementation and replace only the
@@ -301,7 +301,7 @@ log dump.
 ::: tip Booting without the kernel
 `observability()` binds its level from the `Env` port `start` provides. A
 kernel-free `Module.scoped` has no `start`, so provide an empty one:
-`Provider(Env)({ value: {} })`. That is the only ceremony the real logger
+`Provider(Env)({ inject: {}, value: {} })`. That is the only ceremony the real logger
 costs a spec, and it buys the very implementation the deployments run.
 :::
 

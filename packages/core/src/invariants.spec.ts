@@ -155,6 +155,7 @@ describe("load-bearing invariants", () => {
       imports: [runtimeModule(broken)],
       provides: [
         Provider(Greeting)({
+          inject: {},
           acquire: () => OkAsync({ text: "hi" }),
           release: () => {
             released.push("greeting");
@@ -189,6 +190,7 @@ describe("load-bearing invariants", () => {
       imports: [runtime.module],
       provides: [
         Provider(Greeting)({
+          inject: {},
           acquire: () => OkAsync({ text: "hi" }),
           release: () => Promise.reject(boom),
         }),
@@ -464,6 +466,7 @@ describe("probe wiring", () => {
       imports: [testRuntime().module],
       provides: [
         Provider(Greeting)({
+          inject: {},
           make: () => {
             built = true;
             return OkAsync({ text: "hi" });
@@ -506,9 +509,11 @@ describe("health checks", () => {
     const checks = Module("Checks")({
       provides: [
         Provider.member(HealthChecks)({
+          inject: {},
           value: { name: "cache", check: () => OkAsync() },
         }),
         Provider.member(HealthChecks)({
+          inject: {},
           value: {
             name: "database",
             check: () => ErrAsync(new HealthCheckFailed({ reason: "connection refused" })),

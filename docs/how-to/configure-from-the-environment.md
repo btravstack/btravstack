@@ -60,10 +60,10 @@ export const Persistence = Module("Persistence")({
   needs: [Env],
   provides: [
     databaseConfig,
-    Provider(Database)(
-      { config: databaseConfig.port },
-      { sync: ({ config }) => openDatabase(config) },
-    ),
+    Provider(Database)({
+      inject: { config: databaseConfig.port },
+      sync: ({ config }) => openDatabase(config),
+    }),
   ],
   exports: [Database],
 });
@@ -102,7 +102,6 @@ imports — declare the port and pass the class. Same provider, same schema:
 ```ts
 import { Config } from "@btravstack/config";
 import { Port } from "@btravstack/di";
-
 export class CacheConfig extends Port("CacheConfig")<{
   readonly url: string;
   readonly ttlSeconds: number;
@@ -173,7 +172,7 @@ const app = start(App, {
 ```
 
 Outside the kernel — a bare `Module.scoped` — provide `Env` yourself with
-`Provider(Env)({ value: process.env })`.
+`Provider(Env)({ inject: {}, value: process.env })`.
 
 ## What a bad deployment looks like
 

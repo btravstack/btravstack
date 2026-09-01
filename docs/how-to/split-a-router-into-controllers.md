@@ -25,7 +25,7 @@ declare const view: (order: Order) => { id: string; quantity: number };
 > For an API that has outgrown one `sync`. For the shape of a
 > single-slice router, see [Serve an oRPC contract over HTTP](/how-to/serve-orpc-over-http).
 
-`api.OrpcRouter(contract)(deps, { sync })` puts every procedure's implementation in
+`api.OrpcRouter(contract)({ inject: deps, sync })` puts every procedure's implementation in
 one function. That is right for a small API and wrong for a large one: a
 fifty-procedure contract would mean fifty injected services in one `sync`, one
 slice's typo failing the whole router's type-check, and no way to serve one
@@ -109,12 +109,12 @@ public half and a protected one stop being one undifferentiated surface.
 
 ## Step 2 — a controller per slice
 
-`api.OrpcController(contract, path)({ name: Dep }, { sync })` is
+`api.OrpcController(contract, path)({ inject: { name: Dep }, sync })` is
 `api.OrpcRouter`'s own
 shape, aimed at one node of the contract tree: the first call fixes the
 contract's type and mints a port under the path — `"orders"`, or a nested one
 like `"v1.orders"`; the second is di's
-`Provider(port)({ name: Dep }, { sync })`,
+`Provider(port)({ inject: { name: Dep }, sync })`,
 so `sync`'s return is typed by that node at the call — a typo'd or missing
 procedure is a compile error inside the controller itself, not at the root.
 A path the contract does not declare is refused **here**, at the mint — there
@@ -123,52 +123,53 @@ is nothing to type the key by:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.OrpcController(contract, "orders")(
-  { place: PlaceOrder, find: FindOrder },
-  {
-    sync: ({ place, find }) => ({
-      place: ({ errors, context }, input) =>
-        place
-          .execute(context.principal.tenantId, input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              // A malformed id is the caller's mistake, so 400 — not the
-              // 409 a duplicate gets.
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          ),
-      find: ({ errors, context }, input) =>
-        find
-          .execute(context.principal.tenantId, input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
+export const ordersController = api.OrpcController(
+  contract,
+  "orders",
+)({
+  inject: { place: PlaceOrder, find: FindOrder },
+  sync: ({ place, find }) => ({
+    place: ({ errors, context }, input) =>
+      place
+        .execute(context.principal.tenantId, input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            // A malformed id is the caller's mistake, so 400 — not the
+            // 409 a duplicate gets.
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
+        ),
+    find: ({ errors, context }, input) =>
+      find
+        .execute(context.principal.tenantId, input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({
+              message: error.message,
+              data: { id: error.id },
+            }),
           ),
-    }),
-  },
-);
+        ),
+  }),
+});
 ```
 
 `OrpcController` comes off the application's own `api` in `auth.ts`, not from
@@ -219,8 +220,8 @@ is built.
 
 `api.OrpcRouter(contract)([...])` — an **array** of pieces, each an
 `OrpcController(contract, path)` — replaces the
-`(deps, { sync })` call at the root. An array is never a valid `(deps, arm)`
-or `(arm)` call, so `Array.isArray` alone tells this arm from the other two:
+`{ inject, sync }` call at the root. An array is never a valid
+`{ inject, ...arm }` call, so `Array.isArray` alone tells the two arms apart:
 
 ```ts
 export const orderRouter = api.OrpcRouter(contract)([
@@ -272,10 +273,10 @@ controller's own port as its single dependency and hands back what that
 controller built:
 
 ```ts
-export const ordersRouter = api.OrpcRouter(contract.orders)(
-  { implementation: ordersController.port },
-  { sync: ({ implementation }) => implementation },
-);
+export const ordersRouter = api.OrpcRouter(contract.orders)({
+  inject: { implementation: ordersController.port },
+  sync: ({ implementation }) => implementation,
+});
 
 export const OrdersApi = HttpModule("OrdersApi")({
   router: ordersRouter,

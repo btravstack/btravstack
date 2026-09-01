@@ -33,6 +33,7 @@ describe("HtmxGet / HtmxPost", () => {
     const api = defineHttp({
       authenticators: {
         user: HttpAuthenticator<{ readonly userId: string }, "orders:read">()({
+          inject: {},
           sync: () => () => OkAsync(granted({ userId: "u" }, ["orders:read"])),
         }),
       },
@@ -47,9 +48,11 @@ describe("HtmxGet / HtmxPost", () => {
     const api = defineHttp({
       authenticators: {
         user: HttpAuthenticator<{ readonly userId: string }>()({
+          inject: {},
           sync: () => () => OkAsync({ userId: "u-1" }),
         }),
         service: HttpAuthenticator<{ readonly appId: string }>()({
+          inject: {},
           sync: () => () => OkAsync({ appId: "a-1" }),
         }),
       },
@@ -70,6 +73,7 @@ describe("HtmxGet / HtmxPost", () => {
   test("the path literal types the handler's params", () => {
     const api = defineHttp();
     void api.HtmxGet("/orders/:id/row")({
+      inject: {},
       sync: () => (_context, params) => {
         const id: string = params.id;
         return OkAsync(html`${id}`);
@@ -80,6 +84,7 @@ describe("HtmxGet / HtmxPost", () => {
   test("a route without requires has no principal to read", () => {
     const api = defineHttp();
     void api.HtmxGet("/ping")({
+      inject: {},
       // @ts-expect-error — no requires, so `context` has no `principal`
       sync: () => (context) => OkAsync(html`${context.principal}`),
     });
@@ -96,9 +101,11 @@ describe("HtmxFragments scheme needs", () => {
     const api = defineHttp({
       authenticators: {
         user: HttpAuthenticator<{ readonly userId: string }>()({
+          inject: {},
           sync: () => () => OkAsync({ userId: "u-1" }),
         }),
         service: HttpAuthenticator<{ readonly appId: string }>()({
+          inject: {},
           sync: () => () => OkAsync({ appId: "a-1" }),
         }),
       },
@@ -106,21 +113,24 @@ describe("HtmxFragments scheme needs", () => {
 
     const twoSchemeComposed = api.HtmxFragments([
       api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+        inject: {},
         sync: () => () => OkAsync(html``),
       }),
       api.HtmxGet("/admin", { requires: [{ service: [] }] })({
+        inject: {},
         sync: () => () => OkAsync(html``),
       }),
     ]);
 
     const oneSchemeComposed = api.HtmxFragments([
       api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+        inject: {},
         sync: () => () => OkAsync(html``),
       }),
     ]);
 
     const noSchemeComposed = api.HtmxFragments([
-      api.HtmxGet("/ping")({ sync: () => () => OkAsync(html``) }),
+      api.HtmxGet("/ping")({ inject: {}, sync: () => () => OkAsync(html``) }),
     ]);
 
     // BOTH directions, for each — a one-way check passes on a collapsed
@@ -152,17 +162,15 @@ describe("HtmxGet / HtmxPost deps arm", () => {
     class FindOrder extends Port("FindOrder")<(id: string) => string> {}
     const api = defineHttp();
 
-    const row = api.HtmxGet("/orders/:id/row")(
-      { find: FindOrder },
-      {
-        sync:
-          ({ find }) =>
-          (_context, params) => {
-            expectTypeOf(find).toEqualTypeOf<(id: string) => string>();
-            return OkAsync(html`${find(params.id)}`);
-          },
-      },
-    );
+    const row = api.HtmxGet("/orders/:id/row")({
+      inject: { find: FindOrder },
+      sync:
+        ({ find }) =>
+        (_context, params) => {
+          expectTypeOf(find).toEqualTypeOf<(id: string) => string>();
+          return OkAsync(html`${find(params.id)}`);
+        },
+    });
 
     type NeedsOf<T> = T extends Provider<infer _P, infer _E, infer N> ? N : never;
     // BOTH directions — a one-way check passes on a collapsed `never`.

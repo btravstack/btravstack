@@ -10,9 +10,11 @@ describe("defineHttp", () => {
     const api = defineHttp({
       authenticators: {
         user: HttpAuthenticator<{ readonly userId: string }>()({
+          inject: {},
           sync: () => () => OkAsync({ userId: "u-1" }),
         }),
         service: HttpAuthenticator<{ readonly appId: string }>()({
+          inject: {},
           sync: () => () => OkAsync({ appId: "a-1" }),
         }),
       },
@@ -30,15 +32,13 @@ describe("defineHttp", () => {
     class Verifier extends Port("DefineVerifier")<(token: string) => { readonly userId: string }> {}
     const api = defineHttp({
       authenticators: {
-        user: HttpAuthenticator<{ readonly userId: string }>()(
-          { verify: Verifier },
-          {
-            sync:
-              ({ verify }) =>
-              (headers) =>
-                OkAsync(verify(headers.authorization ?? "")),
-          },
-        ),
+        user: HttpAuthenticator<{ readonly userId: string }>()({
+          inject: { verify: Verifier },
+          sync:
+            ({ verify }) =>
+            (headers) =>
+              OkAsync(verify(headers.authorization ?? "")),
+        }),
       },
     });
     expectTypeOf(api.authenticators.user.needs).toEqualTypeOf<Verifier>();

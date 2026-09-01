@@ -25,7 +25,7 @@ that, and no handler ever calls `Module.forkScope` itself.
 ## Recipe
 
 1. Write a `Module` whose providers are the per-unit services. Anything
-   application-scoped they need arrives through their deps.
+   application-scoped they need arrives through their `inject` record.
 2. Pass it as `unit` to `start`, `runMain`, or `@btravstack/testing`'s `boot`.
 3. Export from the composition root whatever the unit module reads — the
    gate checks it at the call site.
@@ -47,21 +47,19 @@ export const RequestModule = Module("Request")({
   // per-request module is forked from, never from inside it.
   needs: [Logger],
   provides: [
-    Provider(RequestSpan)(
-      { logger: Logger },
-      {
-        sync: ({ logger }) => {
-          const startedAt = Date.now();
-          return {
-            finish: () =>
-              logger.info("request finished", {
-                durationMs: Date.now() - startedAt,
-              }),
-          };
-        },
-        onStop: (span) => span.finish(),
+    Provider(RequestSpan)({
+      inject: { logger: Logger },
+      sync: ({ logger }) => {
+        const startedAt = Date.now();
+        return {
+          finish: () =>
+            logger.info("request finished", {
+              durationMs: Date.now() - startedAt,
+            }),
+        };
       },
-    ),
+      onStop: (span) => span.finish(),
+    }),
   ],
   exports: [RequestSpan],
 });

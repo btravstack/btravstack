@@ -102,9 +102,10 @@ export class OrderCache extends Port("OrderCache")<{
 
 /* ── Everything downstream of a port, also emitted ────────────────────────── */
 
-export const MetricsProvider = Provider(Metrics)({ value: { count: () => {} } });
+export const MetricsProvider = Provider(Metrics)({ inject: {}, value: { count: () => {} } });
 
 export const SubscriberProvider = Provider.member(Subscribers)({
+  inject: {},
   value: { topic: "orders", handle: () => {} },
 });
 
@@ -113,13 +114,11 @@ export const ObservabilityModule = Module("Observability")({
   provides: [
     MetricsProvider,
     SubscriberProvider,
-    Provider(OrderCache)({ value: { peek: () => undefined } }),
-    Provider(Auditor)(
-      { orders: OrderRepository },
-      {
-        sync: ({ orders }) => ({ orders, record: () => OkAsync() }),
-      },
-    ),
+    Provider(OrderCache)({ inject: {}, value: { peek: () => undefined } }),
+    Provider(Auditor)({
+      inject: { orders: OrderRepository },
+      sync: ({ orders }) => ({ orders, record: () => OkAsync() }),
+    }),
   ],
   exports: [Metrics, Subscribers, OrderCache, Auditor],
 });

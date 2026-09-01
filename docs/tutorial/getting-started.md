@@ -54,7 +54,10 @@ export class Greeter extends Port("Greeter")<{
 
 export const GreetingModule = Module("Greeting")({
   provides: [
-    Provider(Greeter)({ value: { greet: (name) => `Hello, ${name}!` } }),
+    Provider(Greeter)({
+      inject: {},
+      value: { greet: (name) => `Hello, ${name}!` },
+    }),
   ],
   exports: [Greeter],
 });
@@ -110,15 +113,12 @@ import { Greeter } from "./greeter.js";
 // type mentioning an inaccessible `unique symbol` (TS2527).
 const api = defineHttp();
 
-export const greetingRouter = api.OrpcRouter(contract)(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) => ({
-      hello: (_helpers, input) =>
-        OkAsync({ message: greeter.greet(input.name) }),
-    }),
-  },
-);
+export const greetingRouter = api.OrpcRouter(contract)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({
+    hello: (_helpers, input) => OkAsync({ message: greeter.greet(input.name) }),
+  }),
+});
 ```
 
 Each leaf is a plain function returning a `Result`. `OkAsync` is the success

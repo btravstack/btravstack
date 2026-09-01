@@ -90,17 +90,8 @@ export const defineHttp = <const A extends Authenticators = Record<never, never>
   };
 };
 
-/**
- * `HttpAuthenticator`'s no-deps arm puts its single argument in `deps` and
- * leaves `options` undefined — `Provider(port)`'s own arity discrimination,
- * replayed here now that the scheme NAME exists to mint a port from.
- */
+/** The description `HttpAuthenticator` held, bound now that the scheme NAME exists to mint a port from. */
 const bind = (
   scheme: string,
   authenticator: Authenticator<unknown, string, unknown>,
-): AnyProvider => {
-  const port = authenticatorPort(scheme);
-  return authenticator.options === undefined
-    ? Provider(port as never)(authenticator.deps as never)
-    : Provider(port as never)(authenticator.deps as never, authenticator.options as never);
-};
+): AnyProvider => Provider(authenticatorPort(scheme) as never)(authenticator.options as never);

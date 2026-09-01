@@ -40,10 +40,10 @@ type Serve = <E>(
 const tappedAmqp = () => {
   const lines: Line[] = [];
   const recording = overridden(OrderAmqpWorker, [
-    Provider(Logger)(
-      { config: LoggerConfig },
-      { sync: ({ config }) => createLogger((line) => lines.push(line), config.level) },
-    ),
+    Provider(Logger)({
+      inject: { config: LoggerConfig },
+      sync: ({ config }) => createLogger((line) => lines.push(line), config.level),
+    }),
   ]);
   const tap = tapped(recording, [PlaceOrder, OrderRepository, Outbox]);
   return {

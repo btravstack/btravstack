@@ -57,9 +57,9 @@ The two rules this half exists to state, before the detail:
   `principal.test-d.ts` — the last of them asserting `SchemesOf` in **both**
   directions, since a one-way assignment out of a collapsed `never` passes and
   is how the first cut of that test missed a broken `SchemesOf` entirely.
-- **`HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })` — or `({ sync })`, the
-  common shape, since an authenticator reading only headers declares no
-  dependencies — plus `authenticatorPort(scheme)`,
+- **`HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` — or
+  `({ inject: {}, sync })`, the common shape, since an authenticator reading
+  only headers declares no dependencies — plus `authenticatorPort(scheme)`,
   `Unauthenticated`, `granted(identity, scopes)`, `Grant<P, Scope>`,
   `Granted<P, Scope>`, `AuthenticatorService<P, Scope>`**
   (`auth.ts`) — how one **security scheme** is implemented.
@@ -138,9 +138,8 @@ The two rules this half exists to state, before the detail:
   writes **no type annotation at all**, and the three `…Of<Identity>` aliases
   the previous factory needed are gone with the annotations they existed for.
   At runtime the call binds one provider per scheme —
-  `Provider(authenticatorPort(scheme))(deps)` or `(deps, options)`, discriminated
-  by whether `HttpAuthenticator`'s no-deps arm left `options` undefined, the
-  same arity discrimination `Provider(port)` makes — and hands them to
+  `Provider(authenticatorPort(scheme))(options)`, the very options object
+  `HttpAuthenticator` held on to — and hands them to
   `routerFor`, which carries them out on `provider.authenticators`.
   It is **per application, not per slice**, and that is forced rather than
   chosen: a handler's parameter types are fixed where the arrow is written, so
@@ -295,7 +294,7 @@ authenticator cannot grant it": "order:export"`). `VocabFrom<A>` reads the
   visibility**.
 
   For every scheme `schemesOf(contract)` found, that scheme's port joins the
-  provider's deps record under the **namespaced**
+  provider's `inject` record under the **namespaced**
   key the `AUTHENTICATOR` constant builds — `"@btravstack/http-server/authenticator"`
   plus a trailing colon, then the scheme name — namespaced for the same reason
   `tapped`'s port id is, since every other key on that record is a name the

@@ -33,7 +33,7 @@ const failingBackend: CacheService = {
 /** That adapter as a module, so it composes exactly where `memoryCache()` would. */
 export const failingCache = (): Module<CacheBackend, never, never> =>
   Module("FailingCache")({
-    provides: [Provider(CacheBackend)({ value: failingBackend })],
+    provides: [Provider(CacheBackend)({ inject: {}, value: failingBackend })],
     exports: [CacheBackend],
   });
 
@@ -54,7 +54,7 @@ const defectiveBackend: CacheService = {
 
 export const defectiveCache = (): Module<CacheBackend, never, never> =>
   Module("DefectiveCache")({
-    provides: [Provider(CacheBackend)({ value: defectiveBackend })],
+    provides: [Provider(CacheBackend)({ inject: {}, value: defectiveBackend })],
     exports: [CacheBackend],
   });
 
@@ -112,7 +112,7 @@ export const it = test.extend<CacheFixtures>({
     const served = await Module.scoped(
       Module("RedisCacheFixture")({
         imports: [redisCache()],
-        provides: [Provider(Env)({ value: env })],
+        provides: [Provider(Env)({ inject: {}, value: env })],
         exports: [CacheBackend],
       }),
       // `use` runs INSIDE the scope, so the connection the provider acquired
@@ -135,7 +135,7 @@ export const it = test.extend<CacheFixtures>({
     const served = await Module.scoped(
       Module("DisconnectedCacheFixture")({
         imports: [redisCache()],
-        provides: [Provider(Env)({ value: env })],
+        provides: [Provider(Env)({ inject: {}, value: env })],
         exports: [CacheBackend],
       }),
       (ctx) => OkAsync(ctx.get(CacheBackend)),
@@ -195,7 +195,10 @@ export const it = test.extend<CacheFixtures>({
             cache({ adapter }),
             Module("RecordingLogger")({
               provides: [
-                Provider(Logger)({ value: createLogger((line) => lines.push(line), "debug") }),
+                Provider(Logger)({
+                  inject: {},
+                  value: createLogger((line) => lines.push(line), "debug"),
+                }),
               ],
               exports: [Logger],
             }),

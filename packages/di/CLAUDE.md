@@ -41,27 +41,42 @@ All runtime code lives in `packages/di/src`, one concept per file:
   counts against member totals, because keyed by bare `portId` the first member
   to land would drop its not-yet-placed siblings.
 
-- **`provider.ts`** — `Provider(Port)({ name: Dep }, arm)` with a construction family of
+- **`provider.ts`** — `Provider(Port)({ inject: { name: Dep }, ...arm })` with a
+  construction family of
   mutually exclusive option arms: `value` / `sync` / `make` (fallible, returns
   `Result`) / `class` / `acquire`+`release` (resourceful — puts `Scope` in
   `Needs`). Exclusivity is enforced by giving each arm the other keys as optional
-  `never`. `Provider.member` contributes one member to a set port. Deps are
+  `never`. `Provider.member` contributes one member to a set port. Dependencies are
   a **record**, never an array or a parameter list, and the
-  factory receives one services record keyed the same way; a provider that
-  declares none omits the record entirely, which is what the two overloads'
-  arity discriminates.
+  factory receives one services record keyed the same way.
+
+  **`inject` rides in the same options object, and it is REQUIRED** (issue
+  #227). One signature, one runtime path reading one key: the two overloads
+  discriminated by argument count are gone, and with them the comment
+  explaining that arity had to do the discriminating because a deps record and
+  an options object are both non-array objects. Required is the load-bearing
+  half — an optional `inject` degrades silently, since excess-property checking
+  does not reject a mistyped `injec:` key inside the arm union, so a typo would
+  become a no-deps provider and surface later as di's unmet-dependency defect
+  instead of at the call. Required, the diagnostic names the property:
+  `Property 'inject' is missing in type '{ injec: …; sync: … }'`. The price is
+  that a provider declaring no dependencies spells `inject: {}` — the common
+  shape in specs and fixtures, and paid deliberately.
 
   **The keyed form costs point-free, and that is accepted rather than a
   formatting accident.** `Provider(OrderRepository)([Database], { sync:
 prismaOrderRepository })` handed the factory straight to `sync`; the same
-  provider now has to spell `{ db: Database }, { sync: ({ db }) =>
+  provider now has to spell `{ inject: { db: OrderDatabase }, sync: ({ db }) =>
 prismaOrderRepository(db) }` — an adapter factory takes the client, not a
-  record, so the wrapper arrow is unavoidable, and oxfmt then breaks the
-  two-argument call across lines. That is inherent to naming dependencies:
+  record, so the wrapper arrow is unavoidable. That is inherent to naming
+  dependencies:
   a name only exists at a call site if something writes it. One shape was the
   decision (the library is experimental and two spellings of one idea is the
   thing it declines to ship), so this is its price, not a bug to route around.
-  Do not reintroduce a positional arm to recover it.
+  Do not reintroduce a positional arm to recover it — measured at issue #227,
+  there are **five** pure pass-through providers in all production code, four
+  of them single-dependency, and the cheaper fix if the arrow grates is those
+  five adapter factories taking `{ db }` instead of `db`.
 
   `overrideProvider(provider)` (issue #63) marks a provider — via a
   module-private symbol, so this call is the only mint — to REPLACE the base
@@ -143,13 +158,13 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   (`{ portId: Id; new (): PortInstance<Id, Service> }`, both types only) so a
   provider over a port declared inside a helper — one minted per call
   (`Config.provider("RelayConfig")(schema)`) or the helper's own fixed one
-  (`OrpcRouter(contract)({ name: Dep }, { sync })`, on `@btravstack/http-server`'s
+  (`OrpcRouter(contract)({ inject: { name: Dep }, sync })`, on `@btravstack/http-server`'s
   `OrpcRouterPort`) — has a nameable
   declared type when a consumer exports it: the class expression
   `class extends Port(id)<S> {}` has an anonymous type declaration emit cannot
   name across packages (TS4023, measured), `PortClassOf` is its nameable
   spelling, and naming the instance type forges nothing (the brand keys stay
-  private). `Provider(port)({ name: Dep }, arm)`'s return type is `Provider<P, E, N> &
+  private). `Provider(port)({ inject: { name: Dep }, ...arm })`'s return type is `Provider<P, E, N> &
 { readonly port: typeof port }` — the provider carries its port class typed,
   so `provider.port` is what a dependent lists in its deps; purely additive. `AnyModule`, `AnyProvider`,
   `Exportable` and **`NeedsGate`** are exported so a package offering a **shaped module** (a

@@ -58,7 +58,7 @@ type Handler = HttpAnswerer["handle"];
 
 /** That handler as the one answerer of a graph, mounted at the root. */
 const answering = (handle: Handler, prefix: `/${string}` = "/") =>
-  Provider.member(HttpHandler)({ value: { prefix, handle } });
+  Provider.member(HttpHandler)({ inject: {}, value: { prefix, handle } });
 
 /** Everything the unmarked fixtures below mint: no authenticators, no schemes. */
 const publicApi = defineHttp();
@@ -98,12 +98,10 @@ const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
 });
 
 /** The router as a service, built from the greeter it declares — contract-first, on the starter's own router port. */
-const greetingRouter = publicApi.OrpcRouter(greetingContract)(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) => greetingImplementation(greeter),
-  },
-);
+const greetingRouter = publicApi.OrpcRouter(greetingContract)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => greetingImplementation(greeter),
+});
 
 /** The composing form's own contract, so the two arms are exercised side by side. */
 const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragment });
@@ -113,32 +111,34 @@ const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragm
  * minted by a DOTTED path, so the composing arm's `nest` rebuild is exercised
  * on a real request rather than only on top-level keys.
  */
-export const helloController = publicApi.OrpcController(slicedContract, "greetings")(
-  { greeter: Greeter },
-  { sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet("world")) }) },
-);
+export const helloController = publicApi.OrpcController(
+  slicedContract,
+  "greetings",
+)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet("world")) }),
+});
 
 const echoesController = publicApi.OrpcController(
   slicedContract,
   "echoes.ping",
-)({
-  sync: () => () => OkAsync("pong"),
-});
+)({ inject: {}, sync: () => () => OkAsync("pong") });
 
 /**
- * An arm-only router whose `sync` records its own arity. The arm-only form is
- * typed `() => Implementation`, so the runtime must hand it nothing; passing a
- * record would be invisible to an arrow and visible to a rest parameter.
+ * A router declaring no dependencies, whose `sync` records what it was handed.
+ * `inject: {}` still yields one services record — empty — which an arrow
+ * ignores and a rest parameter sees.
  */
-export const armOnlyRouterRecording = () => {
-  let seen = -1;
+const noDepsRouterRecording = () => {
+  let seen: readonly unknown[] = [];
   const provider = publicApi.OrpcRouter(oc.router({ greetings: helloFragment }))({
-    sync: (...args: readonly unknown[]) => {
-      seen = args.length;
+    inject: {},
+    sync: ((...args: readonly unknown[]) => {
+      seen = args;
       return { greetings: { hello: () => OkAsync("hello world") } };
-    },
-  } as never);
-  return { provider, arity: () => seen };
+    }) as never,
+  });
+  return { provider, handed: () => seen };
 };
 
 /** The same kind of API as `greetingRouter`, composed from pieces instead of one `sync`. */
@@ -153,7 +153,7 @@ const rpcSlicedAppOf = () =>
     provides: [
       helloController,
       echoesController,
-      Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } }),
+      Provider(Greeter)({ inject: {}, value: { greet: (name) => `hello ${name}` } }),
     ],
   });
 
@@ -173,19 +173,15 @@ const deepContract = {
 const v1OrdersController = publicApi.OrpcController(
   deepContract,
   "v1.orders",
-)({
-  sync: () => ({ place: () => OkAsync({ id: "o-1" }) }),
-});
+)({ inject: {}, sync: () => ({ place: () => OkAsync({ id: "o-1" }) }) });
 const v1CustomersController = publicApi.OrpcController(
   deepContract,
   "v1.customers",
-)({
-  sync: () => ({ find: () => OkAsync({ id: "c-1" }) }),
-});
+)({ inject: {}, sync: () => ({ find: () => OkAsync({ id: "c-1" }) }) });
 const deepHealthController = publicApi.OrpcController(
   deepContract,
   "health",
-)({ sync: () => () => OkAsync({ ok: true as const }) });
+)({ inject: {}, sync: () => () => OkAsync({ ok: true as const }) });
 
 const deepRouter = publicApi.OrpcRouter(deepContract)([
   v1OrdersController,
@@ -205,6 +201,7 @@ const rpcDeepAppOf = () =>
 type Identity = { readonly tenantId: string; readonly userId: string };
 
 const userAuthenticator = HttpAuthenticator<Identity>()({
+  inject: {},
   sync: () => (headers) => {
     if (headers.authorization === "Bearer boom") {
       return OkAsync().map((): Identity => {
@@ -235,6 +232,7 @@ const authedOrdersController = api.OrpcController(
   authedContract,
   "orders",
 )({
+  inject: {},
   sync: () => ({
     whoami: ({ context }) => {
       authedRuns += 1;
@@ -246,9 +244,7 @@ const authedOrdersController = api.OrpcController(
 const authedHealthController = api.OrpcController(
   authedContract,
   "health",
-)({
-  sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
-});
+)({ inject: {}, sync: () => ({ ping: () => OkAsync({ ok: true as const }) }) });
 
 const authedRouter = api.OrpcRouter(authedContract)([
   authedOrdersController,
@@ -256,20 +252,18 @@ const authedRouter = api.OrpcRouter(authedContract)([
 ]);
 
 /**
- * The same marked contract through the deps form, so the scheme's own key on
- * the deps record is pinned for both arms of `build`.
+ * The same marked contract through the whole-router form, so the scheme's own
+ * key on the `inject` record is pinned.
  */
-const authedPositionalRouter = api.OrpcRouter(authedContract)(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) => ({
-      orders: {
-        whoami: ({ context }) => OkAsync({ userId: greeter.greet(context.principal.userId) }),
-      },
-      health: { ping: () => OkAsync({ ok: true as const }) },
-    }),
-  },
-);
+const authedWholeRouter = api.OrpcRouter(authedContract)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({
+    orders: {
+      whoami: ({ context }) => OkAsync({ userId: greeter.greet(context.principal.userId) }),
+    },
+    health: { ping: () => OkAsync({ ok: true as const }) },
+  }),
+});
 
 /** `HttpModule` over the protected router; the authenticator rides in with it. */
 const rpcAuthedAppOf = () =>
@@ -290,6 +284,7 @@ const rootMarkedContract = authenticated({ user: [] })({ orders: { whoami } });
 let rootMarkedRuns = 0;
 
 const rootMarkedRouter = api.OrpcRouter(rootMarkedContract)({
+  inject: {},
   sync: () => ({
     orders: {
       whoami: ({ context }) => {
@@ -322,6 +317,7 @@ const rootMarkedDeepController = api.OrpcController(
   rootMarkedDeepContract,
   "v1.orders",
 )({
+  inject: {},
   sync: () => ({
     whoami: ({ context }) => {
       rootMarkedDeepRuns += 1;
@@ -345,23 +341,22 @@ class TokenTable extends Port("TokenTable")<(token: string) => Identity | undefi
 
 const verifying = defineHttp({
   authenticators: {
-    user: HttpAuthenticator<Identity>()(
-      { tokens: TokenTable },
-      {
-        sync:
-          ({ tokens }) =>
-          (headers) => {
-            const claimed = tokens(headers.authorization ?? "");
-            return claimed === undefined ? ErrAsync(new Unauthenticated()) : OkAsync(claimed);
-          },
-      },
-    ),
+    user: HttpAuthenticator<Identity>()({
+      inject: { tokens: TokenTable },
+      sync:
+        ({ tokens }) =>
+        (headers) => {
+          const claimed = tokens(headers.authorization ?? "");
+          return claimed === undefined ? ErrAsync(new Unauthenticated()) : OkAsync(claimed);
+        },
+    }),
   },
 });
 
 const verifiedRouter = verifying.OrpcRouter({
   orders: authenticated({ user: [] })({ whoami }),
 })({
+  inject: {},
   sync: () => ({
     orders: { whoami: ({ context }) => OkAsync({ userId: context.principal.userId }) },
   }),
@@ -376,6 +371,7 @@ const rpcVerifiedAppOf = () =>
       Module("Tokens")({
         provides: [
           Provider(TokenTable)({
+            inject: {},
             value: (token) =>
               token === "Bearer keyed" ? { tenantId: "t-keyed", userId: "u-keyed" } : undefined,
           }),
@@ -397,6 +393,7 @@ const rpcSubstitutedAppOf = () =>
     provides: [
       verifiedRouter,
       Provider(authenticatorPort("user"))({
+        inject: {},
         value: () => OkAsync({ userId: "u-stub" }),
       }),
     ],
@@ -431,15 +428,13 @@ type DeepClient = RouterContractClient<typeof deepContract>;
  * The same implementation carrying a key the contract never declared, reachable
  * only past the types: `routerOf` drops it rather than defecting on it.
  */
-const strayRouter = publicApi.OrpcRouter(greetingContract)(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) =>
-      ({ ...greetingImplementation(greeter), stray: () => OkAsync("stray") }) as ReturnType<
-        typeof greetingImplementation
-      >,
-  },
-);
+const strayRouter = publicApi.OrpcRouter(greetingContract)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) =>
+    ({ ...greetingImplementation(greeter), stray: () => OkAsync("stray") }) as ReturnType<
+      typeof greetingImplementation
+    >,
+});
 
 /** The starter as an application uses it: `HttpModule` sugar over a router provider. */
 const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
@@ -448,7 +443,7 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
     port: 0,
     hostname: "127.0.0.1",
     ...(prefix === undefined ? {} : { prefix }),
-    provides: [Provider(Greeter)({ value: { greet: (name) => `hello ${name}` } })],
+    provides: [Provider(Greeter)({ inject: {}, value: { greet: (name) => `hello ${name}` } })],
   });
 
 /**
@@ -460,10 +455,12 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
  */
 const bothContract = oc.router({ ping: oc.output(ocType<string>()) });
 const bothRouter = publicApi.OrpcRouter(bothContract)({
+  inject: {},
   sync: () => ({ ping: () => OkAsync("pong") }),
 });
 
 const bothStatusFragment = publicApi.HtmxGet("/status")({
+  inject: {},
   sync: () => () => OkAsync(html`<p>ok</p>`),
 });
 const bothFragmentsProvider = publicApi.HtmxFragments([bothStatusFragment]);
@@ -501,6 +498,7 @@ const fragmentsOnlyAppOf = () =>
 const sharedAuthApi = defineHttp({
   authenticators: {
     user: HttpAuthenticator<{ readonly userId: string }>()({
+      inject: {},
       sync: () => (headers) =>
         headers.authorization === "Bearer good"
           ? OkAsync({ userId: "u-1" })
@@ -511,10 +509,12 @@ const sharedAuthApi = defineHttp({
 
 const sharedAuthContract = { whoami: authenticated({ user: [] })(oc.output(ocType<string>())) };
 const sharedAuthRouter = sharedAuthApi.OrpcRouter(sharedAuthContract)({
+  inject: {},
   sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
 });
 
 const sharedAuthProfileFragment = sharedAuthApi.HtmxGet("/profile", { requires: [{ user: [] }] })({
+  inject: {},
   sync: () => (context) => OkAsync(html`<p>${context.principal.userId}</p>`),
 });
 const sharedAuthFragmentsProvider = sharedAuthApi.HtmxFragments([sharedAuthProfileFragment]);
@@ -537,6 +537,7 @@ const corsContract = oc.router({
 });
 
 const corsRouter = publicApi.OrpcRouter(corsContract)({
+  inject: {},
   sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
 });
 
@@ -603,15 +604,13 @@ const configuredAppOf = (options: { readonly port?: number; readonly hostname?: 
       imports: [httpServer(options)],
       provides: [
         answering(noop),
-        Provider(BoundConfig)(
-          { config: HttpConfig },
-          {
-            sync: ({ config }) => {
-              bound = config;
-              return { value: config };
-            },
+        Provider(BoundConfig)({
+          inject: { config: HttpConfig },
+          sync: ({ config }) => {
+            bound = config;
+            return { value: config };
           },
-        ),
+        }),
       ],
       exports: [HttpRuntime, HttpHandler],
     }),
@@ -643,6 +642,7 @@ const slowUnitOf = (): SlowUnit => {
     module: Module("SlowUnit")({
       provides: [
         Provider(Slow)({
+          inject: {},
           make: () => {
             entered();
             return fromSafePromise(held.then(() => ({ built: true }) as const));
@@ -686,30 +686,32 @@ const noop: Handler = (_request, response, _signal) =>
  * key resolved, not merely by requirement identity.
  */
 const htmxUserAuthenticator = HttpAuthenticator<{ readonly userId: string }>()({
+  inject: {},
   sync: () => () => OkAsync({ userId: "u-1" }),
 });
 const htmxServiceAuthenticator = HttpAuthenticator<{ readonly appId: string }>()({
+  inject: {},
   sync: () => () => OkAsync({ appId: "a-1" }),
 });
 const htmxApi = defineHttp({
   authenticators: { user: htmxUserAuthenticator, service: htmxServiceAuthenticator },
 });
 
-const orderRowFragment = htmxApi.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
-  { greeter: Greeter },
-  {
-    sync:
-      ({ greeter }) =>
-      (context, params) =>
-        OkAsync(html`<tr>${greeter.greet(context.principal.userId)}:${params.id}</tr>`),
-  },
-);
+const orderRowFragment = htmxApi.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+  inject: { greeter: Greeter },
+  sync:
+    ({ greeter }) =>
+    (context, params) =>
+      OkAsync(html`<tr>${greeter.greet(context.principal.userId)}:${params.id}</tr>`),
+});
 
 const healthFragment = htmxApi.HtmxGet("/health", { requires: [{ user: [] }] })({
+  inject: {},
   sync: () => () => OkAsync(html`<p>ok</p>`),
 });
 
 const adminOnlyFragment = htmxApi.HtmxGet("/admin", { requires: [{ service: [] }] })({
+  inject: {},
   sync: () => () => OkAsync(html`<p>admin</p>`),
 });
 
@@ -724,7 +726,7 @@ const htmxServiceOf = (): AsyncResult<ServiceOf<typeof HtmxFragmentsPort>, never
   Module.scoped(
     Module("HtmxFixture")({
       provides: [
-        Provider(Greeter)({ value: { greet: (name: string) => `hi ${name}` } }),
+        Provider(Greeter)({ inject: {}, value: { greet: (name: string) => `hi ${name}` } }),
         orderRowFragment,
         healthFragment,
         adminOnlyFragment,
@@ -750,6 +752,7 @@ const htmxServiceOf = (): AsyncResult<ServiceOf<typeof HtmxFragmentsPort>, never
 const noteInput = z.object({ note: z.string() });
 
 const htmxRuntimeAuthenticator = HttpAuthenticator<{ readonly userId: string }, "admin">()({
+  inject: {},
   sync: () => (headers) => {
     if (headers.authorization === "Bearer boom") {
       return OkAsync().map((): Grant<{ readonly userId: string }, "admin"> => {
@@ -771,19 +774,18 @@ let htmxRowUpdateRuns = 0;
 /** The deps arm's own dependency — a route calling a use case, as a real slice does. */
 class RowGetCounter extends Port("RowGetCounter")<{ readonly increment: () => void }> {}
 
-const htmxRowFragment = htmxRuntimeApi.HtmxGet("/orders/:id/row")(
-  { counter: RowGetCounter },
-  {
-    sync:
-      ({ counter }) =>
-      (_context, params) => {
-        counter.increment();
-        return OkAsync(html`<tr id="row-${params.id}">row</tr>`);
-      },
-  },
-);
+const htmxRowFragment = htmxRuntimeApi.HtmxGet("/orders/:id/row")({
+  inject: { counter: RowGetCounter },
+  sync:
+    ({ counter }) =>
+    (_context, params) => {
+      counter.increment();
+      return OkAsync(html`<tr id="row-${params.id}">row</tr>`);
+    },
+});
 
 const htmxRowUpdateFragment = htmxRuntimeApi.HtmxPost("/orders/:id/row", { input: noteInput })({
+  inject: {},
   sync: () => (_context, params, input) => {
     htmxRowUpdateRuns += 1;
     return OkAsync(html`<tr id="row-${params.id}">${input.note}</tr>`);
@@ -791,20 +793,21 @@ const htmxRowUpdateFragment = htmxRuntimeApi.HtmxPost("/orders/:id/row", { input
 });
 
 const htmxProfileFragment = htmxRuntimeApi.HtmxGet("/profile", { requires: [{ user: [] }] })({
+  inject: {},
   sync: () => (context) => OkAsync(html`<p>hi ${context.principal.userId}</p>`),
 });
 
 const htmxAdminPanelFragment = htmxRuntimeApi.HtmxGet("/admin", {
   requires: [{ user: ["admin"] }],
-})({
-  sync: () => () => OkAsync(html`<p>admin</p>`),
-});
+})({ inject: {}, sync: () => () => OkAsync(html`<p>admin</p>`) });
 
 const htmxEchoFragment = htmxRuntimeApi.HtmxPost("/echo")({
+  inject: {},
   sync: () => (_context, _params, input) => OkAsync(html`<p>${JSON.stringify(input)}</p>`),
 });
 
 const htmxSecureFragment = htmxRuntimeApi.HtmxPost("/secure", { requires: [{ user: [] }] })({
+  inject: {},
   sync: () => (context) => OkAsync(html`<p>secure ${context.principal.userId}</p>`),
 });
 
@@ -828,7 +831,7 @@ const htmxRuntimeAppOf = (bodyLimit?: number) =>
     ],
     provides: [
       htmx(),
-      Provider(RowGetCounter)({ value: { increment: () => (htmxRowGetRuns += 1) } }),
+      Provider(RowGetCounter)({ inject: {}, value: { increment: () => (htmxRowGetRuns += 1) } }),
       htmxRowFragment,
       htmxRowUpdateFragment,
       htmxProfileFragment,
@@ -854,6 +857,7 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
     Module("HtmxAnswererFixture")({
       provides: [
         Provider(HttpConfig)({
+          inject: {},
           value: {
             port: 0,
             hostname: "127.0.0.1",
@@ -863,7 +867,7 @@ const htmxAnswererOf = (): AsyncResult<HttpAnswerer, never> =>
           },
         }),
         htmx(),
-        Provider(RowGetCounter)({ value: { increment: () => (htmxRowGetRuns += 1) } }),
+        Provider(RowGetCounter)({ inject: {}, value: { increment: () => (htmxRowGetRuns += 1) } }),
         htmxRowFragment,
         htmxRowUpdateFragment,
         htmxProfileFragment,
@@ -964,6 +968,11 @@ export type HttpFixtures = {
   readonly controllers: {
     readonly controller: typeof helloController;
     readonly unmarkedRouterDeps: readonly string[];
+  };
+  /** A router declaring `inject: {}`, and what its `sync` was handed. */
+  readonly noDepsRouter: {
+    readonly provider: ReturnType<typeof noDepsRouterRecording>["provider"];
+    readonly handed: () => readonly unknown[];
   };
   /**
    * The starter over a router composed from an array of pieces — the same
@@ -1271,6 +1280,11 @@ export const it = test.extend<HttpFixtures>({
     });
   },
 
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  noDepsRouter: async ({}, use) => {
+    await use(noDepsRouterRecording());
+  },
+
   rpcSliced: async ({ boot }, use) => {
     await use(async () => {
       const app = boot(rpcSlicedAppOf());
@@ -1339,7 +1353,7 @@ export const it = test.extend<HttpFixtures>({
   authedRouterDeps: async ({}, use) => {
     await use({
       composed: authedRouter.deps.map((dep) => dep.portId),
-      fromDeps: authedPositionalRouter.deps.map((dep) => dep.portId),
+      fromDeps: authedWholeRouter.deps.map((dep) => dep.portId),
     });
   },
 

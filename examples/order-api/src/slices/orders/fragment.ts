@@ -10,17 +10,15 @@ import { api } from "../../auth.js";
  * triage is this slice's own — `recoverErrCases` folds `OrderNotFound` into a
  * rendered row, at the same place `ordersController`'s `mapErrCases` sits.
  */
-export const orderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
-  { find: FindOrder },
-  {
-    sync:
-      ({ find }) =>
-      (context, params) =>
-        find
-          .execute(context.principal.tenantId, params.id)
-          .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
-          ),
-  },
-);
+export const orderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+  inject: { find: FindOrder },
+  sync:
+    ({ find }) =>
+    (context, params) =>
+      find
+        .execute(context.principal.tenantId, params.id)
+        .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
+        .recoverErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
+        ),
+});

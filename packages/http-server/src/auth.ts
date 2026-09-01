@@ -109,7 +109,6 @@ export const authenticatorPort = <const S extends string>(
  * so the registry can be inferred rather than declared.
  */
 export type Authenticator<P, Scope extends string, N> = {
-  readonly deps: unknown;
   readonly options: unknown;
   readonly principal: P;
   readonly scope: Scope;
@@ -121,13 +120,14 @@ export type Authenticator<P, Scope extends string, N> = {
  * can grant — stated at the call:
  *
  * ```ts
- * export const userAuth = HttpAuthenticator<Identity, "orders:export">()(
- *   { verify: JwtVerifier },
- *   { sync: ({ verify }) => (headers) => verify(headers.authorization) },
- * );
+ * export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
+ *   inject: { verify: JwtVerifier },
+ *   sync: ({ verify }) => (headers) => verify(headers.authorization),
+ * });
  *
  * // An authenticator that reads nothing but the headers declares no deps:
  * export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+ *   inject: {},
  *   sync: () => (headers) => apiKey(headers["x-api-key"]),
  * });
  * ```
@@ -138,24 +138,14 @@ export type Authenticator<P, Scope extends string, N> = {
  * authenticator sits under in `defineHttp({ authenticators })`.
  */
 export const HttpAuthenticator = <P, Scope extends string = never>() => {
-  // Two arms discriminated by ARITY, mirroring `Provider(port)`'s own.
-  function build<const D extends Readonly<Record<string, AnyPort>>>(
-    deps: D,
-    options: {
-      readonly sync: (services: {
-        readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-      }) => AuthenticatorService<P, Scope>;
-    },
-  ): Authenticator<P, Scope, InstanceType<D[keyof D]>>;
-  function build(options: {
-    readonly sync: () => AuthenticatorService<P, Scope>;
-  }): Authenticator<P, Scope, never>;
-  function build(depsOrOptions: unknown, options?: unknown): unknown {
-    // The port is minted by `defineHttp`, which is the only place the scheme
-    // NAME exists; this description is bound onto it there.
-    return { deps: depsOrOptions, options };
-  }
-  return build;
+  // The port is minted by `defineHttp`, which is the only place the scheme
+  // NAME exists; this description is bound onto it there.
+  return <const D extends Readonly<Record<string, AnyPort>>>(options: {
+    readonly inject: D;
+    readonly sync: (services: {
+      readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
+    }) => AuthenticatorService<P, Scope>;
+  }): Authenticator<P, Scope, InstanceType<D[keyof D]>> => ({ options }) as never;
 };
 
 /**

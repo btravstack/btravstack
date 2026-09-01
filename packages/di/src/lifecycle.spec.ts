@@ -13,16 +13,15 @@ test("onStart runs after the whole graph is built, in declaration order", async 
   const mod = Module("Lifecycle")({
     provides: [
       Provider(Server)({
+        inject: {},
         value: { port: 8080 },
         onStart: (s) => void events.push(`start-server-${s.port}`),
       }),
-      Provider(Worker)(
-        { server: Server },
-        {
-          sync: () => ({ name: "w" }),
-          onStart: (w) => void events.push(`start-${w.name}`),
-        },
-      ),
+      Provider(Worker)({
+        inject: { server: Server },
+        sync: () => ({ name: "w" }),
+        onStart: (w) => void events.push(`start-${w.name}`),
+      }),
     ],
     exports: [Server, Worker],
   });
@@ -36,16 +35,15 @@ test("onStop runs in reverse declaration order during teardown", async () => {
   const mod = Module("Lifecycle")({
     provides: [
       Provider(Server)({
+        inject: {},
         value: { port: 1 },
         onStop: () => void events.push("stop-server"),
       }),
-      Provider(Worker)(
-        { server: Server },
-        {
-          sync: () => ({ name: "w" }),
-          onStop: () => void events.push("stop-worker"),
-        },
-      ),
+      Provider(Worker)({
+        inject: { server: Server },
+        sync: () => ({ name: "w" }),
+        onStop: () => void events.push("stop-worker"),
+      }),
     ],
     exports: [Server, Worker],
   });
@@ -59,6 +57,7 @@ test("Module.scoped runs an onStop registered with no acquire/release at all", a
   const mod = Module("OnStopOnly")({
     provides: [
       Provider(Server)({
+        inject: {},
         value: { port: 1 },
         onStop: () => {
           stopped = true;
@@ -77,17 +76,16 @@ test("release and onStop interleave in one combined LIFO unwind, not two separat
   const mod = Module("Lifecycle")({
     provides: [
       Provider(Server)({
+        inject: {},
         value: { port: 1 },
         onStop: () => void events.push("server-onStop"),
       }),
-      Provider(Worker)(
-        { server: Server },
-        {
-          acquire: () => Ok({ name: "w" }),
-          release: () => void events.push("worker-release"),
-          onStop: () => void events.push("worker-onStop"),
-        },
-      ),
+      Provider(Worker)({
+        inject: { server: Server },
+        acquire: () => Ok({ name: "w" }),
+        release: () => void events.push("worker-release"),
+        onStop: () => void events.push("worker-onStop"),
+      }),
     ],
     exports: [Server, Worker],
   });
@@ -107,6 +105,7 @@ test("an async onStart is genuinely awaited before use runs", async () => {
   const mod = Module("Lifecycle")({
     provides: [
       Provider(Server)({
+        inject: {},
         value: { port: 1 },
         onStart: async () => {
           await delay(10);
@@ -134,6 +133,7 @@ test("a throwing onStart surfaces as a Defect, use is skipped, and teardown stil
   const mod = Module("Lifecycle")({
     provides: [
       Provider(Server)({
+        inject: {},
         acquire: () => Ok({ port: 1 }),
         release: () => void events.push("release"),
         // `async` on purpose, not a plain synchronous throw: `.map`'s
@@ -177,11 +177,13 @@ test("declaration order holds even when an earlier same-level provider resolves 
       // before Server there, running its `onStart` first despite being
       // declared second.
       Provider(Server)({
+        inject: {},
         make: () => fromSafePromise(delay(20)).flatMap(() => Ok({ port: 1 })),
         onStart: () => void events.push("server"),
       }),
       // Declared second, resolves first.
       Provider(Worker)({
+        inject: {},
         make: () => fromSafePromise(delay(1)).flatMap(() => Ok({ name: "w" })),
         onStart: () => void events.push("worker"),
       }),

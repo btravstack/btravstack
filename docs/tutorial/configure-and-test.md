@@ -62,14 +62,12 @@ export const GreetingModule = Module("Greeting")({
   needs: [Env],
   provides: [
     greetingConfig,
-    Provider(Greeter)(
-      { config: greetingConfig.port },
-      {
-        sync: ({ config }) => ({
-          greet: (name) => `${config.greeting}, ${name}!`,
-        }),
-      },
-    ),
+    Provider(Greeter)({
+      inject: { config: greetingConfig.port },
+      sync: ({ config }) => ({
+        greet: (name) => `${config.greeting}, ${name}!`,
+      }),
+    }),
   ],
   exports: [Greeter],
 });
@@ -126,9 +124,9 @@ import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
 import { HttpModule, defineHttp } from "@btravstack/http-server";
 import { oc } from "@orpc/contract";
+import type {} from "@unthrown/vitest";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
-import type {} from "@unthrown/vitest";
 
 class Greeter extends Port("Greeter")<{
   readonly greet: (name: string) => string;
@@ -140,10 +138,12 @@ const GreetingModule = Module("Greeting")({
   needs: [Env],
   provides: [
     greetingConfig,
-    Provider(Greeter)(
-      { config: greetingConfig.port },
-      { sync: ({ config }) => ({ greet: (name) => `${config.greeting}, ${name}!` }) },
-    ),
+    Provider(Greeter)({
+      inject: { config: greetingConfig.port },
+      sync: ({ config }) => ({
+        greet: (name) => `${config.greeting}, ${name}!`,
+      }),
+    }),
   ],
   exports: [Greeter],
 });
@@ -153,15 +153,16 @@ const contract = {
     .output(z.object({ message: z.string() })),
 };
 const api = defineHttp();
-const greetingRouter = api.OrpcRouter(contract)(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) => ({
-      hello: (_helpers, input) => OkAsync({ message: greeter.greet(input.name) }),
-    }),
-  },
-);
-const App = HttpModule("App")({ router: greetingRouter, imports: [GreetingModule] });
+const greetingRouter = api.OrpcRouter(contract)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({
+    hello: (_helpers, input) => OkAsync({ message: greeter.greet(input.name) }),
+  }),
+});
+const App = HttpModule("App")({
+  router: greetingRouter,
+  imports: [GreetingModule],
+});
 -->
 
 ```ts
@@ -229,9 +230,9 @@ import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
 import { HttpModule, defineHttp } from "@btravstack/http-server";
 import { oc } from "@orpc/contract";
+import type {} from "@unthrown/vitest";
 import { OkAsync } from "unthrown";
 import { z } from "zod";
-import type {} from "@unthrown/vitest";
 
 class Greeter extends Port("Greeter")<{
   readonly greet: (name: string) => string;
@@ -243,10 +244,12 @@ const GreetingModule = Module("Greeting")({
   needs: [Env],
   provides: [
     greetingConfig,
-    Provider(Greeter)(
-      { config: greetingConfig.port },
-      { sync: ({ config }) => ({ greet: (name) => `${config.greeting}, ${name}!` }) },
-    ),
+    Provider(Greeter)({
+      inject: { config: greetingConfig.port },
+      sync: ({ config }) => ({
+        greet: (name) => `${config.greeting}, ${name}!`,
+      }),
+    }),
   ],
   exports: [Greeter],
 });
@@ -256,15 +259,16 @@ const contract = {
     .output(z.object({ message: z.string() })),
 };
 const api = defineHttp();
-const greetingRouter = api.OrpcRouter(contract)(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) => ({
-      hello: (_helpers, input) => OkAsync({ message: greeter.greet(input.name) }),
-    }),
-  },
-);
-const App = HttpModule("App")({ router: greetingRouter, imports: [GreetingModule] });
+const greetingRouter = api.OrpcRouter(contract)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({
+    hello: (_helpers, input) => OkAsync({ message: greeter.greet(input.name) }),
+  }),
+});
+const App = HttpModule("App")({
+  router: greetingRouter,
+  imports: [GreetingModule],
+});
 -->
 
 ```ts

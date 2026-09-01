@@ -59,10 +59,12 @@ const GreetingModule = Module("Greeting")({
   needs: [Env],
   provides: [
     greetingConfig,
-    Provider(Greeter)(
-      { config: greetingConfig.port },
-      { sync: ({ config }) => ({ greet: (name) => `${config.greeting}, ${name}!` }) },
-    ),
+    Provider(Greeter)({
+      inject: { config: greetingConfig.port },
+      sync: ({ config }) => ({
+        greet: (name) => `${config.greeting}, ${name}!`,
+      }),
+    }),
   ],
   exports: [Greeter],
 });
@@ -94,7 +96,7 @@ you forget a mark; the contract is the only statement of intent there is
 
 One new file. `HttpAuthenticator` builds the scheme's resolver — an ordinary
 di provider, so a JWT verifier or a user directory would arrive through
-`deps` — and `defineHttp` is the one door where scheme **names** meet their
+`inject` — and `defineHttp` is the one door where scheme **names** meet their
 resolvers. Declaring a scheme and implementing it are the same act:
 
 **`auth.ts`**
@@ -111,6 +113,7 @@ import { ErrAsync, OkAsync } from "unthrown";
 export type Identity = { readonly name: string };
 
 const userAuth = HttpAuthenticator<Identity>()({
+  inject: {},
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const name = header.startsWith("Bearer ")
@@ -146,17 +149,14 @@ import { api } from "./auth.js";
 import { contract } from "./contract.js";
 import { Greeter } from "./greeter.js";
 
-export const greetingRouter = api.OrpcRouter(contract)(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) => ({
-      hello: (_helpers, input) =>
-        OkAsync({ message: greeter.greet(input.name) }),
-      greetMe: ({ context }) =>
-        OkAsync({ message: greeter.greet(context.principal.name) }),
-    }),
-  },
-);
+export const greetingRouter = api.OrpcRouter(contract)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({
+    hello: (_helpers, input) => OkAsync({ message: greeter.greet(input.name) }),
+    greetMe: ({ context }) =>
+      OkAsync({ message: greeter.greet(context.principal.name) }),
+  }),
+});
 ```
 
 `app.ts` and `main.ts` do not change at all: the authenticators ride the

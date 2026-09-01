@@ -12,7 +12,9 @@ import { CustomerPersistenceModule } from "./index.js";
 const scopedCustomers = () =>
   Module("ScopedCustomers")({
     imports: [CustomerPersistenceModule, observability(), otel()],
-    provides: [Provider(Env)({ value: { DATABASE_URL: inject("__ORDERS_DATABASE_URL__") } })],
+    provides: [
+      Provider(Env)({ inject: {}, value: { DATABASE_URL: inject("__ORDERS_DATABASE_URL__") } }),
+    ],
     exports: [CustomerRepository],
   });
 

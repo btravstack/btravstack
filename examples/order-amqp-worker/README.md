@@ -86,8 +86,7 @@ _foreign_ queue to the same exchange and receiving the same event too.
 `@btravstack/amqp-worker`'s starter needs one thing from the application: its
 **handlers, as a service**. This deployment builds that record from two
 pieces rather than one function. `src/slices/notifications/handler.ts` is one
-call — `AmqpHandler(orderContract, "orderNotifications")({ logger: Logger },
-{ sync: … })` — di's own `Provider(port)` on a port minted from the contract key,
+call — `AmqpHandler(orderContract, "orderNotifications")({ inject: { logger: Logger }, sync: … })` — di's own `Provider(port)` on a port minted from the contract key,
 typed for that one consumer's message; `src/slices/audit/handler.ts` is the
 same shape for `"orderAudit"`. Neither declares a port class or a name: the
 contract key IS the port's name, and each piece closes over only what its own

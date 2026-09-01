@@ -37,17 +37,16 @@ class GetOrder extends Port("GetOrder")<{
 }> {}
 
 // A provider binds a port to a construction and declares what it needs — the
-// services arrive typed, under the names the deps record gave them.
-const getOrder = Provider(GetOrder)(
-  { orders: OrderRepository },
-  {
-    sync: ({ orders }): ServiceOf<GetOrder> => ({
-      execute: (id) => orders.findById(id),
-    }),
-  },
-);
+// services arrive typed, under the names the `inject` record gave them.
+const getOrder = Provider(GetOrder)({
+  inject: { orders: OrderRepository },
+  sync: ({ orders }): ServiceOf<GetOrder> => ({
+    execute: (id) => orders.findById(id),
+  }),
+});
 
 const inMemoryOrders = Provider(OrderRepository)({
+  inject: {},
   sync: () => {
     const orders = new Map<string, Order>([["o-1", { id: "o-1", total: 42 }]]);
     return {

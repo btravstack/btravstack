@@ -9,13 +9,13 @@ class Greeter extends Port("OverriddenGreeter")<{ readonly greet: () => string }
 test("the real root answers with the override's service", async () => {
   // GIVEN a real root, and the same root with its greeter overridden
   const Root = Module("OverriddenRoot")({
-    provides: [Provider(Greeter)({ value: { greet: () => "real" } })],
+    provides: [Provider(Greeter)({ inject: {}, value: { greet: () => "real" } })],
     exports: [Greeter],
   });
 
   // WHEN the overridden composition is built and read
   const served = await Module.build(
-    overridden(Root, [Provider(Greeter)({ value: { greet: () => "stub" } })]),
+    overridden(Root, [Provider(Greeter)({ inject: {}, value: { greet: () => "stub" } })]),
   ).map((ctx) => ctx.get(Greeter).greet());
 
   // THEN the override answered through the root's own exports
@@ -31,7 +31,7 @@ test("an override the root no longer backs is a loud defect, not a silent diverg
 
   // WHEN the overridden composition is built
   const built = await Module.build(
-    overridden(Root, [Provider(Greeter)({ value: { greet: () => "stub" } })]),
+    overridden(Root, [Provider(Greeter)({ inject: {}, value: { greet: () => "stub" } })]),
   );
 
   // THEN the drift is named before any factory runs
@@ -48,8 +48,8 @@ test("an override may carry its own dependencies, resolved from the root's graph
   class Prefix extends Port("OverriddenPrefix")<{ readonly value: string }> {}
   const Root = Module("PrefixedRoot")({
     provides: [
-      Provider(Prefix)({ value: { value: "re" } }),
-      Provider(Greeter)({ value: { greet: () => "al" } }),
+      Provider(Prefix)({ inject: {}, value: { value: "re" } }),
+      Provider(Greeter)({ inject: {}, value: { greet: () => "al" } }),
     ],
     exports: [Greeter],
   });
@@ -57,10 +57,10 @@ test("an override may carry its own dependencies, resolved from the root's graph
   // WHEN the override declares the sibling port as a dep
   const served = await Module.build(
     overridden(Root, [
-      Provider(Greeter)(
-        { prefix: Prefix },
-        { sync: ({ prefix }) => ({ greet: () => `${prefix.value}corded` }) },
-      ),
+      Provider(Greeter)({
+        inject: { prefix: Prefix },
+        sync: ({ prefix }) => ({ greet: () => `${prefix.value}corded` }),
+      }),
     ]),
   )
     .map((ctx) => Ok(ctx.get(Greeter).greet()))

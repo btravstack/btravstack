@@ -320,7 +320,7 @@ import {
 } from "@btravstack/testing";
 class Greeter extends Port("Greeter")<{ readonly greet: () => string }> {}
 const AppModule = Module("App")({
-  provides: [Provider(Greeter)({ value: { greet: () => "hi" } })],
+  provides: [Provider(Greeter)({ inject: {}, value: { greet: () => "hi" } })],
   exports: [Greeter],
 });
 -->

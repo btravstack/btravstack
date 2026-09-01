@@ -27,7 +27,7 @@ const Instrumented = Module("Instrumented")({
   imports: [cache({ adapter: memoryCache() }), observability(), otel()],
   // `observability()` reads `LOG_LEVEL`, which `start` supplies at the root
   // of a real application; here the root is this file.
-  provides: [Provider(Env)({ value: {} })],
+  provides: [Provider(Env)({ inject: {}, value: {} })],
   exports: [Cache],
 });
 const _instrumented = Module.scoped(Instrumented, (ctx) => OkAsync(ctx.get(Cache)));
@@ -54,7 +54,7 @@ const _plain = Module.scoped(Plain, (ctx) => OkAsync(ctx.get(Cache)));
 // Spelling the default out reaches the same arm as leaving it off.
 const Explicit = Module("Explicit")({
   imports: [cache({ adapter: memoryCache(), instrumented: true }), observability(), otel()],
-  provides: [Provider(Env)({ value: {} })],
+  provides: [Provider(Env)({ inject: {}, value: {} })],
   exports: [Cache],
 });
 const _explicit = Module.scoped(Explicit, (ctx) => OkAsync(ctx.get(Cache)));

@@ -93,7 +93,7 @@ const testModuleWith = (sink: Sink) =>
     provides: [
       stubRepository,
       stubCustomerRepository,
-      Provider(Env)({ value: {} }),
+      Provider(Env)({ inject: {}, value: {} }),
     ],
     exports: [PlaceOrder, FindOrder, FindCustomer],
   });

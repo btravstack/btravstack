@@ -31,7 +31,11 @@ a `farewells` fragment beside it:
 // defineHttp — none of which this lesson changes.
 import { Config, Env } from "@btravstack/config";
 import { Module, Port, Provider } from "@btravstack/di";
-import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http-server";
+import {
+  HttpAuthenticator,
+  Unauthenticated,
+  defineHttp,
+} from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
 
 class Greeter extends Port("Greeter")<{
@@ -44,19 +48,24 @@ const GreetingModule = Module("Greeting")({
   needs: [Env],
   provides: [
     greetingConfig,
-    Provider(Greeter)(
-      { config: greetingConfig.port },
-      { sync: ({ config }) => ({ greet: (name) => `${config.greeting}, ${name}!` }) },
-    ),
+    Provider(Greeter)({
+      inject: { config: greetingConfig.port },
+      sync: ({ config }) => ({
+        greet: (name) => `${config.greeting}, ${name}!`,
+      }),
+    }),
   ],
   exports: [Greeter],
 });
 
 type Identity = { readonly name: string };
 const userAuth = HttpAuthenticator<Identity>()({
+  inject: {},
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
-    const name = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+    const name = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : "";
     return name === "" ? ErrAsync(new Unauthenticated()) : OkAsync({ name });
   },
 });
@@ -93,7 +102,7 @@ its controller changing ([the property](/reference/http-server)).
 ## Step 2 — A controller per fragment
 
 `api.OrpcController(contract, path)` is `api.OrpcRouter`'s slice-sized form:
-the same deps record, the same `sync` arm, typed by **one node** of the
+the same `inject` record, the same `sync` arm, typed by **one node** of the
 contract tree — and it mints a port from the path itself, so there is no
 class to name:
 
@@ -106,17 +115,17 @@ import { api } from "../../auth.js";
 import { contract } from "../../contract.js";
 import { Greeter } from "../../greeter.js";
 
-export const greetingsController = api.OrpcController(contract, "greetings")(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) => ({
-      hello: (_helpers, input) =>
-        OkAsync({ message: greeter.greet(input.name) }),
-      greetMe: ({ context }) =>
-        OkAsync({ message: greeter.greet(context.principal.name) }),
-    }),
-  },
-);
+export const greetingsController = api.OrpcController(
+  contract,
+  "greetings",
+)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({
+    hello: (_helpers, input) => OkAsync({ message: greeter.greet(input.name) }),
+    greetMe: ({ context }) =>
+      OkAsync({ message: greeter.greet(context.principal.name) }),
+  }),
+});
 ```
 
 **`slices/farewells/controller.ts`**
@@ -128,15 +137,16 @@ import { api } from "../../auth.js";
 import { contract } from "../../contract.js";
 import { Greeter } from "../../greeter.js";
 
-export const farewellsController = api.OrpcController(contract, "farewells")(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) => ({
-      goodbye: (_helpers, input) =>
-        OkAsync({ message: `${greeter.greet(input.name)} And goodbye.` }),
-    }),
-  },
-);
+export const farewellsController = api.OrpcController(
+  contract,
+  "farewells",
+)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({
+    goodbye: (_helpers, input) =>
+      OkAsync({ message: `${greeter.greet(input.name)} And goodbye.` }),
+  }),
+});
 ```
 
 The bodies moved, unchanged, out of `router.ts`. `greetMe`'s principal is

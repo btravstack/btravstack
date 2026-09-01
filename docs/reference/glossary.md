@@ -90,7 +90,7 @@ flipping false and the runtime being told to stop accepting — the window
 Kubernetes' eventually-consistent endpoint removal needs. See
 [Tune the drain for Kubernetes](/how-to/tune-the-drain-for-kubernetes).
 
-**provider** — `Provider(port)(deps, arm)` — how a port's service is built: `value`,
+**provider** — `Provider(port)({ inject, ...arm })` — how a port's service is built: `value`,
 `sync`, `make`, `class` or `acquire`/`release`. See [Providers](/reference/di/providers).
 
 **runtime** — The service behind a port declared over `RuntimePort`: `{ name, resolves,

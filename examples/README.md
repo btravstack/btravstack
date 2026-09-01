@@ -179,7 +179,7 @@ TemporalActivities(orderContract)([fulfillOrder, chargeOrder])`, one
 `TemporalWorkflowActivities` piece per saga slice; `order-amqp-worker`'s
 `orderHandlers = AmqpHandlers(orderContract)([orderNotifications, orderAudit])`,
 one `AmqpHandler` piece per subscriber slice — di's own
-`Provider(port)(deps, arm)` on that port either way, typed by the
+`Provider(port)({ inject, ...arm })` on that port either way, typed by the
 contract, and each composition root the matching `HttpModule` / `TemporalModule` /
 `AmqpModule` taking the provider. Every piece's port id carries its own
 contract path or key, so the starter composes an **array** — the same
@@ -227,7 +227,7 @@ same three-package vertical below it.
 order-api-contract     contract.orders         contract.customers    ← private fragments; the root contract is { orders, customers }
                             │                        │
 order-api              slices/orders/           slices/customers/
-                         controller.ts            controller.ts     ← OrpcController(contract, "orders")({ name: Dep }, { sync })
+                         controller.ts            controller.ts     ← OrpcController(contract, "orders")({ inject: { name: Dep }, sync })
                          module.ts                module.ts         ← the slice's own di module
                             └───────────┬────────────┘
                                    module.ts                        ← OrpcRouter(contract)([ordersController, customersController])
@@ -235,8 +235,8 @@ order-api              slices/orders/           slices/customers/
                        PlaceOrder / FindOrder    FindCustomer       ← use cases, entities, Prisma adapters — the same three packages
 ```
 
-A **controller** is `OrpcController(contract, "orders")({ place:
-PlaceOrder, find: FindOrder }, { sync })` — an ordinary di provider on a port `OrpcController`
+A **controller** is `OrpcController(contract, "orders")({ inject: { place:
+PlaceOrder, find: FindOrder }, sync })` — an ordinary di provider on a port `OrpcController`
 mints from the path itself and hands back on `.port`. A **slice** is an ordinary di `Module` that
 **imports the vertical it needs**, provides its controller and exports
 **only** that controller, so nothing outside the slice can reach anything else
@@ -261,7 +261,7 @@ module, a modulith is several slice modules in one root — and `exports:
 port and there is no class to name. And because a
 fragment is itself a valid contract, lifting `orders` into a process of its
 own leaves the slice untouched —
-`OrpcRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
+`OrpcRouter(contract.orders)({ inject: { implementation: ordersController.port }, sync: ({ implementation }) => implementation })`
 is the whole of the lifted root's router. `packages/http-server/src/controller.test-d.ts`
 pins that, and the four other gates, at compile time.
 

@@ -18,20 +18,16 @@ describe("OrpcController", () => {
     }).toEqual({ portId: "OrpcController:greetings", deps: ["Greeter"] });
   });
 
-  it("hands an arm-only router's sync no arguments", async () => {
-    // GIVEN an arm-only router whose `sync` records how many arguments it got.
-    // Its declared type is `() => Implementation`, and the whole point of the
-    // no-deps arm is that the runtime honours that
-    const { armOnlyRouterRecording } = await import("./__tests__/test-fixtures.js");
-    const { provider, arity } = armOnlyRouterRecording();
+  it("hands a no-deps router's sync one empty services record", async ({ noDepsRouter }) => {
+    // GIVEN a router declaring `inject: {}`, whose `sync` records its arguments
+    const { provider, handed } = noDepsRouter;
 
     // WHEN the graph constructs it
     await provider.construct([]);
 
-    // THEN it was called with none — a record would be ignored by an arrow but
-    // seen by a rest parameter, and it would contradict the arity `Provider`
-    // guarantees a no-deps factory
-    expect(arity()).toBe(0);
+    // THEN it was handed exactly one argument, the empty record `inject` names —
+    // invisible to an arrow, visible to a rest parameter
+    expect(handed()).toEqual([{}]);
   });
 
   it("serves a router composed from one piece per contract key", async ({ rpcSliced }) => {

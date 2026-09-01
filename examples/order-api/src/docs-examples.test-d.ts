@@ -61,73 +61,75 @@ const customerViewOf = (customer: Customer): CustomerView => ({
 // read the identity bare — one scheme — while `export` narrows a tagged union,
 // which is the contrast every page draws.
 
-const ordersController = api.OrpcController(contract, "orders")(
-  { place: PlaceOrder, find: FindOrder, logger: Logger },
-  {
-    sync: ({ place, find, logger }) => ({
-      place: ({ errors, context }, input) => {
-        logger.info("order placement requested", { userId: context.principal.userId });
-        return place
-          .execute(context.principal.tenantId, input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
-              )
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({ message: error.message, data: { id: error.id } }),
-              ),
-          );
-      },
-      find: ({ errors, context }, input) =>
-        find
-          .execute(context.principal.tenantId, input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+const ordersController = api.OrpcController(
+  contract,
+  "orders",
+)({
+  inject: { place: PlaceOrder, find: FindOrder, logger: Logger },
+  sync: ({ place, find, logger }) => ({
+    place: ({ errors, context }, input) => {
+      logger.info("order placement requested", { userId: context.principal.userId });
+      return place
+        .execute(context.principal.tenantId, input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
+            )
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({ message: error.message, data: { id: error.id } }),
             ),
+        );
+    },
+    find: ({ errors, context }, input) =>
+      find
+        .execute(context.principal.tenantId, input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
           ),
-      export: ({ context }) => {
-        switch (context.principal.scheme) {
-          case "user":
-            logger.info("order export requested", {
-              userId: context.principal.identity.userId,
-            });
-            return OkAsync({ csv: `user,${context.principal.identity.userId}` });
-          case "service":
-            logger.info("order export requested", {
-              appId: context.principal.identity.appId,
-            });
-            return OkAsync({ csv: `service,${context.principal.identity.appId}` });
-        }
-      },
-    }),
-  },
-);
+        ),
+    export: ({ context }) => {
+      switch (context.principal.scheme) {
+        case "user":
+          logger.info("order export requested", {
+            userId: context.principal.identity.userId,
+          });
+          return OkAsync({ csv: `user,${context.principal.identity.userId}` });
+        case "service":
+          logger.info("order export requested", {
+            appId: context.principal.identity.appId,
+          });
+          return OkAsync({ csv: `service,${context.principal.identity.appId}` });
+      }
+    },
+  }),
+});
 
 // The unmarked half, and the contrast every page draws: no `principal` on the
 // context at all, the tenant off the input instead.
-const customersController = api.OrpcController(contract, "customers")(
-  { find: FindCustomer },
-  {
-    sync: ({ find }) => ({
-      find: ({ errors }, input) =>
-        find
-          .execute(TenantId(input.tenantId), input.id)
-          .map(customerViewOf)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("CustomerNotFound"), (error) =>
-              errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
-            ),
+const customersController = api.OrpcController(
+  contract,
+  "customers",
+)({
+  inject: { find: FindCustomer },
+  sync: ({ find }) => ({
+    find: ({ errors }, input) =>
+      find
+        .execute(TenantId(input.tenantId), input.id)
+        .map(customerViewOf)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("CustomerNotFound"), (error) =>
+            errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
           ),
-    }),
-  },
-);
+        ),
+  }),
+});
 
 const DocsOrdersSlice = Module("DocsOrdersSlice")({
   needs: [Env, Logger],
@@ -164,10 +166,10 @@ const _DocsOrderApi = HttpModule("DocsOrderApi")({
 // rewrite. The lifted fragment carries its marker, and the router brings the
 // same schemes with it.
 
-const liftedOrdersRouter = api.OrpcRouter(contract.orders)(
-  { implementation: ordersController.port },
-  { sync: ({ implementation }) => implementation },
-);
+const liftedOrdersRouter = api.OrpcRouter(contract.orders)({
+  inject: { implementation: ordersController.port },
+  sync: ({ implementation }) => implementation,
+});
 
 const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
   needs: [Env],
@@ -176,51 +178,49 @@ const _DocsOrdersApi = HttpModule("DocsOrdersApi")({
 });
 
 // "Step 2 — the router, as a provider" — docs/how-to/serve-orpc-over-http.md;
-// "`OrpcRouter(contract)({ name: Dep }, arm)`" — docs/reference/http-server.md; "At a
+// "`OrpcRouter(contract)({ inject: { name: Dep }, sync })`" — docs/reference/http-server.md; "At a
 // glance" — docs/index.md. The deps form over the same marked fragment, with no
 // controller layer: the three pages that show a router rather than a
 // controller all reduce to this call.
 
-const depsOrdersRouter = api.OrpcRouter(contract.orders)(
-  { place: PlaceOrder, find: FindOrder },
-  {
-    sync: ({ place, find }) => ({
-      place: ({ errors, context }, input) =>
-        place
-          .execute(context.principal.tenantId, input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
-              )
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({ message: error.message, data: { id: error.id } }),
-              ),
-          ),
-      find: ({ errors, context }, input) =>
-        find
-          .execute(context.principal.tenantId, input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+const depsOrdersRouter = api.OrpcRouter(contract.orders)({
+  inject: { place: PlaceOrder, find: FindOrder },
+  sync: ({ place, find }) => ({
+    place: ({ errors, context }, input) =>
+      place
+        .execute(context.principal.tenantId, input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({ message: error.message, data: { id: error.id } }),
+            )
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({ message: error.message, data: { id: error.id } }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({ message: error.message, data: { id: error.id } }),
             ),
+        ),
+    find: ({ errors, context }, input) =>
+      find
+        .execute(context.principal.tenantId, input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
           ),
-      export: ({ context }) => {
-        switch (context.principal.scheme) {
-          case "user":
-            return OkAsync({ csv: `user,${context.principal.identity.userId}` });
-          case "service":
-            return OkAsync({ csv: `service,${context.principal.identity.appId}` });
-        }
-      },
-    }),
-  },
-);
+        ),
+    export: ({ context }) => {
+      switch (context.principal.scheme) {
+        case "user":
+          return OkAsync({ csv: `user,${context.principal.identity.userId}` });
+        case "service":
+          return OkAsync({ csv: `service,${context.principal.identity.appId}` });
+      }
+    },
+  }),
+});
 
 const _DocsDepsApi = HttpModule("DocsDepsApi")({
   needs: [Env],
@@ -241,6 +241,7 @@ const _docsUserAuth = HttpAuthenticator<
   { readonly tenantId: TenantId; readonly userId: string },
   "orders:export"
 >()({
+  inject: {},
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
@@ -266,20 +267,18 @@ const _docsUserAuth = HttpAuthenticator<
 // and path — an htmx route, not an oRPC contract fragment — so a drift in it
 // breaks this file rather than only the how-to page's own inline copy.
 
-const _docsOrderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
-  { find: FindOrder },
-  {
-    sync:
-      ({ find }) =>
-      (context, params) =>
-        find
-          .execute(context.principal.tenantId, params.id)
-          .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
-          ),
-  },
-);
+const _docsOrderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
+  inject: { find: FindOrder },
+  sync:
+    ({ find }) =>
+    (context, params) =>
+      find
+        .execute(context.principal.tenantId, params.id)
+        .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
+        .recoverErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
+        ),
+});
 
 const _docsOrderFragments = api.HtmxFragments([_docsOrderRowFragment]);
 

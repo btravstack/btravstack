@@ -24,8 +24,11 @@ class GetOrder extends Port("YGetOrder")<{ readonly execute: () => string }> {}
 
 const Persistence = Module("YPersistence")({
   provides: [
-    Provider(Database)({ value: { rows: [] } }),
-    Provider(OrderRepository)({ db: Database }, { sync: () => ({ findById: () => "o-1" }) }),
+    Provider(Database)({ inject: {}, value: { rows: [] } }),
+    Provider(OrderRepository)({
+      inject: { db: Database },
+      sync: () => ({ findById: () => "o-1" }),
+    }),
   ],
   exports: [OrderRepository],
 });
@@ -37,12 +40,10 @@ const makeAppModule = <E>(persistence: Module<OrderRepository, E, never>) =>
   Module("YApp")({
     imports: [persistence],
     provides: [
-      Provider(GetOrder)(
-        { orders: OrderRepository },
-        {
-          sync: ({ orders }) => ({ execute: () => orders.findById() }),
-        },
-      ),
+      Provider(GetOrder)({
+        inject: { orders: OrderRepository },
+        sync: ({ orders }) => ({ execute: () => orders.findById() }),
+      }),
     ],
     exports: [GetOrder],
   });

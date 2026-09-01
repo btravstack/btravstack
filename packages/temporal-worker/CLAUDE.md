@@ -14,7 +14,7 @@ namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })`
   same shape as `@btravstack/http-server`'s `HttpModule`. `activities` is the
   **provider** of the starter's activities port for THIS contract — a plain
   `Provider<ActivitiesInstanceOf<C>, ActivitiesError, ActivitiesNeeds>`, which
-  is what `TemporalActivities(contract)(deps, arm)` returns — so a provider
+  is what `TemporalActivities(contract)({ inject, ...arm })` returns — so a provider
   of anything but the implementations record for `contract` fails there
   (structurally, on the record: one built for another contract is refused).
   It delegates to `temporal({ contract, workflows, … })` and hands the
@@ -58,7 +58,7 @@ Provider<ActivitiesPortOf<C>>>`** — the activities' provider builder,
   `OrpcRouter(contract)`. The one call fixes `C` (the contract value is
   otherwise unused; it exists so `C` is inferred rather than written) and
   returns di's own `Provider(port)` on `TemporalActivitiesPort as
-ActivitiesPortOf<C>`, so the next call is di's `(deps, arm)` unchanged and
+ActivitiesPortOf<C>`, so the next call is di's `{ inject, ...arm }` unchanged and
   the provider it returns carries the port typed (`orderActivities.port`, for a
   hand-declared provider or a type test). No name, no class line. This is
   the way an application declares its activities; a hand-written
@@ -81,7 +81,7 @@ ActivitiesPortOf<C>`, so the next call is di's `(deps, arm)` unchanged and
 
   A third call composes **pieces** instead of a record:
   `TemporalActivities(contract)([piece, piece, ...])`, one piece per
-  `TemporalWorkflowActivities(contract, key)(deps, arm)`. Its type is an
+  `TemporalWorkflowActivities(contract, key)({ inject, ...arm })`. Its type is an
   intersection with `Compose<C>`, declared **last**: `ReturnType<typeof
 Provider<ActivitiesPortOf<C>>> & Compose<C>` — di's builder first, the
   composer last. Reversed, TypeScript reports the FIRST arm's failure on a
@@ -187,9 +187,9 @@ close`, failure the modeled **`TemporalUnreachable`** `{ address, cause }`.
   `DeclareActivitiesHandlerOptions<C>["activities"]` — the implementations
   record `declareActivitiesHandler` takes for `C`, with no injected context —
   built by a provider from the application's own services (closures; nothing
-  resolved from a `ctx`). Inside, `Provider(TemporalRuntime)({ connection: TemporalConnection,
+  resolved from a `ctx`). Inside, `Provider(TemporalRuntime)({ inject: { connection: TemporalConnection,
 config: TemporalConfig, activities: TemporalActivitiesPort as
-ActivitiesPortOf<C> }, { sync })` —
+ActivitiesPortOf<C> }, sync })` —
   the port rides di, which is why `ActivitiesInstanceOf<C>` is in the module's
   `Needs` and a root that imports the starter without providing the
   activities is rejected by `start` for still owing it — by assignability

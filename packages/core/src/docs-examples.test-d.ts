@@ -39,7 +39,9 @@ class Greeter extends Port("Greeter")<{
 }> {}
 
 const AppModule = Module("App")({
-  provides: [Provider(Greeter)({ value: { greet: (name: string) => `hello, ${name}` } })],
+  provides: [
+    Provider(Greeter)({ inject: {}, value: { greet: (name: string) => `hello, ${name}` } }),
+  ],
   exports: [Greeter],
 });
 
@@ -83,7 +85,7 @@ class Ticker extends RuntimePort<Runtime<typeof Greeter>> {}
 
 const TickerApp = Module("TickerApp")({
   imports: [AppModule],
-  provides: [Provider(Ticker)({ value: ticker })],
+  provides: [Provider(Ticker)({ inject: {}, value: ticker })],
   exports: [Greeter, Ticker],
 });
 
@@ -98,15 +100,13 @@ class TickSpan extends Port("TickSpan")<{ readonly finish: () => void }> {}
 const TickModule = Module("Tick")({
   needs: [Greeter],
   provides: [
-    Provider(TickSpan)(
-      { greeter: Greeter },
-      {
-        sync: ({ greeter }) => ({
-          finish: () => process.stderr.write(`${greeter.greet("span")}\n`),
-        }),
-        onStop: (span) => span.finish(),
-      },
-    ),
+    Provider(TickSpan)({
+      inject: { greeter: Greeter },
+      sync: ({ greeter }) => ({
+        finish: () => process.stderr.write(`${greeter.greet("span")}\n`),
+      }),
+      onStop: (span) => span.finish(),
+    }),
   ],
   exports: [TickSpan],
 });
@@ -202,7 +202,7 @@ class Httpish extends RuntimePort<Runtime<typeof Greeter, HttpInfo>> {}
 
 const HttpishApp = Module("HttpishApp")({
   imports: [AppModule],
-  provides: [Provider(Httpish)({ value: httpish })],
+  provides: [Provider(Httpish)({ inject: {}, value: httpish })],
   exports: [Greeter, Httpish],
 });
 

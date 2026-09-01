@@ -6,7 +6,7 @@ describe("Module exports", () => {
   test("a provider export is normalised to its port class", () => {
     // GIVEN
     class Logger extends Port("SLogger")<{ readonly log: () => void }> {}
-    const logger = Provider(Logger)({ value: { log: () => {} } });
+    const logger = Provider(Logger)({ inject: {}, value: { log: () => {} } });
 
     // WHEN
     const mod = Module("Logging")({ provides: [logger], exports: [logger] });
@@ -19,8 +19,8 @@ describe("Module exports", () => {
     // GIVEN
     class Clock extends Port("SClock")<{ readonly now: () => number }> {}
     class Tracer extends Port("STracer")<{ readonly span: () => void }> {}
-    const clock = Provider(Clock)({ value: { now: () => 0 } });
-    const tracer = Provider(Tracer)({ value: { span: () => {} } });
+    const clock = Provider(Clock)({ inject: {}, value: { now: () => 0 } });
+    const tracer = Provider(Tracer)({ inject: {}, value: { span: () => {} } });
 
     // WHEN
     const mod = Module("Mixed")({ provides: [clock, tracer], exports: [Clock, tracer] });

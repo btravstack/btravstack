@@ -22,15 +22,11 @@ const contract = { orders: { place: oc }, users: { find: oc } };
 const ordersPiece = publicApi.OrpcController(
   contract,
   "orders",
-)({
-  sync: () => ({ place: () => OkAsync("placed") }),
-});
+)({ inject: {}, sync: () => ({ place: () => OkAsync("placed") }) });
 const usersPiece = publicApi.OrpcController(
   contract,
   "users",
-)({
-  sync: () => ({ find: () => OkAsync("found") }),
-});
+)({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
 
 // 1. Every contract key must be covered. This array is ONE element long, so the
 //    diagnostic reports the "UNCOVERED CONTROLLERS — …" marker alone; the
@@ -58,6 +54,7 @@ void publicApi.OrpcController(
   contract,
   "orders",
 )({
+  inject: {},
   // @ts-expect-error — the fragment declares `place`, not `plce`
   sync: () => ({ plce: () => OkAsync("placed") }),
 });
@@ -68,17 +65,18 @@ void publicApi.OrpcController(
 //    deliberate: a fresh `sync` over the fragment would pin only that a
 //    fragment is a valid contract, which says nothing about the piece
 //    surviving the lift.
-void publicApi.OrpcRouter(contract.orders)(
-  { implementation: ordersPiece.port },
-  { sync: ({ implementation }) => implementation },
-);
+void publicApi.OrpcRouter(contract.orders)({
+  inject: { implementation: ordersPiece.port },
+  sync: ({ implementation }) => implementation,
+});
 
-// The correct composition and the ARM-ONLY form, over the same contract, both
-// still compile. An array is never a record, so `Array.isArray` alone tells the
-// composing arm from the arm-only one (orpc.ts) — the sync-key ambiguity the
-// retired keyed record needed a discriminator for is gone with it.
+// The correct composition and the WHOLE-ROUTER form, over the same contract,
+// both still compile. An array is never a record, so `Array.isArray` alone
+// tells the two apart (orpc.ts) — the sync-key ambiguity the retired keyed
+// record needed a discriminator for is gone with it.
 const composed = publicApi.OrpcRouter(contract)([ordersPiece, usersPiece]);
 void publicApi.OrpcRouter(contract)({
+  inject: {},
   sync: () => ({
     orders: { place: () => OkAsync("placed") },
     users: { find: () => OkAsync("f") },
@@ -100,9 +98,11 @@ type _ComposedNeedsAreDeclared = Expect<[NeedsOf<typeof composed>] extends [neve
 const api = defineHttp({
   authenticators: {
     user: HttpAuthenticator<{ readonly userId: string }>()({
+      inject: {},
       sync: () => () => OkAsync({ userId: "u-1" }),
     }),
     service: HttpAuthenticator<{ readonly appId: string }>()({
+      inject: {},
       sync: () => () => OkAsync({ appId: "a-1" }),
     }),
   },
@@ -116,15 +116,11 @@ const markedContract = {
 const markedOrders = api.OrpcController(
   markedContract,
   "orders",
-)({
-  sync: () => ({ place: (opts) => OkAsync(opts.context.principal.userId) }),
-});
+)({ inject: {}, sync: () => ({ place: (opts) => OkAsync(opts.context.principal.userId) }) });
 const markedUsers = api.OrpcController(
   markedContract,
   "users",
-)({
-  sync: () => ({ find: () => OkAsync("found") }),
-});
+)({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
 
 // 1. Every contract key must be covered.
 // @ts-expect-error — the `users` fragment is uncovered
@@ -144,15 +140,16 @@ void api.OrpcController(
   markedContract,
   "orders",
 )({
+  inject: {},
   // @ts-expect-error — the fragment declares `place`, not `plce`
   sync: () => ({ plce: () => OkAsync("placed") }),
 });
 
 // 5. The do-not-break lift, for a marked fragment.
-void api.OrpcRouter(markedContract.orders)(
-  { implementation: markedOrders.port },
-  { sync: ({ implementation }) => implementation },
-);
+void api.OrpcRouter(markedContract.orders)({
+  inject: { implementation: markedOrders.port },
+  sync: ({ implementation }) => implementation,
+});
 
 // The correct composition still compiles — `markedUsers` is a piece over an
 // unmarked fragment inside a contract that marks another, which is the
@@ -195,6 +192,7 @@ expectTypeOf<ExportContext["principal"]>().toEqualTypeOf<
 // authenticator is di's own unmet-need error naming the port, not a gate this
 // package writes.
 const twoSchemeRouter = api.OrpcRouter(grouped)({
+  inject: {},
   sync: () => ({ place: () => OkAsync({ id: "o-1" }), export: () => OkAsync({ csv: "" }) }),
 });
 
@@ -238,8 +236,14 @@ type _NoSchemeNeeds = Expect<
 // A FLAT contract slices: its top-level keys are procedures rather than
 // fragments, so a piece owns one procedure and the coverage gate still fires.
 const flat = { place: oc, find: oc };
-const flatPlace = publicApi.OrpcController(flat, "place")({ sync: () => () => OkAsync("placed") });
-const flatFind = publicApi.OrpcController(flat, "find")({ sync: () => () => OkAsync("found") });
+const flatPlace = publicApi.OrpcController(
+  flat,
+  "place",
+)({ inject: {}, sync: () => () => OkAsync("placed") });
+const flatFind = publicApi.OrpcController(
+  flat,
+  "find",
+)({ inject: {}, sync: () => () => OkAsync("found") });
 void publicApi.OrpcRouter(flat)([flatPlace, flatFind]);
 // @ts-expect-error — `find` is uncovered, exactly as for a contract of fragments
 void publicApi.OrpcRouter(flat)([flatPlace]);
@@ -251,20 +255,20 @@ const deep = { v1: { orders: { place: oc, find: oc }, customers: { find: oc } },
 const v1Orders = publicApi.OrpcController(
   deep,
   "v1.orders",
-)({
-  sync: () => ({ place: () => OkAsync("placed"), find: () => OkAsync("found") }),
-});
+)({ inject: {}, sync: () => ({ place: () => OkAsync("placed"), find: () => OkAsync("found") }) });
 const v1Customers = publicApi.OrpcController(
   deep,
   "v1.customers",
-)({
-  sync: () => ({ find: () => OkAsync("found") }),
-});
-const health = publicApi.OrpcController(deep, "health")({ sync: () => () => OkAsync("ok") });
+)({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
+const health = publicApi.OrpcController(
+  deep,
+  "health",
+)({ inject: {}, sync: () => () => OkAsync("ok") });
 const v1 = publicApi.OrpcController(
   deep,
   "v1",
 )({
+  inject: {},
   sync: () => ({
     orders: { place: () => OkAsync("placed"), find: () => OkAsync("found") },
     customers: { find: () => OkAsync("found") },
@@ -303,6 +307,7 @@ void api.OrpcController(
   markedDeep,
   "v1.orders",
 )({
+  inject: {},
   sync: () => ({
     place: (opts) => OkAsync(opts.context.principal.userId),
     find: () => OkAsync("found"),
@@ -325,13 +330,16 @@ void publicApi.OrpcController(dotted, "a.b");
 // `key` parameter so the sentence is in the diagnostic.
 type _MintSaysWhy = Expect<
   Parameters<typeof publicApi.OrpcController<typeof dotted, "a.b">>[1] extends {
-    readonly "UNSLICEABLE CONTRACT KEY — this path names a key containing a literal dot, which a piece path cannot encode; serve this contract with the (deps, arm) form instead": "a.b";
+    readonly "UNSLICEABLE CONTRACT KEY — this path names a key containing a literal dot, which a piece path cannot encode; serve this contract with the { inject, sync } form instead": "a.b";
   }
     ? true
     : false
 >;
 
-const plainPiece = publicApi.OrpcController(dotted, "plain")({ sync: () => () => OkAsync("ok") });
+const plainPiece = publicApi.OrpcController(
+  dotted,
+  "plain",
+)({ inject: {}, sync: () => () => OkAsync("ok") });
 
 // @ts-expect-error — the contract carries an unsliceable key
 void publicApi.OrpcRouter(dotted)([plainPiece]);
@@ -350,9 +358,10 @@ type _Unsliceable = Expect<
     : false
 >;
 
-// The escape hatch the marker points at: the `(deps, arm)` form splits nothing,
+// The escape hatch the marker points at: the `{ inject, sync }` form splits nothing,
 // so it serves such a contract correctly and stays open.
 void publicApi.OrpcRouter(dotted)({
+  inject: {},
   sync: () => ({ "a.b": () => OkAsync("ok"), plain: () => OkAsync("ok") }),
 });
 
@@ -370,9 +379,9 @@ void publicApi.OrpcController(dottedDeep, "v1.a.b");
 const v1Dotted = publicApi.OrpcController(
   dottedDeep,
   "v1",
-)({ sync: () => ({ "a.b": () => OkAsync("ok") }) });
+)({ inject: {}, sync: () => ({ "a.b": () => OkAsync("ok") }) });
 const healthDotted = publicApi.OrpcController(
   dottedDeep,
   "health",
-)({ sync: () => () => OkAsync("ok") });
+)({ inject: {}, sync: () => () => OkAsync("ok") });
 void publicApi.OrpcRouter(dottedDeep)([v1Dotted, healthDotted]);

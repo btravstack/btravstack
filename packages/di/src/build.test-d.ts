@@ -27,8 +27,11 @@ describe("Module.build", () => {
   test("a complete module's build type carries the real exports and a never error", () => {
     const mod = Module("Complete")({
       provides: [
-        Provider(Cfg)({ value: { url: "u" } }),
-        Provider(Repo)({ config: Cfg }, { sync: ({ config }) => ({ find: () => config.url }) }),
+        Provider(Cfg)({ inject: {}, value: { url: "u" } }),
+        Provider(Repo)({
+          inject: { config: Cfg },
+          sync: ({ config }) => ({ find: () => config.url }),
+        }),
       ],
       exports: [Repo],
     });
@@ -49,16 +52,14 @@ describe("Module.build", () => {
   test("a module with a fallible provider carries that real error, not a widened one", () => {
     const mod = Module("Fallible")({
       provides: [
-        Provider(Env)({ value: {} }),
-        Provider(Cfg)(
-          { env: Env },
-          {
-            make: ({ env }) =>
-              env["URL"] === undefined
-                ? Err(new CfgError({ reason: "unset" }))
-                : Ok({ url: env["URL"] }),
-          },
-        ),
+        Provider(Env)({ inject: {}, value: {} }),
+        Provider(Cfg)({
+          inject: { env: Env },
+          make: ({ env }) =>
+            env["URL"] === undefined
+              ? Err(new CfgError({ reason: "unset" }))
+              : Ok({ url: env["URL"] }),
+        }),
       ],
       exports: [Cfg],
     });
@@ -82,7 +83,10 @@ describe("Module.build", () => {
       // composition root that supplies `Cfg`, which is what this test is about.
       needs: [Cfg],
       provides: [
-        Provider(Repo)({ config: Cfg }, { sync: ({ config }) => ({ find: () => config.url }) }),
+        Provider(Repo)({
+          inject: { config: Cfg },
+          sync: ({ config }) => ({ find: () => config.url }),
+        }),
       ],
       exports: [Repo],
     });
@@ -105,7 +109,7 @@ describe("Module.build", () => {
       // a registered `onStop` under `build` would silently never run —
       // `ScopeOf` (`provider.ts`) must put `Scope` in `Needs` exactly as it
       // already does for `acquire`/`release`.
-      provides: [Provider(Cfg)({ value: { url: "u" }, onStop: () => {} })],
+      provides: [Provider(Cfg)({ inject: {}, value: { url: "u" }, onStop: () => {} })],
       exports: [Cfg],
     });
     // @ts-expect-error unsatisfied dependency: Scope — same gate `acquire`

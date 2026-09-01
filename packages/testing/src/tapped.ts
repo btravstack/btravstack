@@ -47,7 +47,8 @@ export const tapped = <X, E, N, const P extends readonly AnyPort[]>(
   // `ports` stays an array — it is what `services()` answers positionally.
   // Index keys are the translation into the record `Provider` takes, and what
   // put the services back in `ports` order.
-  const tap = Provider(Tap)(Object.fromEntries(ports.map((port, index) => [index, port])), {
+  const tap = Provider(Tap)({
+    inject: Object.fromEntries(ports.map((port, index) => [index, port])),
     sync: (built: Record<number, unknown>) => {
       services = ports.map((_, index) => built[index]) as unknown as ServicesOf<P>;
       return {};

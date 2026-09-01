@@ -49,14 +49,14 @@ comes in.
 
 ## The ledger: `Needs`
 
-Every provider declares what it reads (`deps`) and, by choosing a construction
+Every provider declares what it reads (`inject`) and, by choosing a construction
 arm, whether it owes teardown (`Scope`). Every module aggregates those into a
 `Needs` channel and subtracts what is available inside it — its own provides,
 its imports' exports. What survives the subtraction propagates upward, module
 by module, exactly like an unpaid balance:
 
-```
-Provider(OrderRepository)({ pool: Pool }, ...)        Needs: Pool
+```text
+Provider(OrderRepository)({ inject: { pool: Pool }, ... }) Needs: Pool
 Persistence (provides Pool, exports OrderRepository)  Needs: Scope   ← Pool netted out; Pool's acquire owes Scope
 App (imports Persistence)                             Needs: Scope   ← still unpaid
 ```
@@ -178,7 +178,7 @@ carry it:
 
 ```ts
 const Application = Module("Application")({
-  provides: [Provider(Greeter)({ value: { hello: () => "hi" } })],
+  provides: [Provider(Greeter)({ inject: {}, value: { hello: () => "hi" } })],
   exports: [Greeter],
 });
 

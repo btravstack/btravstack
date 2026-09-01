@@ -10,13 +10,16 @@ class HealthChecks extends Port.many("MyHealthChecks")<{
 test("contributions accumulate across module boundaries", async () => {
   const dbModule = Module("Db")({
     provides: [
-      Provider(Db)({ value: { name: "pg" } }),
-      Provider.member(HealthChecks)({ db: Db }, { sync: ({ db }) => ({ check: () => db.name }) }),
+      Provider(Db)({ inject: {}, value: { name: "pg" } }),
+      Provider.member(HealthChecks)({
+        inject: { db: Db },
+        sync: ({ db }) => ({ check: () => db.name }),
+      }),
     ],
     exports: [Db, HealthChecks],
   });
   const cacheModule = Module("Cache")({
-    provides: [Provider.member(HealthChecks)({ value: { check: () => "redis" } })],
+    provides: [Provider.member(HealthChecks)({ inject: {}, value: { check: () => "redis" } })],
     exports: [HealthChecks],
   });
   const app = Module("App")({
@@ -37,8 +40,8 @@ test("contributions accumulate across module boundaries", async () => {
 test("several members of one set port are not a collision", async () => {
   const mod = Module("Many")({
     provides: [
-      Provider.member(HealthChecks)({ value: { check: () => "a" } }),
-      Provider.member(HealthChecks)({ value: { check: () => "b" } }),
+      Provider.member(HealthChecks)({ inject: {}, value: { check: () => "a" } }),
+      Provider.member(HealthChecks)({ inject: {}, value: { check: () => "b" } }),
     ],
     exports: [HealthChecks],
   });
@@ -57,9 +60,9 @@ class ManyCheck extends Port.many("MyManyCheck")<{ readonly check: () => string 
 test("a set port and an ordinary port of the same service shape do not interfere", async () => {
   const mod = Module("Mixed")({
     provides: [
-      Provider(SingleCheck)({ value: { check: () => "single" } }),
-      Provider.member(ManyCheck)({ value: { check: () => "many-a" } }),
-      Provider.member(ManyCheck)({ value: { check: () => "many-b" } }),
+      Provider(SingleCheck)({ inject: {}, value: { check: () => "single" } }),
+      Provider.member(ManyCheck)({ inject: {}, value: { check: () => "many-a" } }),
+      Provider.member(ManyCheck)({ inject: {}, value: { check: () => "many-b" } }),
     ],
     exports: [SingleCheck, ManyCheck],
   });
@@ -77,8 +80,8 @@ test("a set port and an ordinary port of the same service shape do not interfere
 test("two providers for an ordinary port are still a defect after the many-port exemption", async () => {
   const dup = Module("StillDup")({
     provides: [
-      Provider(SingleCheck)({ value: { check: () => "a" } }),
-      Provider(SingleCheck)({ value: { check: () => "b" } }),
+      Provider(SingleCheck)({ inject: {}, value: { check: () => "a" } }),
+      Provider(SingleCheck)({ inject: {}, value: { check: () => "b" } }),
     ],
     exports: [SingleCheck],
   });
@@ -105,8 +108,8 @@ test("a portId used as both a set port and an ordinary port is a clear wiring de
 
   const mod = Module("MixedId")({
     provides: [
-      Provider(MixedOrdinary)({ value: { check: () => "ordinary" } }),
-      Provider.member(MixedMany)({ value: { check: () => "member" } }),
+      Provider(MixedOrdinary)({ inject: {}, value: { check: () => "ordinary" } }),
+      Provider.member(MixedMany)({ inject: {}, value: { check: () => "member" } }),
     ],
     exports: [MixedOrdinary],
   });

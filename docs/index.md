@@ -92,32 +92,30 @@ domain failure becomes a status code here, and nowhere else.
 ```ts
 import { P } from "unthrown";
 
-export const ordersRouter = api.OrpcRouter(ordersContract)(
-  { place: PlaceOrder },
-  {
-    sync: ({ place }) => ({
-      place: ({ errors, context }, input) =>
-        place
-          .execute(context.principal.tenantId, input.id, input.quantity)
-          .map((order) => ({ id: order.id, quantity: order.quantity }))
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (e) =>
-                errors.INVALID_QUANTITY({
-                  message: e.message,
-                  data: { id: e.id },
-                }),
-              )
-              .with(P.tag("InvalidOrderId"), (e) =>
-                errors.BAD_REQUEST({ message: e.message, data: { id: e.id } }),
-              )
-              .with(P.tag("DuplicateOrder"), (e) =>
-                errors.CONFLICT({ message: e.message, data: { id: e.id } }),
-              ),
-          ),
-    }),
-  },
-);
+export const ordersRouter = api.OrpcRouter(ordersContract)({
+  inject: { place: PlaceOrder },
+  sync: ({ place }) => ({
+    place: ({ errors, context }, input) =>
+      place
+        .execute(context.principal.tenantId, input.id, input.quantity)
+        .map((order) => ({ id: order.id, quantity: order.quantity }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (e) =>
+              errors.INVALID_QUANTITY({
+                message: e.message,
+                data: { id: e.id },
+              }),
+            )
+            .with(P.tag("InvalidOrderId"), (e) =>
+              errors.BAD_REQUEST({ message: e.message, data: { id: e.id } }),
+            )
+            .with(P.tag("DuplicateOrder"), (e) =>
+              errors.CONFLICT({ message: e.message, data: { id: e.id } }),
+            ),
+        ),
+  }),
+});
 ```
 
 Add a fourth error to the contract and this stops compiling until you handle

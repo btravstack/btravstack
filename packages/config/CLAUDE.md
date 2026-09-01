@@ -12,7 +12,7 @@ the code and `README.md` in the same commit — the package ships no
   Declared **once**, here; the kernel imports it to provide it, so di's
   duplicate-id warning never fires. Whoever boots a graph provides it — the
   kernel does for every `start`; a bare `Module.scoped` needs
-  `Provider(Env)({ value })`, which is what this package's own fixtures do.
+  `Provider(Env)({ inject: {}, value })`, which is what this package's own fixtures do.
 - **`Config.string` / `integer` / `boolean` / `port`** — `ConfigField<T>`
   factories over one variable: `{ variable, parse(raw: string | undefined) →
 Result<T, ConfigFieldInvalid> }`. All go through one `present()` helper that
@@ -37,7 +37,7 @@ Ok(value)`). What a starter's options do to its own fields — explicit beats
   whose `parse` defects (a bug in the field) is folded into an issue against
   its variable.
 - **`Config.provider(port)(schema)` / `Config.provider(name)(schema)`** — two
-  overloads over one body: `Provider(port)({ env: Env }, { make })`, `make` awaiting
+  overloads over one body: `Provider(port)({ inject: { env: Env }, make })`, `make` awaiting
   `schema["~standard"].validate(env)` inside `fromSafePromise` over an `async`
   wrapper (a third-party schema may be async and may throw — the throw
   becomes the defect it is) and answering `Ok(value)` or

@@ -180,6 +180,7 @@ const lines: Line[] = [];
 // `LOG_LEVEL` silences the real root, and this one exists to be read.
 const recordingApi = overridden(OrderApi, [
   Provider(Logger)({
+    inject: {},
     value: createLogger((line) => lines.push(line), "trace"),
   }),
 ]);
@@ -309,7 +310,10 @@ class Greeter extends Port("Greeter")<{
 
 const AppModule = Module("App")({
   provides: [
-    Provider(Greeter)({ value: { greet: (name: string) => `hello, ${name}` } }),
+    Provider(Greeter)({
+      inject: {},
+      value: { greet: (name: string) => `hello, ${name}` },
+    }),
   ],
   exports: [Greeter],
 });
@@ -405,7 +409,10 @@ const recordingApi = () => {
   const recorder = recorderOf();
   return {
     api: overridden(OrderApi, [
-      Provider(Logger)({ value: createLogger(recorder.sink, "trace") }),
+      Provider(Logger)({
+        inject: {},
+        value: createLogger(recorder.sink, "trace"),
+      }),
     ]),
     lines: recorder.lines,
   };

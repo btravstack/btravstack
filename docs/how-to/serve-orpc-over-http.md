@@ -38,7 +38,7 @@ the real two-slice deployment this recipe scales into, see
    `authenticated(...requirements)` where a caller must be known.
 2. Declare this deployment's security schemes once with
    `defineHttp({ authenticators })`.
-3. Implement the contract with `api.OrpcRouter(contract)(deps, { sync })`: a
+3. Implement the contract with `api.OrpcRouter(contract)({ inject: deps, sync })`: a
    record shaped like the contract, each leaf a `Result`-returning function.
 4. Compose with
    `HttpModule(name)({ router, imports, provides, exports, needs })`.
@@ -118,52 +118,50 @@ const view = (order: Order): OrderView => ({
   quantity: order.quantity,
 });
 
-export const ordersRouter = api.OrpcRouter(ordersContract)(
-  { place: PlaceOrder, find: FindOrder },
-  {
-    sync: ({ place, find }) => ({
-      place: ({ errors, context }, input) =>
-        place
-          .execute(context.principal.tenantId, input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              // A malformed id is the caller's mistake, so 400 — not the
-              // 409 a duplicate gets.
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          ),
-      find: ({ errors, context }, input) =>
-        find
-          .execute(context.principal.tenantId, input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
+export const ordersRouter = api.OrpcRouter(ordersContract)({
+  inject: { place: PlaceOrder, find: FindOrder },
+  sync: ({ place, find }) => ({
+    place: ({ errors, context }, input) =>
+      place
+        .execute(context.principal.tenantId, input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            // A malformed id is the caller's mistake, so 400 — not the
+            // 409 a duplicate gets.
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
+        ),
+    find: ({ errors, context }, input) =>
+      find
+        .execute(context.principal.tenantId, input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({
+              message: error.message,
+              data: { id: error.id },
+            }),
           ),
-    }),
-  },
-);
+        ),
+  }),
+});
 ```
 
 Each leaf is the `.result()` handler `@unthrown/orpc` gives an implementer:

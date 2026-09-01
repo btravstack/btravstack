@@ -42,7 +42,7 @@ export const memoryStorageBackend = (): StorageService => {
 
 /** The adapter as a provider, which is the shape `@btravstack/testing`'s `overridden` takes. */
 export const memoryStorageProvider = () =>
-  Provider(StorageBackend)({}, { sync: () => memoryStorageBackend() });
+  Provider(StorageBackend)({ inject: {}, sync: () => memoryStorageBackend() });
 
 /** The adapter as a module, which is the shape `storage({ adapter })` takes. */
 export const memoryStorage = (): Module<StorageBackend, never, never> =>

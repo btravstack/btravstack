@@ -57,16 +57,14 @@ class GetOrderInteractor {
 
 const ConfigModule = Module("Config")({
   provides: [
-    Provider(Env)({ value: { XDATABASE_URL: "postgres://localhost/app" } }),
-    Provider(AppConfig)(
-      { env: Env },
-      {
-        make: ({ env }) =>
-          env["XDATABASE_URL"] === undefined
-            ? Err(new ConfigError({ reason: "XDATABASE_URL is unset" }))
-            : Ok({ dbUrl: env["XDATABASE_URL"] }),
-      },
-    ),
+    Provider(Env)({ inject: {}, value: { XDATABASE_URL: "postgres://localhost/app" } }),
+    Provider(AppConfig)({
+      inject: { env: Env },
+      make: ({ env }) =>
+        env["XDATABASE_URL"] === undefined
+          ? Err(new ConfigError({ reason: "XDATABASE_URL is unset" }))
+          : Ok({ dbUrl: env["XDATABASE_URL"] }),
+    }),
   ],
   exports: [AppConfig],
 });
@@ -83,24 +81,20 @@ const makePersistenceModule = (released: string[]) =>
   Module("Persistence")({
     imports: [ConfigModule],
     provides: [
-      Provider(Database)(
-        { config: AppConfig },
-        {
-          acquire: () => Ok({ rows: [{ id: "o-1", total: 10 }] }),
-          release: () => void released.push("database"),
-        },
-      ),
-      Provider(OrderRepository)(
-        { db: Database },
-        {
-          sync: ({ db }) => ({
-            findById: (id) => {
-              const row = db.rows.find((r) => r.id === id);
-              return fromNullable(row, () => new OrderNotFound({ id })).toAsync();
-            },
-          }),
-        },
-      ),
+      Provider(Database)({
+        inject: { config: AppConfig },
+        acquire: () => Ok({ rows: [{ id: "o-1", total: 10 }] }),
+        release: () => void released.push("database"),
+      }),
+      Provider(OrderRepository)({
+        inject: { db: Database },
+        sync: ({ db }) => ({
+          findById: (id) => {
+            const row = db.rows.find((r) => r.id === id);
+            return fromNullable(row, () => new OrderNotFound({ id })).toAsync();
+          },
+        }),
+      }),
     ],
     exports: [OrderRepository],
   });
@@ -112,6 +106,7 @@ const makePersistenceModule = (released: string[]) =>
 const InMemoryPersistenceModule = Module("InMemoryPersistence")({
   provides: [
     Provider(OrderRepository)({
+      inject: {},
       value: { findById: (id) => OkAsync({ id, total: 99 }) },
     }),
   ],
@@ -132,7 +127,7 @@ const makeAppModule = <E, N extends Scope>(persistence: Module<OrderRepository, 
   type Imports = readonly [Module<OrderRepository, E, N>];
   type Provides = readonly [ReturnType<typeof getOrderProvider>];
   const getOrderProvider = () =>
-    Provider(GetOrder)({ orders: OrderRepository }, { class: GetOrderInteractor });
+    Provider(GetOrder)({ inject: { orders: OrderRepository }, class: GetOrderInteractor });
   // The discharged-signature cast `runMain` makes around `start`'s gate, for
   // the same reason: `NeedsGate` cannot be computed while `I` is still a type
   // parameter, so it defers and no object literal satisfies it. The gate is

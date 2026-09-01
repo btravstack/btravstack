@@ -141,21 +141,19 @@ export type OrpcRouterPort = PortInstance<"OrpcRouter", Router<Record<never, nev
  */
 export const orpc = (options: OrpcOptions = {}) => {
   const prefix = options.prefix ?? "/rpc";
-  return Provider.member(HttpHandler)(
-    { router: OrpcRouterPort, config: HttpConfig },
-    {
-      sync: ({ router, config }) => {
-        const rpc = new RPCHandler(router, { plugins: [...pluginsOf(options, config)] });
-        return {
-          prefix,
-          // The request rides oRPC's initial context so `principalMiddleware`
-          // can read its headers; nothing else in this package reads it.
-          handle: (request, response) =>
-            rpc.handle(request, response, { prefix, context: { request } }),
-        };
-      },
+  return Provider.member(HttpHandler)({
+    inject: { router: OrpcRouterPort, config: HttpConfig },
+    sync: ({ router, config }) => {
+      const rpc = new RPCHandler(router, { plugins: [...pluginsOf(options, config)] });
+      return {
+        prefix,
+        // The request rides oRPC's initial context so `principalMiddleware`
+        // can read its headers; nothing else in this package reads it.
+        handle: (request, response) =>
+          rpc.handle(request, response, { prefix, context: { request } }),
+      };
     },
-  );
+  });
 };
 
 /** What every `OrpcRouter` arm returns; only the needs channel `N` differs. */
@@ -177,7 +175,8 @@ type Built<Auth, N> = Provider<
  * handlers are typed by the scheme registry that call inferred.
  *
  * ```ts
- * const orderRouter = api.OrpcRouter(orderContract)({ place: PlaceOrder }, {
+ * const orderRouter = api.OrpcRouter(orderContract)({
+ *   inject: { place: PlaceOrder },
  *   sync: ({ place }) => ({
  *     orders: {
  *       place: ({ errors }, input) => place.execute(input.id, input.quantity).map(view),
@@ -191,14 +190,14 @@ type Built<Auth, N> = Provider<
  * key, a missing procedure or a wrong output is a compile error here.
  *
  * The second call also accepts an **array of pieces** in place of
- * `(deps, { sync })` — each an `OrpcController(contract, path)` over one node
+ * `{ inject, sync }` — each an `OrpcController(contract, path)` over one node
  * of the contract tree, at any depth, the paths partitioning the contract's
  * procedures: an uncovered leaf is refused against the
  * `"UNCOVERED CONTROLLERS — …"` marker, a piece nested inside another piece's
  * fragment against `"OVERLAPPING CONTROLLERS — …"`, and a contract whose top
  * level carries a dotted key — which no piece path can encode — against
- * `"UNSLICEABLE CONTRACT KEY — …"`, which points at this form's `(deps, arm)`
- * arm instead.
+ * `"UNSLICEABLE CONTRACT KEY — …"`, which points at this form's
+ * `{ inject, sync }` arm instead.
  */
 export const routerFor =
   <Schemes, Auth extends AnyProvider = never, Vocab = Record<never, never>>(
@@ -212,17 +211,12 @@ export const routerFor =
       readonly router: (record: Record<string, unknown>) => Router<Record<never, never>>;
     };
 
-    function build<const D extends Readonly<Record<string, AnyPort>>>(
-      deps: D,
-      options: {
-        readonly sync: (services: {
-          readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
-        }) => Implementation<C, Schemes>;
-      },
-    ): Built<Auth, InstanceType<D[keyof D]> | SchemePortsOf<AllRequirementsOf<C>>>;
-    function build(options: {
-      readonly sync: () => Implementation<C, Schemes>;
-    }): Built<Auth, SchemePortsOf<AllRequirementsOf<C>>>;
+    function build<const D extends Readonly<Record<string, AnyPort>>>(options: {
+      readonly inject: D;
+      readonly sync: (services: {
+        readonly [K in keyof D]: ServiceOf<InstanceType<D[K]>>;
+      }) => Implementation<C, Schemes>;
+    }): Built<Auth, InstanceType<D[keyof D]> | SchemePortsOf<AllRequirementsOf<C>>>;
     // Declared LAST on purpose: TypeScript reports the last overload's
     // failure, so a bad array is refused against the markers below rather than
     // degrading to di's `Qualification`, which names nothing (measured in
@@ -243,11 +237,11 @@ export const routerFor =
               Uncovered<C, KeyOfPiece<T[number]>>,
             ]
         : readonly [
-            "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the (deps, arm) form instead",
+            "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the { inject, sync } form instead",
             Unsliceable<C>,
           ],
     ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>>;
-    function build(depsOrPieces: unknown, options?: unknown): unknown {
+    function build(depsOrPieces: unknown): unknown {
       const schemes = schemesOf(contract);
       const own = (services: Record<string, unknown>): Record<string, unknown> =>
         Object.fromEntries(
@@ -278,10 +272,9 @@ export const routerFor =
           ),
         );
 
-      // One array argument is never a valid `Provider(port)` call — its arms
-      // are `(deps, options)` and `(options)`, both records — so `Array.isArray`
-      // alone identifies the composing arm.
-      if (options === undefined && Array.isArray(depsOrPieces)) {
+      // An array is never a valid `Provider(port)` call — its one argument is
+      // a record — so `Array.isArray` alone identifies the composing arm.
+      if (Array.isArray(depsOrPieces)) {
         const pieces = depsOrPieces as readonly { readonly port: AnyPort }[];
         // Each piece is declared under the dotted path its port id carries;
         // `nest` folds those paths back into the contract's own tree before
@@ -291,27 +284,22 @@ export const routerFor =
         );
         const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
           routerFrom(nest(own(services)), services);
-        return Object.assign(Provider(OrpcRouterPort)(withSchemes(deps), { sync } as never), {
-          authenticators,
-        });
+        return Object.assign(
+          Provider(OrpcRouterPort)({ inject: withSchemes(deps), sync } as never),
+          { authenticators },
+        );
       }
 
-      // `(deps, arm)` and `(arm)` are told apart by plain arity, as everywhere
-      // else in the family.
-      const supplied = (options ?? depsOrPieces) as {
+      const supplied = depsOrPieces as {
+        readonly inject: Record<string, AnyPort>;
         readonly sync: (s: Record<string, unknown>) => unknown;
       };
-      const deps = options === undefined ? {} : (depsOrPieces as Record<string, AnyPort>);
-      const sync = (services: Record<string, unknown>): Router<Record<never, never>> => {
-        const call = supplied.sync as (...args: readonly unknown[]) => unknown;
-        // The arm-only form's `sync` is typed `() => …`, so it is handed
-        // nothing — the arity guarantee `Provider` makes a no-deps factory.
-        const built = options === undefined ? call() : call(own(services));
-        return routerFrom(built as Record<string, unknown>, services);
-      };
-      return Object.assign(Provider(OrpcRouterPort)(withSchemes(deps), { sync } as never), {
-        authenticators,
-      });
+      const sync = (services: Record<string, unknown>): Router<Record<never, never>> =>
+        routerFrom(supplied.sync(own(services)) as Record<string, unknown>, services);
+      return Object.assign(
+        Provider(OrpcRouterPort)({ inject: withSchemes(supplied.inject), sync } as never),
+        { authenticators },
+      );
     }
 
     return build;
@@ -324,7 +312,7 @@ const AUTHENTICATOR = "@btravstack/http-server/authenticator:";
 // A piece's dotted path becomes the nesting the contract already has, so
 // `routerOf` walks the same tree it always did — marks, inheritance and the
 // stray-key drop included. Written here rather than pushed into the walk
-// because the walk is shared with the `(deps, arm)` form, which never nests.
+// because the walk is shared with the `{ inject, sync }` form, which never nests.
 // `path.split(".")` cannot tell a path SEPARATOR from a literal dot inside one
 // contract key, so nothing reaching here may carry one: `ControllerKeyOf` drops
 // dotted keys at every level, and `Unsliceable` refuses a contract whose TOP

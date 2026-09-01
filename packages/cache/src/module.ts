@@ -52,28 +52,26 @@ export const cache = <E, N, Instrumented extends boolean = true>({
   E,
   Instrumented extends true ? N | Logger | Meter | Tracer : N
 > => {
-  const healthCheck = Provider.member(HealthChecks)(
-    { backend: CacheBackend },
-    {
-      sync: ({ backend }) => ({
-        name: "cache",
-        // A miss is the cache WORKING — the probe key is never written,
-        // so `Ok(undefined)` is the healthy answer and the only
-        // unhealthy one is the adapter saying it could not reach the
-        // server at all.
-        check: () =>
-          backend
-            .get("btravstack:health")
-            .map(() => undefined)
-            .mapErrCases((matcher) =>
-              matcher.with(
-                P.tag("CacheUnavailable"),
-                ({ key }) => new HealthCheckFailed({ reason: `cache unavailable (${key})` }),
-              ),
+  const healthCheck = Provider.member(HealthChecks)({
+    inject: { backend: CacheBackend },
+    sync: ({ backend }) => ({
+      name: "cache",
+      // A miss is the cache WORKING — the probe key is never written,
+      // so `Ok(undefined)` is the healthy answer and the only
+      // unhealthy one is the adapter saying it could not reach the
+      // server at all.
+      check: () =>
+        backend
+          .get("btravstack:health")
+          .map(() => undefined)
+          .mapErrCases((matcher) =>
+            matcher.with(
+              P.tag("CacheUnavailable"),
+              ({ key }) => new HealthCheckFailed({ reason: `cache unavailable (${key})` }),
             ),
-      }),
-    },
-  );
+          ),
+    }),
+  });
 
   // The two arms build different graphs from one signature, so the cast is how
   // a value-level branch reports the type-level one above.
@@ -82,13 +80,11 @@ export const cache = <E, N, Instrumented extends boolean = true>({
         needs: [Logger, Meter, Tracer],
         imports: [adapter],
         provides: [
-          Provider(Cache)(
-            { backend: CacheBackend, logger: Logger, tracer: Tracer, meter: Meter },
-            {
-              sync: ({ backend, logger, tracer, meter }) =>
-                instrument(backend, logger, tracer, meter),
-            },
-          ),
+          Provider(Cache)({
+            inject: { backend: CacheBackend, logger: Logger, tracer: Tracer, meter: Meter },
+            sync: ({ backend, logger, tracer, meter }) =>
+              instrument(backend, logger, tracer, meter),
+          }),
           healthCheck,
         ] as const,
         exports: [Cache, HealthChecks],
@@ -96,7 +92,7 @@ export const cache = <E, N, Instrumented extends boolean = true>({
     : Module("Cache")({
         imports: [adapter],
         provides: [
-          Provider(Cache)({ backend: CacheBackend }, { sync: ({ backend }) => backend }),
+          Provider(Cache)({ inject: { backend: CacheBackend }, sync: ({ backend }) => backend }),
           healthCheck,
         ],
         exports: [Cache, HealthChecks],

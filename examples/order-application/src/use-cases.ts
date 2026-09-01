@@ -72,23 +72,17 @@ class FindCustomerInteractor {
   }
 }
 
-export const placeOrderProvider = Provider(PlaceOrder)(
-  { repository: OrderRepository, logger: Logger },
-  {
-    class: PlaceOrderInteractor,
-  },
-);
+export const placeOrderProvider = Provider(PlaceOrder)({
+  inject: { repository: OrderRepository, logger: Logger },
+  class: PlaceOrderInteractor,
+});
 
-export const findOrderProvider = Provider(FindOrder)(
-  { repository: OrderRepository },
-  {
-    class: FindOrderInteractor,
-  },
-);
+export const findOrderProvider = Provider(FindOrder)({
+  inject: { repository: OrderRepository },
+  class: FindOrderInteractor,
+});
 
-export const findCustomerProvider = Provider(FindCustomer)(
-  { repository: CustomerRepository },
-  {
-    class: FindCustomerInteractor,
-  },
-);
+export const findCustomerProvider = Provider(FindCustomer)({
+  inject: { repository: CustomerRepository },
+  class: FindCustomerInteractor,
+});

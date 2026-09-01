@@ -40,8 +40,9 @@ const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity
  * customer.
  */
 const persistenceOf = (repository: ServiceOf<OrderRepository>) => [
-  Provider(OrderRepository)({ value: repository }),
+  Provider(OrderRepository)({ inject: {}, value: repository }),
   Provider(CustomerRepository)({
+    inject: {},
     value: {
       find: (_tenantId: TenantId, id: string) =>
         id === "0199a1e0-0000-7000-8000-0000000000c1"
@@ -69,10 +70,10 @@ const recorderOf = () => {
 const apiWith = (repository: ServiceOf<OrderRepository>, sink: Sink = () => {}) =>
   overridden(OrderApi, [
     ...persistenceOf(repository),
-    Provider(Logger)(
-      { config: LoggerConfig },
-      { sync: ({ config }) => createLogger(sink, config.level) },
-    ),
+    Provider(Logger)({
+      inject: { config: LoggerConfig },
+      sync: ({ config }) => createLogger(sink, config.level),
+    }),
   ]);
 
 /**
@@ -85,7 +86,9 @@ const recordingApi = () => {
   return {
     // `"trace"` pinned rather than bound: `boot`'s `LOG_LEVEL` silences the
     // real root, and this root exists to be read.
-    api: overridden(OrderApi, [Provider(Logger)({ value: createLogger(recorder.sink, "trace") })]),
+    api: overridden(OrderApi, [
+      Provider(Logger)({ inject: {}, value: createLogger(recorder.sink, "trace") }),
+    ]),
     lines: recorder.lines,
   };
 };
@@ -100,6 +103,7 @@ const countingCustomers = () => {
   return {
     api: overridden(OrderApi, [
       Provider(CustomerRepository)({
+        inject: {},
         value: {
           find: (_tenantId: TenantId, id: string) => {
             reads += 1;

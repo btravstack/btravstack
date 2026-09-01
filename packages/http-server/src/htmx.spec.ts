@@ -331,8 +331,8 @@ describe("htmx", () => {
   it("refuses two routes on one method and path as a duplicate provider", async () => {
     // GIVEN two GET routes minted on the same path
     const api = defineHttp();
-    const first = api.HtmxGet("/dup")({ sync: () => () => OkAsync(html`a`) });
-    const second = api.HtmxGet("/dup")({ sync: () => () => OkAsync(html`b`) });
+    const first = api.HtmxGet("/dup")({ inject: {}, sync: () => () => OkAsync(html`a`) });
+    const second = api.HtmxGet("/dup")({ inject: {}, sync: () => () => OkAsync(html`b`) });
     const composed = api.HtmxFragments([first, second]);
 
     // WHEN a graph composes both — each piece registered alongside the

@@ -46,12 +46,10 @@ export const observability = (
     needs: [Env],
     provides: [
       Config.provider(LoggerConfig)(loggerSchema(options.level)),
-      Provider(Logger)(
-        { config: LoggerConfig },
-        {
-          sync: ({ config }) => createLogger(options.sink ?? jsonSink(), config.level),
-        },
-      ),
+      Provider(Logger)({
+        inject: { config: LoggerConfig },
+        sync: ({ config }) => createLogger(options.sink ?? jsonSink(), config.level),
+      }),
     ],
     exports: [Logger, LoggerConfig],
   });

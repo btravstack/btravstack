@@ -174,15 +174,15 @@ type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C
 };
 
 /**
- * The activities as a provider, from the contract. Three call forms, one port.
+ * The activities as a provider, from the contract. Two call forms, one port.
  *
  * ```ts
- * TemporalActivities(orderContract)({ place: PlaceOrder }, { sync: ({ place }) => ({ fulfillOrder: { … } }) })
+ * TemporalActivities(orderContract)({ inject: { place: PlaceOrder }, sync: ({ place }) => ({ fulfillOrder: { … } }) })
  * TemporalActivities(orderContract)([fulfillOrder, chargeOrder])
  * ```
  *
- * The first two are di's own `Provider(port)` on the starter's activities port
- * typed for the contract. The third takes the pieces
+ * The first is di's own `Provider(port)` on the starter's activities port
+ * typed for the contract. The second takes the pieces
  * `TemporalWorkflowActivities(contract, key)` builds: they are the provider's
  * deps, keyed by the contract key each piece's port id carries, so the services
  * record IS the activities record. Every key must be covered, and two slices
@@ -194,19 +194,19 @@ export const TemporalActivities = <C extends ContractDefinition>(
   void contract;
   const build = Provider(TemporalActivitiesPort as ActivitiesPortOf<C>);
   const compose = (pieces: readonly { readonly port: { readonly portId: string } }[]): unknown =>
-    build(
-      Object.fromEntries(
+    build({
+      inject: Object.fromEntries(
         pieces.map((piece) => [
           piece.port.portId.slice(WORKFLOW_ACTIVITIES_PREFIX.length),
           piece.port,
         ]),
-      ) as never,
-      { sync: (services: unknown) => services } as never,
-    );
-  // One array argument is never a valid `Provider(port)` call — both its arms
-  // take records — so `Array.isArray` alone identifies the composing arm.
-  return ((first: unknown, second?: unknown) =>
-    second === undefined && Array.isArray(first)
+      ),
+      sync: (services: unknown) => services,
+    } as never);
+  // An array is never a valid `Provider(port)` call — its one argument is a
+  // record — so `Array.isArray` alone identifies the composing arm.
+  return ((first: unknown) =>
+    Array.isArray(first)
       ? compose(first as readonly { readonly port: { readonly portId: string } }[])
-      : (build as (a: never, b?: never) => unknown)(first as never, second as never)) as never;
+      : (build as (a: never) => unknown)(first as never)) as never;
 };

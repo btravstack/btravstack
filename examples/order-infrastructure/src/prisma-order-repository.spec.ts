@@ -20,6 +20,7 @@ const scopedPersistence = (applicationName?: string) =>
     imports: [OrderPersistenceModule, observability(), otel()],
     provides: [
       Provider(Env)({
+        inject: {},
         value: {
           DATABASE_URL:
             applicationName === undefined

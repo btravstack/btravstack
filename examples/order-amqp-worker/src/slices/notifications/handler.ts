@@ -31,45 +31,44 @@ import { ErrAsync, P } from "unthrown";
  * `RetryableError` leaves the message un-acked, so the broker hands it to the
  * next worker.
  */
-export const orderNotifications = AmqpHandler(orderContract, "orderNotifications")(
-  { logger: Logger, mailer: Mailer },
-  {
-    sync:
-      ({ logger, mailer }) =>
-      ({ payload: { tenantId, id, payload } }) => {
-        if (currentUnit()?.signal.aborted === true) {
-          return ErrAsync(
-            new RetryableError(`the drain deadline passed before order ${id} was notified`),
-          );
-        }
-        logger.info(payload === null ? "order gone — notifying" : "order placed — notifying", {
-          tenantId,
-          orderId: id,
-          ...(payload === null ? {} : { quantity: payload.quantity }),
-        });
+export const orderNotifications = AmqpHandler(
+  orderContract,
+  "orderNotifications",
+)({
+  inject: { logger: Logger, mailer: Mailer },
+  sync:
+    ({ logger, mailer }) =>
+    ({ payload: { tenantId, id, payload } }) => {
+      if (currentUnit()?.signal.aborted === true) {
+        return ErrAsync(
+          new RetryableError(`the drain deadline passed before order ${id} was notified`),
+        );
+      }
+      logger.info(payload === null ? "order gone — notifying" : "order placed — notifying", {
+        tenantId,
+        orderId: id,
+        ...(payload === null ? {} : { quantity: payload.quantity }),
+      });
 
-        return mailer
-          .send({
-            from: "orders@example.test",
-            // A real application looks the address up; this one derives it,
-            // because who a tenant notifies is its own business and not this
-            // example's subject.
-            to: [`tenant-${tenantId}@example.test`],
-            subject: payload === null ? `order ${id} withdrawn` : `order ${id} placed`,
-            text:
-              payload === null
-                ? `Order ${id} is no longer with us.`
-                : `Order ${id} is placed, for ${payload.quantity} items.`,
-          })
-          .mapErrCases((matcher) =>
-            matcher.with(
-              P.tag("MailNotSent"),
-              (error) =>
-                new RetryableError(
-                  `the notification for order ${id} was not sent: ${error.reason}`,
-                ),
-            ),
-          );
-      },
-  },
-);
+      return mailer
+        .send({
+          from: "orders@example.test",
+          // A real application looks the address up; this one derives it,
+          // because who a tenant notifies is its own business and not this
+          // example's subject.
+          to: [`tenant-${tenantId}@example.test`],
+          subject: payload === null ? `order ${id} withdrawn` : `order ${id} placed`,
+          text:
+            payload === null
+              ? `Order ${id} is no longer with us.`
+              : `Order ${id} is placed, for ${payload.quantity} items.`,
+        })
+        .mapErrCases((matcher) =>
+          matcher.with(
+            P.tag("MailNotSent"),
+            (error) =>
+              new RetryableError(`the notification for order ${id} was not sent: ${error.reason}`),
+          ),
+        );
+    },
+});

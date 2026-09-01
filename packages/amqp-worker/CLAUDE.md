@@ -22,7 +22,7 @@ TContract, HandlersError, HandlersNeeds>`, readonly and exact — to
   modules' internal ports, TS2883, measured on `HttpModule`). `handlers` is a
   plain `Provider<HandlersInstanceOf<TContract>, HandlersError,
 HandlersNeeds>` — a provider on the starter's handlers port typed for THIS
-  contract, which is what `AmqpHandlers(contract)(deps, arm)` returns — so a
+  contract, which is what `AmqpHandlers(contract)({ inject, ...arm })` returns — so a
   provider whose service is not the contract's handlers fails at the call,
   structurally on the record: one built for another contract is refused
   (`amqp-runtime.test-d.ts` pins it). There is no port to read off it: the
@@ -64,7 +64,7 @@ key)`, both of which cast it to the typed alias), so there is nothing a
   (`amqp-runtime.ts`) — the way to the handlers provider `AmqpModule` takes,
   next to it: the one call fixes `C` and returns di's own `Provider(port)` on
   `AmqpHandlersPort as HandlersPortOf<C>`, so the next call is exactly
-  `Provider(port)({ name: Dep }, arm)` — any arm, same typing, checked against the
+  `Provider(port)({ inject: { name: Dep }, ...arm })` — any arm, same typing, checked against the
   contract's record before any module sees it — and the provider carries the
   port typed (`provider.port`, di's `& { readonly port: P }`, for a
   hand-declared provider or a type test). No name, no class line.
@@ -95,7 +95,7 @@ key)`, both of which cast it to the typed alias), so there is nothing a
 
   A third call composes **pieces** instead of a record:
   `AmqpHandlers(contract)([piece, piece, ...])`, one piece per
-  `AmqpHandler(contract, key)(deps, arm)`. Its type is an intersection with
+  `AmqpHandler(contract, key)({ inject, ...arm })`. Its type is an intersection with
   `Compose<C>`, declared **last**: `ReturnType<typeof
 Provider<HandlersPortOf<C>>> & Compose<C>` — di's builder first, the composer
   last. Reversed, TypeScript reports the FIRST arm's failure on a
@@ -207,8 +207,8 @@ AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>` either way,
 
 - **The handlers port's service is `WorkerInferHandlers<TContract>`** —
   the record `TypedAmqpWorker.create` takes, with **no injected context**.
-  Inside, `Provider(AmqpRuntime)({ config: AmqpConfig, handlers:
-AmqpHandlersPort as HandlersPortOf<TContract> }, { sync })` — the port rides di, typed for the
+  Inside, `Provider(AmqpRuntime)({ inject: { config: AmqpConfig, handlers:
+AmqpHandlersPort as HandlersPortOf<TContract> }, sync })` — the port rides di, typed for the
   contract, so `sync` reads the record through it and hands it to `create`
   with no cast on the record itself: the former `handlers as
 WorkerInferHandlers<TContract>` is gone, and `AmqpHandlersPort as

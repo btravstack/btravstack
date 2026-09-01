@@ -10,7 +10,7 @@ class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 class Clock extends Port("Clock")<{ readonly now: () => number }> {}
 
 const AppModule = Module("App")({
-  provides: [Provider(Greeting)({ value: { text: "hello" } })],
+  provides: [Provider(Greeting)({ inject: {}, value: { text: "hello" } })],
   exports: [Greeting],
 });
 
@@ -41,7 +41,7 @@ const needsClock: Runtime<typeof Clock> = {
 // `Info` is read off the module, not passed in.
 const Satisfied = Module("Satisfied")({
   imports: [AppModule],
-  provides: [Provider(NeedsGreeting)({ value: needsGreeting })],
+  provides: [Provider(NeedsGreeting)({ inject: {}, value: needsGreeting })],
   exports: [Greeting, NeedsGreeting],
 });
 expectTypeOf(start(Satisfied)).toEqualTypeOf<RunningApp<never, { readonly port: number }>>();
@@ -51,7 +51,7 @@ expectTypeOf(start(Satisfied)).toEqualTypeOf<RunningApp<never, { readonly port: 
 // the sentence is what tsc prints as the parameter type it did not match.
 const Unsatisfied = Module("Unsatisfied")({
   imports: [AppModule],
-  provides: [Provider(NeedsClock)({ value: needsClock })],
+  provides: [Provider(NeedsClock)({ inject: {}, value: needsClock })],
   exports: [Greeting, NeedsClock],
 });
 // @ts-expect-error -- UNSATISFIED RUNTIME PORTS: the runtime resolves `Clock`, which the module does not export
@@ -82,13 +82,11 @@ class Span extends Port("GateSpan")<{ readonly note: string }> {}
 const ClockyUnit = Module("ClockyUnit")({
   needs: [Clock],
   provides: [
-    Provider(Span)(
-      { clock: Clock },
-      {
-        sync: ({ clock }) => ({ note: `${clock.now()}` }),
-        onStop: () => {},
-      },
-    ),
+    Provider(Span)({
+      inject: { clock: Clock },
+      sync: ({ clock }) => ({ note: `${clock.now()}` }),
+      onStop: () => {},
+    }),
   ],
   exports: [Span],
 });
@@ -106,13 +104,11 @@ expectTypeOf<
 const GreetingSpanUnit = Module("GreetingSpanUnit")({
   needs: [Greeting],
   provides: [
-    Provider(Span)(
-      { greeting: Greeting },
-      {
-        sync: ({ greeting }) => ({ note: greeting.text }),
-        onStop: () => {},
-      },
-    ),
+    Provider(Span)({
+      inject: { greeting: Greeting },
+      sync: ({ greeting }) => ({ note: greeting.text }),
+      onStop: () => {},
+    }),
   ],
   exports: [Span],
 });
@@ -127,7 +123,7 @@ const needsSpan: Runtime<typeof Span> = {
 
 const SpanApp = Module("SpanApp")({
   imports: [AppModule],
-  provides: [Provider(NeedsSpan)({ value: needsSpan })],
+  provides: [Provider(NeedsSpan)({ inject: {}, value: needsSpan })],
   exports: [Greeting, NeedsSpan],
 });
 // @ts-expect-error -- UNSATISFIED RUNTIME PORTS: `Span` is a unit-only port, not among `SpanApp`'s exports

@@ -20,38 +20,34 @@ import { OkAsync, fromSafePromise } from "unthrown";
 export const FulfillmentModule = Module("Fulfillment")({
   needs: [Logger],
   provides: [
-    Provider(StockService)(
-      { logger: Logger },
-      {
-        sync: ({ logger }) => ({
-          reserve: (orderId, quantity) => {
-            logger.info("reserved stock", { orderId, quantity });
-            return OkAsync();
-          },
-          release: (orderId) => {
-            logger.info("released the reservation", { orderId });
-            return OkAsync();
-          },
-        }),
-      },
-    ),
-    Provider(ShippingService)(
-      { logger: Logger },
-      {
-        sync: ({ logger }) => ({
-          arrange: (orderId) =>
-            currentUnit()?.signal.aborted === true
-              ? fromSafePromise(
-                  Promise.reject(
-                    new Error(
-                      `the drain deadline passed before shipping for ${orderId} was arranged`,
-                    ),
+    Provider(StockService)({
+      inject: { logger: Logger },
+      sync: ({ logger }) => ({
+        reserve: (orderId, quantity) => {
+          logger.info("reserved stock", { orderId, quantity });
+          return OkAsync();
+        },
+        release: (orderId) => {
+          logger.info("released the reservation", { orderId });
+          return OkAsync();
+        },
+      }),
+    }),
+    Provider(ShippingService)({
+      inject: { logger: Logger },
+      sync: ({ logger }) => ({
+        arrange: (orderId) =>
+          currentUnit()?.signal.aborted === true
+            ? fromSafePromise(
+                Promise.reject(
+                  new Error(
+                    `the drain deadline passed before shipping for ${orderId} was arranged`,
                   ),
-                )
-              : (logger.info("arranged shipping", { orderId }), OkAsync()),
-        }),
-      },
-    ),
+                ),
+              )
+            : (logger.info("arranged shipping", { orderId }), OkAsync()),
+      }),
+    }),
   ],
   exports: [StockService, ShippingService],
 });

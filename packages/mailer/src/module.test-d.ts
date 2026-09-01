@@ -20,7 +20,7 @@ const Instrumented = Module("Instrumented")({
   imports: [mailer({ adapter: recordingMailer(mailRecorder()) }), observability(), otel()],
   // `observability()` reads `LOG_LEVEL`, which `start` supplies in a real
   // application; here the root is this file.
-  provides: [Provider(Env)({ value: {} })],
+  provides: [Provider(Env)({ inject: {}, value: {} })],
   exports: [Mailer],
 });
 const _instrumented = Module.scoped(Instrumented, (ctx) => OkAsync(ctx.get(Mailer)));
@@ -51,7 +51,7 @@ const Explicit = Module("Explicit")({
     observability(),
     otel(),
   ],
-  provides: [Provider(Env)({ value: {} })],
+  provides: [Provider(Env)({ inject: {}, value: {} })],
   exports: [Mailer],
 });
 const _explicit = Module.scoped(Explicit, (ctx) => OkAsync(ctx.get(Mailer)));

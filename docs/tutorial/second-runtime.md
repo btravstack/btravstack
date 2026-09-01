@@ -60,10 +60,17 @@ the **workflow** that calls it, on a named task queue:
 // own: the port, the service, and the module the new runtime is added to.
 import { Port, Provider, Module } from "@btravstack/di";
 
-class Greeter extends Port("Greeter")<{ readonly greet: (name: string) => string }> {}
+class Greeter extends Port("Greeter")<{
+  readonly greet: (name: string) => string;
+}> {}
 
 const GreetingModule = Module("Greeting")({
-  provides: [Provider(Greeter)({ value: { greet: (name) => `Hello, ${name}!` } })],
+  provides: [
+    Provider(Greeter)({
+      inject: {},
+      value: { greet: (name) => `Hello, ${name}!` },
+    }),
+  ],
   exports: [Greeter],
 });
 -->
@@ -114,16 +121,14 @@ import { OkAsync } from "unthrown";
 import { Greeter } from "./greeter.js";
 import { greetingContract } from "./temporal-contract.js";
 
-export const greetingActivities = TemporalActivities(greetingContract)(
-  { greeter: Greeter },
-  {
-    sync: ({ greeter }) => ({
-      greeting: {
-        greet: (args) => OkAsync({ message: greeter.greet(args.name) }),
-      },
-    }),
-  },
-);
+export const greetingActivities = TemporalActivities(greetingContract)({
+  inject: { greeter: Greeter },
+  sync: ({ greeter }) => ({
+    greeting: {
+      greet: (args) => OkAsync({ message: greeter.greet(args.name) }),
+    },
+  }),
+});
 ```
 
 Same `Greeter`, same `greet`, a different transport around it. The activity is

@@ -22,8 +22,8 @@ package's. Everything below is lifted from `examples/order-temporal-worker`.
 
 ## Recipe
 
-1. Implement the activities with `TemporalActivities(contract)(deps, arm)`
-   — a record shaped like the contract, closing over the services `deps` names.
+1. Implement the activities with `TemporalActivities(contract)({ inject, ...arm })`
+   — a record shaped like the contract, closing over the services `inject` names.
 2. Compose with `TemporalModule(name)({ contract, activities, workflows, imports, needs })`.
 3. `await runMain(OrderTemporalWorker)`.
 4. Set `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` in the deployment; keep
@@ -34,7 +34,7 @@ package's. Everything below is lifted from `examples/order-temporal-worker`.
 `TemporalActivities(orderContract)` is di's `Provider(port)` on the starter's
 own activities port, typed for the contract (its service the record
 `declareActivitiesHandler` takes) — no class, no name: a worker serves one
-activities record — so the next call is `(deps, arm)` as anywhere else. **An activity is a closure over its provider's services** — nothing is
+activities record — so the next call is `{ inject, ...arm }` as anywhere else. **An activity is a closure over its provider's services** — nothing is
 read from a context at call time — and each `mapErrCases` names every domain
 error the contract declares:
 
@@ -60,73 +60,71 @@ import { orderContract } from "@btravstack/example-order-temporal-contract";
 import { TemporalActivities } from "@btravstack/temporal-worker";
 import { P } from "unthrown";
 
-export const orderActivities = TemporalActivities(orderContract)(
-  {
+export const orderActivities = TemporalActivities(orderContract)({
+  inject: {
     place: PlaceOrder,
     repository: OrderRepository,
     stock: StockService,
     shipping: ShippingService,
     payments: PaymentService,
   },
-  {
-    sync: ({ place, repository, stock, shipping, payments }) => ({
-      fulfillOrder: {
-        place: (args, { errors }) =>
-          place
-            .execute(TenantId(args.tenantId), args.orderId, args.quantity)
-            .map((order) => ({ id: order.id, quantity: order.quantity }))
-            .mapErrCases((matcher) =>
-              matcher
-                .with(P.tag("InvalidQuantity"), (error) =>
-                  errors.InvalidQuantity({ id: error.id }),
-                )
-                .with(P.tag("InvalidOrderId"), (error) =>
-                  errors.InvalidOrderId({ id: error.id }),
-                )
-                .with(P.tag("DuplicateOrder"), (error) =>
-                  errors.OrderAlreadyPlaced({ id: error.id }),
-                ),
-            ),
-        reserveStock: (args, { errors }) =>
-          stock
-            .reserve(args.orderId, args.quantity)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("OutOfStock"), (error) =>
-                errors.OutOfStock({ id: error.id }),
+  sync: ({ place, repository, stock, shipping, payments }) => ({
+    fulfillOrder: {
+      place: (args, { errors }) =>
+        place
+          .execute(TenantId(args.tenantId), args.orderId, args.quantity)
+          .map((order) => ({ id: order.id, quantity: order.quantity }))
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.InvalidQuantity({ id: error.id }),
+              )
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.InvalidOrderId({ id: error.id }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.OrderAlreadyPlaced({ id: error.id }),
               ),
+          ),
+      reserveStock: (args, { errors }) =>
+        stock
+          .reserve(args.orderId, args.quantity)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OutOfStock"), (error) =>
+              errors.OutOfStock({ id: error.id }),
             ),
-        arrangeShipping: (args, { errors }) =>
-          shipping
-            .arrange(args.orderId)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("ShippingUnavailable"), (error) =>
-                errors.ShippingUnavailable({ id: error.id }),
-              ),
+          ),
+      arrangeShipping: (args, { errors }) =>
+        shipping
+          .arrange(args.orderId)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("ShippingUnavailable"), (error) =>
+              errors.ShippingUnavailable({ id: error.id }),
             ),
-        releaseStock: (args) => stock.release(args.orderId),
-        cancelPlacement: (args) =>
-          repository
-            .remove(TenantId(args.tenantId), args.orderId)
-            .recoverErrCases((matcher) =>
-              matcher.with(P.tag("OrderNotFound"), () => undefined),
+          ),
+      releaseStock: (args) => stock.release(args.orderId),
+      cancelPlacement: (args) =>
+        repository
+          .remove(TenantId(args.tenantId), args.orderId)
+          .recoverErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), () => undefined),
+          ),
+    },
+    chargeOrder: {
+      authorizePayment: (args, { errors }) =>
+        payments
+          .authorize(args.orderId, args.amount)
+          .map((authorizationId) => ({ authorizationId }))
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("PaymentDeclined"), (error) =>
+              errors.PaymentDeclined({ id: error.id }),
             ),
-      },
-      chargeOrder: {
-        authorizePayment: (args, { errors }) =>
-          payments
-            .authorize(args.orderId, args.amount)
-            .map((authorizationId) => ({ authorizationId }))
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("PaymentDeclined"), (error) =>
-                errors.PaymentDeclined({ id: error.id }),
-              ),
-            ),
-        capturePayment: (args) => payments.capture(args.authorizationId),
-        refundPayment: (args) => payments.refund(args.authorizationId),
-      },
-    }),
-  },
-);
+          ),
+      capturePayment: (args) => payments.capture(args.authorizationId),
+      refundPayment: (args) => payments.refund(args.authorizationId),
+    },
+  }),
+});
 ```
 
 The package maps nothing further: `declareActivitiesHandler` already turns a
