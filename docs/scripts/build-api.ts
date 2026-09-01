@@ -2,7 +2,7 @@
 // per `typedoc.<name>.json`, concurrently. TypeDoc lives here rather than in
 // each package because it needs its own TypeScript — see the root CLAUDE.md.
 import { execFile } from "node:child_process";
-import { globSync, readFileSync, writeFileSync } from "node:fs";
+import { globSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -116,6 +116,9 @@ under it; for _why_ the surface is shaped this way, read
 :::
 `;
 
+// `api/` is gitignored in full, so a fresh clone does not have it — and the hub
+// is written BEFORE the TypeDoc runs that would otherwise create it.
+mkdirSync(join(docsDir, "api"), { recursive: true });
 writeFileSync(join(docsDir, "api", "index.md"), hub);
 console.log(`✓ generated the API hub → api/index.md (${packages.length} packages)`);
 
