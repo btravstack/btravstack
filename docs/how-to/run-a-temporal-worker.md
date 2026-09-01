@@ -23,7 +23,7 @@ package's. Everything below is lifted from `examples/order-temporal-worker`.
 ## Recipe
 
 1. Implement the activities with `TemporalActivities(contract)({ inject, ...arm })`
-   — a record shaped like the contract, closing over the services `deps` names.
+   — a record shaped like the contract, closing over the services `inject` names.
 2. Compose with `TemporalModule(name)({ contract, activities, workflows, imports, needs })`.
 3. `await runMain(OrderTemporalWorker)`.
 4. Set `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` in the deployment; keep

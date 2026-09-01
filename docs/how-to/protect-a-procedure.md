@@ -273,7 +273,7 @@ silently widens to `unknown`.
 `Unauthenticated` carries **nothing**: the starter surfaces no reason — a
 rejected caller gets an `UNAUTHORIZED` and oRPC's default message — so a payload
 would be write-only. An authenticator that wants to record why logs it before
-returning, which is one more argument for naming a logger in `deps`.
+returning, which is one more argument for naming a logger in `inject`.
 
 ## Step 3 — read the principal
 

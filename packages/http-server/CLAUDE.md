@@ -412,8 +412,8 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   it is enforced, not offered among alternatives. The router is not an
   option: the module **needs** `OrpcRouterPort`, and the application provides
   it — a provider that declares the use cases its procedures call (di injects
-  them, oRPC's context stays empty), built by `api.OrpcRouter(contract)(deps,
-arm)`. The starter provides
+  them, oRPC's context stays empty), built by
+  `api.OrpcRouter(contract)({ inject, ...arm })`. The starter provides
   `Runtime<never, HttpInfo>` on the **`HttpRuntime`** port (a class over
   core's `RuntimePort`, **an empty `resolves`**), which the composition root imports
   next to the application and exports so `start` finds it, and **`HttpConfig`**

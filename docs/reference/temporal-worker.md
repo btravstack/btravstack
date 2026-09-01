@@ -124,8 +124,8 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 The first call fixes `C` (the contract value is otherwise unused; it exists so
 `C` is inferred rather than written) and returns `ReturnType<typeof
 Provider<ActivitiesPortOf<C>>>` — di's own `Provider(port)` builder on the
-starter's activities port, typed for `C` — so the second call is di's `(deps,
-arm)` unchanged: any arm, the usual typing, and the provider it returns carries
+starter's activities port, typed for `C` — so the second call is di's
+`{ inject, ...arm }` unchanged: any arm, the usual typing, and the provider it returns carries
 the port typed as `provider.port`. There is no name to give: a worker serves
 one activities record as it polls one task queue, so the port is the starter's
 — one `Port("TemporalActivities")`, generic at the value level and fixed per

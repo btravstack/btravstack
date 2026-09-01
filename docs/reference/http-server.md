@@ -346,14 +346,12 @@ const OrpcController: <
 >(
   contract: C,
   path: K,
-) => <const D extends Readonly<Record<string, AnyPort>>>(
-  deps: D,
-  options: {
-    readonly sync: (services: {
-      readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-    }) => Implementation<FragmentAt<C, K>, Schemes>;
-  },
-) => Provider<
+) => <const D extends Readonly<Record<string, AnyPort>>>(options: {
+  readonly inject: D;
+  readonly sync: (services: {
+    readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+  }) => Implementation<FragmentAt<C, K>, Schemes>;
+}) => Provider<
   PortInstance<
     `OrpcController:${K}`,
     Implementation<FragmentAt<C, K>, Schemes>
