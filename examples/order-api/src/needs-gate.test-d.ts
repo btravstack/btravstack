@@ -48,7 +48,7 @@ const _missingRuntime = start(RuntimelessApi, options);
 
 // The starter imported without its router provided: `http()`'s runtime
 // provider depends on the starter's own router port (the one
-// `HttpRouter(contract)({ name: Dep }, arm)` provides), so the composition owes it.
+// `OrpcRouter(contract)({ name: Dep }, arm)` provides), so the composition owes it.
 //
 // It is the KERNEL's gate rather than di's declaration one, and the division
 // is the point: the port is owed by `http()`, an IMPORT, and an import's needs

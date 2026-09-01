@@ -104,7 +104,7 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   `exports` array stays `readonly (AnyPort | AnyModule)[]`, and yielding the
   identical `Exports` channel either way), or an imported module. The provider
   arm is what the port-minting helpers need — `Config.provider(name)(schema)`,
-  `HttpController(contract, path)` — where there is no class to name.
+  `OrpcController(contract, path)` — where there is no class to name.
 - **`build.ts`** — `flatten` (dedupe by provider reference), `plan` (levels
   providers for concurrent construction; detects cycles, duplicate providers,
   ordinary/set-port conflicts, providers for `Scope`, missing providers — all
@@ -143,8 +143,8 @@ type 'Module<Repo, never, Cfg>' but required in type '{ readonly
   (`{ portId: Id; new (): PortInstance<Id, Service> }`, both types only) so a
   provider over a port declared inside a helper — one minted per call
   (`Config.provider("RelayConfig")(schema)`) or the helper's own fixed one
-  (`HttpRouter(contract)({ name: Dep }, { sync })`, on `@btravstack/http-server`'s
-  `HttpRouterPort`) — has a nameable
+  (`OrpcRouter(contract)({ name: Dep }, { sync })`, on `@btravstack/http-server`'s
+  `OrpcRouterPort`) — has a nameable
   declared type when a consumer exports it: the class expression
   `class extends Port(id)<S> {}` has an anonymous type declaration emit cannot
   name across packages (TS4023, measured), `PortClassOf` is its nameable
@@ -321,7 +321,7 @@ around `StartGate` one layer down:
 
 ### Which gate catches what
 
-A starter's port — `HttpRouterPort`, the AMQP handlers port, the Temporal
+A starter's port — `OrpcRouterPort`, the AMQP handlers port, the Temporal
 activities port — is owed by the **starter**, which an application _imports_.
 So those three are the KERNEL's gate, on the needs channel at `start`, not
 di's declaration one, and the three `needs-gate.test-d.ts` negatives say so.

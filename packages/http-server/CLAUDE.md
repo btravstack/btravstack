@@ -32,8 +32,8 @@ the same commit, and with `README.md` — the package ships no
   (Spelling the return through a named generic alias was tried and removed:
   declaration emit keeps such an alias unreduced and cannot name imported
   modules' internal ports — TS2883, measured.) `router` is
-  `Provider<HttpRouterPort, RouterError, RouterNeeds>` — what
-  `api.HttpRouter(contract)(deps, arm)` returns; `fragments` is
+  `Provider<OrpcRouterPort, RouterError, RouterNeeds>` — what
+  `api.OrpcRouter(contract)(deps, arm)` returns; `fragments` is
   `Provider<HtmxFragmentsPort, …>` — what `api.HtmxFragments([…])`
   returns. A provider of anything else fails at the call, and there is no
   port to read off either: the sugar's job is to provide the port the
@@ -60,9 +60,9 @@ the same commit, and with `README.md` — the package ships no
   `{ readonly "SERVES NOTHING — supply a router, fragments, or both": true }`
   — booting a listener with no answerer behind it is refused here rather than
   left to `start`'s own runtime gate.
-- **`HttpRouterPort`** (`orpc.ts`, exported from the file for the package's
+- **`OrpcRouterPort`** (`orpc.ts`, exported from the file for the package's
   own tests, **not** from `index.ts`) — the router's port, one id, the
-  starter's own: `Port("HttpRouter")` cast to di's `PortClassOf<"HttpRouter",
+  starter's own: `Port("OrpcRouter")` cast to di's `PortClassOf<"OrpcRouter",
 Router<Record<never, never>>>`, with the matching `PortInstance` alias. A
   process serves one router as it boots one runtime (thesis #1), so there is
   nothing to name, and the port is framework-owned like `HttpConfig` and
@@ -70,7 +70,7 @@ Router<Record<never, never>>>`, with the matching `PortInstance` alias. A
   defect at build, which is correct. The service type is contract-agnostic
   (a context-free oRPC router), so this is one concrete port — unlike the
   temporal and amqp starters', which are typed per contract.
-- **`api.HttpRouter(contract)(deps, { sync })`** (`orpc.ts`, minted by
+- **`api.OrpcRouter(contract)(deps, { sync })`** (`orpc.ts`, minted by
   `defineHttp`) — contract-first
   router provider. `Implementation<C, Schemes>` is the record type: recursing the
   contract's shape, each `ProcedureContract<I, O, E>` becomes
@@ -85,15 +85,15 @@ I, O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   `undefined` for an undeclared key, measured), and `os.router(built)` is the
   port's service. `C` is bounded `Record<string, RouterContract>` — a router
   record, not a bare procedure, since a bare procedure has no keys to walk. The
-  second call is di's `Provider(HttpRouterPort)({ name: Dep }, { sync })` with the
+  second call is di's `Provider(OrpcRouterPort)({ name: Dep }, { sync })` with the
   router built from what `sync` returns; there is no name to give. The
-  return is `Provider<PortInstance<"HttpRouter", Router<…>>, never,
-InstanceType<D[keyof D]>> & { port: PortClassOf<"HttpRouter", Router<…>> }`,
+  return is `Provider<PortInstance<"OrpcRouter", Router<…>>, never,
+InstanceType<D[keyof D]>> & { port: PortClassOf<"OrpcRouter", Router<…>> }`,
   spelled through di's `PortInstance` / `PortClassOf` (`{ portId; new ():
 PortInstance<…> }`) rather than the class's own type because a class
   expression's type expands the brand keys in a consumer's declaration emit
   (TS4023, measured on `examples/order-api`) — which is also why
-  `HttpRouterPort` itself is a cast `Port("HttpRouter")` and not a `class`.
+  `OrpcRouterPort` itself is a cast `Port("OrpcRouter")` and not a `class`.
   `provider.port` stays on the result for a hand-declared provider or a type
   test, and `provider.authenticators` carries the per-scheme providers
   `defineHttp` bound — on the router because the router is what needs them.
@@ -103,10 +103,10 @@ PortInstance<…> }`) rather than the class's own type because a class
   `greetingRouter` (a bare-procedure `oc.router`, one nested) and the stray-key
   guard by `strayRouter` (the same implementation with an undeclared key,
   cast past the types).
-- **`api.HttpRouter(contract)([piece, …])` — the composing form** (`orpc.ts`, a
+- **`api.OrpcRouter(contract)([piece, …])` — the composing form** (`orpc.ts`, a
   third overload of `build`, declared **last**) — for
   `contract: Record<string, RouterContract>`, an **array of pieces** instead of
-  `(deps, { sync })`, each an `HttpController(contract, path)` over one node
+  `(deps, { sync })`, each an `OrpcController(contract, path)` over one node
   of the contract tree, at any depth — the same shape as
   `AmqpHandlers(contract)([...])` and `TemporalActivities(contract)([...])`,
   with the paths as HTTP's extra degree of freedom. Coverage is **leaf-based**:
@@ -192,7 +192,7 @@ not cover"` marker, and what the marker names is a procedure path
   `N = InstanceType<T[number]["port"]> | SchemePortsOf<C>`.
   Six compile-time gates are pinned by `controller.test-d.ts`: every
   procedure covered (the marker above); an undeclared path refused **at the
-  mint** (`HttpController(contract, "billing")` and `(deep, "v1.billing")`
+  mint** (`OrpcController(contract, "billing")` and `(deep, "v1.billing")`
   have nothing to type the key by — the keyed record's `"UNDECLARED KEY — …"`
   gate collapsed into it); a piece under the wrong key impossible **by
   construction** (its path rides its port id, so what that gate refused is
@@ -200,7 +200,7 @@ not cover"` marker, and what the marker names is a procedure path
   arm); a procedure the fragment does not declare rejected inside the piece;
   and — the fifth, marked "do not break" — a slice lifting out of the
   composed router **with its piece unchanged**:
-  `api.HttpRouter(contract.orders)({ implementation: ordersPiece.port }, { sync: ({ implementation }) => implementation })`
+  `api.OrpcRouter(contract.orders)({ implementation: ordersPiece.port }, { sync: ({ implementation }) => implementation })`
   compiles, so the lifted root declares the very provider the modulith
   composed and hands back what it built; and the sixth, a top-level key
   carrying a literal dot, refused at the mint and again at the array. The
@@ -226,17 +226,17 @@ not cover"` marker, and what the marker names is a procedure path
   The depth block at the file's tail pins the dotted paths themselves: pieces
   at mixed depths partitioning the leaves compose, an uncovered procedure and
   a nested piece are each refused against their marker, and the port id
-  carries the whole path (`"HttpController:v1.orders"`).
+  carries the whole path (`"OrpcController:v1.orders"`).
   Covered at runtime by the `rpcSliced` fixture — `helloController` over
   `slicedContract`'s `greetings` fragment and `echoesController` minted by
   the DOTTED path `"echoes.ping"`, so `nest`'s rebuild answers a real
   request — and by `rpcDeep`, two pieces sharing the nested `"v1"` parent
   plus one at the bare procedure path `"health"`.
-- **`api.HttpController(contract, key)({ name: Dep }, { sync })`, or
+- **`api.OrpcController(contract, key)({ name: Dep }, { sync })`, or
   `({ sync })` with no deps** (`controller.ts`, minted by `defineHttp`) — one
   node of a contract, at any depth, as a provider on a port of its own. There
   is no name to give: the dotted path IS the port's name, minted as
-  `` `${CONTROLLER_PREFIX}${key}` `` (`CONTROLLER_PREFIX = "HttpController:"`,
+  `` `${CONTROLLER_PREFIX}${key}` `` (`CONTROLLER_PREFIX = "OrpcController:"`,
   exported from `controller.ts` only) — the move `AmqpHandler(contract, key)`
   and `authenticatorPort(scheme)` both make. The port id carrying the path is
   what makes two slices claiming one node di's duplicate-provider defect
@@ -271,13 +271,13 @@ not cover"` marker, and what the marker names is a procedure path
   `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes> }` —
   `ControllerPortOf<C, K, Schemes>` being `PortClassOf` over the prefixed
   path and `Implementation<FragmentAt<C, K>, Schemes>`, the same
-  `PortInstance`/`PortClassOf` spelling `HttpRouter` uses and for the same
+  `PortInstance`/`PortClassOf` spelling `OrpcRouter` uses and for the same
   reason (TS4023 on a class expression's own type). `ControllerKeyOf<C>` and
   `ControllerPortOf<C, K, Schemes>` are **types**, exported from `index.ts`
   for the same declaration-emit reason `@btravstack/amqp-worker` exports
   `HandlerPortOf<C, K>`: a slice module that exports its piece by name needs
   the port type printable. The piece does no oRPC work: it is a plain record;
-  `HttpRouter`'s `routerOf` walk is what wraps a leaf in `.result(...)`, at
+  `OrpcRouter`'s `routerOf` walk is what wraps a leaf in `.result(...)`, at
   composition. A slice's module exports `controller.port` rather than naming
   a port of its own — the shape `Config.provider("RelayConfig")(schema)`
   already uses in this repo. Covered by `controller.spec.ts`'s `controllers`
@@ -347,7 +347,7 @@ not cover"` marker, and what the marker names is a procedure path
   (`htmx-route.ts`, minted by `defineHttp`) — a route as a provider on a port
   of its own, minted straight from a path template, then `(deps, { sync })`
   or `({ sync })` with no deps, the same two-call shape as
-  `api.HttpController(contract, path)`. The port id carries the method and
+  `api.OrpcController(contract, path)`. The port id carries the method and
   path (`` `HtmxFragment:${method} ${path}` ``, `FRAGMENT_PREFIX` in
   `htmx-route.ts`) — two routes on one method and path are one port id, di's
   duplicate-provider defect. `options.requires` is any `Requirements`,
@@ -404,7 +404,7 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   not the piece's.
 
 - **`http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` →
-  `Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | HttpRouterPort>`**
+  `Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | OrpcRouterPort>`**
   — the starter, and **oRPC's answerer under the HTTP runtime**: one protocol,
   over its own node adapter, contributing one member to the `HttpHandler` set
   port. It used to be "the one way HTTP is answered here" and is not any more —
@@ -412,9 +412,9 @@ FragmentAnswer[], authenticators }`, where `FragmentAnswer.handle` erases the
   former `@btravstack/orpc` was folded in for that reason — oRPC shares this
   stack's convictions (a contract, typed errors, `Result` at the boundary), so
   it is enforced, not offered among alternatives. The router is not an
-  option: the module **needs** `HttpRouterPort`, and the application provides
+  option: the module **needs** `OrpcRouterPort`, and the application provides
   it — a provider that declares the use cases its procedures call (di injects
-  them, oRPC's context stays empty), built by `api.HttpRouter(contract)(deps,
+  them, oRPC's context stays empty), built by `api.OrpcRouter(contract)(deps,
 arm)`. The starter provides
   `Runtime<never, HttpInfo>` on the **`HttpRuntime`** port (a class over
   core's `RuntimePort`, **an empty `resolves`**), which the composition root imports
@@ -537,9 +537,9 @@ HOST: "127.0.0.1" }` to `start`. `HttpInfo` is `{ port }`, published on
   `"NO RUNTIME — the module exports no port declared over RuntimePort"`; and
   because the runtime provider depends on the router port **through di**,
   a composition that imports `http()` without providing the router
-  carries `HttpRouterPort` as an unmet need `start` refuses on the same
+  carries `OrpcRouterPort` as an unmet need `start` refuses on the same
   parameter's `Module<X, E, Scope | Env>` half, ending on
-  `Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. Neither is
+  `Type '"OrpcRouter"' is not assignable to type '"@di/Scope"'`. Neither is
   di's `UNSATISFIED DEPENDENCIES` dependency gate.
   `examples/order-api/src/needs-gate.test-d.ts` pins both, plus the
   `StartOptions.unit` halves. **`UNSATISFIED RUNTIME PORTS` is live for this
@@ -710,7 +710,7 @@ a visible unresolvable reference beats a silently dropped requirement.
 types come from `@hey-api/spec-types`, a transitive dependency nothing here
 depends on directly, so an application annotating nothing gets TS4023 in its own
 declaration emit — measured on `examples/order-api`, the same hazard that shapes
-`HttpRouterPort` and `@btravstack/prisma`'s port.
+`OrpcRouterPort` and `@btravstack/prisma`'s port.
 
 **Nothing serves it, deliberately.** This package mounts no documentation route
 and ships no UI asset: a Swagger UI bundle in a transport package would be a
@@ -730,7 +730,7 @@ subpath**, so a consumer that never imports it installs neither.
   **Several answerers, one runtime** below, exported from `index.ts` because a
   second protocol's package has to name what it contributes to. What stays
   internal is the oRPC answerer's own wiring: `orpc.ts`'s `orpc({ prefix })` is
-  a `Provider.member(HttpHandler)({ router: HttpRouterPort, config: HttpConfig
+  a `Provider.member(HttpHandler)({ router: OrpcRouterPort, config: HttpConfig
 }, …)` answering `{ prefix, handle }`, where `handle` is `@orpc/server/node`'s
   `RPCHandler` — `(request, response) => rpc.handle(request, response, {
 prefix })`, unmatched → resolves unwritten. `handle` returns
@@ -788,8 +788,8 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   `http-runtime.spec.ts`'s config tests pin for `PORT`/`HOST`, proved here for
   the three fields `orpc()` owns instead of `httpServer()`. `controller.spec.ts` carries 6, through the
   `controllers`, `rpcSliced` and `rpcDeep` fixtures: a piece carries the port
-  its contract key minted (`HttpController:greetings`) and the deps it
-  declared; `api.HttpRouter(contract)([...])` serves a router composed from
+  its contract key minted (`OrpcController:greetings`) and the deps it
+  declared; `api.OrpcRouter(contract)([...])` serves a router composed from
   two pieces — `helloController` over the `greetings` fragment and
   `echoesController` minted by the dotted path `"echoes.ping"` — with a
   procedure from each answering through one client, proving every piece's
@@ -914,7 +914,7 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   reaching `htmx()` rather than being silently defaulted to `/`. The last is
   two `HtmxGet` pieces minted on the same method and path refused as di's
   duplicate-provider defect — the route-first sibling of the port-id
-  collision `controller.spec.ts` already covers for `HttpController`.
+  collision `controller.spec.ts` already covers for `OrpcController`.
 - **`openapi.spec.ts` carries 4** — pre-dating this feature set, undocumented
   here until now: `openApiDocument` answering through the `Result` channel —
   async and cannot fail, never a raw rejection — a marked procedure's own

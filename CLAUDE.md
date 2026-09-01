@@ -686,15 +686,15 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   so there. That is what makes a slice directory readable on its own — which
   ports come from outside, without naming who supplies them — and what keeps a
   `needs` list one line per feature instead of one per hop. `@btravstack/http-server`'s
-  `api.HttpController(contract, path)({ name: Dep }, { sync })` mints a piece
+  `api.OrpcController(contract, path)({ name: Dep }, { sync })` mints a piece
   from the contract path it serves — `api` being the application's one
   `defineHttp(...)` binding; the root composes every slice's piece into one
-  router with `api.HttpRouter(contract)([...])`, an array whose paths must
+  router with `api.OrpcRouter(contract)([...])`, an array whose paths must
   partition the contract's procedures (see `packages/http-server/CLAUDE.md`).
   **A fragment is itself a valid contract**,
   so a slice lifts out of the modulith into a process of its own without its
   controller changing at all: the lifted root is
-  `api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
+  `api.OrpcRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
   declaring the very provider the modulith composed and handing back what it
   built — a new composition root and one fewer import,
   not a rewrite of the slice. That exact call is `controller.test-d.ts`'s fifth
@@ -704,12 +704,12 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   trap, and it is the one property marked do-not-break in the design.
 
   **All three starters share one shape**: mint a piece straight from a
-  contract key — HTTP's `api.HttpController(contract, path)`,
+  contract key — HTTP's `api.OrpcController(contract, path)`,
   `@btravstack/amqp-worker`'s `AmqpHandler(contract, key)`,
   `@btravstack/temporal-worker`'s `TemporalWorkflowActivities(contract, key)` —
   each with the key carried on the piece's own port id rather than on a record
   position, and compose an **array** of them:
-  `api.HttpRouter(contract)([...])`, `AmqpHandlers(contract)([...])`,
+  `api.OrpcRouter(contract)([...])`, `AmqpHandlers(contract)([...])`,
   `TemporalActivities(contract)([...])`. Every leaf the contract declares must
   be covered (an uncovered one is refused at the call, against an
   `"UNCOVERED CONTROLLERS — …"` / `"UNCOVERED HANDLERS — …"` /
@@ -1214,7 +1214,7 @@ And a seventh, about the infrastructure a suite runs against:
   order id where a tenant goes was exactly the drift. It covers both
   controllers, the composed router, the `HttpModule` root whose authenticators
   ride the router,
-  the lifted single-slice root and the bare `api.HttpRouter(contract)(deps, arm)`
+  the lifted single-slice root and the bare `api.OrpcRouter(contract)(deps, arm)`
   form the three router-shaped pages share — `docs/index.md`,
   `docs/reference/http-server.md` and `docs/how-to/serve-orpc-over-http.md`, none of
   which puts a controller in between. Every deps record it compiles is

@@ -69,7 +69,7 @@ key)`, both of which cast it to the typed alias), so there is nothing a
   port typed (`provider.port`, di's `& { readonly port: P }`, for a
   hand-declared provider or a type test). No name, no class line.
   The contract argument is a value the type alone reads (`_contract`). Same
-  shape as `@btravstack/http-server`'s `HttpRouter(contract)` and
+  shape as `@btravstack/http-server`'s `OrpcRouter(contract)` and
   `@btravstack/temporal-worker`'s `TemporalActivities(contract)` — unlike
   `@btravstack/config`'s `Config.provider(name)(schema)`, which keeps its
   name because several config slices per application is normal. A

@@ -48,7 +48,7 @@ is the index of the workspaces themselves.
   **first** type test — `packages/temporal-worker` had no `*.test-d.ts` file, and no
   `tsconfig.test-d.json` or `test:types` script, before it. `packages/http-server/src/controller.test-d.ts`
   pins the
-  five compile-time gates the composing `HttpRouter(contract)([...])` form
+  five compile-time gates the composing `OrpcRouter(contract)([...])` form
   owes (see `packages/http-server/CLAUDE.md`). `@btravstack/http-server`'s specs (the
   per-file breakdown and the current total are `packages/http-server/CLAUDE.md`'s own, kept in one
   place rather than restated here) drive the
@@ -295,11 +295,11 @@ AuditSlice, observability(), otel()], … })`),
   and htmx fragments for one server-rendered route.** It is a
   two-slice modulith on the shape above: `slices/orders/` and
   `slices/customers/`, each its own contract fragment, its own
-  `HttpController` and its own di module — which **imports the vertical it
+  `OrpcController` and its own di module — which **imports the vertical it
   needs** (`OrderApplicationModule` + `OrderPersistenceModule`,
   `CustomerApplicationModule` + `CustomerPersistenceModule`) and exports only
   its controller, in di's provider form (`exports: [ordersController]`, since
-  `HttpController` mints the port and there is no class to name; the two
+  `OrpcController` mints the port and there is no class to name; the two
   slices are that form's first call sites). The orders slice also carries
   `slices/orders/fragment.ts`'s `orderRowFragment` — `api.HtmxGet("/orders/:id/row",
 { requires: [{ user: [] }] })`, minted straight from its method and path with no
@@ -317,7 +317,7 @@ AuditSlice, observability(), otel()], … })`),
   visits 16 provider slots and di keeps 15, one `OrderDatabase` among them
   (the same walk over the pre-split modules visited 22 for the same 15, and
   the difference is the over-inclusion the split removed). The root composes them —
-  `orderRouter = api.HttpRouter(contract)([ordersController,
+  `orderRouter = api.OrpcRouter(contract)([ordersController,
 customersController])` and `orderFragments = api.HtmxFragments([orderRowFragment])`,
   each the composing array form — and
   **`HttpModule("OrderApi")({ router: orderRouter, fragments: orderFragments, imports: [OrdersSlice,
@@ -365,5 +365,5 @@ CustomersSlice, observability(), otel()], exports: [Logger, Tracer, Meter] })`**
   that forgets `http()` is refused against
   `"NO RUNTIME — the module exports no port declared over RuntimePort"`, the
   sentence intersected onto `start`'s `module` parameter, and one that imports
-  it without providing `orderRouter` leaves `HttpRouterPort` in `Needs`, which
+  it without providing `orderRouter` leaves `OrpcRouterPort` in `Needs`, which
   the same parameter refuses by assignability — not di's dependency gate.

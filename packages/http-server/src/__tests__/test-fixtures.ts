@@ -98,7 +98,7 @@ const greetingImplementation = (greeter: ServiceOf<Greeter>) => ({
 });
 
 /** The router as a service, built from the greeter it declares — contract-first, on the starter's own router port. */
-const greetingRouter = publicApi.HttpRouter(greetingContract)(
+const greetingRouter = publicApi.OrpcRouter(greetingContract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => greetingImplementation(greeter),
@@ -113,12 +113,12 @@ const slicedContract = oc.router({ greetings: helloFragment, echoes: nestedFragm
  * minted by a DOTTED path, so the composing arm's `nest` rebuild is exercised
  * on a real request rather than only on top-level keys.
  */
-export const helloController = publicApi.HttpController(slicedContract, "greetings")(
+export const helloController = publicApi.OrpcController(slicedContract, "greetings")(
   { greeter: Greeter },
   { sync: ({ greeter }) => ({ hello: () => OkAsync(greeter.greet("world")) }) },
 );
 
-const echoesController = publicApi.HttpController(
+const echoesController = publicApi.OrpcController(
   slicedContract,
   "echoes.ping",
 )({
@@ -132,7 +132,7 @@ const echoesController = publicApi.HttpController(
  */
 export const armOnlyRouterRecording = () => {
   let seen = -1;
-  const provider = publicApi.HttpRouter(oc.router({ greetings: helloFragment }))({
+  const provider = publicApi.OrpcRouter(oc.router({ greetings: helloFragment }))({
     sync: (...args: readonly unknown[]) => {
       seen = args.length;
       return { greetings: { hello: () => OkAsync("hello world") } };
@@ -142,7 +142,7 @@ export const armOnlyRouterRecording = () => {
 };
 
 /** The same kind of API as `greetingRouter`, composed from pieces instead of one `sync`. */
-const slicedRouter = publicApi.HttpRouter(slicedContract)([helloController, echoesController]);
+const slicedRouter = publicApi.OrpcRouter(slicedContract)([helloController, echoesController]);
 
 /** `HttpModule` over the composed router, mirroring `rpcAppOf`. */
 const rpcSlicedAppOf = () =>
@@ -170,24 +170,24 @@ const deepContract = {
   health: oc,
 };
 
-const v1OrdersController = publicApi.HttpController(
+const v1OrdersController = publicApi.OrpcController(
   deepContract,
   "v1.orders",
 )({
   sync: () => ({ place: () => OkAsync({ id: "o-1" }) }),
 });
-const v1CustomersController = publicApi.HttpController(
+const v1CustomersController = publicApi.OrpcController(
   deepContract,
   "v1.customers",
 )({
   sync: () => ({ find: () => OkAsync({ id: "c-1" }) }),
 });
-const deepHealthController = publicApi.HttpController(
+const deepHealthController = publicApi.OrpcController(
   deepContract,
   "health",
 )({ sync: () => () => OkAsync({ ok: true as const }) });
 
-const deepRouter = publicApi.HttpRouter(deepContract)([
+const deepRouter = publicApi.OrpcRouter(deepContract)([
   v1OrdersController,
   v1CustomersController,
   deepHealthController,
@@ -231,7 +231,7 @@ const authedContract = { orders: authenticated({ user: [] })({ whoami }), health
 /** Counted so a test can assert the handler was never entered on a refusal. */
 let authedRuns = 0;
 
-const authedOrdersController = api.HttpController(
+const authedOrdersController = api.OrpcController(
   authedContract,
   "orders",
 )({
@@ -243,14 +243,14 @@ const authedOrdersController = api.HttpController(
   }),
 });
 
-const authedHealthController = api.HttpController(
+const authedHealthController = api.OrpcController(
   authedContract,
   "health",
 )({
   sync: () => ({ ping: () => OkAsync({ ok: true as const }) }),
 });
 
-const authedRouter = api.HttpRouter(authedContract)([
+const authedRouter = api.OrpcRouter(authedContract)([
   authedOrdersController,
   authedHealthController,
 ]);
@@ -259,7 +259,7 @@ const authedRouter = api.HttpRouter(authedContract)([
  * The same marked contract through the deps form, so the scheme's own key on
  * the deps record is pinned for both arms of `build`.
  */
-const authedPositionalRouter = api.HttpRouter(authedContract)(
+const authedPositionalRouter = api.OrpcRouter(authedContract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({
@@ -289,7 +289,7 @@ const rootMarkedContract = authenticated({ user: [] })({ orders: { whoami } });
 
 let rootMarkedRuns = 0;
 
-const rootMarkedRouter = api.HttpRouter(rootMarkedContract)({
+const rootMarkedRouter = api.OrpcRouter(rootMarkedContract)({
   sync: () => ({
     orders: {
       whoami: ({ context }) => {
@@ -318,7 +318,7 @@ const rootMarkedDeepContract = authenticated({ user: [] })({ v1: { orders: { who
 
 let rootMarkedDeepRuns = 0;
 
-const rootMarkedDeepController = api.HttpController(
+const rootMarkedDeepController = api.OrpcController(
   rootMarkedDeepContract,
   "v1.orders",
 )({
@@ -330,7 +330,7 @@ const rootMarkedDeepController = api.HttpController(
   }),
 });
 
-const rootMarkedDeepRouter = api.HttpRouter(rootMarkedDeepContract)([rootMarkedDeepController]);
+const rootMarkedDeepRouter = api.OrpcRouter(rootMarkedDeepContract)([rootMarkedDeepController]);
 
 const rpcRootMarkedDeepAppOf = () =>
   HttpModule("RpcRootMarkedDeepApp")({
@@ -359,7 +359,7 @@ const verifying = defineHttp({
   },
 });
 
-const verifiedRouter = verifying.HttpRouter({
+const verifiedRouter = verifying.OrpcRouter({
   orders: authenticated({ user: [] })({ whoami }),
 })({
   sync: () => ({
@@ -431,7 +431,7 @@ type DeepClient = RouterContractClient<typeof deepContract>;
  * The same implementation carrying a key the contract never declared, reachable
  * only past the types: `routerOf` drops it rather than defecting on it.
  */
-const strayRouter = publicApi.HttpRouter(greetingContract)(
+const strayRouter = publicApi.OrpcRouter(greetingContract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) =>
@@ -459,7 +459,7 @@ const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
  * covers.
  */
 const bothContract = oc.router({ ping: oc.output(ocType<string>()) });
-const bothRouter = publicApi.HttpRouter(bothContract)({
+const bothRouter = publicApi.OrpcRouter(bothContract)({
   sync: () => ({ ping: () => OkAsync("pong") }),
 });
 
@@ -510,7 +510,7 @@ const sharedAuthApi = defineHttp({
 });
 
 const sharedAuthContract = { whoami: authenticated({ user: [] })(oc.output(ocType<string>())) };
-const sharedAuthRouter = sharedAuthApi.HttpRouter(sharedAuthContract)({
+const sharedAuthRouter = sharedAuthApi.OrpcRouter(sharedAuthContract)({
   sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
 });
 
@@ -536,7 +536,7 @@ const corsContract = oc.router({
   greet: oc.input(ocType<{ readonly name: string }>()).output(ocType<string>()),
 });
 
-const corsRouter = publicApi.HttpRouter(corsContract)({
+const corsRouter = publicApi.OrpcRouter(corsContract)({
   sync: () => ({ greet: ({ input }) => OkAsync(`hello ${input.name}`) }),
 });
 
@@ -1011,7 +1011,7 @@ export type HttpFixtures = {
     readonly clientWith: (token: string | undefined) => RootMarkedDeepClient;
     readonly handlerRuns: () => number;
   };
-  /** What each `HttpRouter` arm declares as its dependencies over the same marked contract. */
+  /** What each `OrpcRouter` arm declares as its dependencies over the same marked contract. */
   readonly authedRouterDeps: {
     readonly composed: readonly string[];
     readonly fromDeps: readonly string[];

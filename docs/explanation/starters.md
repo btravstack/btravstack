@@ -125,7 +125,7 @@ What the application supplies to a starter — a router, an activities record,
 a handlers record — is a **service on a port**, and each starter ships one
 call that returns di's own provider builder on that port:
 
-- `api.HttpRouter(contract)(deps, { sync })` — `api` being the application's
+- `api.OrpcRouter(contract)(deps, { sync })` — `api` being the application's
   one `defineHttp(...)` binding, which is also what types a protected
   procedure's principal
 - `TemporalActivities(contract)(deps, arm)`
@@ -136,7 +136,7 @@ second is `Provider(port)(deps, arm)` exactly as everywhere else in the
 graph. **The port is the starter's, and nothing names it.** A process serves
 one router, one activities record, one handlers record as it boots one
 runtime, so there is nothing to tell apart: the port is fixed and
-framework-owned — `Port("HttpRouter")`, `Port("TemporalActivities")`,
+framework-owned — `Port("OrpcRouter")`, `Port("TemporalActivities")`,
 `Port("AmqpHandlers")`, each declared once, like `HttpConfig` or
 `HttpRuntime` — and two providers for it in one graph are di's
 duplicate-provider defect at build. The class line, its service type and the
@@ -180,7 +180,7 @@ provider moves that knowledge to where it exists — the composition root that
 provides the router — and the `Needs` channel checks it there: a root that
 imports `http()` without providing the router carries an unmet need `start`
 refuses, naming the port
-(`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`). The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
+(`Type 'OrpcRouterPort' is not assignable to type 'Env | Scope'`). The kernel keeps `Runtime.resolves`, `RunUnit`'s typed `ctx` and the
 `UNSATISFIED RUNTIME PORTS` arm as the general contract for a hand-rolled
 runtime; the starters simply do not use them.
 

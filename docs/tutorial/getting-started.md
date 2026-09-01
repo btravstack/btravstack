@@ -94,7 +94,7 @@ The router is a provider like any other: it declares the services its
 procedures call, and di builds it from them. Every HTTP entity comes from
 **one** `defineHttp` call — the door where an application declares its
 security schemes; this service is public, so it takes no argument. Then
-`api.HttpRouter(contract)` types the implementation from the contract — a
+`api.OrpcRouter(contract)` types the implementation from the contract — a
 typo'd key or a wrong output is a compile error here:
 
 **`router.ts`**
@@ -110,7 +110,7 @@ import { Greeter } from "./greeter.js";
 // type mentioning an inaccessible `unique symbol` (TS2527).
 const api = defineHttp();
 
-export const greetingRouter = api.HttpRouter(contract)(
+export const greetingRouter = api.OrpcRouter(contract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({

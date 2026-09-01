@@ -25,7 +25,7 @@ you are working under `packages/prisma/`.
   `Port(name) as PortClassOf<N, C>`. A class expression's type expands di's
   brand keys into a consumer's declaration emit, where they cannot be named, and
   `pnpm build` fails with **TS4023** — measured here, not anticipated. It is the
-  same reason `HttpRouterPort` is a cast in `@btravstack/http-server`, and the
+  same reason `OrpcRouterPort` is a cast in `@btravstack/http-server`, and the
   class of bug `examples/di-hexagonal`'s emit guards exist to catch.
 
 - **The provider is resourceful.** `acquire` builds the client, `release` is

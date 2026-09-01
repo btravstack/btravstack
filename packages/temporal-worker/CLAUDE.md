@@ -55,7 +55,7 @@ key)`, both of which cast it to the typed alias), so there is nothing a
 - **`TemporalActivities(contract)` → `ReturnType<typeof
 Provider<ActivitiesPortOf<C>>>`** — the activities' provider builder,
   `temporal-module.ts`, the same shape as `@btravstack/http-server`'s
-  `HttpRouter(contract)`. The one call fixes `C` (the contract value is
+  `OrpcRouter(contract)`. The one call fixes `C` (the contract value is
   otherwise unused; it exists so `C` is inferred rather than written) and
   returns di's own `Provider(port)` on `TemporalActivitiesPort as
 ActivitiesPortOf<C>`, so the next call is di's `(deps, arm)` unchanged and

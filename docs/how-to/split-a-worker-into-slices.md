@@ -47,7 +47,7 @@ from `examples/order-amqp-worker` (two subscriber slices) and
 [Split a router into controllers](/how-to/split-a-router-into-controllers)
 starts from a contract that is already nested — `{ orders: {...}, customers:
 {...} }` — and mints each piece from the **path** it serves, `"orders"` or a
-nested `"v1.orders"`, composing them with `api.HttpRouter(contract)([...])`.
+nested `"v1.orders"`, composing them with `api.OrpcRouter(contract)([...])`.
 An `amqp-contract` or `temporal-contract` contract has no such nesting: its
 consumers and its workflows are already flat top-level keys of one contract,
 not fragments of it, so a worker piece owns exactly one key and the key space

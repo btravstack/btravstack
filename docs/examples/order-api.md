@@ -1,6 +1,6 @@
 ---
 title: Order API example
-description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, HttpController and full vertical down to Prisma, an auth.ts declaring two schemes and a scope through defineHttp, composed by the array HttpRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
+description: The HTTP deployment — two slices, orders and customers, one marked with a named security scheme and one public, each its own contract fragment, OrpcController and full vertical down to Prisma, an auth.ts declaring two schemes and a scope through defineHttp, composed by the array OrpcRouter form into one HttpModule root, RequestModule forked per request, a main.ts that is one runMain call with the kernel's events on the application's own logger, and the three compile-time gates pinned by needs-gate.test-d.ts.
 ---
 
 <!-- doctest: prelude
@@ -224,7 +224,7 @@ has to be in scope there. Declaring a scheme and implementing it are the
 contract and no authenticator for the root to list.
 
 ::: warning Held whole — never destructured
-`const { HttpController } = defineHttp(...)` is **TS2527**: each binding of a
+`const { OrpcController } = defineHttp(...)` is **TS2527**: each binding of a
 destructured member expands to a type mentioning the marker's inaccessible
 `unique symbol`, which this file could not emit. Held whole, the inferred type
 collapses to `Http<A>`, which is nameable — which is why this file, unlike the
@@ -262,9 +262,9 @@ use cases in [`order-application`](/examples/order-application), and the
 entities and Prisma adapters behind it.
 
 ```
-src/slices/orders/controller.ts       api.HttpController(contract, "orders")({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
+src/slices/orders/controller.ts       api.OrpcController(contract, "orders")({ place: PlaceOrder, find: FindOrder, logger: Logger }, { sync })
 src/slices/orders/module.ts           OrdersSlice — imports the vertical, provides the controller, exports only it
-src/slices/customers/controller.ts    api.HttpController(contract, "customers")({ find: FindCustomer }, { sync })
+src/slices/customers/controller.ts    api.OrpcController(contract, "customers")({ find: FindCustomer }, { sync })
 src/slices/customers/module.ts        CustomersSlice — same shape as OrdersSlice
 ```
 
@@ -275,7 +275,7 @@ below does the same for its own slice:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.HttpController(contract, "orders")(
+export const ordersController = api.OrpcController(contract, "orders")(
   { place: PlaceOrder, find: FindOrder, logger: Logger },
   {
     sync: ({ place, find, logger }) => ({
@@ -397,20 +397,20 @@ port over `CustomerView` itself, which pointed the dependency arrow outwards.
 
 ## The router: composed from controllers, each carrying its own path
 
-`module.ts`'s `orderRouter` is `api.HttpRouter(contract)`'s **composing** form
+`module.ts`'s `orderRouter` is `api.OrpcRouter(contract)`'s **composing** form
 — an array of pieces, each already carrying the path it was minted from,
 instead of one `sync`:
 
 ```ts
 import { api } from "./auth.js";
 
-export const orderRouter = api.HttpRouter(contract)([
+export const orderRouter = api.OrpcRouter(contract)([
   ordersController,
   customersController,
 ]);
 ```
 
-`HttpRouter` comes off the same `api` as the controllers: the marks on
+`OrpcRouter` comes off the same `api` as the controllers: the marks on
 `contract.orders` ride
 through the composing form, so the router declares **one dependency per scheme the
 contract names** — `HttpAuthenticator:user` and `HttpAuthenticator:service` —
@@ -420,13 +420,13 @@ This form is exact: a slice's path missing from the array, a path the contract
 does not declare — refused at the piece's own mint, not here — and a piece
 under the wrong path — impossible by construction, since the path rides the
 piece's own port id — are all compile errors, the last two at
-`api.HttpController(contract, path)` itself. See
+`api.OrpcController(contract, path)` itself. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
 the recipe, and `packages/http-server/src/controller.test-d.ts` for the six gates
 that pin these errors and the lift below. Because a fragment is itself a valid
 contract, `ordersController` serves `contract.orders` alone unchanged: the
 lifted root is
-`api.HttpRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
+`api.OrpcRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
 over `OrdersSlice`, so extracting a slice out of this modulith is a new
 composition root and one fewer import, not a rewrite.
 
@@ -532,7 +532,7 @@ export const OrdersSlice = Module("OrdersSlice")({
 ```
 
 `orderRowFragment` rides with `ordersController` — the providers, not their
-`.port`s: `HttpController` and `HtmxGet` each mint the port for you, so
+`.port`s: `OrpcController` and `HtmxGet` each mint the port for you, so
 there is no class to name. A real slice carries its own htmx route rather
 than leaving it for the root to provide separately.
 
@@ -548,7 +548,7 @@ the same internal `DatabaseModule`, which owns the connection and is the only
 module that exports `OrderDatabase`. That is a diamond, not duplication: di
 flattens the module tree into a `Set` keyed by provider **reference**, so the
 graph builds one database. `exports` takes the provider
-rather than `ordersController.port` — `HttpController` minted that port, so
+rather than `ordersController.port` — `OrpcController` minted that port, so
 there is no class to spell back off it.
 
 `HttpModule` imports the starter (`http()` — `HttpRuntime`, `HttpConfig` bound
@@ -738,8 +738,8 @@ declaration gate either: the port is owed by `http()`, an **import**, and an
 import's needs travel without the importer re-declaring them. `start` — whose
 `module` parameter accepts only `Scope | Env` outstanding — is what refuses it,
 and the diagnostic names the port:
-`Type 'HttpRouterPort' is not assignable to type 'Env | Scope'`, down to
-`Type '"HttpRouter"' is not assignable to type '"@di/Scope"'`. It is **not** di's
+`Type 'OrpcRouterPort' is not assignable to type 'Env | Scope'`, down to
+`Type '"OrpcRouter"' is not assignable to type '"@di/Scope"'`. It is **not** di's
 `UNSATISFIED DEPENDENCIES` dependency gate, which guards `Module.build` and
 `Module.scoped`; conflating the two is easy and the distinction is the point of
 having both pinned here. There is no `UNSATISFIED RUNTIME PORTS` arm, because

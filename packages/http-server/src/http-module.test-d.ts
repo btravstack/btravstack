@@ -13,7 +13,7 @@ import { HttpModule } from "./http-module.js";
 const api = defineHttp();
 
 const contract = oc.router({ hello: oc });
-const router = api.HttpRouter(contract)({ sync: () => ({ hello: () => OkAsync("hi") }) });
+const router = api.OrpcRouter(contract)({ sync: () => ({ hello: () => OkAsync("hi") }) });
 
 const rowFragment = api.HtmxGet("/row")({ sync: () => () => OkAsync(html`<p>row</p>`) });
 const fragments = api.HtmxFragments([rowFragment]);

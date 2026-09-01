@@ -162,12 +162,12 @@ describe("a router over a marked contract", () => {
   it("declares the scheme's own port alongside the dependencies the caller wrote", ({
     authedRouterDeps,
   }) => {
-    // GIVEN the same marked contract composed through both arms of HttpRouter
+    // GIVEN the same marked contract composed through both arms of OrpcRouter
     // WHEN each provider's declared dependencies are read
     // THEN the scheme's port joins both, named for the scheme and alongside —
     // never in place of — the caller's own
     expect(authedRouterDeps).toEqual({
-      composed: ["HttpController:orders", "HttpController:health", "HttpAuthenticator:user"],
+      composed: ["OrpcController:orders", "OrpcController:health", "HttpAuthenticator:user"],
       fromDeps: ["Greeter", "HttpAuthenticator:user"],
     });
   });
@@ -177,8 +177,8 @@ describe("a router over a marked contract", () => {
     // WHEN its declared dependencies are read
     // THEN nothing was appended — an application with no protected route provides nothing
     expect(controllers.unmarkedRouterDeps).toEqual([
-      "HttpController:greetings",
-      "HttpController:echoes.ping",
+      "OrpcController:greetings",
+      "OrpcController:echoes.ping",
     ]);
   });
 });

@@ -146,7 +146,7 @@ import { api } from "./auth.js";
 import { contract } from "./contract.js";
 import { Greeter } from "./greeter.js";
 
-export const greetingRouter = api.HttpRouter(contract)(
+export const greetingRouter = api.OrpcRouter(contract)(
   { greeter: Greeter },
   {
     sync: ({ greeter }) => ({

@@ -94,7 +94,7 @@ export type ControllerPortOf<
 > = PortClassOf<`${typeof CONTROLLER_PREFIX}${K}`, Implementation<FragmentAt<C, K>, Schemes>>;
 
 /** The prefix a piece's port id carries; the composing form strips it to recover the path. */
-export const CONTROLLER_PREFIX = "HttpController:";
+export const CONTROLLER_PREFIX = "OrpcController:";
 
 /** What both arms of a minted controller return; `N` is the only thing that differs. */
 type Minted<
@@ -111,7 +111,7 @@ type Minted<
  *
  * A large API is several pieces, each owning one node of the contract tree —
  * named by a dotted path, `"orders"` or `"v1.orders"` — and declaring the use
- * cases its procedures call; `HttpRouter(contract)([...])` composes them.
+ * cases its procedures call; `OrpcRouter(contract)([...])` composes them.
  * `contract` is read for its TYPE only, and types both `key` and the
  * handlers — so a path the contract does not declare, or a procedure the
  * fragment does not, is a compile error here rather than at the root.

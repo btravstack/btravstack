@@ -77,7 +77,7 @@ const api = defineHttp();
 // Contract-first: the record is shaped like the contract, each leaf a plain
 // Result-returning function typed by it. The use cases arrive under the names
 // the deps record gave them — di injects them; oRPC's context stays empty.
-const ordersRouter = api.HttpRouter(ordersContract)(
+const ordersRouter = api.OrpcRouter(ordersContract)(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -145,7 +145,7 @@ port back from `app.runtimeInfo()`.
 
 ## Splitting a large API into slices
 
-`api.HttpRouter(contract)(deps, { sync })` is right for a small API; a large
+`api.OrpcRouter(contract)(deps, { sync })` is right for a small API; a large
 one splits into **pieces**, each owning one node of the contract tree, named
 by a dotted path, composed at the root as an array instead — the same shape
 `AmqpHandlers(contract)([...])` and `TemporalActivities(contract)([...])`
@@ -196,14 +196,14 @@ const customersContract = {
   find: oc.input(type<{ readonly id: string }>()).output(type<{ readonly name: string }>()),
 };
 const orderContract = { orders: ordersContract, customers: customersContract };
-const customersController = api.HttpController(orderContract, "customers")({
+const customersController = api.OrpcController(orderContract, "customers")({
   sync: () => ({ find: () => OkAsync({ name: "Ada" }) }),
 });
 declare const Application: Module<PlaceOrder | FindOrder, never, never>;
 -->
 
 ```ts
-const ordersController = api.HttpController(orderContract, "orders")(
+const ordersController = api.OrpcController(orderContract, "orders")(
   { place: PlaceOrder, find: FindOrder },
   {
     sync: ({ place, find }) => ({
@@ -250,15 +250,15 @@ const ordersController = api.HttpController(orderContract, "orders")(
   },
 );
 
-const orderRouter = api.HttpRouter(orderContract)([
+const orderRouter = api.OrpcRouter(orderContract)([
   ordersController,
   customersController,
 ]);
 ```
 
-`api.HttpController(contract, key)({ name: Dep }, { sync })` — or just
+`api.OrpcController(contract, key)({ name: Dep }, { sync })` — or just
 `({ sync })` when the slice calls nothing — is the same two-call shape as
-`api.HttpRouter`, aimed at one node of the contract tree: the key is a
+`api.OrpcRouter`, aimed at one node of the contract tree: the key is a
 **dotted path** (`"orders"`, `"v1.orders"`), the path IS the port's name, so
 there is nothing to name, and the provider carries the minted port on
 `.port`. The array is **exact** — a path the contract does not declare is
@@ -266,7 +266,7 @@ refused at the mint, and the paths must partition the contract's procedures:
 an uncovered procedure and a piece nested inside another piece's fragment are
 each refused at the root — and because a fragment is itself a valid contract,
 a slice can be served alone, its piece unchanged: the lifted root is
-`api.HttpRouter(orderContract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
+`api.OrpcRouter(orderContract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
 declaring the very provider the modulith composed. See
 [Split a router into controllers](https://btravstack.github.io/btravstack/how-to/split-a-router-into-controllers).
 
@@ -286,26 +286,26 @@ const contract = {
   health: oc,
 };
 
-const v1Orders = api.HttpController(
+const v1Orders = api.OrpcController(
   contract,
   "v1.orders",
 )({
   sync: () => ({ place: () => OkAsync("placed") }),
 });
-const v1Customers = api.HttpController(
+const v1Customers = api.OrpcController(
   contract,
   "v1.customers",
 )({
   sync: () => ({ find: () => OkAsync("found") }),
 });
-const health = api.HttpController(
+const health = api.OrpcController(
   contract,
   "health",
 )({
   sync: () => () => OkAsync("ok"),
 });
 
-const versionedRouter = api.HttpRouter(contract)([
+const versionedRouter = api.OrpcRouter(contract)([
   v1Orders,
   v1Customers,
   health,
@@ -450,7 +450,7 @@ const ordersContract = authenticated({ user: [] })({
   )(oc.output(type<{ readonly csv: string }>())),
 });
 
-const ordersRouter = api.HttpRouter({ orders: ordersContract })(
+const ordersRouter = api.OrpcRouter({ orders: ordersContract })(
   { find: FindOrder },
   {
     sync: ({ find }) => ({
@@ -529,7 +529,7 @@ supplies it:
 
 | Option            | What it is                                                                                                             |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `router`          | the router provider — what `api.HttpRouter(contract)(...)` returns                                                     |
+| `router`          | the router provider — what `api.OrpcRouter(contract)(...)` returns                                                     |
 | `fragments`       | the fragments provider — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces          |
 | `prefix`          | where the RPC endpoint is mounted (default `/rpc`)                                                                     |
 | `fragmentsPrefix` | where htmx fragments are mounted (default `/`, `htmx()`'s own default)                                                 |
