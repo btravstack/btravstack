@@ -2,7 +2,7 @@
 
 The application-service port for object storage: a `Storage` an application
 depends on, adapters that provide the `StorageBackend` behind it, and one
-composition function whose `instrumented` flag decides whether every operation
+composition function that binds them together, with every operation reported
 is spanned, counted and logged.
 
 The third of issue #62's three ports, on `@btravstack/cache`'s shape exactly —
@@ -13,18 +13,18 @@ return type; only what differs is written out here.
 
 ### `@btravstack/storage` (root)
 
-| Export                                                                   | What it is                                                                                     |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `Storage`                                                                | The port an application depends on: `put`, `get`, `delete`, `presignedUrl`, `presignedUpload`. |
-| `StorageBackend`                                                         | The port every adapter provides. Not for application code.                                     |
-| `StorageService`                                                         | The service both ports carry.                                                                  |
-| `StoredObject`                                                           | `{ bytes: Uint8Array; contentType: string }`.                                                  |
-| `ObjectNotFound`                                                         | `{ key }` — only `get` answers it.                                                             |
-| `StorageUnavailable`                                                     | `{ operation, key, reason }` — the store could not answer.                                     |
-| `PresignNotSupported`                                                    | `{ key }` — this adapter cannot mint a URL, and says so.                                       |
-| `storage({ adapter, instrumented? })`                                    | The composition. Instrumented by default; `false` opts out.                                    |
-| `StorageOptions`                                                         | `{ adapter: Module<StorageBackend, E, N>; instrumented?: boolean }`.                           |
-| `memoryStorage()` / `memoryStorageProvider()` / `memoryStorageBackend()` | The in-process adapter, as a module, a provider and a service.                                 |
+| Export                                                                   | What it is                                                                                                        |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `Storage`                                                                | The port an application depends on: `put`, `get`, `delete`, `presignedUrl`, `presignedUpload`.                    |
+| `StorageBackend`                                                         | The port every adapter provides. Not for application code.                                                        |
+| `StorageService`                                                         | The service both ports carry.                                                                                     |
+| `StoredObject`                                                           | `{ bytes: Uint8Array; contentType: string }`.                                                                     |
+| `ObjectNotFound`                                                         | `{ key }` — only `get` answers it.                                                                                |
+| `StorageUnavailable`                                                     | `{ operation, key, reason }` — the store could not answer.                                                        |
+| `PresignNotSupported`                                                    | `{ key }` — this adapter cannot mint a URL, and says so.                                                          |
+| `storage({ adapter })`                                                   | The composition: the adapter's module, plus the port provided from its backend, every call handed to `Observers`. |
+| `StorageOptions`                                                         | `{ adapter: Module<StorageBackend, E, N> }`.                                                                      |
+| `memoryStorage()` / `memoryStorageProvider()` / `memoryStorageBackend()` | The in-process adapter, as a module, a provider and a service.                                                    |
 
 ### `@btravstack/storage/s3`
 
@@ -38,7 +38,7 @@ return type; only what differs is written out here.
 `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` are the package's two
 **optional** peers, reached only through this subpath.
 
-What the instrumented form emits, per operation:
+What the observers make of an operation:
 
 | Signal  | Name                                                                                                                     | Attributes                                              |
 | ------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |

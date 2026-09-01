@@ -131,10 +131,11 @@ backend is a modeled `CacheUnavailable` rather than a swallowed one, that
 values are `unknown` encoded by the adapter, and that keys are plain strings
 the caller composes.
 
-**It decides one thing for you**: that a cache reports every call unless you
-say otherwise. Telemetry that is missing gets found during an incident, and
-the loud arm states its cost in the type — a root without `observability()`
-and `otel()` fails to compile, naming the three ports.
+**It decides one thing for you**: that every call is reported through
+`Observers`. Nothing is required to receive those reports — a graph composing
+no observability compiles, starts and pays an inert call — so the decision
+costs you a port list only if you want the spans and the instruments, and then
+you compose `observability()` and `otel()` and change nothing here.
 
 **It does not decide** whether an unreachable cache degrades your request —
 recover `CacheUnavailable` where you call it — nor what your keys look like,

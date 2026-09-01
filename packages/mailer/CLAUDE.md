@@ -2,7 +2,7 @@
 
 The application-service port for sending mail: a `Mailer` an application
 depends on, adapters that provide the `MailerBackend` behind it, and one
-composition function whose `instrumented` flag decides whether every send is
+composition function that binds them together, with every send reported is
 spanned, counted and logged.
 
 The second of issue #62's three ports, on `@btravstack/cache`'s shape exactly
@@ -13,19 +13,19 @@ conditional return type; only what differs is written out here.
 
 ### `@btravstack/mailer` (root)
 
-| Export                               | What it is                                                                        |
-| ------------------------------------ | --------------------------------------------------------------------------------- |
-| `Mailer`                             | The port an application depends on: `send(mail)`.                                 |
-| `MailerBackend`                      | The port every adapter provides. Not for application code.                        |
-| `MailerService`                      | The service both ports carry.                                                     |
-| `Mail`                               | `{ from, to, subject, text, html? }`.                                             |
-| `MailNotSent`                        | The modeled failure: `{ to, subject, reason }` — never the body.                  |
-| `mailer({ adapter, instrumented? })` | The composition. Instrumented by default; `false` opts out and declares no ports. |
-| `MailerOptions`                      | `{ adapter: Module<MailerBackend, E, N>; instrumented?: boolean }`.               |
-| `mailRecorder()`                     | `{ record, sent, only }` — the adapter's half and the test's, on one object.      |
-| `recordingMailer(recorder)`          | The recording adapter as a module.                                                |
-| `recordingMailerProvider(recorder)`  | The same as a provider — what `overridden` takes.                                 |
-| `recordingMailerBackend(recorder)`   | The service itself, for a spec that wants no graph.                               |
+| Export                              | What it is                                                                                                        |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `Mailer`                            | The port an application depends on: `send(mail)`.                                                                 |
+| `MailerBackend`                     | The port every adapter provides. Not for application code.                                                        |
+| `MailerService`                     | The service both ports carry.                                                                                     |
+| `Mail`                              | `{ from, to, subject, text, html? }`.                                                                             |
+| `MailNotSent`                       | The modeled failure: `{ to, subject, reason }` — never the body.                                                  |
+| `mailer({ adapter })`               | The composition: the adapter's module, plus the port provided from its backend, every call handed to `Observers`. |
+| `MailerOptions`                     | `{ adapter: Module<MailerBackend, E, N> }`.                                                                       |
+| `mailRecorder()`                    | `{ record, sent, only }` — the adapter's half and the test's, on one object.                                      |
+| `recordingMailer(recorder)`         | The recording adapter as a module.                                                                                |
+| `recordingMailerProvider(recorder)` | The same as a provider — what `overridden` takes.                                                                 |
+| `recordingMailerBackend(recorder)`  | The service itself, for a spec that wants no graph.                                                               |
 
 ### `@btravstack/mailer/smtp`
 
@@ -39,7 +39,7 @@ conditional return type; only what differs is written out here.
 `nodemailer` is the package's one **optional** peer, reached only through this
 subpath.
 
-What the instrumented form emits, per send:
+What the observers make of a send:
 
 | Signal  | Name                                                               | Attributes                                                                                       |
 | ------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |

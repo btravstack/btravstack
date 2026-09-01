@@ -126,10 +126,12 @@ package's business: it brings the `Logger` the handlers and the relay write
 to, bound from `LOG_LEVEL`, JSON per line on stdout, every line carrying the
 delivery's own unit.
 
-### RED metrics, on by default
+### RED metrics, reported always and collected when you ask
 
-The runtime records **rate, errors and duration** at the unit seam — the one
-place a framework that owns the unit lifecycle gets them for free:
+The runtime REPORTS rate, errors and duration at the unit seam — the one place a
+framework that owns the unit lifecycle gets them for free — and an observer is
+what turns a report into a measurement. Reporting always happens; **collection
+happens when `otel()` is composed**, and not before:
 
 | Instrument                   | Kind           | Dimensions           |
 | ---------------------------- | -------------- | -------------------- |
