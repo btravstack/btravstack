@@ -24,7 +24,7 @@ declare const RealApp: Module<Mailer, never, never>;
 > the `Mailer` port an application depends on, the `MailerBackend` every
 > adapter provides, the modeled `MailNotSent`, the recording and SMTP
 > adapters, and the one composition function that decides whether sends are
-> instrumented.
+> observed.
 
 ## The port
 
@@ -163,7 +163,7 @@ span's attributes rather than trusting the code to keep being careful.
 **Observation is a set port, not a flag.** Every call is handed to whatever
 contributed to `Observers`, and this module contributes a no-op member of its
 own — so a graph composing no observability owes nothing, installs nothing and
-costs one call per operation. Composing
+an operation costs one inert call per module that reads the port. Composing
 [`observability()`](/reference/observability) writes the failures as lines;
 composing `otel()` beside it opens the spans and mints the instruments. Neither
 changes a line of this composition.

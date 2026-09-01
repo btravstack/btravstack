@@ -52,6 +52,28 @@ describe("observe", () => {
     ]);
   });
 
+  it("drops a second settlement, so a count cannot be doubled", () => {
+    // GIVEN one observer over one operation
+    let settlements = 0;
+    const settle = observe(
+      [
+        (): Settle => () => {
+          settlements += 1;
+        },
+      ],
+      { component: "cache", name: "get", attributes: {} },
+    );
+
+    // WHEN the finisher is called twice — a `tap` and a `tapFailure` on one
+    // chain, or a retry, is exactly the shape that does this
+    settle({ outcome: "ok" });
+    settle({ outcome: "error" });
+
+    // THEN the operation settled once. "Called exactly once" is a property of
+    // this function rather than a rule every starter re-keeps
+    expect(settlements).toBe(1);
+  });
+
   it("does nothing at all when nothing observes", () => {
     // GIVEN an empty set — impossible in a real graph, since every reader
     // contributes a no-op, but the arithmetic still has to hold

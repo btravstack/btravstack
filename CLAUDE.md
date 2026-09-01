@@ -590,7 +590,7 @@ Four things are load-bearing:
 - **A reader of the port contributes a no-op member of its own.** A collector
   depending on a set port nothing provides is an unmet dependency, at plan time
   and in `Needs` alike — `otel()` already does this for `Instrumentations`.
-  Several no-ops in one graph cost a call each and nothing else.
+  Several no-ops in one graph cost one inert call each, per operation.
 - **The observer is called at the START and answers a finisher.** A span
   reconstructed afterwards from a duration is not the parent of anything that
   ran inside it, so "tell me it finished" would have made the tracing half

@@ -91,16 +91,22 @@ export const noObserver = (): Settle => () => {};
  * Run every observer around one operation, and hand back the one finisher that
  * settles them all.
  *
- * Observers are started in order and settled in order. A starter calls this
- * once per operation rather than looping itself, so "called exactly once" is a
- * property of this function instead of a rule each starter re-keeps.
+ * Observers are started in order and settled in order, and the finisher is
+ * **guarded**: a second call is dropped. "Called exactly once" is therefore a
+ * property of this function rather than a rule each starter re-keeps — which
+ * matters because the settling call sites are error paths, where a `tap` and a
+ * `tapFailure` on the same chain, or a retry, is exactly the shape that fires
+ * twice and doubles a failure count.
  */
 export const observe = (
   observers: readonly ((operation: Operation) => Settle)[],
   operation: Operation,
 ): Settle => {
   const settlers = observers.map((observer) => observer(operation));
+  let done = false;
   return (settled) => {
+    if (done) return;
+    done = true;
     for (const settle of settlers) settle(settled);
   };
 };

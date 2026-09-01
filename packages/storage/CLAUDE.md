@@ -159,7 +159,7 @@ with no extra line.
 Every call this package makes observable is handed to whatever contributed to
 `Observers` — `@btravstack/core`'s set port — and this module contributes a
 **no-op member of its own**, so a graph composing no observability owes nothing,
-installs nothing and pays one call per operation.
+installs nothing — an operation costs one inert call per module that reads the port.
 
 `instrumented` is gone. It defaulted to `true` and therefore put `Logger`,
 `Meter` and `Tracer` in this module's `Needs`, so a root that wanted a cache and

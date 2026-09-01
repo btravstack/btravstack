@@ -133,7 +133,7 @@ export const keyFor = (tenantId: string, id: string): string =>
 
 An adapter provides **`CacheBackend`**. A composition provides **`Cache`** from
 it. They carry the same service, and the split is not decoration: di allows one
-provider per port per graph, so an instrumented composition cannot be a layer
+provider per port per graph, so an observing composition cannot be a layer
 over a module that already provides `Cache`. Two compositions over one adapter
 is what that leaves — and it makes instrumentation a decision visible at the
 composition root rather than a flag.
@@ -195,7 +195,7 @@ One function, and the adapter it composes is the only decision at it.
 **Observation is a set port, not a flag.** Every call is handed to whatever
 contributed to `Observers`, and this module contributes a no-op member of its
 own — so a graph composing no observability owes nothing, installs nothing and
-costs one call per operation. Composing
+an operation costs one inert call per module that reads the port. Composing
 [`observability()`](/reference/observability) writes the failures as lines;
 composing `otel()` beside it opens the spans and mints the instruments. Neither
 changes a line of this composition.

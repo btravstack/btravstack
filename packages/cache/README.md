@@ -90,8 +90,7 @@ const customers = Provider(Customers)({
 });
 ```
 
-And the composition — the adapter, and whether it is instrumented, are both
-decided here and nowhere else:
+And the composition — the adapter is the only decision at it:
 
 ```ts
 import { cache } from "@btravstack/cache";
@@ -101,10 +100,8 @@ export const CustomersApp = Module("CustomersApp")({
   imports: [
     CustomerApplicationModule,
     CustomerPersistenceModule,
-    // Instrumented by default: a span, a counter and an error line per
-    // call, which is why `observability()` and `otel()` are below. Pass
-    // `instrumented: false` for the same graph without them — and without
-    // observability declared at all.
+    // Every call is reported through `Observers`. Drop the two modules
+    // below and this composition is unchanged — it just reports to nobody.
     cache({ adapter: redisCache() }),
     observability(),
     otel(),
@@ -116,13 +113,12 @@ export const CustomersApp = Module("CustomersApp")({
 
 ## Options
 
-| Option         | Where                               | What it is                                                                                                    |
-| -------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `adapter`      | `cache({ adapter })`                | the adapter module providing `CacheBackend` — required                                                        |
-| `instrumented` | `cache({ instrumented })`           | span, count and log every call (default `true`; needs `Logger`, `Meter`, `Tracer`, which `false` opts out of) |
-| `clock`        | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)                                          |
-| `REDIS_URL`    | environment, read by `redisCache()` | the connection URL — required, validated at graph build                                                       |
-| `ttlMs`        | `cache.set(key, value, { … })`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted)                             |
+| Option      | Where                               | What it is                                                                        |
+| ----------- | ----------------------------------- | --------------------------------------------------------------------------------- |
+| `adapter`   | `cache({ adapter })`                | the adapter module providing `CacheBackend` — required                            |
+| `clock`     | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)              |
+| `REDIS_URL` | environment, read by `redisCache()` | the connection URL — required, validated at graph build                           |
+| `ttlMs`     | `cache.set(key, value, { … })`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted) |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/cache),
@@ -135,7 +131,7 @@ backend is a modeled `CacheUnavailable` rather than a swallowed one, that
 values are `unknown` encoded by the adapter, and that keys are plain strings
 the caller composes.
 
-**It decides one thing for you**: that a cache is instrumented unless you
+**It decides one thing for you**: that a cache reports every call unless you
 say otherwise. Telemetry that is missing gets found during an incident, and
 the loud arm states its cost in the type — a root without `observability()`
 and `otel()` fails to compile, naming the three ports.

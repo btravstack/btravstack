@@ -357,7 +357,7 @@ echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
 
 `btravstack.amqp.deliveries` (counter) and `btravstack.amqp.duration`
 (histogram, ms), both dimensioned `{ handler, outcome }`, recorded in the unit
-middleware. Every unit is handed to `Observers`, and this module contributes a no-op member of its own — so a graph composing no observability owes nothing and pays one call per delivery. There is no `instrumented` flag: composing `observability()` and `otel()` is what turns the lines and the instruments on.
+middleware. Every unit is handed to `Observers`, and this module contributes a no-op member of its own — so a graph composing no observability owes nothing — an operation costs one inert call per module that reads the port. There is no `instrumented` flag: composing `observability()` and `otel()` is what turns the lines and the instruments on.
 
 **`handler` is the `consumers`/`rpcs` key**, so the contract bounds the
 cardinality — the queue name would too, but the key is what a reader of the

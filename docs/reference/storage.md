@@ -178,7 +178,7 @@ hunting for nothing.
 **Observation is a set port, not a flag.** Every call is handed to whatever
 contributed to `Observers`, and this module contributes a no-op member of its
 own — so a graph composing no observability owes nothing, installs nothing and
-costs one call per operation. Composing
+an operation costs one inert call per module that reads the port. Composing
 [`observability()`](/reference/observability) writes the failures as lines;
 composing `otel()` beside it opens the spans and mints the instruments. Neither
 changes a line of this composition.

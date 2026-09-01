@@ -6,7 +6,7 @@ you are working under `packages/prisma/`.
 
 ## Public surface
 
-- **`prismaDatabase(name)({ client })`** (`prisma.ts`) — the whole
+- **`prismaDatabase(name)({ client })` → the module, augmented with `port`** (`prisma.ts`) — the whole
   surface, returning `{ port, config, provider }`. A composition root puts
   `config` and `provider` in `provides` and exports `port`; there is nothing
   else to wire.

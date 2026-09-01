@@ -121,7 +121,7 @@ released client refuses to query.
 
 ## Engine-level tracing, with no wiring
 
-When `instrumented` is on and **`@prisma/instrumentation` is installed**, the
+When **`@prisma/instrumentation` is installed**, the
 starter turns on Prisma's own OpenTelemetry instrumentation itself. There is
 nothing to import and nothing to compose:
 

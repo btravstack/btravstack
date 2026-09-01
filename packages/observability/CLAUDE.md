@@ -231,3 +231,36 @@ skip, since it is the one that knows why.
 `Instrumentations` a port the graph always has: a collector depending on a set
 port NOTHING provides is an unmet dependency both at plan time and in `Needs`.
 Guice's `newSetBinder` declares the empty set for the same reason.
+
+## The two `Observers` members this package contributes
+
+`Observers` is declared in `@btravstack/core`; the members that do something
+with an operation are here, and they are the reason a starter holds no `Logger`,
+`Meter` or `Tracer` of its own.
+
+- **`observability()` contributes the LINE**, and only for a failure:
+  `component.name failed`, with the operation's attributes, its details and the
+  cause. A success writes nothing — that is what the metric is for, and a line
+  per success broke an application spec asserting that neither its controller
+  nor its interactor had written anything.
+- **`otel()` contributes the SPAN and the INSTRUMENTS**:
+  `component.name` as the span, `btravstack.<component>.operations` and
+  `btravstack.<component>.duration` as the pair, both minted per component and
+  cached. Names derived from the operation, so nothing had to become uniform to
+  be shared.
+
+**`otel()`'s member injects nothing, and that is load-bearing.** Depending on
+`Tracer`/`Meter` is a dependency CYCLE — `OtelSdk` collects `Instrumentations`,
+a starter's contribution may read `Observers`, and the member closes the loop
+back onto the SDK. The examples' integration tests caught it as
+`[di] dependency cycle among ports: OrderDatabase, HealthChecks, Instrumentations, …`.
+
+**The tracer is read once and the meter per operation**, which is not symmetry
+worth restoring: `trace.getTracer` answers a proxy that resolves when the SDK
+registers, and `metrics.getMeter` does not — read once before `sdk.start()` it
+returns the no-op meter and keeps it. Only the instruments it mints are cached.
+
+**Details ride the span and the line, never an instrument.** `Operation.details`
+is the unbounded half — a cache key, a mail subject, a URL — and putting it on a
+counter is one time series per value. The first cut of the shared observer did
+exactly that with `btravstack.cache.key`.

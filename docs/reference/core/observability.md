@@ -199,7 +199,9 @@ Every starter that reports what it did — the three servers,
 operations to this port and holds no `Logger`, `Meter` or `Tracer` of its own.
 Composing [`observability()`](/reference/observability) writes the failures as
 lines; composing `otel()` beside it opens the spans and mints the instruments.
-A graph that composes neither owes nothing and pays one call per operation.
+A graph that composes neither owes nothing: each module that reads the port
+contributed one `noObserver`, so an operation costs one inert call per such
+module and nothing else.
 
 **A module that reads the port contributes `noObserver` itself.** A collector
 depending on a set port nothing provides is an unmet dependency, so the no-op

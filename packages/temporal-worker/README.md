@@ -144,16 +144,15 @@ and the module lists (`imports`, `provides`, `exports`, `needs`). The
 the activities provider on its own port, which is how the composition root
 supplies it:
 
-| Option         | What it is                                                                                                              |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `contract`     | the `temporal-contract` contract; the task queue this worker polls is read off it                                       |
-| `activities`   | the activities provider — what `TemporalActivities(contract)(...)` returns for this contract                            |
-| `workflows`    | where the sandbox's code comes from: `{ workflowsPath }` or `{ workflowBundle }`                                        |
-| `address`      | pins the service instead of reading `TEMPORAL_ADDRESS`                                                                  |
-| `namespace`    | pins the namespace instead of reading `TEMPORAL_NAMESPACE`                                                              |
-| `gracePeriod`  | pins `TEMPORAL_GRACE_PERIOD_MS` — Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                    |
-| `forceAfter`   | pins `TEMPORAL_FORCE_AFTER_MS` — Temporal's `shutdownForceTime` (default `15_000` ms); keep it under `DRAIN_TIMEOUT_MS` |
-| `instrumented` | RED metrics per activity attempt, on the `Meter` port (default on); `false` drops `Meter` from the module's needs       |
+| Option        | What it is                                                                                                              |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `contract`    | the `temporal-contract` contract; the task queue this worker polls is read off it                                       |
+| `activities`  | the activities provider — what `TemporalActivities(contract)(...)` returns for this contract                            |
+| `workflows`   | where the sandbox's code comes from: `{ workflowsPath }` or `{ workflowBundle }`                                        |
+| `address`     | pins the service instead of reading `TEMPORAL_ADDRESS`                                                                  |
+| `namespace`   | pins the namespace instead of reading `TEMPORAL_NAMESPACE`                                                              |
+| `gracePeriod` | pins `TEMPORAL_GRACE_PERIOD_MS` — Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                    |
+| `forceAfter`  | pins `TEMPORAL_FORCE_AFTER_MS` — Temporal's `shutdownForceTime` (default `15_000` ms); keep it under `DRAIN_TIMEOUT_MS` |
 
 The full table — required/optional, defaults, and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/temporal-worker),

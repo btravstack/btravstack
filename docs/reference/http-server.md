@@ -39,7 +39,7 @@ declare const view: (order: Order) => OrderView;
 | `Http`                 | type  | `Http<A>` — what `defineHttp` returns, held as one binding and never destructured                                                                                                                                                                                                                            |
 | `Authenticators`       | type  | `Readonly<Record<string, Authenticator<…>>>` — the registry `defineHttp` takes, keyed by scheme name                                                                                                                                                                                                         |
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
-| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, instrumented?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                    |
+| `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                                   |
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                  |
 | `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })`, or `({ inject: {}, sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                   |
 | `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                                                                                       |
@@ -53,7 +53,7 @@ declare const view: (order: Order) => OrderView;
 | `resolvePrincipal`     | value | the protocol-neutral authentication walk, shared by every answerer                                                                                                                                                                                                                                           |
 | `Principal`            | type  | `Principal<S, Schemes>` — what a leaf's handler reads: bare for one scheme, a tagged union for several, `never` for none                                                                                                                                                                                     |
 | `SchemesOf`            | type  | `SchemesOf<R>` — the union of scheme names a `Requirements` tuple mentions                                                                                                                                                                                                                                   |
-| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, instrumented? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                            |
+| `http`                 | value | `http({ prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders? })` — the starter module itself, needing the router port; what `HttpModule` imports                                                                                                                           |
 | `httpServer`           | value | `httpServer(options?)` — the socket half: runtime, config, and the empty answerer set. `http()` is this plus oRPC                                                                                                                                                                                            |
 | `HttpOptions`          | type  | `http()`'s options                                                                                                                                                                                                                                                                                           |
 | `HttpRuntime`          | value | `class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}` — the runtime's port; what `http()` provides and the module `start` boots must export. It **resolves `HttpHandler`**, so the root must export that too                                                                     |
@@ -114,7 +114,6 @@ gates see a plain module.
 | `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                     |
 | `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                |
 | `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                       |
-| `instrumented`    | no       | `true`                       | RED metrics per request; on, this module **needs `Meter`** as well as `Env`, so `false` is what a root composing no OTel SDK passes                                                     |
 | `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                               |
 | `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                         |
 | `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                |
@@ -175,9 +174,12 @@ place a framework that owns the unit lifecycle gets them for free:
 | `btravstack.http.requests` | counter        | `method`, `answerer`, `status` |
 | `btravstack.http.duration` | histogram (ms) | the same three                 |
 
-`instrumented` defaults to `true`, which puts `Meter` in the module's needs — so
-a root composing no OTel SDK writes `http({ instrumented: false })` and pays nothing: no meter, no
-instrument built, one `if` on the request path.
+`instrumented` is gone. Every unit is handed to `Observers`, and this module
+contributes a no-op member of its own — so a graph composing no observability
+owes nothing, and an operation costs one inert call per module that reads the
+port. Composing [`observability()`](/reference/observability) writes the
+failures as lines; composing `otel()` beside it opens the spans and mints
+`btravstack.<component>.operations` and `.duration`.
 
 **The dimensions are chosen for cardinality, and what is absent matters more
 than what is present.** The request **path** is not a dimension: `/orders/42` would mint a time series per order, which is the classic way a metrics bill becomes the incident. `answerer` is a mount prefix, so the graph bounds it. Recording happens on the response's `'close'`, which is the one event that has seen the final status — the runtime's own `404` and `500` included, which no answerer ever sees.
@@ -842,13 +844,9 @@ does, so `HttpModule` can deduplicate a scheme the two share, by reference.
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-const http: <Instrumented extends boolean = true>(
-  options?: HttpOptions & { readonly instrumented?: Instrumented },
-) => Module<
-  HttpRuntime | HttpConfig | HttpHandler,
-  ConfigInvalid,
-  Instrumented extends false ? Env | OrpcRouterPort : Env | Meter | OrpcRouterPort
->;
+const http: (
+  options?: HttpOptions,
+) => Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | OrpcRouterPort>;
 ```
 
 The primitive `HttpModule` delegates to, for a composition root written by
@@ -864,11 +862,9 @@ hand. `HttpOptions`:
 | `compression`     | no       | `HTTP_COMPRESSION` | `boolean \| ResponseCompressionHandlerPluginOptions`            |
 | `plugins`         | no       | `[]`               | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler` |
 | `securityHeaders` | no       | `true`             | `boolean \| Record<string, string>`, applied on the listener    |
-| `instrumented`    | no       | `true`             | `boolean`; on, the module also needs `Meter`                    |
 
 The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
-**needs** `Env` (the kernel discharges it), `Meter` unless
-`instrumented: false`, and the starter's router port
+**needs** `Env` (the kernel discharges it) and the starter's router port
 (`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, ...arm })` provides on) —
 the runtime provider depends on the router through di, which is why a
 composition that imports `http()` without providing the router carries an
