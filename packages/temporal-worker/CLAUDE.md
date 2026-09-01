@@ -394,8 +394,14 @@ schedule left on the server with a spec the deploy stopped writing.
 
 Two things it deliberately does not do:
 
-- **It writes `spec`, never `state`.** A schedule an operator paused stays
-  paused across a deploy; unpausing it is a decision a person made.
+- **It reconciles `spec` and nothing else.** `state` is preserved because a
+  schedule an operator paused stays paused across a deploy — unpausing it is a
+  decision a person made. `args` and the rest of the action are preserved for a
+  different reason: `create` validates args against the workflow's input schema
+  and the handle's `update` validates nothing, so writing them here would push
+  unvalidated input at the server through a door the typed client keeps shut.
+  After the call the schedule FIRES when the arguments say; WHAT it fires with
+  is whatever it already fired with, and `schedule.spec.ts` pins that.
 - **It recovers exactly one error.** The matcher has no wildcard, so the other
   two arms are named and re-erred, and a fourth error added upstream fails this
   file rather than being silently recovered into a schedule nobody registered.

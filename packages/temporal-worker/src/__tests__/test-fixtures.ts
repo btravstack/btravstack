@@ -449,12 +449,12 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
  * `ensureSchedule` bound to this test's own namespace and a schedule id nobody
  * else uses, so the suite needs no cleanup — the namespace is what disposes.
  */
-const schedulesOf = async (client: Client, contract: ContractDefinition) => {
+const schedulesOf = async (client: Client, contract: typeof echoContract) => {
   const scheduleId = `sched-${randomUUID()}`;
   const schedules = (await TypedClient.create({ client })).get().for(contract).schedule;
   return {
-    ensure: (spec: ScheduleSpec) =>
-      ensureSchedule(schedules, "runEcho", { scheduleId, spec, args: "x" }),
+    ensure: (spec: ScheduleSpec, args = "x") =>
+      ensureSchedule(schedules, "runEcho", { scheduleId, spec, args }),
     // The two pass-through arms, reached past the types: a workflow the
     // contract does not declare, and args its schema refuses.
     ensureUnknown: (spec: ScheduleSpec) =>

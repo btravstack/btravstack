@@ -46,6 +46,31 @@ describe("ensureSchedule", () => {
     );
   });
 
+  it("leaves the existing action alone — only the spec is reconciled", async ({ schedules }) => {
+    // GIVEN a schedule registered with one argument, then ensured again with a
+    // new cron AND a different argument
+    const described = await schedules
+      .ensure({ cronExpressions: ["0 3 * * *"] }, "first")
+      .flatMap(() => schedules.ensure({ cronExpressions: ["0 4 * * *"] }, "second"))
+      .flatMap(() => schedules.describe());
+
+    // THEN the cron moved and the argument did not. `create` validates args
+    // against the workflow's schema and the handle's `update` validates
+    // nothing, so writing them here would push unvalidated input at the server
+    // through a door the typed client keeps shut — changing what a schedule
+    // RUNS is an explicit delete-and-create
+    expect(described).toBeOkWith(
+      expect.objectContaining({
+        spec: expect.objectContaining({
+          calendars: expect.arrayContaining([
+            expect.objectContaining({ hour: [expect.objectContaining({ start: 4 })] }),
+          ]),
+        }),
+        action: expect.objectContaining({ args: ["first"] }),
+      }),
+    );
+  });
+
   it("passes a workflow the contract never declared through, still typed", async ({
     schedules,
   }) => {

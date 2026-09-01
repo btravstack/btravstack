@@ -9,7 +9,7 @@ import {
 import type { ContractDefinition } from "@temporal-contract/contract";
 import { ErrAsync, P, type AsyncResult } from "unthrown";
 
-/** Whether the schedule had to be created, or was already there and was brought up to date. */
+/** Whether the schedule had to be created, or was already there and had its spec reconciled. */
 export type ScheduleOutcome = "created" | "updated";
 
 /**
@@ -23,13 +23,27 @@ export type ScheduleOutcome = "created" | "updated";
  * schedule exists with the WRONG spec — a cron nobody notices has stopped
  * matching what the code says.
  *
- * This recovers exactly that one error into an `update`, so the schedule after
- * the call is the one the arguments describe, whether or not it existed. Every
- * other error stays on the channel, still typed.
+ * This recovers exactly that one error into an `update`. Every other error
+ * stays on the channel, still typed.
  *
- * The spec is what is written; `state` is deliberately NOT — a schedule an
- * operator paused stays paused across a deploy, because unpausing it is a
- * decision a person made and a deploy is not the place to reverse it.
+ * **`spec` is the only field reconciled**, and the rest of an existing
+ * schedule is left as it stands. Two different reasons, and they are worth
+ * telling apart:
+ *
+ * - **`state` is deliberately preserved.** A schedule an operator paused stays
+ *   paused across a deploy, because unpausing it is a decision a person made
+ *   and a deploy is not the place to reverse it.
+ * - **`args` and the rest of the action are preserved because this cannot
+ *   reconcile them SAFELY.** `create` validates `args` against the workflow's
+ *   input schema; the handle's `update` takes Temporal's own
+ *   `ScheduleUpdateOptions` and validates nothing, so writing them here would
+ *   push unvalidated input at the server through a door the typed client keeps
+ *   shut. A deploy that changes what a schedule RUNS — its args, its workflow,
+ *   its policies — should say so explicitly: delete the schedule and create it,
+ *   or reach `getHandle(id).update(...)` directly and own the shape.
+ *
+ * So: after this call the schedule FIRES when the arguments say. What it fires
+ * with is whatever it already fired with.
  *
  * ```ts
  * await ensureSchedule(client.for(orderContract).schedule, "sweepStaleOrders", {

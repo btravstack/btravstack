@@ -64,11 +64,15 @@ import { TypedClient } from "@temporal-contract/client";
 
 const typed = (await TypedClient.create({ client })).get();
 
-await ensureSchedule(typed.for(orderContract).schedule, "fulfillOrder", {
+const registered = await ensureSchedule(typed.for(orderContract).schedule, "fulfillOrder", {
   scheduleId: "nightly-fulfillment-sweep",
   spec: { cronExpressions: ["0 3 * * *"] },
   args: { tenantId: "acme", orderId: "sweep", quantity: 1 },
 });
+
+// Errors are values here, so a deploy that ignores this exits 0 with no
+// schedule registered — which is the failure this whole page is about.
+process.exitCode = registered.isOk() ? 0 : 1;
 ```
 
 `create` answers `ScheduleAlreadyExistsError` for an id already in use, which is
@@ -82,9 +86,22 @@ that matters: a schedule that exists with a spec **nobody changed on the
 server** because the deploy stopped writing it. A cron that silently stopped
 matching the code is worse than a deploy that fails loudly.
 
-`spec` is written; `state` is not. A schedule an operator paused stays paused
-across a deploy, because unpausing it is a decision a person made and a deploy
-is not the place to reverse it.
+**`spec` is the only field reconciled**, and the two reasons are worth telling
+apart:
+
+- **`state` is preserved deliberately.** A schedule an operator paused stays
+  paused across a deploy; unpausing it is a decision a person made, and a deploy
+  is not the place to reverse it.
+- **`args` and the rest of the action are preserved because this cannot
+  reconcile them safely.** `create` validates `args` against the workflow's
+  input schema; the handle's `update` takes Temporal's own shape and validates
+  nothing, so writing them here would push unvalidated input at the server
+  through a door the typed client keeps shut.
+
+So after the call the schedule **fires when** the arguments say; **what it
+fires with** is whatever it already fired with. Changing that is an explicit
+act — delete and create, or reach `getHandle(id).update(...)` and own the
+shape.
 
 ## Where to call it
 
