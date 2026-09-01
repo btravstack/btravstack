@@ -298,7 +298,7 @@ const ticker: Runtime<typeof Greeter> = {
 class Ticker extends RuntimePort<Runtime<typeof Greeter>> {}
 
 const TickerModule = Module("Ticker")({
-  provides: [Provider(Ticker)({ value: ticker })],
+  provides: [Provider(Ticker)({ inject: {}, value: ticker })],
   exports: [Ticker],
 });
 ```

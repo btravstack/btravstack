@@ -60,7 +60,7 @@ type SliceableGate<C, K> =
   K extends ControllerKeyOf<C>
     ? unknown
     : {
-        readonly "UNSLICEABLE CONTRACT KEY — this path names a key containing a literal dot, which a piece path cannot encode; serve this contract with the (deps, arm) form instead": K;
+        readonly "UNSLICEABLE CONTRACT KEY — this path names a key containing a literal dot, which a piece path cannot encode; serve this contract with the { inject, sync } form instead": K;
       };
 
 /**
@@ -142,23 +142,11 @@ export const controllerFor =
       Implementation<FragmentAt<C, Key>, Schemes>
     > {};
 
-    // Two arms discriminated by ARITY, mirroring `Provider(port)`'s own: a
-    // controller that calls no use case is the common shape here.
-    function build<const D extends Readonly<Record<string, AnyPort>>>(
-      deps: D,
-      options: {
-        readonly sync: (services: {
-          readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-        }) => Implementation<FragmentAt<C, Key>, Schemes>;
-      },
-    ): Minted<C, Key, Schemes, InstanceType<D[keyof D]>>;
-    function build(options: {
-      readonly sync: () => Implementation<FragmentAt<C, Key>, Schemes>;
-    }): Minted<C, Key, Schemes, never>;
-    function build(depsOrOptions: unknown, options?: unknown): unknown {
-      return options === undefined
-        ? Provider(port as never)(depsOrOptions as never)
-        : Provider(port as never)(depsOrOptions as never, options as never);
-    }
-    return build;
+    return <const D extends Readonly<Record<string, AnyPort>>>(options: {
+      readonly inject: D;
+      readonly sync: (services: {
+        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+      }) => Implementation<FragmentAt<C, Key>, Schemes>;
+    }): Minted<C, Key, Schemes, InstanceType<D[keyof D]>> =>
+      Provider(port as never)(options as never) as never;
   };

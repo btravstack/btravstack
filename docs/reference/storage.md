@@ -38,27 +38,25 @@ export const documents = Provider(
     readonly save: (key: string, pdf: Uint8Array) => AsyncResult<void, never>;
     readonly link: (key: string) => AsyncResult<string | undefined, never>;
   }>,
-)(
-  { store: Storage },
-  {
-    sync: ({ store }) => ({
-      save: (key, pdf) =>
-        store
-          .put(key, pdf, { contentType: "application/pdf" })
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("StorageUnavailable"), () => undefined),
-          ),
-      link: (key) =>
-        store
-          .presignedUrl(key, { ttlMs: 60_000 })
-          .recoverErrCases((matcher) =>
-            matcher
-              .with(P.tag("StorageUnavailable"), () => undefined)
-              .with(P.tag("PresignNotSupported"), () => undefined),
-          ),
-    }),
-  },
-);
+)({
+  inject: { store: Storage },
+  sync: ({ store }) => ({
+    save: (key, pdf) =>
+      store
+        .put(key, pdf, { contentType: "application/pdf" })
+        .recoverErrCases((matcher) =>
+          matcher.with(P.tag("StorageUnavailable"), () => undefined),
+        ),
+    link: (key) =>
+      store
+        .presignedUrl(key, { ttlMs: 60_000 })
+        .recoverErrCases((matcher) =>
+          matcher
+            .with(P.tag("StorageUnavailable"), () => undefined)
+            .with(P.tag("PresignNotSupported"), () => undefined),
+        ),
+  }),
+});
 ```
 
 | Method                                                        | Answers                                                           |

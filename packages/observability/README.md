@@ -51,17 +51,15 @@ import {
 import { Module, Provider } from "@btravstack/di";
 
 // The application depends on the port, like any other service.
-const placeOrder = Provider(PlaceOrder)(
-  { orders: OrderRepository, logger: Logger },
-  {
-    sync: ({ orders, logger }) => ({
-      execute: (id, quantity) =>
-        orders
-          .save({ id, quantity })
-          .tap(() => logger.info("order placed", { id, quantity })),
-    }),
-  },
-);
+const placeOrder = Provider(PlaceOrder)({
+  inject: { orders: OrderRepository, logger: Logger },
+  sync: ({ orders, logger }) => ({
+    execute: (id, quantity) =>
+      orders
+        .save({ id, quantity })
+        .tap(() => logger.info("order placed", { id, quantity })),
+  }),
+});
 
 // The starter provides it. `LOG_LEVEL` is read inside the graph and validated
 // once — `verbose` is a startup failure naming the variable, not a silent

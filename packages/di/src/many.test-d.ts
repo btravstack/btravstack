@@ -44,7 +44,7 @@ describe("Port.many", () => {
 
 describe("Provider.member", () => {
   test("a value member is qualified against the member shape, not the array", () => {
-    const p = Provider.member(Handlers)({ value: { run: () => {} } });
+    const p = Provider.member(Handlers)({ inject: {}, value: { run: () => {} } });
 
     type Channels = ChannelsOf<typeof p>;
     const portIsHandlers: Equal<Channels[0], Handlers> = true;
@@ -57,14 +57,14 @@ describe("Provider.member", () => {
 
   test("a value member cannot supply the array shape", () => {
     // @ts-expect-error the member arm wants one Handler, not an array of them
-    Provider.member(Handlers)({ value: [{ run: () => {} }] });
+    Provider.member(Handlers)({ inject: {}, value: [{ run: () => {} }] });
   });
 
   test("deps are typed into the member factory parameters, by name", () => {
-    const p = Provider.member(Handlers)(
-      { db: Db },
-      { sync: ({ db }) => ({ run: () => void db.name }) },
-    );
+    const p = Provider.member(Handlers)({
+      inject: { db: Db },
+      sync: ({ db }) => ({ run: () => void db.name }),
+    });
 
     type Channels = ChannelsOf<typeof p>;
     const portIsHandlers: Equal<Channels[0], Handlers> = true;
@@ -79,20 +79,18 @@ describe("Provider.member", () => {
   });
 
   test("a member factory returning the array shape is rejected", () => {
-    Provider.member(Handlers)(
-      { db: Db },
-      {
-        // @ts-expect-error sync must return one Handler, not an array of them
-        sync: ({ db }) => [{ run: () => void db.name }],
-      },
-    );
+    Provider.member(Handlers)({
+      inject: { db: Db },
+      // @ts-expect-error sync must return one Handler, not an array of them
+      sync: ({ db }) => [{ run: () => void db.name }],
+    });
   });
 
   test("an ordinary, non-array-shaped port has no member shape to construct", () => {
     class NotMany extends Port("MDNotMany")<{ readonly name: string }> {}
     // @ts-expect-error NotMany's service is not an array — MemberOf resolves
     // to never, so no value can satisfy the `value` arm
-    Provider.member(NotMany)({ value: { name: "x" } });
+    Provider.member(NotMany)({ inject: {}, value: { name: "x" } });
   });
 
   /**
@@ -103,7 +101,7 @@ describe("Provider.member", () => {
    * `build.ts`/`context.ts` treat any provider for it as a single service,
    * not a member. Under the old shape-keyed `MemberOf`, `Provider.member(Tags)`
    * type-checked as if `Tags`' member shape were `string`, so
-   * `Provider.member(Tags)({ value: "a" })` compiled clean while landing "a"
+   * `Provider.member(Tags)({ inject: {}, value: "a" })` compiled clean while landing "a"
    * (not `["a"]`) at runtime — a type-level lie about `ctx.get(Tags)`'s real,
    * `readonly string[]`-typed value. `MemberOf` keyed off `[MANY]` (module-
    * private, unforgeable outside `port.ts`) makes this the same `never`
@@ -114,6 +112,6 @@ describe("Provider.member", () => {
     // @ts-expect-error Tags is an ordinary port (many is undefined at
     // runtime) despite its array-shaped service — MemberOf must resolve to
     // never here, not `string`
-    Provider.member(Tags)({ value: "a" });
+    Provider.member(Tags)({ inject: {}, value: "a" });
   });
 });

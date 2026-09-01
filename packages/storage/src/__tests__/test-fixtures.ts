@@ -31,7 +31,7 @@ const failingBackend: StorageService = {
 
 export const failingStorage = (): Module<StorageBackend, never, never> =>
   Module("FailingStorage")({
-    provides: [Provider(StorageBackend)({ value: failingBackend })],
+    provides: [Provider(StorageBackend)({ inject: {}, value: failingBackend })],
     exports: [StorageBackend],
   });
 
@@ -47,7 +47,7 @@ const defectiveBackend: StorageService = {
 
 export const defectiveStorage = (): Module<StorageBackend, never, never> =>
   Module("DefectiveStorage")({
-    provides: [Provider(StorageBackend)({ value: defectiveBackend })],
+    provides: [Provider(StorageBackend)({ inject: {}, value: defectiveBackend })],
     exports: [StorageBackend],
   });
 
@@ -109,7 +109,7 @@ export const it = test.extend<StorageFixtures>({
     const served = await Module.scoped(
       Module("S3Fixture")({
         imports: [s3Storage()],
-        provides: [Provider(Env)({ value: env })],
+        provides: [Provider(Env)({ inject: {}, value: env })],
         exports: [StorageBackend],
       }),
       // `use` runs INSIDE the scope, so the client the provider built is
@@ -204,7 +204,10 @@ export const it = test.extend<StorageFixtures>({
             storage({ adapter }),
             Module("RecordingLogger")({
               provides: [
-                Provider(Logger)({ value: createLogger((line) => lines.push(line), "debug") }),
+                Provider(Logger)({
+                  inject: {},
+                  value: createLogger((line) => lines.push(line), "debug"),
+                }),
               ],
               exports: [Logger],
             }),

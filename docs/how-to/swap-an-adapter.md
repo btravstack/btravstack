@@ -71,26 +71,22 @@ const makePersistenceModule = () =>
   Module("Persistence")({
     imports: [ConfigModule],
     provides: [
-      Provider(Pool)(
-        { config: AppConfig },
-        {
-          acquire: openPool,
-          release: (pool) => pool.close(),
-        },
-      ),
-      Provider(OrderRepository)(
-        { pool: Pool },
-        {
-          sync: ({ pool }) => ({
-            findById: (id) => {
-              const row = pool.findById(id);
-              return (
-                row === undefined ? Err(new OrderNotFound({ id })) : Ok(row)
-              ).toAsync();
-            },
-          }),
-        },
-      ),
+      Provider(Pool)({
+        inject: { config: AppConfig },
+        acquire: openPool,
+        release: (pool) => pool.close(),
+      }),
+      Provider(OrderRepository)({
+        inject: { pool: Pool },
+        sync: ({ pool }) => ({
+          findById: (id) => {
+            const row = pool.findById(id);
+            return (
+              row === undefined ? Err(new OrderNotFound({ id })) : Ok(row)
+            ).toAsync();
+          },
+        }),
+      }),
     ],
     exports: [OrderRepository], // Pool stays internal
   });
@@ -104,6 +100,7 @@ Nothing to acquire, nothing to release — `Needs` is `never`:
 const InMemoryPersistenceModule = Module("InMemoryPersistence")({
   provides: [
     Provider(OrderRepository)({
+      inject: {},
       value: { findById: (id) => Ok({ id, total: 99 }).toAsync() },
     }),
   ],
@@ -121,10 +118,10 @@ const makeAppModule = <E, N>(persistence: Module<OrderRepository, E, N>) =>
   Module("App")({
     imports: [persistence],
     provides: [
-      Provider(GetOrder)(
-        { orders: OrderRepository },
-        { class: GetOrderInteractor },
-      ),
+      Provider(GetOrder)({
+        inject: { orders: OrderRepository },
+        class: GetOrderInteractor,
+      }),
     ],
     exports: [GetOrder],
   });

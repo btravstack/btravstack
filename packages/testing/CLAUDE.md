@@ -41,7 +41,7 @@ probes: { port: 0 } })` binds a probe server over the default. Teardown
   the runtime alone, so a test that wants the very `Logger` the use cases
   write to has no `ctx.get`; `tapped` composes `Module("Tapped")({ imports:
 [module], provides: [tap], exports: [module] })` where `tap` is
-  `Provider(Tap)(ports, { sync })` remembering what it was built with — di
+  `Provider(Tap)({ inject: ports, sync })` remembering what it was built with — di
   builds every provider in the graph, exported or not, which is what makes it
   work with `Tap` never exported. The returned module is cast back to
   `Module<X, E, N>`: it exports exactly what `module` exports, so the kernel

@@ -15,12 +15,26 @@ import { z } from "zod";
 import { api } from "../../auth.js";
 import { createOrderApiClient } from "../../client.js";
 import { Module } from "@btravstack/di";
-declare const OrdersSlice: Module<InstanceType<(typeof ordersController)["port"]>, never, never>;
-declare const CustomersSlice: Module<InstanceType<(typeof customersController)["port"]>, never, never>;
+declare const OrdersSlice: Module<
+  InstanceType<(typeof ordersController)["port"]>,
+  never,
+  never
+>;
+declare const CustomersSlice: Module<
+  InstanceType<(typeof customersController)["port"]>,
+  never,
+  never
+>;
 const customersController = api.OrpcController(
-  { customers: { find: oc.input(z.object({ id: z.uuidv7() })).output(z.object({ name: z.string() })) } },
+  {
+    customers: {
+      find: oc
+        .input(z.object({ id: z.uuidv7() }))
+        .output(z.object({ name: z.string() })),
+    },
+  },
   "customers",
-)({}, { sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) });
+)({ inject: {}, sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) });
 declare const view: (order: Order) => { id: string; quantity: number };
 declare const tenantId: string;
 declare const userId: string;
@@ -159,7 +173,6 @@ import {
   granted,
 } from "@btravstack/http-server";
 import { ErrAsync, OkAsync } from "unthrown";
-
 /** What the `user` scheme resolves to. The contract names none of this. */
 export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 
@@ -167,6 +180,7 @@ export type Identity = { readonly tenantId: TenantId; readonly userId: string };
 export type ServiceIdentity = { readonly appId: string };
 
 export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
+  inject: {},
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
@@ -195,6 +209,7 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
 });
 
 export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  inject: {},
   sync: () => (headers) => {
     const key = headers["x-api-key"];
     return typeof key === "string" && key !== ""
@@ -245,7 +260,7 @@ Neither form invents one: an unmarked procedure's context still has no
 
 `Bearer <tenantId>:<userId>:<scopes>` is a stand-in, not a recommendation —
 what matters is the shape. Neither authenticator here needs a service; a JWT
-verifier, a key set or a user directory is named in a `deps` record and
+verifier, a key set or a user directory is named in an `inject` record and
 injected the way any provider's dependencies are, so swapping the stand-in for
 real verification changes nothing else in the composition — and that
 dependency travels with the authenticator into the graph, so a root that
@@ -276,73 +291,74 @@ readable type — and its **shape follows the requirements**:
 ```ts
 import { api } from "../../auth.js";
 
-export const ordersController = api.OrpcController(contract, "orders")(
-  { place: PlaceOrder, find: FindOrder, logger: Logger },
-  {
-    sync: ({ place, find, logger }) => ({
-      // One scheme, so the identity arrives bare — byte-for-byte what a
-      // handler wrote before named schemes existed.
-      place: ({ errors, context }, input) => {
-        logger.info("order placement requested", {
-          userId: context.principal.userId,
-        });
-        return place
-          .execute(context.principal.tenantId, input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              // A malformed id is the caller's mistake, so 400 — not the
-              // 409 a duplicate gets.
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          );
-      },
-      find: ({ errors, context }, input) =>
-        find
-          .execute(context.principal.tenantId, input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
+export const ordersController = api.OrpcController(
+  contract,
+  "orders",
+)({
+  inject: { place: PlaceOrder, find: FindOrder, logger: Logger },
+  sync: ({ place, find, logger }) => ({
+    // One scheme, so the identity arrives bare — byte-for-byte what a
+    // handler wrote before named schemes existed.
+    place: ({ errors, context }, input) => {
+      logger.info("order placement requested", {
+        userId: context.principal.userId,
+      });
+      return place
+        .execute(context.principal.tenantId, input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            // A malformed id is the caller's mistake, so 400 — not the
+            // 409 a duplicate gets.
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
+        );
+    },
+    find: ({ errors, context }, input) =>
+      find
+        .execute(context.principal.tenantId, input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({
+              message: error.message,
+              data: { id: error.id },
+            }),
           ),
-      // Two schemes, so the principal is a discriminated union. A missing arm
-      // leaves a path returning nothing, which the handler's own return type
-      // refuses — the switch is exhaustive or the build fails.
-      export: ({ context }) => {
-        switch (context.principal.scheme) {
-          case "user":
-            return OkAsync({
-              csv: `user,${context.principal.identity.userId}`,
-            });
-          case "service":
-            return OkAsync({
-              csv: `service,${context.principal.identity.appId}`,
-            });
-        }
-      },
-    }),
-  },
-);
+        ),
+    // Two schemes, so the principal is a discriminated union. A missing arm
+    // leaves a path returning nothing, which the handler's own return type
+    // refuses — the switch is exhaustive or the build fails.
+    export: ({ context }) => {
+      switch (context.principal.scheme) {
+        case "user":
+          return OkAsync({
+            csv: `user,${context.principal.identity.userId}`,
+          });
+        case "service":
+          return OkAsync({
+            csv: `service,${context.principal.identity.appId}`,
+          });
+      }
+    },
+  }),
+});
 ```
 
 An **unmarked** procedure's `context` has no `principal`, so reading one there

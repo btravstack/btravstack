@@ -306,7 +306,10 @@ export const start = <X, E, UnitX = never, UnitNeeds = never>(
       ? [module]
       : [
           module,
-          Module("Environment")({ provides: [Provider(Env)({ value: env })], exports: [Env] }),
+          Module("Environment")({
+            provides: [Provider(Env)({ inject: {}, value: env })],
+            exports: [Env],
+          }),
         ],
     exports: [module],
     // Both casts: di's `needs` gate defers while `X` is a type parameter, and

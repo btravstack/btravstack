@@ -155,42 +155,40 @@ import { P } from "unthrown";
 // security scheme, so it takes no argument.
 const api = defineHttp();
 
-export const ordersRouter = api.OrpcRouter(ordersContract)(
-  { place: PlaceOrder },
-  {
-    sync: ({ place }) => ({
-      place: ({ errors }, input) =>
-        place
-          .execute(input.id, input.quantity)
-          .map((order) => ({ id: order.id, quantity: order.quantity }))
-          // The one place a domain error becomes a transport one — exhaustive,
-          // so a new domain error is a compile error here.
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              // A malformed id is the caller's mistake, so 400 — not the
-              // 409 a duplicate gets.
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          ),
-    }),
-  },
-);
+export const ordersRouter = api.OrpcRouter(ordersContract)({
+  inject: { place: PlaceOrder },
+  sync: ({ place }) => ({
+    place: ({ errors }, input) =>
+      place
+        .execute(input.id, input.quantity)
+        .map((order) => ({ id: order.id, quantity: order.quantity }))
+        // The one place a domain error becomes a transport one — exhaustive,
+        // so a new domain error is a compile error here.
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            // A malformed id is the caller's mistake, so 400 — not the
+            // 409 a duplicate gets.
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            ),
+        ),
+  }),
+});
 ```
 
 **`main.ts`** — the composition root and the entry point; this is the whole process.

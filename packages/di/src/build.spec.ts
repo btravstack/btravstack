@@ -14,25 +14,22 @@ test("providers construct in dependency order, not declaration order", async () 
   const order: string[] = [];
   const mod = Module("Ordered")({
     provides: [
-      Provider(C)(
-        { b: B },
-        {
-          sync: ({ b }) => {
-            order.push("C");
-            return { v: `${b.v}C` };
-          },
+      Provider(C)({
+        inject: { b: B },
+        sync: ({ b }) => {
+          order.push("C");
+          return { v: `${b.v}C` };
         },
-      ),
-      Provider(B)(
-        { a: A },
-        {
-          sync: ({ a }) => {
-            order.push("B");
-            return { v: `${a.v}B` };
-          },
+      }),
+      Provider(B)({
+        inject: { a: A },
+        sync: ({ a }) => {
+          order.push("B");
+          return { v: `${a.v}B` };
         },
-      ),
+      }),
       Provider(A)({
+        inject: {},
         sync: () => {
           order.push("A");
           return { v: "A" };
@@ -50,17 +47,17 @@ test("providers construct in dependency order, not declaration order", async () 
 test("a port shared by two branches constructs exactly once", async () => {
   const made = vi.fn(() => ({ v: "A" }));
   const shared = Module("Shared")({
-    provides: [Provider(A)({ sync: made })],
+    provides: [Provider(A)({ inject: {}, sync: made })],
     exports: [A],
   });
   const left = Module("Left")({
     imports: [shared],
-    provides: [Provider(B)({ a: A }, { sync: ({ a }) => ({ v: a.v }) })],
+    provides: [Provider(B)({ inject: { a: A }, sync: ({ a }) => ({ v: a.v }) })],
     exports: [B],
   });
   const right = Module("Right")({
     imports: [shared],
-    provides: [Provider(C)({ a: A }, { sync: ({ a }) => ({ v: a.v }) })],
+    provides: [Provider(C)({ inject: { a: A }, sync: ({ a }) => ({ v: a.v }) })],
     exports: [C],
   });
   const app = Module("App")({ imports: [left, right], exports: [left, right] });
@@ -73,8 +70,8 @@ test("a cycle within one module is a defect, reported before any factory runs", 
   const ran = vi.fn();
   const cyclic = Module("Cyclic")({
     provides: [
-      Provider(A)({ b: B }, { sync: ran as never }),
-      Provider(B)({ a: A }, { sync: ran as never }),
+      Provider(A)({ inject: { b: B }, sync: ran as never }),
+      Provider(B)({ inject: { a: A }, sync: ran as never }),
     ],
     exports: [A],
   });
@@ -86,7 +83,7 @@ test("a cycle within one module is a defect, reported before any factory runs", 
 test("two distinct providers for one port are a defect, before any factory runs", async () => {
   const ran = vi.fn(() => ({ v: "A" }));
   const dup = Module("Dup")({
-    provides: [Provider(A)({ sync: ran }), Provider(A)({ sync: ran })],
+    provides: [Provider(A)({ inject: {}, sync: ran }), Provider(A)({ inject: {}, sync: ran })],
     exports: [A],
   });
   const built = await Module.build(dup);
@@ -98,9 +95,10 @@ test("the error from a parallel level is the first in declaration order", async 
   const slowFailure = Module("Slow")({
     provides: [
       Provider(A)({
+        inject: {},
         make: () => OkAsync().flatMap(() => Err(new AError({ why: "a" }))),
       }),
-      Provider(B)({ make: () => Err(new BError({ why: "b" })) }),
+      Provider(B)({ inject: {}, make: () => Err(new BError({ why: "b" })) }),
     ],
     exports: [A, B],
   });
@@ -140,9 +138,11 @@ test(
     const concurrent = Module("Concurrent")({
       provides: [
         Provider(A)({
+          inject: {},
           make: () => fromSafePromise(() => arrive("A")).map(() => ({ v: "A" })),
         }),
         Provider(B)({
+          inject: {},
           make: () => fromSafePromise(() => arrive("B")).map(() => ({ v: "B" })),
         }),
       ],
@@ -167,9 +167,9 @@ test("a dependency no provider supplies is a defect, before any factory runs", a
     // supply it, which is the runtime path this test is about.
     needs: [B],
     provides: [
-      Provider(A)({ sync: sibling }),
+      Provider(A)({ inject: {}, sync: sibling }),
       // `B` is provided by nobody, here or in any import.
-      Provider(C)({ a: A, b: B }, { sync: dependent }),
+      Provider(C)({ inject: { a: A, b: B }, sync: dependent }),
     ],
     exports: [A, C],
   });
@@ -196,7 +196,7 @@ test("a dependency no provider supplies is a defect, before any factory runs", a
 
 test("a built context resolves an exported port", async () => {
   const mod = Module("Exported")({
-    provides: [Provider(A)({ value: { v: "A" } })],
+    provides: [Provider(A)({ inject: {}, value: { v: "A" } })],
     exports: [A],
   });
   const built = await Module.build(mod);
@@ -209,12 +209,13 @@ test("an override replaces the base provider, which is never constructed", async
   const mod = Module("Overridden")({
     provides: [
       Provider(A)({
+        inject: {},
         sync: () => {
           baseConstructed = true;
           return { v: "base" };
         },
       }),
-      overrideProvider(Provider(A)({ value: { v: "override" } })),
+      overrideProvider(Provider(A)({ inject: {}, value: { v: "override" } })),
     ],
     exports: [A],
   });
@@ -235,13 +236,14 @@ test("a resourceful base is replaced whole — its acquire never runs", async ()
   const mod = Module("OverriddenResource")({
     provides: [
       Provider(A)({
+        inject: {},
         acquire: () => {
           acquired = true;
           return Ok({ v: "base" });
         },
         release: () => {},
       }),
-      overrideProvider(Provider(A)({ value: { v: "override" } })),
+      overrideProvider(Provider(A)({ inject: {}, value: { v: "override" } })),
     ],
     exports: [A],
   });
@@ -258,7 +260,7 @@ test("a resourceful base is replaced whole — its acquire never runs", async ()
 test("an override with nothing to override is a wiring defect", async () => {
   // GIVEN an override for a port no provider in the tree supplies
   const mod = Module("Orphaned")({
-    provides: [overrideProvider(Provider(A)({ value: { v: "override" } }))],
+    provides: [overrideProvider(Provider(A)({ inject: {}, value: { v: "override" } }))],
     exports: [A],
   });
 
@@ -278,9 +280,9 @@ test("two overrides for one port are the duplicate defect", async () => {
   // GIVEN two overrides for the same port beside its base
   const mod = Module("DoublyOverridden")({
     provides: [
-      Provider(A)({ value: { v: "base" } }),
-      overrideProvider(Provider(A)({ value: { v: "one" } })),
-      overrideProvider(Provider(A)({ value: { v: "two" } })),
+      Provider(A)({ inject: {}, value: { v: "base" } }),
+      overrideProvider(Provider(A)({ inject: {}, value: { v: "one" } })),
+      overrideProvider(Provider(A)({ inject: {}, value: { v: "two" } })),
     ],
     exports: [A],
   });
@@ -300,10 +302,14 @@ test("an override inherits its base's declaration position — onStart order is 
   const started: string[] = [];
   const mod = Module("OverriddenInPlace")({
     provides: [
-      Provider(A)({ value: { v: "base" }, onStart: () => void started.push("A-base") }),
-      Provider(B)({ value: { v: "b" }, onStart: () => void started.push("B") }),
+      Provider(A)({ inject: {}, value: { v: "base" }, onStart: () => void started.push("A-base") }),
+      Provider(B)({ inject: {}, value: { v: "b" }, onStart: () => void started.push("B") }),
       overrideProvider(
-        Provider(A)({ value: { v: "override" }, onStart: () => void started.push("A-override") }),
+        Provider(A)({
+          inject: {},
+          value: { v: "override" },
+          onStart: () => void started.push("A-override"),
+        }),
       ),
     ],
     exports: [A, B],

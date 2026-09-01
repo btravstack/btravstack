@@ -33,8 +33,8 @@ const pinContract = defineContract({
   },
 });
 
-const left = AmqpHandler(pinContract, "left")({ value: () => OkAsync(undefined) });
-const right = AmqpHandler(pinContract, "right")({ value: () => OkAsync(undefined) });
+const left = AmqpHandler(pinContract, "left")({ inject: {}, value: () => OkAsync(undefined) });
+const right = AmqpHandler(pinContract, "right")({ inject: {}, value: () => OkAsync(undefined) });
 
 // Positive: the piece carries the port it was minted under, typed for its key.
 const _leftPort: HandlerPortOf<typeof pinContract, "left"> = left.port;
@@ -74,11 +74,15 @@ const otherContract = defineContract({
   publishers: { echo: otherPublished },
   consumers: { left: defineEventConsumer(otherPublished, leftQueue) },
 });
-const otherLeft = AmqpHandler(otherContract, "left")({ value: () => OkAsync(undefined) });
+const otherLeft = AmqpHandler(
+  otherContract,
+  "left",
+)({ inject: {}, value: () => OkAsync(undefined) });
 // @ts-expect-error -- built for `otherContract`, whose `left` message differs
 AmqpHandlers(pinContract)([otherLeft, right]);
 
 // Positive: the two existing arms still resolve, unchanged.
 AmqpHandlers(pinContract)({
+  inject: {},
   value: { left: () => OkAsync(undefined), right: () => OkAsync(undefined) },
 });

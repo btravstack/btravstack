@@ -120,10 +120,10 @@ export const httpServer = (
     needs: [Env],
     provides: [
       config,
-      Provider(HttpRuntime)(
-        { config: HttpConfig },
-        { sync: ({ config: bound }) => httpRuntime(bound, securityHeaders) },
-      ),
+      Provider(HttpRuntime)({
+        inject: { config: HttpConfig },
+        sync: ({ config: bound }) => httpRuntime(bound, securityHeaders),
+      }),
     ],
     exports: [HttpRuntime, HttpConfig, HttpHandler],
     // `as never`/`as unknown as Module<…>`, below: `exports` includes

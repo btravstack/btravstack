@@ -36,20 +36,18 @@ export const notify = Provider(
       orderId: string,
     ) => ReturnType<MailerService["send"]>;
   }>,
-)(
-  { mailer: Mailer },
-  {
-    sync: ({ mailer }) => ({
-      placed: (to, orderId) =>
-        mailer.send({
-          from: "orders@example.test",
-          to: [to],
-          subject: `order ${orderId} placed`,
-          text: `Order ${orderId} is on its way.`,
-        }),
-    }),
-  },
-);
+)({
+  inject: { mailer: Mailer },
+  sync: ({ mailer }) => ({
+    placed: (to, orderId) =>
+      mailer.send({
+        from: "orders@example.test",
+        to: [to],
+        subject: `order ${orderId} placed`,
+        text: `Order ${orderId} is on its way.`,
+      }),
+  }),
+});
 ```
 
 `Mail` is deliberately small — `{ from, to, subject, text, html? }` — and

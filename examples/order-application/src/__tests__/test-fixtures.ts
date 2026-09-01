@@ -35,6 +35,7 @@ import {
  * fixture with two shapes.
  */
 const stubRepository = Provider(OrderRepository)({
+  inject: {},
   sync: () => {
     // Keyed by tenant AND id, the way the real schema's composite unique key
     // is: a stub that ignored the tenant would let these specs pass against a
@@ -64,6 +65,7 @@ const stubRepository = Provider(OrderRepository)({
 
 /** One customer on hand, so the read side has something to answer with. */
 const stubCustomerRepository = Provider(CustomerRepository)({
+  inject: {},
   sync: () => {
     const rows = new Map([
       [
@@ -96,7 +98,7 @@ const testModuleWith = (sink: Sink) =>
       CustomerApplicationModule,
       observability({ sink, level: "trace" }),
     ],
-    provides: [stubRepository, stubCustomerRepository, Provider(Env)({ value: {} })],
+    provides: [stubRepository, stubCustomerRepository, Provider(Env)({ inject: {}, value: {} })],
     exports: [PlaceOrder, FindOrder, FindCustomer],
   });
 

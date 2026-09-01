@@ -58,44 +58,38 @@ export const otel = (
 ): Module<Tracer | Meter, never, Scope> =>
   Module("Otel")({
     provides: [
-      Provider.member(Instrumentations)({ value: () => Promise.resolve(undefined) }),
-      Provider(OtelSdk)(
-        { offered: Instrumentations },
-        {
-          acquire: ({ offered }) =>
-            fromSafePromise(
-              Promise.all(offered.map((load) => load())).then((loaded) => {
-                const sdk = new NodeSDK({
-                  ...options,
-                  instrumentations: [
-                    ...(options?.instrumentations ?? []),
-                    ...loaded.filter(
-                      (one): one is SdkInstrumentations[number] => one !== undefined,
-                    ),
-                  ],
-                });
-                sdk.start();
-                return sdk;
-              }),
-            ),
-          release: (sdk) => sdk.shutdown(),
-        },
-      ),
+      Provider.member(Instrumentations)({ inject: {}, value: () => Promise.resolve(undefined) }),
+      Provider(OtelSdk)({
+        inject: { offered: Instrumentations },
+        acquire: ({ offered }) =>
+          fromSafePromise(
+            Promise.all(offered.map((load) => load())).then((loaded) => {
+              const sdk = new NodeSDK({
+                ...options,
+                instrumentations: [
+                  ...(options?.instrumentations ?? []),
+                  ...loaded.filter((one): one is SdkInstrumentations[number] => one !== undefined),
+                ],
+              });
+              sdk.start();
+              return sdk;
+            }),
+          ),
+        release: (sdk) => sdk.shutdown(),
+      }),
       // Depending on the SDK port is what orders these after `start()`, so
       // the global providers the getters read are the configured ones.
-      Provider(Tracer)(
-        { sdk: OtelSdk },
-        {
-          sync: () => {
-            const tracer = trace.getTracer("@btravstack/observability");
-            return { startSpan: (name) => tracer.startSpan(name) };
-          },
+      Provider(Tracer)({
+        inject: { sdk: OtelSdk },
+        sync: () => {
+          const tracer = trace.getTracer("@btravstack/observability");
+          return { startSpan: (name) => tracer.startSpan(name) };
         },
-      ),
-      Provider(Meter)(
-        { sdk: OtelSdk },
-        { sync: () => metrics.getMeter("@btravstack/observability") },
-      ),
+      }),
+      Provider(Meter)({
+        inject: { sdk: OtelSdk },
+        sync: () => metrics.getMeter("@btravstack/observability"),
+      }),
     ],
     exports: [Tracer, Meter],
   });
@@ -119,24 +113,22 @@ export class UnitSpan extends Port("UnitSpan")<Span> {}
 export const UnitSpanModule = Module("UnitSpan")({
   needs: [Tracer],
   provides: [
-    Provider(UnitSpan)(
-      { tracer: Tracer },
-      {
-        sync: ({ tracer }) => {
-          const unit = currentUnit();
-          const span = tracer.startSpan("unit");
-          if (unit !== undefined) {
-            span.setAttributes({
-              "btravstack.unit_id": unit.unitId,
-              "btravstack.trace_id": unit.traceId,
-              ...(unit.tenantId === undefined ? {} : { "btravstack.tenant_id": unit.tenantId }),
-            });
-          }
-          return span;
-        },
-        onStop: (span) => span.end(),
+    Provider(UnitSpan)({
+      inject: { tracer: Tracer },
+      sync: ({ tracer }) => {
+        const unit = currentUnit();
+        const span = tracer.startSpan("unit");
+        if (unit !== undefined) {
+          span.setAttributes({
+            "btravstack.unit_id": unit.unitId,
+            "btravstack.trace_id": unit.traceId,
+            ...(unit.tenantId === undefined ? {} : { "btravstack.tenant_id": unit.tenantId }),
+          });
+        }
+        return span;
       },
-    ),
+      onStop: (span) => span.end(),
+    }),
   ],
   exports: [UnitSpan],
 });

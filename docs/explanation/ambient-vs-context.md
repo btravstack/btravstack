@@ -42,7 +42,7 @@ carries.
 What `di` exists to prevent is **hidden dependencies**: code that secretly needs
 a collaborator it never declared and therefore cannot be tested without it. A
 service pulled from an ambient store is precisely that — a repository reached
-through `currentUnit()` is a dependency the provider's `deps` array does not
+through `currentUnit()` is a dependency the provider's `inject` record does not
 name, so the test double has nowhere to go, and the type checker's whole
 argument about the graph is quietly false.
 
@@ -86,7 +86,7 @@ record that could grow would be a service locator with a smaller name.
 It is the one field that looks like a capability, so it is worth saying why it
 is not. The test this page uses everywhere else is substitutability: a
 collaborator has an interface behind it, a test double to swap in, a
-`deps` array entry it should have been declared through. An `AbortSignal`
+`inject` entry it should have been declared through. An `AbortSignal`
 has none of those. It is a fact about _this_ unit — "the process has stopped
 waiting for you" — exactly as `deadline` is the fact "this is when it will".
 Nothing about the code that reads it changes shape when it is absent; the

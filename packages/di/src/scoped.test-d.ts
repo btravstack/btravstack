@@ -7,6 +7,7 @@ import { Module, Port, Provider, type AnyPort, type Scope } from "./index.js";
 class Pool extends Port("SPool")<{ readonly close: () => Promise<void> }> {}
 
 const PoolProvider = Provider(Pool)({
+  inject: {},
   acquire: () => Ok({ close: async () => {} }),
   release: (pool) => pool.close(),
 });
@@ -86,13 +87,11 @@ describe("resources", () => {
     const needsOther = Module("NeedsOther")({
       needs: [Other],
       provides: [
-        Provider(Pool)(
-          { other: Other },
-          {
-            acquire: () => Ok({ close: async () => {} }),
-            release: (pool) => pool.close(),
-          },
-        ),
+        Provider(Pool)({
+          inject: { other: Other },
+          acquire: () => Ok({ close: async () => {} }),
+          release: (pool) => pool.close(),
+        }),
       ],
       exports: [Pool],
     });
@@ -106,6 +105,7 @@ describe("resources", () => {
 
   test("hooks on the resourceful arm do not disturb Needs", () => {
     const hooked = Provider(Pool)({
+      inject: {},
       acquire: () => Ok({ close: async () => {} }),
       release: (pool) => pool.close(),
       onStart: (pool) => void pool.close(),

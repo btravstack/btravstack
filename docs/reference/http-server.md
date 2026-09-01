@@ -41,7 +41,7 @@ declare const view: (order: Order) => OrderView;
 | `SchemesFrom`          | type  | `SchemesFrom<A>` — the scheme-name → identity map read off the authenticators, so it is never declared twice                                                                                                                                                                                                 |
 | `HttpModule`           | value | `HttpModule(name)({ router, prefix?, port?, hostname?, cors?, bodyLimit?, compression?, plugins?, securityHeaders?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the router provider; the composition root of an HTTP deployment                                   |
 | `HttpModuleOptions`    | type  | The options object `HttpModule(name)` takes                                                                                                                                                                                                                                                                  |
-| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })`, or `({ sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                                       |
+| `HttpAuthenticator`    | value | `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })`, or `({ sync })` with no deps — how one scheme is implemented; the scheme's **name** is the key it sits under in `defineHttp`                                                                                                               |
 | `Authenticator`        | type  | what `HttpAuthenticator` hands back — a description carrying its deps, principal, scopes and needs, which `defineHttp` binds to a port                                                                                                                                                                       |
 | `granted`              | value | `granted(identity, scopes)` — mints the scoped answer, stamped with a module-private symbol so the starter can tell it from a bare identity that carries a `scopes` field                                                                                                                                    |
 | `Granted`              | type  | `Granted<P, Scope>` — the identity **bare** when the scheme has no scope vocabulary, a `Grant<P, Scope>` when it has one                                                                                                                                                                                     |
@@ -101,22 +101,22 @@ provide is deduplicated by reference before it reaches `provides`. It prepends
 di's own `Module(name)`, whose return type is the sugar's. The kernel and both
 gates see a plain module.
 
-| Option            | Required | Default                      | What it is                                                                                                                                                                     |
-| ----------------- | -------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)(deps, arm)` returns; a provider on any other port fails at the call |
-| `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                |
-| `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                    |
-| `fragmentsPrefix` | no       | `/`                          | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                              |
-| `port`            | no       | read from `PORT`             | pins the port instead of reading it                                                                                                                                            |
-| `hostname`        | no       | read from `HOST`             | pins the host instead of reading it                                                                                                                                            |
-| `cors`            | no       | read from `HTTP_CORS_ORIGIN` | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                 |
-| `bodyLimit`       | no       | read from `HTTP_BODY_LIMIT`  | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                             |
-| `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                            |
-| `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                       |
-| `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch — covers both answerers                                                                                              |
-| `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                      |
-| `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                |
-| `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                       |
+| Option            | Required | Default                      | What it is                                                                                                                                                                              |
+| ----------------- | -------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router`          | no\*     | —                            | the application's router **provider** — a `Provider<OrpcRouterPort, E, N>`, what `api.OrpcRouter(contract)({ inject, ...arm })` returns; a provider on any other port fails at the call |
+| `fragments`       | no\*     | —                            | the application's fragments **provider** — what `api.HtmxFragments([...])` returns over an array of `HtmxGet`/`HtmxPost` pieces; likewise typed to its own port                         |
+| `prefix`          | no       | `/rpc`                       | where the RPC endpoint is mounted; typed `` `/${string}` ``                                                                                                                             |
+| `fragmentsPrefix` | no       | `/`                          | where htmx fragments are mounted — `htmx()`'s own default, a separate field because one cannot carry two mount points with two different defaults                                       |
+| `port`            | no       | read from `PORT`             | pins the port instead of reading it                                                                                                                                                     |
+| `hostname`        | no       | read from `HOST`             | pins the host instead of reading it                                                                                                                                                     |
+| `cors`            | no       | read from `HTTP_CORS_ORIGIN` | pins the CORS policy — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                          |
+| `bodyLimit`       | no       | read from `HTTP_BODY_LIMIT`  | pins the largest request body a procedure or a fragment POST reads, in bytes; `false` is unbounded                                                                                      |
+| `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                     |
+| `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                |
+| `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                       |
+| `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                               |
+| `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                         |
+| `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                |
 
 \* at least one of `router`/`fragments` is required.
 
@@ -164,11 +164,11 @@ starter, not this package's business: it brings the `Logger` the application
 writes to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
 carrying the trace id of the unit this runtime opened.
 
-## `api.OrpcRouter(contract)(deps, { sync })`
+## `api.OrpcRouter(contract)({ inject: deps, sync })`
 
 Contract-first: `contract` is an oRPC router record (`Record<string,
 RouterContract>` — a record, not a bare procedure), and the second call is
-di's `Provider(port)(deps, { sync })` on the starter's own router port with one
+di's `Provider(port)({ inject: deps, sync })` on the starter's own router port with one
 difference — `sync` returns an **implementation record shaped like the
 contract** and the router is built from it. Only the `sync` arm exists: a
 router is built, not acquired.
@@ -198,66 +198,64 @@ comes off `context.principal` rather than off the input:
 <!-- doctest: defer -->
 
 ```ts
-export const ordersRouter = api.OrpcRouter(contract.orders)(
-  { place: PlaceOrder, find: FindOrder },
-  {
-    sync: ({ place, find }) => ({
-      place: ({ errors, context }, input) =>
-        place
-          .execute(context.principal.tenantId, input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              // A malformed id is the caller's mistake, so 400 — not the
-              // 409 a duplicate gets.
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          ),
-      find: ({ errors, context }, input) =>
-        find
-          .execute(context.principal.tenantId, input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
+export const ordersRouter = api.OrpcRouter(contract.orders)({
+  inject: { place: PlaceOrder, find: FindOrder },
+  sync: ({ place, find }) => ({
+    place: ({ errors, context }, input) =>
+      place
+        .execute(context.principal.tenantId, input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            // A malformed id is the caller's mistake, so 400 — not the
+            // 409 a duplicate gets.
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
+        ),
+    find: ({ errors, context }, input) =>
+      find
+        .execute(context.principal.tenantId, input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({
+              message: error.message,
+              data: { id: error.id },
+            }),
           ),
-      // `export` names two schemes, so its principal is a tagged union the
-      // handler narrows — and the switch is exhaustive or the build fails.
-      export: ({ context }) => {
-        switch (context.principal.scheme) {
-          case "user":
-            return OkAsync({
-              csv: `user,${context.principal.identity.userId}`,
-            });
-          case "service":
-            return OkAsync({
-              csv: `service,${context.principal.identity.appId}`,
-            });
-        }
-      },
-    }),
-  },
-);
+        ),
+    // `export` names two schemes, so its principal is a tagged union the
+    // handler narrows — and the switch is exhaustive or the build fails.
+    export: ({ context }) => {
+      switch (context.principal.scheme) {
+        case "user":
+          return OkAsync({
+            csv: `user,${context.principal.identity.userId}`,
+          });
+        case "service":
+          return OkAsync({
+            csv: `service,${context.principal.identity.appId}`,
+          });
+      }
+    },
+  }),
+});
 ```
 
 An implementation key the contract does not declare is unreachable through
@@ -268,7 +266,7 @@ the types; if one is smuggled past them it is dropped, not defected on.
 For a `contract` shaped `Record<string, RouterContract>`, `OrpcRouter`
 also takes an **array of pieces** — each an
 [`OrpcController(contract, path)`](#api-orpccontroller-contract-path) over one
-node of the contract tree, at any depth — instead of `(deps, { sync })`:
+node of the contract tree, at any depth — instead of `{ inject, sync }`:
 
 <!-- doctest: defer -->
 
@@ -329,10 +327,10 @@ piece's own port id — what that would have meant is now an array leaving a
 procedure uncovered; a procedure a piece's own fragment does not declare is
 rejected inside the piece, before the router ever sees it; and a slice lifts
 into a process of its own with its piece untouched —
-`api.OrpcRouter(contract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`
+`api.OrpcRouter(contract.orders)({ inject: { implementation: ordersController.port }, sync: ({ implementation }) => implementation })`
 compiles — the property a slice's independent deployability rests on. The
-`(deps, { sync })` form is unchanged and stays correct for a small API — an
-array is never a valid `(deps, arm)` or `(arm)` call, so `Array.isArray` alone
+`{ inject, sync }` form is unchanged and stays correct for a small API — an
+array is never a valid `{ inject, ...arm }` call, so `Array.isArray` alone
 tells the composing arm from the other two, which are told apart from each
 other by plain arity, as everywhere else in the family. See
 [Split a router into controllers](/how-to/split-a-router-into-controllers) for
@@ -373,7 +371,7 @@ const OrpcController: <
 
 One node of a contract, at any depth, as a provider over a port minted for
 it — the same two-call shape as
-`api.OrpcRouter(contract)({ name: Dep }, { sync })`, aimed at one `path` into
+`api.OrpcRouter(contract)({ inject: { name: Dep }, sync })`, aimed at one `path` into
 `contract` rather than the whole tree: a top-level fragment (`"orders"`), a
 nested one (`"v1.orders"`), or a bare procedure (`"health"`). `contract` is
 read for its **type** only: `path` is checked against `ControllerKeyOf<C>` —
@@ -418,10 +416,10 @@ import { ordersController } from "../../slices/orders/controller.js";
 -->
 
 ```ts
-export const ordersRouter = api.OrpcRouter(contract.orders)(
-  { implementation: ordersController.port },
-  { sync: ({ implementation }) => implementation },
-);
+export const ordersRouter = api.OrpcRouter(contract.orders)({
+  inject: { implementation: ordersController.port },
+  sync: ({ implementation }) => implementation,
+});
 ```
 
 That property is marked do-not-break: it is what makes composing several
@@ -483,7 +481,7 @@ export: ({ context }) => {
 };
 ```
 
-### `HttpAuthenticator<P, Scope>()({ name: Dep }, { sync })` / `({ sync })`
+### `HttpAuthenticator<P, Scope>()({ inject: { name: Dep }, sync })` / `({ sync })`
 
 How **one scheme** is implemented. It hands back a description `defineHttp`
 binds to that scheme's port; the scheme's **name** is not stated here, because
@@ -536,6 +534,7 @@ import { TenantId } from "@btravstack/example-order-domain";
 import { granted } from "@btravstack/http-server";
 
 export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
+  inject: {},
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
@@ -565,6 +564,7 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
 
 // A second scheme: an API key, no scopes, no tenant.
 export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  inject: {},
   sync: () => (headers) => {
     const key = headers["x-api-key"];
     return typeof key === "string" && key !== ""
@@ -724,20 +724,31 @@ import { FindOrder } from "@btravstack/example-order-application";
 import { html } from "@btravstack/http-server";
 import { P } from "unthrown";
 
-export const orderRowFragment = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })(
-  { find: FindOrder },
-  {
-    sync:
-      ({ find }) =>
-      (context, params) =>
-        find
-          .execute(context.principal.tenantId, params.id)
-          .map((order) => html`<tr id="order-${order.id}"><td>${order.quantity}</td></tr>`)
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), () => html`<tr><td>not found</td></tr>`),
+export const orderRowFragment = api.HtmxGet("/orders/:id/row", {
+  requires: [{ user: [] }],
+})({
+  inject: { find: FindOrder },
+  sync:
+    ({ find }) =>
+    (context, params) =>
+      find
+        .execute(context.principal.tenantId, params.id)
+        .map(
+          (order) =>
+            html`<tr id="order-${order.id}">
+              <td>${order.quantity}</td>
+            </tr>`,
+        )
+        .recoverErrCases((matcher) =>
+          matcher.with(
+            P.tag("OrderNotFound"),
+            () =>
+              html`<tr>
+                <td>not found</td>
+              </tr>`,
           ),
-  },
-);
+        ),
+});
 ```
 
 `options.requires` marks the route exactly as `authenticated(...)` marks an
@@ -810,7 +821,7 @@ hand. `HttpOptions`:
 
 The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
 **needs** `Env` (the kernel discharges it) and the starter's router port
-(`OrpcRouterPort`, the port `api.OrpcRouter(contract)(deps, arm)` provides on) —
+(`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, ...arm })` provides on) —
 the runtime provider depends on the router through di, which is why a
 composition that imports `http()` without providing the router carries an
 unmet need `start` refuses (di's gate, not the kernel's). The router is not an

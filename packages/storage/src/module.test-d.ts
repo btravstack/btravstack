@@ -20,7 +20,7 @@ const Instrumented = Module("Instrumented")({
   imports: [storage({ adapter: memoryStorage() }), observability(), otel()],
   // `observability()` reads `LOG_LEVEL`, which `start` supplies in a real
   // application; here the root is this file.
-  provides: [Provider(Env)({ value: {} })],
+  provides: [Provider(Env)({ inject: {}, value: {} })],
   exports: [Storage],
 });
 const _instrumented = Module.scoped(Instrumented, (ctx) => OkAsync(ctx.get(Storage)));
@@ -47,7 +47,7 @@ const _plain = Module.scoped(Plain, (ctx) => OkAsync(ctx.get(Storage)));
 // Spelling the default out reaches the same arm as leaving it off.
 const Explicit = Module("Explicit")({
   imports: [storage({ adapter: memoryStorage(), instrumented: true }), observability(), otel()],
-  provides: [Provider(Env)({ value: {} })],
+  provides: [Provider(Env)({ inject: {}, value: {} })],
   exports: [Storage],
 });
 const _explicit = Module.scoped(Explicit, (ctx) => OkAsync(ctx.get(Storage)));

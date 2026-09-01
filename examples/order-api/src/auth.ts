@@ -29,6 +29,7 @@ export type ServiceIdentity = { readonly appId: string };
  * against it here rather than compared as strings at the endpoint.
  */
 export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
+  inject: {},
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
@@ -51,6 +52,7 @@ export const userAuth = HttpAuthenticator<Identity, "orders:export">()({
 
 /** The second scheme: an API key, no scopes, no tenant — what a reporting job presents. */
 export const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  inject: {},
   sync: () => (headers) => {
     const key = headers["x-api-key"];
     return typeof key === "string" && key !== ""

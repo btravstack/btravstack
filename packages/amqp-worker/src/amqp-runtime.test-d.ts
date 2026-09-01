@@ -42,7 +42,10 @@ const pinContract = defineContract({
 // handlers port typed for the contract, so a record with a handler for every
 // consumer/rpc key the contract declares compiles as an ordinary call, and the
 // provider satisfies both the sugar and the primitive.
-const pinHandlers = AmqpHandlers(pinContract)({ value: { echo: () => OkAsync(undefined) } });
+const pinHandlers = AmqpHandlers(pinContract)({
+  inject: {},
+  value: { echo: () => OkAsync(undefined) },
+});
 AmqpModule("Pin")({ contract: pinContract, handlers: pinHandlers, needs: [Env] });
 Module("PinByHand")({
   needs: [Env],
@@ -56,13 +59,13 @@ const _pinPort: HandlersPortOf<typeof pinContract> = pinHandlers.port;
 // the port's service is the contract's own record, so the arm is checked
 // against it before any module sees it.
 // @ts-expect-error -- the `echo` consumer has no handler
-AmqpHandlers(pinContract)({ value: {} });
+AmqpHandlers(pinContract)({ inject: {}, value: {} });
 
 // Negative: a typo'd key does not compile. `WorkerInferHandlers` requires
 // exactly the contract's own consumer/rpc names, so "ecoh" is neither the
 // required `echo` entry nor a key the contract declares.
 // @ts-expect-error -- "ecoh" is not one of `pinContract`'s consumer/RPC names, and "echo" is missing
-AmqpHandlers(pinContract)({ value: { ecoh: () => undefined, anything: 1 } });
+AmqpHandlers(pinContract)({ inject: {}, value: { ecoh: () => undefined, anything: 1 } });
 
 // Negative: a provider built for ANOTHER contract is refused by the module —
 // the port's instance is typed per contract, so the check is structural on
@@ -71,7 +74,10 @@ const otherContract = defineContract({
   publishers: { other: pinPublished },
   consumers: { other: defineEventConsumer(pinPublished, pinQueue) },
 });
-const otherHandlers = AmqpHandlers(otherContract)({ value: { other: () => OkAsync(undefined) } });
+const otherHandlers = AmqpHandlers(otherContract)({
+  inject: {},
+  value: { other: () => OkAsync(undefined) },
+});
 AmqpModule("Other")({
   contract: pinContract,
   // @ts-expect-error -- built for `otherContract`: its record has `other`, not `echo`
@@ -87,7 +93,7 @@ AmqpModule("Other")({
 class NoHandlers extends Port("NoHandlers")<Record<never, never>> {}
 const Unmet = Module("Unmet")({
   imports: [amqp({ contract: pinContract })],
-  provides: [Provider(NoHandlers)({ value: {} })],
+  provides: [Provider(NoHandlers)({ inject: {}, value: {} })],
   exports: [AmqpRuntime],
 });
 // @ts-expect-error -- and `start` refuses it too, on the needs channel

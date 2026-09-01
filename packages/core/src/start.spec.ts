@@ -49,6 +49,7 @@ describe("start", () => {
       imports: [runtime.module],
       provides: [
         Provider(Greeting)({
+          inject: {},
           make: () => fromSafePromise(built.promise).map(() => ({ text: "hello" })),
         }),
       ],
@@ -106,7 +107,7 @@ describe("start", () => {
   it("reports a construction failure without wrapping the module's own error", async () => {
     const Failing = Module("Failing")({
       imports: [testRuntime().module],
-      provides: [Provider(Greeting)({ make: () => ErrAsync("no-config" as const) })],
+      provides: [Provider(Greeting)({ inject: {}, make: () => ErrAsync("no-config" as const) })],
       exports: [Greeting, TestRuntimePort],
     });
 
@@ -136,6 +137,7 @@ describe("start", () => {
       imports: [runtime.module],
       provides: [
         Provider(Greeting)({
+          inject: {},
           acquire: () => OkAsync({ text: "hi" }),
           release: () => {
             released.push("greeting");
@@ -237,6 +239,7 @@ describe("start", () => {
       imports: [runtime.module],
       provides: [
         Provider(Greeting)({
+          inject: {},
           acquire: () => OkAsync({ text: "hi" }),
           release: () => Promise.reject(boom),
         }),

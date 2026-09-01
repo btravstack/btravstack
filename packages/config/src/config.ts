@@ -258,16 +258,14 @@ function configProvider(portOrName: AnyPort | string): unknown {
   const port: AnyPort =
     typeof portOrName === "string" ? class extends Port(portOrName)<unknown> {} : portOrName;
   return (schema: ConfigSchema<Environment, unknown>) =>
-    Provider(port)(
-      { env: Env },
-      {
-        make: ({ env }): AsyncResult<unknown, ConfigInvalid> =>
-          fromSafePromise((async () => await schema["~standard"].validate(env))()).flatMap(
-            (result) =>
-              result.issues === undefined
-                ? Ok(result.value)
-                : Err(new ConfigInvalid({ port: port.portId, issues: result.issues })),
-          ),
-      },
-    );
+    Provider(port)({
+      inject: { env: Env },
+      make: ({ env }): AsyncResult<unknown, ConfigInvalid> =>
+        fromSafePromise((async () => await schema["~standard"].validate(env))()).flatMap(
+          (result) =>
+            result.issues === undefined
+              ? Ok(result.value)
+              : Err(new ConfigInvalid({ port: port.portId, issues: result.issues })),
+        ),
+    });
 }

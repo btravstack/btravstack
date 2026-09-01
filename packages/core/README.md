@@ -44,7 +44,10 @@ class Greeter extends Port("Greeter")<{
 
 const AppModule = Module("App")({
   provides: [
-    Provider(Greeter)({ value: { greet: (name: string) => `hello, ${name}` } }),
+    Provider(Greeter)({
+      inject: {},
+      value: { greet: (name: string) => `hello, ${name}` },
+    }),
   ],
   exports: [Greeter],
 });
@@ -94,7 +97,7 @@ class Ticker extends RuntimePort<Runtime<typeof Greeter>> {}
 
 const TickerApp = Module("TickerApp")({
   imports: [AppModule],
-  provides: [Provider(Ticker)({ value: ticker })],
+  provides: [Provider(Ticker)({ inject: {}, value: ticker })],
   exports: [Greeter, Ticker],
 });
 

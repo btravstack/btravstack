@@ -27,7 +27,7 @@ class Env extends Port("Env")<Environment> {}
 provides it to every graph it boots — `process.env` by default,
 `StartOptions.env` for a test — the same way it discharges `Scope`, which is
 why `start` accepts `Module<X, E, Scope | Env>`. Outside the kernel (a bare
-`Module.scoped`), provide it yourself: `Provider(Env)({ value: process.env })`.
+`Module.scoped`), provide it yourself: `Provider(Env)({ inject: {}, value: process.env })`.
 A module that provides `Env` itself is booted without the kernel's copy, and
 its own wins.
 
@@ -175,10 +175,10 @@ const Persistence = Module("Persistence")({
   needs: [Env],
   provides: [
     databaseConfig,
-    Provider(Database)(
-      { config: databaseConfig.port },
-      { sync: ({ config }) => ({ url: config.url }) },
-    ),
+    Provider(Database)({
+      inject: { config: databaseConfig.port },
+      sync: ({ config }) => ({ url: config.url }),
+    }),
   ],
   exports: [Database],
 });

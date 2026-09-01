@@ -26,7 +26,10 @@ export const settingsSchema = Config.object({
 const settingsFrom = (env: Environment): AsyncResult<ServiceOf<Settings>, ConfigInvalid> =>
   Module.scoped(
     Module("ConfigFixture")({
-      provides: [Provider(Env)({ value: env }), Config.provider(Settings)(settingsSchema)],
+      provides: [
+        Provider(Env)({ inject: {}, value: env }),
+        Config.provider(Settings)(settingsSchema),
+      ],
       exports: [Settings],
     }),
     (ctx) => OkAsync(ctx.get(Settings)),
@@ -38,7 +41,7 @@ const namedThrough = (
 ): AsyncResult<ServiceOf<Named>, ConfigInvalid> =>
   Module.scoped(
     Module("ConfigFixture")({
-      provides: [Provider(Env)({ value: env }), Config.provider(Named)(schema)],
+      provides: [Provider(Env)({ inject: {}, value: env }), Config.provider(Named)(schema)],
       exports: [Named],
     }),
     (ctx) => OkAsync(ctx.get(Named)),
@@ -52,7 +55,7 @@ const minted = Config.provider("ConfigFixtureMinted")(
 const mintedFrom = (env: Environment): AsyncResult<{ readonly retries: number }, ConfigInvalid> =>
   Module.scoped(
     Module("ConfigFixture")({
-      provides: [Provider(Env)({ value: env }), minted],
+      provides: [Provider(Env)({ inject: {}, value: env }), minted],
       exports: [minted.port],
     }),
     (ctx) => OkAsync(ctx.get(minted.port)),

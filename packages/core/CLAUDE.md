@@ -497,7 +497,7 @@ from `runtime.ts` or `drain.ts` without failing the gate.
 
 - **`Env` is provided by wrapping, not seeding.** `start` builds
   `Module("Kernel")({ imports: [module, Module("Environment")({ provides:
-[Provider(Env)({ value: env })], exports: [Env] })], exports: [module] })`
+[Provider(Env)({ inject: {}, value: env })], exports: [Env] })], exports: [module] })`
   — unless the module (or a module it imports, recursively: `providesEnv`)
   already provides `Env` itself, in which case the wrap imports the module
   alone, so an application supplying its own environment provider is not

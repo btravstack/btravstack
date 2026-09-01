@@ -145,33 +145,31 @@ export const s3Storage = (): Module<StorageBackend, ConfigInvalid, Env | Scope> 
     needs: [Env],
     provides: [
       Config.provider(StorageConfig)(s3Schema),
-      Provider(S3Connection)(
-        { config: StorageConfig },
-        {
-          acquire: ({ config }) =>
-            fromSafePromise(
-              Promise.resolve({
-                client: new S3Client({
-                  endpoint: config.endpoint,
-                  region: config.region,
-                  forcePathStyle: true,
-                  credentials: {
-                    accessKeyId: config.accessKeyId,
-                    secretAccessKey: config.secretAccessKey,
-                  },
-                }),
-                bucket: config.bucket,
+      Provider(S3Connection)({
+        inject: { config: StorageConfig },
+        acquire: ({ config }) =>
+          fromSafePromise(
+            Promise.resolve({
+              client: new S3Client({
+                endpoint: config.endpoint,
+                region: config.region,
+                forcePathStyle: true,
+                credentials: {
+                  accessKeyId: config.accessKeyId,
+                  secretAccessKey: config.secretAccessKey,
+                },
               }),
-            ),
-          release: ({ client }) => {
-            client.destroy();
-          },
+              bucket: config.bucket,
+            }),
+          ),
+        release: ({ client }) => {
+          client.destroy();
         },
-      ),
-      Provider(StorageBackend)(
-        { connection: S3Connection },
-        { sync: ({ connection }) => s3StorageBackend(connection.client, connection.bucket) },
-      ),
+      }),
+      Provider(StorageBackend)({
+        inject: { connection: S3Connection },
+        sync: ({ connection }) => s3StorageBackend(connection.client, connection.bucket),
+      }),
     ],
     exports: [StorageBackend],
   });

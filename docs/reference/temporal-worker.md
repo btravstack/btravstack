@@ -37,23 +37,23 @@ import { FulfillmentModule } from "../../fulfillment.js";
 
 `packages/temporal-worker/src/index.ts` exports exactly this:
 
-| Export                           | Kind  | What it is                                                                                                                                                                                                                                                            |
-| -------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                              |
-| `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                       |
-| `TemporalActivities`             | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `({ name: Dep }, arm)`, or `([pieces])` to compose one provider per workflow                                           |
-| `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                            |
-| `ActivitiesInstanceOf<C>`        | type  | That port's instance typed for `C`                                                                                                                                                                                                                                    |
-| `TemporalWorkflowActivities`     | value | `TemporalWorkflowActivities(contract, key)` — one workflow's activities (or a contract-global activity) as a provider of its own, typed by `key` alone; the next call is `({ name: Dep }, arm)`, and the piece is what `TemporalActivities(contract)([...])` composes |
-| `WorkflowActivitiesPortOf<C, K>` | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                                                       |
-| `temporal`                       | value | `temporal({ contract, workflows, … })` — the starter module itself, needing the activities port for `contract`; what `TemporalModule` imports                                                                                                                         |
-| `TemporalOptions`                | type  | `temporal()`'s options                                                                                                                                                                                                                                                |
-| `TemporalRuntime`                | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                                                                     |
-| `TemporalConfig`                 | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string; gracePeriodMs: number; forceAfterMs: number }> {}` — where the service is and what its shutdown budget is, bound from the environment                                      |
-| `TemporalConnection`             | value | `class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}` — the connection, a resource of the graph                                                                                                                                          |
-| `TemporalUnreachable`            | value | `TaggedError("TemporalUnreachable")<{ address: string; cause: unknown }>` — the service did not answer                                                                                                                                                                |
-| `TemporalInfo`                   | type  | `{ readonly taskQueue: string; readonly namespace: string }` — published on `Serving.info` once polling                                                                                                                                                               |
-| `WorkflowSource`                 | type  | `{ workflowsPath: string } \| { workflowBundle: WorkflowBundleWithSourceMap }` — where the sandbox's code comes from                                                                                                                                                  |
+| Export                           | Kind  | What it is                                                                                                                                                                                                                                                                         |
+| -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                                           |
+| `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                    |
+| `TemporalActivities`             | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, ...arm }`, or `([pieces])` to compose one provider per workflow                                           |
+| `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                                         |
+| `ActivitiesInstanceOf<C>`        | type  | That port's instance typed for `C`                                                                                                                                                                                                                                                 |
+| `TemporalWorkflowActivities`     | value | `TemporalWorkflowActivities(contract, key)` — one workflow's activities (or a contract-global activity) as a provider of its own, typed by `key` alone; the next call is `{ inject: { name: Dep }, ...arm }`, and the piece is what `TemporalActivities(contract)([...])` composes |
+| `WorkflowActivitiesPortOf<C, K>` | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                                                                    |
+| `temporal`                       | value | `temporal({ contract, workflows, … })` — the starter module itself, needing the activities port for `contract`; what `TemporalModule` imports                                                                                                                                      |
+| `TemporalOptions`                | type  | `temporal()`'s options                                                                                                                                                                                                                                                             |
+| `TemporalRuntime`                | value | `class TemporalRuntime extends RuntimePort<Runtime<never, TemporalInfo>> {}` — the runtime's port                                                                                                                                                                                  |
+| `TemporalConfig`                 | value | `class TemporalConfig extends Port("TemporalConfig")<{ address: string; namespace: string; gracePeriodMs: number; forceAfterMs: number }> {}` — where the service is and what its shutdown budget is, bound from the environment                                                   |
+| `TemporalConnection`             | value | `class TemporalConnection extends Port("TemporalConnection")<NativeConnection> {}` — the connection, a resource of the graph                                                                                                                                                       |
+| `TemporalUnreachable`            | value | `TaggedError("TemporalUnreachable")<{ address: string; cause: unknown }>` — the service did not answer                                                                                                                                                                             |
+| `TemporalInfo`                   | type  | `{ readonly taskQueue: string; readonly namespace: string }` — published on `Serving.info` once polling                                                                                                                                                                            |
+| `WorkflowSource`                 | type  | `{ workflowsPath: string } \| { workflowBundle: WorkflowBundleWithSourceMap }` — where the sandbox's code comes from                                                                                                                                                               |
 
 `ActivitiesPortOf<C>` / `ActivitiesInstanceOf<C>` / `WorkflowActivitiesPortOf<C,
 K>` are exported as **types only**, and only because declaration emit forces
@@ -84,18 +84,18 @@ provider and the workflow source. It appends
 `imports`, prepends `activities` to `provides`, prepends `TemporalRuntime` to
 `exports`, and hands the augmented tuples to di's own `Module(name)`.
 
-| Option        | Required | Default                              | What it is                                                                                                                                                                                                           |
-| ------------- | -------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract`    | yes      | —                                    | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                          |
-| `activities`  | yes      | —                                    | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ name: Dep }, arm)` returns for **this** `contract`; one built for another contract fails at the call |
-| `workflows`   | yes      | —                                    | a `WorkflowSource`                                                                                                                                                                                                   |
-| `address`     | no       | read from `TEMPORAL_ADDRESS`         | pins `TemporalConfig.address`                                                                                                                                                                                        |
-| `namespace`   | no       | read from `TEMPORAL_NAMESPACE`       | pins `TemporalConfig.namespace`                                                                                                                                                                                      |
-| `gracePeriod` | no       | read from `TEMPORAL_GRACE_PERIOD_MS` | pins Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                                                                                                                              |
-| `forceAfter`  | no       | read from `TEMPORAL_FORCE_AFTER_MS`  | pins Temporal's `shutdownForceTime`, a `Duration` (default `15_000` ms); keep it at or below the kernel's `drainTimeoutMs`                                                                                           |
-| `imports`     | no       | `[]`                                 | the application's modules                                                                                                                                                                                            |
-| `provides`    | no       | `[]`                                 | the application's own providers                                                                                                                                                                                      |
-| `exports`     | no       | `[]`                                 | the application's own exports; `TemporalRuntime` is added                                                                                                                                                            |
+| Option        | Required | Default                              | What it is                                                                                                                                                                                                                          |
+| ------------- | -------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract`    | yes      | —                                    | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                                         |
+| `activities`  | yes      | —                                    | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ inject: { name: Dep }, ...arm })` returns for **this** `contract`; one built for another contract fails at the call |
+| `workflows`   | yes      | —                                    | a `WorkflowSource`                                                                                                                                                                                                                  |
+| `address`     | no       | read from `TEMPORAL_ADDRESS`         | pins `TemporalConfig.address`                                                                                                                                                                                                       |
+| `namespace`   | no       | read from `TEMPORAL_NAMESPACE`       | pins `TemporalConfig.namespace`                                                                                                                                                                                                     |
+| `gracePeriod` | no       | read from `TEMPORAL_GRACE_PERIOD_MS` | pins Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                                                                                                                                             |
+| `forceAfter`  | no       | read from `TEMPORAL_FORCE_AFTER_MS`  | pins Temporal's `shutdownForceTime`, a `Duration` (default `15_000` ms); keep it at or below the kernel's `drainTimeoutMs`                                                                                                          |
+| `imports`     | no       | `[]`                                 | the application's modules                                                                                                                                                                                                           |
+| `provides`    | no       | `[]`                                 | the application's own providers                                                                                                                                                                                                     |
+| `exports`     | no       | `[]`                                 | the application's own exports; `TemporalRuntime` is added                                                                                                                                                                           |
 
 The worked composition root, from
 `examples/order-temporal-worker/src/module.ts`:
@@ -146,76 +146,74 @@ single record covers **every** workflow the contract declares, so this one
 carries `chargeOrder` too, not `fulfillOrder` alone:
 
 ```ts
-export const orderActivities = TemporalActivities(orderContract)(
-  {
+export const orderActivities = TemporalActivities(orderContract)({
+  inject: {
     place: PlaceOrder,
     repository: OrderRepository,
     stock: StockService,
     shipping: ShippingService,
     payments: PaymentService,
   },
-  {
-    sync: ({ place, repository, stock, shipping, payments }) => ({
-      fulfillOrder: {
-        place: (args, { errors }) =>
-          place
-            .execute(TenantId(args.tenantId), args.orderId, args.quantity)
-            .map((order) => ({ id: order.id, quantity: order.quantity }))
-            .mapErrCases((matcher) =>
-              matcher
-                .with(P.tag("InvalidQuantity"), (error) =>
-                  errors.InvalidQuantity({ id: error.id }),
-                )
-                .with(P.tag("InvalidOrderId"), (error) =>
-                  errors.InvalidOrderId({ id: error.id }),
-                )
-                .with(P.tag("DuplicateOrder"), (error) =>
-                  errors.OrderAlreadyPlaced({ id: error.id }),
-                ),
-            ),
-        reserveStock: (args, { errors }) =>
-          stock
-            .reserve(args.orderId, args.quantity)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("OutOfStock"), (error) =>
-                errors.OutOfStock({ id: error.id }),
+  sync: ({ place, repository, stock, shipping, payments }) => ({
+    fulfillOrder: {
+      place: (args, { errors }) =>
+        place
+          .execute(TenantId(args.tenantId), args.orderId, args.quantity)
+          .map((order) => ({ id: order.id, quantity: order.quantity }))
+          .mapErrCases((matcher) =>
+            matcher
+              .with(P.tag("InvalidQuantity"), (error) =>
+                errors.InvalidQuantity({ id: error.id }),
+              )
+              .with(P.tag("InvalidOrderId"), (error) =>
+                errors.InvalidOrderId({ id: error.id }),
+              )
+              .with(P.tag("DuplicateOrder"), (error) =>
+                errors.OrderAlreadyPlaced({ id: error.id }),
               ),
+          ),
+      reserveStock: (args, { errors }) =>
+        stock
+          .reserve(args.orderId, args.quantity)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OutOfStock"), (error) =>
+              errors.OutOfStock({ id: error.id }),
             ),
-        arrangeShipping: (args, { errors }) =>
-          shipping
-            .arrange(args.orderId)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("ShippingUnavailable"), (error) =>
-                errors.ShippingUnavailable({ id: error.id }),
-              ),
+          ),
+      arrangeShipping: (args, { errors }) =>
+        shipping
+          .arrange(args.orderId)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("ShippingUnavailable"), (error) =>
+              errors.ShippingUnavailable({ id: error.id }),
             ),
-        releaseStock: (args) => stock.release(args.orderId),
-        cancelPlacement: (args) =>
-          repository
-            .remove(TenantId(args.tenantId), args.orderId)
-            .recoverErrCases((matcher) =>
-              matcher.with(P.tag("OrderNotFound"), () => undefined),
+          ),
+      releaseStock: (args) => stock.release(args.orderId),
+      cancelPlacement: (args) =>
+        repository
+          .remove(TenantId(args.tenantId), args.orderId)
+          .recoverErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), () => undefined),
+          ),
+    },
+    chargeOrder: {
+      authorizePayment: (args, { errors }) =>
+        payments
+          .authorize(args.orderId, args.amount)
+          .map((authorizationId) => ({ authorizationId }))
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("PaymentDeclined"), (error) =>
+              errors.PaymentDeclined({ id: error.id }),
             ),
-      },
-      chargeOrder: {
-        authorizePayment: (args, { errors }) =>
-          payments
-            .authorize(args.orderId, args.amount)
-            .map((authorizationId) => ({ authorizationId }))
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("PaymentDeclined"), (error) =>
-                errors.PaymentDeclined({ id: error.id }),
-              ),
-            ),
-        capturePayment: (args) => payments.capture(args.authorizationId),
-        refundPayment: (args) => payments.refund(args.authorizationId),
-      },
-    }),
-  },
-);
+          ),
+      capturePayment: (args) => payments.capture(args.authorizationId),
+      refundPayment: (args) => payments.refund(args.authorizationId),
+    },
+  }),
+});
 ```
 
-One record, one `sync`, both sagas' services in its `deps` — which is exactly
+One record, one `sync`, both sagas' services in its `inject` — which is exactly
 the shape that stops scaling once a worker owns enough workflows, and why the
 composing form below exists.
 
@@ -234,7 +232,7 @@ refuses the module.
 
 A third call composes several **pieces** instead of one record:
 `TemporalActivities(contract)([piece, piece, ...])`, where each piece is what
-`TemporalWorkflowActivities(contract, key)({ name: Dep }, arm)` returns. Di
+`TemporalWorkflowActivities(contract, key)({ inject: { name: Dep }, ...arm })` returns. Di
 constructs every piece first — they are the composed provider's own `deps`,
 declared under the very key each piece's port id carries, so the services
 record IS the activities record. Every top-level key the contract's
@@ -286,53 +284,52 @@ di's own `Provider(port)`, so every arm is available exactly as it is on
 const orderFulfillment = TemporalWorkflowActivities(
   orderContract,
   "fulfillOrder",
-)(
-  {
+)({
+  inject: {
     place: PlaceOrder,
     repository: OrderRepository,
     stock: StockService,
     shipping: ShippingService,
   },
-  {
-    sync: ({ place, repository, stock, shipping }) => ({
-      place: (args, { errors }) =>
-        place
-          .execute(TenantId(args.tenantId), args.orderId, args.quantity)
-          .map((order) => ({ id: order.id, quantity: order.quantity }))
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.InvalidQuantity({ id: error.id }),
-              )
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.InvalidOrderId({ id: error.id }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.OrderAlreadyPlaced({ id: error.id }),
-              ),
-          ),
-      // … the rest of the record, one arm per activity `fulfillOrder` declares
-    }),
-  },
-);
-
-const orderBilling = TemporalWorkflowActivities(orderContract, "chargeOrder")(
-  { payments: PaymentService },
-  {
-    sync: ({ payments }) => ({
-      authorizePayment: (args, { errors }) =>
-        payments
-          .authorize(args.orderId, args.amount)
-          .map((authorizationId) => ({ authorizationId }))
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("PaymentDeclined"), (error) =>
-              errors.PaymentDeclined({ id: error.id }),
+  sync: ({ place, repository, stock, shipping }) => ({
+    place: (args, { errors }) =>
+      place
+        .execute(TenantId(args.tenantId), args.orderId, args.quantity)
+        .map((order) => ({ id: order.id, quantity: order.quantity }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.InvalidQuantity({ id: error.id }),
+            )
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.InvalidOrderId({ id: error.id }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.OrderAlreadyPlaced({ id: error.id }),
             ),
+        ),
+    // … the rest of the record, one arm per activity `fulfillOrder` declares
+  }),
+});
+
+const orderBilling = TemporalWorkflowActivities(
+  orderContract,
+  "chargeOrder",
+)({
+  inject: { payments: PaymentService },
+  sync: ({ payments }) => ({
+    authorizePayment: (args, { errors }) =>
+      payments
+        .authorize(args.orderId, args.amount)
+        .map((authorizationId) => ({ authorizationId }))
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("PaymentDeclined"), (error) =>
+            errors.PaymentDeclined({ id: error.id }),
           ),
-      // … the rest of the record, one arm per activity `chargeOrder` declares
-    }),
-  },
-);
+        ),
+    // … the rest of the record, one arm per activity `chargeOrder` declares
+  }),
+});
 
 // orderContract declares both workflows, so the composing call must cover
 // both — one piece short and it is refused at the call.

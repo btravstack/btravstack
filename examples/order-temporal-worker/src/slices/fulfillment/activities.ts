@@ -42,67 +42,66 @@ import { P } from "unthrown";
 const confirmationKey = (tenantId: string, orderId: string): string =>
   `orders/${tenantId}/${orderId}/confirmation.json`;
 
-export const fulfillOrder = TemporalWorkflowActivities(orderContract, "fulfillOrder")(
-  {
+export const fulfillOrder = TemporalWorkflowActivities(
+  orderContract,
+  "fulfillOrder",
+)({
+  inject: {
     place: PlaceOrder,
     repository: OrderRepository,
     stock: StockService,
     shipping: ShippingService,
     storage: Storage,
   },
-  {
-    sync: ({ place, repository, stock, shipping, storage }) => ({
-      place: (args, { errors }) =>
-        place
-          .execute(TenantId(args.tenantId), args.orderId, args.quantity)
-          .map((order) => ({ id: order.id, quantity: order.quantity }))
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) => errors.InvalidQuantity({ id: error.id }))
-              .with(P.tag("InvalidOrderId"), (error) => errors.InvalidOrderId({ id: error.id }))
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.OrderAlreadyPlaced({ id: error.id }),
-              ),
-          ),
-      reserveStock: (args, { errors }) =>
-        stock
-          .reserve(args.orderId, args.quantity)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OutOfStock"), (error) => errors.OutOfStock({ id: error.id })),
-          ),
-      arrangeShipping: (args, { errors }) =>
-        shipping
-          .arrange(args.orderId)
-          // The confirmation is stored AFTER the shipment is arranged, as a
-          // `flatTap` step — the sequencing discipline this repository states
-          // for sagas, and the reason it is not a sibling `const`: an
-          // `AsyncResult` is eager, so two constructions would race.
-          .flatTap(() =>
-            storage
-              .put(
-                confirmationKey(args.tenantId, args.orderId),
-                new TextEncoder().encode(JSON.stringify({ orderId: args.orderId, shipped: true })),
-                { contentType: "application/json" },
-              )
-              // A document that failed to store must not un-ship an order, so
-              // the failure is recovered right here — and recovering it is
-              // safe rather than silent BECAUSE the store is composed
-              // instrumented: the error line and the counter still happen,
-              // one layer down, without this activity carrying a logger.
-              .recoverErrCases((matcher) =>
-                matcher.with(P.tag("StorageUnavailable"), () => undefined),
-              ),
-          )
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("ShippingUnavailable"), (error) =>
-              errors.ShippingUnavailable({ id: error.id }),
+  sync: ({ place, repository, stock, shipping, storage }) => ({
+    place: (args, { errors }) =>
+      place
+        .execute(TenantId(args.tenantId), args.orderId, args.quantity)
+        .map((order) => ({ id: order.id, quantity: order.quantity }))
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) => errors.InvalidQuantity({ id: error.id }))
+            .with(P.tag("InvalidOrderId"), (error) => errors.InvalidOrderId({ id: error.id }))
+            .with(P.tag("DuplicateOrder"), (error) => errors.OrderAlreadyPlaced({ id: error.id })),
+        ),
+    reserveStock: (args, { errors }) =>
+      stock
+        .reserve(args.orderId, args.quantity)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OutOfStock"), (error) => errors.OutOfStock({ id: error.id })),
+        ),
+    arrangeShipping: (args, { errors }) =>
+      shipping
+        .arrange(args.orderId)
+        // The confirmation is stored AFTER the shipment is arranged, as a
+        // `flatTap` step — the sequencing discipline this repository states
+        // for sagas, and the reason it is not a sibling `const`: an
+        // `AsyncResult` is eager, so two constructions would race.
+        .flatTap(() =>
+          storage
+            .put(
+              confirmationKey(args.tenantId, args.orderId),
+              new TextEncoder().encode(JSON.stringify({ orderId: args.orderId, shipped: true })),
+              { contentType: "application/json" },
+            )
+            // A document that failed to store must not un-ship an order, so
+            // the failure is recovered right here — and recovering it is
+            // safe rather than silent BECAUSE the store is composed
+            // instrumented: the error line and the counter still happen,
+            // one layer down, without this activity carrying a logger.
+            .recoverErrCases((matcher) =>
+              matcher.with(P.tag("StorageUnavailable"), () => undefined),
             ),
+        )
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("ShippingUnavailable"), (error) =>
+            errors.ShippingUnavailable({ id: error.id }),
           ),
-      releaseStock: (args) => stock.release(args.orderId),
-      cancelPlacement: (args) =>
-        repository
-          .remove(TenantId(args.tenantId), args.orderId)
-          .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
-    }),
-  },
-);
+        ),
+    releaseStock: (args) => stock.release(args.orderId),
+    cancelPlacement: (args) =>
+      repository
+        .remove(TenantId(args.tenantId), args.orderId)
+        .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
+  }),
+});

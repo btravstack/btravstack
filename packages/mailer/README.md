@@ -43,33 +43,31 @@ class Notifier extends Port("ReadmeNotifier")<{
   ) => AsyncResult<void, RetryableError>;
 }> {}
 
-export const notifier = Provider(Notifier)(
-  { mailer: Mailer },
-  {
-    sync: ({ mailer }) => ({
-      placed: (to, orderId) =>
-        mailer
-          .send({
-            from: "orders@example.test",
-            to: [to],
-            subject: `order ${orderId} placed`,
-            text: `Order ${orderId} is on its way.`,
-          })
-          // A failed send is YOUR transport's problem, which is why the port
-          // models it instead of retrying: leaving the delivery un-acked
-          // hands it to the next worker, on the broker's own budget.
-          .mapErrCases((matcher) =>
-            matcher.with(
-              P.tag("MailNotSent"),
-              (error) =>
-                new RetryableError(
-                  `order ${orderId} was not notified: ${error.reason}`,
-                ),
-            ),
+export const notifier = Provider(Notifier)({
+  inject: { mailer: Mailer },
+  sync: ({ mailer }) => ({
+    placed: (to, orderId) =>
+      mailer
+        .send({
+          from: "orders@example.test",
+          to: [to],
+          subject: `order ${orderId} placed`,
+          text: `Order ${orderId} is on its way.`,
+        })
+        // A failed send is YOUR transport's problem, which is why the port
+        // models it instead of retrying: leaving the delivery un-acked
+        // hands it to the next worker, on the broker's own budget.
+        .mapErrCases((matcher) =>
+          matcher.with(
+            P.tag("MailNotSent"),
+            (error) =>
+              new RetryableError(
+                `order ${orderId} was not notified: ${error.reason}`,
+              ),
           ),
-    }),
-  },
-);
+        ),
+  }),
+});
 ```
 
 The composition — the adapter, and whether sends are instrumented, decided

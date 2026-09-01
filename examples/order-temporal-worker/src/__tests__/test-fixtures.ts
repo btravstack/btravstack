@@ -139,15 +139,14 @@ const outOfStockTemporal = () =>
     Module("Fulfillment")({
       provides: [
         Provider(StockService)({
+          inject: {},
           value: {
             reserve: (orderId, quantity) =>
               ErrAsync(new OutOfStock({ id: orderId as OrderId, quantity })),
             release: () => OkAsync(),
           },
         }),
-        Provider(ShippingService)({
-          value: { arrange: () => OkAsync() },
-        }),
+        Provider(ShippingService)({ inject: {}, value: { arrange: () => OkAsync() } }),
       ],
       exports: [StockService, ShippingService],
     }),
@@ -164,6 +163,7 @@ const noShippingTemporal = () => {
     Module("Fulfillment")({
       provides: [
         Provider(StockService)({
+          inject: {},
           value: {
             reserve: () => OkAsync(),
             release: (orderId) => {
@@ -173,6 +173,7 @@ const noShippingTemporal = () => {
           },
         }),
         Provider(ShippingService)({
+          inject: {},
           value: {
             arrange: (orderId) => ErrAsync(new ShippingUnavailable({ id: orderId as OrderId })),
           },
@@ -265,7 +266,7 @@ export const it = test.extend<TemporalFixtures>({
           BillingModule,
           storage({
             adapter: Module("FixtureStorage")({
-              provides: [Provider(StorageBackend)({ value: confirmations })],
+              provides: [Provider(StorageBackend)({ inject: {}, value: confirmations })],
               exports: [StorageBackend],
             }),
             instrumented: false,

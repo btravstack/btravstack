@@ -44,28 +44,26 @@ export const storage = <E, N, Instrumented extends boolean = true>({
   E,
   Instrumented extends true ? N | Logger | Meter | Tracer : N
 > => {
-  const healthCheck = Provider.member(HealthChecks)(
-    { backend: StorageBackend },
-    {
-      sync: ({ backend }) => ({
-        name: "storage",
-        // The probe key is never written, so `ObjectNotFound` is the
-        // store ANSWERING and therefore healthy; only the adapter
-        // reporting it could not reach the store at all is unhealthy.
-        check: () =>
-          backend
-            .get("btravstack:health")
-            .map((): void => undefined)
-            .flatMapErrCases((matcher) =>
-              matcher
-                .with(P.tag("ObjectNotFound"), () => Ok<void>(undefined))
-                .with(P.tag("StorageUnavailable"), ({ reason }) =>
-                  Err(new HealthCheckFailed({ reason: `storage unavailable (${reason})` })),
-                ),
-            ),
-      }),
-    },
-  );
+  const healthCheck = Provider.member(HealthChecks)({
+    inject: { backend: StorageBackend },
+    sync: ({ backend }) => ({
+      name: "storage",
+      // The probe key is never written, so `ObjectNotFound` is the
+      // store ANSWERING and therefore healthy; only the adapter
+      // reporting it could not reach the store at all is unhealthy.
+      check: () =>
+        backend
+          .get("btravstack:health")
+          .map((): void => undefined)
+          .flatMapErrCases((matcher) =>
+            matcher
+              .with(P.tag("ObjectNotFound"), () => Ok<void>(undefined))
+              .with(P.tag("StorageUnavailable"), ({ reason }) =>
+                Err(new HealthCheckFailed({ reason: `storage unavailable (${reason})` })),
+              ),
+          ),
+    }),
+  });
 
   // One signature, two graphs — so the return type is the conditional above
   // and the implementation casts once, a value-level branch reporting a
@@ -75,13 +73,11 @@ export const storage = <E, N, Instrumented extends boolean = true>({
         needs: [Logger, Meter, Tracer],
         imports: [adapter],
         provides: [
-          Provider(Storage)(
-            { backend: StorageBackend, logger: Logger, tracer: Tracer, meter: Meter },
-            {
-              sync: ({ backend, logger, tracer, meter }) =>
-                instrument(backend, logger, tracer, meter),
-            },
-          ),
+          Provider(Storage)({
+            inject: { backend: StorageBackend, logger: Logger, tracer: Tracer, meter: Meter },
+            sync: ({ backend, logger, tracer, meter }) =>
+              instrument(backend, logger, tracer, meter),
+          }),
           healthCheck,
         ],
         exports: [Storage, HealthChecks],
@@ -89,7 +85,10 @@ export const storage = <E, N, Instrumented extends boolean = true>({
     : Module("Storage")({
         imports: [adapter],
         provides: [
-          Provider(Storage)({ backend: StorageBackend }, { sync: ({ backend }) => backend }),
+          Provider(Storage)({
+            inject: { backend: StorageBackend },
+            sync: ({ backend }) => backend,
+          }),
           healthCheck,
         ],
         exports: [Storage, HealthChecks],

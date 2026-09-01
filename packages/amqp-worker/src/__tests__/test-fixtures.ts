@@ -45,7 +45,7 @@ const echoHandlers = AmqpHandlers(echoContract);
 type EchoHandlers = HandlersPortOf<typeof echoContract>;
 
 const AppModule = Module("App")({
-  provides: [Provider(Greeting)({ value: { text: "hello" } })],
+  provides: [Provider(Greeting)({ inject: {}, value: { text: "hello" } })],
   exports: [Greeting],
 });
 
@@ -70,15 +70,13 @@ const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: numbe
 const configuredOf = () => {
   let bound: ServiceOf<AmqpConfig> | undefined;
   return {
-    tap: Provider(BoundConfig)(
-      { config: AmqpConfig },
-      {
-        sync: ({ config }) => {
-          bound = config;
-          return config;
-        },
+    tap: Provider(BoundConfig)({
+      inject: { config: AmqpConfig },
+      sync: ({ config }) => {
+        bound = config;
+        return config;
       },
-    ),
+    }),
     bound: (): ServiceOf<AmqpConfig> | undefined => bound,
   };
 };
@@ -86,6 +84,7 @@ const configuredOf = () => {
 class BoundConfig extends Port("BoundAmqpConfig")<ServiceOf<AmqpConfig>> {}
 
 const plainHandlers: EchoProvider = echoHandlers({
+  inject: {},
   value: { echo: () => OkAsync(undefined) },
 });
 
@@ -103,18 +102,16 @@ const seamOf = () => {
   let greeting = "";
 
   return {
-    handlers: echoHandlers(
-      { greeting: Greeting },
-      {
-        sync: ({ greeting: g }) => ({
-          echo: () => {
-            seen.push(currentUnit());
-            greeting = g.text;
-            return OkAsync(undefined);
-          },
-        }),
-      },
-    ),
+    handlers: echoHandlers({
+      inject: { greeting: Greeting },
+      sync: ({ greeting: g }) => ({
+        echo: () => {
+          seen.push(currentUnit());
+          greeting = g.text;
+          return OkAsync(undefined);
+        },
+      }),
+    }),
     seen: (): readonly (UnitRecord | undefined)[] => seen,
     greeting: (): string => greeting,
   };
@@ -133,6 +130,7 @@ const deadlineHandler = () => {
   let sawAbort: boolean | undefined;
 
   const handlers: EchoProvider = echoHandlers({
+    inject: {},
     value: {
       echo: () => {
         const signal = currentUnit()?.signal;
@@ -189,6 +187,7 @@ const gatedHandler = () => {
   });
 
   const handlers: EchoProvider = echoHandlers({
+    inject: {},
     value: {
       echo: () => {
         entered();
@@ -230,22 +229,24 @@ const slicesOf = () => {
   const ran: string[] = [];
   let greeting = "";
 
-  const left = AmqpHandler(slicedContract, "left")(
-    { greeting: Greeting },
-    {
-      sync:
-        ({ greeting: g }) =>
-        () => {
-          greeting = g.text;
-          ran.push("left");
-          return OkAsync(undefined);
-        },
-    },
-  );
+  const left = AmqpHandler(
+    slicedContract,
+    "left",
+  )({
+    inject: { greeting: Greeting },
+    sync:
+      ({ greeting: g }) =>
+      () => {
+        greeting = g.text;
+        ran.push("left");
+        return OkAsync(undefined);
+      },
+  });
   const right = AmqpHandler(
     slicedContract,
     "right",
   )({
+    inject: {},
     value: () => {
       ran.push("right");
       return OkAsync(undefined);

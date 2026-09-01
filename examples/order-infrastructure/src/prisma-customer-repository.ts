@@ -40,7 +40,7 @@ export const prismaCustomerRepository = (
       ),
 });
 
-export const customerRepositoryProvider = Provider(CustomerRepository)(
-  { db: OrderDatabase },
-  { sync: ({ db }) => prismaCustomerRepository(db) },
-);
+export const customerRepositoryProvider = Provider(CustomerRepository)({
+  inject: { db: OrderDatabase },
+  sync: ({ db }) => prismaCustomerRepository(db),
+});

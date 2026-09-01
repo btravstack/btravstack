@@ -248,9 +248,9 @@ is the index of the workspaces themselves.
 namespace }` back off `Serving.info`. The Worker's lifecycle, the unit per
   attempt and the deadline race are the package's. It is a **two-slice
   modulith**: `FulfillmentSlice`'s `fulfillOrder = TemporalWorkflowActivities(orderContract,
-"fulfillOrder")({ place: PlaceOrder, repository: OrderRepository, stock: StockService,
-shipping: ShippingService }, { sync })` and `BillingSlice`'s `chargeOrder = TemporalWorkflowActivities(orderContract,
-"chargeOrder")({ payments: PaymentService }, { sync })` are each a **piece** — a provider
+"fulfillOrder")({ inject: { place: PlaceOrder, repository: OrderRepository, stock: StockService,
+shipping: ShippingService }, sync })` and `BillingSlice`'s `chargeOrder = TemporalWorkflowActivities(orderContract,
+"chargeOrder")({ inject: { payments: PaymentService }, sync })` are each a **piece** — a provider
   on the port its own contract key mints, closing over only the services its
   own saga calls, no context read at call time — and the root composes them,
   `orderActivities = TemporalActivities(orderContract)([fulfillOrder,
@@ -265,8 +265,8 @@ observability(), otel()], exports: [Tracer] })`, the sugar importing the starter
   from the starter, and `LOG_LEVEL` and the `Logger` the sagas' stand-in
   services write to come from `observability()`. `order-amqp-worker` is the
   same shape — `NotificationsSlice`'s `orderNotifications = AmqpHandler(orderContract,
-"orderNotifications")({ logger: Logger }, { sync })` and `AuditSlice`'s `orderAudit =
-AmqpHandler(orderContract, "orderAudit")({ logger: Logger }, { sync })`, composed as
+"orderNotifications")({ inject: { logger: Logger }, sync })` and `AuditSlice`'s `orderAudit =
+AmqpHandler(orderContract, "orderAudit")({ inject: { logger: Logger }, sync })`, composed as
   `orderHandlers = AmqpHandlers(orderContract)([orderNotifications,
 orderAudit])` — but **neither** slice imports a vertical: a subscriber reacts
   to a fact somebody else already committed, so the orders vertical stays at

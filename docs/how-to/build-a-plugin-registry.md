@@ -47,22 +47,25 @@ ordinary ports does not apply here:
 ```ts
 const DatabaseModule = Module("Database")({
   provides: [
-    Provider(Database)({ value: { ping: () => OkAsync("healthy") } }),
-    Provider.member(HealthCheck)(
-      { db: Database },
-      { sync: ({ db }) => ({ name: "database", run: db.ping }) },
-    ),
+    Provider(Database)({
+      inject: {},
+      value: { ping: () => OkAsync("healthy") },
+    }),
+    Provider.member(HealthCheck)({
+      inject: { db: Database },
+      sync: ({ db }) => ({ name: "database", run: db.ping }),
+    }),
   ],
   exports: [Database, HealthCheck],
 });
 
 const CacheModule = Module("Cache")({
   provides: [
-    Provider(Cache)({ value: cacheService }),
-    Provider.member(HealthCheck)(
-      { cache: Cache },
-      { sync: ({ cache }) => ({ name: "cache", run: cache.ping }) },
-    ),
+    Provider(Cache)({ inject: {}, value: cacheService }),
+    Provider.member(HealthCheck)({
+      inject: { cache: Cache },
+      sync: ({ cache }) => ({ name: "cache", run: cache.ping }),
+    }),
   ],
   exports: [Cache, HealthCheck],
 });

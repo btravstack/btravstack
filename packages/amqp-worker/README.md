@@ -50,37 +50,35 @@ import { ErrAsync, OkAsync, P } from "unthrown";
 // built by di from the use cases it lists — no injected context — on the
 // starter's own handlers port, typed by the contract (a consumer serves one
 // handlers record, so there is nothing to name).
-const orderHandlers = AmqpHandlers(orderContract)(
-  { placeOrder: PlaceOrder },
-  {
-    sync: ({ placeOrder }) => ({
-      orderNotifications: (message) =>
-        placeOrder
-          .execute(
-            TenantId(message.payload.tenantId),
-            message.payload.id,
-            message.payload.payload?.quantity ?? 0,
-          )
-          .map(() => undefined)
-          // A modeled domain error is permanent: dead-letter it, no retry.
-          .mapErrCases((matcher) =>
-            matcher.with(
-              P.tag("InvalidQuantity"),
-              P.tag("InvalidOrderId"),
-              P.tag("DuplicateOrder"),
-              (error) => new NonRetryableError(error._tag, error),
-            ),
-          )
-          // Infrastructure failing is not: recover the defect into a retry.
-          .recoverDefect((cause) =>
-            ErrAsync(new RetryableError("placing the order failed", cause)),
+const orderHandlers = AmqpHandlers(orderContract)({
+  inject: { placeOrder: PlaceOrder },
+  sync: ({ placeOrder }) => ({
+    orderNotifications: (message) =>
+      placeOrder
+        .execute(
+          TenantId(message.payload.tenantId),
+          message.payload.id,
+          message.payload.payload?.quantity ?? 0,
+        )
+        .map(() => undefined)
+        // A modeled domain error is permanent: dead-letter it, no retry.
+        .mapErrCases((matcher) =>
+          matcher.with(
+            P.tag("InvalidQuantity"),
+            P.tag("InvalidOrderId"),
+            P.tag("DuplicateOrder"),
+            (error) => new NonRetryableError(error._tag, error),
           ),
-      // Every consumer the contract declares must be covered — an uncovered
-      // key is refused at this call, not on the first delivery.
-      orderAudit: () => OkAsync(undefined),
-    }),
-  },
-);
+        )
+        // Infrastructure failing is not: recover the defect into a retry.
+        .recoverDefect((cause) =>
+          ErrAsync(new RetryableError("placing the order failed", cause)),
+        ),
+    // Every consumer the contract declares must be covered — an uncovered
+    // key is refused at this call, not on the first delivery.
+    orderAudit: () => OkAsync(undefined),
+  }),
+});
 
 const Worker = AmqpModule("Worker")({
   needs: [Env],
@@ -99,7 +97,7 @@ call, not on the first delivery. `runtimeInfo()` reads `{ queues }` back once
 consuming.
 
 A worker with several consumers can be several slices instead of one record:
-`AmqpHandler(contract, key)({ name: Dep }, arm)` mints a provider for ONE consumer or
+`AmqpHandler(contract, key)({ inject: { name: Dep }, ...arm })` mints a provider for ONE consumer or
 rpc, typed by the key alone, and `AmqpHandlers(contract)([...])` composes an
 array of them into the same handlers provider `AmqpModule` takes — the array
 must cover every key the contract declares, and each piece's own port must

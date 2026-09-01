@@ -1,6 +1,6 @@
 ---
 title: Providers
-description: "Provider(port)(deps, options) — the five construction arms, the onStart/onStop hooks, the typed port it hands back, Provider.member, and the three channels a provider carries, precisely."
+description: "Provider(port)({ inject, ...options }) — the required inject record, the five construction arms, the onStart/onStop hooks, the typed port it hands back, Provider.member, and the three channels a provider carries, precisely."
 ---
 
 <!-- doctest: prelude
@@ -38,21 +38,24 @@ declare const connectCache: (
 A provider binds one port to one concrete construction. It is a description,
 not an instance: nothing runs until a module containing it is built.
 
-## `Provider(port)(deps, options)` / `Provider(port)(options)`
+## `Provider(port)({ inject, ...options })`
 
 ```ts
-Provider(OrderRepository)(
-  { db: Database },
-  { sync: ({ db }) => ({ findById: (id) => db.query(id) }) },
-);
+Provider(OrderRepository)({
+  inject: { db: Database },
+  sync: ({ db }) => ({ findById: (id) => db.query(id) }),
+});
 
-Provider(AppConfig)({ value: { dbUrl: "postgres://localhost/orders" } }); // no deps
+Provider(AppConfig)({
+  inject: {}, // required, even with nothing to inject
+  value: { dbUrl: "postgres://localhost/orders" },
+});
 ```
 
-| Parameter | Meaning                                                                                                                                                                                                                                                                                                                                                      |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `deps`    | A **record** of the ports this construction reads, under the names you choose for them. The arm's function (or constructor) receives one argument: a record with the same keys, holding the resolved services. A key the record does not declare is a compile error, and a value that is not a port is too. Omitting the record is the zero-dependency form. |
-| `options` | Exactly one construction arm, plus the optional hooks.                                                                                                                                                                                                                                                                                                       |
+| Parameter | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inject`  | **Required.** A **record** of the ports this construction reads, under the names you choose for them. The arm's function (or constructor) receives one argument: a record with the same keys, holding the resolved services. A key the record does not declare is a compile error, and a value that is not a port is too. A provider with no dependencies writes `inject: {}` — required rather than optional so that a mistyped key (`injec:`) fails at the call, naming the property, instead of silently becoming a no-deps provider. |
+| the arm   | Exactly one construction arm, plus the optional hooks, in the same object.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 The dependency record is also what feeds the module's `Needs` channel: every
 port named here must be available where the module is built, or the graph is
@@ -85,7 +88,7 @@ Notes per arm:
   and surfaces through the entry point's `Result` as an `Err`. A `make` that
   **throws** instead of returning is a defect, not an `Err`.
 - **`class`** — the port's service type is the class's **instance** type; the
-  constructor's one parameter is checked against the services record `deps`
+  constructor's one parameter is checked against the services record `inject`
   describes, so it destructures the same keys.
 - **`acquire`/`release`** come as a pair; neither exists without the other.
   `acquire` may fail exactly as `make` may. `release` runs during scope close,
@@ -98,14 +101,12 @@ Notes per arm:
 Optional on **every** arm, supplied inline in the same options literal:
 
 ```ts
-Provider(Cache)(
-  { config: AppConfig },
-  {
-    make: ({ config }) => connectCache(config),
-    onStart: (cache) => cache.warm(),
-    onStop: (cache) => cache.flush(),
-  },
-);
+Provider(Cache)({
+  inject: { config: AppConfig },
+  make: ({ config }) => connectCache(config),
+  onStart: (cache) => cache.warm(),
+  onStop: (cache) => cache.flush(),
+});
 ```
 
 | Hook                                          | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -122,22 +123,22 @@ What `Provider(port)(…)` returns is `Provider<P, E, N> & { readonly port: P }`
 — the port class, typed, rides on the provider. It exists for the helpers that
 hand back a provider on a port the application never declared —
 `Config.provider("Name")(schema)`, which mints one; a starter's
-`api.OrpcRouter(contract)({ name: Dep }, arm)` / `TemporalActivities(…)` /
+`api.OrpcRouter(contract)({ inject: { name: Dep }, ...arm })` / `TemporalActivities(…)` /
 `AmqpHandlers(…)`, which target the starter's own fixed port — so the
 application holds one value and reads the port off it: `provider.port` is
-what another provider lists in its `deps`, what a module lists in `exports`,
+what another provider lists in its `inject`, what a module lists in `exports`,
 and what a hand-declared provider or a type test names.
 
 ```ts
-const cacheProvider = Provider(Cache)(
-  { config: AppConfig },
-  { make: ({ config }) => connectCache(config) },
-);
+const cacheProvider = Provider(Cache)({
+  inject: { config: AppConfig },
+  make: ({ config }) => connectCache(config),
+});
 
-const Warmer = Provider(Port("Warmer")<{ readonly go: () => void }>)(
-  { cache: cacheProvider.port },
-  { sync: ({ cache }) => ({ go: () => void cache.warm() }) },
-);
+const Warmer = Provider(Port("Warmer")<{ readonly go: () => void }>)({
+  inject: { cache: cacheProvider.port },
+  sync: ({ cache }) => ({ go: () => void cache.warm() }),
+});
 ```
 
 Purely additive: the intersection is still a `Provider<P, E, N>` everywhere
@@ -146,20 +147,20 @@ one is expected. Its declared type is a
 when the port came from a helper, which is what lets a consumer export such a
 provider from a package with `declaration: true`.
 
-## `Provider.member(port)(deps, options)`
+## `Provider.member(port)({ inject, ...options })`
 
 The multi-binding form: contributes **one member** to a
 [set port](/reference/di/ports#port-many-id-member).
 
 ```ts
-Provider.member(HealthCheck)(
-  { db: Database },
-  { sync: ({ db }) => ({ name: "database", run: db.ping }) },
-);
+Provider.member(HealthCheck)({
+  inject: { db: Database },
+  sync: ({ db }) => ({ name: "database", run: db.ping }),
+});
 ```
 
 Identical to `Provider(...)` in every respect — same arms, same hooks, same
-`deps` checking, same channels, same typed `port` — except the arm constructs
+`inject` checking, same channels, same typed `port` — except the arm constructs
 one `Member`, not the port's whole `readonly Member[]`. `Provider.member` on
 an ordinary port does not compile: its member shape is `never`, so no arm can
 be satisfied. The reverse — `Provider(...)` on a set port — type-checks
@@ -171,11 +172,11 @@ to a set port through `Provider.member` only.
 `Provider<P, E, N>` carries three phantom channels, which the containing
 module aggregates:
 
-| Channel | Meaning                                                                                                          |
-| ------- | ---------------------------------------------------------------------------------------------------------------- |
-| `P`     | The port it satisfies — the port's **instance** type.                                                            |
-| `E`     | What construction may fail with: `make`/`acquire`'s inferred error, `never` for the other arms.                  |
-| `N`     | What it needs: the union of `deps`' instance types, plus `Scope` when the arm is resourceful or `onStop` is set. |
+| Channel | Meaning                                                                                                             |
+| ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `P`     | The port it satisfies — the port's **instance** type.                                                               |
+| `E`     | What construction may fail with: `make`/`acquire`'s inferred error, `never` for the other arms.                     |
+| `N`     | What it needs: the union of `inject`'s instance types, plus `Scope` when the arm is resourceful or `onStop` is set. |
 
 The variance rule (shared with [`Module`](/reference/di/modules#the-channels)):
 capability channels are contravariant — you may forget what you have;

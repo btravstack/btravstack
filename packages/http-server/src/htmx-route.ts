@@ -54,8 +54,7 @@ type RouteHandler<P extends `/${string}`, S extends FragmentInputSchema | undefi
 ) => AsyncResult<Html, never>;
 
 /**
- * What both `HtmxGet` and `HtmxPost`'s two-arm `build` return; `N` is the only
- * thing that differs. Keyed by `${method} ${path}` — GET and POST on one path
+ * What `HtmxGet` and `HtmxPost` return. Keyed by `${method} ${path}` — GET and POST on one path
  * are distinct, and two routes on one method+path are one port id, di's
  * duplicate-provider defect. `route.requires` carries the LITERAL `R`, not the
  * widened `Requirements | undefined` — the array arm's needs channel reads it
@@ -108,7 +107,8 @@ type RequiresOfPiece<P> = P extends {
  *
  * ```ts
  * const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
- *   sync: () => (context, params) => repository.find(params.id).map(rowOf),
+ *   inject: { repository: OrderRepository },
+ *   sync: ({ repository }) => (context, params) => repository.find(params.id).map(rowOf),
  * });
  * ```
  */
@@ -120,15 +120,12 @@ export const htmxRouteFor = <Schemes, Vocab>() => {
       input: FragmentInputSchema | undefined,
       requires: Requirements | undefined,
     ) =>
-    (depsOrOptions: unknown, options?: unknown): unknown => {
+    (options: unknown): unknown => {
       // oxlint-disable-next-line typescript/no-extraneous-class -- a port is a phantom token; only a class expression carries the construct signature `PortClassOf` describes
       const port = class extends Port(`${FRAGMENT_PREFIX}${method} ${path}`)<
         (context: unknown, params: unknown, input: unknown) => AsyncResult<Html, never>
       > {};
-      const provider =
-        options === undefined
-          ? Provider(port as never)(depsOrOptions as never)
-          : Provider(port as never)(depsOrOptions as never, options as never);
+      const provider = Provider(port as never)(options as never);
       return Object.assign(provider, { route: { method, path, input, requires } });
     };
 
@@ -139,26 +136,16 @@ export const htmxRouteFor = <Schemes, Vocab>() => {
     path: P,
     options?: { readonly requires?: R & RequiresGate<R, Vocab> },
   ): {
-    <const D extends Readonly<Record<string, AnyPort>>>(
-      deps: D,
-      buildOptions: {
-        readonly sync: (services: {
-          readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-        }) => RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>;
-      },
-    ): MintedRoute<
-      `${typeof FRAGMENT_PREFIX}GET ${P}`,
-      RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>,
-      R,
-      InstanceType<D[keyof D]>
-    >;
-    (buildOptions: {
-      readonly sync: () => RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>;
+    <const D extends Readonly<Record<string, AnyPort>>>(buildOptions: {
+      readonly inject: D;
+      readonly sync: (services: {
+        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+      }) => RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>;
     }): MintedRoute<
       `${typeof FRAGMENT_PREFIX}GET ${P}`,
       RouteHandler<P, undefined, PrincipalFromRequires<R, Schemes>>,
       R,
-      never
+      InstanceType<D[keyof D]>
     >;
   } => mint("GET", path, undefined, options?.requires as Requirements | undefined) as never;
 
@@ -170,26 +157,16 @@ export const htmxRouteFor = <Schemes, Vocab>() => {
     path: P,
     options?: { readonly requires?: R & RequiresGate<R, Vocab>; readonly input?: S },
   ): {
-    <const D extends Readonly<Record<string, AnyPort>>>(
-      deps: D,
-      buildOptions: {
-        readonly sync: (services: {
-          readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
-        }) => RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>;
-      },
-    ): MintedRoute<
-      `${typeof FRAGMENT_PREFIX}POST ${P}`,
-      RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>,
-      R,
-      InstanceType<D[keyof D]>
-    >;
-    (buildOptions: {
-      readonly sync: () => RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>;
+    <const D extends Readonly<Record<string, AnyPort>>>(buildOptions: {
+      readonly inject: D;
+      readonly sync: (services: {
+        readonly [N in keyof D]: ServiceOf<InstanceType<D[N]>>;
+      }) => RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>;
     }): MintedRoute<
       `${typeof FRAGMENT_PREFIX}POST ${P}`,
       RouteHandler<P, S, PrincipalFromRequires<R, Schemes>>,
       R,
-      never
+      InstanceType<D[keyof D]>
     >;
   } => mint("POST", path, options?.input, options?.requires as Requirements | undefined) as never;
 
@@ -276,7 +253,7 @@ export const htmxFragmentsFor =
         schemes.map((scheme) => [scheme, services[`${AUTHENTICATOR}${scheme}`]]),
       ) as Readonly<Record<string, AuthenticatorService<unknown>>>,
     });
-    return Object.assign(Provider(HtmxFragmentsPort)(deps, { sync } as never), {
+    return Object.assign(Provider(HtmxFragmentsPort)({ inject: deps, sync } as never), {
       authenticators,
     }) as never;
   };

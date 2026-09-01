@@ -28,9 +28,11 @@ const contract = {
 const api = defineHttp({
   authenticators: {
     user: HttpAuthenticator<Identity>()({
+      inject: {},
       sync: () => () => OkAsync({ userId: "u", tenantId: "t" }),
     }),
     service: HttpAuthenticator<ServiceIdentity>()({
+      inject: {},
       sync: () => () => OkAsync({ appId: "a" }),
     }),
   },
@@ -86,6 +88,7 @@ void _none;
 // what is left is di's own unmet need, on the port whose id carries the scheme
 // name.
 const markedRouter = api.OrpcRouter({ orders: contract.orders, health: contract.health })({
+  inject: {},
   sync: () => ({
     orders: { place: ({ context }) => OkAsync({ id: context.principal.userId }) },
     health: { ping: () => OkAsync({ ok: true as const }) },
@@ -105,6 +108,7 @@ void HttpModule("Rejected")({
   router: markedRouter,
   // @ts-expect-error — there is no `authenticator` option any more
   authenticator: HttpAuthenticator<Identity>()({
+    inject: {},
     sync: () => () => OkAsync({ userId: "u", tenantId: "t" }),
   }),
 });
@@ -118,7 +122,7 @@ void _wired;
 const openApi = defineHttp();
 const strandedFragment = { orders: authenticated({ user: [] })({ place: oc }) };
 const strandedRouter = openApi.OrpcRouter(strandedFragment)({
-  // The handler reads no principal — under `defineHttp()` it would be `never`.
+  inject: {}, // The handler reads no principal — under `defineHttp()` it would be `never`.
   sync: () => ({ orders: { place: () => OkAsync({ id: "o-1" }) } }),
 });
 // @ts-expect-error — UNDECLARED NEEDS: nothing discharges `HttpAuthenticator:user`
@@ -135,9 +139,7 @@ const rootMarkedContract = authenticated({ user: [] })({ orders: { whoami: oc } 
 const rootOrders = api.OrpcController(
   rootMarkedContract,
   "orders",
-)({
-  sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }),
-});
+)({ inject: {}, sync: () => ({ whoami: ({ context }) => OkAsync(context.principal.userId) }) });
 const _rootComposed = HttpModule("RootComposed")({
   needs: [Env],
   router: api.OrpcRouter(rootMarkedContract)([rootOrders]),
@@ -155,21 +157,20 @@ class Verifier extends Port("Verifier")<(token: string) => Identity | undefined>
 
 const verifying = defineHttp({
   authenticators: {
-    user: HttpAuthenticator<Identity>()(
-      { verify: Verifier },
-      {
-        sync:
-          ({ verify }) =>
-          (headers) => {
-            const claimed = verify(headers.authorization ?? "");
-            return claimed === undefined ? ErrAsync(new Unauthenticated()) : OkAsync(claimed);
-          },
-      },
-    ),
+    user: HttpAuthenticator<Identity>()({
+      inject: { verify: Verifier },
+      sync:
+        ({ verify }) =>
+        (headers) => {
+          const claimed = verify(headers.authorization ?? "");
+          return claimed === undefined ? ErrAsync(new Unauthenticated()) : OkAsync(claimed);
+        },
+    }),
   },
 });
 
 const verifiedRouter = verifying.OrpcRouter({ orders: contract.orders })({
+  inject: {},
   sync: () => ({ orders: { place: ({ context }) => OkAsync({ id: context.principal.tenantId }) } }),
 });
 
@@ -178,7 +179,7 @@ const _verified = HttpModule("Verified")({
   router: verifiedRouter,
   imports: [
     Module("Verifying")({
-      provides: [Provider(Verifier)({ value: () => undefined })],
+      provides: [Provider(Verifier)({ inject: {}, value: () => undefined })],
       exports: [Verifier],
     }),
   ],
@@ -194,6 +195,7 @@ void _verified;
 // A scheme granting no scopes returns the identity bare — unchanged from what
 // applications write today, which is the point.
 const plain = HttpAuthenticator<{ readonly userId: string }>()({
+  inject: {},
   sync: () => () => OkAsync({ userId: "u-1" }),
 });
 
@@ -201,17 +203,20 @@ const plain = HttpAuthenticator<{ readonly userId: string }>()({
 // `granted()` — which is the only thing that mints the brand the middleware
 // reads, so this is mandatory rather than advisory.
 const scoped = HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  inject: {},
   sync: () => () => OkAsync(granted({ userId: "u-1" }, ["orders:export"])),
 });
 
 // A grant of nothing is still a grant: the vocabulary types the array, so an
 // empty one does not collapse `Scope` back to the bare arm.
 HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  inject: {},
   sync: () => () => OkAsync(granted({ userId: "u-1" }, [])),
 });
 
 // Negative: a scoped scheme may not return a bare identity.
 HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  inject: {},
   // @ts-expect-error -- a scoped scheme must report its granted scopes
   sync: () => () => OkAsync({ userId: "u-1" }),
 });
@@ -220,12 +225,14 @@ HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
 // package, so `{ identity, scopes }` is not the scoped answer — which is what
 // stops a bare identity carrying `scopes` from being mistaken for one.
 HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  inject: {},
   // @ts-expect-error -- the scoped answer comes from `granted()`
   sync: () => () => OkAsync({ identity: { userId: "u-1" }, scopes: ["orders:export"] }),
 });
 
 // Negative: a scope outside the declared vocabulary is refused.
 HttpAuthenticator<{ readonly userId: string }, "orders:export">()({
+  inject: {},
   // @ts-expect-error -- "orders:delete" is not in this scheme's vocabulary
   sync: () => () => OkAsync(granted({ userId: "u-1" }, ["orders:delete"])),
 });
@@ -240,10 +247,12 @@ expectTypeOf(scoped.scope).toEqualTypeOf<"orders:export">();
 const scopedApi = defineHttp({
   authenticators: {
     user: HttpAuthenticator<Identity, "orders:export">()({
+      inject: {},
       sync: () => () => OkAsync(granted({ userId: "u", tenantId: "t" }, ["orders:export"])),
     }),
     // No vocabulary at all: this scheme can grant nothing.
     service: HttpAuthenticator<ServiceIdentity>()({
+      inject: {},
       sync: () => () => OkAsync({ appId: "a" }),
     }),
   },
@@ -251,11 +260,13 @@ const scopedApi = defineHttp({
 
 // Positive: the declared vocabulary is accepted.
 void scopedApi.OrpcRouter(authenticated({ user: ["orders:export"] })({ csv: oc }))({
+  inject: {},
   sync: () => ({ csv: () => OkAsync(undefined) }),
 });
 
 // Positive, and the case that must stay free: no scopes named at all.
 void scopedApi.OrpcRouter(authenticated({ user: [] })({ csv: oc }))({
+  inject: {},
   sync: () => ({ csv: () => OkAsync(undefined) }),
 });
 
@@ -263,20 +274,20 @@ void scopedApi.OrpcRouter(authenticated({ user: [] })({ csv: oc }))({
 void scopedApi.OrpcRouter(
   // @ts-expect-error — UNGRANTABLE SCOPE: "order:export" is not one `user` can grant
   authenticated({ user: ["order:export"] })({ csv: oc }),
-)({ sync: () => ({ csv: () => OkAsync(undefined) }) });
+)({ inject: {}, sync: () => ({ csv: () => OkAsync(undefined) }) });
 
 // Negative: a scope named for a scheme whose authenticator declares no vocabulary.
 void scopedApi.OrpcRouter(
   // @ts-expect-error — UNGRANTABLE SCOPE: `service` grants nothing
   authenticated({ service: ["reports:read"] })({ csv: oc }),
-)({ sync: () => ({ csv: () => OkAsync(undefined) }) });
+)({ inject: {}, sync: () => ({ csv: () => OkAsync(undefined) }) });
 
 // A misspelled SCHEME naming scopes is not this gate's to report. The router
 // mint accepts it — di refuses the composition, naming the port it cannot
 // discharge, which is the diagnostic that says what is actually wrong.
 const misspelledScheme = scopedApi.OrpcRouter(
   authenticated({ usre: ["orders:export"] })({ csv: oc }),
-)({ sync: () => ({ csv: () => OkAsync(undefined) }) });
+)({ inject: {}, sync: () => ({ csv: () => OkAsync(undefined) }) });
 
 // @ts-expect-error — UNDECLARED NEEDS: nothing discharges `HttpAuthenticator:usre`
 void HttpModule("Misspelled")({ needs: [Env], router: misspelledScheme });

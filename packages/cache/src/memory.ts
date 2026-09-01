@@ -59,7 +59,7 @@ export const memoryCacheBackend = (options: MemoryCacheOptions = {}): CacheServi
  * application's real root, and every sibling provider still constructs.
  */
 export const memoryCacheProvider = (options: MemoryCacheOptions = {}) =>
-  Provider(CacheBackend)({}, { sync: () => memoryCacheBackend(options) });
+  Provider(CacheBackend)({ inject: {}, sync: () => memoryCacheBackend(options) });
 
 /** The adapter as a module, which is the shape `cache({ adapter })` takes. */
 export const memoryCache = (options: MemoryCacheOptions = {}): Module<CacheBackend, never, never> =>

@@ -13,7 +13,7 @@ import { TestRuntimePort, testRuntime, type TestRuntimeInfo } from "../test-runt
  */
 export const runtimeModule = (runtime: Runtime<never, TestRuntimeInfo>) =>
   Module("TestRuntime")({
-    provides: [Provider(TestRuntimePort)({ value: runtime })],
+    provides: [Provider(TestRuntimePort)({ inject: {}, value: runtime })],
     exports: [TestRuntimePort],
   });
 
@@ -27,7 +27,7 @@ export const greetingApp = () => {
     runtime,
     module: Module("GreetingApp")({
       imports: [runtime.module],
-      provides: [Provider(Greeting)({ value: { text: "hello" } })],
+      provides: [Provider(Greeting)({ inject: {}, value: { text: "hello" } })],
       exports: [Greeting, TestRuntimePort],
     }),
   };

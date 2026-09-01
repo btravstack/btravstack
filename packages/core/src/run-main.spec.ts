@@ -27,7 +27,7 @@ class Greeting extends Port("Greeting")<{ readonly text: string }> {}
 const failing = () =>
   Module("Failing")({
     imports: [testRuntime().module],
-    provides: [Provider(Greeting)({ make: () => Err("no-config" as const) })],
+    provides: [Provider(Greeting)({ inject: {}, make: () => Err("no-config" as const) })],
     exports: [Greeting, TestRuntimePort],
   });
 

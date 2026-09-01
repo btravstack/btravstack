@@ -20,16 +20,15 @@ test("resources release in reverse acquisition order after use", async () => {
   const mod = Module("Two")({
     provides: [
       Provider(First)({
+        inject: {},
         acquire: () => Ok({ n: 1 as const }),
         release: () => void released.push("first"),
       }),
-      Provider(Second)(
-        { first: First },
-        {
-          acquire: () => Ok({ n: 2 as const }),
-          release: () => void released.push("second"),
-        },
-      ),
+      Provider(Second)({
+        inject: { first: First },
+        acquire: () => Ok({ n: 2 as const }),
+        release: () => void released.push("second"),
+      }),
     ],
     exports: [First, Second],
   });
@@ -43,20 +42,18 @@ test("a mid-graph failure releases everything already acquired", async () => {
   const mod = Module("Failing")({
     provides: [
       Provider(First)({
+        inject: {},
         acquire: () => Ok({ n: 1 as const }),
         release: () => void released.push("first"),
       }),
-      Provider(Second)(
-        { first: First },
-        {
-          // `acquire` (not `make`) on purpose: `Second` has a `release`, so this
-          // exercises the real guarantee — a failed *acquire* never registers its
-          // own release (the `.tap` in `constructLevel` only fires on `Ok`) — not
-          // just "a provider with no `release` field has nothing to release".
-          acquire: () => Err(new OpenError({ which: "second" })),
-          release: () => void released.push("second"),
-        },
-      ),
+      Provider(Second)({
+        inject: { first: First }, // `acquire` (not `make`) on purpose: `Second` has a `release`, so this
+        // exercises the real guarantee — a failed *acquire* never registers its
+        // own release (the `.tap` in `constructLevel` only fires on `Ok`) — not
+        // just "a provider with no `release` field has nothing to release".
+        acquire: () => Err(new OpenError({ which: "second" })),
+        release: () => void released.push("second"),
+      }),
     ],
     exports: [First, Second],
   });
@@ -72,16 +69,15 @@ test("a rejecting release neither masks the failure nor stops the unwind", async
   const mod = Module("BadRelease")({
     provides: [
       Provider(First)({
+        inject: {},
         acquire: () => Ok({ n: 1 as const }),
         release: () => void released.push("first"),
       }),
-      Provider(Second)(
-        { first: First },
-        {
-          acquire: () => Ok({ n: 2 as const }),
-          release: () => Promise.reject(new Error("close failed")),
-        },
-      ),
+      Provider(Second)({
+        inject: { first: First },
+        acquire: () => Ok({ n: 2 as const }),
+        release: () => Promise.reject(new Error("close failed")),
+      }),
     ],
     exports: [First, Second],
   });
@@ -112,16 +108,15 @@ test("a throwing onTeardownError does not abandon the unwind or mask the origina
   const mod = Module("BadReporter")({
     provides: [
       Provider(First)({
+        inject: {},
         acquire: () => Ok({ n: 1 as const }),
         release: () => void released.push("first"),
       }),
-      Provider(Second)(
-        { first: First },
-        {
-          acquire: () => Ok({ n: 2 as const }),
-          release: () => Promise.reject(new Error("close failed")),
-        },
-      ),
+      Provider(Second)({
+        inject: { first: First },
+        acquire: () => Ok({ n: 2 as const }),
+        release: () => Promise.reject(new Error("close failed")),
+      }),
     ],
     exports: [First, Second],
   });
@@ -164,7 +159,7 @@ test("providing Scope directly is a wiring defect, not a satisfied dependency", 
     // construct one — this factory would never legitimately run; the test
     // is about `plan()` rejecting the registration itself, before any
     // factory (including this one) is called at all.
-    provides: [Provider(Scope)({ sync: ran as never })],
+    provides: [Provider(Scope)({ inject: {}, sync: ran as never })],
   });
 
   const built = await Module.build(mod);
@@ -182,7 +177,7 @@ test("providing Scope through a widened AnyPort alias is still a wiring defect",
   const widened: AnyPort = Scope;
   const ran = vi.fn();
   const mod = Module("ProvidesScopeWidened")({
-    provides: [Provider(widened)({ sync: ran as never })],
+    provides: [Provider(widened)({ inject: {}, sync: ran as never })],
   });
 
   const built = await Module.build(mod);

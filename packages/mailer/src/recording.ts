@@ -51,7 +51,7 @@ export const recordingMailerBackend = (recorder: MailRecorder): MailerService =>
 
 /** The adapter as a provider, which is the shape `@btravstack/testing`'s `overridden` takes. */
 export const recordingMailerProvider = (recorder: MailRecorder) =>
-  Provider(MailerBackend)({}, { sync: () => recordingMailerBackend(recorder) });
+  Provider(MailerBackend)({ inject: {}, sync: () => recordingMailerBackend(recorder) });
 
 /** The adapter as a module, which is the shape `mailer({ adapter })` takes. */
 export const recordingMailer = (recorder: MailRecorder): Module<MailerBackend, never, never> =>

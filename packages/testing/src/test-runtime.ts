@@ -73,7 +73,7 @@ export const testRuntime = (name = "test"): TestRuntime => {
     name,
     module: Module("TestRuntime")({
       // Resolved lazily so the object literal can name itself.
-      provides: [Provider(TestRuntimePort)({ sync: () => runtime })],
+      provides: [Provider(TestRuntimePort)({ inject: {}, sync: () => runtime })],
       exports: [TestRuntimePort],
     }),
     resolves: [],

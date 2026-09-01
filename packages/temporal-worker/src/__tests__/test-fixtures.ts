@@ -61,6 +61,7 @@ const echoContract = defineContract({
 const EchoActivities = TemporalActivities(echoContract);
 
 const echoing = EchoActivities({
+  inject: {},
   value: { runEcho: { echo: (value) => OkAsync(value) } },
 });
 
@@ -72,7 +73,7 @@ const echoing = EchoActivities({
 const undeclaredEcho = {
   runEcho: { echo: (value: string) => OkAsync(value), undeclared: () => OkAsync(undefined) },
 };
-export const undeclared = EchoActivities({ value: undeclaredEcho });
+export const undeclared = EchoActivities({ inject: {}, value: undeclaredEcho });
 
 /**
  * The activities built from a service they close over, recording what they saw.
@@ -84,20 +85,18 @@ const contractSeamOf = () => {
   let greeting = "";
 
   return {
-    activities: EchoActivities(
-      { greeting: Greeting },
-      {
-        sync: ({ greeting: service }) => ({
-          runEcho: {
-            echo: (value) => {
-              seen.push(currentUnit());
-              greeting = service.text;
-              return OkAsync(value);
-            },
+    activities: EchoActivities({
+      inject: { greeting: Greeting },
+      sync: ({ greeting: service }) => ({
+        runEcho: {
+          echo: (value) => {
+            seen.push(currentUnit());
+            greeting = service.text;
+            return OkAsync(value);
           },
-        }),
-      },
-    ),
+        },
+      }),
+    }),
     seen: (): readonly (UnitRecord | undefined)[] => seen,
     greeting: (): string => greeting,
   };
@@ -117,6 +116,7 @@ const deadlineOf = () => {
 
   return {
     activities: EchoActivities({
+      inject: {},
       value: {
         runEcho: {
           echo: (value) => {
@@ -175,6 +175,7 @@ const gateOf = () => {
 
   return {
     activities: EchoActivities({
+      inject: {},
       value: {
         runEcho: {
           echo: (value) => {
@@ -196,15 +197,13 @@ const gateOf = () => {
 const configuredOf = () => {
   let bound: ServiceOf<TemporalConfig> | undefined;
   return {
-    tap: Provider(BoundConfig)(
-      { config: TemporalConfig },
-      {
-        sync: ({ config }) => {
-          bound = config;
-          return config;
-        },
+    tap: Provider(BoundConfig)({
+      inject: { config: TemporalConfig },
+      sync: ({ config }) => {
+        bound = config;
+        return config;
       },
-    ),
+    }),
     bound: (): ServiceOf<TemporalConfig> | undefined => bound,
   };
 };
@@ -256,23 +255,22 @@ const slicedContract = defineContract({
  */
 const slicesOf = () => {
   let greeting = "";
-  const echo = TemporalWorkflowActivities(slicedContract, "runEcho")(
-    { greeting: Greeting },
-    {
-      sync: ({ greeting: service }) => ({
-        echo: (value) => {
-          greeting = service.text;
-          return OkAsync(value);
-        },
-      }),
-    },
-  );
+  const echo = TemporalWorkflowActivities(
+    slicedContract,
+    "runEcho",
+  )({
+    inject: { greeting: Greeting },
+    sync: ({ greeting: service }) => ({
+      echo: (value) => {
+        greeting = service.text;
+        return OkAsync(value);
+      },
+    }),
+  });
   const shout = TemporalWorkflowActivities(
     slicedContract,
     "runShout",
-  )({
-    value: { shout: (value) => OkAsync(value.toUpperCase()) },
-  });
+  )({ inject: {}, value: { shout: (value) => OkAsync(value.toUpperCase()) } });
   return {
     activities: TemporalActivities(slicedContract)([echo, shout]),
     pieces: [echo, shout] as const,
@@ -355,7 +353,7 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
     ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
     ...(options.gracePeriod === undefined ? {} : { gracePeriod: options.gracePeriod }),
     provides: [
-      Provider(Greeting)({ value: { text: "hello" } }),
+      Provider(Greeting)({ inject: {}, value: { text: "hello" } }),
       ...(options.tap === undefined ? [] : [options.tap]),
     ],
   });
@@ -444,7 +442,10 @@ export const it = test.extend<TemporalFixtures>({
           // The composed provider's own deps are the pieces' PORTS — see
           // `slicesOf`'s comment — so the pieces themselves are what discharge
           // them, same as any other unmet need.
-          provides: [...slices.pieces, Provider(Greeting)({ value: { text: "hello" } })],
+          provides: [
+            ...slices.pieces,
+            Provider(Greeting)({ inject: {}, value: { text: "hello" } }),
+          ],
         }),
         { env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace } },
       );

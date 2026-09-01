@@ -202,38 +202,30 @@ export const temporal = <C extends ContractDefinition>(
     needs: [Env, activities],
     provides: [
       config,
-      Provider(TemporalConnection)(
-        { config: TemporalConfig },
-        {
-          acquire: ({ config: bound }) =>
-            fromPromise(
-              NativeConnection.connect({ address: bound.address }),
-              (cause) => new TemporalUnreachable({ address: bound.address, cause }),
-            ),
-          // `close()` refuses with `IllegalStateError` while a Worker still
-          // holds the connection, which is the ordinary state on the
-          // drain-deadline path and not a teardown failure to report. Only that
-          // refusal is absorbed; any other close failure still surfaces.
-          release: (connection) =>
-            connection
-              .close()
-              .catch((cause: unknown) => (heldByWorker(cause) ? undefined : Promise.reject(cause))),
-        },
-      ),
-      Provider(TemporalRuntime)(
-        { connection: TemporalConnection, config: TemporalConfig, activities },
-        {
-          sync: ({
-            connection,
-            config: bound,
-            activities: impls,
-          }): Runtime<never, TemporalInfo> => ({
-            name: "temporal",
-            resolves: [],
-            start: (host) => createWorker(host, connection, bound, impls, options),
-          }),
-        },
-      ),
+      Provider(TemporalConnection)({
+        inject: { config: TemporalConfig },
+        acquire: ({ config: bound }) =>
+          fromPromise(
+            NativeConnection.connect({ address: bound.address }),
+            (cause) => new TemporalUnreachable({ address: bound.address, cause }),
+          ),
+        // `close()` refuses with `IllegalStateError` while a Worker still
+        // holds the connection, which is the ordinary state on the
+        // drain-deadline path and not a teardown failure to report. Only that
+        // refusal is absorbed; any other close failure still surfaces.
+        release: (connection) =>
+          connection
+            .close()
+            .catch((cause: unknown) => (heldByWorker(cause) ? undefined : Promise.reject(cause))),
+      }),
+      Provider(TemporalRuntime)({
+        inject: { connection: TemporalConnection, config: TemporalConfig, activities },
+        sync: ({ connection, config: bound, activities: impls }): Runtime<never, TemporalInfo> => ({
+          name: "temporal",
+          resolves: [],
+          start: (host) => createWorker(host, connection, bound, impls, options),
+        }),
+      }),
     ],
     exports: [TemporalRuntime, TemporalConfig, TemporalConnection],
   });

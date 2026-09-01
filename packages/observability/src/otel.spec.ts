@@ -144,7 +144,9 @@ describe("otel", () => {
       setMeterProvider: () => {},
     };
     const contributor = Module("Contributor")({
-      provides: [Provider.member(Instrumentations)({ value: () => Promise.resolve(offered) })],
+      provides: [
+        Provider.member(Instrumentations)({ inject: {}, value: () => Promise.resolve(offered) }),
+      ],
       exports: [Instrumentations],
     });
 

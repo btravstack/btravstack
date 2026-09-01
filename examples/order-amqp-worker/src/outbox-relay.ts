@@ -205,11 +205,15 @@ const startOutboxRelay = (
  * `Promise<void>` a finaliser speaks, rejecting only on a defect — which the
  * kernel then reports as a `teardownError`.
  */
-export const outboxRelay = Provider(OutboxRelay)(
-  { outbox: Outbox, logger: Logger, meter: Meter, broker: AmqpConfig, config: relayConfig.port },
-  {
-    acquire: ({ outbox, logger, meter, broker: { url }, config: { pollMs, tenants } }) =>
-      startOutboxRelay(outbox, logger, meter, { url, pollMs, tenants: tenantsOf(tenants) }),
-    release: (running) => running.stop().get(),
+export const outboxRelay = Provider(OutboxRelay)({
+  inject: {
+    outbox: Outbox,
+    logger: Logger,
+    meter: Meter,
+    broker: AmqpConfig,
+    config: relayConfig.port,
   },
-);
+  acquire: ({ outbox, logger, meter, broker: { url }, config: { pollMs, tenants } }) =>
+    startOutboxRelay(outbox, logger, meter, { url, pollMs, tenants: tenantsOf(tenants) }),
+  release: (running) => running.stop().get(),
+});

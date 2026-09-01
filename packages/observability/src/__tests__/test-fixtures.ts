@@ -68,6 +68,7 @@ const tenantRuntimeModule = (tenantId: string) =>
   Module("TenantRuntime")({
     provides: [
       Provider(TenantRuntime)({
+        inject: {},
         value: {
           name: "tenant",
           resolves: [Logger],
@@ -130,15 +131,13 @@ export const it = test.extend<ObservabilityFixtures>({
       Module("UnitLogging")({
         needs: [Logger],
         provides: [
-          Provider(UnitSpan)(
-            { logger: Logger },
-            {
-              sync: ({ logger }) => {
-                logger.info("inside the unit");
-                return { opened: true };
-              },
+          Provider(UnitSpan)({
+            inject: { logger: Logger },
+            sync: ({ logger }) => {
+              logger.info("inside the unit");
+              return { opened: true };
             },
-          ),
+          }),
         ],
         exports: [UnitSpan],
       }),
@@ -164,7 +163,7 @@ export const it = test.extend<ObservabilityFixtures>({
         runtime,
         module: Module("ObservabilityApp")({
           imports: [runtime.module, observability(options)],
-          provides: [Provider(Greeting)({ value: { text: "hello" } })],
+          provides: [Provider(Greeting)({ inject: {}, value: { text: "hello" } })],
           exports: [Logger, LoggerConfig, Greeting, TestRuntimePort],
           // The starter's own `ConfigInvalid` and `Env` are discharged by the
           // kernel and asserted by the spec that boots a bad `LOG_LEVEL`;

@@ -74,16 +74,14 @@ export const ConfigModule = Module("Config")({
   provides: [
     // A stand-in `Env`: a real one would read `process.env` and let an unset
     // variable surface as the `ConfigError` below.
-    Provider(Env)({ value: { ORDER_API_DATABASE_URL: "postgres://localhost/orders" } }),
-    Provider(AppConfig)(
-      { env: Env },
-      {
-        make: ({ env }) =>
-          env["ORDER_API_DATABASE_URL"] === undefined
-            ? Err(new ConfigError({ reason: "ORDER_API_DATABASE_URL is unset" }))
-            : Ok({ dbUrl: env["ORDER_API_DATABASE_URL"] }),
-      },
-    ),
+    Provider(Env)({ inject: {}, value: { ORDER_API_DATABASE_URL: "postgres://localhost/orders" } }),
+    Provider(AppConfig)({
+      inject: { env: Env },
+      make: ({ env }) =>
+        env["ORDER_API_DATABASE_URL"] === undefined
+          ? Err(new ConfigError({ reason: "ORDER_API_DATABASE_URL is unset" }))
+          : Ok({ dbUrl: env["ORDER_API_DATABASE_URL"] }),
+    }),
   ],
   exports: [AppConfig],
 });
@@ -122,24 +120,20 @@ export const makePersistenceModule = () =>
   Module("Persistence")({
     imports: [ConfigModule],
     provides: [
-      Provider(Pool)(
-        { config: AppConfig },
-        {
-          acquire: openPool,
-          release: (pool) => pool.close(),
-        },
-      ),
-      Provider(OrderRepository)(
-        { pool: Pool },
-        {
-          sync: ({ pool }) => ({
-            findById: (id) => {
-              const row = pool.findById(id);
-              return fromNullable(row, () => new OrderNotFound({ id })).toAsync();
-            },
-          }),
-        },
-      ),
+      Provider(Pool)({
+        inject: { config: AppConfig },
+        acquire: openPool,
+        release: (pool) => pool.close(),
+      }),
+      Provider(OrderRepository)({
+        inject: { pool: Pool },
+        sync: ({ pool }) => ({
+          findById: (id) => {
+            const row = pool.findById(id);
+            return fromNullable(row, () => new OrderNotFound({ id })).toAsync();
+          },
+        }),
+      }),
     ],
     // `Pool` never appears here. It is genuinely present in the built context's
     // flat runtime map; `exports` withholds the TYPE that would name it.
@@ -154,6 +148,7 @@ export const makePersistenceModule = () =>
 export const InMemoryPersistenceModule = Module("InMemoryPersistence")({
   provides: [
     Provider(OrderRepository)({
+      inject: {},
       value: { findById: (id) => OkAsync({ id, total: 99 }) },
     }),
   ],
@@ -171,7 +166,7 @@ export const makeAppModule = <E, N extends Scope>(persistence: Module<OrderRepos
   type Imports = readonly [Module<OrderRepository, E, N>];
   type Provides = readonly [ReturnType<typeof getOrder>];
   const getOrder = () =>
-    Provider(GetOrder)({ orders: OrderRepository }, { class: GetOrderInteractor });
+    Provider(GetOrder)({ inject: { orders: OrderRepository }, class: GetOrderInteractor });
   // di's `needs` gate defers while `E` is a type parameter, so the cast
   // discharges it. Nothing is waved through: the parameter admits `Scope` and
   // nothing else, so an adapter owing a real port would be this module's to

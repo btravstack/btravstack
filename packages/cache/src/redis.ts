@@ -62,20 +62,18 @@ export const redisCache = (): Module<CacheBackend, ConfigInvalid, Env | Scope> =
     needs: [Env],
     provides: [
       Config.provider(CacheConfig)(redisSchema),
-      Provider(RedisConnection)(
-        { config: CacheConfig },
-        {
-          acquire: ({ config }) => {
-            const client = createClient({ url: config.url }) as RedisClientType;
-            return fromSafePromise(client.connect()).map(() => client);
-          },
-          release: (client) => client.close(),
+      Provider(RedisConnection)({
+        inject: { config: CacheConfig },
+        acquire: ({ config }) => {
+          const client = createClient({ url: config.url }) as RedisClientType;
+          return fromSafePromise(client.connect()).map(() => client);
         },
-      ),
-      Provider(CacheBackend)(
-        { client: RedisConnection },
-        { sync: ({ client }) => redisCacheBackend(client) },
-      ),
+        release: (client) => client.close(),
+      }),
+      Provider(CacheBackend)({
+        inject: { client: RedisConnection },
+        sync: ({ client }) => redisCacheBackend(client),
+      }),
     ],
     exports: [CacheBackend],
   });

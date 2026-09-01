@@ -36,6 +36,7 @@ import {
 import { findOrderProvider, placeOrderProvider } from "./use-cases.js";
 
 const orderRepository = Provider(OrderRepository)({
+  inject: {},
   value: {
     save: (_tenantId: TenantId, order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
     find: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
@@ -44,13 +45,14 @@ const orderRepository = Provider(OrderRepository)({
 });
 
 const customerRepository = Provider(CustomerRepository)({
+  inject: {},
   value: {
     find: (_tenantId: TenantId, id: string) =>
       ErrAsync(new CustomerNotFound({ id: id as CustomerId })),
   },
 });
 
-const logger = Provider(Logger)({ value: createLogger(() => {}) });
+const logger = Provider(Logger)({ inject: {}, value: createLogger(() => {}) });
 
 // Negative: nothing provides `OrderRepository`, so `DependencyGate`'s marker
 // object rides `Module.scoped`'s parameter and the call fails assignability —

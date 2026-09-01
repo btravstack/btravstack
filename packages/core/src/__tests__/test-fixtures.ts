@@ -28,7 +28,7 @@ class Span extends Port("UnitFixtureSpan")<{ readonly openedIn: string | undefin
  */
 export const runtimeModule = (runtime: Runtime<never, TestRuntimeInfo>) =>
   Module("TestRuntime")({
-    provides: [Provider(TestRuntimePort)({ value: runtime })],
+    provides: [Provider(TestRuntimePort)({ inject: {}, value: runtime })],
     exports: [TestRuntimePort],
   });
 
@@ -196,6 +196,7 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
       imports: [runtime.module],
       provides: [
         Provider(Parent)({
+          inject: {},
           sync: () => {
             counts.parentBuilds += 1;
             return { mark: () => {} };
@@ -210,21 +211,19 @@ export const it = test.extend<{ boot: Boot; unitApp: UnitApp; configured: Config
       // module is forked from, never from inside it.
       needs: [Parent],
       provides: [
-        Provider(Span)(
-          { parent: Parent },
-          {
-            sync: () => {
-              counts.spanBuilds += 1;
-              seen.build = currentUnit()?.unitId;
-              return { openedIn: seen.build };
-            },
-            onStop: () => {
-              counts.spanStops += 1;
-              seen.stop = currentUnit()?.unitId;
-              return teardown();
-            },
+        Provider(Span)({
+          inject: { parent: Parent },
+          sync: () => {
+            counts.spanBuilds += 1;
+            seen.build = currentUnit()?.unitId;
+            return { openedIn: seen.build };
           },
-        ),
+          onStop: () => {
+            counts.spanStops += 1;
+            seen.stop = currentUnit()?.unitId;
+            return teardown();
+          },
+        }),
       ],
       exports: [Span],
     });

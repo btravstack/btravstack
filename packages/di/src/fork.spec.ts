@@ -11,6 +11,7 @@ test("a fork releases only its own resources and leaves the parent up", async ()
   const app = Module("App")({
     provides: [
       Provider(Pool)({
+        inject: {},
         acquire: () => Ok({ id: "pool" }),
         release: () => void released.push("pool"),
       }),
@@ -22,13 +23,11 @@ test("a fork releases only its own resources and leaves the parent up", async ()
     // module is forked from, never from inside it.
     needs: [Pool],
     provides: [
-      Provider(Txn)(
-        { pool: Pool },
-        {
-          acquire: ({ pool }) => Ok({ id: `txn-on-${pool.id}` }),
-          release: () => void released.push("txn"),
-        },
-      ),
+      Provider(Txn)({
+        inject: { pool: Pool },
+        acquire: ({ pool }) => Ok({ id: `txn-on-${pool.id}` }),
+        release: () => void released.push("txn"),
+      }),
     ],
     exports: [Txn],
   });

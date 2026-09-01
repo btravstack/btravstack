@@ -15,31 +15,35 @@ class Value extends Port("PValue")<{ readonly n: number }> {}
 class Seed extends Port("PSeed")<number> {}
 
 test("a value provider yields its service and declares no deps", async () => {
-  const p = Provider(Value)({ value: { n: 1 } });
+  const p = Provider(Value)({ inject: {}, value: { n: 1 } });
   expect(p.deps).toEqual([]);
   await expect(p.construct([])).resolves.toBeOkWith({ n: 1 });
 });
 
 test("a sync provider receives its dependencies by name", async () => {
-  const p = Provider(Value)({ seed: Seed }, { sync: ({ seed }) => ({ n: seed + 1 }) });
+  const p = Provider(Value)({ inject: { seed: Seed }, sync: ({ seed }) => ({ n: seed + 1 }) });
   await expect(p.construct([1])).resolves.toBeOkWith({ n: 2 });
 });
 
-test("an EMPTY deps record still hands the factory a record, not nothing", async () => {
-  // Arity is what says a factory takes a services record, so a caller who
-  // wrote `{}` gets `{}` — not the `undefined` a key count would hand them.
-  // `OrpcRouter(contract)({}, { sync })` is the shape that found this.
-  const p = Provider(Value)({}, { sync: (services) => ({ n: Object.keys(services).length }) });
+test("an EMPTY inject record still hands the factory a record, not nothing", async () => {
+  // Every provider is handed exactly one services record, so a caller who
+  // wrote `inject: {}` gets `{}` — not the `undefined` a key count would hand
+  // them.
+  const p = Provider(Value)({
+    inject: {},
+    sync: (services) => ({ n: Object.keys(services).length }),
+  });
   await expect(p.construct([])).resolves.toBeOkWith({ n: 0 });
 });
 
 test("a make provider propagates the Err it returns", async () => {
-  const p = Provider(Value)({ make: () => Err(new BoomError({ why: "nope" })) });
+  const p = Provider(Value)({ inject: {}, make: () => Err(new BoomError({ why: "nope" })) });
   await expect(p.construct([])).resolves.toBeErrTagged("BoomError");
 });
 
 test("a throw inside a factory becomes a defect, not an error", async () => {
   const p = Provider(Value)({
+    inject: {},
     sync: () => {
       // Deliberate: this is exactly the case under test — an unmodeled throw
       // from a factory must land as a Defect, not propagate or become an Err.
@@ -60,12 +64,12 @@ test("a class provider constructs with the resolved dependencies", async () => {
       return this.seed + 1;
     }
   }
-  const p = Provider(Value)({ seed: Seed }, { class: Impl });
+  const p = Provider(Value)({ inject: { seed: Seed }, class: Impl });
   const built = await p.construct([41]);
   expect(built.isOk() && (built.value as Impl).n).toBe(42);
 });
 
 test("an Ok result from make is passed through unchanged", async () => {
-  const p = Provider(Value)({ make: () => Ok({ n: 3 }) });
+  const p = Provider(Value)({ inject: {}, make: () => Ok({ n: 3 }) });
   await expect(p.construct([])).resolves.toBeOkWith({ n: 3 });
 });

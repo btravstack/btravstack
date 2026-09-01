@@ -33,7 +33,7 @@ the same commit, and with `README.md` — the package ships no
   declaration emit keeps such an alias unreduced and cannot name imported
   modules' internal ports — TS2883, measured.) `router` is
   `Provider<OrpcRouterPort, RouterError, RouterNeeds>` — what
-  `api.OrpcRouter(contract)(deps, arm)` returns; `fragments` is
+  `api.OrpcRouter(contract)({ inject, ...arm })` returns; `fragments` is
   `Provider<HtmxFragmentsPort, …>` — what `api.HtmxFragments([…])`
   returns. A provider of anything else fails at the call, and there is no
   port to read off either: the sugar's job is to provide the port the
@@ -70,7 +70,7 @@ Router<Record<never, never>>>`, with the matching `PortInstance` alias. A
   defect at build, which is correct. The service type is contract-agnostic
   (a context-free oRPC router), so this is one concrete port — unlike the
   temporal and amqp starters', which are typed per contract.
-- **`api.OrpcRouter(contract)(deps, { sync })`** (`orpc.ts`, minted by
+- **`api.OrpcRouter(contract)({ inject: deps, sync })`** (`orpc.ts`, minted by
   `defineHttp`) — contract-first
   router provider. `Implementation<C, Schemes>` is the record type: recursing the
   contract's shape, each `ProcedureContract<I, O, E>` becomes
@@ -85,7 +85,7 @@ I, O, E>["result"]>[0]` — the `.result()` handler `@unthrown/orpc` gives that
   `undefined` for an undeclared key, measured), and `os.router(built)` is the
   port's service. `C` is bounded `Record<string, RouterContract>` — a router
   record, not a bare procedure, since a bare procedure has no keys to walk. The
-  second call is di's `Provider(OrpcRouterPort)({ name: Dep }, { sync })` with the
+  second call is di's `Provider(OrpcRouterPort)({ inject: { name: Dep }, sync })` with the
   router built from what `sync` returns; there is no name to give. The
   return is `Provider<PortInstance<"OrpcRouter", Router<…>>, never,
 InstanceType<D[keyof D]>> & { port: PortClassOf<"OrpcRouter", Router<…>> }`,
@@ -106,7 +106,7 @@ PortInstance<…> }`) rather than the class's own type because a class
 - **`api.OrpcRouter(contract)([piece, …])` — the composing form** (`orpc.ts`, a
   third overload of `build`, declared **last**) — for
   `contract: Record<string, RouterContract>`, an **array of pieces** instead of
-  `(deps, { sync })`, each an `OrpcController(contract, path)` over one node
+  `{ inject, sync }`, each an `OrpcController(contract, path)` over one node
   of the contract tree, at any depth — the same shape as
   `AmqpHandlers(contract)([...])` and `TemporalActivities(contract)([...])`,
   with the paths as HTTP's extra degree of freedom. Coverage is **leaf-based**:
@@ -145,19 +145,18 @@ not cover"` marker, and what the marker names is a procedure path
   because the alias route rides a compiler heuristic that has already changed
   behaviour across one key-shape refactor — see `PieceOf`'s own TSDoc. At
   runtime `Array.isArray`
-  alone identifies this arm — an array is never a valid `(deps, arm)` or
-  `(arm)` call — so the retired keyed record's three-form
-  `sync`-holds-a-function discrimination is gone, and the remaining
-  `(deps, arm)` / `(arm)` pair is settled by plain arity as everywhere else
-  (the arm-only `sync` is still handed **no** arguments, pinned by
-  `controller.spec.ts`). The composed provider's `deps` are the piece
+  alone identifies this arm — an array is never a valid `{ inject, ...arm }`
+  call — so the retired keyed record's three-form
+  `sync`-holds-a-function discrimination is gone, and there is nothing left to
+  discriminate: the other arm is one options object, as di's own is. The
+  composed provider's `deps` are the piece
   **ports**, keyed by the very dotted path each port id carries — so di
   builds every piece before the router, and `nest` folds the flat path-keyed
   services record back into the nesting the contract already has before
   `routerFrom`: `routerOf` walks the same tree it always did, marks,
   inheritance and the stray-key drop included. The walk itself is untouched —
   `nest` lives in the composing arm because the walk is shared with the
-  `(deps, arm)` form, which never nests. The pieces themselves still need
+  `{ inject, ...arm }` form, which never nests. The pieces themselves still need
   discharging — listed in `provides` alongside the router, or exported by a
   slice module imported in — exactly as in `packages/amqp-worker`. Coverage
   is not uniqueness, but with paths the split moved: a piece **inside**
@@ -182,7 +181,7 @@ not cover"` marker, and what the marker names is a procedure path
   level carries one, against `"UNSLICEABLE CONTRACT KEY — …"` reported ahead
   of `Uncovered`, because "no piece can name this" is a different fact from
   "no piece did" and only the first says the array form is the wrong tool.
-  Both sentences point at the `(deps, arm)` form, which splits nothing and
+  Both sentences point at the `{ inject, ...arm }` form, which splits nothing and
   serves such a contract correctly. Only the **top** level is fatal: a piece
   at a dotted key's parent hands its implementation record to `routerOf`
   whole, and that walk splits paths, never the keys underneath them — so
@@ -200,7 +199,7 @@ not cover"` marker, and what the marker names is a procedure path
   arm); a procedure the fragment does not declare rejected inside the piece;
   and — the fifth, marked "do not break" — a slice lifting out of the
   composed router **with its piece unchanged**:
-  `api.OrpcRouter(contract.orders)({ implementation: ordersPiece.port }, { sync: ({ implementation }) => implementation })`
+  `api.OrpcRouter(contract.orders)({ inject: { implementation: ordersPiece.port }, sync: ({ implementation }) => implementation })`
   compiles, so the lifted root declares the very provider the modulith
   composed and hands back what it built; and the sixth, a top-level key
   carrying a literal dot, refused at the mint and again at the array. The
@@ -232,7 +231,7 @@ not cover"` marker, and what the marker names is a procedure path
   the DOTTED path `"echoes.ping"`, so `nest`'s rebuild answers a real
   request — and by `rpcDeep`, two pieces sharing the nested `"v1"` parent
   plus one at the bare procedure path `"health"`.
-- **`api.OrpcController(contract, key)({ name: Dep }, { sync })`, or
+- **`api.OrpcController(contract, key)({ inject: { name: Dep }, sync })`, or
   `({ sync })` with no deps** (`controller.ts`, minted by `defineHttp`) — one
   node of a contract, at any depth, as a provider on a port of its own. There
   is no name to give: the dotted path IS the port's name, minted as
@@ -263,10 +262,10 @@ not cover"` marker, and what the marker names is a procedure path
   `Inherit<node, folded>`, which is how a marked ancestor types
   `context.principal` in a piece minted from below it — the check the retired
   keyed form performed at the root, now performed where the handler is
-  written. The second call is di's `Provider(port)({ name: Dep }, { sync })`,
-  unchanged — **including its no-deps arm**, mirrored by arity for the same
-  reason di has one: a piece that calls no use case is the common shape here,
-  not an edge case, and `({}, { sync })` is what it would otherwise spell.
+  written. The second call is di's `Provider(port)({ inject: { name: Dep }, sync })`,
+  unchanged — **`inject` included, and required**: a piece that calls no use
+  case is the common shape here, not an edge case, and it spells
+  `{ inject: {}, sync }` like every other no-deps provider (issue #227).
   Returns
   `Provider<InstanceType<ControllerPortOf<C, K, Schemes>>, never, N> & { readonly port: ControllerPortOf<C, K, Schemes> }` —
   `ControllerPortOf<C, K, Schemes>` being `PortClassOf` over the prefixed
@@ -345,7 +344,7 @@ not cover"` marker, and what the marker names is a procedure path
 
 - **`api.HtmxGet(path, options?)` and `api.HtmxPost(path, options?)`**
   (`htmx-route.ts`, minted by `defineHttp`) — a route as a provider on a port
-  of its own, minted straight from a path template, then `(deps, { sync })`
+  of its own, minted straight from a path template, then `{ inject, sync }`
   or `({ sync })` with no deps, the same two-call shape as
   `api.OrpcController(contract, path)`. The port id carries the method and
   path (`` `HtmxFragment:${method} ${path}` ``, `FRAGMENT_PREFIX` in
@@ -379,9 +378,7 @@ grant it"` sentence oRPC's `routerFor` gives — and each requirement is also
   compose without the path or the requirement being spelled twice.
 
   ```ts
-  const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({
-    sync: () => (context, params) => repository.find(params.id).map(rowOf),
-  });
+  const orderRow = api.HtmxGet("/orders/:id/row", { requires: [{ user: [] }] })({ inject: {}, sync: () => (context, params) => repository.find(params.id).map(rowOf) });
   ```
 
 - **`api.HtmxFragments([piece, …])`** (`htmx-route.ts`, minted by
@@ -794,10 +791,10 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   `echoesController` minted by the dotted path `"echoes.ping"` — with a
   procedure from each answering through one client, proving every piece's
   slice was mounted under the path its port id carries, `nest`'s rebuild
-  included; one pins that an arm-only router's `sync` is handed **no
-  arguments** at all (the former sync-key discrimination spec is deleted with
-  the record form: there is no record for a `sync` key to be confused with,
-  `Array.isArray` decides); and two are `rpcDeep`, over a contract with two
+  included; one pins that a router declaring `inject: {}` still has its `sync`
+  handed exactly one argument, the empty services record (the former sync-key
+  discrimination spec is deleted with the record form: there is no record for a
+  `sync` key to be confused with, `Array.isArray` decides); and two are `rpcDeep`, over a contract with two
   pieces sharing the nested `"v1"` parent (`"v1.orders"` and
   `"v1.customers"`) plus one minted at the bare procedure path `"health"` —
   the shared parent is what forces `nest`'s `node[segment] ??=` to find a
@@ -823,7 +820,7 @@ greetingRouter, port: 0, hostname: "127.0.0.1", provides: [Greeter] })` over
   `INTERNAL_SERVER_ERROR` rather than a 401, and an unmarked procedure served
   with no credentials at all. One more is over the authenticator that
   **declares a dependency** — a `Verifier` port, the arm `defineHttp` binds
-  through `Provider(port)(deps, arm)` — proving its need travelled with it into
+  through `Provider(port)({ inject, ...arm })` — proving its need travelled with it into
   the graph, and one more is `rpcSubstituted` — the same router with the
   scheme's authenticator replaced on its port, the substitution seam
   `authenticatorPort` exists for. Two are over `rootMarkedContract` —

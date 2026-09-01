@@ -8,7 +8,7 @@ import { Module, Port, Provider, type Context } from "@btravstack/di";
 import { P } from "unthrown";
 class Greeter extends Port("Greeter")<{ readonly greet: () => string }> {}
 const App = Module("App")({
-  provides: [Provider(Greeter)({ value: { greet: () => "hi" } })],
+  provides: [Provider(Greeter)({ inject: {}, value: { greet: () => "hi" } })],
   exports: [Greeter],
 });
 declare const respond: (ctx: Context<Greeter>) => number;

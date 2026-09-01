@@ -65,7 +65,7 @@ export const prismaOutbox = (db: OrderDatabaseClient): ServiceOf<Outbox> => ({
       ),
 });
 
-export const outboxProvider = Provider(Outbox)(
-  { db: OrderDatabase },
-  { sync: ({ db }) => prismaOutbox(db) },
-);
+export const outboxProvider = Provider(Outbox)({
+  inject: { db: OrderDatabase },
+  sync: ({ db }) => prismaOutbox(db),
+});

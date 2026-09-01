@@ -52,44 +52,42 @@ class Customers extends Port("ReadmeCustomers")<{
   ) => AsyncResult<CustomerView, CustomerNotFound>;
 }> {}
 
-const customers = Provider(Customers)(
-  { find: FindCustomer, cache: Cache },
-  {
-    sync: ({ find, cache }) => ({
-      find: (tenantId, id) => {
-        // The key carries the tenant, because the port does not: `Cache` takes
-        // plain strings, and composing them is the application's job.
-        const key = `customers:${tenantId}:${id}`;
-        return (
-          cache
-            .get(key)
-            // An unreachable cache is a miss. Whether an outage degrades a
-            // request or fails it is YOUR decision, which is why the package
-            // models the failure instead of swallowing it.
-            .recoverErrCases((matcher) =>
-              matcher.with(P.tag("CacheUnavailable"), () => undefined),
-            )
-            .flatMap((hit) =>
-              hit === undefined
-                ? find
-                    .execute(TenantId(tenantId), id)
-                    .map(view)
-                    .flatTap((cached) =>
-                      cache
-                        .set(key, cached, { ttlMs: 60_000 })
-                        .recoverErrCases((m) =>
-                          m.with(P.tag("CacheUnavailable"), () => undefined),
-                        ),
-                    )
-                : // The stored value is `unknown`; the cast is the boundary where
-                  // it re-enters this application's vocabulary.
-                  OkAsync(hit.value as CustomerView),
-            )
-        );
-      },
-    }),
-  },
-);
+const customers = Provider(Customers)({
+  inject: { find: FindCustomer, cache: Cache },
+  sync: ({ find, cache }) => ({
+    find: (tenantId, id) => {
+      // The key carries the tenant, because the port does not: `Cache` takes
+      // plain strings, and composing them is the application's job.
+      const key = `customers:${tenantId}:${id}`;
+      return (
+        cache
+          .get(key)
+          // An unreachable cache is a miss. Whether an outage degrades a
+          // request or fails it is YOUR decision, which is why the package
+          // models the failure instead of swallowing it.
+          .recoverErrCases((matcher) =>
+            matcher.with(P.tag("CacheUnavailable"), () => undefined),
+          )
+          .flatMap((hit) =>
+            hit === undefined
+              ? find
+                  .execute(TenantId(tenantId), id)
+                  .map(view)
+                  .flatTap((cached) =>
+                    cache
+                      .set(key, cached, { ttlMs: 60_000 })
+                      .recoverErrCases((m) =>
+                        m.with(P.tag("CacheUnavailable"), () => undefined),
+                      ),
+                  )
+              : // The stored value is `unknown`; the cast is the boundary where
+                // it re-enters this application's vocabulary.
+                OkAsync(hit.value as CustomerView),
+          )
+      );
+    },
+  }),
+});
 ```
 
 And the composition — the adapter, and whether it is instrumented, are both

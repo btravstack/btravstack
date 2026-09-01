@@ -37,36 +37,34 @@ class Customers extends Port("ReferenceCustomers")<{
   readonly forget: (id: string) => AsyncResult<void, never>;
 }> {}
 
-export const customersProvider = Provider(Customers)(
-  { cache: Cache },
-  {
-    sync: ({ cache }) => ({
-      find: (id) =>
-        cache
-          .get(`customers:${id}`)
-          .recoverErrCases((m) =>
-            m.with(P.tag("CacheUnavailable"), () => undefined),
-          )
-          .flatMap((hit) =>
-            hit === undefined
-              ? findCustomer(id).flatTap((found) =>
-                  cache
-                    .set(`customers:${id}`, found, { ttlMs: 60_000 })
-                    .recoverErrCases((m) =>
-                      m.with(P.tag("CacheUnavailable"), () => undefined),
-                    ),
-                )
-              : OkAsync(hit.value as CustomerView),
-          ),
-      forget: (id) =>
-        cache
-          .delete(`customers:${id}`)
-          .recoverErrCases((m) =>
-            m.with(P.tag("CacheUnavailable"), () => undefined),
-          ),
-    }),
-  },
-);
+export const customersProvider = Provider(Customers)({
+  inject: { cache: Cache },
+  sync: ({ cache }) => ({
+    find: (id) =>
+      cache
+        .get(`customers:${id}`)
+        .recoverErrCases((m) =>
+          m.with(P.tag("CacheUnavailable"), () => undefined),
+        )
+        .flatMap((hit) =>
+          hit === undefined
+            ? findCustomer(id).flatTap((found) =>
+                cache
+                  .set(`customers:${id}`, found, { ttlMs: 60_000 })
+                  .recoverErrCases((m) =>
+                    m.with(P.tag("CacheUnavailable"), () => undefined),
+                  ),
+              )
+            : OkAsync(hit.value as CustomerView),
+        ),
+    forget: (id) =>
+      cache
+        .delete(`customers:${id}`)
+        .recoverErrCases((m) =>
+          m.with(P.tag("CacheUnavailable"), () => undefined),
+        ),
+  }),
+});
 ```
 
 | Method                        | Answers                                                |

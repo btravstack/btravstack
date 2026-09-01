@@ -33,35 +33,36 @@ const keyFor = (tenantId: string, id: string): string => `customers:${tenantId}:
  * `unknown`, so a hit claims `CustomerView` by cast at the boundary where it
  * re-enters this application's vocabulary.
  */
-export const customersController = api.OrpcController(contract, "customers")(
-  { find: FindCustomer, cache: Cache },
-  {
-    sync: ({ find, cache }) => ({
-      find: ({ errors }, input) => {
-        const key = keyFor(input.tenantId, input.id);
-        return cache
-          .get(key)
-          .recoverErrCases((matcher) => matcher.with(P.tag("CacheUnavailable"), () => undefined))
-          .flatMap((hit) =>
-            hit === undefined
-              ? find
-                  .execute(TenantId(input.tenantId), input.id)
-                  .map(view)
-                  .flatTap((cached) =>
-                    cache
-                      .set(key, cached, { ttlMs: VIEW_TTL_MS })
-                      .recoverErrCases((matcher) =>
-                        matcher.with(P.tag("CacheUnavailable"), () => undefined),
-                      ),
-                  )
-              : OkAsync(hit.value as CustomerView),
-          )
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("CustomerNotFound"), (error) =>
-              errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
-            ),
-          );
-      },
-    }),
-  },
-);
+export const customersController = api.OrpcController(
+  contract,
+  "customers",
+)({
+  inject: { find: FindCustomer, cache: Cache },
+  sync: ({ find, cache }) => ({
+    find: ({ errors }, input) => {
+      const key = keyFor(input.tenantId, input.id);
+      return cache
+        .get(key)
+        .recoverErrCases((matcher) => matcher.with(P.tag("CacheUnavailable"), () => undefined))
+        .flatMap((hit) =>
+          hit === undefined
+            ? find
+                .execute(TenantId(input.tenantId), input.id)
+                .map(view)
+                .flatTap((cached) =>
+                  cache
+                    .set(key, cached, { ttlMs: VIEW_TTL_MS })
+                    .recoverErrCases((matcher) =>
+                      matcher.with(P.tag("CacheUnavailable"), () => undefined),
+                    ),
+                )
+            : OkAsync(hit.value as CustomerView),
+        )
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("CustomerNotFound"), (error) =>
+            errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
+          ),
+        );
+    },
+  }),
+});

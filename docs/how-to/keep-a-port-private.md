@@ -64,19 +64,15 @@ module provides but does not export is internal:
 const Persistence = Module("Persistence")({
   imports: [Config],
   provides: [
-    Provider(Pool)(
-      { config: AppConfig },
-      {
-        acquire: openPool,
-        release: (pool) => pool.close(),
-      },
-    ),
-    Provider(OrderRepository)(
-      { pool: Pool },
-      {
-        sync: ({ pool }) => makeRepository(pool),
-      },
-    ),
+    Provider(Pool)({
+      inject: { config: AppConfig },
+      acquire: openPool,
+      release: (pool) => pool.close(),
+    }),
+    Provider(OrderRepository)({
+      inject: { pool: Pool },
+      sync: ({ pool }) => makeRepository(pool),
+    }),
   ],
   exports: [OrderRepository], // Pool and AppConfig: not listed, not visible
 });
@@ -89,11 +85,11 @@ Any module importing `Persistence` sees exactly one port:
 const App = Module("App")({
   imports: [Persistence],
   provides: [
-    Provider(GetOrder)(
-      { orders: OrderRepository },
-      { class: GetOrderInteractor },
-    ),
-    Provider(Audit)({ pool: Pool }, { sync: makeAudit }), // Pool is not visible here
+    Provider(GetOrder)({
+      inject: { orders: OrderRepository },
+      class: GetOrderInteractor,
+    }),
+    Provider(Audit)({ inject: { pool: Pool }, sync: makeAudit }), // Pool is not visible here
   ],
   exports: [GetOrder],
 });
@@ -144,10 +140,10 @@ The `exports` list cannot lie:
 ```ts
 Module("Persistence")({
   provides: [
-    Provider(OrderRepository)(
-      { pool: Pool },
-      { sync: ({ pool }) => makeRepository(pool) },
-    ),
+    Provider(OrderRepository)({
+      inject: { pool: Pool },
+      sync: ({ pool }) => makeRepository(pool),
+    }),
   ],
   // @ts-expect-error — NOT EXPORTABLE: `Metrics` is neither provided nor imported.
   exports: [OrderRepository, Metrics], // Metrics: neither provided nor imported

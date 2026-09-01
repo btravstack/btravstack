@@ -99,7 +99,7 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
       ),
 });
 
-export const orderRepositoryProvider = Provider(OrderRepository)(
-  { db: OrderDatabase },
-  { sync: ({ db }) => prismaOrderRepository(db) },
-);
+export const orderRepositoryProvider = Provider(OrderRepository)({
+  inject: { db: OrderDatabase },
+  sync: ({ db }) => prismaOrderRepository(db),
+});

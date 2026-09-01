@@ -32,23 +32,21 @@ export type HtmxOptions = {
  */
 export const htmx = (options: HtmxOptions = {}) => {
   const prefix = options.prefix ?? "/";
-  return Provider.member(HttpHandler)(
-    { fragments: HtmxFragmentsPort, config: HttpConfig },
-    {
-      sync: ({ fragments, config }) => ({
-        prefix,
-        handle: (request, response, _signal) =>
-          respond(
-            fragments.routes,
-            fragments.authenticators,
-            config.bodyLimit,
-            prefix,
-            request,
-            response,
-          ),
-      }),
-    },
-  );
+  return Provider.member(HttpHandler)({
+    inject: { fragments: HtmxFragmentsPort, config: HttpConfig },
+    sync: ({ fragments, config }) => ({
+      prefix,
+      handle: (request, response, _signal) =>
+        respond(
+          fragments.routes,
+          fragments.authenticators,
+          config.bodyLimit,
+          prefix,
+          request,
+          response,
+        ),
+    }),
+  });
 };
 
 /** The route a request matches, and the parameters its path bound. */

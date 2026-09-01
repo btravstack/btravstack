@@ -10,13 +10,13 @@ class Missing extends Port("FMissing")<{ readonly nope: true }> {}
 
 const RequestModule = Module("Request")({
   needs: [Db],
-  provides: [Provider(RequestId)({ db: Db }, { sync: ({ db }) => ({ value: db.q() }) })],
+  provides: [Provider(RequestId)({ inject: { db: Db }, sync: ({ db }) => ({ value: db.q() }) })],
   exports: [RequestId],
 });
 
 const NeedsMissing = Module("NeedsMissing")({
   needs: [Missing],
-  provides: [Provider(RequestId)({ missing: Missing }, { sync: () => ({ value: "x" }) })],
+  provides: [Provider(RequestId)({ inject: { missing: Missing }, sync: () => ({ value: "x" }) })],
   exports: [RequestId],
 });
 

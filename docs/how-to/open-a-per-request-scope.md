@@ -47,21 +47,19 @@ export const RequestModule = Module("Request")({
   // per-request module is forked from, never from inside it.
   needs: [Logger],
   provides: [
-    Provider(RequestSpan)(
-      { logger: Logger },
-      {
-        sync: ({ logger }) => {
-          const startedAt = Date.now();
-          return {
-            finish: () =>
-              logger.info("request finished", {
-                durationMs: Date.now() - startedAt,
-              }),
-          };
-        },
-        onStop: (span) => span.finish(),
+    Provider(RequestSpan)({
+      inject: { logger: Logger },
+      sync: ({ logger }) => {
+        const startedAt = Date.now();
+        return {
+          finish: () =>
+            logger.info("request finished", {
+              durationMs: Date.now() - startedAt,
+            }),
+        };
       },
-    ),
+      onStop: (span) => span.finish(),
+    }),
   ],
   exports: [RequestSpan],
 });

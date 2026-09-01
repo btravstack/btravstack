@@ -24,7 +24,9 @@ describe("prismaDatabase", () => {
     });
     const root = Module("Root")({
       imports: [db],
-      provides: [Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } })],
+      provides: [
+        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+      ],
       exports: [db.port],
     });
 
@@ -43,7 +45,9 @@ describe("prismaDatabase", () => {
     });
     const root = Module("Root")({
       imports: [db],
-      provides: [Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } })],
+      provides: [
+        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+      ],
       exports: [db.port],
     });
 
@@ -62,7 +66,7 @@ describe("prismaDatabase", () => {
     });
     const root = Module("Root")({
       imports: [db],
-      provides: [Provider(Env)({ value: {} })],
+      provides: [Provider(Env)({ inject: {}, value: {} })],
       exports: [db.port],
     });
 
@@ -87,9 +91,9 @@ describe("prismaDatabase", () => {
     const root = Module("Root")({
       imports: [db],
       provides: [
-        Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        Provider(Logger)({ value: telemetry.logger }),
-        Provider(Meter)({ value: telemetry.meter }),
+        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+        Provider(Logger)({ inject: {}, value: telemetry.logger }),
+        Provider(Meter)({ inject: {}, value: telemetry.meter }),
       ],
       exports: [db.port],
     });
@@ -120,7 +124,9 @@ describe("prismaDatabase", () => {
     });
     const root = Module("Root")({
       imports: [db],
-      provides: [Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } })],
+      provides: [
+        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+      ],
       exports: [db.port, HealthChecks],
     });
 
@@ -146,7 +152,9 @@ describe("prismaDatabase", () => {
     });
     const root = Module("Root")({
       imports: [db],
-      provides: [Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } })],
+      provides: [
+        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+      ],
       exports: [db.port, HealthChecks],
     });
 
@@ -171,9 +179,9 @@ describe("prismaDatabase", () => {
     const root = Module("Root")({
       imports: [db],
       provides: [
-        Provider(Env)({ value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
-        Provider(Logger)({ value: telemetry.logger }),
-        Provider(Meter)({ value: telemetry.meter }),
+        Provider(Env)({ inject: {}, value: { DATABASE_URL: "postgres://localhost:5432/orders" } }),
+        Provider(Logger)({ inject: {}, value: telemetry.logger }),
+        Provider(Meter)({ inject: {}, value: telemetry.meter }),
       ],
       exports: [db.port, Instrumentations],
     });

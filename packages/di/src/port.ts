@@ -83,7 +83,7 @@ export type ServiceOf<T> =
  * — `class Tags extends Port("Tags")<readonly string[]> {}` — has `many`
  * `undefined` at runtime (`build.ts`'s `plan`/`context.ts`'s `unsafeAddAll`
  * both discriminate on that static field, never on shape), so
- * `Provider.member(Tags)({ value: "a" } )` type-checked under the old
+ * `Provider.member(Tags)({ inject: {}, value: "a" })` type-checked under the old
  * definition while landing as a single service at runtime — `ctx.get(Tags)`
  * would return `"a"`, contradicting its own `readonly string[]` type. `[MANY]`
  * is the same brand `ManyPortClass`'s instance type carries and is

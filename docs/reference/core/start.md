@@ -155,7 +155,7 @@ const httpish: Runtime<never, HttpInfo> = {
 class Httpish extends RuntimePort<Runtime<never, HttpInfo>> {}
 
 const HttpishApp = Module("HttpishApp")({
-  provides: [Provider(Httpish)({ value: httpish })],
+  provides: [Provider(Httpish)({ inject: {}, value: httpish })],
   exports: [Httpish],
 });
 

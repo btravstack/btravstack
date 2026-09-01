@@ -76,55 +76,53 @@ const api = defineHttp();
 
 // Contract-first: the record is shaped like the contract, each leaf a plain
 // Result-returning function typed by it. The use cases arrive under the names
-// the deps record gave them — di injects them; oRPC's context stays empty.
-const ordersRouter = api.OrpcRouter(ordersContract)(
-  { place: PlaceOrder, find: FindOrder },
-  {
-    sync: ({ place, find }) => ({
-      place: ({ errors }, input) =>
-        place
-          .execute(input.id, input.quantity)
-          .map(view)
-          // The one place a domain error becomes a transport one — exhaustive,
-          // so a new domain error is a compile error right here.
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              // A malformed id is the caller's mistake, so 400 — not the
-              // 409 a duplicate gets.
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          ),
-      find: ({ errors }, input) =>
-        find
-          .execute(input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
+// the `inject` record gave them — di injects them; oRPC's context stays empty.
+const ordersRouter = api.OrpcRouter(ordersContract)({
+  inject: { place: PlaceOrder, find: FindOrder },
+  sync: ({ place, find }) => ({
+    place: ({ errors }, input) =>
+      place
+        .execute(input.id, input.quantity)
+        .map(view)
+        // The one place a domain error becomes a transport one — exhaustive,
+        // so a new domain error is a compile error right here.
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            // A malformed id is the caller's mistake, so 400 — not the
+            // 409 a duplicate gets.
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
+        ),
+    find: ({ errors }, input) =>
+      find
+        .execute(input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({
+              message: error.message,
+              data: { id: error.id },
+            }),
           ),
-    }),
-  },
-);
+        ),
+  }),
+});
 
 // A di module that also knows about its router: imports the starter, provides
 // the router on the starter's own port (a process serves one router, so
@@ -145,7 +143,7 @@ port back from `app.runtimeInfo()`.
 
 ## Splitting a large API into slices
 
-`api.OrpcRouter(contract)(deps, { sync })` is right for a small API; a large
+`api.OrpcRouter(contract)({ inject: deps, sync })` is right for a small API; a large
 one splits into **pieces**, each owning one node of the contract tree, named
 by a dotted path, composed at the root as an array instead — the same shape
 `AmqpHandlers(contract)([...])` and `TemporalActivities(contract)([...])`
@@ -193,62 +191,66 @@ const ordersContract = {
     .errors({ NOT_FOUND: { data: type<OrderRef>() } }),
 };
 const customersContract = {
-  find: oc.input(type<{ readonly id: string }>()).output(type<{ readonly name: string }>()),
+  find: oc
+    .input(type<{ readonly id: string }>())
+    .output(type<{ readonly name: string }>()),
 };
 const orderContract = { orders: ordersContract, customers: customersContract };
-const customersController = api.OrpcController(orderContract, "customers")({
-  sync: () => ({ find: () => OkAsync({ name: "Ada" }) }),
-});
+const customersController = api.OrpcController(
+  orderContract,
+  "customers",
+)({ inject: {}, sync: () => ({ find: () => OkAsync({ name: "Ada" }) }) });
 declare const Application: Module<PlaceOrder | FindOrder, never, never>;
 -->
 
 ```ts
-const ordersController = api.OrpcController(orderContract, "orders")(
-  { place: PlaceOrder, find: FindOrder },
-  {
-    sync: ({ place, find }) => ({
-      place: ({ errors }, input) =>
-        place
-          .execute(input.id, input.quantity)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher
-              .with(P.tag("InvalidQuantity"), (error) =>
-                errors.INVALID_QUANTITY({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              // A malformed id is the caller's mistake, so 400 — not the
-              // 409 a duplicate gets.
-              .with(P.tag("InvalidOrderId"), (error) =>
-                errors.BAD_REQUEST({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              )
-              .with(P.tag("DuplicateOrder"), (error) =>
-                errors.CONFLICT({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
-          ),
-      find: ({ errors }, input) =>
-        find
-          .execute(input.id)
-          .map(view)
-          .mapErrCases((matcher) =>
-            matcher.with(P.tag("OrderNotFound"), (error) =>
-              errors.NOT_FOUND({
+const ordersController = api.OrpcController(
+  orderContract,
+  "orders",
+)({
+  inject: { place: PlaceOrder, find: FindOrder },
+  sync: ({ place, find }) => ({
+    place: ({ errors }, input) =>
+      place
+        .execute(input.id, input.quantity)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher
+            .with(P.tag("InvalidQuantity"), (error) =>
+              errors.INVALID_QUANTITY({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            // A malformed id is the caller's mistake, so 400 — not the
+            // 409 a duplicate gets.
+            .with(P.tag("InvalidOrderId"), (error) =>
+              errors.BAD_REQUEST({
+                message: error.message,
+                data: { id: error.id },
+              }),
+            )
+            .with(P.tag("DuplicateOrder"), (error) =>
+              errors.CONFLICT({
                 message: error.message,
                 data: { id: error.id },
               }),
             ),
+        ),
+    find: ({ errors }, input) =>
+      find
+        .execute(input.id)
+        .map(view)
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("OrderNotFound"), (error) =>
+            errors.NOT_FOUND({
+              message: error.message,
+              data: { id: error.id },
+            }),
           ),
-    }),
-  },
-);
+        ),
+  }),
+});
 
 const orderRouter = api.OrpcRouter(orderContract)([
   ordersController,
@@ -256,7 +258,7 @@ const orderRouter = api.OrpcRouter(orderContract)([
 ]);
 ```
 
-`api.OrpcController(contract, key)({ name: Dep }, { sync })` — or just
+`api.OrpcController(contract, key)({ inject: { name: Dep }, sync })` — or just
 `({ sync })` when the slice calls nothing — is the same two-call shape as
 `api.OrpcRouter`, aimed at one node of the contract tree: the key is a
 **dotted path** (`"orders"`, `"v1.orders"`), the path IS the port's name, so
@@ -266,7 +268,7 @@ refused at the mint, and the paths must partition the contract's procedures:
 an uncovered procedure and a piece nested inside another piece's fragment are
 each refused at the root — and because a fragment is itself a valid contract,
 a slice can be served alone, its piece unchanged: the lifted root is
-`api.OrpcRouter(orderContract.orders)({ implementation: ordersController.port }, { sync: ({ implementation }) => implementation })`,
+`api.OrpcRouter(orderContract.orders)({ inject: { implementation: ordersController.port }, sync: ({ implementation }) => implementation })`,
 declaring the very provider the modulith composed. See
 [Split a router into controllers](https://btravstack.github.io/btravstack/how-to/split-a-router-into-controllers).
 
@@ -289,21 +291,15 @@ const contract = {
 const v1Orders = api.OrpcController(
   contract,
   "v1.orders",
-)({
-  sync: () => ({ place: () => OkAsync("placed") }),
-});
+)({ inject: {}, sync: () => ({ place: () => OkAsync("placed") }) });
 const v1Customers = api.OrpcController(
   contract,
   "v1.customers",
-)({
-  sync: () => ({ find: () => OkAsync("found") }),
-});
+)({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
 const health = api.OrpcController(
   contract,
   "health",
-)({
-  sync: () => () => OkAsync("ok"),
-});
+)({ inject: {}, sync: () => () => OkAsync("ok") });
 
 const versionedRouter = api.OrpcRouter(contract)([
   v1Orders,
@@ -343,12 +339,13 @@ import { ErrAsync, OkAsync } from "unthrown";
 export type Identity = { readonly tenantId: string; readonly userId: string };
 export type ServiceIdentity = { readonly appId: string };
 
-// An ordinary di provider description: `deps` are di's, so a JWT verifier or a
+// An ordinary di provider description: `inject` is di's, so a JWT verifier or a
 // user directory is injected the way any provider's are — an authenticator
 // reading only headers declares none. The scope vocabulary is the second type
 // argument, so the granted list is checked here rather than compared as loose
 // strings at the endpoint.
 const userAuth = HttpAuthenticator<Identity, "orders:export">()({
+  inject: {},
   sync: () => (headers) => {
     const header = headers.authorization ?? "";
     const token = header.startsWith("Bearer ")
@@ -380,6 +377,7 @@ const userAuth = HttpAuthenticator<Identity, "orders:export">()({
 });
 
 const serviceAuth = HttpAuthenticator<ServiceIdentity>()({
+  inject: {},
   sync: () => (headers) => {
     const key = headers["x-api-key"];
     return typeof key === "string" && key !== ""
@@ -450,42 +448,40 @@ const ordersContract = authenticated({ user: [] })({
   )(oc.output(type<{ readonly csv: string }>())),
 });
 
-const ordersRouter = api.OrpcRouter({ orders: ordersContract })(
-  { find: FindOrder },
-  {
-    sync: ({ find }) => ({
-      orders: {
-        // One scheme, so the principal is the identity BARE.
-        find: ({ context, errors }, input) =>
-          find
-            .execute(context.principal.tenantId, input.id)
-            .map(view)
-            .mapErrCases((matcher) =>
-              matcher.with(P.tag("OrderNotFound"), (error) =>
-                errors.NOT_FOUND({
-                  message: error.message,
-                  data: { id: error.id },
-                }),
-              ),
+const ordersRouter = api.OrpcRouter({ orders: ordersContract })({
+  inject: { find: FindOrder },
+  sync: ({ find }) => ({
+    orders: {
+      // One scheme, so the principal is the identity BARE.
+      find: ({ context, errors }, input) =>
+        find
+          .execute(context.principal.tenantId, input.id)
+          .map(view)
+          .mapErrCases((matcher) =>
+            matcher.with(P.tag("OrderNotFound"), (error) =>
+              errors.NOT_FOUND({
+                message: error.message,
+                data: { id: error.id },
+              }),
             ),
-        // Two schemes, so it is a discriminated union — and the switch is
-        // exhaustive or the build fails.
-        export: ({ context }) => {
-          switch (context.principal.scheme) {
-            case "user":
-              return OkAsync({
-                csv: `user,${context.principal.identity.userId}`,
-              });
-            case "service":
-              return OkAsync({
-                csv: `service,${context.principal.identity.appId}`,
-              });
-          }
-        },
+          ),
+      // Two schemes, so it is a discriminated union — and the switch is
+      // exhaustive or the build fails.
+      export: ({ context }) => {
+        switch (context.principal.scheme) {
+          case "user":
+            return OkAsync({
+              csv: `user,${context.principal.identity.userId}`,
+            });
+          case "service":
+            return OkAsync({
+              csv: `service,${context.principal.identity.appId}`,
+            });
+        }
       },
-    }),
-  },
-);
+    },
+  }),
+});
 
 // No authenticator to list: they ride the router, which is what needs them,
 // and `HttpModule` puts them in `provides` itself.

@@ -51,20 +51,18 @@ export const mailer = <E, N, Instrumented extends boolean = true>({
         needs: [Logger, Meter, Tracer],
         imports: [adapter],
         provides: [
-          Provider(Mailer)(
-            { backend: MailerBackend, logger: Logger, tracer: Tracer, meter: Meter },
-            {
-              sync: ({ backend, logger, tracer, meter }) =>
-                instrument(backend, logger, tracer, meter),
-            },
-          ),
+          Provider(Mailer)({
+            inject: { backend: MailerBackend, logger: Logger, tracer: Tracer, meter: Meter },
+            sync: ({ backend, logger, tracer, meter }) =>
+              instrument(backend, logger, tracer, meter),
+          }),
         ],
         exports: [Mailer],
       })
     : Module("Mailer")({
         imports: [adapter],
         provides: [
-          Provider(Mailer)({ backend: MailerBackend }, { sync: ({ backend }) => backend }),
+          Provider(Mailer)({ inject: { backend: MailerBackend }, sync: ({ backend }) => backend }),
         ],
         exports: [Mailer],
       })) as unknown as Module<

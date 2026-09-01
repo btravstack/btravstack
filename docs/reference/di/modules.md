@@ -21,11 +21,15 @@ declare const openPool: (deps: {
 declare const makeRepository: (deps: {
   readonly pool: ServiceOf<Pool>;
 }) => ServiceOf<OrderRepository>;
-class Logger extends Port("Logger")<{ readonly info: (message: string) => void }> {}
-const auditHandler = Provider(Port("AuditHandler")<{ readonly handle: () => void }>)(
-  { logger: Logger },
-  { sync: ({ logger }) => ({ handle: () => logger.info("audited") }) },
-);
+class Logger extends Port("Logger")<{
+  readonly info: (message: string) => void;
+}> {}
+const auditHandler = Provider(
+  Port("AuditHandler")<{ readonly handle: () => void }>,
+)({
+  inject: { logger: Logger },
+  sync: ({ logger }) => ({ handle: () => logger.info("audited") }),
+});
 -->
 
 # Modules
@@ -47,11 +51,12 @@ const Persistence = Module("Persistence")({
   needs: [Env],
   imports: [Config],
   provides: [
-    Provider(Pool)(
-      { config: AppConfig },
-      { acquire: openPool, release: (p) => p.close() },
-    ),
-    Provider(OrderRepository)({ pool: Pool }, { sync: makeRepository }),
+    Provider(Pool)({
+      inject: { config: AppConfig },
+      acquire: openPool,
+      release: (p) => p.close(),
+    }),
+    Provider(OrderRepository)({ inject: { pool: Pool }, sync: makeRepository }),
   ],
   exports: [OrderRepository],
 });

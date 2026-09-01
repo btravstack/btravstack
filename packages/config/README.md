@@ -47,13 +47,11 @@ const Persistence = Module("Persistence")({
   needs: [Env],
   provides: [
     databaseConfig,
-    Provider(Database)(
-      { config: databaseConfig.port },
-      {
-        acquire: ({ config }) => openDatabase(config.url),
-        release: (db) => db.close(),
-      },
-    ),
+    Provider(Database)({
+      inject: { config: databaseConfig.port },
+      acquire: ({ config }) => openDatabase(config.url),
+      release: (db) => db.close(),
+    }),
   ],
   exports: [Database],
 });
@@ -68,7 +66,7 @@ packages name — declares its port and passes the class instead:
 
 `Env` is what `Config.provider` reads. Under `@btravstack/core` the kernel
 provides it to every graph it boots — `process.env`, or `StartOptions.env` for
-a test. Anywhere else, provide it yourself: `Provider(Env)({ value: process.env })`.
+a test. Anywhere else, provide it yourself: `Provider(Env)({ inject: {}, value: process.env })`.
 
 ## Fields
 

@@ -2,16 +2,16 @@ import { OkAsync, type AsyncResult, type Result } from "unthrown";
 
 import type { AnyPort, MemberOf, Scope, ServiceOf } from "./port.js";
 
-/** Internal: a `deps` record — the one shape a provider declares dependencies in. */
+/** Internal: an `inject` record — the one shape a provider declares dependencies in. */
 type Deps = Readonly<Record<string, AnyPort>>;
 
 /**
- * Internal: the services record a factory receives, keyed exactly as `deps` was.
+ * Internal: the services record a factory receives, keyed exactly as `inject` was.
  * Homomorphic, so the keys and their optionality survive.
  */
 type ServicesOf<D extends Deps> = { readonly [K in keyof D]: ServiceOf<D[K]> };
 
-/** Internal: the union of instance types a `deps` record requires. */
+/** Internal: the union of instance types an `inject` record requires. */
 type NeedsOf<D extends Deps> = InstanceType<D[keyof D]>;
 
 type ErrorOfResult<R> =
@@ -116,7 +116,7 @@ type ErrorOf<O> = O extends { readonly make: (...args: never) => infer R }
  *
  * `onStop` gates on `Scope` for the same reason `release` does: both are
  * teardown registered on the scope only `Module.scoped`/`forkScope` open.
- * Without this arm `Provider(P)({ value, onStop })` would type-check under
+ * Without this arm `Provider(P)({ inject: {}, value, onStop })` would type-check under
  * `Module.build` and the hook would silently never run.
  */
 type ScopeOf<O> = O extends { readonly acquire: unknown }
@@ -150,30 +150,19 @@ export type Provider<P, E, N> = {
   readonly onStop: ((service: unknown) => void | Promise<void>) | undefined;
 };
 
-/**
- * `Provider<unknown, never, never>` is the bottom under the variance rule above,
- * so it is assignable to every `Provider<P, E, N>` — as an implementation
- * signature shared by both `build` overloads must be.
- */
 const descriptor = (
   port: AnyPort,
-  deps: readonly AnyPort[],
-  // `undefined` for the no-deps overload, an array — possibly EMPTY — for the
-  // one that declares a record. Arity, not key count: `Provider(P)({}, arm)`
-  // declared a record and its factory is handed one.
-  keys: readonly string[] | undefined,
+  entries: readonly (readonly [string, AnyPort])[],
   options: Record<string, unknown>,
 ): Provider<unknown, never, never> => {
   // oxlint-disable-next-line unthrown/no-ambiguous-error-type -- see the field comment on `Provider.construct`
   const construct = (services: readonly unknown[]): AsyncResult<unknown, unknown> => {
     if ("value" in options) return OkAsync(options["value"]);
     // The build pipeline resolves `deps` positionally, so the record the caller
-    // declared is rebuilt here under the names they wrote. One element for a
-    // provider with deps, none without.
-    const args: readonly unknown[] =
-      keys === undefined
-        ? []
-        : [Object.fromEntries(keys.map((key, index) => [key, services[index]]))];
+    // declared is rebuilt here under the names they wrote.
+    const args = [
+      Object.fromEntries(entries.map(([key], index) => [key, services[index]])),
+    ] as const;
     if ("sync" in options) {
       const f = options["sync"] as (...a: readonly unknown[]) => unknown;
       return OkAsync().map(() => f(...args));
@@ -192,7 +181,7 @@ const descriptor = (
   };
   return {
     port,
-    deps,
+    deps: entries.map(([, dependency]) => dependency),
     construct,
     // Only the `acquire` arm sets this; `undefined` everywhere else is how
     // `constructLevel` decides whether to register a finaliser with the scope.
@@ -228,32 +217,10 @@ function ProviderDeclaration<P extends AnyPort, S = ServiceOf<P>>(port: P) {
   // helper hands back on a port the caller never spelled is the one value an
   // application needs to hold. Purely additive.
   function build<const D extends Deps, O extends Qualification<readonly [ServicesOf<D>], S>>(
-    deps: D,
-    options: O,
-  ): Provider<InstanceType<P>, ErrorOf<O>, NeedsOf<D> | ScopeOf<O>> & { readonly port: P };
-  function build<O extends Qualification<readonly [], S>>(
-    options: O,
-  ): Provider<InstanceType<P>, ErrorOf<O>, ScopeOf<O>> & { readonly port: P };
-  function build(
-    depsOrOptions: Deps | Record<string, unknown>,
-    maybeOptions?: Record<string, unknown>,
-  ): Provider<unknown, never, never> & { readonly port: P } {
-    // ARITY discriminates, not shape: a `deps` record and an options object are
-    // both non-array objects, so there is nothing to sniff.
-    if (maybeOptions === undefined) {
-      return descriptor(port, [], undefined, depsOrOptions as Record<string, unknown>) as Provider<
-        unknown,
-        never,
-        never
-      > & { readonly port: P };
-    }
-    const entries = Object.entries(depsOrOptions as Deps);
-    return descriptor(
-      port,
-      entries.map(([, dependency]) => dependency),
-      entries.map(([key]) => key),
-      maybeOptions,
-    ) as Provider<unknown, never, never> & { readonly port: P };
+    options: { readonly inject: D } & O,
+  ): Provider<InstanceType<P>, ErrorOf<O>, NeedsOf<D> | ScopeOf<O>> & { readonly port: P } {
+    const { inject, ...arm } = options as { readonly inject: Deps } & Record<string, unknown>;
+    return descriptor(port, Object.entries(inject), arm) as never;
   }
   return build;
 }
