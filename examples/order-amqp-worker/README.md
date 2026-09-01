@@ -11,7 +11,7 @@ served by `@btravstack/http-server`; the contract lives in
 [`order-amqp-contract`](../order-amqp-contract), because another service
 binding its own queue to the `orders` exchange needs it and needs none of this.
 
-```
+```text
 src/slices/notifications/handler.ts   the notifier: orderNotifications, one piece on the "orderNotifications" consumer, built by AmqpHandler from Logger
 src/slices/notifications/module.ts    NotificationsSlice — provides the piece, exports only it
 src/slices/audit/handler.ts           the auditor: orderAudit, one piece on the "orderAudit" consumer, built by AmqpHandler from Logger

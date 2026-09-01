@@ -390,7 +390,7 @@ invented: `OrpcRouter` declares **one dependency per scheme its contract
 names**, so a scheme with no authenticator behind it is an unmet need refused
 at `start`, and the diagnostic names the port —
 
-```
+```text
 Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'
 ```
 

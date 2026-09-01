@@ -259,7 +259,7 @@ one served over HTTP, and answers `{"message":"Hello, world!"}`.
 
 Two entry points, one application:
 
-```
+```text
 src/greeter.ts            GreetingModule — the application, knows no transport
 src/main.ts               runMain(App)     — HTTP:     PORT, HOST
 src/worker-main.ts        runMain(Worker)  — Temporal: TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE

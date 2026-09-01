@@ -192,7 +192,7 @@ needs; the kernel discharges the second.
 **`ConfigInvalid`** — `TaggedError("ConfigInvalid")<{ port: string; issues: readonly ConfigIssue[] }>`.
 The message is one line per issue, naming the port and every variable:
 
-```
+```text
 HttpConfig could not be configured:
   PORT: is required
   HOST: is set but empty

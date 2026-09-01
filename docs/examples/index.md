@@ -28,7 +28,7 @@ pnpm turbo run typecheck --filter="@btravstack/example-*"
 Every arrow points inwards, and the contract tier stands to one side:
 depended upon, depending on nothing.
 
-```
+```text
   order-api      order-temporal-worker      order-amqp-worker   ← one runtime each; one process each
        └────────────────┼──────────────────┘
                         ▼

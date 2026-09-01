@@ -4,7 +4,7 @@ The use cases, and the ports they need to run. This layer turns the domain's
 rules into operations — "place an order", "find an order" — and declares, as
 `@btravstack/di` ports, what it needs the outside world to supply.
 
-```
+```text
 src/ports.ts          OrderRepository, CustomerRepository, Outbox, StockService, ShippingService, PaymentService, PlaceOrder, FindOrder, FindCustomer
 src/use-cases.ts      the interactors, and their providers
 src/module.ts         OrderApplicationModule, CustomerApplicationModule

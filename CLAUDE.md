@@ -80,12 +80,22 @@ The gate — every change must keep all six green, and CI runs the same set:
 
 ```sh
 pnpm format --check   # oxfmt (run without --check to auto-fix)
-pnpm lint             # oxlint, incl. all eight @unthrown/oxlint rules
+pnpm lint             # oxlint (all eight @unthrown rules) + markdownlint-cli2
 pnpm typecheck        # tsc, incl. the type-level *.test-d.ts files
 pnpm knip             # dead code / unused deps
 pnpm test             # vitest + v8 coverage (100% lines/functions, enforced)
 pnpm build            # tsdown dual CJS/ESM + d.ts
 ```
+
+**`lint` runs two linters, and markdown rides it deliberately.** CI's jobs come
+from a reusable workflow in `btravstack/tools` with a fixed set — Format, Lint,
+Type Check, Knip, Security Audit, Bundle Size, Build, Tests — and no input for
+a markdown job. Folding `markdownlint-cli2` into the `lint` script is what puts
+it on the gate without changing another repository's workflow. Its config lives
+in `.markdownlint-cli2.jsonc`, and every rule it turns OFF carries the
+measurement that turned it off — `MD051` in particular, because VitePress and
+GitHub slugify a heading differently and enabling it would report eight working
+anchors as broken.
 
 Not part of the gate, but the command a contributor runs all day:
 

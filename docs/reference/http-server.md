@@ -284,7 +284,7 @@ one nested under `"v1.orders"`, or one at a bare procedure path like
 overload — declared last on purpose, so TypeScript reports its failure rather
 than degrading to di's own `Qualification`, which names nothing:
 
-```
+```text
 error TS2769: No overload matches this call.
   The last overload gave the following error.
     Type 'Minted<{ orders: { place: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never>' is not assignable to type '"UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover"'.
@@ -295,7 +295,7 @@ missing procedure itself is named only once the array's length matches the
 marker tuple's own length of 2, as a **separate** diagnostic on the trailing
 element:
 
-```
+```text
 error TS2769: No overload matches this call.
   The last overload gave the following error.
     Type 'Minted<{ v1: { orders: { place: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }; health: ContractBuilder<object>; }, "health", SchemesFrom<...>, never>' is not assignable to type '"v1.customers.find"'.
@@ -307,7 +307,7 @@ A **second** gate rides the same overload: two pieces whose paths **nest** —
 the same path, which share one id and are di's ordinary duplicate-provider
 defect), so overlap is refused explicitly:
 
-```
+```text
 error TS2769: No overload matches this call.
   The last overload gave the following error.
     Type 'Minted<{ v1: { orders: { place: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }; health: ContractBuilder<object>; }, "v1", SchemesFrom<...>, never>' is not assignable to type '"OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment"'.
@@ -375,7 +375,7 @@ read for its **type** only: `path` is checked against `ControllerKeyOf<C>` —
 every path into the contract tree — so a path the contract does not declare is
 refused **at this call**, with nothing to type the key by:
 
-```
+```text
 error TS2345: Argument of type '"billing"' is not assignable to parameter of type '"customers" | "customers.find" | "orders" | "orders.place"'.
 ```
 
@@ -629,7 +629,7 @@ them to the provider's needs channel. A scheme with no authenticator behind it
 is therefore an ordinary unmet need at `start`, not a gate this package
 invented, and the diagnostic **names the port**:
 
-```
+```text
 Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'
 ```
 

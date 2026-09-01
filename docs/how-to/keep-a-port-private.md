@@ -100,7 +100,7 @@ its own provides plus its imports' exports — so the dependency is unmet, and
 `App` neither provides it nor names it in `needs`. That is refused **at this
 module**, and the diagnostic names the port:
 
-```
+```text
 Property '"UNDECLARED NEEDS — name it in `needs`"' is missing in type
   '{ imports: [...]; provides: [...]; exports: [...]; }' but required in type
   '{ readonly "UNDECLARED NEEDS — name it in `needs`": Pool; }'.

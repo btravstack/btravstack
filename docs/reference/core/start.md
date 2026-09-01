@@ -109,7 +109,7 @@ type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [
 **What a failing arm prints, measured** — a root exporting a `Greeter` and no
 runtime port:
 
-```
+```text
 error TS2345: Argument of type 'Module<Greeter, never, never>' is not assignable to parameter of type 'Module<Greeter, never, Env | Scope> & "NO RUNTIME — the module exports no port declared over RuntimePort"'.
   Type 'Module<Greeter, never, never>' is not assignable to type '"NO RUNTIME — the module exports no port declared over RuntimePort"'.
 ```

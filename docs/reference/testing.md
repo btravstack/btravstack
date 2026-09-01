@@ -140,7 +140,7 @@ application.
 What it prints, measured on a one-port tap of a module that does not export
 that port:
 
-```
+```text
 error TS2345: Argument of type '[typeof Inner]' is not assignable to parameter of type 'readonly [typeof Inner] & { readonly "NOT EXPORTED — tap only what the module exports": Inner; }'.
   Property '"NOT EXPORTED — tap only what the module exports"' is missing in type '[typeof Inner]' but required in type '{ readonly "NOT EXPORTED — tap only what the module exports": Inner; }'.
 ```
@@ -213,7 +213,7 @@ provider for that port: the base is never constructed (a resourceful base's
 `acquire` never runs), and two invariants hold the line, both `WiringDefect`s
 before any factory runs:
 
-```
+```text
 [di] override for port "OrderRepository" with nothing to override — the tree no longer provides it
 [di] two overrides registered for port "Logger"
 ```
