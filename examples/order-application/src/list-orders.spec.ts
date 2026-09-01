@@ -146,4 +146,20 @@ describe("ListOrders", () => {
       hasNextPage: false,
     });
   });
+
+  it("refuses a cursor naming no order", async ({ testModule }) => {
+    // GIVEN one order placed
+    // WHEN a page is asked for after a cursor the listing never issued
+    const result = await Module.scoped(testModule, (ctx) =>
+      ctx
+        .get(PlaceOrder)
+        .execute(ACME, A, 1)
+        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2, after: "invented" })),
+    );
+
+    // THEN it is the modeled error carrying the offending string, not the first
+    // page — the stub answers what the Prisma adapter answers, so a spec cannot
+    // pass here and fail against Postgres
+    expect(result).toBeErrTagged("MalformedCursor", { cursor: "invented" });
+  });
 });

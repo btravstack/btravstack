@@ -21,6 +21,7 @@ import {
   FindOrder,
   ListOrders,
   OrderApplicationModule,
+  MalformedCursor,
   OrderRepository,
   PlaceOrder,
   type OrderQuery,
@@ -66,6 +67,13 @@ const stubRepository = Provider(OrderRepository)({
           .map(([, order]) => order)
           .filter((order) => minQuantity === undefined || order.quantity >= minQuantity);
         const at = (cursor: string) => scoped.findIndex((order) => order.id === cursor);
+        // A cursor naming no row is `MalformedCursor`, exactly as the Prisma
+        // adapter answers: `findIndex` would otherwise return -1 and page from
+        // the start, so a stub that skipped this would let a spec pass on a
+        // cursor the listing never issued.
+        const anchor = before ?? after;
+        if (anchor !== undefined && at(anchor) === -1)
+          return ErrAsync(new MalformedCursor({ cursor: anchor }));
         // `before` takes the `limit` rows ENDING before the cursor, handed back
         // in the collection's own order — the previous page reads the way the
         // next one does, which is what the library's own backward page gives.

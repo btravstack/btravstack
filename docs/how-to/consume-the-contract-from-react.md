@@ -101,15 +101,25 @@ const client = createORPCClient<RouterContractClient<typeof contract>>(
 export const orpc = createTanstackQueryUtils(client);
 
 /**
- * A page at a time, in both directions. `nextCursor` and `previousCursor` are
- * `null` at their ends — exactly the value TanStack reads as "there is nothing
- * that way", which is why the contract makes them nullable rather than optional.
+ * A page at a time, in both directions.
+ *
+ * **The page param carries its DIRECTION, not just a cursor.** TanStack hands
+ * `input` whatever the last `getNextPageParam` or `getPreviousPageParam`
+ * returned, and it does not say which — so a bare string would be sent as
+ * `after` even when it came from `previousCursor`, which asks for the wrong
+ * page. Making the param `{ after }` or `{ before }` is what keeps the two
+ * directions apart, and it spreads into the exactly-one-cursor shape the
+ * contract refuses to see violated.
  */
+type Cursor = { readonly after: string } | { readonly before: string } | undefined;
+
 export const ordersPages = orpc.orders.list.infiniteOptions({
-  input: (after: string | undefined) => ({ limit: 20, after }),
-  getNextPageParam: (page) => page.nextCursor ?? undefined,
-  getPreviousPageParam: (page) => page.previousCursor ?? undefined,
-  initialPageParam: undefined as string | undefined,
+  input: (cursor: Cursor) => ({ limit: 20, ...cursor }),
+  getNextPageParam: (page): Cursor =>
+    page.nextCursor === null ? undefined : { after: page.nextCursor },
+  getPreviousPageParam: (page): Cursor =>
+    page.previousCursor === null ? undefined : { before: page.previousCursor },
+  initialPageParam: undefined as Cursor,
 });
 ```
 
