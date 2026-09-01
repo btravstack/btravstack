@@ -28,7 +28,7 @@
     "@unthrown/oxlint": "catalog:",
     "knip": "catalog:",
     "lefthook": "catalog:",
-    "markdownlint-cli2": "0.23.2",
+    "markdownlint-cli2": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "turbo": "catalog:"
