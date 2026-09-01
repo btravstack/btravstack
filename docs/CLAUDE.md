@@ -124,13 +124,37 @@ was folded in here when the container was merged; nothing under
   Regression-proved: restoring `](../http)` fails `generate` with
   `packages/core/README.md:27 → ../http`.
 
+- **`scripts/check-install-pins.ts` refuses an install snippet that names a
+  package whose `latest` dist-tag is an older major.** Three families are in
+  that state — `@orpc/*` (2.x beta, `latest` is 1.x), `@temporal-contract/*`
+  (8.x beta, `latest` is 7.x) and `@amqp-contract/*` (3.x beta, `latest` is
+  2.4) — and an unversioned `pnpm add @orpc/server` resolves the wrong one, so
+  a new user's first run dies in type errors at `api.OrpcRouter`. The root
+  `CLAUDE.md` documented the trap for contributors and no consumer-facing
+  snippet did (#206).
+
+  **It checks the MAJOR, not merely that a version is present.**
+  `@orpc/server@^1.0.0` carries an `@` and is the exact bug the guard exists to
+  catch, so the range's first digit run is compared against the catalog's — a
+  guard that only asked "is it pinned" would have passed the wrong pin.
+
+  The list is **derived from the catalog**, not written here: an entry pinned
+  to a prerelease is the definition of the trap, so a family that goes stable
+  stops being checked without anyone remembering to remove it. The doc-samples
+  gate cannot catch this class — it compiles against the pinned catalog, where
+  the resolution already went right. Regression-proved: dropping the range from
+  the root README's line fails the docs build with
+  `README.md:116  @orpc/server`.
+
 - Pages carry frontmatter `title` and `description`, open with the quadrant
   blockquote (`> **How-to.** …`), and link root-relative (`/reference/core/start`).
   The house style is `unthrown`'s; read a page there before writing one here.
-- `pnpm --filter @btravstack/docs build` builds the site (TypeDoc, then
-  VitePress); `pnpm --filter @btravstack/docs dev` serves it. Neither is in
-  the six-command gate — `knip` covers `docs/scripts`, and the deploy
-  workflow is what fails on a dead link **to a page**. A dead
+- `pnpm --filter @btravstack/docs build` builds the site (the two guards
+  above, then TypeDoc, then VitePress); `pnpm --filter @btravstack/docs dev`
+  serves it. The **build** is on the gate — `@btravstack/docs#build` is one of
+  the tasks `pnpm build` runs, which is what puts the demo-fidelity and
+  install-pin checks there; `dev` is not. `knip` covers `docs/scripts`, and the
+  deploy workflow is what fails on a dead link **to a page**. A dead
   `#fragment` is not checked by anything: `ignoreDeadLinks` validates the path
   half only, and one had shipped since `9af980d` before anyone noticed
   (#181, which proposes checking the rendered `dist` — where the ids are

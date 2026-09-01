@@ -113,7 +113,7 @@ pnpm add @btravstack/core @btravstack/config @btravstack/di unthrown
 For an HTTP API add the starter and its peers:
 
 ```sh
-pnpm add @btravstack/http-server @orpc/server @orpc/contract @unthrown/orpc
+pnpm add @btravstack/http-server @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc
 ```
 
 Everything is a **peer dependency** — the application holds one copy of each,

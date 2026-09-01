@@ -13,7 +13,7 @@
 
 ```sh
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @amqp-contract/worker @opentelemetry/api
+  @amqp-contract/worker@^3.0.0-beta @opentelemetry/api
 ```
 
 All six are peer dependencies — install them (`@opentelemetry/api` because
@@ -105,6 +105,10 @@ still be discharged (`provides`), since the composed provider's deps are the
 pieces' ports, not what they close over. Two slices claiming one key are di's
 duplicate-provider defect at build, which is the point: a consumer belongs to
 exactly one slice.
+
+Its own test suite needs a **Docker daemon**: the specs run against the shared
+`rabbitmq` container `internal/test-infra` starts once per machine and every
+workspace reuses. Nothing else here does.
 
 ## Options
 

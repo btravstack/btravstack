@@ -15,7 +15,7 @@
 
 ```sh
 pnpm add @btravstack/http-server @btravstack/core @btravstack/config @btravstack/di \
-  @btravstack/contract unthrown @orpc/server @orpc/contract @unthrown/orpc
+  @btravstack/contract unthrown @orpc/server@^2.0.0-beta @orpc/contract@^2.0.0-beta @unthrown/orpc
 ```
 
 All of those are peer dependencies — install every one, so the application

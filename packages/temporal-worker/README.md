@@ -13,7 +13,7 @@
 ```sh
 pnpm add @btravstack/temporal-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
   @temporalio/worker @temporalio/activity @temporalio/common \
-  @temporal-contract/worker @temporal-contract/contract
+  @temporal-contract/worker@^8.0.0-beta @temporal-contract/contract@^8.0.0-beta
 ```
 
 All nine are peer dependencies — install them. Node `>=22`.
@@ -131,6 +131,10 @@ must still be discharged (`provides`), since the composed provider's deps are
 the pieces' ports, not what they close over. Two slices claiming one key are
 di's duplicate-provider defect at build, which is the point: a workflow's
 activities belong to exactly one slice.
+
+Its own test suite needs a **Docker daemon**: the specs run against the shared
+`temporalio/auto-setup` container `internal/test-infra` starts once per machine and every
+workspace reuses. Nothing else here does.
 
 ## Options
 
