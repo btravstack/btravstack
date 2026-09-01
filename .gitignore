@@ -32,10 +32,13 @@ docs/superpowers/
 .cache/
 
 # The docs site's build outputs. TypeDoc runs from `docs/` and writes straight
-# into `docs/api/<name>/` (the hand-written docs/api/index.md overview is kept).
+# into `docs/api/<name>/`, and the hub `docs/api/index.md` with them — it named
+# three pre-rename packages for a year because it was the one list nothing
+# generated or checked (issue #191).
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 docs/api/*/
+docs/api/index.md
 
 # A leftover from Prisma's SQLite era: `prisma migrate` writes a shadow
 # database next to the schema, and this example's was committed by accident.
