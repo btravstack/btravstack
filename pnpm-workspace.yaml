@@ -137,6 +137,15 @@ overrides:
   # advisory's first patched 8.0.0); lift any pre-8 line to 8.0.2. Dropping it
   # brings the advisory straight back — verified. Issue #54 holds it.
   "deepmerge-ts@<8.0.0": "8.0.2"
+  # GHSA-3f6p-5ww8-9rcr: mysql2 lets a hostile server downgrade authentication to
+  # `mysql_clear_password`, which sends the password in plaintext. Reaches us via
+  # examples/order-infrastructure > prisma > mysql2 — the CLI bundling a driver
+  # per datasource, where this example's datasource is PostgreSQL
+  # (`@prisma/adapter-pg`), so the vulnerable code is installed and never
+  # loaded. Installed nonetheless is installed, and `pnpm audit` is right to say
+  # so: prisma@7.10.0 is latest and still resolves 3.15.3, so there is nothing
+  # upstream to take — lift any pre-3.22.0 line to the current 3.24.2.
+  "mysql2@<3.22.0": "3.24.2"
 
 allowBuilds:
   # Prisma 7 is engine-less (WASM query compiler); nothing to build or download.
