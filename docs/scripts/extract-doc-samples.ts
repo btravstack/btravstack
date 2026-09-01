@@ -313,10 +313,8 @@ const emit = (page: Page, outDir: string): number => {
  * a link, and resolving it would fail for a path that was never meant to
  * exist. Root-relative links (`/reference/…`) are deliberately NOT collected
  * — VitePress fails its own build on those, and checking them here would be a
- * second opinion that can disagree with the one that ships. That deferral is
- * only sound while VitePress actually checks them: it exempted `/api/**` until
- * issue #191, so for a year each gate deferred to the other and three dead
- * links sat in the gap.
+ * second opinion that can disagree with the one that ships. That deferral only
+ * holds while VitePress genuinely checks them — see its `ignoreDeadLinks`.
  */
 const relativeLinks = (
   body: string,

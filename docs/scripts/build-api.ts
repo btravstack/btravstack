@@ -43,11 +43,9 @@ const packages: readonly string[] = [
   "amqp-worker",
 ];
 
-// The hub page named three PRE-RENAME packages and linked three routes that had
-// never existed, and listed 8 of the 13 — for a year, because it was the one
-// list with no mechanical check (issue #191). Both halves are checked now: the
-// list against the configs on disk, and the page against the list, by generating
-// it. `docs/api/index.md` is gitignored for the same reason `api/<name>/` is.
+// Refuse to generate a hub that disagrees with the configs on disk: an
+// unlisted package would silently be absent from the page, which is how it
+// drifted before. `docs/api/index.md` is gitignored, like `api/<name>/`.
 const configured = globSync(join(docsDir, "typedoc.*.json"))
   .map((file) => basename(file).slice("typedoc.".length, -".json".length))
   .sort();
