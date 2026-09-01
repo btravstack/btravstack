@@ -133,6 +133,11 @@ was folded in here when the container was merged; nothing under
   `CLAUDE.md` documented the trap for contributors and no consumer-facing
   snippet did (#206).
 
+  **It checks the MAJOR, not merely that a version is present.**
+  `@orpc/server@^1.0.0` carries an `@` and is the exact bug the guard exists to
+  catch, so the range's first digit run is compared against the catalog's — a
+  guard that only asked "is it pinned" would have passed the wrong pin.
+
   The list is **derived from the catalog**, not written here: an entry pinned
   to a prerelease is the definition of the trap, so a family that goes stable
   stops being checked without anyone remembering to remove it. The doc-samples

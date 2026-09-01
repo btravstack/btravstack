@@ -132,6 +132,10 @@ the pieces' ports, not what they close over. Two slices claiming one key are
 di's duplicate-provider defect at build, which is the point: a workflow's
 activities belong to exactly one slice.
 
+Its own test suite needs a **Docker daemon**: the specs run against the shared
+`temporalio/auto-setup` container `internal/test-infra` starts once per machine and every
+workspace reuses. Nothing else here does.
+
 ## Options
 
 `TemporalModule(name)({...})` takes `temporal()`'s options plus `activities`

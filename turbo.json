@@ -63,7 +63,7 @@
         "../pnpm-workspace.yaml",
         "../README.md",
         "../packages/*/README.md",
-        "../examples/*/README.md"
+        "../examples/**/README.md"
       ],
       "outputs": [".vitepress/dist/**", "api/*/**"]
     },

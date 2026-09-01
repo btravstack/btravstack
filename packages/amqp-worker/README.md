@@ -106,6 +106,10 @@ pieces' ports, not what they close over. Two slices claiming one key are di's
 duplicate-provider defect at build, which is the point: a consumer belongs to
 exactly one slice.
 
+Its own test suite needs a **Docker daemon**: the specs run against the shared
+`rabbitmq` container `internal/test-infra` starts once per machine and every
+workspace reuses. Nothing else here does.
+
 ## Options
 
 `AmqpModule(name)({...})` takes `amqp()`'s options plus `handlers` and the

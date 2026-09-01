@@ -11,7 +11,7 @@ const read = (path: string) => readFileSync(fileURLToPath(new URL(path, root)), 
 // listed here, so a family that goes stable stops being checked by itself.
 const traps = new Map(
   [...read("pnpm-workspace.yaml").matchAll(/^ +"?(@[\w./-]+)"?: (\d+)\.\d+\.\d+-/gm)].map(
-    ([, name, major]) => [name, `^${major}.0.0-beta`],
+    ([, name, major]) => [name, major!] as const,
   ),
 );
 
@@ -34,11 +34,23 @@ for (const file of files) {
     .split("\n")
     .forEach((line, index) => {
       if (!isInstallLine(line)) return;
-      for (const [name, range] of traps) {
-        // A bare mention: the name not followed by `@<something>`.
+      for (const [name, major] of traps) {
         const at = line.indexOf(name);
-        if (at !== -1 && !/[\w@/.-]/.test(line[at + name.length] ?? " ")) {
-          unpinned.push(`${file}:${index + 1}  ${name} \u2192 write ${name}@${range}`);
+        if (at === -1) continue;
+        const after = line.slice(at + name.length);
+        // Not merely "is there an `@`": `@orpc/server@^1.0.0` carries one and
+        // is the exact bug this guard exists to catch, so the MAJOR is what is
+        // checked. A range's first digit run is its major — `^2.0.0-beta`,
+        // `2.0.0-beta.28` and `>=2.0.0-beta` all answer 2.
+        if (/^[\w/.-]/.test(after)) continue;
+        const wanted = `${name}@^${major}.0.0-beta`;
+        if (!after.startsWith("@")) {
+          unpinned.push(`${file}:${index + 1}  ${name} (no version) \u2192 write ${wanted}`);
+          continue;
+        }
+        const spec = after.slice(1).split(/\s/)[0] ?? "";
+        if ((/\d+/.exec(spec)?.[0] ?? "") !== major) {
+          unpinned.push(`${file}:${index + 1}  ${name}@${spec} \u2192 write ${wanted}`);
         }
       }
     });
