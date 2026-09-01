@@ -374,3 +374,35 @@ as one slow activity rather than as a rate. It is the same reasoning that makes
 **The workflow id is not a dimension and must not be.** It is unbounded, and it
 is already the unit's `traceId` — which is where an unbounded correlation value
 belongs. `activityType` is bounded by the contract.
+
+## `ensureSchedule` — from `@btravstack/temporal-worker/schedule`
+
+`ensureSchedule(schedules, workflowName, options)` →
+`AsyncResult<"created" | "updated", WorkflowNotInContractError | WorkflowValidationError | ScheduleNotFoundError>`,
+where `schedules` is `@temporal-contract/client`'s `TypedScheduleClient` —
+reached as `typedClient.for(contract).schedule` — and `options` is its own
+`TypedScheduleCreateOptions`. `@temporal-contract/client` is an **optional
+peer** behind the subpath, the `@btravstack/observability/pino` protocol: a
+consumer that never imports it installs nothing.
+
+**It exists for idempotence and nothing else.** The typed client's `create`
+already does the work; it answers `ScheduleAlreadyExistsError` for an id in
+use, which is correct and is the wrong shape for the one place schedules get
+registered — a deploy, which runs again on every release. The repair people
+reach for is a `try`/ignore, and that hides the failure that matters: a
+schedule left on the server with a spec the deploy stopped writing.
+
+Two things it deliberately does not do:
+
+- **It writes `spec`, never `state`.** A schedule an operator paused stays
+  paused across a deploy; unpausing it is a decision a person made.
+- **It recovers exactly one error.** The matcher has no wildcard, so the other
+  two arms are named and re-erred, and a fourth error added upstream fails this
+  file rather than being silently recovered into a schedule nobody registered.
+  Both arms are covered by `schedule.spec.ts`, reached past the types.
+
+Why a subpath rather than a `-client` package, against the naming thesis: that
+rule exists because peers are per-package and a caller must not install the
+serving half. This is not the calling half of a contract — it starts no
+workflow and awaits no result — it is a deployment operation performed by
+whoever ships the worker, who already holds this package.

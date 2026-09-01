@@ -65,6 +65,10 @@ const GUIDE_SIDEBAR = [
         collapsed: false,
         items: [
           { text: "Run a Temporal worker", link: "/how-to/run-a-temporal-worker" },
+          {
+            text: "Run something on a schedule",
+            link: "/how-to/run-something-on-a-schedule",
+          },
           { text: "Consume AMQP messages", link: "/how-to/consume-amqp-messages" },
           { text: "Split a worker into slices", link: "/how-to/split-a-worker-into-slices" },
         ],

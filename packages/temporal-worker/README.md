@@ -136,6 +136,16 @@ Its own test suite needs a **Docker daemon**: the specs run against the shared
 `temporalio/auto-setup` container `internal/test-infra` starts once per machine and every
 workspace reuses. Nothing else here does.
 
+## Schedules
+
+`@btravstack/temporal-worker/schedule` exports `ensureSchedule` — the typed
+schedule client's `create`, made idempotent, so a deploy that runs again
+updates the schedule instead of failing on `ScheduleAlreadyExistsError`.
+`@temporal-contract/client` is an optional peer reached only through that
+subpath. Why scheduled work costs a cluster here, and when it should not be
+this stack at all:
+[Run something on a schedule](https://btravstack.github.io/btravstack/how-to/run-something-on-a-schedule).
+
 ## Options
 
 `TemporalModule(name)({...})` takes `temporal()`'s options plus `activities`

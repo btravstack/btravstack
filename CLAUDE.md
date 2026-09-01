@@ -222,6 +222,42 @@ measurements behind both rules are in `.changeset/CLAUDE.md`.
    contract's own line). A workload the map does not cover is a new decision
    to record here, never a fourth runtime by default.
 
+   **Scheduling stands by Temporal, and the FLOOR is stated rather than
+   discovered** (issue #163). The argument that a workflow already is a durable
+   job wins on capability and loses on floor: the smallest thing a team can do
+   to run a nightly report here is stand up a cluster, where every competing
+   framework answers it in one line with no new infrastructure. That cost is
+   now written where an evaluator meets it —
+   `docs/how-to/run-something-on-a-schedule.md`, titled what a person searches
+   for — with the four things an in-process `setInterval` gets wrong (N
+   replicas fire N times, a missed window is silently missed, a retry has
+   nowhere to live, and it fights beat 2 of the drain) and the honest
+   conclusion: one scheduled job and nothing else is a Kubernetes `CronJob`
+   against your own API, not this stack.
+
+   What ships is the one piece the floor does not cover:
+   `@btravstack/temporal-worker/schedule`'s `ensureSchedule`, on the
+   optional-peer-behind-a-subpath protocol. `@temporal-contract/client` already
+   has a fully typed schedule client; what it lacks is **idempotence**, and a
+   deploy runs again on every release. `create` answers
+   `ScheduleAlreadyExistsError`, the repair everyone reaches for is a
+   `try`/ignore, and that hides the failure that matters — a schedule left on
+   the server with a spec the deploy stopped writing, a cron that silently
+   stopped matching the code. `ensureSchedule` recovers that ONE error into an
+   `update` and leaves every other on the channel, still typed; the matcher has
+   no wildcard, so a fourth upstream error fails that file rather than being
+   recovered into a schedule nobody registered. It writes `spec` and NOT
+   `state`: a schedule an operator paused stays paused, because unpausing is a
+   decision a person made.
+
+   It is a **subpath rather than a client package**, the one place the naming
+   thesis's "a client will be a PACKAGE, never a subpath" does not apply — and
+   for that rule's own reason. The rule exists because peers are per-package,
+   so a caller must not be made to install the serving half. `ensureSchedule`
+   is not the calling half of a contract (it starts no workflow and awaits no
+   result); it is a **deployment operation** performed by whoever ships the
+   worker, who already holds this package.
+
    **Each transport package is named for the HALF it implements, and the
    other half's name is reserved.** `http-server`, `temporal-worker` and
    `amqp-worker` — not `http`, `temporal`, `amqp`, which claimed a whole

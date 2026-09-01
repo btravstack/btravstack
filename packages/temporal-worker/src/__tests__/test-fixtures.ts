@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
@@ -13,18 +14,20 @@ import {
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { bootFixture, type Boot } from "@btravstack/testing";
+import { TypedClient } from "@temporal-contract/client";
 import {
   defineActivity,
   defineContract,
   defineWorkflow,
   type ContractDefinition,
 } from "@temporal-contract/contract";
-import { Client, Connection } from "@temporalio/client";
+import { Client, Connection, type ScheduleSpec } from "@temporalio/client";
 import type { Duration } from "@temporalio/common";
 import { OkAsync, fromSafePromise } from "unthrown";
 import { inject, test } from "vitest";
 import { z } from "zod";
 
+import { ensureSchedule } from "../schedule.js";
 import { TemporalActivities, TemporalModule } from "../temporal-module.js";
 import {
   TemporalConfig,
@@ -352,6 +355,8 @@ export type TemporalFixtures = {
     readonly taskQueue: string;
     readonly taken: () => readonly Observation[];
   }>;
+  /** `ensureSchedule` over this test's own schedule id. */
+  readonly schedules: Awaited<ReturnType<typeof schedulesOf>>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   readonly contractSeam: ReturnType<typeof contractSeamOf>;
@@ -440,6 +445,26 @@ const compose = (server: Server, boot: Boot, options: BootOptions) => {
   return { app, taskQueue };
 };
 
+/**
+ * `ensureSchedule` bound to this test's own namespace and a schedule id nobody
+ * else uses, so the suite needs no cleanup — the namespace is what disposes.
+ */
+const schedulesOf = async (client: Client, contract: ContractDefinition) => {
+  const scheduleId = `sched-${randomUUID()}`;
+  const schedules = (await TypedClient.create({ client })).get().for(contract).schedule;
+  return {
+    ensure: (spec: ScheduleSpec) =>
+      ensureSchedule(schedules, "runEcho", { scheduleId, spec, args: "x" }),
+    // The two pass-through arms, reached past the types: a workflow the
+    // contract does not declare, and args its schema refuses.
+    ensureUnknown: (spec: ScheduleSpec) =>
+      ensureSchedule(schedules, "nope" as "runEcho", { scheduleId, spec, args: "x" }),
+    ensureInvalid: (spec: ScheduleSpec) =>
+      ensureSchedule(schedules, "runEcho", { scheduleId, spec, args: 1 as unknown as string }),
+    describe: () => schedules.getHandle(scheduleId).describe(),
+  };
+};
+
 export const it = test.extend<TemporalFixtures>({
   server: [
     // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
@@ -475,6 +500,9 @@ export const it = test.extend<TemporalFixtures>({
       await app.runtimeInfo();
       return { app, client, taskQueue, taken: observer.taken };
     });
+  },
+  schedules: async ({ client }, use) => {
+    await use(await schedulesOf(client, echoContract));
   },
   serveBroken: async ({ server, boot }, use) => {
     // A failure under test is served against a workflow module that exists, so
