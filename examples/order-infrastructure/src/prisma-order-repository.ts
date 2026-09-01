@@ -84,12 +84,17 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
    * only a `cause` — and the value a 400 has to name is the string the caller
    * sent.
    *
-   * `nextCursor` folds `hasNextPage` into `endCursor`, which the library
+   * The cursors fold the flags into `startCursor`/`endCursor`, which the library
    * deliberately keeps apart: a LAST page has a non-null `endCursor`, so handing
    * it back unfolded gives a client a cursor that returns nothing and a loop
    * that never ends.
+   *
+   * `before` pages BACKWARD and hands the rows back in the query's own order, so
+   * the previous page reads the way the next one does. The two cursors are
+   * exclusive in the port's type, which is the library's rule as well: a page
+   * runs in one direction.
    */
-  list: (tenantId, { limit, after, minQuantity }) =>
+  list: (tenantId, { limit, after, before, minQuantity }) =>
     db.order
       .tryPaginate({
         where: {
@@ -98,14 +103,23 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
         },
         orderBy: { id: "asc" },
       })
-      .withCursor({ limit, ...(after === undefined ? {} : { after }) })
+      .withCursor(
+        before === undefined
+          ? { limit, ...(after === undefined ? {} : { after }) }
+          : { limit, before },
+      )
       .mapErrCases((matcher) =>
-        matcher.with(P.tag("InvalidCursor"), () => new MalformedCursor({ cursor: after ?? "" })),
+        matcher.with(
+          P.tag("InvalidCursor"),
+          () => new MalformedCursor({ cursor: before ?? after ?? "" }),
+        ),
       )
       .flatMap(([rows, meta]) =>
         all(rows.map(hydrate)).map((items) => ({
           items,
+          previousCursor: meta.hasPreviousPage ? meta.startCursor : null,
           nextCursor: meta.hasNextPage ? meta.endCursor : null,
+          hasPreviousPage: meta.hasPreviousPage,
           hasNextPage: meta.hasNextPage,
         })),
       ),

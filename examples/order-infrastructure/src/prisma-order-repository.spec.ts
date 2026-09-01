@@ -194,8 +194,51 @@ describe("OrderPersistenceModule", () => {
     // null on a last page even though the library's `endCursor` is not
     expect(second).toBeOkWith({
       items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000103" })],
+      previousCursor: expect.any(String),
       nextCursor: null,
+      hasPreviousPage: true,
       hasNextPage: false,
+    });
+  });
+
+  it("pages backward from the cursor a page handed back", async ({
+    tenant,
+    repository,
+    anOrder,
+  }) => {
+    // GIVEN three orders under this test's own tenant, and the LAST page taken
+    // by following the cursors forward
+    // WHEN the page before it is asked for
+    const back = await repository
+      .save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000131", 1))
+      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000132", 5)))
+      .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000133", 9)))
+      .flatMap(() => repository.list(tenant, { limit: 2 }))
+      .flatMap((page) =>
+        repository.list(tenant, {
+          limit: 2,
+          ...(page.nextCursor === null ? {} : { after: page.nextCursor }),
+        }),
+      )
+      .flatMap((page) =>
+        repository.list(tenant, {
+          limit: 2,
+          ...(page.previousCursor === null ? {} : { before: page.previousCursor }),
+        }),
+      );
+
+    // THEN the first page is back, in the query's OWN order — a backward page
+    // is the preceding page, not the same page reversed, which is what a
+    // "previous" link in a UI needs it to be
+    expect(back).toBeOkWith({
+      items: [
+        expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000131" }),
+        expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000132" }),
+      ],
+      previousCursor: null,
+      nextCursor: expect.any(String),
+      hasPreviousPage: false,
+      hasNextPage: true,
     });
   });
 
@@ -215,7 +258,9 @@ describe("OrderPersistenceModule", () => {
         expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000112" }),
         expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000113" }),
       ],
+      previousCursor: null,
       nextCursor: null,
+      hasPreviousPage: false,
       hasNextPage: false,
     });
   });
@@ -233,7 +278,9 @@ describe("OrderPersistenceModule", () => {
     // THEN it sees its own row only, on a server every other spec is writing to
     expect(page).toBeOkWith({
       items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000121" })],
+      previousCursor: null,
       nextCursor: null,
+      hasPreviousPage: false,
       hasNextPage: false,
     });
   });

@@ -10,24 +10,32 @@ import { TaggedError } from "unthrown";
  * that shape would name a persistence library in the application's vocabulary,
  * which is the same mistake as a port naming a transaction.
  *
- * `nextCursor` is `null` exactly when there is nothing after this page — which
- * is NOT what the underlying `endCursor` means (a last page has a non-null one),
- * so the adapter folds the flag in and a caller gets one field to loop on.
+ * The two cursors are `null` exactly when there is nothing on that side of this
+ * page — which is NOT what the underlying `startCursor`/`endCursor` mean (a last
+ * page has a non-null `endCursor`), so the adapter folds the flags in and a
+ * caller gets one field to follow per direction.
  */
 export type Page<T> = {
   readonly items: readonly T[];
+  readonly previousCursor: string | null;
   readonly nextCursor: string | null;
+  readonly hasPreviousPage: boolean;
   readonly hasNextPage: boolean;
 };
 
 /**
- * What a caller asks for. `after` is an **opaque** string: it is the cursor a
- * previous page handed back, and nothing above the adapter may read it.
+ * What a caller asks for: a size, and at most one cursor.
+ *
+ * `after` and `before` are **opaque** strings — the cursors a previous page
+ * handed back, which nothing above the adapter may read — and they are
+ * **mutually exclusive in the type**, mirroring `@unthrown/prisma`'s own rule:
+ * a page runs in one direction, and "after X and before Y" is a range query
+ * wearing a page's clothes. A union is what makes that unrepresentable rather
+ * than merely documented.
  */
-export type PageRequest = {
-  readonly limit: number;
-  readonly after?: string | undefined;
-};
+export type PageRequest =
+  | { readonly limit: number; readonly after?: string | undefined; readonly before?: never }
+  | { readonly limit: number; readonly before?: string | undefined; readonly after?: never };
 
 /**
  * The cursor could not be read.

@@ -240,15 +240,24 @@ export const ordersRouter = api.OrpcRouter(contract.orders)({
             }),
           ),
         ),
-    // A listing. `input` reaches the use case unchanged, and the only
-    // modeled failure is the cursor — the one field that came from outside.
-    list: ({ errors, context }, input) =>
+    // A listing. The one translation is the cursor — the contract carries
+    // `after` and `before` and refuses both, where the port makes them a
+    // union — and the only modeled failure is that cursor, the one field
+    // that came from outside.
+    list: ({ errors, context }, { after, before, ...page }) =>
       list
-        .execute(context.principal.tenantId, input)
-        .map((page) => ({
-          items: page.items.map(view),
-          nextCursor: page.nextCursor,
-          hasNextPage: page.hasNextPage,
+        .execute(
+          context.principal.tenantId,
+          before === undefined
+            ? { ...page, ...(after === undefined ? {} : { after }) }
+            : { ...page, before },
+        )
+        .map((found) => ({
+          items: found.items.map(view),
+          previousCursor: found.previousCursor,
+          nextCursor: found.nextCursor,
+          hasPreviousPage: found.hasPreviousPage,
+          hasNextPage: found.hasNextPage,
         }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("MalformedCursor"), (error) =>

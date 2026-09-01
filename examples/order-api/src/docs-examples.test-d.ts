@@ -95,13 +95,20 @@ const ordersController = api.OrpcController(
             errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
           ),
         ),
-    list: ({ errors, context }, input) =>
+    list: ({ errors, context }, { after, before, ...page }) =>
       list
-        .execute(context.principal.tenantId, input)
-        .map((page) => ({
-          items: page.items.map(view),
-          nextCursor: page.nextCursor,
-          hasNextPage: page.hasNextPage,
+        .execute(
+          context.principal.tenantId,
+          before === undefined
+            ? { ...page, ...(after === undefined ? {} : { after }) }
+            : { ...page, before },
+        )
+        .map((found) => ({
+          items: found.items.map(view),
+          previousCursor: found.previousCursor,
+          nextCursor: found.nextCursor,
+          hasPreviousPage: found.hasPreviousPage,
+          hasNextPage: found.hasNextPage,
         }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("MalformedCursor"), (error) =>
@@ -228,13 +235,20 @@ const depsOrdersRouter = api.OrpcRouter(contract.orders)({
             errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
           ),
         ),
-    list: ({ errors, context }, input) =>
+    list: ({ errors, context }, { after, before, ...page }) =>
       list
-        .execute(context.principal.tenantId, input)
-        .map((page) => ({
-          items: page.items.map(view),
-          nextCursor: page.nextCursor,
-          hasNextPage: page.hasNextPage,
+        .execute(
+          context.principal.tenantId,
+          before === undefined
+            ? { ...page, ...(after === undefined ? {} : { after }) }
+            : { ...page, before },
+        )
+        .map((found) => ({
+          items: found.items.map(view),
+          previousCursor: found.previousCursor,
+          nextCursor: found.nextCursor,
+          hasPreviousPage: found.hasPreviousPage,
+          hasNextPage: found.hasNextPage,
         }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("MalformedCursor"), (error) =>

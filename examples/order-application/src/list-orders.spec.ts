@@ -31,7 +31,9 @@ describe("ListOrders", () => {
     // an order id, which is true of this stub and not of Postgres
     expect(result).toBeOkWith({
       items: [expect.objectContaining({ id: A }), expect.objectContaining({ id: B })],
+      previousCursor: null,
       nextCursor: expect.any(String),
+      hasPreviousPage: false,
       hasNextPage: true,
     });
   });
@@ -58,8 +60,46 @@ describe("ListOrders", () => {
     // THEN `nextCursor` is null rather than a cursor that would return nothing
     expect(result).toBeOkWith({
       items: [expect.objectContaining({ id: C })],
+      previousCursor: expect.any(String),
       nextCursor: null,
+      hasPreviousPage: true,
       hasNextPage: false,
+    });
+  });
+
+  it("pages backward from the cursor a page handed back", async ({ testModule }) => {
+    // GIVEN three orders, and the second page taken by following `nextCursor`
+    // WHEN the page BEFORE that one is asked for
+    const result = await Module.scoped(testModule, (ctx) =>
+      ctx
+        .get(PlaceOrder)
+        .execute(ACME, A, 1)
+        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, B, 5))
+        .flatMap(() => ctx.get(PlaceOrder).execute(ACME, C, 9))
+        .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2 }))
+        .flatMap((page) =>
+          ctx.get(ListOrders).execute(ACME, {
+            limit: 2,
+            ...(page.nextCursor === null ? {} : { after: page.nextCursor }),
+          }),
+        )
+        .flatMap((page) =>
+          ctx.get(ListOrders).execute(ACME, {
+            limit: 2,
+            ...(page.previousCursor === null ? {} : { before: page.previousCursor }),
+          }),
+        ),
+    );
+
+    // THEN the first page comes back, in the collection's own order — a
+    // backward page reads the way a forward one does, so a "previous" link does
+    // not reverse what the reader is looking at
+    expect(result).toBeOkWith({
+      items: [expect.objectContaining({ id: A }), expect.objectContaining({ id: B })],
+      previousCursor: null,
+      nextCursor: expect.any(String),
+      hasPreviousPage: false,
+      hasNextPage: true,
     });
   });
 
@@ -78,7 +118,9 @@ describe("ListOrders", () => {
     // THEN the small one is not in the page
     expect(result).toBeOkWith({
       items: [expect.objectContaining({ id: B }), expect.objectContaining({ id: C })],
+      previousCursor: null,
       nextCursor: null,
+      hasPreviousPage: false,
       hasNextPage: false,
     });
   });
@@ -98,7 +140,9 @@ describe("ListOrders", () => {
     // port, so the other tenant's page is not a request this can express
     expect(result).toBeOkWith({
       items: [expect.objectContaining({ id: A })],
+      previousCursor: null,
       nextCursor: null,
+      hasPreviousPage: false,
       hasNextPage: false,
     });
   });

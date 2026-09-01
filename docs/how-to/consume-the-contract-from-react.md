@@ -101,26 +101,32 @@ const client = createORPCClient<RouterContractClient<typeof contract>>(
 export const orpc = createTanstackQueryUtils(client);
 
 /**
- * A page at a time, keyed by the cursor the previous page handed back.
- * `nextCursor` is `null` on the last page — which is exactly the value
- * `getNextPageParam` reads as "there is nothing after this".
+ * A page at a time, in both directions. `nextCursor` and `previousCursor` are
+ * `null` at their ends — exactly the value TanStack reads as "there is nothing
+ * that way", which is why the contract makes them nullable rather than optional.
  */
 export const ordersPages = orpc.orders.list.infiniteOptions({
   input: (after: string | undefined) => ({ limit: 20, after }),
   getNextPageParam: (page) => page.nextCursor ?? undefined,
+  getPreviousPageParam: (page) => page.previousCursor ?? undefined,
   initialPageParam: undefined as string | undefined,
 });
 ```
 
-That `getNextPageParam` line is the reason
-[`orders.list`](/examples/order-api) returns a **nullable** `nextCursor`
-instead of omitting the field: "there are no more pages" has to be a value the
-client can read, and an absent field would be indistinguishable from a server
-that forgot to send one.
+Those two lines are the reason [`orders.list`](/examples/order-api) returns
+**nullable** cursors instead of omitting the fields: "there are no more pages
+that way" has to be a value the client can read, and an absent field would be
+indistinguishable from a server that forgot to send one.
 
-The cursor itself is **opaque**. The contract types it `z.string()` and nothing
+The cursors are **opaque**. The contract types them `z.string()` and nothing
 narrower, so a component passes back a string it never parses — and the server
 is free to change what a cursor means without a contract change.
+
+**A page runs in one direction.** The contract takes `after` and `before` and
+refuses both at once; the application's `PageRequest` makes them a union, so the
+schema refusal and the type say the same thing at the two ends of the wire.
+"After X and before Y" is a range query wearing a page's clothes, and TanStack
+asks in one direction at a time anyway.
 
 Then, in a component:
 

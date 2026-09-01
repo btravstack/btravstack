@@ -69,22 +69,31 @@ export const ordersController = api.OrpcController(
             errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
           ),
         ),
-    // The listing. `input` reaches the use case unchanged — its three fields
-    // are already the application's `OrderQuery`, which is what a filter being
-    // a FIELD rather than a query object buys: no translation, and no place for
-    // one to drift.
+    // The listing. The one translation is the CURSOR: the contract carries
+    // `after` and `before` as two optional fields and refuses both at once,
+    // where the port makes them a union — so this branch is where a validated
+    // input becomes a value whose type says a page runs in one direction.
+    // Everything else reaches the use case unchanged, which is what a filter
+    // being a FIELD rather than a query object buys.
     //
     // The tenant is still not among them. A page of somebody else's orders is
     // not a request this controller can express, because the caller has no slot
     // to name a tenant in and `principal.tenantId` is the only value that
     // reaches the port.
-    list: ({ errors, context }, input) =>
+    list: ({ errors, context }, { after, before, ...page }) =>
       list
-        .execute(context.principal.tenantId, input)
-        .map((page) => ({
-          items: page.items.map(view),
-          nextCursor: page.nextCursor,
-          hasNextPage: page.hasNextPage,
+        .execute(
+          context.principal.tenantId,
+          before === undefined
+            ? { ...page, ...(after === undefined ? {} : { after }) }
+            : { ...page, before },
+        )
+        .map((found) => ({
+          items: found.items.map(view),
+          previousCursor: found.previousCursor,
+          nextCursor: found.nextCursor,
+          hasPreviousPage: found.hasPreviousPage,
+          hasNextPage: found.hasNextPage,
         }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("MalformedCursor"), (error) =>

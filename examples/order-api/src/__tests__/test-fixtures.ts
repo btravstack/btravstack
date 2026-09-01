@@ -139,15 +139,38 @@ const stubbedApi = () =>
     // which is the point: `after` is opaque above the adapter, so the specs
     // assert the round trip rather than the string.
     //
-    // Only the cursor it ISSUED continues the listing; every other one is
+    // Only the cursors it ISSUED move the listing; every other one is
     // `MalformedCursor`. A stub that accepted any defined cursor would let a
     // round-trip test pass on an altered cursor, which is the one thing that
-    // test exists to rule out.
-    list: (_tenantId, { after }) => {
+    // test exists to rule out. Two pages, so `before` has somewhere to go back
+    // to — the direction a "previous" link exercises.
+    list: (_tenantId, { after, before }) => {
+      if (before !== undefined)
+        return before === "page-2-start"
+          ? OkAsync({
+              items: [anOrder(FIRST_ID, 1)],
+              previousCursor: null,
+              nextCursor: "page-1-end",
+              hasPreviousPage: false,
+              hasNextPage: true,
+            })
+          : ErrAsync(new MalformedCursor({ cursor: before }));
       if (after === undefined)
-        return OkAsync({ items: [anOrder(FIRST_ID, 1)], nextCursor: "page-2", hasNextPage: true });
-      return after === "page-2"
-        ? OkAsync({ items: [anOrder(SECOND_ID, 2)], nextCursor: null, hasNextPage: false })
+        return OkAsync({
+          items: [anOrder(FIRST_ID, 1)],
+          previousCursor: null,
+          nextCursor: "page-1-end",
+          hasPreviousPage: false,
+          hasNextPage: true,
+        });
+      return after === "page-1-end"
+        ? OkAsync({
+            items: [anOrder(SECOND_ID, 2)],
+            previousCursor: "page-2-start",
+            nextCursor: null,
+            hasPreviousPage: true,
+            hasNextPage: false,
+          })
         : ErrAsync(new MalformedCursor({ cursor: after }));
     },
     remove: () => OkAsync(),
@@ -162,7 +185,14 @@ const unmodelledApi = () =>
   apiWith({
     save: (_tenantId, order) => OkAsync(order),
     find: () => fromSafePromise(Promise.reject(new Error("the database is on fire"))),
-    list: () => OkAsync({ items: [], nextCursor: null, hasNextPage: false }),
+    list: () =>
+      OkAsync({
+        items: [],
+        previousCursor: null,
+        nextCursor: null,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      }),
     remove: () => OkAsync(),
   });
 
@@ -188,7 +218,14 @@ const gatedApi = () => {
         entered();
         return fromSafePromise(held.then(() => anOrder(id, 1)));
       },
-      list: () => OkAsync({ items: [], nextCursor: null, hasNextPage: false }),
+      list: () =>
+        OkAsync({
+          items: [],
+          previousCursor: null,
+          nextCursor: null,
+          hasPreviousPage: false,
+          hasNextPage: false,
+        }),
       remove: () => OkAsync(),
     }),
     arrived,

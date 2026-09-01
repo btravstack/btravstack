@@ -426,9 +426,71 @@ describe("order-api", () => {
     // string it never read, and the listing closed with a null
     expect(second).toBeOkWith({
       items: [{ id: "0199a1e0-0000-7000-8000-00000000000b", quantity: 2 }],
+      previousCursor: "page-2-start",
       nextCursor: null,
+      hasPreviousPage: true,
       hasNextPage: false,
     });
+  });
+
+  it("pages backward over the wire, following previousCursor", async ({
+    serve,
+    clientFor,
+    stubbed,
+  }) => {
+    // GIVEN the second page, reached by following `nextCursor`
+    const client = await clientFor(serve(stubbed));
+
+    // WHEN the page before it is asked for
+    const back = await client.orders
+      .list({ limit: 1 })
+      .flatMap((page) =>
+        client.orders.list({
+          limit: 1,
+          ...(page.nextCursor === null ? {} : { after: page.nextCursor }),
+        }),
+      )
+      .flatMap((page) =>
+        client.orders.list({
+          limit: 1,
+          ...(page.previousCursor === null ? {} : { before: page.previousCursor }),
+        }),
+      );
+
+    // THEN the first page comes back. `before` and `after` are the same kind of
+    // opaque string in the same schema, and the port'"'"'s own type is what says
+    // only one of them may be set
+    expect(back).toBeOkWith({
+      items: [{ id: "0199a1e0-0000-7000-8000-00000000000a", quantity: 1 }],
+      previousCursor: null,
+      nextCursor: "page-1-end",
+      hasPreviousPage: false,
+      hasNextPage: true,
+    });
+  });
+
+  it("refuses a page asked for in both directions at once", async ({
+    serve,
+    clientFor,
+    stubbed,
+  }) => {
+    // GIVEN the same root
+    const client = await clientFor(serve(stubbed));
+
+    // WHEN a caller asks for a page after one cursor and before another
+    const refused = await client.orders.list({
+      limit: 1,
+      after: "page-1-end",
+      before: "page-2-start",
+    } as never);
+
+    // THEN the CONTRACT refuses it before dispatch — a page runs in one
+    // direction, and "after X and before Y" is a range query wearing a page'"'"'s
+    // clothes. The handler never runs, so this is the non-inferable 400 oRPC
+    // mints rather than the one the controller returns
+    expect(refused).toBeDefectWith(
+      expect.objectContaining({ constructor: ORPCError, code: "BAD_REQUEST", inferable: false }),
+    );
   });
 
   it("turns an unreadable cursor into a typed, inferable BAD_REQUEST", async ({
