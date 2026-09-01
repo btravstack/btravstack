@@ -48,7 +48,10 @@ describe("ListOrders", () => {
         .flatMap(() => ctx.get(PlaceOrder).execute(ACME, C, 9))
         .flatMap(() => ctx.get(ListOrders).execute(ACME, { limit: 2 }))
         .flatMap((page) =>
-          ctx.get(ListOrders).execute(ACME, { limit: 2, after: page.nextCursor ?? "" }),
+          ctx.get(ListOrders).execute(ACME, {
+            limit: 2,
+            ...(page.nextCursor === null ? {} : { after: page.nextCursor }),
+          }),
         ),
     );
 
