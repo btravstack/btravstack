@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { WorkerMiddleware } from "@amqp-contract/worker";
-import type { RuntimeHost, UnitMeta } from "@btravstack/core";
+import type { MeterService, RuntimeHost, UnitMeta } from "@btravstack/core";
 
 /**
  * Open one kernel unit per delivery. It injects nothing — `next()` unchanged is
@@ -14,9 +14,48 @@ import type { RuntimeHost, UnitMeta } from "@btravstack/core";
  * `currentUnit()?.signal`.
  */
 export const messageUnits =
-  (host: RuntimeHost<never>): WorkerMiddleware =>
-  (args, next) =>
-    host.run(metaFor(args.rawMessage), () => next());
+  (host: RuntimeHost<never>, metrics: AmqpMetrics | undefined): WorkerMiddleware =>
+  (args, next) => {
+    const startedAt = performance.now();
+    const unit = host.run(metaFor(args.rawMessage), () => next());
+    if (metrics === undefined) return unit;
+    // `tapFailure`, not an Err-only tap: a defect is a failed delivery too, and
+    // the errors half of RED that omitted it would be the reassuring half.
+    return unit
+      .tap(() => metrics.record({ handler: args.handlerName, outcome: "ok" }, startedAt))
+      .tapFailure(() => metrics.record({ handler: args.handlerName, outcome: "error" }, startedAt));
+  };
+
+/**
+ * Rate, errors and duration, per delivery.
+ *
+ * `handler` is the `consumers`/`rpcs` key, so the CONTRACT bounds the
+ * cardinality — the queue name would too, but the key is what a reader of the
+ * contract can look up. The payload is nowhere near the attributes.
+ */
+export type AmqpMetrics = {
+  readonly record: (
+    attributes: { readonly handler: string; readonly outcome: "ok" | "error" },
+    startedAt: number,
+  ) => void;
+};
+
+export const amqpMetrics = (meter: MeterService | undefined): AmqpMetrics | undefined => {
+  if (meter === undefined) return undefined;
+  const deliveries = meter.createCounter("btravstack.amqp.deliveries", {
+    description: "AMQP deliveries, by handler and outcome",
+  });
+  const duration = meter.createHistogram("btravstack.amqp.duration", {
+    description: "AMQP handler duration",
+    unit: "ms",
+  });
+  return {
+    record: (attributes, startedAt) => {
+      deliveries.add(1, attributes);
+      duration.record(performance.now() - startedAt, attributes);
+    },
+  };
+};
 
 /**
  * `UnitMeta.id` must be unique per unit, and a **delivery tag is not one**: tags

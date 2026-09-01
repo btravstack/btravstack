@@ -34,20 +34,20 @@ import { NotificationsSlice } from "../../slices/notifications/module.js";
 
 `packages/amqp-worker/src/index.ts` exports exactly this:
 
-| Export                  | Kind  | What it is                                                                                                                                                                                                                           |
-| ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AmqpModule`            | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the handlers provider           |
-| `AmqpModuleOptions`     | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                                          |
-| `AmqpHandlers`          | value | `AmqpHandlers(contract)` — di's `Provider(port)` builder on the starter's own handlers port, typed for `contract`, so the next call is `{ inject: { name: Dep }, ...arm }`, or `([pieces])` to compose one provider per consumer/rpc |
-| `HandlersPortOf<C>`     | type  | The handlers port's class typed for `C` — what a composed `orderHandlers`'s `.port` is                                                                                                                                               |
-| `HandlersInstanceOf<C>` | type  | That port's instance typed for `C` (service `WorkerInferHandlers<C>`)                                                                                                                                                                |
-| `AmqpHandler`           | value | `AmqpHandler(contract, key)` — one consumer or rpc as a provider of its own, typed by `key` alone; the next call is `{ inject: { name: Dep }, ...arm }`, and the piece is what `AmqpHandlers(contract)([...])` composes              |
-| `HandlerPortOf<C, K>`   | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                      |
-| `amqp`                  | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                                             |
-| `AmqpOptions`           | type  | `amqp()`'s options                                                                                                                                                                                                                   |
-| `AmqpRuntime`           | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                                            |
-| `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string; connectTimeoutMs: number }> {}` — the broker, bound from `AMQP_URL` and `AMQP_CONNECT_TIMEOUT_MS`; a publisher sharing the consumer's broker reads it too                |
-| `AmqpInfo`              | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                                                |
+| Export                  | Kind  | What it is                                                                                                                                                                                                                                |
+| ----------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AmqpModule`            | value | `AmqpModule(name)({ contract, handlers, url?, connectionOptions?, defaultConsumerOptions?, connectTimeoutMs?, instrumented?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the handlers provider |
+| `AmqpModuleOptions`     | type  | The options object `AmqpModule(name)` takes                                                                                                                                                                                               |
+| `AmqpHandlers`          | value | `AmqpHandlers(contract)` — di's `Provider(port)` builder on the starter's own handlers port, typed for `contract`, so the next call is `{ inject: { name: Dep }, ...arm }`, or `([pieces])` to compose one provider per consumer/rpc      |
+| `HandlersPortOf<C>`     | type  | The handlers port's class typed for `C` — what a composed `orderHandlers`'s `.port` is                                                                                                                                                    |
+| `HandlersInstanceOf<C>` | type  | That port's instance typed for `C` (service `WorkerInferHandlers<C>`)                                                                                                                                                                     |
+| `AmqpHandler`           | value | `AmqpHandler(contract, key)` — one consumer or rpc as a provider of its own, typed by `key` alone; the next call is `{ inject: { name: Dep }, ...arm }`, and the piece is what `AmqpHandlers(contract)([...])` composes                   |
+| `HandlerPortOf<C, K>`   | type  | One piece's port class, typed for the one key `K` it implements                                                                                                                                                                           |
+| `amqp`                  | value | `amqp({ contract, … })` — the starter module itself, needing the handlers port for `contract`; what `AmqpModule` imports                                                                                                                  |
+| `AmqpOptions`           | type  | `amqp()`'s options                                                                                                                                                                                                                        |
+| `AmqpRuntime`           | value | `class AmqpRuntime extends RuntimePort<Runtime<never, AmqpInfo>> {}` — the runtime's port                                                                                                                                                 |
+| `AmqpConfig`            | value | `class AmqpConfig extends Port("AmqpConfig")<{ url: string; connectTimeoutMs: number }> {}` — the broker, bound from `AMQP_URL` and `AMQP_CONNECT_TIMEOUT_MS`; a publisher sharing the consumer's broker reads it too                     |
+| `AmqpInfo`              | type  | `{ readonly queues: readonly string[] }` — published on `Serving.info` once consuming                                                                                                                                                     |
 
 `HandlersPortOf<C>` / `HandlersInstanceOf<C>` / `HandlerPortOf<C, K>` are
 exported as **types only**, and only because declaration emit forces it: an
@@ -125,6 +125,23 @@ through another provider's `deps`.
 package's business: it brings the `Logger` the handlers and the relay write
 to, bound from `LOG_LEVEL`, JSON per line on stdout, every line carrying the
 delivery's own unit.
+
+### RED metrics, on by default
+
+The runtime records **rate, errors and duration** at the unit seam — the one
+place a framework that owns the unit lifecycle gets them for free:
+
+| Instrument                   | Kind           | Dimensions           |
+| ---------------------------- | -------------- | -------------------- |
+| `btravstack.amqp.deliveries` | counter        | `handler`, `outcome` |
+| `btravstack.amqp.duration`   | histogram (ms) | the same two         |
+
+`instrumented` defaults to `true`, which puts `Meter` in the module's needs — so
+a root composing no OTel SDK writes `amqp({ instrumented: false })` and pays nothing: no meter, no
+instrument built, one `if` on the request path.
+
+**The dimensions are chosen for cardinality, and what is absent matters more
+than what is present.** `handler` is the `consumers`/`rpcs` key, so the contract bounds it; the payload is nowhere near the attributes. `outcome` counts a **defect** as an error, not as a silence — a count that skipped defects would report a healthy rate while every delivery went to the dead-letter queue.
 
 ## `AmqpHandlers(contract)`
 

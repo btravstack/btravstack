@@ -27,7 +27,13 @@ import { connect, type Socket } from "node:net";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
-import { currentUnit, type RunningApp } from "@btravstack/core";
+import {
+  Meter,
+  currentUnit,
+  type Attributes,
+  type MeterService,
+  type RunningApp,
+} from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
@@ -73,10 +79,50 @@ const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securi
       httpServer({
         port,
         hostname: "127.0.0.1",
+        instrumented: false,
         ...(securityHeaders === undefined ? {} : { securityHeaders }),
       }),
     ],
     provides: [answering(handler)],
+    exports: [HttpRuntime, HttpHandler],
+  });
+
+/** One recorded measurement: which instrument, what value, and the dimensions. */
+export type Measurement = {
+  readonly instrument: string;
+  readonly value: number;
+  readonly attributes: Attributes;
+};
+
+/**
+ * A meter that keeps what it was given, so a spec asserts on the DIMENSIONS
+ * rather than on a vendor's exporter. The instruments are minted once and the
+ * attributes vary per call, which is the split the runtime is written to.
+ */
+const recordingMeter = (): { service: MeterService; taken: () => readonly Measurement[] } => {
+  const taken: Measurement[] = [];
+  const instrument = (name: string) => ({
+    add: (value: number, attributes?: Attributes) =>
+      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
+    record: (value: number, attributes?: Attributes) =>
+      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
+  });
+  return {
+    service: { createCounter: instrument, createHistogram: instrument },
+    taken: () => taken,
+  };
+};
+
+/**
+ * The transport with the metrics ON and a meter that records — the composition
+ * a deployment gets by default, since `instrumented` defaults to `true`.
+ */
+const meteredAppOf = (handler: Handler, meter: MeterService) =>
+  Module("MeteredApp")({
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    // Mounted at `/rpc`, not `/`: a path OUTSIDE it is what reaches the
+    // runtime's own 404, which is the half of RED an answerer never sees.
+    provides: [answering(handler, "/rpc"), Provider(Meter)({ inject: {}, value: meter })],
     exports: [HttpRuntime, HttpHandler],
   });
 
@@ -147,6 +193,7 @@ const slicedRouter = publicApi.OrpcRouter(slicedContract)([helloController, echo
 /** `HttpModule` over the composed router, mirroring `rpcAppOf`. */
 const rpcSlicedAppOf = () =>
   HttpModule("RpcSlicedApp")({
+    instrumented: false,
     router: slicedRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -191,6 +238,7 @@ const deepRouter = publicApi.OrpcRouter(deepContract)([
 
 const rpcDeepAppOf = () =>
   HttpModule("RpcDeepApp")({
+    instrumented: false,
     router: deepRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -268,6 +316,7 @@ const authedWholeRouter = api.OrpcRouter(authedContract)({
 /** `HttpModule` over the protected router; the authenticator rides in with it. */
 const rpcAuthedAppOf = () =>
   HttpModule("RpcAuthedApp")({
+    instrumented: false,
     router: authedRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -297,6 +346,7 @@ const rootMarkedRouter = api.OrpcRouter(rootMarkedContract)({
 
 const rpcRootMarkedAppOf = () =>
   HttpModule("RpcRootMarkedApp")({
+    instrumented: false,
     router: rootMarkedRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -330,6 +380,7 @@ const rootMarkedDeepRouter = api.OrpcRouter(rootMarkedDeepContract)([rootMarkedD
 
 const rpcRootMarkedDeepAppOf = () =>
   HttpModule("RpcRootMarkedDeepApp")({
+    instrumented: false,
     router: rootMarkedDeepRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -364,6 +415,7 @@ const verifiedRouter = verifying.OrpcRouter({
 
 const rpcVerifiedAppOf = () =>
   HttpModule("RpcVerifiedApp")({
+    instrumented: false,
     router: verifiedRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -389,7 +441,7 @@ const rpcVerifiedAppOf = () =>
  */
 const rpcSubstitutedAppOf = () =>
   Module("RpcSubstitutedApp")({
-    imports: [http({ port: 0, hostname: "127.0.0.1" })],
+    imports: [http({ port: 0, hostname: "127.0.0.1", instrumented: false })],
     provides: [
       verifiedRouter,
       Provider(authenticatorPort("user"))({
@@ -439,6 +491,7 @@ const strayRouter = publicApi.OrpcRouter(greetingContract)({
 /** The starter as an application uses it: `HttpModule` sugar over a router provider. */
 const rpcAppOf = (prefix?: `/${string}`, stray = false) =>
   HttpModule("RpcApp")({
+    instrumented: false,
     router: stray ? strayRouter : greetingRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -467,6 +520,7 @@ const bothFragmentsProvider = publicApi.HtmxFragments([bothStatusFragment]);
 
 const bothProtocolsAppOf = () =>
   HttpModule("BothProtocolsApp")({
+    instrumented: false,
     router: bothRouter,
     fragments: bothFragmentsProvider,
     port: 0,
@@ -482,6 +536,7 @@ const bothProtocolsAppOf = () =>
  */
 const fragmentsOnlyAppOf = () =>
   HttpModule("FragmentsOnlyApp")({
+    instrumented: false,
     fragments: bothFragmentsProvider,
     fragmentsPrefix: "/ui",
     port: 0,
@@ -521,6 +576,7 @@ const sharedAuthFragmentsProvider = sharedAuthApi.HtmxFragments([sharedAuthProfi
 
 const sharedAuthAppOf = () =>
   HttpModule("SharedAuthApp")({
+    instrumented: false,
     router: sharedAuthRouter,
     fragments: sharedAuthFragmentsProvider,
     port: 0,
@@ -587,6 +643,7 @@ type PolicyOptions = Pick<HttpOptions, "cors" | "bodyLimit" | "compression" | "p
 /** The same starter shape as `rpcAppOf`, over whatever transport policy a test configures. */
 const rpcPolicyAppOf = (options: PolicyOptions) =>
   HttpModule("RpcPolicyApp")({
+    instrumented: false,
     router: corsRouter,
     port: 0,
     hostname: "127.0.0.1",
@@ -601,7 +658,7 @@ const configuredAppOf = (options: { readonly port?: number; readonly hostname?: 
   let bound: ServiceOf<HttpConfig> | undefined;
   return {
     module: Module("ConfiguredApp")({
-      imports: [httpServer(options)],
+      imports: [httpServer({ ...options, instrumented: false })],
       provides: [
         answering(noop),
         Provider(BoundConfig)({
@@ -665,7 +722,7 @@ type App = RunningApp<ConfigInvalid, HttpInfo>;
  */
 const mountedAppOf = (prefixes: readonly `/${string}`[]) =>
   Module("MountedApp")({
-    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1", instrumented: false })],
     provides: prefixes.map((prefix) =>
       answering(
         (_request, response) => new Promise<void>((done) => response.end(prefix, () => done())),
@@ -826,6 +883,7 @@ const htmxRuntimeAppOf = (bodyLimit?: number) =>
       httpServer({
         port: 0,
         hostname: "127.0.0.1",
+        instrumented: false,
         ...(bodyLimit === undefined ? {} : { bodyLimit }),
       }),
     ],
@@ -1097,10 +1155,28 @@ export type HttpFixtures = {
       readonly body: string;
     }>;
   }>;
+  /**
+   * The transport served with metrics on and a recording meter — the default
+   * composition, since `instrumented` is `true` unless a root says otherwise.
+   */
+  readonly metered: (handler: Handler) => Promise<{
+    readonly origin: string;
+    readonly taken: () => readonly Measurement[];
+  }>;
 };
 
 export const it = test.extend<HttpFixtures>({
   boot: bootFixture(),
+
+  metered: async ({ boot }, use) => {
+    await use(async (handler) => {
+      const meter = recordingMeter();
+      const app = boot(meteredAppOf(handler, meter.service));
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return { origin: `http://127.0.0.1:${info.port}`, taken: meter.taken };
+    });
+  },
 
   serve: async ({ boot }, use) => {
     await use(async (handler = noop, unit, securityHeaders) => {
@@ -1411,7 +1487,7 @@ export const it = test.extend<HttpFixtures>({
     await use(async (prefix, body) => {
       const app = boot(
         Module("AnswererOnly")({
-          imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+          imports: [httpServer({ port: 0, hostname: "127.0.0.1", instrumented: false })],
           provides: [
             answering(
               (_request, response) => new Promise<void>((done) => response.end(body, () => done())),

@@ -352,3 +352,20 @@ echoContract, handlers, url: amqpConnectionUrl, imports: [AppModule] })`
   discharge.
 - Peer dependencies: `@btravstack/core`, `@btravstack/config`,
   `@btravstack/di`, `unthrown`, `@amqp-contract/worker`, `@opentelemetry/api`.
+
+## RED metrics: on by default, per delivery
+
+`btravstack.amqp.deliveries` (counter) and `btravstack.amqp.duration`
+(histogram, ms), both dimensioned `{ handler, outcome }`, recorded in the unit
+middleware. `instrumented` defaults to `true` and puts `Meter` in the module's
+needs; `amqp({ instrumented: false })` drops it and builds no instrument.
+
+**`handler` is the `consumers`/`rpcs` key**, so the contract bounds the
+cardinality — the queue name would too, but the key is what a reader of the
+contract can look up. The payload is nowhere near the attributes.
+
+**`outcome` counts a defect as an error**, via `tapFailure` rather than an
+Err-only tap. That matters more here than on the other two transports: this
+package's own dispatch nacks a `Defect` straight to the dead-letter queue on
+the first attempt, so a count that skipped defects would report a healthy rate
+while every delivery was being parked.

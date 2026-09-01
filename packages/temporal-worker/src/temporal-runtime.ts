@@ -1,8 +1,10 @@
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
+  Meter,
   RuntimePort,
   RuntimeStartFailed,
   releasedBy,
+  type MeterService,
   type Runtime,
   type RuntimeHost,
   type Serving,
@@ -31,7 +33,7 @@ import {
   type AsyncResult,
 } from "unthrown";
 
-import { activityUnits } from "./activity-units.js";
+import { activityUnits, temporalMetrics } from "./activity-units.js";
 
 /** What the worker publishes once it is polling, read back through `RunningApp.runtimeInfo()`. */
 export type TemporalInfo = {
@@ -136,6 +138,12 @@ export type TemporalTuning = {
    * `shutdownGraceTime`.
    */
   readonly gracePeriod?: Duration;
+  /**
+   * Record RED metrics per activity attempt (default `true`), which puts
+   * `Meter` in this module's needs — so a root without an OTel SDK composes
+   * `temporal({ instrumented: false })` and pays nothing.
+   */
+  readonly instrumented?: boolean;
 };
 
 export type TemporalOptions<C extends ContractDefinition> = TemporalTuning & {
@@ -173,9 +181,15 @@ type Provided = TemporalRuntime | TemporalConfig | TemporalConnection;
  * With both configuration fields pinned the module reads nothing from the
  * environment; pin only one and the other still comes from it.
  */
-export const temporal = <C extends ContractDefinition>(
-  options: TemporalOptions<C>,
-): Module<Provided, ConfigInvalid | TemporalUnreachable, Env | Scope | ActivitiesInstanceOf<C>> => {
+export const temporal = <C extends ContractDefinition, Instrumented extends boolean = true>(
+  options: TemporalOptions<C> & { readonly instrumented?: Instrumented },
+): Module<
+  Provided,
+  ConfigInvalid | TemporalUnreachable,
+  Instrumented extends false
+    ? Env | Scope | ActivitiesInstanceOf<C>
+    : Env | Scope | Meter | ActivitiesInstanceOf<C>
+> => {
   const { address, namespace } = options;
   const activities = TemporalActivitiesPort as ActivitiesPortOf<C>;
   const config = Config.provider(TemporalConfig)(
@@ -198,8 +212,9 @@ export const temporal = <C extends ContractDefinition>(
       ),
     }),
   );
+  const uninstrumented = options.instrumented === false;
   return Module("Temporal")({
-    needs: [Env, activities],
+    needs: uninstrumented ? [Env, activities] : [Env, Meter, activities],
     provides: [
       config,
       Provider(TemporalConnection)({
@@ -218,17 +233,46 @@ export const temporal = <C extends ContractDefinition>(
             .close()
             .catch((cause: unknown) => (heldByWorker(cause) ? undefined : Promise.reject(cause))),
       }),
-      Provider(TemporalRuntime)({
-        inject: { connection: TemporalConnection, config: TemporalConfig, activities },
-        sync: ({ connection, config: bound, activities: impls }): Runtime<never, TemporalInfo> => ({
-          name: "temporal",
-          resolves: [],
-          start: (host) => createWorker(host, connection, bound, impls, options),
-        }),
-      }),
+      uninstrumented
+        ? Provider(TemporalRuntime)({
+            inject: { connection: TemporalConnection, config: TemporalConfig, activities },
+            sync: ({
+              connection,
+              config: bound,
+              activities: impls,
+            }): Runtime<never, TemporalInfo> => ({
+              name: "temporal",
+              resolves: [],
+              start: (host) => createWorker(host, connection, bound, impls, options, undefined),
+            }),
+          })
+        : Provider(TemporalRuntime)({
+            inject: {
+              connection: TemporalConnection,
+              config: TemporalConfig,
+              activities,
+              meter: Meter,
+            },
+            sync: ({
+              connection,
+              config: bound,
+              activities: impls,
+              meter,
+            }): Runtime<never, TemporalInfo> => ({
+              name: "temporal",
+              resolves: [],
+              start: (host) => createWorker(host, connection, bound, impls, options, meter),
+            }),
+          }),
     ],
     exports: [TemporalRuntime, TemporalConfig, TemporalConnection],
-  });
+  } as never) as unknown as Module<
+    Provided,
+    ConfigInvalid | TemporalUnreachable,
+    Instrumented extends false
+      ? Env | Scope | ActivitiesInstanceOf<C>
+      : Env | Scope | Meter | ActivitiesInstanceOf<C>
+  >;
 };
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>
@@ -243,6 +287,7 @@ const createWorker = <C extends ContractDefinition>(
   config: ServiceOf<TemporalConfig>,
   activities: ActivitiesOf<C>,
   options: TemporalOptions<C>,
+  meter: MeterService | undefined,
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
   const { taskQueue } = options.contract;
   const { namespace } = config;
@@ -254,7 +299,7 @@ const createWorker = <C extends ContractDefinition>(
     () =>
       declareActivitiesHandler({
         contract: options.contract,
-        middleware: activityUnits(host),
+        middleware: activityUnits(host, temporalMetrics(meter)),
         activities,
       }),
     startFailed,

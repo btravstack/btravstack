@@ -39,7 +39,7 @@ import { FulfillmentModule } from "../../fulfillment.js";
 
 | Export                           | Kind  | What it is                                                                                                                                                                                                                                                                         |
 | -------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                                           |
+| `TemporalModule`                 | value | `TemporalModule(name)({ contract, activities, workflows, address?, namespace?, gracePeriod?, forceAfter?, instrumented?, imports?, provides?, exports?, needs? })` — a di `Module(name)({...})` that also takes the activities provider                                            |
 | `TemporalModuleOptions`          | type  | The options object `TemporalModule(name)` takes                                                                                                                                                                                                                                    |
 | `TemporalActivities`             | value | `TemporalActivities(contract)` — di's `Provider(port)` builder on the starter's own activities port, typed for `contract`, so the next call is `{ inject: { name: Dep }, ...arm }`, or `([pieces])` to compose one provider per workflow                                           |
 | `ActivitiesPortOf<C>`            | type  | The activities port's class typed for `C` — what a composed `orderActivities`'s `.port` is                                                                                                                                                                                         |
@@ -118,6 +118,23 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
   ],
 });
 ```
+
+### RED metrics, on by default
+
+The runtime records **rate, errors and duration** at the unit seam — the one
+place a framework that owns the unit lifecycle gets them for free:
+
+| Instrument                              | Kind           | Dimensions            |
+| --------------------------------------- | -------------- | --------------------- |
+| `btravstack.temporal.activity.attempts` | counter        | `activity`, `outcome` |
+| `btravstack.temporal.activity.duration` | histogram (ms) | the same two          |
+
+`instrumented` defaults to `true`, which puts `Meter` in the module's needs — so
+a root composing no OTel SDK writes `temporal({ instrumented: false })` and pays nothing: no meter, no
+instrument built, one `if` on the request path.
+
+**The dimensions are chosen for cardinality, and what is absent matters more
+than what is present.** Per **attempt**, not per activity: a retried activity records once per attempt, which is what makes the rate readable when a downstream is failing — the workflow's own count would hide exactly the retries worth alerting on. The workflow id is not a dimension and must not be: it is unbounded, and it is already the unit's `traceId`, which is where an unbounded value belongs.
 
 ## `TemporalActivities(contract)`
 

@@ -5,9 +5,11 @@ import {
 } from "@amqp-contract/worker";
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
+  Meter,
   RuntimePort,
   RuntimeStartFailed,
   releasedBy,
+  type MeterService,
   type Runtime,
   type RuntimeHost,
   type Serving,
@@ -23,7 +25,7 @@ import {
 import { ErrAsync, type AsyncResult } from "unthrown";
 
 import { HANDLER_PREFIX, type HandlerKeyOf, type HandlerPortOf } from "./handler.js";
-import { messageUnits } from "./message-units.js";
+import { amqpMetrics, messageUnits } from "./message-units.js";
 
 /** What the worker publishes once it is consuming, read back through `RunningApp.runtimeInfo()`. */
 export type AmqpInfo = { readonly queues: readonly string[] };
@@ -117,6 +119,12 @@ export type AmqpTuning = {
    * `connectionOptions`, where setting it is silently inert.
    */
   readonly connectTimeoutMs?: number;
+  /**
+   * Record RED metrics per delivery (default `true`), which puts `Meter` in
+   * this module's needs — so a root without an OTel SDK composes
+   * `amqp({ instrumented: false })` and pays nothing.
+   */
+  readonly instrumented?: boolean;
 };
 
 /**
@@ -127,9 +135,15 @@ export type AmqpTuning = {
  *
  * With `url` pinned the module reads nothing from the environment.
  */
-export const amqp = <TContract extends AnyAmqpContract>(
-  options: AmqpOptions<TContract>,
-): Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>> => {
+export const amqp = <TContract extends AnyAmqpContract, Instrumented extends boolean = true>(
+  options: AmqpOptions<TContract> & { readonly instrumented?: Instrumented },
+): Module<
+  AmqpRuntime | AmqpConfig,
+  ConfigInvalid,
+  Instrumented extends false
+    ? Env | HandlersInstanceOf<TContract>
+    : Env | Meter | HandlersInstanceOf<TContract>
+> => {
   const config = Config.provider(AmqpConfig)(
     Config.object({
       url: Config.pinned(
@@ -142,21 +156,46 @@ export const amqp = <TContract extends AnyAmqpContract>(
       ),
     }),
   );
+  const uninstrumented = options.instrumented === false;
   return Module("Amqp")({
-    needs: [Env, AmqpHandlersPort as HandlersPortOf<TContract>],
+    needs: uninstrumented
+      ? [Env, AmqpHandlersPort as HandlersPortOf<TContract>]
+      : [Env, Meter, AmqpHandlersPort as HandlersPortOf<TContract>],
     provides: [
       config,
-      Provider(AmqpRuntime)({
-        inject: { config: AmqpConfig, handlers: AmqpHandlersPort as HandlersPortOf<TContract> },
-        sync: ({ config: bound, handlers }): Runtime<never, AmqpInfo> => ({
-          name: "amqp",
-          resolves: [],
-          start: (host) => createWorker(host, bound, options, handlers),
-        }),
-      }),
+      uninstrumented
+        ? Provider(AmqpRuntime)({
+            inject: {
+              config: AmqpConfig,
+              handlers: AmqpHandlersPort as HandlersPortOf<TContract>,
+            },
+            sync: ({ config: bound, handlers }): Runtime<never, AmqpInfo> => ({
+              name: "amqp",
+              resolves: [],
+              start: (host) => createWorker(host, bound, options, handlers, undefined),
+            }),
+          })
+        : Provider(AmqpRuntime)({
+            inject: {
+              config: AmqpConfig,
+              handlers: AmqpHandlersPort as HandlersPortOf<TContract>,
+              meter: Meter,
+            },
+            sync: ({ config: bound, handlers, meter }): Runtime<never, AmqpInfo> => ({
+              name: "amqp",
+              resolves: [],
+              start: (host) => createWorker(host, bound, options, handlers, meter),
+            }),
+          }),
     ],
     exports: [AmqpRuntime, AmqpConfig],
-  });
+  } as never) as unknown as Module<
+    AmqpRuntime | AmqpConfig,
+    ConfigInvalid,
+    Instrumented extends false
+      ? Env | HandlersInstanceOf<TContract>
+      : Env | Meter | HandlersInstanceOf<TContract>
+  >;
 };
 
 /** One piece of the handlers record — what `AmqpHandler(contract, key)(…)` returns, as the composing form consumes it. */
@@ -252,11 +291,12 @@ const createWorker = <TContract extends AnyAmqpContract>(
   config: ServiceOf<AmqpConfig>,
   options: AmqpOptions<TContract>,
   handlers: WorkerInferHandlers<TContract>,
+  meter: MeterService | undefined,
 ): AsyncResult<Serving<AmqpInfo>, RuntimeStartFailed> =>
   TypedAmqpWorker.create({
     contract: options.contract,
     handlers,
-    middleware: messageUnits(host),
+    middleware: messageUnits(host, amqpMetrics(meter)),
     urls: [config.url],
     ...(options.connectionOptions === undefined
       ? {}

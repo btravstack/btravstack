@@ -355,3 +355,21 @@ Provider(Greeting)(...)] })` through `boot` — the pieces are passed to
   carry. A deployment that wants full OTel propagation through Temporal wires
   Temporal's own OpenTelemetry interceptors beside `otel()`, not through this
   package.
+
+## RED metrics: on by default, per ATTEMPT
+
+`btravstack.temporal.activity.attempts` (counter) and
+`btravstack.temporal.activity.duration` (histogram, ms), both dimensioned
+`{ activity, outcome }`, recorded in the activity middleware. `instrumented`
+defaults to `true` and puts `Meter` in the module's needs;
+`temporal({ instrumented: false })` drops it and builds no instrument.
+
+**Per attempt, not per activity, and that is the point.** An activity is
+retried under the same execution, so a count per activity would hide exactly
+the retries worth alerting on — a downstream failing for ten minutes would show
+as one slow activity rather than as a rate. It is the same reasoning that makes
+`UnitMeta.id` the task token rather than the workflow id.
+
+**The workflow id is not a dimension and must not be.** It is unbounded, and it
+is already the unit's `traceId` — which is where an unbounded correlation value
+belongs. `activityType` is bounded by the contract.

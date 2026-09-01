@@ -1,7 +1,14 @@
 import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
-import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
+import {
+  Meter,
+  currentUnit,
+  type Attributes,
+  type MeterService,
+  type RunningApp,
+  type UnitRecord,
+} from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { bootFixture, type Boot } from "@btravstack/testing";
@@ -63,6 +70,20 @@ const EchoActivities = TemporalActivities(echoContract);
 const echoing = EchoActivities({
   inject: {},
   value: { runEcho: { echo: (value) => OkAsync(value) } },
+});
+
+/**
+ * An activity whose failure nobody modelled — a defect, which Temporal turns
+ * into an application failure. The errors half of RED has to see it: a count
+ * that omitted defects would report a healthy rate while every attempt failed.
+ */
+const failingEcho = EchoActivities({
+  inject: {},
+  value: {
+    runEcho: {
+      echo: () => fromSafePromise(Promise.reject<string>(new Error("the activity is on fire"))),
+    },
+  },
 });
 
 /**
@@ -323,6 +344,13 @@ export type TemporalFixtures = {
     readonly taskQueue: string;
   }>;
   readonly serveBroken: (options?: BootOptions) => Promise<App>;
+  /** The starter served with metrics on — the default composition — and a recording meter. */
+  readonly serveMetered: (failing?: boolean) => Promise<{
+    readonly app: App;
+    readonly client: Client;
+    readonly taskQueue: string;
+    readonly taken: () => readonly Measurement[];
+  }>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   readonly contractSeam: ReturnType<typeof contractSeamOf>;
@@ -343,9 +371,50 @@ export type TemporalFixtures = {
  * started against this file's own namespace — so every test opens and closes a
  * connection of its own.
  */
+/** One recorded measurement: which instrument, what value, and the dimensions. */
+export type Measurement = {
+  readonly instrument: string;
+  readonly value: number;
+  readonly attributes: Attributes;
+};
+
+/** A meter that keeps what it was given, so a spec asserts on the DIMENSIONS. */
+const recordingMeter = (): { service: MeterService; taken: () => readonly Measurement[] } => {
+  const taken: Measurement[] = [];
+  const instrument = (name: string) => ({
+    add: (value: number, attributes?: Attributes) =>
+      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
+    record: (value: number, attributes?: Attributes) =>
+      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
+  });
+  return {
+    service: { createCounter: instrument, createHistogram: instrument },
+    taken: () => taken,
+  };
+};
+
+/** The starter as a deployment gets it — `instrumented` on — over a recording meter. */
+const composeMetered = (server: Server, boot: Boot, meter: MeterService, failing: boolean) => {
+  const taskQueue = nextTaskQueue();
+  const worker = TemporalModule("Metered")({
+    contract: { ...echoContract, taskQueue },
+    activities: failing ? failingEcho : echoing,
+    workflows: echoWorkflows,
+    provides: [
+      Provider(Greeting)({ inject: {}, value: { text: "hello" } }),
+      Provider(Meter)({ inject: {}, value: meter }),
+    ],
+  });
+  const app: App = boot(worker, {
+    env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace },
+  });
+  return { app, taskQueue };
+};
+
 const compose = (server: Server, boot: Boot, options: BootOptions) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Worker")({
+    instrumented: false,
     contract: { ...echoContract, taskQueue },
     activities: options.activities ?? echoing,
     workflows: options.workflows ?? echoWorkflows,
@@ -392,6 +461,14 @@ export const it = test.extend<TemporalFixtures>({
       return { app, client, taskQueue };
     });
   },
+  serveMetered: async ({ server, client, boot }, use) => {
+    await use(async (failing = false) => {
+      const meter = recordingMeter();
+      const { app, taskQueue } = composeMetered(server, boot, meter.service, failing);
+      await app.runtimeInfo();
+      return { app, client, taskQueue, taken: meter.taken };
+    });
+  },
   serveBroken: async ({ server, boot }, use) => {
     // A failure under test is served against a workflow module that exists, so
     // it is the only failure available; with nothing under test the module is
@@ -436,6 +513,7 @@ export const it = test.extend<TemporalFixtures>({
       const taskQueue = nextTaskQueue();
       const app: App = boot(
         TemporalModule("Sliced")({
+          instrumented: false,
           contract: withTaskQueue(slicedContract, taskQueue),
           activities: slices.activities,
           workflows: echoWorkflows,

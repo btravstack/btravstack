@@ -9,7 +9,14 @@ import {
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import type { ConfigInvalid, Environment } from "@btravstack/config";
-import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
+import {
+  Meter,
+  currentUnit,
+  type Attributes,
+  type MeterService,
+  type RunningApp,
+  type UnitRecord,
+} from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
@@ -59,6 +66,7 @@ type EchoProvider = Provider<InstanceType<EchoHandlers>, never, Greeting>;
  */
 const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: number) =>
   AmqpModule("Consuming")({
+    instrumented: false,
     contract: echoContract,
     handlers,
     url,
@@ -67,6 +75,38 @@ const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: numbe
   });
 
 /** Captures the `AmqpConfig` the graph actually bound, for the configuration spec. */
+/** One recorded measurement: which instrument, what value, and the dimensions. */
+export type Measurement = {
+  readonly instrument: string;
+  readonly value: number;
+  readonly attributes: Attributes;
+};
+
+/** A meter that keeps what it was given, so a spec asserts on the DIMENSIONS. */
+const recordingMeter = (): { service: MeterService; taken: () => readonly Measurement[] } => {
+  const taken: Measurement[] = [];
+  const instrument = (name: string) => ({
+    add: (value: number, attributes?: Attributes) =>
+      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
+    record: (value: number, attributes?: Attributes) =>
+      taken.push({ instrument: name, value, attributes: attributes ?? {} }),
+  });
+  return {
+    service: { createCounter: instrument, createHistogram: instrument },
+    taken: () => taken,
+  };
+};
+
+/** The starter as a deployment gets it — `instrumented` on — over a recording meter. */
+const metered = (url: string, handlers: EchoProvider, meter: MeterService) =>
+  AmqpModule("Metered")({
+    contract: echoContract,
+    handlers,
+    url,
+    imports: [AppModule],
+    provides: [Provider(Meter)({ inject: {}, value: meter })],
+  });
+
 const configuredOf = () => {
   let bound: ServiceOf<AmqpConfig> | undefined;
   return {
@@ -86,6 +126,16 @@ class BoundConfig extends Port("BoundAmqpConfig")<ServiceOf<AmqpConfig>> {}
 const plainHandlers: EchoProvider = echoHandlers({
   inject: {},
   value: { echo: () => OkAsync(undefined) },
+});
+
+/**
+ * A handler whose failure nobody modelled — a defect, which the library nacks
+ * straight to the dead-letter queue. The errors half of RED has to see it: a
+ * count that omitted defects would be the reassuring half.
+ */
+const failingHandlers: EchoProvider = echoHandlers({
+  inject: {},
+  value: { echo: () => fromSafePromise(Promise.reject(new Error("the handler is on fire"))) },
 });
 
 type App = RunningApp<ConfigInvalid, AmqpInfo>;
@@ -275,6 +325,12 @@ export type AmqpFixtures = {
   readonly deadline: ReturnType<typeof deadlineHandler>;
   readonly slices: ReturnType<typeof slicesOf>;
   readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<App>;
+  /** The starter served with metrics on — the default composition — and a recording meter. */
+  readonly serveMetered: (
+    handlers?: EchoProvider,
+  ) => Promise<{ readonly app: App; readonly taken: () => readonly Measurement[] }>;
+  /** The handlers whose one consumer fails in a way nobody modelled. */
+  readonly failing: EchoProvider;
 };
 
 // Annotated explicitly: TS2883 otherwise refuses to name the inferred type,
@@ -291,11 +347,24 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       return app;
     });
   },
+  serveMetered: async ({ amqpConnectionUrl, boot }, use) => {
+    await use(async (handlers = plainHandlers) => {
+      const meter = recordingMeter();
+      const app = boot(metered(amqpConnectionUrl, handlers, meter.service));
+      await app.runtimeInfo();
+      return { app, taken: meter.taken };
+    });
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  failing: async ({}, use) => {
+    await use(failingHandlers);
+  },
   boundFrom: async ({ boot }, use) => {
     await use(async (env) => {
       const configured = configuredOf();
       const app = boot(
         AmqpModule("Bound")({
+          instrumented: false,
           contract: echoContract,
           handlers: plainHandlers,
           imports: [AppModule],
@@ -336,6 +405,7 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
     await use(async (slices) => {
       const app = boot(
         AmqpModule("Sliced")({
+          instrumented: false,
           contract: slicedContract,
           handlers: slices.handlers,
           url: amqpConnectionUrl,

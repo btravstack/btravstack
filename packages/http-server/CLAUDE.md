@@ -1039,3 +1039,31 @@ transport's hands.
   — which a scope was never going to answer. `@btravstack/http-server` checks a
   credential's granted scopes against the endpoint's declared ones and answers
   `403`, distinct from the `401` a caller with no valid credential gets.
+
+## RED metrics: the runtime records them, because only it can
+
+`btravstack.http.requests` (counter) and `btravstack.http.duration`
+(histogram, ms), both dimensioned `{ method, answerer, status }`, recorded at
+the unit seam. `instrumented` defaults to `true` and puts `Meter` in
+`httpServer`'s needs; `http({ instrumented: false })` drops it, builds no
+instrument, and leaves one `if` on the request path.
+
+**Recorded on the response's `'close'`, not on the unit settling.** They would
+usually agree — the unit's own contract is that the response is flushed inside
+it — but `'close'` is the one event that has seen the FINAL status, which
+includes the runtime's own `404` (no answerer claimed the path) and the `500`
+the `recoverDefect` arm writes. Neither of those reaches an answerer, so
+neither could be recorded by one, and that is the whole argument for the
+metrics living here rather than in a plugin or in the application: an
+application cannot see the requests its handlers never ran.
+
+**The dimensions are chosen for CARDINALITY, and the absent one is the
+decision.** The request PATH is not a dimension — `/orders/42` mints a time
+series per order, which is the classic way a metrics bill becomes the incident.
+`answerer` is a mount prefix, so the graph bounds it; `status` is a small
+integer set; `method` is HTTP's own closed list. An application that wants
+per-route timing has the contract's own procedure name and its own `Meter`.
+
+`examples/order-api`'s `RequestModule` used to hand-write this histogram, which
+was the proof it was missing here. What is left there is the log LINE, which is
+that module's actual subject.
