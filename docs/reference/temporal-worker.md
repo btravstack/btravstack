@@ -84,18 +84,19 @@ provider and the workflow source. It appends
 `imports`, prepends `activities` to `provides`, prepends `TemporalRuntime` to
 `exports`, and hands the augmented tuples to di's own `Module(name)`.
 
-| Option        | Required | Default                              | What it is                                                                                                                                                                                                                          |
-| ------------- | -------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract`    | yes      | —                                    | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                                         |
-| `activities`  | yes      | —                                    | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ inject: { name: Dep }, ...arm })` returns for **this** `contract`; one built for another contract fails at the call |
-| `workflows`   | yes      | —                                    | a `WorkflowSource`                                                                                                                                                                                                                  |
-| `address`     | no       | read from `TEMPORAL_ADDRESS`         | pins `TemporalConfig.address`                                                                                                                                                                                                       |
-| `namespace`   | no       | read from `TEMPORAL_NAMESPACE`       | pins `TemporalConfig.namespace`                                                                                                                                                                                                     |
-| `gracePeriod` | no       | read from `TEMPORAL_GRACE_PERIOD_MS` | pins Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                                                                                                                                             |
-| `forceAfter`  | no       | read from `TEMPORAL_FORCE_AFTER_MS`  | pins Temporal's `shutdownForceTime`, a `Duration` (default `15_000` ms); keep it at or below the kernel's `drainTimeoutMs`                                                                                                          |
-| `imports`     | no       | `[]`                                 | the application's modules                                                                                                                                                                                                           |
-| `provides`    | no       | `[]`                                 | the application's own providers                                                                                                                                                                                                     |
-| `exports`     | no       | `[]`                                 | the application's own exports; `TemporalRuntime` is added                                                                                                                                                                           |
+| Option         | Required | Default                              | What it is                                                                                                                                                                                                                          |
+| -------------- | -------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract`     | yes      | —                                    | a `temporal-contract` `ContractDefinition`; the task queue this worker polls is read off it                                                                                                                                         |
+| `activities`   | yes      | —                                    | the activities **provider** — a `Provider<ActivitiesInstanceOf<C>, E, N>`, what `TemporalActivities(contract)({ inject: { name: Dep }, ...arm })` returns for **this** `contract`; one built for another contract fails at the call |
+| `workflows`    | yes      | —                                    | a `WorkflowSource`                                                                                                                                                                                                                  |
+| `address`      | no       | read from `TEMPORAL_ADDRESS`         | pins `TemporalConfig.address`                                                                                                                                                                                                       |
+| `namespace`    | no       | read from `TEMPORAL_NAMESPACE`       | pins `TemporalConfig.namespace`                                                                                                                                                                                                     |
+| `gracePeriod`  | no       | read from `TEMPORAL_GRACE_PERIOD_MS` | pins Temporal's `shutdownGraceTime`, a `Duration` (default `10_000` ms)                                                                                                                                                             |
+| `forceAfter`   | no       | read from `TEMPORAL_FORCE_AFTER_MS`  | pins Temporal's `shutdownForceTime`, a `Duration` (default `15_000` ms); keep it at or below the kernel's `drainTimeoutMs`                                                                                                          |
+| `instrumented` | no       | `true`                               | RED metrics per activity attempt; on, this module **needs `Meter`** as well as `Env` and `Scope`, so `false` is what a root composing no OTel SDK passes                                                                            |
+| `imports`      | no       | `[]`                                 | the application's modules                                                                                                                                                                                                           |
+| `provides`     | no       | `[]`                                 | the application's own providers                                                                                                                                                                                                     |
+| `exports`      | no       | `[]`                                 | the application's own exports; `TemporalRuntime` is added                                                                                                                                                                           |
 
 The worked composition root, from
 `examples/order-temporal-worker/src/module.ts`:
@@ -361,12 +362,14 @@ const orderActivities = TemporalActivities(orderContract)([
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-const temporal: <C extends ContractDefinition>(
-  options: TemporalOptions<C>,
+const temporal: <C extends ContractDefinition, Instrumented extends boolean = true>(
+  options: TemporalOptions<C> & { readonly instrumented?: Instrumented },
 ) => Module<
   TemporalRuntime | TemporalConfig | TemporalConnection,
   ConfigInvalid | TemporalUnreachable,
-  Env | Scope | ActivitiesInstanceOf<C>
+  Instrumented extends false
+    ? Env | Scope | ActivitiesInstanceOf<C>
+    : Env | Scope | Meter | ActivitiesInstanceOf<C>
 >;
 ```
 
@@ -375,7 +378,8 @@ same fields as the sugar minus `activities` / `imports` / `provides` /
 `exports`: the activities are not an option but the module's need. It
 provides and exports all three ports, and **needs** `Env` (the kernel
 discharges it), `Scope` (the connection is a resource; `start` discharges it
-too) and the activities port typed for `contract` (`ActivitiesInstanceOf<C>`)
+too), `Meter` unless `instrumented: false`, and the activities port typed for
+`contract` (`ActivitiesInstanceOf<C>`)
 — the runtime provider depends on it through di, so a root that does not
 provide it, or provides one built for another contract, is refused at
 `start`.

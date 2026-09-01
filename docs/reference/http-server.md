@@ -114,6 +114,7 @@ gates see a plain module.
 | `compression`     | no       | read from `HTTP_COMPRESSION` | pins response compression — `true` for oRPC's defaults, or its options record; applies only when `router` is served                                                                     |
 | `plugins`         | no       | `[]`                         | any other oRPC handler plugin, forwarded to `RPCHandler`                                                                                                                                |
 | `securityHeaders` | no       | `true`                       | response headers set on the raw listener, before dispatch — covers both answerers                                                                                                       |
+| `instrumented`    | no       | `true`                       | RED metrics per request; on, this module **needs `Meter`** as well as `Env`, so `false` is what a root composing no OTel SDK passes                                                     |
 | `imports`         | no       | `[]`                         | the application's modules                                                                                                                                                               |
 | `provides`        | no       | `[]`                         | the application's own providers                                                                                                                                                         |
 | `exports`         | no       | `[]`                         | the application's own exports; `HttpRuntime` and `HttpHandler` are added                                                                                                                |
@@ -841,9 +842,13 @@ does, so `HttpModule` can deduplicate a scheme the two share, by reference.
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-const http: (
-  options?: HttpOptions,
-) => Module<HttpRuntime | HttpConfig | HttpHandler, ConfigInvalid, Env | OrpcRouterPort>;
+const http: <Instrumented extends boolean = true>(
+  options?: HttpOptions & { readonly instrumented?: Instrumented },
+) => Module<
+  HttpRuntime | HttpConfig | HttpHandler,
+  ConfigInvalid,
+  Instrumented extends false ? Env | OrpcRouterPort : Env | Meter | OrpcRouterPort
+>;
 ```
 
 The primitive `HttpModule` delegates to, for a composition root written by
@@ -859,9 +864,11 @@ hand. `HttpOptions`:
 | `compression`     | no       | `HTTP_COMPRESSION` | `boolean \| ResponseCompressionHandlerPluginOptions`            |
 | `plugins`         | no       | `[]`               | `NodeHttpHandlerPlugin[]`, forwarded to oRPC's own `RPCHandler` |
 | `securityHeaders` | no       | `true`             | `boolean \| Record<string, string>`, applied on the listener    |
+| `instrumented`    | no       | `true`             | `boolean`; on, the module also needs `Meter`                    |
 
 The module **provides** `HttpRuntime` and `HttpConfig`, exports both, and
-**needs** `Env` (the kernel discharges it) and the starter's router port
+**needs** `Env` (the kernel discharges it), `Meter` unless
+`instrumented: false`, and the starter's router port
 (`OrpcRouterPort`, the port `api.OrpcRouter(contract)({ inject, ...arm })` provides on) —
 the runtime provider depends on the router through di, which is why a
 composition that imports `http()` without providing the router carries an

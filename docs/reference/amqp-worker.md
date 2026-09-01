@@ -87,6 +87,7 @@ augmented tuples to di's own `Module(name)`.
 | `connectionOptions`      | no       | —                                                    | `AmqpConnectionOptions`, the connection tuning `TypedAmqpWorker.create` accepts: heartbeat, reconnect interval, `findServers`, TLS/socket options                                                                                                                      |
 | `defaultConsumerOptions` | no       | —                                                    | `@amqp-contract/worker`'s `ConsumerOptions`, applied to every handler: `prefetch` (the throughput knob), `priority`, `arguments`, `consumerTag`, `exclusive`                                                                                                           |
 | `connectTimeoutMs`       | no       | read from `AMQP_CONNECT_TIMEOUT_MS` (default `5000`) | pins how long `create` waits for the connection; a **top-level** `CreateWorkerOptions` field, not one under `connectionOptions`, where setting it is silently inert. The library's own default is 30 s — longer than most orchestrators wait before restarting the pod |
+| `instrumented`           | no       | `true`                                               | RED metrics per delivery; on, this module **needs `Meter`** as well as `Env`, so `false` is what a root composing no OTel SDK passes                                                                                                                                   |
 | `imports`                | no       | `[]`                                                 | the application's modules                                                                                                                                                                                                                                              |
 | `provides`               | no       | `[]`                                                 | the application's own providers                                                                                                                                                                                                                                        |
 | `exports`                | no       | `[]`                                                 | the application's own exports; `AmqpRuntime` is added                                                                                                                                                                                                                  |
@@ -287,12 +288,14 @@ const orderHandlers = AmqpHandlers(orderContract)([
 <!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
 
 ```ts
-const amqp: <TContract extends AnyAmqpContract>(
-  options: AmqpOptions<TContract>,
+const amqp: <TContract extends AnyAmqpContract, Instrumented extends boolean = true>(
+  options: AmqpOptions<TContract> & { readonly instrumented?: Instrumented },
 ) => Module<
   AmqpRuntime | AmqpConfig,
   ConfigInvalid,
-  Env | HandlersInstanceOf<TContract>
+  Instrumented extends false
+    ? Env | HandlersInstanceOf<TContract>
+    : Env | Meter | HandlersInstanceOf<TContract>
 >;
 ```
 
@@ -300,7 +303,8 @@ The primitive `AmqpModule` delegates to. `AmqpOptions<TContract>` has the
 sugar's fields minus `handlers` / `imports` / `provides` / `exports`: the
 handlers are not an option but the module's need. It provides and exports
 `AmqpRuntime` and `AmqpConfig`, and **needs** `Env` (the kernel discharges
-it) and the handlers port typed for `contract` (`HandlersInstanceOf<TContract>`)
+it), `Meter` unless `instrumented: false`, and the handlers port typed for
+`contract` (`HandlersInstanceOf<TContract>`)
 — the runtime provider depends on it through di, so a root that imports the
 starter without providing the handlers, or provides one built for another
 contract, is refused at `start` (di's gate). The declared type is the same with `url` pinned or not.
