@@ -76,9 +76,12 @@ was folded in here when the container was merged; nothing under
 
 - **The skip escape hatch is unguarded, and the biggest class inside it is
   signature displays.** `doctest: skip` is what a fence uses when it is not a
-  program, and 109 fences carry one; **54** of those give the same reason —
+  program, and **most of the fences that carry one give the same reason** —
   _"a signature display, not a program: the surface it quotes is compiled as
-  the package itself."_ That reason is a **claim about a different file**, and
+  the package itself."_ (`generate` prints every skip and its reason, which is
+  where a current count comes from; two hand-kept numbers stood here and went
+  stale the first time a page added a fence, which is what #192 is about.)
+  That reason is a **claim about a different file**, and
   nothing checks it: the displayed signature is free to drift from the real
   one, silently, forever. It has already happened once —
   `docs/reference/http-server.md`'s `OrpcController` display still showed the
