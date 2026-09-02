@@ -202,7 +202,20 @@ was folded in here when the container was merged; nothing under
   the tasks `pnpm build` runs, which is what puts the demo-fidelity and
   install-pin checks there; `dev` is not. `knip` covers `docs/scripts`, and the
   deploy workflow is what fails on a dead link **to a page**. A dead
-  `#fragment` is not checked by anything: `ignoreDeadLinks` validates the path
-  half only, and one had shipped since `9af980d` before anyone noticed
-  (#181, which proposes checking the rendered `dist` — where the ids are
-  ground truth — rather than reimplementing VitePress's slugify).
+  `#fragment` is `check-anchors.ts`'s, run after `vitepress build` because it
+  reads the **rendered** `dist`: every `id=` a page carries against every
+  fragment `href` that points at it. One had shipped since `9af980d` before
+  anyone noticed, on the page about compile-time gates — `#the-kernels-own-gate`
+  where the renderer emits `the-kernel-s-own-gate`, an apostrophe becoming a
+  hyphen rather than being dropped.
+
+  **Checking the rendered output is the decision, not a shortcut.** A
+  source-level checker has to reimplement VitePress's slugify, and a copy of a
+  slugify drifts from the renderer that ships. markdownlint's `MD051` is that
+  copy, and it is backwards here — measured against this site it MISSES the
+  real dead anchor (correct under GitHub's rules) and flags three working ones
+  in `reference/http-server.md`, which is why that rule is off in
+  `.markdownlint-cli2.jsonc` with the measurement beside it. `/api/` is
+  skipped, since TypeDoc's cross-references are its own output — the same
+  carve-out `ignoreDeadLinks` makes, and the skipped count is printed so the
+  exemption stays visible rather than reading as coverage.

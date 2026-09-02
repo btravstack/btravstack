@@ -126,25 +126,33 @@ cause?)` — plus `with(attributes)` and `isEnabled(level)`. The uniformity
 
 ## Specs
 
-`vitest run --coverage`, 100% lines/functions like every other package, 26
-tests across four files:
+`vitest run --coverage`, 100% lines/functions like every other package. What
+each spec file pins — the list, never a tally, since a count in prose is stale
+the next time a case is added (#192):
 
-- `logger.spec.ts` (8) — the surface (one line per level, at its own severity),
+- `logger.spec.ts` — the surface (one line per level, at its own severity),
   the level floor and `isEnabled`, the cause channel, `with` layering **and not
   mutating** (the defect a mutable `setContext` has, asserted rather than
   asserted about), a call's attribute winning over a child's, a throwing sink
   swallowed, no `unit` outside a unit, the ambient record inside one, and the
   tenant a runtime supplied.
-- `json-sink.spec.ts` (5) — the line shape and the trailing newline, an
+- `json-sink.spec.ts` — the line shape and the trailing newline, an
   `Error`'s `message`/`stack`/`cause` chain surviving, a caller's attribute not
   rewriting `level`/`message`/`traceId`, a circular payload falling back to
   `[unserialisable]`, and the default stream being `process.stdout` (captured
   with a spy — read `mock.calls` **before** `mockRestore`, which clears them).
-- `observability.spec.ts` (8) — the level bound from the environment and
+- `observability.spec.ts` — the level bound from the environment and
   filtering the graph's own logger, `ConfigInvalid` for a level outside the
   six, a pinned level beating the environment, and the five `kernelEvents`
   mappings.
-- `pino.spec.ts` (3) — fields pino can index, the `err` serialiser, and every
+- `observers.spec.ts` — what `observability()` contributes to `Observers`: a
+  failed operation written as a line, a successful one written nowhere (that is
+  what the metric is for), and the cause travelling with it.
+- `otel.spec.ts` — the SDK half, behind the subpath: a span per unit flushed on
+  the scope's close, an unattributed span outside a unit, OTel's own meter
+  handed back ready to count, and an instrumentation a starter contributed
+  being registered.
+- `pino.spec.ts` — fields pino can index, the `err` serialiser, and every
   level mapping onto pino's own numeric severity (`10`…`60`), so no level of
   ours silently collapses into another.
 

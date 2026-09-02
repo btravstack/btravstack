@@ -15,9 +15,11 @@ rather than one per workspace.
 | `axllent/mailpit:v1.31.0`          | `packages/mailer`, `examples/order-amqp-worker`                             |
 | `rustfs/rustfs:1.0.0-rc.3`         | `packages/storage`                                                          |
 
-Six containers for ten workspaces. Before this existed there were five
-servers for those six — two RabbitMQ containers and up to three Temporal
-time-skipping servers — and `pnpm test` was intermittently red at turbo's
+One container per backing service — the table above is the list, and the
+workspaces reading each are in it. Before this existed, the broker and the
+workflow platform were started per workspace instead: two RabbitMQ containers
+and up to three Temporal time-skipping servers, and `pnpm test` was
+intermittently red at turbo's
 default concurrency because the 60s testcontainers startup wait was what gave
 out first ([#52](https://github.com/btravstack/btravstack/issues/52)).
 
@@ -81,17 +83,17 @@ break.
 
 ## Entry points
 
-| Import                                       | What it is                                                              |
-| -------------------------------------------- | ----------------------------------------------------------------------- |
-| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys |
-| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s         |
-| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal`, `postgresUrl`   |
-| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                      |
-| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                   |
+| Import                                       | What it is                                                                                                                                                                 |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@btravstack/internal-test-infra/rabbitmq`   | a vitest `globalSetup` providing `@amqp-contract/testing`'s inject keys                                                                                                    |
+| `@btravstack/internal-test-infra/temporal`   | a vitest `globalSetup` providing `@temporal-contract/testing`'s                                                                                                            |
+| `@btravstack/internal-test-infra/containers` | `sharedPostgres` / `sharedRabbitMq` / `sharedTemporal` / `sharedRedis` / `sharedMailpit` / `sharedRustFs`, plus `postgresUrl` and the credentials each one is started with |
+| `@btravstack/internal-test-infra/namespace`  | `createNamespace(address, prefix)`                                                                                                                                         |
+| `@btravstack/internal-test-infra/lock`       | `withLock(name, run)`                                                                                                                                                      |
 
 There is also one **script** rather than an entry point: `pnpm dev:env`
 (`src/dev-env.ts`), which the repository's `pnpm dev` runs first. It starts the
-same three containers, applies the example application's migrations with
+same containers, applies the example application's migrations with
 `prisma migrate deploy` under the same `withLock` its vitest `globalSetup`
 uses, and writes the repository root's `.env.dev` — the addresses each example
 process reads through Node's `--env-file`. Same containers, attached to rather
