@@ -268,9 +268,10 @@ dependency — a broker, a workflow platform, a database, a cache, an SMTP
 server, an object store — attaches to a container **started once per machine
 and shared**, rather than starting one of its own
 ([`internal/test-infra`](./internal/test-infra), which owns the list). Isolation
-is the boundary each system already has: a **vhost** per test, a **namespace**
-per spec file, a **tenant** per test, a **key prefix** per test. Remove the
-containers with
+is the boundary each system already has, minted in setup and never cleaned up:
+a **vhost** per test, a **namespace** per spec file, a **tenant** per test, a
+Redis **key prefix** per test, a **recipient** per test, and an object-store
+**key prefix** per test. Remove the containers with
 `docker rm -f $(docker ps -aq --filter label=com.btravstack.test-infra)`.
 
 Commits follow Conventional Commits; user-facing changes carry a changeset.

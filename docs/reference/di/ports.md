@@ -57,7 +57,7 @@ port's own service — what lands in a `Context` and what `Context.get`
 returns — is `readonly Member[]`.
 
 - Several providers may target it, via
-  [`Provider.member`](/reference/di/providers#provider-member-port-deps-options);
+  [`Provider.member`](/reference/di/providers#provider-member-port-inject-options);
   on an ordinary port a second provider is a
   [wiring defect](/reference/di/wiring-defects).
 - `Context.get` returns every contribution, accumulated across module

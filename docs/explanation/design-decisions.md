@@ -262,7 +262,7 @@ No `Defect` constructor, no accumulation of runtimes,
 no `recoverFailure`-style channel-moving helper. Swapping an adapter is
 composing a different module, which di already documents and the type checker
 already verifies — in production. For tests, `@btravstack/testing`'s
-[`overridden`](/reference/testing#overriddenmodule-overrides) substitutes
+[`overridden`](/reference/testing#overridden-module-overrides) substitutes
 named providers into the real root, because the refusal's measured cost was
 hand-maintained parallel roots drifting silently from the roots they
 mirrored; an override the root stops backing fails loudly ("nothing to

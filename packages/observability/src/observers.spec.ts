@@ -133,6 +133,9 @@ describe("the observers observability composes", () => {
         level: "error",
         message: "cache.get failed",
         attributes: expect.objectContaining({ operation: "get", key: "k" }),
+        // By identity: the line carries the ORIGINAL failure, not a
+        // reconstruction of it.
+        cause,
       }),
     ]);
   });

@@ -278,7 +278,8 @@ imports: [OrderApplicationModule, OrderPersistenceModule, NotificationsSlice,
 AuditSlice, observability(), otel()], … })`),
   with its outbox relay a resourceful provider of its own rather than
   something layered onto the runtime — the relay is also the one place in the
-  examples that logs a **failure**, on the port's own
+  examples that logs a **failure** with nobody to return it to — a sweep has no
+  caller — on the port's own
   `(message, attributes?, cause?)` ordering — and it chooses its level per arm
   rather than uniformly: `error` for what is left pending (a message that does
   not fit the contract, a `markPublished` that failed), `warn` for what the

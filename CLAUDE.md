@@ -1208,8 +1208,9 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   beside them (what each spec pins, why each disable exists) were accurate. A
   count is the one kind of sentence that goes wrong on a commit that never
   touched it. So `rg` answers "how many"; this file answers "why", and the
-  numbers that remain are the ones a gate holds — the six containers beside the
-  table that lists them, an exit code, a default in milliseconds.
+  numbers that remain are the ones something else holds to account — a count
+  printed beside the table that enumerates it, an exit code, a default in
+  milliseconds.
 
 - Documentation drifts silently, and a sibling repo has already shipped a
   falsehood this way. When the public surface changes, update **this** file,

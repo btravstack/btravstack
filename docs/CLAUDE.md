@@ -213,8 +213,8 @@ was folded in here when the container was merged; nothing under
   source-level checker has to reimplement VitePress's slugify, and a copy of a
   slugify drifts from the renderer that ships. markdownlint's `MD051` is that
   copy, and it is backwards here — measured against this site it MISSES the
-  real dead anchor (correct under GitHub's rules) and flags three working ones
-  in `reference/http-server.md`, which is why that rule is off in
+  real dead anchor (correct under GitHub's rules) and flags working ones in
+  `reference/http-server.md`, which is why that rule is off in
   `.markdownlint-cli2.jsonc` with the measurement beside it. `/api/` is
   skipped, since TypeDoc's cross-references are its own output — the same
   carve-out `ignoreDeadLinks` makes, and the skipped count is printed so the

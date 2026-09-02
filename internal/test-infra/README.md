@@ -116,10 +116,11 @@ already loaded.
 
 ## Running the gate needs Docker
 
-Every workspace that boots the example application or either broker-backed
-runtime needs a daemon. Measured on this machine, `pnpm test` (27 tasks, default
-concurrency): **32s warm**, and a cold first run pays the three image pulls
-once ever rather than once per run.
+Every workspace that boots the example application or a broker-backed runtime
+needs a daemon. A warm `pnpm test` attaches to what is already running, so the
+image pulls are paid once per machine rather than once per run — which is the
+property worth knowing; the wall clock is whatever your machine and your
+concurrency make it.
 
 ## Not here: UUIDv7
 
