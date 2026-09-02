@@ -82,9 +82,10 @@ export const prismaOrderRepository = Provider(OrderRepository)({
     find: (id) =>
       fromPromise(
         db.order.findUnique({ where: { id } }),
-        // The boundary's qualify: a driver failure is nobody's modeled
-        // outcome, so it becomes a defect rather than an `OrderNotFound`
-        // the caller would handle as "no such order".
+        // `fromPromise`'s second argument decides what a rejection becomes.
+        // A driver failure is nobody's modeled outcome, so it goes to the
+        // defect channel rather than arriving as an `OrderNotFound` the
+        // caller would read as "no such order".
         (cause, defect) => defect(cause),
       ).flatMap((row) =>
         row === null

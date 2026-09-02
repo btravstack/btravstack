@@ -127,9 +127,15 @@ const relay = (
       tenantId: event.tenantId,
     })
     .flatMap(() => outbox.markPublished([event.id]))
-    // A publish that failed leaves the row pending, which is the whole point:
-    // the next sweep takes it, and nothing is lost by giving up on this one.
-    .recoverErrCases((matcher) => matcher.with({ _tag: "@amqp-contract/MessageValidationError" }, () => undefined))
+    // A row that does not fit the contract can NEVER be published: retrying it
+    // every sweep is a poison row burning the batch forever. Park it — log it,
+    // and mark it so the sweep stops seeing it — which is the one case where
+    // "leave it pending" is the wrong answer.
+    .recoverErrCases((matcher) =>
+      matcher.with({ _tag: "@amqp-contract/MessageValidationError" }, () => undefined),
+    )
+    // A broker that refused is a different story: the row stays pending and
+    // the next sweep takes it, which is why this arm marks nothing.
     .recoverDefect(() => OkAsync());
 ```
 
@@ -143,9 +149,18 @@ Three properties worth naming, because a subscriber has to live with them:
 re-publishes on the next sweep. A subscriber therefore has to be idempotent —
 which it has to be anyway, since a broker redelivers an un-acked message.
 
-**Order is per subject, not global.** One routing key for every change means a
-subject's create and its tombstone arrive in one ordered stream; two routing
-keys would be two queues and no order between them.
+**A permanent failure is parked, not retried.** A payload the contract refuses
+will be refused on every sweep, so it is logged and marked rather than left
+pending; only a _transient_ failure — a broker that was not there — earns the
+next sweep.
+
+**Order is per subject, and only as far as one queue and one consumer.** AMQP
+orders messages within a queue, so what a subscriber sees in order is what
+arrived on **its** queue and was consumed sequentially — a prefetch above one
+with concurrent handlers gives that up, and so does a second queue. Using one
+routing key for every change to a subject is what keeps its create and its
+tombstone on the same queue in the first place; routing them separately would
+put them on two, with no order between them at all.
 
 **Sweep tenant by tenant.** The relay is the one caller with no request,
 delivery or activity behind it, so its tenants come from configuration rather

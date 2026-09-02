@@ -6,6 +6,7 @@ description: "Compose the cache starter, read through it with getOrSet, compose 
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
 import { Cache, cache, memoryCache } from "@btravstack/cache";
+import { createFakeClock } from "@btravstack/testing";
 import { redisCache } from "@btravstack/cache/redis";
 import { Logger } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
@@ -100,6 +101,17 @@ const keyForCustomer = (tenantId: string, id: string) =>
 The same discipline `find.execute(tenantId, id)` states in its type, spelled
 where the type cannot.
 
+**Make the join unambiguous.** With a bare separator, `("a:b", "c")` and
+`("a", "b:c")` produce the same key — one tenant reading another's entry, which
+is the exact failure the tenant-in-the-key is there to prevent. Either use a
+separator the ids cannot contain (a UUID tenant and a UUID id cannot contain
+`:`, which is why the example above is safe), or encode the parts:
+
+```ts
+const keyForEncoded = (tenantId: string, id: string) =>
+  `customers:${encodeURIComponent(tenantId)}:${encodeURIComponent(id)}`;
+```
+
 ## What `ttlMs` means, and what it does not
 
 `ttlMs` is optional and **omitting it means no expiry**: the entry stays until
@@ -148,9 +160,18 @@ export const TestCachedCustomers = Module("TestCachedCustomers")({
 });
 ```
 
-The memory adapter measures its TTL against the kernel's `Clock`, so
-`memoryCache({ clock: createFakeClock() })` lets a test advance past an expiry
-without waiting for one.
+The memory adapter measures its TTL against the kernel's `Clock`, so a fake one
+lets a test advance past an expiry without waiting for it:
+
+```ts
+const clock = createFakeClock();
+
+export const ExpiringCache = Module("ExpiringCache")({
+  imports: [cache({ adapter: memoryCache({ clock }) })],
+  exports: [Cache],
+});
+// … then `await clock.advance(60_000)` in the test, and the next `get` misses.
+```
 
 ## Where to go next
 

@@ -87,6 +87,19 @@ body is the one part of a message that is reliably somebody's personal data.
 There is no retry inside the port, deliberately: what to do about a failed send
 belongs to the caller's transport, whose retry budget already exists.
 
+**Not every failure deserves a retry, and the port cannot tell you which.**
+`MailNotSent.reason` carries the transport's own words, and SMTP separates them
+for you: a **4xx** is transient (the relay was busy, the mailbox was locked) and
+a **5xx** is permanent (no such recipient, the message was rejected). Retrying a
+permanent one costs a delivery budget and, at volume, a sender reputation:
+
+```ts
+const permanent = (reason: string) => /\b5\d\d\b/.test(reason);
+```
+
+Fold that in where you map, so a bad address is dead-lettered on the first
+attempt and a busy relay is not.
+
 The mapping above is the AMQP answer — a `RetryableError` leaves the delivery
 un-acked, so the broker hands it to the next worker on its own budget. Under
 Temporal it would be an ordinary activity failure and the platform's retry
