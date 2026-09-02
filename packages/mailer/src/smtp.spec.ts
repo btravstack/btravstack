@@ -139,14 +139,11 @@ describe("smtpMailer", () => {
     } as unknown as Parameters<typeof verifyWithin>[0];
 
     // WHEN the health check's own deadline passes
-    const verified = verifyWithin(hanging, 5).then(
-      () => "answered",
-      (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
-    );
-
     // THEN it reports rather than waiting: `runHealthChecks` has no deadline
     // of its own, so a probe that hangs is one an orchestrator times out
     // instead of reading
-    await expect(verified).resolves.toBe("the relay did not answer within 5 ms");
+    await expect(verifyWithin(hanging, 5)).toBeErrTagged("HealthCheckFailed", {
+      reason: "the relay did not answer within 5 ms",
+    });
   });
 });

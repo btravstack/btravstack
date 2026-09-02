@@ -152,8 +152,13 @@ correlation id, not a span context, and half-carrying one would suggest a
 parent-child edge nothing here maintains. What comes back is `undefined` for
 anything the specification calls invalid — a malformed header, an **all-zero
 trace id**, an **all-zero parent id** (well-formed, and naming no span), and the
-reserved version **`ff`** — so a runtime falls back to its own id instead of
-adopting one that means nothing.
+reserved version **`ff`** — so a runtime falls back to whatever it uses when no
+trace arrives, rather than adopting one that means nothing.
+`@btravstack/http-server` falls back to `x-request-id` and then to the id it
+minted; `@btravstack/amqp-worker` falls back to the delivery's `messageId`, then
+`correlationId`, then its own. A **higher version** may append fields the
+parser has never seen, and those are read rather than refused — version `00`
+stays exact.
 
 Pair it with the rule your own headers need: adopt only a **non-blank** inbound
 id, because `UnitMeta.traceId` defaults to `meta.id` when it is nullish and

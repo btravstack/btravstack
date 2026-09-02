@@ -112,6 +112,22 @@ and turns the outcome into a process exit code — one call, and the whole of a
 `TickerApp` that does not export `Greeter` is a type error at the call, and so
 is a module that exports no runtime port at all.
 
+## For a runtime author
+
+Two helpers sit beside the `Runtime` contract, because every transport needs
+them and none should own a private copy:
+
+- **`releasedBy(signal, running)`** — `running`, but no later than the kernel's
+  drain deadline, for a `Serving.drain` whose work settles on somebody else's
+  clock.
+- **`traceIdOfTraceparent(header)`** — the trace-id field of a W3C
+  `traceparent`, and nothing else of it: the parent's span id is dropped, since
+  `UnitMeta.traceId` is a correlation id rather than a span context. Answers
+  `undefined` for anything the specification calls invalid — a malformed
+  header, an all-zero trace id, an all-zero parent id, the reserved version
+  `ff` — so your runtime falls back to its own id instead of adopting one that
+  means nothing. A higher version's extra fields are read rather than refused.
+
 ## What you get
 
 - **A drain that survives Kubernetes.** On SIGTERM: readiness flips false, the

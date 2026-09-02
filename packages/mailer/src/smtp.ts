@@ -3,7 +3,7 @@ import { HealthCheckFailed, HealthChecks } from "@btravstack/core";
 import type { Scope } from "@btravstack/di";
 import { Module, Port, Provider } from "@btravstack/di";
 import { createTransport, type Transporter } from "nodemailer";
-import { fromPromise, fromSafePromise } from "unthrown";
+import { fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
  * How long the health check waits for the relay before calling it unhealthy.
@@ -84,25 +84,40 @@ export const smtpMailerBackend = (transport: Transporter): MailerService => ({
 });
 
 /**
- * `transport.verify()`, but never longer than `ms`.
+ * `transport.verify()`, but never longer than `ms`, as a `HealthCheckFailed`
+ * either way.
  *
  * The timer is `unref`ed and cleared on the winning branch: a probe must not
  * keep the event loop alive, and a `/healthz` served during a drain must not
- * hold the process open past it.
+ * hold the process open past it. **The losing `verify()` is adopted and
+ * silenced** — it cannot be cancelled (nodemailer offers no handle), so its
+ * later rejection would surface as an unhandled one, in a process that has
+ * already reported the timeout.
  *
  * @internal Exported for `smtp.spec.ts` alone — the timeout arm needs a relay
  * that never answers, which no real one reliably is, and a five-second wait in
  * the suite to reach it otherwise.
  */
-export const verifyWithin = (transport: Transporter, ms: number): Promise<void> => {
+export const verifyWithin = (
+  transport: Transporter,
+  ms: number,
+): AsyncResult<void, HealthCheckFailed> => {
   let timer: NodeJS.Timeout | undefined;
+  const verifying = transport.verify().then((): void => undefined);
+  verifying.catch(() => undefined);
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => reject(new Error(`the relay did not answer within ${ms} ms`)), ms);
     timer.unref();
   });
-  return Promise.race([transport.verify().then((): void => undefined), timeout]).finally(() => {
-    clearTimeout(timer);
-  });
+  return fromPromise(
+    Promise.race([verifying, timeout]).finally(() => {
+      clearTimeout(timer);
+    }),
+    (cause: unknown) =>
+      new HealthCheckFailed({
+        reason: cause instanceof Error ? cause.message : "the relay did not answer",
+      }),
+  );
 };
 
 /**
@@ -130,14 +145,7 @@ export const smtpMailer = (): Module<MailerBackend | HealthChecks, ConfigInvalid
         inject: { transport: SmtpTransport },
         sync: ({ transport }) => ({
           name: "mailer",
-          check: () =>
-            fromPromise(
-              verifyWithin(transport, HEALTH_TIMEOUT_MS),
-              (cause: unknown) =>
-                new HealthCheckFailed({
-                  reason: cause instanceof Error ? cause.message : "the relay did not answer",
-                }),
-            ).map((): void => undefined),
+          check: () => verifyWithin(transport, HEALTH_TIMEOUT_MS),
         }),
       }),
     ],

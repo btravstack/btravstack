@@ -106,6 +106,28 @@ describe("traceIdOfTraceparent", () => {
     });
   });
 
+  it("reads a higher version that appended fields it does not understand", () => {
+    // GIVEN a version-01 header carrying a field this parser never heard of,
+    // and a version-00 one carrying the same
+    const versions = {
+      higher: traceIdOfTraceparent(
+        "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-something",
+      ),
+      exact: traceIdOfTraceparent(
+        "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-something",
+      ),
+    };
+
+    // WHEN each is read — the specification says to parse what you understand
+    // and ignore the rest at a HIGHER version, while `00` is exactly 55
+    // characters and a trailing field makes it malformed
+    // THEN the newer header still correlates and the malformed one does not
+    expect(versions).toEqual({
+      higher: "4bf92f3577b34da6a3ce929d0e0e4736",
+      exact: undefined,
+    });
+  });
+
   it("tolerates the surrounding whitespace a header may arrive with", () => {
     // GIVEN a valid header padded the way a proxy may forward it
     const padded = "  00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\t";

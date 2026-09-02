@@ -137,16 +137,15 @@ export type RuntimeInfoOf<X> = RuntimeOf<X> extends Runtime<AnyPort, infer Info>
  */
 export const traceIdOfTraceparent = (header: string): string | undefined => {
   // `(?!ff)` refuses the reserved version at the point it is read, rather than
-  // leaving a second test to remember.
-  const match = /^(?!ff)[\da-f]{2}-([\da-f]{32})-([\da-f]{16})-[\da-f]{2}$/.exec(header.trim());
-  const traceId = match?.[1];
-  const parentId = match?.[2];
-  return traceId === undefined ||
-    parentId === undefined ||
-    /^0+$/.test(traceId) ||
-    /^0+$/.test(parentId)
-    ? undefined
-    : traceId;
+  // leaving a second test to remember. The trailing group is what a future
+  // version may append; `00` is the one version that must not carry it.
+  const match = /^(?!ff)([\da-f]{2})-([\da-f]{32})-([\da-f]{16})-[\da-f]{2}(-.*)?$/.exec(
+    header.trim(),
+  );
+  const [, version, traceId, parentId, extra] = match ?? [];
+  if (traceId === undefined || parentId === undefined) return undefined;
+  if (version === "00" && extra !== undefined) return undefined;
+  return /^0+$/.test(traceId) || /^0+$/.test(parentId) ? undefined : traceId;
 };
 
 /**
