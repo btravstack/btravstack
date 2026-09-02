@@ -19,8 +19,8 @@ missing. Measured on a one-element array:
 … is not assignable to type 'readonly ["UNCOVERED HANDLERS — the contract declares a consumer this array does not cover", "right"]'.
 ```
 
-`UNCOVERED CONTROLLERS`, `UNCOVERED ACTIVITIES`, `OVERLAPPING CONTROLLERS` and
-`UNSLICEABLE CONTRACT KEY` all take the shape.
+`UNCOVERED CONTROLLERS`, `UNCOVERED HANDLERS`, `UNCOVERED ACTIVITIES`,
+`OVERLAPPING CONTROLLERS` and `UNSLICEABLE CONTRACT KEY` all take the shape.
 
 **`@btravstack/http-server` gains a second fix.** A typo'd mint —
 `OrpcController(contract, "billing")` on a contract with no `billing` — is a
