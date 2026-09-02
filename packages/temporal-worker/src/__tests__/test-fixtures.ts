@@ -1,7 +1,15 @@
 import { fileURLToPath } from "node:url";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
-import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
+import {
+  Observers,
+  currentUnit,
+  type Attributes,
+  type Operation,
+  type RunningApp,
+  type Settle,
+  type UnitRecord,
+} from "@btravstack/core";
 import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { createNamespace } from "@btravstack/internal-test-infra/namespace";
 import { bootFixture, type Boot } from "@btravstack/testing";
@@ -63,6 +71,20 @@ const EchoActivities = TemporalActivities(echoContract);
 const echoing = EchoActivities({
   inject: {},
   value: { runEcho: { echo: (value) => OkAsync(value) } },
+});
+
+/**
+ * An activity whose failure nobody modelled — a defect, which Temporal turns
+ * into an application failure. The errors half of RED has to see it: a count
+ * that omitted defects would report a healthy rate while every attempt failed.
+ */
+const failingEcho = EchoActivities({
+  inject: {},
+  value: {
+    runEcho: {
+      echo: () => fromSafePromise(Promise.reject<string>(new Error("the activity is on fire"))),
+    },
+  },
 });
 
 /**
@@ -323,6 +345,13 @@ export type TemporalFixtures = {
     readonly taskQueue: string;
   }>;
   readonly serveBroken: (options?: BootOptions) => Promise<App>;
+  /** The starter served over an observer that records what it was handed. */
+  readonly serveObserved: (failing?: boolean) => Promise<{
+    readonly app: App;
+    readonly client: Client;
+    readonly taskQueue: string;
+    readonly taken: () => readonly Observation[];
+  }>;
   /** `@btravstack/testing`'s boot: every app it starts is stopped when the test ends. */
   readonly boot: Boot;
   readonly contractSeam: ReturnType<typeof contractSeamOf>;
@@ -343,6 +372,53 @@ export type TemporalFixtures = {
  * started against this file's own namespace — so every test opens and closes a
  * connection of its own.
  */
+/** One observed operation, as an observer saw it settle. */
+export type Observation = {
+  readonly component: string;
+  readonly name: string;
+  readonly attributes: Attributes;
+  readonly outcome: "ok" | "error";
+};
+
+/** An observer that keeps what it was handed, so a spec asserts on the DIMENSIONS. */
+const recordingObserver = (): {
+  member: (operation: Operation) => Settle;
+  taken: () => readonly Observation[];
+} => {
+  const taken: Observation[] = [];
+  return {
+    member:
+      ({ component, name, attributes }) =>
+      ({ outcome, attributes: settled }) => {
+        taken.push({ component, name, attributes: { ...attributes, ...settled }, outcome });
+      },
+    taken: () => taken,
+  };
+};
+
+/** The starter over an observer that records — all a graph does to be observed. */
+const composeObserved = (
+  server: Server,
+  boot: Boot,
+  member: (operation: Operation) => Settle,
+  failing: boolean,
+) => {
+  const taskQueue = nextTaskQueue();
+  const worker = TemporalModule("Observed")({
+    contract: { ...echoContract, taskQueue },
+    activities: failing ? failingEcho : echoing,
+    workflows: echoWorkflows,
+    provides: [
+      Provider(Greeting)({ inject: {}, value: { text: "hello" } }),
+      Provider.member(Observers)({ inject: {}, value: member }),
+    ],
+  });
+  const app: App = boot(worker, {
+    env: { TEMPORAL_ADDRESS: server.address, TEMPORAL_NAMESPACE: server.namespace },
+  });
+  return { app, taskQueue };
+};
+
 const compose = (server: Server, boot: Boot, options: BootOptions) => {
   const taskQueue = nextTaskQueue();
   const worker = TemporalModule("Worker")({
@@ -390,6 +466,14 @@ export const it = test.extend<TemporalFixtures>({
       const { app, taskQueue } = compose(server, boot, options);
       await app.runtimeInfo();
       return { app, client, taskQueue };
+    });
+  },
+  serveObserved: async ({ server, client, boot }, use) => {
+    await use(async (failing = false) => {
+      const observer = recordingObserver();
+      const { app, taskQueue } = composeObserved(server, boot, observer.member, failing);
+      await app.runtimeInfo();
+      return { app, client, taskQueue, taken: observer.taken };
     });
   },
   serveBroken: async ({ server, boot }, use) => {

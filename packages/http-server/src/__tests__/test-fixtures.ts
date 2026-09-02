@@ -27,7 +27,14 @@ import { connect, type Socket } from "node:net";
 
 import type { ConfigInvalid, Environment } from "@btravstack/config";
 import { authenticated } from "@btravstack/contract";
-import { currentUnit, type RunningApp } from "@btravstack/core";
+import {
+  Observers,
+  currentUnit,
+  type Attributes,
+  type Operation,
+  type RunningApp,
+  type Settle,
+} from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { createORPCClient } from "@orpc/client";
@@ -77,6 +84,51 @@ const appOf = (handler: Handler, port = 0, securityHeaders?: HttpOptions["securi
       }),
     ],
     provides: [answering(handler)],
+    exports: [HttpRuntime, HttpHandler],
+  });
+
+/** One observed operation, as an observer saw it settle. */
+export type Observation = {
+  readonly component: string;
+  readonly name: string;
+  readonly attributes: Attributes;
+  readonly outcome: "ok" | "error";
+};
+
+/**
+ * An observer that keeps what it was handed, so a spec asserts on the
+ * DIMENSIONS rather than on a vendor's exporter — and on the fact that the
+ * finisher ran, which is what tells a recorded operation from a started one.
+ */
+const recordingObserver = (): {
+  member: (operation: Operation) => Settle;
+  taken: () => readonly Observation[];
+} => {
+  const taken: Observation[] = [];
+  return {
+    member:
+      ({ component, name, attributes }) =>
+      ({ outcome, attributes: settled }) => {
+        taken.push({ component, name, attributes: { ...attributes, ...settled }, outcome });
+      },
+    taken: () => taken,
+  };
+};
+
+/**
+ * The transport over an observer that records — the composition a deployment
+ * gets by composing any observability at all, since the runtime asks for no
+ * ports to be observable.
+ */
+const observedAppOf = (handler: Handler, member: (operation: Operation) => Settle) =>
+  Module("ObservedApp")({
+    imports: [httpServer({ port: 0, hostname: "127.0.0.1" })],
+    // Mounted at `/rpc`, not `/`: a path OUTSIDE it is what reaches the
+    // runtime's own 404, which is the half of RED an answerer never sees.
+    provides: [
+      answering(handler, "/rpc"),
+      Provider.member(Observers)({ inject: {}, value: member }),
+    ],
     exports: [HttpRuntime, HttpHandler],
   });
 
@@ -601,7 +653,7 @@ const configuredAppOf = (options: { readonly port?: number; readonly hostname?: 
   let bound: ServiceOf<HttpConfig> | undefined;
   return {
     module: Module("ConfiguredApp")({
-      imports: [httpServer(options)],
+      imports: [httpServer({ ...options })],
       provides: [
         answering(noop),
         Provider(BoundConfig)({
@@ -1097,10 +1149,25 @@ export type HttpFixtures = {
       readonly body: string;
     }>;
   }>;
+  /** The transport served over an observer that records what it was handed. */
+  readonly observed: (handler: Handler) => Promise<{
+    readonly origin: string;
+    readonly taken: () => readonly Observation[];
+  }>;
 };
 
 export const it = test.extend<HttpFixtures>({
   boot: bootFixture(),
+
+  observed: async ({ boot }, use) => {
+    await use(async (handler) => {
+      const observer = recordingObserver();
+      const app = boot(observedAppOf(handler, observer.member));
+      const info = (await app.runtimeInfo()).get();
+      assert.ok(info !== undefined, "the runtime published no Serving.info");
+      return { origin: `http://127.0.0.1:${info.port}`, taken: observer.taken };
+    });
+  },
 
   serve: async ({ boot }, use) => {
     await use(async (handler = noop, unit, securityHeaders) => {

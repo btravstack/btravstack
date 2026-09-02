@@ -126,6 +126,28 @@ package's business: it brings the `Logger` the handlers and the relay write
 to, bound from `LOG_LEVEL`, JSON per line on stdout, every line carrying the
 delivery's own unit.
 
+### RED metrics, reported always and collected when you ask
+
+The runtime REPORTS rate, errors and duration at the unit seam — the one place a
+framework that owns the unit lifecycle gets them for free — and an observer is
+what turns a report into a measurement. Reporting always happens; **collection
+happens when `otel()` is composed**, and not before:
+
+| Instrument                   | Kind           | Dimensions           |
+| ---------------------------- | -------------- | -------------------- |
+| `btravstack.amqp.deliveries` | counter        | `handler`, `outcome` |
+| `btravstack.amqp.duration`   | histogram (ms) | the same two         |
+
+`instrumented` is gone. Every unit is handed to `Observers`, and this module
+contributes a no-op member of its own — so a graph composing no observability
+owes nothing, and an operation costs one inert call per module that reads the
+port. Composing [`observability()`](/reference/observability) writes the
+failures as lines; composing `otel()` beside it opens the spans and mints
+`btravstack.<component>.operations` and `.duration`.
+
+**The dimensions are chosen for cardinality, and what is absent matters more
+than what is present.** `handler` is the `consumers`/`rpcs` key, so the contract bounds it; the payload is nowhere near the attributes. `outcome` counts a **defect** as an error, not as a silence — a count that skipped defects would report a healthy rate while every delivery went to the dead-letter queue.
+
 ## `AmqpHandlers(contract)`
 
 The first call fixes the contract type (the value is otherwise unused) and
@@ -272,18 +294,15 @@ const orderHandlers = AmqpHandlers(orderContract)([
 ```ts
 const amqp: <TContract extends AnyAmqpContract>(
   options: AmqpOptions<TContract>,
-) => Module<
-  AmqpRuntime | AmqpConfig,
-  ConfigInvalid,
-  Env | HandlersInstanceOf<TContract>
->;
+) => Module<AmqpRuntime | AmqpConfig, ConfigInvalid, Env | HandlersInstanceOf<TContract>>;
 ```
 
 The primitive `AmqpModule` delegates to. `AmqpOptions<TContract>` has the
 sugar's fields minus `handlers` / `imports` / `provides` / `exports`: the
 handlers are not an option but the module's need. It provides and exports
 `AmqpRuntime` and `AmqpConfig`, and **needs** `Env` (the kernel discharges
-it) and the handlers port typed for `contract` (`HandlersInstanceOf<TContract>`)
+it) and the handlers port typed for
+`contract` (`HandlersInstanceOf<TContract>`)
 — the runtime provider depends on it through di, so a root that imports the
 starter without providing the handlers, or provides one built for another
 contract, is refused at `start` (di's gate). The declared type is the same with `url` pinned or not.

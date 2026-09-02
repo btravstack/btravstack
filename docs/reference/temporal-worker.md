@@ -119,6 +119,28 @@ export const OrderTemporalWorker = TemporalModule("OrderTemporalWorker")({
 });
 ```
 
+### RED metrics, reported always and collected when you ask
+
+The runtime REPORTS rate, errors and duration at the unit seam — the one place a
+framework that owns the unit lifecycle gets them for free — and an observer is
+what turns a report into a measurement. Reporting always happens; **collection
+happens when `otel()` is composed**, and not before:
+
+| Instrument                              | Kind           | Dimensions            |
+| --------------------------------------- | -------------- | --------------------- |
+| `btravstack.temporal.activity.attempts` | counter        | `activity`, `outcome` |
+| `btravstack.temporal.activity.duration` | histogram (ms) | the same two          |
+
+`instrumented` is gone. Every unit is handed to `Observers`, and this module
+contributes a no-op member of its own — so a graph composing no observability
+owes nothing, and an operation costs one inert call per module that reads the
+port. Composing [`observability()`](/reference/observability) writes the
+failures as lines; composing `otel()` beside it opens the spans and mints
+`btravstack.<component>.operations` and `.duration`.
+
+**The dimensions are chosen for cardinality, and what is absent matters more
+than what is present.** Per **attempt**, not per activity: a retried activity records once per attempt, which is what makes the rate readable when a downstream is failing — the workflow's own count would hide exactly the retries worth alerting on. The workflow id is not a dimension and must not be: it is unbounded, and it is already the unit's `traceId`, which is where an unbounded value belongs.
+
 ## `TemporalActivities(contract)`
 
 The first call fixes `C` (the contract value is otherwise unused; it exists so
@@ -358,7 +380,8 @@ same fields as the sugar minus `activities` / `imports` / `provides` /
 `exports`: the activities are not an option but the module's need. It
 provides and exports all three ports, and **needs** `Env` (the kernel
 discharges it), `Scope` (the connection is a resource; `start` discharges it
-too) and the activities port typed for `contract` (`ActivitiesInstanceOf<C>`)
+too) and the activities port typed for
+`contract` (`ActivitiesInstanceOf<C>`)
 — the runtime provider depends on it through di, so a root that does not
 provide it, or provides one built for another contract, is refused at
 `start`.

@@ -70,7 +70,7 @@ export const notifier = Provider(Notifier)({
 });
 ```
 
-The composition — the adapter, and whether sends are instrumented, decided
+The composition — the adapter is the only decision, made
 here and nowhere else:
 
 ```ts
@@ -81,7 +81,8 @@ export const NotifierApp = Module("NotifierApp")({
   imports: [
     // Instrumented by default: a span, a counter and a log line per send,
     // which is why `observability()` and `otel()` are below. Pass
-    // `instrumented: false` for the same graph without them.
+    // Every call is reported through `Observers`. Drop the two modules
+    // below and this composition is unchanged — it just reports to nobody.
     mailer({ adapter: smtpMailer() }),
     observability(),
     otel(),
@@ -106,11 +107,10 @@ expect(recorder.only()).toEqual(
 
 ## Options
 
-| Option         | Where                               | What it is                                                                              |
-| -------------- | ----------------------------------- | --------------------------------------------------------------------------------------- |
-| `adapter`      | `mailer({ adapter })`               | the adapter module providing `MailerBackend` — required                                 |
-| `instrumented` | `mailer({ instrumented })`          | span, count and log every send (default `true`; `false` opts out and declares no ports) |
-| `SMTP_URL`     | environment, read by `smtpMailer()` | the transport URL — required, validated at graph build                                  |
+| Option     | Where                               | What it is                                              |
+| ---------- | ----------------------------------- | ------------------------------------------------------- |
+| `adapter`  | `mailer({ adapter })`               | the adapter module providing `MailerBackend` — required |
+| `SMTP_URL` | environment, read by `smtpMailer()` | the transport URL — required, validated at graph build  |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/mailer),
@@ -120,7 +120,7 @@ which is this list's one detailed home.
 
 **It decides** that a send is _accepted_, not delivered; that a failure is a
 modeled `MailNotSent` carrying the envelope and never the body; and that
-sends are instrumented unless you say otherwise.
+sends are reported unless you say otherwise.
 
 **It does not decide** what happens after a failure — retrying belongs to your
 transport, and the example answers a `RetryableError` so the broker's budget

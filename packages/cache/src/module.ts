@@ -1,57 +1,43 @@
-import { HealthCheckFailed, HealthChecks, Logger, Meter, Tracer } from "@btravstack/core";
+import { HealthCheckFailed, HealthChecks, Observers, noObserver } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { P } from "unthrown";
 
 import { Cache, CacheBackend } from "./cache.js";
 import { instrument } from "./instrument.js";
 
-export type CacheOptions<E, N, Instrumented extends boolean> = {
+export type CacheOptions<E, N> = {
   /**
    * The adapter module: `memoryCache()` from this entry point,
    * `redisCache()` from `@btravstack/cache/redis`, or one an application
    * wrote itself over `CacheBackend`.
    */
   readonly adapter: Module<CacheBackend, E, N>;
-  /**
-   * Span, count and log every call. **Default `true`**, `false` opts out — the
-   * way `StartOptions`' `signals` and `probes` do.
-   *
-   * On by default because telemetry that is missing is discovered during an
-   * incident. The cost is stated rather than hidden: instrumenting puts
-   * `Logger`, `Meter` and `Tracer` in this module's `Needs`, so a root without
-   * `observability()` and `otel()` gets a compile error naming all three.
-   */
-  readonly instrumented?: Instrumented;
 };
 
 /**
- * The cache starter: an adapter, and `Cache` provided from it — instrumented
- * or not, decided here at the composition root.
+ * The cache starter: an adapter, and `Cache` provided from it.
  *
  * ```ts
- * cache({ adapter: redisCache() });                      // spans, counts, error lines
- * cache({ adapter: redisCache(), instrumented: false }); // just a cache
+ * cache({ adapter: redisCache() });
  * ```
  *
  * **Two ports, because di allows one provider per port per graph**: the port an
  * application depends on must not be the port an adapter provides, or the
- * instrumented form could only be a layer over the plain one. `CacheBackend` is
+ * observed form could only be a layer over the plain one. `CacheBackend` is
  * what an adapter targets, `Cache` what an application reads, and this function
  * is the seam — which is also what a spec overrides to swap an adapter.
  *
- * The instrumented form emits, per call: a span carrying the key, one
- * `btravstack.cache.operations` counter whose `outcome` tells a hit from a miss,
- * and an `error` line when the backend could not answer. **Keys ride spans and
- * log lines; values never do.**
+ * **There is no `instrumented` flag, and that is the point.** Every call is
+ * handed to whatever contributed to `Observers`; a graph that composed no
+ * observability has only this module's own no-op member, so it costs a call per
+ * operation and nothing else. What the observers do with it — a span carrying
+ * the key, a count whose `result` tells a hit from a miss, an error line —
+ * belongs to `@btravstack/observability` rather than here. **Keys ride the
+ * attributes; values never do.**
  */
-export const cache = <E, N, Instrumented extends boolean = true>({
+export const cache = <E, N>({
   adapter,
-  instrumented,
-}: CacheOptions<E, N, Instrumented>): Module<
-  Cache | HealthChecks,
-  E,
-  Instrumented extends true ? N | Logger | Meter | Tracer : N
-> => {
+}: CacheOptions<E, N>): Module<Cache | HealthChecks, E, N> => {
   const healthCheck = Provider.member(HealthChecks)({
     inject: { backend: CacheBackend },
     sync: ({ backend }) => ({
@@ -75,30 +61,18 @@ export const cache = <E, N, Instrumented extends boolean = true>({
 
   // The two arms build different graphs from one signature, so the cast is how
   // a value-level branch reports the type-level one above.
-  return (instrumented !== false
-    ? Module("InstrumentedCache")({
-        needs: [Logger, Meter, Tracer],
-        imports: [adapter],
-        provides: [
-          Provider(Cache)({
-            inject: { backend: CacheBackend, logger: Logger, tracer: Tracer, meter: Meter },
-            sync: ({ backend, logger, tracer, meter }) =>
-              instrument(backend, logger, tracer, meter),
-          }),
-          healthCheck,
-        ] as const,
-        exports: [Cache, HealthChecks],
-      })
-    : Module("Cache")({
-        imports: [adapter],
-        provides: [
-          Provider(Cache)({ inject: { backend: CacheBackend }, sync: ({ backend }) => backend }),
-          healthCheck,
-        ],
-        exports: [Cache, HealthChecks],
-      })) as unknown as Module<
-    Cache | HealthChecks,
-    E,
-    Instrumented extends true ? N | Logger | Meter | Tracer : N
-  >;
+  return Module("Cache")({
+    imports: [adapter],
+    provides: [
+      // The no-op member, so the set this module reads is never the empty
+      // dependency di refuses: a graph composing no observability still starts.
+      Provider.member(Observers)({ inject: {}, value: noObserver }),
+      Provider(Cache)({
+        inject: { backend: CacheBackend, observers: Observers },
+        sync: ({ backend, observers }) => instrument(backend, observers),
+      }),
+      healthCheck,
+    ],
+    exports: [Cache, HealthChecks],
+  } as never) as unknown as Module<Cache | HealthChecks, E, N>;
 };

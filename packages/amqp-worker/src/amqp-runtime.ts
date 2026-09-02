@@ -5,12 +5,16 @@ import {
 } from "@amqp-contract/worker";
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
+  Observers,
   RuntimePort,
   RuntimeStartFailed,
+  noObserver,
   releasedBy,
+  type Operation,
   type Runtime,
   type RuntimeHost,
   type Serving,
+  type Settle,
 } from "@btravstack/core";
 import {
   Module,
@@ -146,17 +150,28 @@ export const amqp = <TContract extends AnyAmqpContract>(
     needs: [Env, AmqpHandlersPort as HandlersPortOf<TContract>],
     provides: [
       config,
+      // The no-op member, so the set this module reads is never the empty
+      // dependency di refuses: a graph composing no observability still starts.
+      Provider.member(Observers)({ inject: {}, value: noObserver }),
       Provider(AmqpRuntime)({
-        inject: { config: AmqpConfig, handlers: AmqpHandlersPort as HandlersPortOf<TContract> },
-        sync: ({ config: bound, handlers }): Runtime<never, AmqpInfo> => ({
+        inject: {
+          config: AmqpConfig,
+          handlers: AmqpHandlersPort as HandlersPortOf<TContract>,
+          observers: Observers,
+        },
+        sync: ({ config: bound, handlers, observers }): Runtime<never, AmqpInfo> => ({
           name: "amqp",
           resolves: [],
-          start: (host) => createWorker(host, bound, options, handlers),
+          start: (host) => createWorker(host, bound, options, handlers, observers),
         }),
       }),
     ],
     exports: [AmqpRuntime, AmqpConfig],
-  });
+  } as never) as unknown as Module<
+    AmqpRuntime | AmqpConfig,
+    ConfigInvalid,
+    Env | HandlersInstanceOf<TContract>
+  >;
 };
 
 /** One piece of the handlers record — what `AmqpHandler(contract, key)(…)` returns, as the composing form consumes it. */
@@ -252,11 +267,12 @@ const createWorker = <TContract extends AnyAmqpContract>(
   config: ServiceOf<AmqpConfig>,
   options: AmqpOptions<TContract>,
   handlers: WorkerInferHandlers<TContract>,
+  observers: readonly ((operation: Operation) => Settle)[],
 ): AsyncResult<Serving<AmqpInfo>, RuntimeStartFailed> =>
   TypedAmqpWorker.create({
     contract: options.contract,
     handlers,
-    middleware: messageUnits(host),
+    middleware: messageUnits(host, observers),
     urls: [config.url],
     ...(options.connectionOptions === undefined
       ? {}

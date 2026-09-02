@@ -1,11 +1,15 @@
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
+  Observers,
   RuntimePort,
   RuntimeStartFailed,
+  noObserver,
   releasedBy,
+  type Operation,
   type Runtime,
   type RuntimeHost,
   type Serving,
+  type Settle,
 } from "@btravstack/core";
 import {
   Module,
@@ -218,17 +222,34 @@ export const temporal = <C extends ContractDefinition>(
             .close()
             .catch((cause: unknown) => (heldByWorker(cause) ? undefined : Promise.reject(cause))),
       }),
+      // The no-op member, so the set this module reads is never the empty
+      // dependency di refuses: a graph composing no observability still starts.
+      Provider.member(Observers)({ inject: {}, value: noObserver }),
       Provider(TemporalRuntime)({
-        inject: { connection: TemporalConnection, config: TemporalConfig, activities },
-        sync: ({ connection, config: bound, activities: impls }): Runtime<never, TemporalInfo> => ({
+        inject: {
+          connection: TemporalConnection,
+          config: TemporalConfig,
+          activities,
+          observers: Observers,
+        },
+        sync: ({
+          connection,
+          config: bound,
+          activities: impls,
+          observers,
+        }): Runtime<never, TemporalInfo> => ({
           name: "temporal",
           resolves: [],
-          start: (host) => createWorker(host, connection, bound, impls, options),
+          start: (host) => createWorker(host, connection, bound, impls, options, observers),
         }),
       }),
     ],
     exports: [TemporalRuntime, TemporalConfig, TemporalConnection],
-  });
+  } as never) as unknown as Module<
+    Provided,
+    ConfigInvalid | TemporalUnreachable,
+    Env | Scope | ActivitiesInstanceOf<C>
+  >;
 };
 
 const startFailed = (cause: unknown): RuntimeStartFailed =>
@@ -243,6 +264,7 @@ const createWorker = <C extends ContractDefinition>(
   config: ServiceOf<TemporalConfig>,
   activities: ActivitiesOf<C>,
   options: TemporalOptions<C>,
+  observers: readonly ((operation: Operation) => Settle)[],
 ): AsyncResult<Serving<TemporalInfo>, RuntimeStartFailed> => {
   const { taskQueue } = options.contract;
   const { namespace } = config;
@@ -254,7 +276,7 @@ const createWorker = <C extends ContractDefinition>(
     () =>
       declareActivitiesHandler({
         contract: options.contract,
-        middleware: activityUnits(host),
+        middleware: activityUnits(host, observers),
         activities,
       }),
     startFailed,

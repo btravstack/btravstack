@@ -1,6 +1,6 @@
 ---
 title: "@btravstack/storage"
-description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, ObjectNotFound, StorageUnavailable and PresignNotSupported, the memory and S3 adapters, storage() and its instrumented flag, and the STORAGE_S3_* variables.
+description: The complete surface of @btravstack/storage — the Storage and StorageBackend ports, StoredObject, ObjectNotFound, StorageUnavailable and PresignNotSupported, the memory and S3 adapters, storage(), the Observers seam it reports through, and the STORAGE_S3_* variables.
 ---
 
 <!-- doctest: group=order-temporal-worker -->
@@ -28,7 +28,7 @@ declare const RealApp: Module<Storage, never, never>;
 > **Reference.** A complete, structured description of `@btravstack/storage`:
 > the `Storage` port an application depends on, the three modeled failures and
 > why they are three, the in-memory and S3-compatible adapters, and the one
-> composition function that decides whether operations are instrumented.
+> composition function that binds them together.
 
 ## The port
 
@@ -147,7 +147,7 @@ and that is a knob to add when somebody needs it.
 `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` are **optional**
 peers, reached only through the `@btravstack/storage/s3` subpath.
 
-## `storage({ adapter, instrumented? })`
+## `storage({ adapter })`
 
 ```ts
 export const DocumentsApp = Module("ReferenceDocumentsApp")({
@@ -175,14 +175,17 @@ class of answer, so the counter says `not_found` for both — but the line says
 where it was put, and an operator reading "the object was not there" would go
 hunting for nothing.
 
-**Instrumented by default**, `instrumented: false` opts out — the same shape,
-and the same reasoning, as [`@btravstack/cache`](/reference/cache).
-
-The uninstrumented graph, for a process that wants none of it:
+**Observation is a set port, not a flag.** Every call is handed to whatever
+contributed to `Observers`, and this module contributes a no-op member of its
+own — so a graph composing no observability owes nothing, installs nothing and
+an operation costs one inert call per module that reads the port. Composing
+[`observability()`](/reference/observability) writes the failures as lines;
+composing `otel()` beside it opens the spans and mints the instruments. Neither
+changes a line of this composition.
 
 ```ts
 export const Plain = Module("ReferencePlainStorage")({
-  imports: [storage({ adapter: memoryStorage(), instrumented: false })],
+  imports: [storage({ adapter: memoryStorage() })],
   exports: [Storage],
 });
 ```

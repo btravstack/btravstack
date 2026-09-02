@@ -64,7 +64,7 @@ export const invoices = InvoiceProvider(Invoices)({
       storage
         .put(keyFor(tenantId, id), pdf, { contentType: "application/pdf" })
         // A document that failed to store is YOUR decision to make; here it
-        // is swallowed because the instrumented store already logged and
+        // is swallowed because an observer already recorded it and
         // counted it one layer down.
         .recoverErrCases((matcher) =>
           matcher.with(P.tag("StorageUnavailable"), () => undefined),
@@ -83,7 +83,7 @@ export const invoices = InvoiceProvider(Invoices)({
 });
 ```
 
-The composition — the adapter, and whether operations are instrumented,
+The composition — the adapter is the only decision,
 decided here and nowhere else:
 
 ```ts
@@ -93,7 +93,8 @@ import { s3Storage } from "@btravstack/storage/s3";
 export const InvoicesApp = Module("InvoicesApp")({
   imports: [
     // Instrumented by default, which is why `observability()` and `otel()`
-    // are below. Pass `instrumented: false` for the same graph without them.
+    // Every call is reported through `Observers`. Drop the two modules
+    // below and this composition is unchanged — it just reports to nobody.
     storage({ adapter: s3Storage() }),
     observability(),
     otel(),
@@ -105,14 +106,13 @@ export const InvoicesApp = Module("InvoicesApp")({
 
 ## Options
 
-| Option                                                      | Where                              | What it is                                                             |
-| ----------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------- |
-| `adapter`                                                   | `storage({ adapter })`             | the adapter module providing `StorageBackend` — required               |
-| `instrumented`                                              | `storage({ instrumented })`        | span, count and log every operation (default `true`; `false` opts out) |
-| `STORAGE_S3_ENDPOINT`                                       | environment, read by `s3Storage()` | the store's endpoint — required                                        |
-| `STORAGE_S3_BUCKET`                                         | environment                        | the bucket — required                                                  |
-| `STORAGE_S3_ACCESS_KEY_ID` / `STORAGE_S3_SECRET_ACCESS_KEY` | environment                        | the credentials — required                                             |
-| `STORAGE_S3_REGION`                                         | environment                        | default `us-east-1`                                                    |
+| Option                                                      | Where                              | What it is                                               |
+| ----------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------- |
+| `adapter`                                                   | `storage({ adapter })`             | the adapter module providing `StorageBackend` — required |
+| `STORAGE_S3_ENDPOINT`                                       | environment, read by `s3Storage()` | the store's endpoint — required                          |
+| `STORAGE_S3_BUCKET`                                         | environment                        | the bucket — required                                    |
+| `STORAGE_S3_ACCESS_KEY_ID` / `STORAGE_S3_SECRET_ACCESS_KEY` | environment                        | the credentials — required                               |
+| `STORAGE_S3_REGION`                                         | environment                        | default `us-east-1`                                      |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/storage),

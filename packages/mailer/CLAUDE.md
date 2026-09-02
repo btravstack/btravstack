@@ -2,7 +2,7 @@
 
 The application-service port for sending mail: a `Mailer` an application
 depends on, adapters that provide the `MailerBackend` behind it, and one
-composition function whose `instrumented` flag decides whether every send is
+composition function that binds them together, with every send reported is
 spanned, counted and logged.
 
 The second of issue #62's three ports, on `@btravstack/cache`'s shape exactly
@@ -13,19 +13,19 @@ conditional return type; only what differs is written out here.
 
 ### `@btravstack/mailer` (root)
 
-| Export                               | What it is                                                                        |
-| ------------------------------------ | --------------------------------------------------------------------------------- |
-| `Mailer`                             | The port an application depends on: `send(mail)`.                                 |
-| `MailerBackend`                      | The port every adapter provides. Not for application code.                        |
-| `MailerService`                      | The service both ports carry.                                                     |
-| `Mail`                               | `{ from, to, subject, text, html? }`.                                             |
-| `MailNotSent`                        | The modeled failure: `{ to, subject, reason }` — never the body.                  |
-| `mailer({ adapter, instrumented? })` | The composition. Instrumented by default; `false` opts out and declares no ports. |
-| `MailerOptions`                      | `{ adapter: Module<MailerBackend, E, N>; instrumented?: boolean }`.               |
-| `mailRecorder()`                     | `{ record, sent, only }` — the adapter's half and the test's, on one object.      |
-| `recordingMailer(recorder)`          | The recording adapter as a module.                                                |
-| `recordingMailerProvider(recorder)`  | The same as a provider — what `overridden` takes.                                 |
-| `recordingMailerBackend(recorder)`   | The service itself, for a spec that wants no graph.                               |
+| Export                              | What it is                                                                                                        |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `Mailer`                            | The port an application depends on: `send(mail)`.                                                                 |
+| `MailerBackend`                     | The port every adapter provides. Not for application code.                                                        |
+| `MailerService`                     | The service both ports carry.                                                                                     |
+| `Mail`                              | `{ from, to, subject, text, html? }`.                                                                             |
+| `MailNotSent`                       | The modeled failure: `{ to, subject, reason }` — never the body.                                                  |
+| `mailer({ adapter })`               | The composition: the adapter's module, plus the port provided from its backend, every call handed to `Observers`. |
+| `MailerOptions`                     | `{ adapter: Module<MailerBackend, E, N> }`.                                                                       |
+| `mailRecorder()`                    | `{ record, sent, only }` — the adapter's half and the test's, on one object.                                      |
+| `recordingMailer(recorder)`         | The recording adapter as a module.                                                                                |
+| `recordingMailerProvider(recorder)` | The same as a provider — what `overridden` takes.                                                                 |
+| `recordingMailerBackend(recorder)`  | The service itself, for a spec that wants no graph.                                                               |
 
 ### `@btravstack/mailer/smtp`
 
@@ -39,7 +39,7 @@ conditional return type; only what differs is written out here.
 `nodemailer` is the package's one **optional** peer, reached only through this
 subpath.
 
-What the instrumented form emits, per send:
+What the observers make of a send:
 
 | Signal  | Name                                                               | Attributes                                                                                       |
 | ------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
@@ -101,3 +101,35 @@ meets and costs milliseconds.
 Coverage is 100% lines/functions, `test-fixtures.ts` excluded.
 `src/module.test-d.ts` pins the needs gate and all five flag arms, including
 that a runtime-computed boolean lands on the side that owes the three ports.
+
+## Observation is a set port, not a flag
+
+Every call this package makes observable is handed to whatever contributed to
+`Observers` — `@btravstack/core`'s set port — and this module contributes a
+**no-op member of its own**, so a graph composing no observability owes nothing,
+installs nothing — an operation costs one inert call per module that reads the port.
+
+`instrumented` is gone. It defaulted to `true` and therefore put `Logger`,
+`Meter` and `Tracer` in this module's `Needs`, so a root that wanted a cache and
+no OpenTelemetry SDK got a compile error naming three ports and had to find an
+option to turn something off it never asked for. A set port has the property the
+flag was reaching for and the flag could not have: **on when observability is
+composed, free when it is not, and one composition either way.**
+
+**A reader of the port must contribute a member**, the way `otel()` does for
+`Instrumentations`: a collector depending on a set port nothing provides is an
+unmet dependency, at plan time and in `Needs` alike. Several no-ops in one graph
+cost a call each.
+
+**Dimensions and details are separate, and that split is what lets one observer
+serve every component.** `attributes` are bounded and ride the instruments;
+`details` are unbounded — a cache key, a mail subject, a URL — and ride the span
+and the error line only. Without it every contributor would have to choose
+between a useful span and a safe metric.
+
+What the observers do with an operation belongs to `@btravstack/observability`:
+`observability()` writes a line when one FAILS (never on success — that is what
+the metric is for), and `otel()` opens the span and mints
+`btravstack.<component>.operations` and `btravstack.<component>.duration`. The
+names are derived from the operation's own `component`, so nothing had to become
+uniform to be shared.

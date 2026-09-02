@@ -568,6 +568,57 @@ competes with and is deliberately not closed yet: it is a new package with its
 own health check, instrumentation and container on the gate, and the shape
 above is what it would have to satisfy — an adapter, not a base class.
 
+## Observability is a set port, never a flag
+
+A starter reports what it did to `Observers` — declared in `@btravstack/core`,
+contributed to by `@btravstack/observability` — and holds no `Logger`, `Meter`
+or `Tracer` of its own. `observe(observers, operation)` starts every member and
+hands back the one finisher that settles them all.
+
+**This replaced an `instrumented` flag on six packages, and the flag was the
+mistake.** It defaulted to `true`, which put `Logger`, `Meter` and `Tracer` in
+the module's `Needs` — so a root that wanted a cache, or an HTTP server, and no
+OpenTelemetry SDK got a compile error naming three ports and had to find an
+option to turn off something it never asked for. The set port has the property
+the flag was reaching for and could not have: **on when observability is
+composed, free when it is not, and one composition either way.** It is the
+health-check argument again — a starter DECLARES, and composing the collector
+is what turns the declarations on.
+
+Four things are load-bearing:
+
+- **A reader of the port contributes a no-op member of its own.** A collector
+  depending on a set port nothing provides is an unmet dependency, at plan time
+  and in `Needs` alike — `otel()` already does this for `Instrumentations`.
+  Several no-ops in one graph cost one inert call each, per operation.
+- **The observer is called at the START and answers a finisher.** A span
+  reconstructed afterwards from a duration is not the parent of anything that
+  ran inside it, so "tell me it finished" would have made the tracing half
+  impossible.
+- **Dimensions and details are separate.** `attributes` are bounded and ride
+  the instruments; `details` are unbounded — a cache key, a mail subject, a URL
+  — and ride the span and the error line only. Without that split every
+  contributor would have to choose between a useful span and a safe metric,
+  which is exactly why a shared observer had looked impossible.
+- **`otel()`'s member injects nothing and reads the OTel globals per
+  operation.** Depending on `Tracer`/`Meter` there is a dependency CYCLE — the
+  SDK collects `Instrumentations`, a contribution may read `Observers`, and the
+  member would close the loop back onto the SDK. The tracing API answers a
+  proxy that resolves on registration; the metrics API does not, so the meter is
+  read per operation and only the instruments it mints are cached.
+
+**A success writes no line.** It is what the metric is for, and a line per
+successful operation broke an application spec asserting that neither its
+controller nor its interactor had written anything — an absence worth being
+able to assert. A component with a success worth an operator's attention writes
+that line itself, in its own words; `@btravstack/mailer` lost its "mail sent"
+on those terms.
+
+The one `Logger` a starter still holds is `@btravstack/prisma`'s, for the
+`debug` line saying engine tracing is off because the optional peer is absent.
+That is a STARTUP fact rather than an operation, so there is nothing for an
+observer to settle.
+
 ## Cross-cutting concerns: configuration, not a middleware slot
 
 CORS, body limits, compression, security headers and authentication are
@@ -604,8 +655,8 @@ the copy with no gate is the one that lies.
 | `@btravstack/temporal-worker` | `packages/temporal-worker/CLAUDE.md`                                         | `/reference/temporal-worker` |
 | `@btravstack/amqp-worker`     | `packages/amqp-worker/CLAUDE.md`                                             | `/reference/amqp-worker`     |
 
-**Three ports are declared in `@btravstack/core` and implemented elsewhere:
-`Logger`, `Tracer` and `Meter`.** That is the one place the table's
+**Four ports are declared in `@btravstack/core` and implemented elsewhere:
+`Logger`, `Tracer`, `Meter` and `Observers`.** That is the one place the table's
 "surface lives in" column splits from "who ships the behaviour", and it is
 deliberate: a contract that other framework packages depend on has to be
 reachable without installing an implementation, and `core` is the package all

@@ -27,7 +27,7 @@ declare const unthrownPrisma: unknown;
 > **Reference.** The Prisma starter: `DATABASE_URL` bound through `Config`, the
 > Postgres driver adapter, and a client whose pool is the application scope's.
 
-## `prismaDatabase(name)({ client, instrumented? })`
+## `prismaDatabase(name)({ client })`
 
 ```ts
 const database = prismaDatabase("OrderDatabase")({
@@ -69,20 +69,21 @@ is four methods that two adapters can both satisfy; a database client is
 whatever your schema generated, and an "in-memory adapter" for arbitrary SQL is
 not something anyone can write.
 
-### `instrumented`
+### Observation
 
-Defaults to **`true`**, as on [`cache`](/reference/cache), `mailer` and
-`storage`. Per query: one `btravstack.database.operations` counter whose
-`outcome` separates `ok` from `error`, and an `error` line when a query rejects.
+Every query is handed to whatever contributed to `Observers`, and this module
+contributes a no-op member of its own — so a graph composing no observability
+owes nothing. There is no flag, as on [`cache`](/reference/cache), `mailer` and
+`storage`.
 
-**No span** — that is `prismaTracing()`'s job, below. A client-level span here
-would sit alongside Prisma's engine-level one carrying strictly less, so this
-wrapper keeps only the two things Prisma's instrumentation does not do at all.
+**The operation says `traced: false`**, which is the one thing this component
+knows and an observer cannot: engine-level tracing is `prismaTracing()`'s job,
+below, and a client-level span would sit alongside Prisma's carrying strictly
+less. Counting and timing still happen.
 
 ```ts
 prismaDatabase("OrderDatabase")({
   client: (adapter) => new PrismaClient({ adapter }),
-  instrumented: false,
 });
 ```
 
@@ -91,10 +92,11 @@ This works on a client the package cannot see the schema of because Prisma's
 intercepts every operation on every model. The wrapper is transparent: whatever
 the query resolves or rejects with is what the caller receives.
 
-Opting out drops `Logger` and `Meter` from the provider's dependencies. Leaving it on means a root without
-[`observability()`](/reference/observability) and `otel()` gets a compile error
-naming all three — telemetry that is missing is discovered during an incident,
-so the default is on and the cost is stated rather than hidden.
+The module needs `Env` and nothing else. Composing
+[`observability()`](/reference/observability) writes the failed queries as
+lines and `otel()` mints the instruments — neither changes a line of this
+composition, which is what the set port buys over a flag that charged three
+ports for the same behaviour.
 
 ### `PrismaLike`
 
@@ -119,7 +121,7 @@ released client refuses to query.
 
 ## Engine-level tracing, with no wiring
 
-When `instrumented` is on and **`@prisma/instrumentation` is installed**, the
+When **`@prisma/instrumentation` is installed**, the
 starter turns on Prisma's own OpenTelemetry instrumentation itself. There is
 nothing to import and nothing to compose:
 

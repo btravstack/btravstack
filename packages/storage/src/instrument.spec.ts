@@ -3,7 +3,7 @@ import { describe, expect } from "vitest";
 import { aDocument, defectiveStorage, failingStorage, it } from "./__tests__/test-fixtures.js";
 import { memoryStorage } from "./memory.js";
 
-describe("storage, instrumented", () => {
+describe("storage, observed", () => {
   it("opens one span per operation, named for it and carrying the key", async ({
     instrumented,
   }) => {
@@ -44,9 +44,9 @@ describe("storage, instrumented", () => {
     expect(
       instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
     ).toEqual([
-      { operation: "put", outcome: "ok", value: 1 },
-      { operation: "get", outcome: "ok", value: 1 },
-      { operation: "delete", outcome: "ok", value: 1 },
+      { operation: "put", result: "ok", outcome: "ok", value: 1 },
+      { operation: "get", result: "ok", outcome: "ok", value: 1 },
+      { operation: "delete", result: "ok", outcome: "ok", value: 1 },
     ]);
   });
 
@@ -64,8 +64,16 @@ describe("storage, instrumented", () => {
       points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
       lines: instrumented.lines().map((line) => ({ level: line.level, message: line.message })),
     }).toEqual({
-      points: [{ operation: "get", outcome: "not_found", value: 1 }],
-      lines: [{ level: "info", message: "the object was not there" }],
+      points: [
+        {
+          operation: "get",
+          result: "not_found",
+          reason: "the object was not there",
+          outcome: "ok",
+          value: 1,
+        },
+      ],
+      lines: [],
     });
   });
 
@@ -79,8 +87,8 @@ describe("storage, instrumented", () => {
       lines: instrumented.lines().map((line) => ({ level: line.level, message: line.message })),
       points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
     }).toEqual({
-      lines: [{ level: "error", message: "the store could not answer" }],
-      points: [{ operation: "get", outcome: "error", value: 1 }],
+      lines: [{ level: "error", message: "storage.get failed" }],
+      points: [{ operation: "get", result: "error", outcome: "error", value: 1 }],
     });
   });
 
@@ -108,19 +116,24 @@ describe("storage, instrumented", () => {
         .flatMap(() => service.presignedUrl("a/b.json", { ttlMs: 60_000 })),
     );
 
-    // THEN it shares the outcome of a missing object — a "no" the caller can
-    // act on, not an outage — but NOT its message: the object is sitting
-    // right where it was put, and an operator sent hunting for it would be
-    // hunting nothing
+    // THEN it shares the RESULT of a missing object — a "no" the caller can act
+    // on, not an outage — but NOT its reason: the object is sitting right where
+    // it was put, and an operator sent hunting for it would be hunting nothing
     expect({
       points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
       lines: instrumented.lines().map((line) => line.message),
     }).toEqual({
       points: [
-        { operation: "put", outcome: "ok", value: 1 },
-        { operation: "presigned_url", outcome: "not_found", value: 1 },
+        { operation: "put", result: "ok", outcome: "ok", value: 1 },
+        {
+          operation: "presigned_url",
+          result: "not_found",
+          reason: "this store cannot mint a url",
+          outcome: "ok",
+          value: 1,
+        },
       ],
-      lines: ["this store cannot mint a url"],
+      lines: [],
     });
   });
 
@@ -140,7 +153,15 @@ describe("storage, instrumented", () => {
       points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
       spans: instrumented.spans().map((span) => span.name),
     }).toEqual({
-      points: [{ operation: "presigned_upload", outcome: "not_found", value: 1 }],
+      points: [
+        {
+          operation: "presigned_upload",
+          result: "not_found",
+          reason: "this store cannot mint a url",
+          outcome: "ok",
+          value: 1,
+        },
+      ],
       spans: ["storage.presigned_upload"],
     });
   });
@@ -157,7 +178,7 @@ describe("storage, instrumented, when the client defects", () => {
       points: instrumented.points().map((point) => ({ ...point.attributes, value: point.value })),
       spans: instrumented.spans().map((span) => span.name),
     }).toEqual({
-      points: [{ operation: "get", outcome: "error", value: 1 }],
+      points: [{ operation: "get", result: "error", outcome: "error", value: 1 }],
       spans: ["storage.get"],
     });
   });

@@ -1,6 +1,7 @@
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
   Logger,
+  Observers,
   type EventSink,
   type KernelEvent,
   type Level,
@@ -41,7 +42,7 @@ export type ObservabilityOptions = {
  */
 export const observability = (
   options: ObservabilityOptions = {},
-): Module<Logger | LoggerConfig, ConfigInvalid, Env> =>
+): Module<Logger | LoggerConfig | Observers, ConfigInvalid, Env> =>
   Module("Observability")({
     needs: [Env],
     provides: [
@@ -50,9 +51,32 @@ export const observability = (
         inject: { config: LoggerConfig },
         sync: ({ config }) => createLogger(options.sink ?? jsonSink(), config.level),
       }),
+      // The line an observed operation writes when it FAILS, and only then.
+      //
+      // A line per success was tried and reverted: it is what metrics are for,
+      // and the noise broke an application spec asserting that neither its
+      // controller nor its interactor had written anything — an absence worth
+      // being able to assert. A component with a success worth an operator's
+      // attention writes that line itself, in its own words.
+      Provider.member(Observers)({
+        inject: { logger: Logger },
+        sync:
+          ({ logger }) =>
+          ({ component, name, attributes, details }) =>
+          ({ outcome, attributes: settled, cause }) => {
+            if (outcome !== "error") return;
+            // Details are on the line and off the instruments — a failed cache
+            // call is worth knowing the KEY of, and worth no time series.
+            logger.error(
+              `${component}.${name} failed`,
+              { ...attributes, ...details, ...settled },
+              cause,
+            );
+          },
+      }),
     ],
-    exports: [Logger, LoggerConfig],
-  });
+    exports: [Logger, LoggerConfig, Observers],
+  } as never) as unknown as Module<Logger | LoggerConfig | Observers, ConfigInvalid, Env>;
 
 /**
  * The kernel's nine lifecycle events, as log lines on `logger` — the adapter

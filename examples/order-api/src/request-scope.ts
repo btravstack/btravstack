@@ -1,4 +1,4 @@
-import { Logger, Meter } from "@btravstack/core";
+import { Logger } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
 import { UnitSpanModule } from "@btravstack/observability/otel";
 
@@ -23,20 +23,21 @@ export const RequestModule = Module("Request")({
   // The fork seam: both are read out of the application scope this module is
   // forked from. `UnitSpanModule` rides along, so every request also opens a
   // span carrying the same unit ids the logger stamps.
-  needs: [Logger, Meter],
+  needs: [Logger],
   imports: [UnitSpanModule],
   provides: [
     Provider(RequestSpan)({
-      inject: { logger: Logger, meter: Meter },
-      sync: ({ logger, meter }) => {
+      inject: { logger: Logger },
+      // No histogram here any more: `@btravstack/http-server` records
+      // `btravstack.http.duration` at the unit seam, dimensioned by answerer
+      // and status — which an application cannot see from inside its own
+      // request scope. What is left is the LINE, which is this module's actual
+      // subject: a provider whose teardown runs while the unit is still open,
+      // so it carries the request's own trace id.
+      sync: ({ logger }) => {
         const startedAt = Date.now();
-        const duration = meter.createHistogram("btravstack.request.duration", { unit: "ms" });
         return {
-          finish: () => {
-            const durationMs = Date.now() - startedAt;
-            duration.record(durationMs);
-            logger.info("request finished", { durationMs });
-          },
+          finish: () => logger.info("request finished", { durationMs: Date.now() - startedAt }),
         };
       },
       onStop: (span) => span.finish(),

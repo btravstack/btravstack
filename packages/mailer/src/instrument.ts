@@ -1,66 +1,43 @@
-import {
-  SPAN_STATUS,
-  type Counter,
-  type LoggerService,
-  type MeterService,
-  type TracerService,
-} from "@btravstack/core";
+import { observe, type Operation, type Settle } from "@btravstack/core";
 
 import type { MailerService } from "./mailer.js";
 
 /**
- * One send, wrapped: a span around it, a count of how it came out, and a log
- * line if it failed.
+ * One send, handed to every observer the graph composed.
  *
- * **What rides the signals is the envelope, never the body.** `to` is recorded
- * as a COUNT rather than the addresses, since a recipient list is personal data;
- * the subject is what an operator recognises a stuck mail by.
+ * **What rides the signals is the envelope, never the body.** The recipients
+ * are recorded as a COUNT rather than as addresses, since a recipient list is
+ * personal data; the subject is what an operator recognises a stuck mail by,
+ * and it is a DETAIL — on the span and the line, never on an instrument, where
+ * one subject would be one time series.
  */
 export const instrument = (
   backend: MailerService,
-  logger: LoggerService,
-  tracer: TracerService,
-  meter: MeterService,
-): MailerService => {
-  // One instrument per scope, read per call: the attributes vary, the counter
-  // does not.
-  const operations: Counter = meter.createCounter("btravstack.mail.operations", {
-    description: "Mail operations, by operation and outcome",
-  });
-
-  return {
-    send: (mail) => {
-      const span = tracer.startSpan("mail.send");
-      span.setAttributes({
+  observers: readonly ((operation: Operation) => Settle)[],
+): MailerService => ({
+  send: (mail) => {
+    const settle = observe(observers, {
+      component: "mail",
+      name: "send",
+      attributes: { operation: "send" },
+      details: {
         "btravstack.mail.recipients": mail.to.length,
         "btravstack.mail.subject": mail.subject,
-      });
+      },
+    });
 
-      return (
-        backend
-          .send(mail)
-          .tap(() => {
-            operations.add(1, { operation: "send", outcome: "ok" });
-            logger.info("mail sent", {
-              recipients: mail.to.length,
-              subject: mail.subject,
-            });
-            span.end();
-          })
-          // `tapFailure`, not an Err-only tap: a transport that throws is a
-          // failed send too, and it would leave the span open.
-          .tapFailure((failure) => {
-            const cause = failure.tag === "Err" ? failure.error : failure.cause;
-            operations.add(1, { operation: "send", outcome: "error" });
-            logger.error(
-              "the mail could not be sent",
-              { recipients: mail.to.length, subject: mail.subject },
-              cause,
-            );
-            span.setStatus({ code: SPAN_STATUS.error });
-            span.end();
-          })
-      );
-    },
-  };
-};
+    return (
+      backend
+        .send(mail)
+        .tap(() => settle({ outcome: "ok" }))
+        // `tapFailure`, not an Err-only tap: a transport that throws is a
+        // failed send too, and it would leave the observation unsettled.
+        .tapFailure((failure) =>
+          settle({
+            outcome: "error",
+            cause: failure.tag === "Err" ? failure.error : failure.cause,
+          }),
+        )
+    );
+  },
+});

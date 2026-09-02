@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { Env } from "@btravstack/config";
-import { Logger } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
-import { createLogger, type Line } from "@btravstack/observability";
+import { observability, type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { metrics, trace } from "@opentelemetry/api";
 import { PeriodicExportingMetricReader, type DataPoint } from "@opentelemetry/sdk-metrics";
@@ -96,7 +95,7 @@ export const it = test.extend<MailerFixtures>({
   recording: async ({ recorder }, use) => {
     const served = await Module.scoped(
       Module("RecordingFixture")({
-        imports: [mailer({ adapter: recordingMailer(recorder), instrumented: false })],
+        imports: [mailer({ adapter: recordingMailer(recorder) })],
         exports: [Mailer],
       }),
       (ctx) => fromSafePromise(use(ctx.get(Mailer))),
@@ -190,14 +189,13 @@ export const it = test.extend<MailerFixtures>({
           imports: [
             // No flag: the harness exercises the DEFAULT, which is instrumented.
             mailer({ adapter }),
-            Module("RecordingLogger")({
-              provides: [
-                Provider(Logger)({
-                  inject: {},
-                  value: createLogger((line) => lines.push(line), "debug"),
-                }),
-              ],
-              exports: [Logger],
+            // The real starter over a recording sink, not a hand-built logger:
+            // the lines are `observability()`'s own observer now, so a fixture
+            // that provided only a `Logger` would record nothing.
+            observability({ sink: (line) => lines.push(line), level: "debug" }),
+            Module("FixtureEnv")({
+              provides: [Provider(Env)({ inject: {}, value: {} })],
+              exports: [Env],
             }),
             otel({
               spanProcessors: [
@@ -218,7 +216,7 @@ export const it = test.extend<MailerFixtures>({
       );
 
       // `get`, not `getOrThrow`: this graph's error channel is `never`.
-      return served.get();
+      return served.getOrThrow();
     };
 
     await use({ run, spans: () => exported, points: () => counted, lines: () => lines });

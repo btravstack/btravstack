@@ -1,10 +1,4 @@
-import type {
-  Attributes,
-  Counter,
-  LoggerService,
-  MeterService,
-  TracerService,
-} from "@btravstack/core";
+import type { Attributes, LoggerService, Operation, Settle } from "@btravstack/core";
 import { test } from "vitest";
 
 /** What a `query` extension hands `$allOperations`, as this package uses it. */
@@ -27,21 +21,27 @@ export type StubClient = {
   readonly query: (model: string, operation: string, answer: Promise<unknown>) => Promise<unknown>;
 };
 
-export type Recorded = {
-  readonly spans: readonly { name: string; attributes: Attributes; failed: boolean }[];
-  readonly counts: readonly { value: number; attributes: Attributes }[];
-  readonly errors: readonly { message: string; attributes: Attributes }[];
-  readonly debug: readonly { message: string }[];
+/** One observed operation, as an observer saw it settle. */
+export type Observation = {
+  readonly component: string;
+  readonly name: string;
+  readonly attributes: Attributes;
+  readonly outcome: "ok" | "error";
+  readonly failed: boolean;
+  readonly traced: boolean;
 };
 
-export type Telemetry = {
+export type Logs = {
   readonly logger: LoggerService;
-  readonly tracer: TracerService;
-  readonly meter: MeterService;
-  readonly recorded: () => Recorded;
+  /** Every `debug` message written — the one level `loadPrismaInstrumentation` uses. */
+  readonly debug: () => readonly string[];
 };
 
-const noop = (): void => {};
+export type Observed = {
+  /** The set a spec hands `instrument` and `loadPrismaInstrumentation`. */
+  readonly members: readonly ((operation: Operation) => Settle)[];
+  readonly taken: () => readonly Observation[];
+};
 
 /**
  * A stand-in for a generated Prisma client that captures the `query` extension
@@ -49,7 +49,7 @@ const noop = (): void => {};
  * starter owns the pool's lifetime and the wrapper; a real client would be
  * testing Prisma.
  */
-export const it = test.extend<{ stub: Stub; telemetry: Telemetry }>({
+export const it = test.extend<{ stub: Stub; observed: Observed; logs: Logs }>({
   stub: async ({}, use) => {
     let last: StubClient | undefined;
     let count = 0;
@@ -86,43 +86,41 @@ export const it = test.extend<{ stub: Stub; telemetry: Telemetry }>({
     await use({ client: make, last: () => last });
   },
 
-  telemetry: async ({}, use) => {
-    const spans: { name: string; attributes: Attributes; failed: boolean }[] = [];
-    const counts: { value: number; attributes: Attributes }[] = [];
-    const errors: { message: string; attributes: Attributes }[] = [];
-    const debug: { message: string }[] = [];
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  logs: async ({}, use) => {
+    const debug: string[] = [];
+    const logger = {
+      log: () => {},
+      trace: () => {},
+      debug: (message: string) => debug.push(message),
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      fatal: () => {},
+      with: () => logger,
+      isEnabled: () => true,
+    } as unknown as LoggerService;
+    await use({ logger, debug: () => debug });
+  },
 
-    const counter: Counter = {
-      add: (value, attributes) => counts.push({ value, attributes: attributes ?? {} }),
-    };
-
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  observed: async ({}, use) => {
+    const taken: Observation[] = [];
     await use({
-      logger: {
-        trace: noop,
-        debug: (message: string) => debug.push({ message }),
-        info: noop,
-        warn: noop,
-        error: (message: string, attributes?: Attributes) =>
-          errors.push({ message, attributes: attributes ?? {} }),
-        fatal: noop,
-      } as unknown as LoggerService,
-      tracer: {
-        startSpan: (name: string) => {
-          const span = { name, attributes: {} as Attributes, failed: false };
-          spans.push(span);
-          return {
-            setAttributes: (attributes: Attributes) => {
-              span.attributes = { ...span.attributes, ...attributes };
-            },
-            setStatus: () => {
-              span.failed = true;
-            },
-            end: noop,
-          };
-        },
-      } as unknown as TracerService,
-      meter: { createCounter: () => counter } as unknown as MeterService,
-      recorded: () => ({ spans, counts, errors, debug }),
+      members: [
+        ({ component, name, attributes, details, traced }) =>
+          ({ outcome, attributes: settled, cause }) => {
+            taken.push({
+              component,
+              name,
+              attributes: { ...attributes, ...details, ...settled },
+              outcome,
+              failed: cause !== undefined,
+              traced: traced !== false,
+            });
+          },
+      ],
+      taken: () => taken,
     });
   },
 });

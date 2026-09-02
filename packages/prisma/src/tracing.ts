@@ -34,6 +34,11 @@ const defaultLoader: Loader = async () =>
  * **The skip is logged, not silent.** Telemetry you believe you have and do not
  * is worse than none, so the one path that quietly produces no spans says so at
  * `debug` — the level for something that is a choice rather than a fault.
+ *
+ * This is the one place in this package that still holds a `Logger`, and it is
+ * why the module needs one: it is a STARTUP fact rather than an operation, so
+ * the `Observers` seam has nothing to settle. An observer writes lines about
+ * operations that fail; a missing optional peer is neither.
  */
 export const loadPrismaInstrumentation = async (
   logger: LoggerService,

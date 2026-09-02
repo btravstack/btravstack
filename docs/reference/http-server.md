@@ -164,6 +164,28 @@ starter, not this package's business: it brings the `Logger` the application
 writes to, bound from `LOG_LEVEL`, JSON per line on stdout, every line
 carrying the trace id of the unit this runtime opened.
 
+### RED metrics, reported always and collected when you ask
+
+The runtime REPORTS rate, errors and duration at the unit seam — the one place a
+framework that owns the unit lifecycle gets them for free — and an observer is
+what turns a report into a measurement. Reporting always happens; **collection
+happens when `otel()` is composed**, and not before:
+
+| Instrument                 | Kind           | Dimensions                     |
+| -------------------------- | -------------- | ------------------------------ |
+| `btravstack.http.requests` | counter        | `method`, `answerer`, `status` |
+| `btravstack.http.duration` | histogram (ms) | the same three                 |
+
+`instrumented` is gone. Every unit is handed to `Observers`, and this module
+contributes a no-op member of its own — so a graph composing no observability
+owes nothing, and an operation costs one inert call per module that reads the
+port. Composing [`observability()`](/reference/observability) writes the
+failures as lines; composing `otel()` beside it opens the spans and mints
+`btravstack.<component>.operations` and `.duration`.
+
+**The dimensions are chosen for cardinality, and what is absent matters more
+than what is present.** The request **path** is not a dimension: `/orders/42` would mint a time series per order, which is the classic way a metrics bill becomes the incident. `answerer` is a mount prefix, so the graph bounds it. Recording happens on the response's `'close'`, which is the one event that has seen the final status — the runtime's own `404` and `500` included, which no answerer ever sees.
+
 ## `api.OrpcRouter(contract)({ inject: deps, sync })`
 
 Contract-first: `contract` is an oRPC router record (`Record<string,

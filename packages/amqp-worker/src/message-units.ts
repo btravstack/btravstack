@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import type { WorkerMiddleware } from "@amqp-contract/worker";
-import type { RuntimeHost, UnitMeta } from "@btravstack/core";
+import {
+  observe,
+  type Operation,
+  type RuntimeHost,
+  type Settle,
+  type UnitMeta,
+} from "@btravstack/core";
 
 /**
  * Open one kernel unit per delivery. It injects nothing — `next()` unchanged is
@@ -14,9 +20,33 @@ import type { RuntimeHost, UnitMeta } from "@btravstack/core";
  * `currentUnit()?.signal`.
  */
 export const messageUnits =
-  (host: RuntimeHost<never>): WorkerMiddleware =>
-  (args, next) =>
-    host.run(metaFor(args.rawMessage), () => next());
+  (
+    host: RuntimeHost<never>,
+    observers: readonly ((operation: Operation) => Settle)[],
+  ): WorkerMiddleware =>
+  (args, next) => {
+    const settle = observe(observers, {
+      component: "amqp",
+      name: "delivery",
+      // The `consumers`/`rpcs` key, so the CONTRACT bounds the cardinality —
+      // the queue name would too, but the key is what a reader of the contract
+      // can look up. The payload is nowhere near the attributes.
+      attributes: { handler: args.handlerName },
+    });
+    // `tapFailure`, not an Err-only tap: a defect is a failed delivery too, and
+    // an errors count that omitted it would be the reassuring half — this
+    // package nacks a defect straight to the dead-letter queue, so a healthy
+    // rate beside a filling DLQ is exactly the lie to avoid.
+    return host
+      .run(metaFor(args.rawMessage), () => next())
+      .tap(() => settle({ outcome: "ok" }))
+      .tapFailure((failure) =>
+        settle({
+          outcome: "error",
+          cause: failure.tag === "Err" ? failure.error : failure.cause,
+        }),
+      );
+  };
 
 /**
  * `UnitMeta.id` must be unique per unit, and a **delivery tag is not one**: tags

@@ -228,8 +228,8 @@ deployments.
 | [`@btravstack/contract`](./packages/contract)               | Contract-level markers a client and its server share: which schemes protect a route, and which scopes each must grant. Zero dependencies.                                |
 | [`@btravstack/observability`](./packages/observability)     | Structured logging correlated with the ambient unit, a JSON sink, and OpenTelemetry traces and metrics behind their own subpath.                                         |
 | [`@btravstack/prisma`](./packages/prisma)                   | The Prisma starter: `DATABASE_URL` through `Config`, a client whose pool is the application scope's, and a count and error line per query.                               |
-| [`@btravstack/cache`](./packages/cache)                     | A `Cache` port with an in-memory adapter and a Redis one, instrumented by default.                                                                                       |
-| [`@btravstack/mailer`](./packages/mailer)                   | A `Mailer` port with a recording adapter and an SMTP one, instrumented by default.                                                                                       |
+| [`@btravstack/cache`](./packages/cache)                     | A `Cache` port with an in-memory adapter and a Redis one, reporting every call through `Observers`.                                                                      |
+| [`@btravstack/mailer`](./packages/mailer)                   | A `Mailer` port with a recording adapter and an SMTP one, reporting every send through `Observers`.                                                                      |
 | [`@btravstack/storage`](./packages/storage)                 | A `Storage` port with an in-memory adapter and an S3-compatible one with presigned reads.                                                                                |
 
 ## Examples

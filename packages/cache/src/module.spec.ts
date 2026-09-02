@@ -8,11 +8,12 @@ import { memoryCache } from "./memory.js";
 import { cache } from "./module.js";
 
 describe("cache", () => {
-  it("provides Cache from the adapter's backend when instrumentation is off", async () => {
-    // GIVEN a graph composing the memory adapter, opted out of instrumentation
-    // — the ONLY arm that needs no observability, which is what `false` buys
+  it("provides Cache from the adapter's backend", async () => {
+    // GIVEN a graph composing the memory adapter and no observability at all —
+    // which the starter no longer asks for, since it reads a set port it
+    // contributes its own no-op member to
     const root = Module("Root")({
-      imports: [cache({ adapter: memoryCache(), instrumented: false })],
+      imports: [cache({ adapter: memoryCache() })],
       exports: [Cache],
     });
 
@@ -29,7 +30,7 @@ describe("cache", () => {
   it("declares a health check that a reachable cache answers", async () => {
     // GIVEN a graph over the memory adapter
     const root = Module("Root")({
-      imports: [cache({ adapter: memoryCache(), instrumented: false })],
+      imports: [cache({ adapter: memoryCache() })],
       exports: [Cache, HealthChecks],
     });
 
@@ -46,7 +47,7 @@ describe("cache", () => {
   it("reports the cache unhealthy when the backend cannot answer", async () => {
     // GIVEN an adapter that fails every operation
     const root = Module("Root")({
-      imports: [cache({ adapter: failingCache(), instrumented: false })],
+      imports: [cache({ adapter: failingCache() })],
       exports: [Cache, HealthChecks],
     });
 

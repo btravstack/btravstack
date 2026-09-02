@@ -1,8 +1,15 @@
 import { Config, Env } from "@btravstack/config";
-import { HealthCheckFailed, HealthChecks, Instrumentations, Logger, Meter } from "@btravstack/core";
+import {
+  HealthCheckFailed,
+  HealthChecks,
+  Instrumentations,
+  Logger,
+  Observers,
+  noObserver,
+} from "@btravstack/core";
 import { Module, Port, Provider, type PortClassOf } from "@btravstack/di";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { OkAsync, fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
+import { fromPromise, fromSafePromise, type AsyncResult } from "unthrown";
 
 import { instrument } from "./instrument.js";
 import { loadPrismaInstrumentation } from "./tracing.js";
@@ -25,7 +32,7 @@ export type PrismaLike = {
 };
 
 /** What {@link prismaDatabase} is handed. */
-export type PrismaOptions<C extends PrismaLike, Instrumented extends boolean> = {
+export type PrismaOptions<C extends PrismaLike> = {
   /**
    * Builds the client from the driver adapter, which is already constructed
    * from the environment's URL.
@@ -36,19 +43,6 @@ export type PrismaOptions<C extends PrismaLike, Instrumented extends boolean> = 
    * the returned type is exactly the one the application will hold.
    */
   readonly client: (adapter: PrismaPg) => C;
-  /**
-   * Span, count and log every query. **Default `true`**, `false` opts out — the
-   * same shape as `cache`, `mailer` and `storage`, and as `StartOptions`'
-   * `signals` and `probes`.
-   *
-   * On by default because telemetry that is missing is discovered during an
-   * incident. The cost is stated rather than hidden: instrumenting puts
-   * `Logger`, `Meter` and `Tracer` in the provider's dependencies, so a root
-   * without `observability()` and `otel()` gets a compile error naming all
-   * three. It also turns on Prisma's own engine-level tracing when
-   * `@prisma/instrumentation` is installed — no wiring at the root.
-   */
-  readonly instrumented?: Instrumented;
 };
 
 /**
@@ -71,10 +65,7 @@ export type PrismaOptions<C extends PrismaLike, Instrumented extends boolean> = 
  */
 export const prismaDatabase =
   <const N extends string>(name: N) =>
-  <C extends PrismaLike, Instrumented extends boolean = true>({
-    client,
-    instrumented,
-  }: PrismaOptions<C, Instrumented>) => {
+  <C extends PrismaLike>({ client }: PrismaOptions<C>) => {
     const config = Config.provider(`${name}Config`)(
       Config.object({ url: Config.string("DATABASE_URL") }),
     );
@@ -102,32 +93,16 @@ export const prismaDatabase =
     // second port layering over the adapter's, because di allows one provider
     // per port per graph. Here a `query` extension wraps the client at
     // construction, so one port suffices and the branch lives inside `acquire`.
-    const instrumentedProvider = Provider(port)({
-      inject: { settings: config.port, logger: Logger, meter: Meter }, // `Meter` is what orders this after `otel()`: it sets the global meter
-      // provider while building that very port. The engine instrumentation
-      // no longer needs ordering of its own — the SDK collects and registers
-      // it, so composing `otel()` is what turns it on.
-      acquire: ({ settings, logger, meter }): AsyncResult<C, never> => {
+    const clientProvider = Provider(port)({
+      inject: { settings: config.port, observers: Observers },
+      acquire: ({ settings, observers }): AsyncResult<C, never> => {
         // Cast because `C` is only constrained by `PrismaLike`, so unthrown's
         // `NotThenable` guard cannot prove a client is not a promise. It is
         // whatever the application's `client` arrow returned.
         return fromSafePromise(
-          Promise.resolve(instrument(open(settings.url), logger, meter)),
+          Promise.resolve(instrument(open(settings.url), observers)),
         ) as AsyncResult<C, never>;
       },
-      release: (db: C) => db.$disconnect(),
-    });
-
-    // Both callbacks are annotated, and that is load-bearing rather than
-    // decoration: `PortClassOf<N, C>` leaves the service type a conditional
-    // TypeScript cannot resolve while `N` and `C` are still generic, so without
-    // these the inferred parameter is `never` and neither arm assigns.
-    //
-    // Opening cannot fail in the application's terms — Prisma dials on the
-    // first statement, not here — which is why the error channel is empty.
-    const plainProvider = Provider(port)({
-      inject: { settings: config.port },
-      acquire: ({ settings }): AsyncResult<C, never> => OkAsync(open(settings.url)),
       release: (db: C) => db.$disconnect(),
     });
 
@@ -155,6 +130,9 @@ export const prismaDatabase =
     });
 
     // Offered, not registered: nothing loads it unless an OTel SDK is composed.
+    // The one `Logger` this starter still holds, and the reason the module
+    // needs one: whether the optional peer loaded is a STARTUP fact, not an
+    // operation, so the `Observers` seam has nothing to settle for it.
     const instrumentation = Provider.member(Instrumentations)({
       inject: { logger: Logger },
       sync:
@@ -163,21 +141,20 @@ export const prismaDatabase =
           loadPrismaInstrumentation(logger),
     });
 
-    const instrumentedModule = Module(name)({
-      needs: [Env, Logger, Meter],
-      provides: [config, instrumentedProvider, healthCheck, instrumentation],
+    const chosen = Module(name)({
+      needs: [Env, Logger],
+      provides: [
+        config,
+        // The no-op member, so the set this module reads is never the empty
+        // dependency di refuses: a graph composing no observability still
+        // starts.
+        Provider.member(Observers)({ inject: {}, value: noObserver }),
+        clientProvider,
+        healthCheck,
+        instrumentation,
+      ],
       exports: [DatabasePort, HealthChecks, Instrumentations],
     });
-
-    const plainModule = Module(name)({
-      needs: [Env],
-      provides: [config, plainProvider, healthCheck],
-      exports: [DatabasePort, HealthChecks],
-    });
-
-    const chosen = (
-      instrumented !== false ? instrumentedModule : plainModule
-    ) as Instrumented extends true ? typeof instrumentedModule : typeof plainModule;
 
     // The port rides the module because it is minted from `name` HERE, so an
     // application has no other handle on it — the counterpart of
@@ -185,7 +162,7 @@ export const prismaDatabase =
     // The cast is what carries BOTH halves: `Object.assign` over a conditional
     // first argument widens to the added property alone, dropping the module's
     // own shape.
-    return Object.assign(chosen, { port: DatabasePort }) as (Instrumented extends true
-      ? typeof instrumentedModule
-      : typeof plainModule) & { readonly port: PortClassOf<N, C> };
+    return Object.assign(chosen, { port: DatabasePort }) as typeof chosen & {
+      readonly port: PortClassOf<N, C>;
+    };
   };

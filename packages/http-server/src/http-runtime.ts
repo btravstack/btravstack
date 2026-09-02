@@ -4,11 +4,16 @@ import type { Socket } from "node:net";
 
 import { Config, Env, type ConfigInvalid } from "@btravstack/config";
 import {
+  Observers,
   RuntimePort,
   RuntimeStartFailed,
+  noObserver,
+  observe,
+  type Operation,
   type Runtime,
   type RuntimeHost,
   type Serving,
+  type Settle,
   type UnitMeta,
 } from "@btravstack/core";
 import { Module, Provider, type ServiceOf } from "@btravstack/di";
@@ -76,13 +81,31 @@ const DEFAULT_SECURITY_HEADERS: Readonly<Record<string, string>> = {
  */
 export class HttpRuntime extends RuntimePort<Runtime<typeof HttpHandler, HttpInfo>> {}
 
+/**
+ * Rate, errors and duration, per request — the three a framework that owns the
+ * unit lifecycle gets for free, handed to whatever observers the graph
+ * composed.
+ *
+ * The dimensions are chosen for CARDINALITY. `answerer` is a mount prefix, so
+ * the graph bounds it; `status` is a small integer set; `method` is HTTP's own
+ * closed list. The request PATH is deliberately absent — `/orders/42` would
+ * mint a time series per order, which is the classic way a metrics bill becomes
+ * the incident.
+ */
+const requestOperation = (method: string, answerer: string): Operation => ({
+  component: "http",
+  name: "request",
+  attributes: { method, answerer },
+});
+
 const httpRuntime = (
   config: ServiceOf<HttpConfig>,
   securityHeaders: HttpOptions["securityHeaders"],
+  observers: readonly ((operation: Operation) => Settle)[],
 ): Runtime<typeof HttpHandler, HttpInfo> => ({
   name: "http",
   resolves: [HttpHandler],
-  start: (host) => listen(host, config, host.ctx.get(HttpHandler), securityHeaders),
+  start: (host) => listen(host, config, host.ctx.get(HttpHandler), securityHeaders, observers),
 });
 
 /**
@@ -120,9 +143,12 @@ export const httpServer = (
     needs: [Env],
     provides: [
       config,
+      // The no-op member, so the set this module reads is never the empty
+      // dependency di refuses: a graph composing no observability still starts.
+      Provider.member(Observers)({ inject: {}, value: noObserver }),
       Provider(HttpRuntime)({
-        inject: { config: HttpConfig },
-        sync: ({ config: bound }) => httpRuntime(bound, securityHeaders),
+        inject: { config: HttpConfig, observers: Observers },
+        sync: ({ config: bound, observers }) => httpRuntime(bound, securityHeaders, observers),
       }),
     ],
     exports: [HttpRuntime, HttpConfig, HttpHandler],
@@ -204,6 +230,7 @@ const listen = (
   options: ServiceOf<HttpConfig>,
   answerers: readonly HttpAnswerer[],
   securityHeaders: HttpOptions["securityHeaders"],
+  observers: readonly ((operation: Operation) => Settle)[],
 ): AsyncResult<Serving<HttpInfo>, RuntimeStartFailed> =>
   routesOf(answerers)
     .toAsync()
@@ -247,10 +274,24 @@ const listen = (
             for (const [name, value] of headers) response.setHeader(name, value);
             open.add(response);
             response.once("close", () => open.delete(response));
+            const answerer = answererFor(routes, request.url);
+            // Settled on `'close'`, not when the unit settles: the unit's own
+            // contract is that the response is flushed inside it, so `'close'`
+            // is the one event that has seen the final status — a 500 written
+            // by the `recoverDefect` arm below included.
+            const settle = observe(
+              observers,
+              requestOperation(request.method ?? "", answerer?.prefix ?? ""),
+            );
+            response.once("close", () =>
+              settle({
+                outcome: response.statusCode >= 500 ? "error" : "ok",
+                attributes: { status: response.statusCode },
+              }),
+            );
             if (draining) retire(response);
             // `recoverDefect`, not `match`: `E` is statically `never` here, so an
             // `errCases` arm would be a dead branch with no case to name.
-            const answerer = answererFor(routes, request.url);
             void host
               .run(metaFor(request), (_ctx, signal) => {
                 // No answerer owns this path: the runtime's own `404`, written

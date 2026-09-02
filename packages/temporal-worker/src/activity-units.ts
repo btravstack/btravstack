@@ -1,4 +1,10 @@
-import type { RuntimeHost, UnitMeta } from "@btravstack/core";
+import {
+  observe,
+  type Operation,
+  type RuntimeHost,
+  type Settle,
+  type UnitMeta,
+} from "@btravstack/core";
 import type { ActivityMiddleware } from "@temporal-contract/worker/activity";
 import { activityInfo } from "@temporalio/activity";
 
@@ -15,9 +21,30 @@ import { activityInfo } from "@temporalio/activity";
  * the mapping from a settled `Result` to an activity failure.
  */
 export const activityUnits =
-  (host: RuntimeHost<never>): ActivityMiddleware =>
-  (_invocation, next) =>
-    host.run(metaFor(), () => next());
+  (
+    host: RuntimeHost<never>,
+    observers: readonly ((operation: Operation) => Settle)[],
+  ): ActivityMiddleware =>
+  (_invocation, next) => {
+    const settle = observe(observers, {
+      component: "temporal",
+      // Per ATTEMPT, not per activity: an activity is retried under the same
+      // execution, so a count per activity would hide exactly the retries worth
+      // alerting on. The workflow id is not a dimension and must not be — it is
+      // unbounded, and it is already the unit's `traceId`.
+      name: "attempt",
+      attributes: { activity: activityInfo().activityType },
+    });
+    return host
+      .run(metaFor(), () => next())
+      .tap(() => settle({ outcome: "ok" }))
+      .tapFailure((failure) =>
+        settle({
+          outcome: "error",
+          cause: failure.tag === "Err" ? failure.error : failure.cause,
+        }),
+      );
+  };
 
 /**
  * `UnitMeta.id` must be unique per unit, and a workflow id is **not** one: an

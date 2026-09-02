@@ -9,7 +9,15 @@ import {
 import { it as amqpIt } from "@amqp-contract/testing";
 import type { AmqpTestFixtures } from "@amqp-contract/testing/extension";
 import type { ConfigInvalid, Environment } from "@btravstack/config";
-import { currentUnit, type RunningApp, type UnitRecord } from "@btravstack/core";
+import {
+  Observers,
+  currentUnit,
+  type Attributes,
+  type Operation,
+  type RunningApp,
+  type Settle,
+  type UnitRecord,
+} from "@btravstack/core";
 import { Module, Port, Provider, type ServiceOf } from "@btravstack/di";
 import { bootFixture, type Boot } from "@btravstack/testing";
 import { OkAsync, fromSafePromise } from "unthrown";
@@ -67,6 +75,44 @@ const consuming = (url: string, handlers: EchoProvider, connectTimeoutMs?: numbe
   });
 
 /** Captures the `AmqpConfig` the graph actually bound, for the configuration spec. */
+/** One observed operation, as an observer saw it settle. */
+export type Observation = {
+  readonly component: string;
+  readonly name: string;
+  readonly attributes: Attributes;
+  readonly outcome: "ok" | "error";
+};
+
+/** An observer that keeps what it was handed, so a spec asserts on the DIMENSIONS. */
+const recordingObserver = (): {
+  member: (operation: Operation) => Settle;
+  taken: () => readonly Observation[];
+} => {
+  const taken: Observation[] = [];
+  return {
+    member:
+      ({ component, name, attributes }) =>
+      ({ outcome, attributes: settled }) => {
+        taken.push({ component, name, attributes: { ...attributes, ...settled }, outcome });
+      },
+    taken: () => taken,
+  };
+};
+
+/** The starter over an observer that records — all a graph does to be observed. */
+const observedWorker = (
+  url: string,
+  handlers: EchoProvider,
+  member: (operation: Operation) => Settle,
+) =>
+  AmqpModule("Observed")({
+    contract: echoContract,
+    handlers,
+    url,
+    imports: [AppModule],
+    provides: [Provider.member(Observers)({ inject: {}, value: member })],
+  });
+
 const configuredOf = () => {
   let bound: ServiceOf<AmqpConfig> | undefined;
   return {
@@ -86,6 +132,16 @@ class BoundConfig extends Port("BoundAmqpConfig")<ServiceOf<AmqpConfig>> {}
 const plainHandlers: EchoProvider = echoHandlers({
   inject: {},
   value: { echo: () => OkAsync(undefined) },
+});
+
+/**
+ * A handler whose failure nobody modelled — a defect, which the library nacks
+ * straight to the dead-letter queue. The errors half of RED has to see it: a
+ * count that omitted defects would be the reassuring half.
+ */
+const failingHandlers: EchoProvider = echoHandlers({
+  inject: {},
+  value: { echo: () => fromSafePromise(Promise.reject(new Error("the handler is on fire"))) },
 });
 
 type App = RunningApp<ConfigInvalid, AmqpInfo>;
@@ -275,6 +331,12 @@ export type AmqpFixtures = {
   readonly deadline: ReturnType<typeof deadlineHandler>;
   readonly slices: ReturnType<typeof slicesOf>;
   readonly serveSliced: (slices: ReturnType<typeof slicesOf>) => Promise<App>;
+  /** The starter served over an observer that records what it was handed. */
+  readonly serveObserved: (
+    handlers?: EchoProvider,
+  ) => Promise<{ readonly app: App; readonly taken: () => readonly Observation[] }>;
+  /** The handlers whose one consumer fails in a way nobody modelled. */
+  readonly failing: EchoProvider;
 };
 
 // Annotated explicitly: TS2883 otherwise refuses to name the inferred type,
@@ -290,6 +352,18 @@ export const it: TestAPI<AmqpTestFixtures & AmqpFixtures> = amqpIt.extend<AmqpFi
       await app.runtimeInfo();
       return app;
     });
+  },
+  serveObserved: async ({ amqpConnectionUrl, boot }, use) => {
+    await use(async (handlers = plainHandlers) => {
+      const observer = recordingObserver();
+      const app = boot(observedWorker(amqpConnectionUrl, handlers, observer.member));
+      await app.runtimeInfo();
+      return { app, taken: observer.taken };
+    });
+  },
+  // oxlint-disable-next-line no-empty-pattern -- Vitest fixtures require a destructuring pattern; this one depends on no other fixture
+  failing: async ({}, use) => {
+    await use(failingHandlers);
   },
   boundFrom: async ({ boot }, use) => {
     await use(async (env) => {

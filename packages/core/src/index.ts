@@ -7,6 +7,8 @@ export {
   type HealthCheck,
   type HealthReport,
 } from "./health.js";
+export { Observers, noObserver, observe } from "./observation.js";
+export type { Operation, Settle, Settled } from "./observation.js";
 export { systemClock } from "./clock.js";
 export type { Clock } from "./clock.js";
 export type { DrainReport } from "./drain.js";

@@ -12,7 +12,7 @@ describe("mailer", () => {
     // instrumentation — the only arm that needs no observability
     const recorder = mailRecorder();
     const root = Module("Root")({
-      imports: [mailer({ adapter: recordingMailer(recorder), instrumented: false })],
+      imports: [mailer({ adapter: recordingMailer(recorder) })],
       exports: [Mailer],
     });
 
