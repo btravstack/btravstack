@@ -77,7 +77,7 @@ ConfigInvalid, Env> & { readonly port: P }` (di's own `Provider(port)`
 
 ## Tests
 
-`config.spec.ts` (15 specs): `Config.object`'s semantics (defaults, parsed
+`config.spec.ts`: `Config.object`'s semantics (defaults, parsed
 values, `PORT=0`, empty, blank ×2 + malformed named in one validation, `3.5`,
 bounds, a required field, a defecting field), `Config.pinned` (the pin over
 the environment, the field otherwise), `ConfigInvalid.message`, and `Config.provider` end to end through a real

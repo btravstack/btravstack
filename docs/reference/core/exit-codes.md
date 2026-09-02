@@ -36,7 +36,7 @@ const runMain: <X, E, N, UnitX = never, UnitNeeds = never>(
 `runMain` is `start` composed with the wait for `exited`, then a fold of the
 `Result` into a code. It carries the same phantom marker as `start`, intersected
 onto `module` (see
-[The gate](/reference/core/start#the-gate-startgate-x-unitneeds)), so
+[The gate](/reference/core/start#the-gate-startgate-x-unitneeds-n)), so
 `NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …` and
 `UNSATISFIED UNIT NEEDS — …` are printed at this call site too.
 

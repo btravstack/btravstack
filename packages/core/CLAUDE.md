@@ -644,9 +644,11 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   `runtimePublished` takes `Serving.info` the moment the runtime is serving, and
   `undefined` from the **same two** `tapFailure` blocks that already settle
   `probeBound` — the probe bind failure, and `Module.scoped`'s (construction
-  failure, a runtime refusing to start, a defect). `createDeferred.resolve` is
-  idempotent, so a runtime that did serve and then failed later keeps what it
-  published. One mechanism, two deferreds, no third shape.
+  failure, a runtime refusing to start, a defect). A `Promise.withResolvers`
+  `resolve` is idempotent — a second call is a no-op, which is what the
+  hand-rolled `createDeferred` needed a `settled` flag for — so a runtime that
+  did serve and then failed later keeps what it published. One mechanism, two
+  deferreds, no third shape.
 
 - **The probe server binds before the graph is built.** `/livez` therefore
   answers while construction is still running, which is why there is no separate
@@ -679,7 +681,8 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
 
 - **The pre-drain delay is charged from when the shutdown was REQUESTED.**
   `Math.max(0, preDrainDelayMs - sinceShutdownRequested())`, stamped by
-  `requestShutdown` at the first request — the one `createDeferred` keeps. A
+  `requestShutdown` at the first request — the one `shutdownRequestedAt`
+  keeps. A
   signal landing mid-build is buffered, since nothing observes
   `shutdown.promise` until `runtime.start` has resolved, so paying the delay in
   full afterwards charges twice for a window the build already spent. Both
@@ -756,12 +759,13 @@ ConfigInvalid })` rather than widening `exited`'s error union for every
   shutdown it triggers may produce further noise, and the exit report names one
   cause.
 
-- **The `stop()`/`requestDrain()` deferred resolves once.** `createDeferred`
-  guards `resolve` with an explicit `settled` flag (a second SIGTERM, and the
-  uncaught handler racing a signal, both call it again), so nothing can rewrite
-  the reason an application stopped. There is deliberately no `settled()`
-  accessor — nothing asks, and an unread accessor is dead code the compiler
-  cannot see.
+- **The `stop()`/`requestDrain()` deferred resolves once**, and that is the
+  platform's promise rather than a guard of ours: `Promise.withResolvers`'
+  `resolve` is idempotent, so the second SIGTERM — and the uncaught handler
+  racing a signal — cannot rewrite the reason an application stopped. It was a
+  hand-rolled `createDeferred` with an explicit `settled` flag until the Node
+  floor rose to 22 and `Promise.withResolvers` (ES2024) made the shim dead
+  code.
 
 ## `Observers` — the set port every starter reports through
 

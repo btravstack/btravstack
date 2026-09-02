@@ -65,7 +65,7 @@ type BootDefaults = Omit<StartOptions, "signals" | "unit">;
 
 A `test.extend` fixture that hands the test a `Boot` — `start`, with the
 same signature and the same
-[phantom marker on `module`](/reference/core/start#the-gate-startgate-x-unitneeds),
+[phantom marker on `module`](/reference/core/start#the-gate-startgate-x-unitneeds-n),
 minus `signals` — and **stops every
 application it started once the test is over**, on every exit path, a
 failing assertion included. Wire it once, in the fixture module every spec

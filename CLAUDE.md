@@ -1095,19 +1095,18 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   that survives carries an `oxlint-disable-next-line unthrown/no-throw`
   naming why. In the kernel and the harness they fall into three kinds — a
   **loud test fixture** whose failure means the _test_ is buggy
-  (`packages/testing`'s `test-runtime.ts`'s two misuse guards and
-  `tapped.ts`'s read-before-boot; `packages/core`'s `invariants.spec.ts`'s
-  `boundPort`), a **harness rethrow** that is the only way a defect or a
-  `use` failure reaches the test runner (`with-app.ts`'s two,
-  `boot-fixture.ts`'s one), and a throw that **is the subject under test**
-  (`events.spec.ts`'s throwing sink, `units.spec.ts`'s throwing unit, and the
-  defects `run-main.spec.ts`, `drain.spec.ts` and `with-app.spec.ts` mint —
-  `Defect` has no public constructor, so a throw inside a combinator is the
-  only way — plus `with-app.spec.ts`'s stand-in for a failing `expect`): five
-  in `packages/core/src`, eight in `packages/testing/src`, two in
-  `packages/observability/src` (`test-fixtures.ts`'s `Recorder.only()`, a loud
-  fixture guard, and `logger.spec.ts`'s throwing sink, which is the subject
-  under test). `no-get-or-throw` is switched off for the `**/*.spec.ts` **and
+  (`packages/testing`'s `test-runtime.ts` misuse guards and `tapped.ts`'s
+  read-before-boot; `packages/core`'s `invariants.spec.ts`'s `boundPort`;
+  `packages/observability`'s `test-fixtures.ts`'s `Recorder.only()`), a
+  **harness rethrow** that is the only way a defect or a `use` failure reaches
+  the test runner (`boot-fixture.ts`'s), and a throw that **is the subject
+  under test** (`events.spec.ts`'s throwing sink, `units.spec.ts`'s throwing
+  unit, `logger.spec.ts`'s throwing sink, and the defects `run-main.spec.ts`,
+  `drain.spec.ts` and `health.spec.ts` mint — `Defect` has no public
+  constructor, so a throw inside a combinator is the only way). The kinds are
+  what a reader needs; **the tally is not here on purpose** — `rg
+"unthrown/no-throw"` answers it against the code, where a number in this file
+  answers it against whenever it was last counted (#192). `no-get-or-throw` is switched off for the `**/*.spec.ts` **and
   `**/test-fixtures.ts`** globs through an `overrides` entry — the exemption the
   rule's own diagnostic prescribes, since `getOrThrow()` is the right tool in a
   test, and a fixture module is test code that merely does not end in
@@ -1201,6 +1200,18 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   slow gets tested badly. `*.test-d.ts` files are excluded from the build, from
   oxlint and from knip; they are checked by `tsc -p tsconfig.test-d.json`, which
   `pnpm typecheck` runs. The structural rules are in **Test conventions** below.
+- **Prose carries reasons, never counts.** A number in a spec file either sits
+  behind a gate that recomputes it or is deleted in favour of the reason it was
+  counting. Measured across the whole repository (#192): every claim behind the
+  doc-samples gate held — all seven numeric defaults included — and essentially
+  every hand-kept tally in ungated prose was stale, while the reasoned lists
+  beside them (what each spec pins, why each disable exists) were accurate. A
+  count is the one kind of sentence that goes wrong on a commit that never
+  touched it. So `rg` answers "how many"; this file answers "why", and the
+  numbers that remain are the ones something else holds to account — a count
+  printed beside the table that enumerates it, an exit code, a default in
+  milliseconds.
+
 - Documentation drifts silently, and a sibling repo has already shipped a
   falsehood this way. When the public surface changes, update **this** file,
   the documentation site's page for it (see **Documentation site** below),
@@ -1251,12 +1262,16 @@ shipped invariants — restructuring them buys consistency while risking exactly
 the weakening rules 4 and 5 exist to prevent. A **new or rewritten** kernel spec
 follows all five; an untouched one is not churned for it.
 
-That split was measured, not assumed. An audit of the kernel's 93 tests found
-**one** conditional assertion — a redundant `isOk()` block re-checking a field
-the preceding deep `toBeOkWith` had already pinned exactly, since deleted —
-**zero** optional-chained assertions, and 1.77 expects per test against the 2.25
-the examples carried before their sweep. The substantive rules were already being
-kept; only the structural ones differ.
+That split was measured, not assumed. An audit of the kernel's specs found the
+substantive rules already kept and the structural ones not: the one conditional
+assertion it turned up was a redundant `isOk()` block re-checking a field the
+preceding deep `toBeOkWith` had already pinned exactly, since deleted, and the
+kernel's expects-per-test sat well under what the examples carried before their
+sweep. Optional chaining survives in exactly one shape and it is not an
+assertion declining to run: `units.spec.ts` reads `seen?.unitId` where `seen` is
+what `currentUnit()` answered **inside** the unit, so a `?.` that found nothing
+would compare `undefined` against `"u-1"` and fail. The rule is about a guard
+that can skip the comparison, not about the operator.
 
 1. **`describe` is the first statement a reader meets.** After the imports,
    nothing but `describe`. A file that opens with 144 lines of helpers makes a

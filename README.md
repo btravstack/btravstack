@@ -263,13 +263,15 @@ pnpm test             # vitest + v8 coverage (100% lines/functions on packages)
 pnpm build            # tsdown dual CJS/ESM + d.ts
 ```
 
-**The gate needs a running Docker daemon.** Six workspaces boot a real
-dependency — a broker, a workflow platform, a database — and they share
-**three containers** between them: one PostgreSQL, one RabbitMQ, one Temporal,
-started once per machine and reused by every workspace's run
-(`internal/test-infra`). Isolation is the boundary each system already has: a
-**vhost** per test, a **namespace** per spec file, a **tenant** per test.
-Measured: 27/27 tasks, about 32 s warm. Remove the containers with
+**The gate needs a running Docker daemon.** Every workspace that boots a real
+dependency — a broker, a workflow platform, a database, a cache, an SMTP
+server, an object store — attaches to a container **started once per machine
+and shared**, rather than starting one of its own
+([`internal/test-infra`](./internal/test-infra), which owns the list). Isolation
+is the boundary each system already has, minted in setup and never cleaned up:
+a **vhost** per test, a **namespace** per spec file, a **tenant** per test, a
+Redis **key prefix** per test, a **recipient** per test, and an object-store
+**key prefix** per test. Remove the containers with
 `docker rm -f $(docker ps -aq --filter label=com.btravstack.test-infra)`.
 
 Commits follow Conventional Commits; user-facing changes carry a changeset.

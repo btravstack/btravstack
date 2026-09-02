@@ -208,7 +208,7 @@ Marks a provider to **replace** the base provider for its port when the graph
 is planned — the base is never constructed. Two `WiringDefect`s guard it: an
 override with no base in the tree ("nothing to override"), and two overrides
 for one port. It exists for `@btravstack/testing`'s
-[`overridden`](/reference/testing#overriddenmodule-overrides), which is the
+[`overridden`](/reference/testing#overridden-module-overrides), which is the
 intended caller; a production composition root that reaches for it is
 recomposing the lazy way — swapping an adapter is composing a different
 module, which stays the production answer.

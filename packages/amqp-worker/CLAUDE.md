@@ -323,8 +323,8 @@ null })` **raced against `signal`**, and `stop()` reuses whatever deadline
   own services"_) and three the drain (_"lets an in-flight delivery finish
   while draining"_, _"hands the handler the unit's own AbortSignal, through
   the ambient record"_ off the `deadline` fixture, _"releases the kernel at
-  its own deadline, not the library's own close timeout"_) — plus **2** in
-  `handler.spec.ts`: a broadcast contract with two consumers of ONE publisher
+  its own deadline, not the library's own close timeout"_). `handler.spec.ts`
+  pins the slicing: a broadcast contract with two consumers of ONE publisher
   on two queues, composed from two pieces via `AmqpHandlers(slicedContract)([left,
 right])`, pinning that both slices run (_"serves a record composed from one
   piece per consumer"_) and that each piece closed over only the services its
