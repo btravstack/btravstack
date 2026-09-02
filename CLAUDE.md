@@ -898,39 +898,48 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   makes composing several slices into one router a starting point rather than a
   trap, and it is the one property marked do-not-break in the design.
 
-  **The LEAF is not yet one shape, and oRPC's is the reference** (issue
-  #207). The mint and compose calls above are uniform; the function a developer
-  actually types is not — `({ errors, context }, input)` on HTTP,
-  `(args, { errors })` on Temporal, and on AMQP a curried single function with
-  no helpers record at all. Someone moving a use case between transports, which
-  is this family's flagship move, relearns the leaf each time.
+  **The LEAF is one shape, and oRPC's is the one** (issue #207, closed by
+  btravstack/temporal-contract#415 and btravstack/amqp-contract#671). A
+  developer writes the same function on all three transports: **one record
+  carrying everything the invocation has — the input included — and that input
+  repeated as a second positional parameter.**
 
-  **oRPC is the reference because it is the most widely used of the three**, not
-  because helpers-first is inherently better: a developer arriving here is more
-  likely to have seen oRPC than either of the others, so it is the shape that costs the
-  least to match.
+  ```ts
+  place:   ({ errors, context, input })      => …   // HTTP, oRPC's own shape
+  place:   ({ errors, context, input })      => …   // Temporal
+  process: ({ errors, context, raw, input }) => …   // AMQP
+  ```
 
-  **The convergence happens UPSTREAM, not in an adapter here** —
-  btravstack/temporal-contract#414 and btravstack/amqp-contract#670, both
-  libraries this org owns and both still in beta, so it is free now and a
-  deprecation cycle after they go stable. A starter could reshape the leaf at
-  the call site it already owns, and should not: the leaf's type is INFERRED
-  from each contract library's own types, so an adapter would re-derive rather
-  than infer it, and it would leave the starter's documentation and the
-  library's documentation describing the same function with two different
-  signatures.
+  **oRPC is the reference because it is the most widely used of the three**,
+  not because the shape is inherently better: a developer arriving here is more
+  likely to have seen it than either of the others, so it is what costs the
+  least to match. It is oRPC's shape down to the DUPLICATION — its
+  `ProcedureHandlerOptions` carries `input` and its handler still takes it
+  positionally — so `({ errors }, input)` remains the same call, and a caller
+  picks. The record is what the docs teach, because it is the spelling that
+  needs no `_` placeholder when a leaf wants only its input.
 
-  The AMQP ask is the one that is not merely cosmetic. It is the only leaf with
-  no helpers record at all, so a handler wanting "infrastructure comes back"
-  imports and constructs `RetryableError` by hand, where an oRPC handler reaches
-  for the `errors` it was handed. A helpers record carrying `errors` — and
-  `context`, which oRPC has and Temporal does not — is what makes its triage
-  site read like HTTP's; on Temporal the record stays `{ errors }`, since an
-  activity's own context is Temporal's and reaching it through a second name
-  would be a third spelling rather than a shared one.
+  **`input` is the field name on all three**, not `args` or `message`. A local
+  synonym per transport would put the relearning back on the one field every
+  leaf touches.
 
-  **The naming asymmetry is a separate, smaller decision and is NOT yet made.**
-  `AmqpHandler`/`AmqpHandlers` differ by one letter, and
+  **The convergence happened UPSTREAM, not in an adapter here.** A starter
+  could have reshaped the leaf at the call site it already owns, and did not:
+  the leaf's type is INFERRED from each contract library's own types, so an
+  adapter would re-derive rather than infer it, and it would leave the
+  starter's documentation and the library's documentation describing the same
+  function with two different signatures. Both libraries are this org's and
+  were in beta, so it cost a beta bump rather than a deprecation cycle.
+
+  The AMQP half was the one that was not merely cosmetic: it had no helpers
+  record at all, so a handler wanting "infrastructure comes back" imported and
+  constructed `RetryableError` by hand. Its record now carries `retryable` and
+  `nonRetryable` beside `errors`, so that triage reads like HTTP's — and `raw`,
+  the amqplib delivery, which used to be a third parameter no other transport
+  had.
+
+  **The naming asymmetry is a separate, smaller decision and is still NOT
+  made.** `AmqpHandler`/`AmqpHandlers` differ by one letter, and
   `TemporalWorkflowActivities`/`TemporalActivities` give the piece the longer
   name where HTTP gives the composer a different word entirely
   (`OrpcController`/`OrpcRouter`). The recommendation on the table is HTTP's

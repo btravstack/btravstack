@@ -38,7 +38,11 @@ export const orderNotifications = AmqpHandler(
   inject: { logger: Logger, mailer: Mailer },
   sync:
     ({ logger, mailer }) =>
-    ({ payload: { tenantId, id, payload } }) => {
+    ({
+      input: {
+        payload: { tenantId, id, payload },
+      },
+    }) => {
       if (currentUnit()?.signal.aborted === true) {
         return ErrAsync(
           new RetryableError(`the drain deadline passed before order ${id} was notified`),

@@ -154,7 +154,7 @@ one activities record as it polls one task queue, so the port is the starter's
 contract at the type level (`ActivitiesPortOf<C>`, the move the kernel's
 `RuntimePort` makes) — and two activities providers in one graph are di's
 duplicate-provider defect at build. Each activity is a plain function typed by
-the contract (`(args, { errors }) => AsyncResult<…>`), closing over the
+the contract (`({ errors, input }) => AsyncResult<…>`), closing over the
 services the provider declared; nothing is read from a context.
 
 Expanded, the monolithic form looks like this — not a call site inside
@@ -178,9 +178,9 @@ export const orderActivities = TemporalActivities(orderContract)({
   },
   sync: ({ place, repository, stock, shipping, payments }) => ({
     fulfillOrder: {
-      place: (args, { errors }) =>
+      place: ({ errors, input }) =>
         place
-          .execute(TenantId(args.tenantId), args.orderId, args.quantity)
+          .execute(TenantId(input.tenantId), input.orderId, input.quantity)
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher
@@ -194,42 +194,42 @@ export const orderActivities = TemporalActivities(orderContract)({
                 errors.OrderAlreadyPlaced({ id: error.id }),
               ),
           ),
-      reserveStock: (args, { errors }) =>
+      reserveStock: ({ errors, input }) =>
         stock
-          .reserve(args.orderId, args.quantity)
+          .reserve(input.orderId, input.quantity)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("OutOfStock"), (error) =>
               errors.OutOfStock({ id: error.id }),
             ),
           ),
-      arrangeShipping: (args, { errors }) =>
+      arrangeShipping: ({ errors, input }) =>
         shipping
-          .arrange(args.orderId)
+          .arrange(input.orderId)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("ShippingUnavailable"), (error) =>
               errors.ShippingUnavailable({ id: error.id }),
             ),
           ),
-      releaseStock: (args) => stock.release(args.orderId),
-      cancelPlacement: (args) =>
+      releaseStock: ({ input }) => stock.release(input.orderId),
+      cancelPlacement: ({ input }) =>
         repository
-          .remove(TenantId(args.tenantId), args.orderId)
+          .remove(TenantId(input.tenantId), input.orderId)
           .recoverErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), () => undefined),
           ),
     },
     chargeOrder: {
-      authorizePayment: (args, { errors }) =>
+      authorizePayment: ({ errors, input }) =>
         payments
-          .authorize(args.orderId, args.amount)
+          .authorize(input.orderId, input.amount)
           .map((authorizationId) => ({ authorizationId }))
           .mapErrCases((matcher) =>
             matcher.with(P.tag("PaymentDeclined"), (error) =>
               errors.PaymentDeclined({ id: error.id }),
             ),
           ),
-      capturePayment: (args) => payments.capture(args.authorizationId),
-      refundPayment: (args) => payments.refund(args.authorizationId),
+      capturePayment: ({ input }) => payments.capture(input.authorizationId),
+      refundPayment: ({ input }) => payments.refund(input.authorizationId),
     },
   }),
 });
@@ -239,7 +239,7 @@ One record, one `sync`, both sagas' services in its `inject` — which is exactl
 the shape that stops scaling once a worker owns enough workflows, and why the
 composing form below exists.
 
-`args.tenantId` is the application's, not the package's: it is a field the
+`input.tenantId` is the application's, not the package's: it is a field the
 **contract** declares on every workflow and activity input, which is what
 makes it survive a replay — Temporal persists an activity's input in the
 event history. `@btravstack/temporal-worker` reads nothing about tenancy.
@@ -314,9 +314,9 @@ const orderFulfillment = TemporalWorkflowActivities(
     shipping: ShippingService,
   },
   sync: ({ place, repository, stock, shipping }) => ({
-    place: (args, { errors }) =>
+    place: ({ errors, input }) =>
       place
-        .execute(TenantId(args.tenantId), args.orderId, args.quantity)
+        .execute(TenantId(input.tenantId), input.orderId, input.quantity)
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
           matcher
@@ -340,9 +340,9 @@ const orderBilling = TemporalWorkflowActivities(
 )({
   inject: { payments: PaymentService },
   sync: ({ payments }) => ({
-    authorizePayment: (args, { errors }) =>
+    authorizePayment: ({ errors, input }) =>
       payments
-        .authorize(args.orderId, args.amount)
+        .authorize(input.orderId, input.amount)
         .map((authorizationId) => ({ authorizationId }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("PaymentDeclined"), (error) =>

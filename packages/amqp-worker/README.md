@@ -53,7 +53,7 @@ import { ErrAsync, OkAsync, P } from "unthrown";
 const orderHandlers = AmqpHandlers(orderContract)({
   inject: { placeOrder: PlaceOrder },
   sync: ({ placeOrder }) => ({
-    orderNotifications: (message) =>
+    orderNotifications: ({ input: message }) =>
       placeOrder
         .execute(
           TenantId(message.payload.tenantId),

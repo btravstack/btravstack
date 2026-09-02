@@ -7,17 +7,17 @@ settings:
 catalogs:
   default:
     '@amqp-contract/client':
-      specifier: 3.0.0-beta.6
-      version: 3.0.0-beta.6
+      specifier: 3.0.0-beta.7
+      version: 3.0.0-beta.7
     '@amqp-contract/contract':
-      specifier: 3.0.0-beta.6
-      version: 3.0.0-beta.6
+      specifier: 3.0.0-beta.7
+      version: 3.0.0-beta.7
     '@amqp-contract/testing':
-      specifier: 3.0.0-beta.6
-      version: 3.0.0-beta.6
+      specifier: 3.0.0-beta.7
+      version: 3.0.0-beta.7
     '@amqp-contract/worker':
-      specifier: 3.0.0-beta.6
-      version: 3.0.0-beta.6
+      specifier: 3.0.0-beta.7
+      version: 3.0.0-beta.7
     '@aws-sdk/client-s3':
       specifier: 3.1121.0
       version: 3.1121.0
@@ -94,17 +94,17 @@ catalogs:
       specifier: 5.102.8
       version: 5.102.8
     '@temporal-contract/client':
-      specifier: 8.0.0-beta.5
-      version: 8.0.0-beta.5
+      specifier: 8.0.0-beta.7
+      version: 8.0.0-beta.7
     '@temporal-contract/contract':
-      specifier: 8.0.0-beta.5
-      version: 8.0.0-beta.5
+      specifier: 8.0.0-beta.7
+      version: 8.0.0-beta.7
     '@temporal-contract/testing':
-      specifier: 8.0.0-beta.5
-      version: 8.0.0-beta.5
+      specifier: 8.0.0-beta.7
+      version: 8.0.0-beta.7
     '@temporal-contract/worker':
-      specifier: 8.0.0-beta.5
-      version: 8.0.0-beta.5
+      specifier: 8.0.0-beta.7
+      version: 8.0.0-beta.7
     '@temporalio/activity':
       specifier: 1.23.0
       version: 1.23.0
@@ -332,7 +332,7 @@ importers:
     dependencies:
       '@amqp-contract/contract':
         specifier: 'catalog:'
-        version: 3.0.0-beta.6
+        version: 3.0.0-beta.7
       zod:
         specifier: 'catalog:'
         version: 4.5.3
@@ -363,10 +363,10 @@ importers:
     dependencies:
       '@amqp-contract/client':
         specifier: 'catalog:'
-        version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
+        version: 3.0.0-beta.7(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
       '@amqp-contract/worker':
         specifier: 'catalog:'
-        version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
+        version: 3.0.0-beta.7(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
       '@btravstack/amqp-worker':
         specifier: workspace:*
         version: link:../../packages/amqp-worker
@@ -409,7 +409,7 @@ importers:
     devDependencies:
       '@amqp-contract/testing':
         specifier: 'catalog:'
-        version: 3.0.0-beta.6(vitest@4.1.11)
+        version: 3.0.0-beta.7(vitest@4.1.11)
       '@btravstack/internal-test-infra':
         specifier: workspace:*
         version: link:../../internal/test-infra
@@ -723,7 +723,7 @@ importers:
     dependencies:
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(unthrown@5.7.0)
+        version: 8.0.0-beta.7(unthrown@5.7.0)
       zod:
         specifier: 'catalog:'
         version: 4.5.3
@@ -790,10 +790,10 @@ importers:
         version: 0.221.0(@opentelemetry/api@1.9.1)
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
+        version: 8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
+        version: 8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
       '@temporalio/client':
         specifier: 'catalog:'
         version: 1.23.0
@@ -818,10 +818,10 @@ importers:
         version: 0.2.0
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(unthrown@5.7.0)
+        version: 8.0.0-beta.7(unthrown@5.7.0)
       '@temporal-contract/testing':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(@temporal-contract/client@8.0.0-beta.5(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0))(@temporal-contract/contract@8.0.0-beta.5(unthrown@5.7.0))(@temporal-contract/worker@8.0.0-beta.5(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0))(@temporalio/client@1.23.0)(@temporalio/testing@1.23.0)(@temporalio/worker@1.23.0)(testcontainers@12.1.0)(unthrown@5.7.0)(vitest@4.1.11)
+        version: 8.0.0-beta.7(@temporal-contract/client@8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0))(@temporal-contract/contract@8.0.0-beta.7(unthrown@5.7.0))(@temporal-contract/worker@8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0))(@temporalio/client@1.23.0)(@temporalio/testing@1.23.0)(@temporalio/worker@1.23.0)(testcontainers@12.1.0)(unthrown@5.7.0)(vitest@4.1.11)
       '@temporalio/testing':
         specifier: 'catalog:'
         version: 1.23.0
@@ -885,13 +885,13 @@ importers:
     devDependencies:
       '@amqp-contract/contract':
         specifier: 'catalog:'
-        version: 3.0.0-beta.6
+        version: 3.0.0-beta.7
       '@amqp-contract/testing':
         specifier: 'catalog:'
-        version: 3.0.0-beta.6(vitest@4.1.11)
+        version: 3.0.0-beta.7(vitest@4.1.11)
       '@amqp-contract/worker':
         specifier: 'catalog:'
-        version: 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
+        version: 3.0.0-beta.7(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
       '@btravstack/config':
         specifier: workspace:*
         version: link:../config
@@ -1410,13 +1410,13 @@ importers:
         version: 0.2.0
       '@temporal-contract/client':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
+        version: 8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
       '@temporal-contract/contract':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(unthrown@5.7.0)
+        version: 8.0.0-beta.7(unthrown@5.7.0)
       '@temporal-contract/worker':
         specifier: 'catalog:'
-        version: 8.0.0-beta.5(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
+        version: 8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
       '@temporalio/activity':
         specifier: 'catalog:'
         version: 1.23.0
@@ -1571,19 +1571,19 @@ packages:
     resolution: {integrity: sha512-cWZc1dKb7wy9/wPpwMtL1y89gK2G7y2A47Coa7zwf1ydtIeJm4+S+XxoQ2b/ZRiQnrC1YHavLjYUPDCdnT7Khg==}
     engines: {node: '>= 14.0.0'}
 
-  '@amqp-contract/client@3.0.0-beta.6':
-    resolution: {integrity: sha512-LlCuzVu3i9kSZeMtj1vDizXwehgT56d6Jw04SbR9VACbXsRl7pIE5bfZaTw111FNLXk5ci8wfeqpFN7hmvwVxQ==}
-    engines: {node: '>=22.19'}
+  '@amqp-contract/client@3.0.0-beta.7':
+    resolution: {integrity: sha512-OP7juV+m0J23wGHIyA34Qg7XTQOfUfE6OtndnqXXZm9UJUD9y4JxVuqeQHKHCe/b7ZjmdlHM6Akw/jXFAa8zBQ==}
+    engines: {node: '>=22.22'}
     peerDependencies:
       unthrown: ^5.3.0
 
-  '@amqp-contract/contract@3.0.0-beta.6':
-    resolution: {integrity: sha512-9eDFKrdUo2MfM0tB4vJTmvK2wgEXmJYi2iCX0MsMG1yLESL4w4iXp9cHg+RypicHsHlhOg8wjcRHGkLEtj7KoA==}
-    engines: {node: '>=22.19'}
+  '@amqp-contract/contract@3.0.0-beta.7':
+    resolution: {integrity: sha512-VayKDkIyvb7p9DLlek4pVGJNiW0+MNTAiOnWMkaAUZrvzNpxygMw9ppSWZj9nwIBu1qKQtXGfSsPc/TyTqX2uQ==}
+    engines: {node: '>=22.22'}
 
-  '@amqp-contract/core@3.0.0-beta.6':
-    resolution: {integrity: sha512-5IKWooJIeY3DvdfJCc01uXk+XAX6KfyyaQOsQS7fGFyNOTHGF6MOnGr5n6Dyq97JgR/NThZjaA+Kn6gbJ+0kdg==}
-    engines: {node: '>=22.19'}
+  '@amqp-contract/core@3.0.0-beta.7':
+    resolution: {integrity: sha512-Jk3EvdCJS/1pFiZ72SIlWZnD3pzuVwO6INLMClzGqyXb+7+LyUqyLK4lXIa28jt13Xf+d/fyW+gNvKP83+OIiQ==}
+    engines: {node: '>=22.22'}
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
       unthrown: ^5.0.0
@@ -1591,15 +1591,15 @@ packages:
       '@opentelemetry/api':
         optional: true
 
-  '@amqp-contract/testing@3.0.0-beta.6':
-    resolution: {integrity: sha512-ddacQlqGJbwyh6QohCDFZTZ4/IF3W+1+MeVKPDhw++YwCGWBYZIAYB1AC/w6Lx0oO+u7YwLqkISrhE3ZtfwM5Q==}
-    engines: {node: '>=22.19'}
+  '@amqp-contract/testing@3.0.0-beta.7':
+    resolution: {integrity: sha512-uTcjJrukPds142fmVNMpZqdS3OhrNhnAJmgnFKHTtaFpPEFcp9PqbEFHZTKFQUkC93umfH9B05XJESUit+Dchg==}
+    engines: {node: '>=22.22'}
     peerDependencies:
       vitest: ^4
 
-  '@amqp-contract/worker@3.0.0-beta.6':
-    resolution: {integrity: sha512-izzTHWMHZ46DFJ6uEsIdDEjr+U0ix9Llrn+iKSpvxU+pPsv3hblOpFtJSbYNdsEhwLLiypeYW1b7kuQQfLzmxA==}
-    engines: {node: '>=22.19'}
+  '@amqp-contract/worker@3.0.0-beta.7':
+    resolution: {integrity: sha512-RFdz4V9ksVLr0SXlGRauhcA2jkRH/Si0TMCom4FyTcOaq84YmMT9bFkLEJ6wuKW64Zug12Cceh1F4LtbkvH+IQ==}
+    engines: {node: '>=22.22'}
     peerDependencies:
       unthrown: ^5.0.0
 
@@ -3867,30 +3867,30 @@ packages:
   '@tanstack/query-core@5.102.8':
     resolution: {integrity: sha512-ZNjkJ33CqvPNec/6lZBnHqLc3EVGPZ9ySLhYahU9TcuRFdmwXewuj0c4hwSWcGHqEUwcSrKeZ+oGcvPBqXcQcg==}
 
-  '@temporal-contract/client@8.0.0-beta.5':
-    resolution: {integrity: sha512-K5dtM6SuTXa/6Upa7H7zMp50X3PcbGSS7s9REPLz39IxOeUPIm1vzxeKscESjduA1x6jgcFGtiXOIH3l3lEAhA==}
-    engines: {node: '>=22.19.0'}
+  '@temporal-contract/client@8.0.0-beta.7':
+    resolution: {integrity: sha512-+uw4MsezgzNkFOS0fkDkN+VWHJLCObur/TN9kFP37TgUVH8PGjak1TckwQI8awzXkYwcLa/el5xSWwbk0GXTLg==}
+    engines: {node: '>=22.22.0'}
     peerDependencies:
       '@temporalio/client': ^1.16.0
       '@temporalio/common': ^1.16.0
       unthrown: ^5.0.0
 
-  '@temporal-contract/contract@8.0.0-beta.5':
-    resolution: {integrity: sha512-l70Q/cxswXacEcq89islqFKYdm4NUn4CMegVC0sJFPcjHt4EDqdywRzOSV5ZyX06kn0LWhBcEuLvSpjKb/4PaA==}
-    engines: {node: '>=22.19.0'}
+  '@temporal-contract/contract@8.0.0-beta.7':
+    resolution: {integrity: sha512-0cntnq1F0cG4dQUQnmkMggZQpWfONDDrt2PQ3qP3hpWQKnmSZV7YozDzkLkptq2Cs29UvtVsFSByYl4+yZ7Nlg==}
+    engines: {node: '>=22.22.0'}
     peerDependencies:
       unthrown: ^5.0.0
     peerDependenciesMeta:
       unthrown:
         optional: true
 
-  '@temporal-contract/testing@8.0.0-beta.5':
-    resolution: {integrity: sha512-EpjcrCBmU+rQ0j+yvEypHm8MreZnuF7KGrxkL8iDYoDJtg4N9OcyyOL0RCyQ3EXPjGvjfXWMPn4e8RFBXwUcPQ==}
-    engines: {node: '>=22.19.0'}
+  '@temporal-contract/testing@8.0.0-beta.7':
+    resolution: {integrity: sha512-rWujLrMeAMw+0KMfEvc7LQAY3vn3d3WFoz2wJ9YvTgW+LjnohSLpBpqyfoFrPo6uShIlRliAfpbS6qSZOD4Z/g==}
+    engines: {node: '>=22.22.0'}
     peerDependencies:
-      '@temporal-contract/client': ^8.0.0-beta.5
-      '@temporal-contract/contract': ^8.0.0-beta.5
-      '@temporal-contract/worker': ^8.0.0-beta.5
+      '@temporal-contract/client': ^8.0.0-beta.7
+      '@temporal-contract/contract': ^8.0.0-beta.7
+      '@temporal-contract/worker': ^8.0.0-beta.7
       '@temporalio/client': ^1.16.0
       '@temporalio/testing': ^1.16.0
       '@temporalio/worker': ^1.16.0
@@ -3901,9 +3901,9 @@ packages:
       testcontainers:
         optional: true
 
-  '@temporal-contract/worker@8.0.0-beta.5':
-    resolution: {integrity: sha512-apKMRrrprZNZBlVBxRUbsxsb8PYh1iqHPASJ7/vRALQ1xdGyvKC6zIWQImYE994goB72qCRy0K8khrYJfoUoIw==}
-    engines: {node: '>=22.19.0'}
+  '@temporal-contract/worker@8.0.0-beta.7':
+    resolution: {integrity: sha512-Kfjv4NcvzqyFl/6RY5I0c6+lpNX3LtG4q73+NsBWCCIJM4RgRN7QizsiK+NVe+4AgTCs/CiNPjDiB8oxYomW6A==}
+    engines: {node: '>=22.22.0'}
     peerDependencies:
       '@temporalio/common': ^1.16.0
       '@temporalio/worker': ^1.16.0
@@ -4254,10 +4254,6 @@ packages:
     peerDependencies:
       '@prisma/client': ^7
       unthrown: ^5.7.0
-
-  '@unthrown/standard-schema@5.5.0':
-    resolution: {integrity: sha512-BrPZH4y3PXi0n1Y4dUYVg+a+g5Vxqsxgeyss0Dy6SMUY8nT4ihaOGgNkTc4Mxz/enSfOyu1wbpA+TSxFrwbMnA==}
-    engines: {node: '>=20'}
 
   '@unthrown/standard-schema@5.7.0':
     resolution: {integrity: sha512-mFCV8X3ggLMbfDJDZqnVg38mYu2E/6GikGguG6H3MpK3/VsT//JYIiaq9UZ/ppT7TgsD2AnUTdT6vw+HETaLbQ==}
@@ -6625,9 +6621,6 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  testcontainers@12.0.4:
-    resolution: {integrity: sha512-QIR/8xF1+F/26cIM+9B4yyxNTbKJxAv3hygZyhPRgZ8Q2AhlPZjDdpXRuk16V37X4bgJRI3hXFhoEICMBA7Adg==}
-
   testcontainers@12.1.0:
     resolution: {integrity: sha512-YjDLqIITuhGLMnM10yhg3oV6lIG5IMpz1R1DPBZoOOks83q7i7IVpeSWRTiyl7roozjiyLmwIoLK/KY8OnZmIA==}
     engines: {node: '>= 22.22'}
@@ -7161,33 +7154,33 @@ snapshots:
     dependencies:
       '@algolia/client-common': 5.57.0
 
-  '@amqp-contract/client@3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.7.0)':
+  '@amqp-contract/client@3.0.0-beta.7(@opentelemetry/api@1.9.1)(unthrown@5.7.0)':
     dependencies:
-      '@amqp-contract/contract': 3.0.0-beta.6
-      '@amqp-contract/core': 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
+      '@amqp-contract/contract': 3.0.0-beta.7
+      '@amqp-contract/core': 3.0.0-beta.7(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
       '@standard-schema/spec': 1.1.0
-      '@unthrown/standard-schema': 5.5.0
+      '@unthrown/standard-schema': 5.7.0(unthrown@5.7.0)
       unthrown: 5.7.0
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@amqp-contract/contract@3.0.0-beta.6':
+  '@amqp-contract/contract@3.0.0-beta.7':
     dependencies:
       '@standard-schema/spec': 1.1.0
 
-  '@amqp-contract/core@3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.7.0)':
+  '@amqp-contract/core@3.0.0-beta.7(@opentelemetry/api@1.9.1)(unthrown@5.7.0)':
     dependencies:
-      '@amqp-contract/contract': 3.0.0-beta.6
+      '@amqp-contract/contract': 3.0.0-beta.7
       amqp-connection-manager: 5.0.0(amqplib@2.0.1)
       amqplib: 2.0.1
       unthrown: 5.7.0
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  '@amqp-contract/testing@3.0.0-beta.6(vitest@4.1.11)':
+  '@amqp-contract/testing@3.0.0-beta.7(vitest@4.1.11)':
     dependencies:
       amqplib: 2.0.1
-      testcontainers: 12.0.4
+      testcontainers: 12.1.0
       vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
     transitivePeerDependencies:
       - bare-abort-controller
@@ -7195,12 +7188,12 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@amqp-contract/worker@3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.7.0)':
+  '@amqp-contract/worker@3.0.0-beta.7(@opentelemetry/api@1.9.1)(unthrown@5.7.0)':
     dependencies:
-      '@amqp-contract/contract': 3.0.0-beta.6
-      '@amqp-contract/core': 3.0.0-beta.6(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
+      '@amqp-contract/contract': 3.0.0-beta.7
+      '@amqp-contract/core': 3.0.0-beta.7(@opentelemetry/api@1.9.1)(unthrown@5.7.0)
       '@standard-schema/spec': 1.1.0
-      '@unthrown/standard-schema': 5.5.0
+      '@unthrown/standard-schema': 5.7.0(unthrown@5.7.0)
       unthrown: 5.7.0
     transitivePeerDependencies:
       - '@opentelemetry/api'
@@ -9228,25 +9221,25 @@ snapshots:
 
   '@tanstack/query-core@5.102.8': {}
 
-  '@temporal-contract/client@8.0.0-beta.5(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)':
+  '@temporal-contract/client@8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      '@temporal-contract/contract': 8.0.0-beta.5(unthrown@5.7.0)
+      '@temporal-contract/contract': 8.0.0-beta.7(unthrown@5.7.0)
       '@temporalio/client': 1.23.0
       '@temporalio/common': 1.23.0
       unthrown: 5.7.0
 
-  '@temporal-contract/contract@8.0.0-beta.5(unthrown@5.7.0)':
+  '@temporal-contract/contract@8.0.0-beta.7(unthrown@5.7.0)':
     dependencies:
       '@standard-schema/spec': 1.1.0
     optionalDependencies:
       unthrown: 5.7.0
 
-  '@temporal-contract/testing@8.0.0-beta.5(@temporal-contract/client@8.0.0-beta.5(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0))(@temporal-contract/contract@8.0.0-beta.5(unthrown@5.7.0))(@temporal-contract/worker@8.0.0-beta.5(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0))(@temporalio/client@1.23.0)(@temporalio/testing@1.23.0)(@temporalio/worker@1.23.0)(testcontainers@12.1.0)(unthrown@5.7.0)(vitest@4.1.11)':
+  '@temporal-contract/testing@8.0.0-beta.7(@temporal-contract/client@8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0))(@temporal-contract/contract@8.0.0-beta.7(unthrown@5.7.0))(@temporal-contract/worker@8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0))(@temporalio/client@1.23.0)(@temporalio/testing@1.23.0)(@temporalio/worker@1.23.0)(testcontainers@12.1.0)(unthrown@5.7.0)(vitest@4.1.11)':
     dependencies:
-      '@temporal-contract/client': 8.0.0-beta.5(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
-      '@temporal-contract/contract': 8.0.0-beta.5(unthrown@5.7.0)
-      '@temporal-contract/worker': 8.0.0-beta.5(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
+      '@temporal-contract/client': 8.0.0-beta.7(@temporalio/client@1.23.0)(@temporalio/common@1.23.0)(unthrown@5.7.0)
+      '@temporal-contract/contract': 8.0.0-beta.7(unthrown@5.7.0)
+      '@temporal-contract/worker': 8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)
       '@temporalio/client': 1.23.0
       '@temporalio/testing': 1.23.0
       '@temporalio/worker': 1.23.0
@@ -9255,10 +9248,10 @@ snapshots:
     optionalDependencies:
       testcontainers: 12.1.0
 
-  '@temporal-contract/worker@8.0.0-beta.5(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)':
+  '@temporal-contract/worker@8.0.0-beta.7(@temporalio/common@1.23.0)(@temporalio/worker@1.23.0)(@temporalio/workflow@1.23.0)(unthrown@5.7.0)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      '@temporal-contract/contract': 8.0.0-beta.5(unthrown@5.7.0)
+      '@temporal-contract/contract': 8.0.0-beta.7(unthrown@5.7.0)
       '@temporalio/common': 1.23.0
       '@temporalio/worker': 1.23.0
       '@temporalio/workflow': 1.23.0
@@ -9614,11 +9607,6 @@ snapshots:
   '@unthrown/prisma@0.4.0(@prisma/client@7.10.0(prisma@7.10.0(@types/node@26.4.0)(@types/react@19.2.18)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2))(unthrown@5.7.0)':
     dependencies:
       '@prisma/client': 7.10.0(prisma@7.10.0(@types/node@26.4.0)(@types/react@19.2.18)(magicast@0.5.4)(typescript@7.0.2))(typescript@7.0.2)
-      unthrown: 5.7.0
-
-  '@unthrown/standard-schema@5.5.0':
-    dependencies:
-      '@standard-schema/spec': 1.1.0
       unthrown: 5.7.0
 
   '@unthrown/standard-schema@5.7.0(unthrown@5.7.0)':
@@ -12218,29 +12206,6 @@ snapshots:
       acorn: 8.18.0
       commander: 2.20.3
       source-map-support: 0.5.21
-
-  testcontainers@12.0.4:
-    dependencies:
-      '@balena/dockerignore': 1.0.2
-      '@types/dockerode': 4.0.1
-      archiver: 7.0.1
-      async-lock: 1.4.1
-      byline: 5.0.0
-      debug: 4.4.3
-      docker-compose: 1.4.2
-      dockerode: 5.0.1
-      get-port: 5.1.1
-      proper-lockfile: 4.1.2
-      properties-reader: 3.0.1
-      ssh-remote-port-forward: 1.0.4
-      tar-fs: 3.1.3
-      tmp: 0.2.7
-      undici: 8.10.0
-    transitivePeerDependencies:
-      - bare-abort-controller
-      - bare-buffer
-      - react-native-b4a
-      - supports-color
 
   testcontainers@12.1.0:
     dependencies:

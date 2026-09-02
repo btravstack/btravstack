@@ -6,7 +6,7 @@ import { Port, Provider, type ServiceOf } from "@btravstack/di";
 import { orderContract } from "@btravstack/example-order-amqp-contract";
 import { Outbox } from "@btravstack/example-order-application";
 import { TenantId } from "@btravstack/example-order-domain";
-import { ErrAsync, P, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
+import { P, TaggedError, fromSafePromise, type AsyncResult } from "unthrown";
 
 /**
  * What only the relay knows, as a service: its idle sleep and the tenants it
@@ -86,7 +86,16 @@ const startOutboxRelay = (
   }: { readonly url: string; readonly pollMs: number; readonly tenants: readonly TenantId[] },
 ): AsyncResult<ServiceOf<OutboxRelay>, BrokerUnreachable> =>
   TypedAmqpClient.create({ contract: orderContract, urls: [url] })
-    .recoverDefect((cause) => ErrAsync(new BrokerUnreachable({ url, cause })))
+    // The library models an unreachable broker now, so this names it instead
+    // of recovering every defect to reach it: a bug raised while the client is
+    // being built stays a defect, where the blanket recover made it look like
+    // a broker that was merely down.
+    .mapErrCases((matcher) =>
+      matcher.with(
+        P.tag("@amqp-contract/ConnectionError"),
+        (cause) => new BrokerUnreachable({ url, cause }),
+      ),
+    )
     .map((client) => {
       // The relay's own signal, counted where the fact leaves the process —
       // per tenant, since the sweep is per tenant and one tenant's backlog is

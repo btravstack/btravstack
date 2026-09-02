@@ -125,7 +125,7 @@ export const greetingActivities = TemporalActivities(greetingContract)({
   inject: { greeter: Greeter },
   sync: ({ greeter }) => ({
     greeting: {
-      greet: (args) => OkAsync({ message: greeter.greet(args.name) }),
+      greet: ({ input }) => OkAsync({ message: greeter.greet(input.name) }),
     },
   }),
 });

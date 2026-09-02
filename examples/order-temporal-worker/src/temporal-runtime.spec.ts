@@ -1,8 +1,14 @@
 import {
-  tagPatterns,
-  WORKFLOW_RESULT_ERROR_TAGS,
-  WORKFLOW_START_ERROR_TAGS,
+  WORKFLOW_ALREADY_STARTED_ERROR_TAG,
+  WORKFLOW_CANCELLED_ERROR_TAG,
+  WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG,
+  WORKFLOW_FAILED_ERROR_TAG,
+  WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG,
+  WORKFLOW_TERMINATED_ERROR_TAG,
+  WORKFLOW_TIMEOUT_ERROR_TAG,
+  WORKFLOW_VALIDATION_ERROR_TAG,
 } from "@temporal-contract/client";
+import { P } from "unthrown";
 import { describe, expect } from "vitest";
 
 import { it } from "./__tests__/test-fixtures.js";
@@ -102,8 +108,24 @@ describe("the fulfillment saga", () => {
             .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
             .with({ errorName: "OrderAlreadyPlaced" }, () => "WRONG ERROR")
             .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
-            .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
-            .with(...tagPatterns(WORKFLOW_RESULT_ERROR_TAGS), (error) => `result:${error._tag}`),
+            // The platform's own failures, listed rather than bundled: the
+            // library dropped its tag bundles because a call site should say
+            // which tags it covers, which is what `no-catch-all-pattern` asks
+            // for everywhere else in this repository
+            .with(
+              P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
+              P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
+              P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
+              (error) => `start:${error._tag}`,
+            )
+            .with(
+              P.tag(WORKFLOW_FAILED_ERROR_TAG),
+              P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
+              P.tag(WORKFLOW_TERMINATED_ERROR_TAG),
+              P.tag(WORKFLOW_TIMEOUT_ERROR_TAG),
+              P.tag(WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG),
+              (error) => `result:${error._tag}`,
+            ),
         defect: () => "DEFECT",
       });
     expect(outcome).toBe("out-of-stock:0199a1e0-0000-7000-8000-000000000002");
@@ -143,8 +165,24 @@ describe("the fulfillment saga", () => {
             .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
             .with({ errorName: "OrderAlreadyPlaced" }, () => "WRONG ERROR")
             .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
-            .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
-            .with(...tagPatterns(WORKFLOW_RESULT_ERROR_TAGS), (error) => `result:${error._tag}`),
+            // The platform's own failures, listed rather than bundled: the
+            // library dropped its tag bundles because a call site should say
+            // which tags it covers, which is what `no-catch-all-pattern` asks
+            // for everywhere else in this repository
+            .with(
+              P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
+              P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
+              P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
+              (error) => `start:${error._tag}`,
+            )
+            .with(
+              P.tag(WORKFLOW_FAILED_ERROR_TAG),
+              P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
+              P.tag(WORKFLOW_TERMINATED_ERROR_TAG),
+              P.tag(WORKFLOW_TIMEOUT_ERROR_TAG),
+              P.tag(WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG),
+              (error) => `result:${error._tag}`,
+            ),
         defect: () => "DEFECT",
       });
     expect(outcome).toBe("no-shipping:0199a1e0-0000-7000-8000-000000000003");
@@ -195,8 +233,24 @@ describe("the fulfillment saga", () => {
             .with({ errorName: "InvalidOrderId" }, () => "WRONG ERROR")
             .with({ errorName: "OutOfStock" }, () => "WRONG ERROR")
             .with({ errorName: "ShippingUnavailable" }, () => "WRONG ERROR")
-            .with(...tagPatterns(WORKFLOW_START_ERROR_TAGS), (error) => `start:${error._tag}`)
-            .with(...tagPatterns(WORKFLOW_RESULT_ERROR_TAGS), (error) => `result:${error._tag}`),
+            // The platform's own failures, listed rather than bundled: the
+            // library dropped its tag bundles because a call site should say
+            // which tags it covers, which is what `no-catch-all-pattern` asks
+            // for everywhere else in this repository
+            .with(
+              P.tag(WORKFLOW_VALIDATION_ERROR_TAG),
+              P.tag(WORKFLOW_NOT_IN_CONTRACT_ERROR_TAG),
+              P.tag(WORKFLOW_ALREADY_STARTED_ERROR_TAG),
+              (error) => `start:${error._tag}`,
+            )
+            .with(
+              P.tag(WORKFLOW_FAILED_ERROR_TAG),
+              P.tag(WORKFLOW_CANCELLED_ERROR_TAG),
+              P.tag(WORKFLOW_TERMINATED_ERROR_TAG),
+              P.tag(WORKFLOW_TIMEOUT_ERROR_TAG),
+              P.tag(WORKFLOW_EXECUTION_NOT_FOUND_ERROR_TAG),
+              (error) => `result:${error._tag}`,
+            ),
         defect: () => "DEFECT",
       });
 

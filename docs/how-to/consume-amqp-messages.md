@@ -73,7 +73,7 @@ import { OkAsync } from "unthrown";
 export const orderHandlers = AmqpHandlers(orderContract)({
   inject: { logger: Logger },
   sync: ({ logger }) => ({
-    orderNotifications: (message) => {
+    orderNotifications: ({ input: message }) => {
       const { tenantId, id, payload } = message.payload;
       logger.info(
         payload === null
@@ -87,7 +87,7 @@ export const orderHandlers = AmqpHandlers(orderContract)({
       );
       return OkAsync();
     },
-    orderAudit: (message) => {
+    orderAudit: ({ input: message }) => {
       const { tenantId, id, occurredAt, payload } = message.payload;
       logger.info("recording an order change", {
         tenantId,
@@ -135,7 +135,7 @@ import { ErrAsync, OkAsync, P } from "unthrown";
 export const placingHandlers = AmqpHandlers(orderContract)({
   inject: { place: PlaceOrder },
   sync: ({ place }) => ({
-    orderNotifications: (message) =>
+    orderNotifications: ({ input: message }) =>
       place
         .execute(
           TenantId(message.payload.tenantId),
@@ -260,7 +260,7 @@ route to it, and it is aborted at the kernel's `drainTimeoutMs`.
 <!-- doctest: skip — an object-property excerpt, not a statement: the handler in situ is the `orderHandlers` fence above, and the full slice form is on /how-to/split-a-worker-into-slices -->
 
 ```ts
-orderNotifications: (message) => {
+orderNotifications: ({ input: message }) => {
   const { id, payload } = message.payload;
   if (currentUnit()?.signal.aborted === true) {
     return ErrAsync(

@@ -78,9 +78,9 @@ const orderActivities = TemporalActivities(contract)({
   inject: { place: PlaceOrder },
   sync: ({ place }) => ({
     placeOrder: {
-      place: (args, { errors }) =>
+      place: ({ errors, input }) =>
         place
-          .execute(TenantId(args.tenantId), args.orderId, args.quantity)
+          .execute(TenantId(input.tenantId), input.orderId, input.quantity)
           .mapErrCases((matcher) =>
             matcher
               .with(P.tag("DuplicateOrder"), (error) =>

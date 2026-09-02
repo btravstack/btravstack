@@ -24,7 +24,7 @@ import {
   type PortInstance,
   type ServiceOf,
 } from "@btravstack/di";
-import { ErrAsync, type AsyncResult } from "unthrown";
+import { P, type AsyncResult } from "unthrown";
 
 import { HANDLER_PREFIX, type HandlerKeyOf, type HandlerPortOf } from "./handler.js";
 import { messageUnits } from "./message-units.js";
@@ -283,11 +283,15 @@ const createWorker = <TContract extends AnyAmqpContract>(
     connectTimeoutMs: config.connectTimeoutMs,
   })
     .map((worker) => consume(worker, queuesOf(options.contract)))
-    // `create` reports a connection failure on the DEFECT channel with a
-    // `TechnicalError` cause — never a modeled `Err`. This is the one place
-    // where that is a *startup* failure rather than an unmodelled one, and
-    // moving it back is what keeps `runMain`'s exit code 1 rather than 70.
-    .recoverDefect((cause) => ErrAsync(startFailed(cause)));
+    // An unreachable broker is `create`'s own modeled error, so it is named
+    // rather than fished out of the defect channel: it becomes the kernel's
+    // startup failure, which is `runMain`'s exit code 1. Everything else that
+    // can go wrong in there — a topology the broker refuses, a bad option, a
+    // bug in a provider — stays a DEFECT and exits 70, which is the
+    // distinction a blanket `recoverDefect` used to erase.
+    .mapErrCases((matcher) =>
+      matcher.with(P.tag("@amqp-contract/ConnectionError"), (error) => startFailed(error)),
+    );
 
 const consume = (worker: TypedAmqpWorker<never>, queues: readonly string[]): Serving<AmqpInfo> => {
   // Memoised because both methods reach it and the kernel calls `stop` after

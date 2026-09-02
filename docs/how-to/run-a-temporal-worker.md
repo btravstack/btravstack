@@ -70,9 +70,9 @@ export const orderActivities = TemporalActivities(orderContract)({
   },
   sync: ({ place, repository, stock, shipping, payments }) => ({
     fulfillOrder: {
-      place: (args, { errors }) =>
+      place: ({ errors, input }) =>
         place
-          .execute(TenantId(args.tenantId), args.orderId, args.quantity)
+          .execute(TenantId(input.tenantId), input.orderId, input.quantity)
           .map((order) => ({ id: order.id, quantity: order.quantity }))
           .mapErrCases((matcher) =>
             matcher
@@ -86,42 +86,42 @@ export const orderActivities = TemporalActivities(orderContract)({
                 errors.OrderAlreadyPlaced({ id: error.id }),
               ),
           ),
-      reserveStock: (args, { errors }) =>
+      reserveStock: ({ errors, input }) =>
         stock
-          .reserve(args.orderId, args.quantity)
+          .reserve(input.orderId, input.quantity)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("OutOfStock"), (error) =>
               errors.OutOfStock({ id: error.id }),
             ),
           ),
-      arrangeShipping: (args, { errors }) =>
+      arrangeShipping: ({ errors, input }) =>
         shipping
-          .arrange(args.orderId)
+          .arrange(input.orderId)
           .mapErrCases((matcher) =>
             matcher.with(P.tag("ShippingUnavailable"), (error) =>
               errors.ShippingUnavailable({ id: error.id }),
             ),
           ),
-      releaseStock: (args) => stock.release(args.orderId),
-      cancelPlacement: (args) =>
+      releaseStock: ({ input }) => stock.release(input.orderId),
+      cancelPlacement: ({ input }) =>
         repository
-          .remove(TenantId(args.tenantId), args.orderId)
+          .remove(TenantId(input.tenantId), input.orderId)
           .recoverErrCases((matcher) =>
             matcher.with(P.tag("OrderNotFound"), () => undefined),
           ),
     },
     chargeOrder: {
-      authorizePayment: (args, { errors }) =>
+      authorizePayment: ({ errors, input }) =>
         payments
-          .authorize(args.orderId, args.amount)
+          .authorize(input.orderId, input.amount)
           .map((authorizationId) => ({ authorizationId }))
           .mapErrCases((matcher) =>
             matcher.with(P.tag("PaymentDeclined"), (error) =>
               errors.PaymentDeclined({ id: error.id }),
             ),
           ),
-      capturePayment: (args) => payments.capture(args.authorizationId),
-      refundPayment: (args) => payments.refund(args.authorizationId),
+      capturePayment: ({ input }) => payments.capture(input.authorizationId),
+      refundPayment: ({ input }) => payments.refund(input.authorizationId),
     },
   }),
 });
@@ -132,13 +132,13 @@ declared contract error into a `nonRetryable` `ApplicationFailure` the workflow
 branches on, and leaves anything unmodeled to Temporal's retry policy. Naming
 a failure here is also what tells Temporal to stop retrying it.
 
-`args.tenantId` is the application's own, declared on every workflow and
+`input.tenantId` is the application's own, declared on every workflow and
 activity input by the **contract** — so Temporal persists it in the event
 history and a replay reconstructs it, and the package reads nothing about
 tenancy. `TenantId(…)` claims `examples/order-domain`'s brand at each activity
 that needs one, an activity being its own entry point; it casts rather than
 parses, because the contract already validated the field as a UUIDv7. The
-brand is what stops `execute(args.orderId, args.tenantId)` from compiling.
+brand is what stops `execute(input.orderId, input.tenantId)` from compiling.
 `cancelPlacement` absorbs `OrderNotFound` on purpose — a compensation Temporal
 may re-run has to answer the same both times.
 

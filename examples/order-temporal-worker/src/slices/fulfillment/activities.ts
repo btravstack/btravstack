@@ -23,7 +23,7 @@ import { P } from "unthrown";
  * tells **Temporal** to stop retrying. An unmodelled failure stays unnamed and
  * the retry policy takes over.
  *
- * `args.tenantId` arrives on the activity's own input because the CONTRACT
+ * `input.tenantId` arrives on the activity's own input because the CONTRACT
  * declares it — the starter knows nothing about tenants — and `TenantId(...)`
  * claims the brand at each activity that needs one, since an activity is its own
  * entry point.
@@ -54,9 +54,9 @@ export const fulfillOrder = TemporalWorkflowActivities(
     storage: Storage,
   },
   sync: ({ place, repository, stock, shipping, storage }) => ({
-    place: (args, { errors }) =>
+    place: ({ errors, input }) =>
       place
-        .execute(TenantId(args.tenantId), args.orderId, args.quantity)
+        .execute(TenantId(input.tenantId), input.orderId, input.quantity)
         .map((order) => ({ id: order.id, quantity: order.quantity }))
         .mapErrCases((matcher) =>
           matcher
@@ -64,15 +64,15 @@ export const fulfillOrder = TemporalWorkflowActivities(
             .with(P.tag("InvalidOrderId"), (error) => errors.InvalidOrderId({ id: error.id }))
             .with(P.tag("DuplicateOrder"), (error) => errors.OrderAlreadyPlaced({ id: error.id })),
         ),
-    reserveStock: (args, { errors }) =>
+    reserveStock: ({ errors, input }) =>
       stock
-        .reserve(args.orderId, args.quantity)
+        .reserve(input.orderId, input.quantity)
         .mapErrCases((matcher) =>
           matcher.with(P.tag("OutOfStock"), (error) => errors.OutOfStock({ id: error.id })),
         ),
-    arrangeShipping: (args, { errors }) =>
+    arrangeShipping: ({ errors, input }) =>
       shipping
-        .arrange(args.orderId)
+        .arrange(input.orderId)
         // The confirmation is stored AFTER the shipment is arranged, as a
         // `flatTap` step — the sequencing discipline this repository states
         // for sagas, and the reason it is not a sibling `const`: an
@@ -80,8 +80,8 @@ export const fulfillOrder = TemporalWorkflowActivities(
         .flatTap(() =>
           storage
             .put(
-              confirmationKey(args.tenantId, args.orderId),
-              new TextEncoder().encode(JSON.stringify({ orderId: args.orderId, shipped: true })),
+              confirmationKey(input.tenantId, input.orderId),
+              new TextEncoder().encode(JSON.stringify({ orderId: input.orderId, shipped: true })),
               { contentType: "application/json" },
             )
             // A document that failed to store must not un-ship an order, so
@@ -98,10 +98,10 @@ export const fulfillOrder = TemporalWorkflowActivities(
             errors.ShippingUnavailable({ id: error.id }),
           ),
         ),
-    releaseStock: (args) => stock.release(args.orderId),
-    cancelPlacement: (args) =>
+    releaseStock: ({ input }) => stock.release(input.orderId),
+    cancelPlacement: ({ input }) =>
       repository
-        .remove(TenantId(args.tenantId), args.orderId)
+        .remove(TenantId(input.tenantId), input.orderId)
         .recoverErrCases((matcher) => matcher.with(P.tag("OrderNotFound"), () => undefined)),
   }),
 });
