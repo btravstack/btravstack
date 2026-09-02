@@ -569,9 +569,15 @@ cursors, which is what keeps the pair impossible to disagree: a side with no
 cursor is a side the caller cannot reach, so `@unthrown/prisma`'s
 `hasPreviousPage: true` with a null `startCursor` (an empty page past the end)
 is reported as the reachable answer rather than as a flag with nothing to
-follow. It is a **union of four objects rather than an intersection of two
-unions**, because `allOf` of closed objects validates nothing in JSON Schema
-and the OpenAPI document is an interop surface.
+follow. The two ends spell it
+differently on purpose: `Page<T>` is an **intersection of two independent
+unions**, one per side, which narrows exactly as four arms would and states
+each side once; the contract's schema is the **union of four `strictObject`
+arms**, because JSON Schema has no working intersection of closed objects
+(`allOf` of two `additionalProperties: false` subschemas validates nothing)
+and the OpenAPI document is an interop surface. `strictObject` rather than
+`object` there because a stripping parser would answer what its own published
+schema rejects.
 
 **The filter is a field, never a query object.** `OrderQuery` is
 `PageRequest & { minQuantity? }`. A port taking a predicate or a `where` record

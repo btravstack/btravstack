@@ -452,13 +452,15 @@ describe("order-api", () => {
 
     // THEN `hasNextPage: false` arrives with no `nextCursor` KEY at all — the
     // arm of the output schema that carries the cursor is the one that claims
-    // the page, so a null nobody may follow cannot be sent
-    expect(Object.keys(response.body.json as object).sort()).toEqual([
-      "hasNextPage",
-      "hasPreviousPage",
-      "items",
-      "previousCursor",
-    ]);
+    // the page, so a null nobody may follow cannot be sent. `toStrictEqual`
+    // rather than `toEqual`: the absence IS the assertion here, and `toEqual`
+    // reads an `undefined` property as an absent one
+    expect(response.body.json).toStrictEqual({
+      items: [{ id: "0199a1e0-0000-7000-8000-00000000000b", quantity: 2 }],
+      previousCursor: "page-2-start",
+      hasPreviousPage: true,
+      hasNextPage: false,
+    });
   });
 
   it("pages backward over the wire, following previousCursor", async ({

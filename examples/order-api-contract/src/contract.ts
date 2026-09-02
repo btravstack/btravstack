@@ -102,10 +102,16 @@ const ordersContract = authenticated({ user: [] })({
   // are the four pages that exist: a `hasNextPage: true` page carries the
   // `nextCursor` that continues it, and a `hasNextPage: false` one has no such
   // field. So a client that checked the flag holds the cursor, with no null to
-  // widen it, and a server that sent one without the other is refused by its own
-  // output schema. A union rather than an intersection of two: `allOf` of
-  // closed objects validates nothing in JSON Schema, and the OpenAPI document is
-  // an interop surface.
+  // widen it.
+  //
+  // `strictObject`, so a cursor on a closed side is REFUSED rather than
+  // stripped: the arms differ by which fields they carry, and the JSON Schema
+  // this generates already says `additionalProperties: false` — a stripping
+  // parser would answer what its own published schema rejects.
+  //
+  // A union rather than an intersection of two: `allOf` of closed objects
+  // validates nothing in JSON Schema, and the OpenAPI document is an interop
+  // surface.
   list: oc
     .input(
       z
@@ -121,10 +127,10 @@ const ordersContract = authenticated({ user: [] })({
     )
     .output(
       z.union([
-        z.object({ ...pageItems, ...noPrevious, ...noNext }),
-        z.object({ ...pageItems, ...noPrevious, ...aNext }),
-        z.object({ ...pageItems, ...aPrevious, ...noNext }),
-        z.object({ ...pageItems, ...aPrevious, ...aNext }),
+        z.strictObject({ ...pageItems, ...noPrevious, ...noNext }),
+        z.strictObject({ ...pageItems, ...noPrevious, ...aNext }),
+        z.strictObject({ ...pageItems, ...aPrevious, ...noNext }),
+        z.strictObject({ ...pageItems, ...aPrevious, ...aNext }),
       ]),
     )
     .errors({ BAD_REQUEST: { data: z.object({ cursor: z.string() }) } }),
