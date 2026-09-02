@@ -16,7 +16,7 @@ nothing else. Every export is named below.
 
 ## `Env` and `Environment`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/config -->
 
 ```ts
 type Environment = Readonly<Record<string, string | undefined>>;

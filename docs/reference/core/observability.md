@@ -3,6 +3,11 @@ title: Observability contracts
 description: The Logger, Tracer, Meter and Observers ports the kernel declares — the contracts every framework package may depend on, and which @btravstack/observability implements.
 ---
 
+<!-- doctest: prelude
+import { Port } from "@btravstack/di";
+import type { Attributes, Operation, Settle, Settled } from "@btravstack/core";
+-->
+
 # Observability contracts
 
 > **Reference.** The three ports `@btravstack/core` declares and never
@@ -168,7 +173,7 @@ neither starter. Nothing in the kernel changes either way.
 
 ## `Observers` — how a starter reports, without holding a logger
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type Operation = {

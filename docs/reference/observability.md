@@ -4,10 +4,10 @@ description: The complete surface of @btravstack/observability — the Logger po
 ---
 
 <!-- doctest: prelude
-import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
+import { runMain, Logger, Meter, Tracer, type Attributes, type Level } from "@btravstack/core";
 import { Config } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http-server";
-import { createLogger, jsonSink, kernelEvents, logLevel, observability } from "@btravstack/observability";
+import { createLogger, jsonSink, kernelEvents, logLevel, observability, type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
@@ -145,7 +145,7 @@ package's whole argument:
 
 > Also the kernel's, and imported from there.
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type Level = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
@@ -195,7 +195,7 @@ A line below `level` is dropped before the sink is called and before
 
 ## `Line` and `Sink`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/observability -->
 
 ```ts
 type Line = {

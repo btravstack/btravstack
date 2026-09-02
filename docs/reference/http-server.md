@@ -5,13 +5,26 @@ description: The HTTP starter — defineHttp, HttpModule, OrpcRouter, OrpcContro
 
 <!-- doctest: prelude
 import { Logger } from "@btravstack/core";
+import type { ConfigInvalid, Env } from "@btravstack/config";
+import type { Provider } from "@btravstack/di";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
 import { FindOrder, ListOrders, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 
 import type { Order } from "@btravstack/example-order-domain";
 import { Module } from "@btravstack/di";
-import { HttpAuthenticator, Unauthenticated, defineHttp } from "@btravstack/http-server";
+import {
+  HtmxFragmentsPort,
+  HttpAuthenticator,
+  HttpConfig,
+  HttpHandler,
+  HttpRuntime,
+  Unauthenticated,
+  defineHttp,
+  type HtmxOptions,
+  type HttpOptions,
+} from "@btravstack/http-server";
 import { ErrAsync, OkAsync, P } from "unthrown";
 import { customersController } from "../../slices/customers/controller.js";
 import { ordersController } from "../../slices/orders/controller.js";
@@ -434,7 +447,7 @@ the worked recipe.
 
 ## `api.OrpcController(contract, path)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: skip — `api.OrpcController` is minted by `defineHttp()`, not exported, and its quoted type names this package's internal `RouterContract` / `FragmentAt` / `Schemes`: there is no exported symbol to check it against -->
 
 ```ts
 const OrpcController: <
@@ -891,7 +904,7 @@ does, so `HttpModule` can deduplicate a scheme the two share, by reference.
 
 ## `http(options)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: skip — the quoted needs channel names `OrpcRouterPort`, which this package deliberately does not export, so there is nothing a signature check could name it by -->
 
 ```ts
 const http: (
@@ -1036,10 +1049,14 @@ own decision — pass a record when you have made those.
 
 ## `htmx(options)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/http-server -->
 
 ```ts
-const htmx: (options?: HtmxOptions) => Provider<HttpHandler, never, HtmxFragmentsPort | HttpConfig>;
+const htmx: (
+  options?: HtmxOptions,
+) => Provider<HttpHandler, never, HtmxFragmentsPort | HttpConfig> & {
+  readonly port: typeof HttpHandler;
+};
 ```
 
 The second answerer: fragments, mounted under `prefix` (default `/`). It
@@ -1125,7 +1142,7 @@ under `runMain`. Anything in the graph may depend on `HttpConfig`.
 contributes one `HttpAnswerer`, and the runtime routes each request to the one
 whose `prefix` matches **longest**.
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/http-server -->
 
 ```ts
 type HttpAnswerer = {

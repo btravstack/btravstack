@@ -3,6 +3,10 @@ title: ExitReport and DrainReport
 description: What exited resolves to — reason, drain, teardownErrors, uptimeMs — and the three counters of a DrainReport, including when drain is undefined and why completed may exceed inFlightAtStart.
 ---
 
+<!-- doctest: prelude
+import type { DrainReport, TeardownError } from "@btravstack/core";
+-->
+
 # `ExitReport` and `DrainReport`
 
 > **Reference.** The value `RunningApp.exited` settles with when the
@@ -14,7 +18,7 @@ description: What exited resolves to — reason, drain, teardownErrors, uptimeMs
 
 ## `ExitReport`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type ExitReport = {
@@ -57,7 +61,7 @@ the report object is built and before a caller can observe it. Read it once
 
 ## `DrainReport`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type DrainReport = {

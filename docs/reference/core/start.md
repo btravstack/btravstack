@@ -3,6 +3,12 @@ title: start and StartOptions
 description: The signature of start, every StartOptions field with its default, the phantom StartGate and its three arms, and the error channel of the returned RunningApp.
 ---
 
+<!-- doctest: prelude
+import type { Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
+import type { RunningApp, RuntimeInfoOf, StartGate, StartOptions } from "@btravstack/core";
+-->
+
 # `start` and `StartOptions`
 
 > **Reference.** The entry point of `@btravstack/core`: what `start` accepts,
@@ -13,7 +19,7 @@ description: The signature of start, every StartOptions field with its default, 
 
 ## Signature
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 const start: <X, E, UnitX = never, UnitNeeds = never>(

@@ -10,6 +10,7 @@ import type { Module, Scope } from "@btravstack/di";
 declare const OrderApi: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
 declare const RequestModule: Module<never, never, never>;
 import { runMain } from "@btravstack/core";
+import type { StartGate, StartOptions } from "@btravstack/core";
 -->
 
 # `runMain` and exit codes
@@ -22,7 +23,7 @@ import { runMain } from "@btravstack/core";
 
 ## Signature
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 const runMain: <X, E, UnitX = never, UnitNeeds = never>(

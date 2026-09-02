@@ -12,16 +12,15 @@ description: Why the kernel's AsyncLocalStorage record holds five fields of data
 > [`UnitMeta` and `UnitRecord`](/reference/core/runtime).
 
 The kernel opens one `AsyncLocalStorage` store per unit of work. It holds a
-small, fixed record — `UnitRecord`, five fields — and nothing else:
+small, fixed record — `UnitRecord`, four fields — and nothing else:
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type UnitRecord = {
   readonly unitId: string;
   readonly traceId: string;
   readonly tenantId: string | undefined;
-  readonly deadline: number | undefined;
   readonly signal: AbortSignal;
 };
 ```
@@ -72,8 +71,6 @@ one an adapter genuinely needs without being able to declare it.
 - `tenantId` is the one piece of application data allowed in, because the
   adapters that need it — a database adapter choosing a schema, an exporter
   tagging a span — are exactly the readers the store is for.
-- `deadline` is a timestamp a runtime may pass so an adapter can budget a
-  remote call against what is left.
 - `signal` is the **very** `AbortSignal` the kernel hands the unit's work
   callback — one controller, two ways to reach it — fired at the drain
   deadline, or at once on a path that skips the drain.
@@ -88,8 +85,7 @@ is not. The test this page uses everywhere else is substitutability: a
 collaborator has an interface behind it, a test double to swap in, a
 `inject` entry it should have been declared through. An `AbortSignal`
 has none of those. It is a fact about _this_ unit — "the process has stopped
-waiting for you" — exactly as `deadline` is the fact "this is when it will".
-Nothing about the code that reads it changes shape when it is absent; the
+waiting for you". Nothing about the code that reads it changes shape when it is absent; the
 `?.` in `currentUnit()?.signal` is the whole of the fallback.
 
 The reason it is on the record at all is that **the work callback is not
@@ -100,8 +96,7 @@ middleware-shaped: the kernel's work callback is the library's `next()`, and
 an activity or a handler has no parameter to receive a signal through. The
 alternative was injecting a context — an extra first argument the Temporal or
 AMQP contract does not type — which is exactly the hidden-dependency shape
-this page argues against, so it was rejected. A deadline nobody can observe is
-not a deadline.
+this page argues against, so it was rejected.
 
 A transport's own cancellation is a **different clock** and stays separate.
 Temporal's `Context.current().cancellationSignal` fires on a workflow-side

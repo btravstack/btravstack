@@ -10,6 +10,7 @@ import type { Module, Scope } from "@btravstack/di";
 declare const OrderApi: Module<InstanceType<typeof TestRuntimePort>, never, Env | Scope>;
 declare const RequestModule: Module<never, never, never>;
 import { start, type EventSink } from "@btravstack/core";
+import type { DrainReport, KernelEvent } from "@btravstack/core";
 -->
 
 # Kernel events
@@ -21,7 +22,7 @@ import { start, type EventSink } from "@btravstack/core";
 
 ## `KernelEvent`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type KernelEvent =
@@ -62,7 +63,7 @@ advances, so they can never be emitted twice or out of order.
 
 ## `EventSink`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type EventSink = (event: KernelEvent) => void;
