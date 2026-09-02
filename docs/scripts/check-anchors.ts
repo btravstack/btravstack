@@ -90,7 +90,6 @@ for (const page of pages) {
       skipped += 1;
       continue;
     }
-    checked += 1;
     // A page VitePress already refused to build cannot be read here — a dead
     // PAGE is its own failure and its own error message. Counted rather than
     // dropped, and printed at the end, because "resolved" and "could not be
@@ -102,6 +101,7 @@ for (const page of pages) {
       unreadable.push(`${relative(DIST, page)} → ${href}`);
       continue;
     }
+    checked += 1;
     if (!ids.has(decodeURIComponent(fragment))) {
       dead.push(`${relative(DIST, page)} → ${href}`);
     }
