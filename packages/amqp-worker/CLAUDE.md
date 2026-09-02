@@ -107,10 +107,12 @@ K]`, which always names the marker — printed as the **bare string**, the
   again for this: the marker sits at the **tail of the third line** of a
   `TS2769`, ~360 characters in on a 444-character line, because TypeScript
   names the source type first and the source is the caller's own piece. The
-  missing key `K` itself appears only when the array's length matches that
-  marker tuple's own length of 2, and then as a **separate** `TS2769` on the
-  trailing element whose target is the bare key (`is not assignable to type
-'"c"'`); a single-element array's diagnostic names the marker alone. The
+  refusal is a tuple **as long as the array the caller wrote** — its head the
+  caller's own elements, which match, and its last element the marker paired
+  with the missing key — so TypeScript compares them element by element and
+  the diagnostic on the trailing element names both (measured at one element:
+  `readonly ["UNCOVERED HANDLERS — …", "right"]`). It used to be a fixed
+  two-element tuple, which named the key only at exactly two. The
   composed provider's own `deps` are the **piece ports**
   (`InstanceType<T[number]["port"]>` in its return type), not what a piece
   closes over: di constructs each piece first, as its own provider, and the

@@ -296,15 +296,19 @@ arguments, not a name a package could alias — which is why the marker is a
 whole sentence rather than a label: it is the only part of the line a reader
 can act on, and it prints where the eye ends up.
 
-Both arrays above are one element long, so both diagnostics report only the
-marker — the missing key itself is in neither message. The key **is** named
-once the array under test is as long as the marker tuple itself (2), a
-two-piece array missing one key being the common case: TypeScript then lines
-the array up against the tuple positionally and reports one error per element,
-the trailing one being — measured on this worker's own contract —
-`is not assignable to type '"orderAudit"'`: the bare key, as its own
-diagnostic, not folded into the marker's sentence. Below that length it can no
-longer line them up and falls back to reporting the marker alone.
+Both diagnostics name the missing key beside the marker, whatever the array's
+length: the refusal is a tuple **as long as the array you wrote** — its head
+your own elements, which match, and its last element the marker paired with
+what is missing — so TypeScript lines the two up element by element and reports
+one error, on the trailing element. Measured on a one-element array:
+
+```text
+… is not assignable to type 'readonly ["UNCOVERED HANDLERS — the contract declares a consumer this array does not cover", "right"]'.
+```
+
+It used to be a fixed two-element tuple, and then the key was named only when
+the array happened to be two elements long; at one or three you diffed the
+contract against the array by hand.
 
 This is why the composing arm is declared **last** in the intersection both
 packages build it from — di's builder first, the composer last — so
