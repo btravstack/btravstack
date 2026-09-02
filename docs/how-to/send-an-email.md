@@ -10,7 +10,7 @@ import { observability } from "@btravstack/observability";
 import { smtpMailer } from "@btravstack/mailer/smtp";
 import { Logger } from "@btravstack/core";
 import { Module, Port, Provider } from "@btravstack/di";
-import { RetryableError } from "@amqp-contract/worker";
+import { NonRetryableError, RetryableError } from "@amqp-contract/worker";
 import { P, type AsyncResult } from "unthrown";
 import { overridden } from "@btravstack/testing";
 
@@ -32,8 +32,15 @@ application that needs those semantics reads its provider's webhooks.
 
 ```ts
 class Notifier extends Port("Notifier")<{
-  readonly placed: (order: Order) => AsyncResult<void, RetryableError>;
+  // Both arms of the transport's own vocabulary: what it should retry, and
+  // what it should dead-letter on the first attempt.
+  readonly placed: (order: Order) => AsyncResult<void, RetryableError | NonRetryableError>;
 }> {}
+
+// SMTP separates them for you: 4xx is transient (busy relay, locked mailbox),
+// 5xx is permanent (no such recipient, message rejected). `MailNotSent.reason`
+// carries the transport's own words, which is where the code is.
+const permanent = (reason: string) => /\b5\d\d\b/.test(reason);
 
 export const notifier = Provider(Notifier)({
   inject: { mailer: Mailer },
@@ -50,9 +57,13 @@ export const notifier = Provider(Notifier)({
           html: `<p>Order <strong>${order.id}</strong> is on its way.</p>`,
         })
         .mapErrCases((matcher) =>
-          matcher.with(
-            P.tag("MailNotSent"),
-            (error) => new RetryableError(`order ${order.id} was not notified: ${error.reason}`),
+          matcher.with(P.tag("MailNotSent"), (error) =>
+            permanent(error.reason)
+              ? // Dead-lettered on the first attempt: a bad address will be
+                // bad on every one, and retrying it spends a delivery budget
+                // and, at volume, a sender reputation.
+                new NonRetryableError(`order ${order.id} cannot be notified: ${error.reason}`)
+              : new RetryableError(`order ${order.id} was not notified: ${error.reason}`),
           ),
         ),
   }),
@@ -87,18 +98,10 @@ body is the one part of a message that is reliably somebody's personal data.
 There is no retry inside the port, deliberately: what to do about a failed send
 belongs to the caller's transport, whose retry budget already exists.
 
-**Not every failure deserves a retry, and the port cannot tell you which.**
-`MailNotSent.reason` carries the transport's own words, and SMTP separates them
-for you: a **4xx** is transient (the relay was busy, the mailbox was locked) and
-a **5xx** is permanent (no such recipient, the message was rejected). Retrying a
-permanent one costs a delivery budget and, at volume, a sender reputation:
-
-```ts
-const permanent = (reason: string) => /\b5\d\d\b/.test(reason);
-```
-
-Fold that in where you map, so a bad address is dead-lettered on the first
-attempt and a busy relay is not.
+**Not every failure deserves a retry, and the port cannot tell you which** —
+which is why the mapping above splits them rather than calling everything
+retryable. Retrying a permanent failure costs a delivery budget and, at volume,
+a sender reputation; a `5xx` will be a `5xx` on every attempt.
 
 The mapping above is the AMQP answer — a `RetryableError` leaves the delivery
 un-acked, so the broker hands it to the next worker on its own budget. Under
