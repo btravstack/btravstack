@@ -156,6 +156,25 @@ export const orpc = (options: OrpcOptions = {}) => {
   });
 };
 
+/**
+ * A refused array: as long as the array the caller wrote, its head the caller's
+ * own elements — which match — and its LAST element the marker paired with what
+ * is wrong.
+ *
+ * TypeScript compares two equal-length tuples element by element, so the extra
+ * diagnostic it reports lands on the trailing element and carries both the
+ * sentence and the offending key. A fixed two-element tuple named the key only
+ * when the array happened to be two elements long; every other arity was a
+ * length mismatch, and the developer diffed the contract against the array by
+ * hand.
+ */
+type Refuse<T extends readonly unknown[], Marker extends string, Detail> = T extends readonly [
+  ...infer Head,
+  unknown,
+]
+  ? readonly [...Head, readonly [Marker, Detail]]
+  : readonly [readonly [Marker, Detail]];
+
 /** What every `OrpcRouter` arm returns; only the needs channel `N` differs. */
 type Built<Auth, N> = Provider<
   PortInstance<"OrpcRouter", Router<Record<never, never>>>,
@@ -224,22 +243,27 @@ export const routerFor =
     // because it is the only actionable part of the diagnostic and it prints
     // last, past the caller's own wide piece type.
     function build<const T extends readonly PieceOf<C, Schemes>[]>(
-      pieces: [Unsliceable<C>] extends [never]
-        ? [Uncovered<C, KeyOfPiece<T[number]>>] extends [never]
-          ? [Overlapping<KeyOfPiece<T[number]>>] extends [never]
-            ? T
-            : readonly [
-                "OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment",
-                Overlapping<KeyOfPiece<T[number]>>,
-              ]
-          : readonly [
-              "UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover",
-              Uncovered<C, KeyOfPiece<T[number]>>,
-            ]
-        : readonly [
-            "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the { inject, sync } form instead",
-            Unsliceable<C>,
-          ],
+      pieces: Erroneous<T> extends true
+        ? T
+        : [Unsliceable<C>] extends [never]
+          ? [Uncovered<C, KeyOfPiece<T[number]>>] extends [never]
+            ? [Overlapping<KeyOfPiece<T[number]>>] extends [never]
+              ? T
+              : Refuse<
+                  T,
+                  "OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment",
+                  Overlapping<KeyOfPiece<T[number]>>
+                >
+            : Refuse<
+                T,
+                "UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover",
+                Uncovered<C, KeyOfPiece<T[number]>>
+              >
+          : Refuse<
+              T,
+              "UNSLICEABLE CONTRACT KEY — a top-level key contains a dot, which a piece path cannot encode; serve this contract with the { inject, sync } form instead",
+              Unsliceable<C>
+            >,
     ): Built<Auth, InstanceType<T[number]["port"]> | SchemePortsOf<AllRequirementsOf<C>>>;
     function build(depsOrPieces: unknown): unknown {
       const schemes = schemesOf(contract);
@@ -407,6 +431,30 @@ type Uncovered<C, Paths extends string> =
  * because "no piece can name this" is a different fact from "no piece did".
  */
 type Unsliceable<C> = Extract<Exclude<keyof C, PrincipalKey> & string, `${string}.${string}`>;
+
+/**
+ * Whether a piece in the array is not a piece at all.
+ *
+ * A minted piece carries exactly ONE key on its port id. When the mint itself
+ * was refused — `OrpcController(contract, "billing")` on a contract with no
+ * `billing` — TypeScript still hands back a value, typed from the parameter it
+ * rejected, so the key reads as the whole union of valid paths. That union
+ * contains a path and a path under it, which is precisely what `Overlapping`
+ * exists to refuse, and the array call then reported OVERLAPPING at a call site
+ * where nothing overlaps: the first error was right and the loudest one wrong.
+ *
+ * So a union-keyed element makes the array's own gates stand down. The program
+ * does not compile either way — the mint's `TS2345`, which names every valid
+ * path, is the diagnostic to read.
+ */
+type Erroneous<T extends readonly unknown[]> = true extends {
+  readonly [K in keyof T]: IsUnion<KeyOfPiece<T[K]>>;
+}[number]
+  ? true
+  : false;
+
+/** The standard union test: `T` distributes, the naked `U` does not. */
+type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never;
 
 /**
  * A piece path nested inside another piece's path. Both would implement the

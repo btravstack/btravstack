@@ -122,9 +122,24 @@ not cover"` marker, and what the marker names is a procedure path
   rather than degrading to di's `Qualification`, which names nothing; the
   marker is a **sentence** because it is the only actionable part of the
   diagnostic and it prints last, past the caller's own wide piece type. The
-  missing leaf itself is named only when the array's length matches the marker
-  tuple's own length of 2, as a separate diagnostic on the trailing element
-  whose target is the bare path.
+  refusal is a tuple **as long as the array the caller wrote** — its head the
+  caller's own elements, which match, and its last element the marker paired
+  with the missing leaf — so TypeScript compares them element by element and
+  reports one diagnostic, on the trailing element, naming both. It used to be
+  a fixed two-element tuple, which named the leaf only when the array happened
+  to be two elements long; at one or three the developer diffed the contract
+  against the array by hand.
+
+  A third rule rides the same overload and produces NO diagnostic:
+  `Erroneous<T>`, which stands the gates down when an element's key is a
+  **union**. A minted piece carries exactly one key; a piece whose mint was
+  refused (`OrpcController(contract, "billing")` on a contract with no
+  `billing`) is typed from the parameter TypeScript rejected, so its key reads
+  as every valid path — a union containing both `"v1"` and `"v1.orders"`,
+  which is exactly what `Overlapping` refuses. The array call then reported
+  OVERLAPPING where nothing overlapped: first error right, loudest error
+  wrong. Standing down costs nothing, since the mint's own `TS2345` — which
+  lists every valid path — is already there.
   A **second gate** rides the same overload: `Overlapping<Paths>` — a piece
   path nested inside another piece's path
   (`Overlapping<"v1" | "v1.orders" | "health">` is `"v1.orders"`), refused
@@ -231,6 +246,7 @@ not cover"` marker, and what the marker names is a procedure path
   the DOTTED path `"echoes.ping"`, so `nest`'s rebuild answers a real
   request — and by `rpcDeep`, two pieces sharing the nested `"v1"` parent
   plus one at the bare procedure path `"health"`.
+
 - **`api.OrpcController(contract, key)({ inject: { name: Dep }, sync })`, or
   `({ inject: {}, sync })` with no deps** (`controller.ts`, minted by
   `defineHttp`) — one

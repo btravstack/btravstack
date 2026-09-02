@@ -57,9 +57,10 @@ AmqpModule("Pin")({
 // @ts-expect-error -- "middle" is not one of `pinContract`'s consumer/RPC names
 AmqpHandler(pinContract, "middle");
 
-// Negative: an array that misses a declared key is refused at the root. This
-// array is one element long, so the diagnostic reports the marker alone — the
-// missing key is named only once the array is as long as the marker tuple (2).
+// Negative: an array that misses a declared key is refused at the root. The
+// refusal is as long as the array the caller wrote, so the diagnostic lands on
+// its trailing element and names the marker AND the missing key — measured
+// here, at one element: `["UNCOVERED HANDLERS — …", "right"]`.
 // @ts-expect-error -- the `right` consumer is uncovered
 AmqpHandlers(pinContract)([left]);
 

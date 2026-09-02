@@ -59,9 +59,10 @@ every unit. See [Open a per-request scope](/how-to/open-a-per-request-scope).
 call otherwise. Both shipped gates are the same shape: a marker **intersected
 onto a parameter**, `unknown` when sound. `start`'s is `StartGate` — one of
 three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …`,
-`UNSATISFIED UNIT NEEDS — …`), and the sentence prints in the error. di's is
-`DependencyGate` on `Module.build`/`scoped`/`forkScope` — a one-property
-object whose message ends on the missing ports:
+`UNSATISFIED UNIT NEEDS — …`), plus di's own `UNSATISFIED DEPENDENCIES —
+nothing provides` for an unmet need, checked first and ending on the port's id.
+di's own is `DependencyGate` on `Module.build`/`scoped`/`forkScope` — the same
+one-property object, ending on the missing ports:
 `"UNSATISFIED DEPENDENCIES — nothing provides": Pool`. See
 [start and StartOptions](/reference/core/start) and
 [Compile errors, not surprises](/explanation/compile-time-wiring).

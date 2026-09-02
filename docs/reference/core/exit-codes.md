@@ -26,8 +26,8 @@ import type { StartGate, StartOptions } from "@btravstack/core";
 <!-- doctest: signature=@btravstack/core -->
 
 ```ts
-const runMain: <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
+const runMain: <X, E, N, UnitX = never, UnitNeeds = never>(
+  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
   options?: StartOptions<UnitX, UnitNeeds>,
   exit?: (code: number) => void,
 ) => Promise<void>;

@@ -32,15 +32,30 @@ never>`: `Needs` is covariant on `Module`, so this accepts a needs-free
   over `RuntimePort`, the kernel builds the graph, resolves that port and
   drives what it finds. The kernel is DI initialisation and lifecycle, nothing
   else. The `module` parameter is intersected with the phantom marker
-  `StartGate<X, UnitNeeds>`: `NO RUNTIME` when the module exports no runtime
+  `StartGate<X, UnitNeeds, N>`: `UNSATISFIED DEPENDENCIES — nothing provides`
+  when something in the graph needs a port nothing provides — checked FIRST,
+  in di's own words, ending on the port's **id** rather than its type —
+  `NO RUNTIME` when the module exports no runtime
   port, `UNSATISFIED RUNTIME PORTS` when what the runtime resolves is not
   among the module's exports (the module's alone — a unit-only port exists only
   while a unit is open, and `RuntimeHost.ctx` is the application context),
-  `UNSATISFIED UNIT NEEDS` for the fork's own direction — all three at the
-  call site, as an assignability failure that **prints the arm's sentence**.
+  `UNSATISFIED UNIT NEEDS` for the fork's own direction — all four at the
+  call site, as an assignability failure that **prints the arm's diagnostic**.
+
+  **Why needs are checked first, and why in di's words.** The parameter used to
+  be `Module<X, E, Scope | Env>`, so an unmet need was a plain assignability
+  failure printing `Type 'HttpRouterPort' is not assignable to type 'Scope'` —
+  an internal phantom a reader has never heard of — and when the port was
+  missing from `exports` too, the arm that fired was `UNSATISFIED RUNTIME
+PORTS`, a correct diagnosis of the second mistake that reads as a wrong one
+  of the first and steers the fix into `exports` when it belongs in `provides`.
+  The id rather than the port type is what keeps a starter's own generic port
+  readable: `AmqpHandlers` as a TYPE is its contract expanded, hundreds of
+  characters truncated before a name is reached.
   `unknown` is the satisfied arm, and it has to be: intersecting `unknown`
   leaves the module type untouched, so a good call infers exactly as it
   would without the marker.
+
 - **`releasedBy(signal, running)`** — `running`, but no later than the kernel's
   drain deadline: `race([running, whenAborted(signal)])`, for a `Serving.drain`
   whose work settles on somebody else's clock (Temporal's `shutdownForceTime`,
@@ -460,11 +475,13 @@ Type-level invariants live in `start.test-d.ts` and are checked by
 
 - **The module must export a runtime, and that runtime's declared `resolves` are
   checked against the module's exports at the `start` call site** (the phantom
-  marker `StartGate<X, UnitNeeds>`, intersected onto `module`). A composition
+  marker `StartGate<X, UnitNeeds, N>`, intersected onto `module`). A composition
   with no port declared over `RuntimePort` among its exports fails to match
   `NO RUNTIME — …`; a port the module does not export fails to match
-  `UNSATISFIED RUNTIME PORTS — …`.
-  Each arm's sentence is pinned by an `expectTypeOf<StartGate<…>>` in
+  `UNSATISFIED RUNTIME PORTS — …`; a module whose own needs are unprovided
+  fails to match `{ "UNSATISFIED DEPENDENCIES — nothing provides": <the port's
+id> }`, which is checked before either.
+  Each arm's diagnostic is pinned by an `expectTypeOf<StartGate<…>>` in
   `start.test-d.ts` — `@ts-expect-error` accepts any error, so the sentence a
   reader is shown is asserted there or nowhere.
   `InstanceType<never>` is `never`, so a runtime resolving nothing works against any

@@ -88,10 +88,12 @@ Provider<ActivitiesPortOf<C>>> & Compose<C>` — di's builder first, the
   non-covering array, and the diagnostic degrades to `not assignable to
 'Qualification<readonly [], Activities>'`, naming nothing; last, it reports
   the composing arm's own conditional against `readonly ["UNCOVERED
-ACTIVITIES — …", K]`, which always names the marker — the missing key `K` itself
-  appears only when the array's length matches that marker tuple's own length
-  of 2; a single-element array's diagnostic names the marker alone —
-  measured, not stylistic. The
+ACTIVITIES — …", K]`, which always names the marker. The refusal is a tuple **as
+  long as the array the caller wrote** — its head the caller's own elements,
+  which match, its last element the marker paired with the missing key — so
+  the diagnostic on the trailing element names both at every arity (measured
+  at one element: `readonly ["UNCOVERED ACTIVITIES — …", "audit" |
+"runShout"]`). A fixed two-element tuple named the key only at exactly two. The
   composed provider's own `deps` are the array of **piece ports**
   (`InstanceType<T[number]["port"]>` in its return type), not what a piece
   closes over: di constructs each piece first, as its own provider, and the

@@ -1,5 +1,5 @@
-import { ConfigInvalid, type Env } from "@btravstack/config";
-import type { Module, Scope } from "@btravstack/di";
+import { ConfigInvalid } from "@btravstack/config";
+import type { Module } from "@btravstack/di";
 import { P } from "unthrown";
 
 import { RuntimeStartFailed, type RuntimeInfoOf } from "./runtime.js";
@@ -87,8 +87,8 @@ export const awaitExit = async <E>(
  */
 // The one async surface here returning a bare `Promise<void>`: its whole job is
 // to leave the Result world and become a process exit code.
-export const runMain = async <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
+export const runMain = async <X, E, N, UnitX = never, UnitNeeds = never>(
+  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
   options: StartOptions<UnitX, UnitNeeds> = {},
   exit: (code: number) => void = (code) => {
     process.exitCode = code;
@@ -96,8 +96,8 @@ export const runMain = async <X, E, UnitX = never, UnitNeeds = never>(
 ): Promise<void> => {
   // The gate proves the needs at the call site, and that proof is not visible
   // in a body where `X` is still a type parameter.
-  const boot = start as (
-    module: Module<X, E, Scope | Env>,
+  const boot = start as unknown as (
+    module: Module<X, E, N>,
     options: StartOptions<UnitX, UnitNeeds>,
   ) => RunningApp<E, RuntimeInfoOf<X>>;
 

@@ -41,6 +41,7 @@ const GUIDE_SIDEBAR = [
             text: "Read the ambient unit from an adapter",
             link: "/how-to/read-the-ambient-unit",
           },
+          { text: "Read a wiring error", link: "/how-to/read-a-wiring-error" },
         ],
       },
       {

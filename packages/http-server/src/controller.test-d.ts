@@ -28,10 +28,10 @@ const usersPiece = publicApi.OrpcController(
   "users",
 )({ inject: {}, sync: () => ({ find: () => OkAsync("found") }) });
 
-// 1. Every contract key must be covered. This array is ONE element long, so the
-//    diagnostic reports the "UNCOVERED CONTROLLERS — …" marker alone; the
-//    missing leaf itself is named only once the array's length matches the
-//    marker tuple's own length of 2.
+// 1. Every contract key must be covered. The refusal is as long as the array
+//    the caller wrote, so the diagnostic lands on its trailing element and
+//    names both the "UNCOVERED CONTROLLERS — …" marker and the missing leaf,
+//    at every arity — here, one element and `"users.find"`.
 // @ts-expect-error — the `users` fragment is uncovered
 void publicApi.OrpcRouter(contract)([ordersPiece]);
 
@@ -43,9 +43,9 @@ void publicApi.OrpcController(contract, "billing");
 
 // 3. A piece cannot sit under the wrong key — by construction, since its key
 //    rides its port id. What the retired "controller under the wrong key" gate
-//    refused is now an array that leaves a fragment uncovered; two elements
-//    match the marker tuple's length, so — coverage being over the leaves —
-//    this diagnostic names the missing PROCEDURE itself: `users.find`.
+//    refused is now an array that leaves a fragment uncovered — coverage being
+//    over the leaves, the diagnostic names the missing PROCEDURE itself:
+//    `users.find`.
 // @ts-expect-error — two pieces for `orders` leave `users` uncovered
 void publicApi.OrpcRouter(contract)([ordersPiece, ordersPiece]);
 
@@ -351,8 +351,7 @@ void publicApi.OrpcRouter(dotted)([plainPiece]);
 const dottedRouter = publicApi.OrpcRouter(dotted);
 type _Unsliceable = Expect<
   Parameters<typeof dottedRouter>[0] extends readonly [
-    `UNSLICEABLE CONTRACT KEY${string}`,
-    ...unknown[],
+    readonly [`UNSLICEABLE CONTRACT KEY${string}`, ...unknown[]],
   ]
     ? true
     : false

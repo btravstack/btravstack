@@ -4,6 +4,7 @@ import {
   Provider,
   type AnyModule,
   type Context,
+  type PortInstance,
   type Scope,
   type ScopedOptions,
 } from "@btravstack/di";
@@ -166,26 +167,47 @@ export type RunningApp<E, Info = never> = {
 
 /**
  * The phantom marker `start`, `runMain` and `Boot` all intersect onto their
- * `module` parameter: `unknown` — and invisible — when the module exports a
- * runtime, its exports cover what that runtime resolves and they cover the
- * unit module's needs; one of three sentences otherwise, printed at the call
- * site as the parameter type the argument did not match.
+ * `module` parameter: `unknown` — and invisible — when nothing the module
+ * needs is unprovided, it exports a runtime, its exports cover what that
+ * runtime resolves and they cover the unit module's needs; a diagnostic
+ * otherwise, printed at the call site as the parameter type the argument did
+ * not match.
  *
  * `unknown` is the satisfied arm because intersecting it leaves the module
  * type untouched. A runtime's `resolves` is checked against the module's
  * exports only, never the unit module's: `RuntimeHost.ctx` is the application
  * context, so a unit-only port would resolve to nothing there.
+ *
+ * **Unmet needs are checked FIRST, and answered in di's own words rather than
+ * a sentence of the kernel's.** A root that forgot `provides: [router]` used
+ * to be told `Type 'HttpRouterPort' is not assignable to type 'Scope'` — an
+ * internal phantom nobody has heard of — or, when the port was missing from
+ * `exports` too, `UNSATISFIED RUNTIME PORTS`, which is a correct diagnosis of
+ * the second mistake that reads as a wrong one of the first and steers the fix
+ * into the wrong list. It is the same defect `Module.build` reports, so it
+ * prints the same sentence and ends on the port that is missing.
  */
-export type StartGate<X, UnitNeeds = never> = [Extract<X, RuntimeInstance>] extends [never]
-  ? "NO RUNTIME — the module exports no port declared over RuntimePort"
-  : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
-    ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
-      ? unknown
-      : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
-    : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export";
+/**
+ * A port's declared id, which is what a marker names it by: an id is the short
+ * string the application wrote in `Port("…")`, where the port TYPE of a
+ * starter's own generic port — `AmqpHandlers` over a contract — expands to
+ * hundreds of characters of the caller's own schema and truncates before the
+ * name is reached.
+ */
+type PortIdOf<P> = P extends PortInstance<infer Id, infer _Service> ? Id : P;
 
-export const start = <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
+export type StartGate<X, UnitNeeds = never, N = never> = [Exclude<N, Scope | Env>] extends [never]
+  ? [Extract<X, RuntimeInstance>] extends [never]
+    ? "NO RUNTIME — the module exports no port declared over RuntimePort"
+    : [InstanceType<RuntimeResolvesOf<X>>] extends [X]
+      ? [Exclude<UnitNeeds, X | Scope | Env>] extends [never]
+        ? unknown
+        : "UNSATISFIED UNIT NEEDS — the unit module needs a port the module does not export"
+      : "UNSATISFIED RUNTIME PORTS — the runtime resolves a port the module does not export"
+  : { readonly "UNSATISFIED DEPENDENCIES — nothing provides": PortIdOf<Exclude<N, Scope | Env>> };
+
+export const start = <X, E, N, UnitX = never, UnitNeeds = never>(
+  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
   options: StartOptions<UnitX, UnitNeeds> = {},
 ): RunningApp<E, RuntimeInfoOf<X>> => {
   type Info = RuntimeInfoOf<X>;

@@ -397,19 +397,16 @@ than degrading to di's own `Qualification`, which names nothing:
 ```text
 error TS2769: No overload matches this call.
   The last overload gave the following error.
-    Type 'Minted<{ orders: { place: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }, "orders", SchemesFrom<Record<never, never>>, never>' is not assignable to type '"UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover"'.
+    Type 'Minted<{ orders: { place: ContractBuilder<object>; }; users: { find: ContractBuilder<object>; }; billing: { pay: ContractBuilder<object>; }; }, "orders", SchemesFrom<...>, never>' is not assignable to type 'readonly ["UNCOVERED CONTROLLERS — the contract declares a procedure this array does not cover", "billing.pay" | "users.find"]'.
 ```
 
-Read the **last** line: it is the only actionable part of the diagnostic. The
-missing procedure itself is named only once the array's length matches the
-marker tuple's own length of 2, as a **separate** diagnostic on the trailing
-element:
-
-```text
-error TS2769: No overload matches this call.
-  The last overload gave the following error.
-    Type 'Minted<{ v1: { orders: { place: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }; health: ContractBuilder<object>; }, "health", SchemesFrom<...>, never>' is not assignable to type '"v1.customers.find"'.
-```
+Read the **last** line: it is the only actionable part of the diagnostic, and
+it carries both halves — the marker, and every procedure no piece covers. That
+holds at any length, because the refusal is a tuple **as long as the array you
+wrote**: its head is your own elements, which match, and its last element is
+the marker paired with what is missing, so TypeScript lines the two up element
+by element and reports on the trailing one. See
+[Read a wiring error](/how-to/read-a-wiring-error).
 
 A **second** gate rides the same overload: two pieces whose paths **nest** —
 `"v1"` and `"v1.orders"` — would implement the same procedures on two
@@ -420,8 +417,16 @@ defect), so overlap is refused explicitly:
 ```text
 error TS2769: No overload matches this call.
   The last overload gave the following error.
-    Type 'Minted<{ v1: { orders: { place: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }; health: ContractBuilder<object>; }, "v1", SchemesFrom<...>, never>' is not assignable to type '"OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment"'.
+    Type 'Minted<{ v1: { orders: { place: ContractBuilder<object>; }; customers: { find: ContractBuilder<object>; }; }; health: ContractBuilder<object>; }, "health", SchemesFrom<...>, never>' is not assignable to type 'readonly ["OVERLAPPING CONTROLLERS — a piece sits inside another piece's fragment", "v1.orders"]'.
 ```
+
+Both gates **stand down** when a piece's key is a union, which is what a piece
+whose own mint was refused looks like: `OrpcController(contract, "billing")` on
+a contract with no `billing` is a `TS2345` listing every valid path, and the
+value TypeScript hands back is typed from the parameter it rejected — so its
+key reads as all of them at once, `"v1"` and `"v1.orders"` included, which used
+to make the router call report an OVERLAPPING that was not there. The mint's
+own error is the one to read.
 
 The requirements fold down every path exactly as
 [`Implementation<C, Schemes>`](#authentication) folds them: a contract marked

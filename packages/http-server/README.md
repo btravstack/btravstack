@@ -272,7 +272,14 @@ there is nothing to name, and the provider carries the minted port on
 `.port`. The array is **exact** — a path the contract does not declare is
 refused at the mint, and the paths must partition the contract's procedures:
 an uncovered procedure and a piece nested inside another piece's fragment are
-each refused at the root — and because a fragment is itself a valid contract,
+each refused at the root, on the array's trailing element and whatever the
+array's length — but they are two diagnostics, each naming what is wrong in its
+own terms: `readonly ["UNCOVERED CONTROLLERS — …", "billing.pay" | "users.find"]`
+names the procedures no piece covers, and
+`readonly ["OVERLAPPING CONTROLLERS — …", "v1.orders"]` names the piece sitting
+inside another's fragment. A piece whose own mint was refused makes both gates
+stand down, so the `TS2345` listing every valid path is the only error to read.
+And because a fragment is itself a valid contract,
 a slice can be served alone, its piece unchanged: the lifted root is
 `api.OrpcRouter(orderContract.orders)({ inject: { implementation: ordersController.port }, sync: ({ implementation }) => implementation })`,
 declaring the very provider the modulith composed. See

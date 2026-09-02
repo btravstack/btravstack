@@ -391,12 +391,12 @@ names**, so a scheme with no authenticator behind it is an unmet need refused
 at `start`, and the diagnostic names the port —
 
 ```text
-Type '"HttpAuthenticator:user"' is not assignable to type '"@di/Scope"'
+{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "HttpAuthenticator:user" }
 ```
 
-(Not di's `UNSATISFIED DEPENDENCIES` dependency gate — that one guards
-`Module.build`/`Module.scoped`; `start` types the need out on its `module`
-parameter, which is why the port is named.)
+(The same sentence di's own gate prints at `Module.build`/`Module.scoped`.
+`start` checks the need on its `module` parameter, which is why the port is
+named — by its id, so a scheme reads as the string the contract declared.)
 
 There is nothing left for a second gate to check. The registry that types the
 handlers and the providers that discharge those ports come from the **same**

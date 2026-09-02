@@ -959,10 +959,11 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   `"UNCOVERED ACTIVITIES — …"` marker — at the **tail of the third line** of a
   `TS2769`, past three hundred characters of the caller's own contract, which
   is not shortenable from inside any of the three packages because the width
-  is in the type arguments rather than in a name; the missing key is named too
-  once the array's length matches the marker tuple's own length of 2, as a
-  **separate** diagnostic on the trailing element whose target is the bare
-  key), and two slices both discharged for one key are di's duplicate-provider
+  is in the type arguments rather than in a name; the missing key is named
+  beside the marker, on the array's **trailing element**, because the refusal
+  is a tuple as long as the array the caller wrote — it used to be a fixed
+  two-element one, which named the key only when the array happened to be two
+  elements long), and two slices both discharged for one key are di's duplicate-provider
   defect at build — the exactness comes from the port id every piece carries,
   not from a record shape. HTTP's key space is the one that nests — `"v1"` and
   `"v1.orders"` are different paths into the same contract — so it alone

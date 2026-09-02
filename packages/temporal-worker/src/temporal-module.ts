@@ -154,6 +154,25 @@ type Uncovered<C extends ContractDefinition, T extends readonly PieceOf<C>[]> = 
 >;
 
 /**
+ * A refused array: as long as the array the caller wrote, its head the caller's
+ * own elements — which match — and its LAST element the marker paired with what
+ * is wrong.
+ *
+ * TypeScript compares two equal-length tuples element by element, so the extra
+ * diagnostic it reports lands on the trailing element and carries both the
+ * sentence and the missing key. A fixed two-element tuple named the key only
+ * when the array happened to be two elements long; every other arity was a
+ * length mismatch, and the developer diffed the contract against the array by
+ * hand.
+ */
+type Refuse<T extends readonly unknown[], Marker extends string, Detail> = T extends readonly [
+  ...infer Head,
+  unknown,
+]
+  ? readonly [...Head, readonly [Marker, Detail]]
+  : readonly [readonly [Marker, Detail]];
+
+/**
  * The composing arm. Declared LAST in the intersection below on purpose:
  * TypeScript reports the last overload's failure, so a non-covering array is
  * refused against the `"UNCOVERED ACTIVITIES — …"` marker rather than degrading
@@ -165,10 +184,11 @@ type Uncovered<C extends ContractDefinition, T extends readonly PieceOf<C>[]> = 
 type Compose<C extends ContractDefinition> = <const T extends readonly PieceOf<C>[]>(
   pieces: [Uncovered<C, T>] extends [never]
     ? T
-    : readonly [
+    : Refuse<
+        T,
         "UNCOVERED ACTIVITIES — the contract declares a workflow this array does not cover",
-        Uncovered<C, T>,
-      ],
+        Uncovered<C, T>
+      >,
 ) => Provider<ActivitiesInstanceOf<C>, never, InstanceType<T[number]["port"]>> & {
   readonly port: ActivitiesPortOf<C>;
 };

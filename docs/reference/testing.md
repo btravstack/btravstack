@@ -55,8 +55,8 @@ const bootFixture: (
   defaults?: BootDefaults,
 ) => (ctx: object, use: (boot: Boot) => Promise<void>) => Promise<void>;
 
-type Boot = <X, E, UnitX = never, UnitNeeds = never>(
-  module: Module<X, E, Scope | Env> & StartGate<X, UnitNeeds>,
+type Boot = <X, E, N, UnitX = never, UnitNeeds = never>(
+  module: Module<X, E, N> & StartGate<X, UnitNeeds, N>,
   options?: Omit<StartOptions<UnitX, UnitNeeds>, "signals">,
 ) => RunningApp<E, RuntimeInfoOf<X>>;
 

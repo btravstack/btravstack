@@ -403,18 +403,22 @@ const HandlerlessAmqp = Module("HandlerlessAmqp")({
 const _missingHandlers = start(HandlerlessAmqp, options);
 ```
 
-Two different diagnostics, worth telling apart. The first is `start`'s marker:
+Two arms of the same marker, worth telling apart. The first is `NO RUNTIME`:
 the module argument fails to match
 `Module<…> & "NO RUNTIME — the module exports no port declared over RuntimePort"`,
 and the sentence is the last line. The second is the `Needs` channel: the
 handlers port is owed by `amqp()`, an **import** — so di's
-[declaration gate](/explanation/modules-and-privacy) has nothing to say, an
-import's needs travel without being restated, and `start`'s `module` parameter
-takes only `Scope | Env`, so what prints is
-`Type 'HandlersInstanceOf<…>' is not assignable to type 'Env | Scope'` — wide,
-because the contract expands, but ending on
-`Type '"AmqpHandlers"' is not assignable to type '"@di/Scope"'`, which names the
-port. Neither is di's `UNSATISFIED DEPENDENCIES` dependency gate.
+[declaration gate](/explanation/modules-and-privacy) has nothing to say, since
+an import's needs travel without being restated — and `start` answers it in
+di's own words, ending on
+
+```text
+{ readonly "UNSATISFIED DEPENDENCIES — nothing provides": "AmqpHandlers" }
+```
+
+The line is wide, because the contract expands into the module type either
+way; what fits is the part that matters, since the port is named by its **id**
+rather than by `HandlersInstanceOf<…>`.
 
 ## Where to go next
 

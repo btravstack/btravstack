@@ -217,12 +217,11 @@ missing one is refused at the call, against an
 marker. The diagnostic is a three-line `TS2769` and the sentence is at the
 **tail of the third line**, past three hundred characters of the caller's own
 contract type — measured, and not shortenable from inside this package. The
-missing key itself is named too once the array's length matches that marker
-tuple's own length of 2: TypeScript then matches the array against the tuple
-positionally and reports the trailing element separately — measured against
-this example's two-consumer contract, `is not assignable to type
-'"orderAudit"'`: the bare key, not the marker tuple. A single-element array's
-diagnostic names the marker alone; a piece built for another contract
+missing key is named beside it, whatever the array's length: the refusal is a
+tuple as long as the array you wrote, so TypeScript lines the two up element by
+element and reports one error on the trailing element — measured on a
+one-element array, `is not assignable to type 'readonly ["UNCOVERED HANDLERS —
+…", "right"]'`. A piece built for another contract
 is refused too, structurally, since its port's service is that contract's
 handler for the key. `Uncovered` checks coverage, not injectivity, so two
 pieces claiming the same key still type-check together; di's duplicate-provider

@@ -26,10 +26,12 @@ with it a runtime constructed outside the graph that reaches back into it.
 ## The gate is a phantom marker on `module`, and it is bypassable on purpose
 
 `start`, `runMain` and `@btravstack/testing`'s `Boot` all intersect
-`StartGate<X, UnitNeeds>` onto their `module` parameter — `unknown`, and
-invisible, when the module exports a runtime whose ports its exports cover; one
-of three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …`,
-`UNSATISFIED UNIT NEEDS — …`) otherwise. It rides the parameter so that the
+`StartGate<X, UnitNeeds, N>` onto their `module` parameter — `unknown`, and
+invisible, when nothing it needs is unprovided and it exports a runtime whose
+ports its exports cover; a diagnostic otherwise: di's own
+`UNSATISFIED DEPENDENCIES — nothing provides` ending on the missing port's id,
+or one of three sentences (`NO RUNTIME — …`, `UNSATISFIED RUNTIME PORTS — …`,
+`UNSATISFIED UNIT NEEDS — …`). It rides the parameter so that the
 sentence **prints**: an argument that fails a parameter type makes TypeScript
 name that type, where the trailing rest tuple this used to be failed as an
 arity error and named nothing.
