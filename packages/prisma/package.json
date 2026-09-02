@@ -1,6 +1,6 @@
 {
   "name": "@btravstack/prisma",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "The Prisma starter for @btravstack/core: DATABASE_URL through Config, the Postgres driver adapter, and a client whose pool is the application scope's",
   "keywords": [
     "database",

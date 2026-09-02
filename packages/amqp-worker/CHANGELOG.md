@@ -1,5 +1,86 @@
 # @btravstack/amqp-worker
 
+## 0.10.0
+
+### Minor Changes
+
+- 20b1cd3: The handler and activity leaves take **one record** — everything the invocation
+  carries, the input included — matching oRPC, which is what an HTTP controller
+  here has always taken. Moving a use case between the three transports no longer
+  means relearning the function you type.
+
+  ```ts
+  place:   ({ errors, context, input })      => …   // HTTP, unchanged
+  place:   ({ errors, context, input })      => …   // Temporal
+  process: ({ errors, context, raw, input }) => …   // AMQP
+  ```
+
+  The convergence happened upstream — btravstack/temporal-contract#415 and
+  btravstack/amqp-contract#671 — so this bumps both peers to their new betas
+  (`@temporal-contract/*@8.0.0-beta.7`, `@amqp-contract/*@3.0.0-beta.7`) and moves
+  the examples and documentation with them. `input` is the field name on all
+  three; a local synonym per transport would put the relearning back on the one
+  field every leaf touches. The positional second parameter survives, because
+  oRPC has it too: `({ errors }, input)` is the same call.
+
+  Two behaviour changes ride along, both from the AMQP library:
+
+  - **An unreachable broker is a modeled `ConnectionError`** (amqp-contract#645),
+    so `@btravstack/amqp-worker` NAMES it and maps it to `RuntimeStartFailed` —
+    `runMain` exit `1`. The blanket `.recoverDefect(...)` that used to stand there
+    is gone, and with it the behaviour that reported a genuine startup bug as the
+    same modeled error. A bug now stays a defect and exits `70`.
+  - **A topology the broker refuses fails `create()`** (amqp-contract#675) instead
+    of handing back a worker whose queues do not exist. It arrives as a defect,
+    which is exit `70`: a queue declaration the broker rejects is a broken
+    contract, not an operator's business.
+
+  Closes #207.
+
+- dfc126f: Observability is a set port now, and the `instrumented` flag is gone from every
+  package that had one.
+
+  `@btravstack/core` declares `Observers`, `observe` and `noObserver`. A starter
+  reports what it did — an operation, then how it settled — and holds no `Logger`,
+  `Meter` or `Tracer` of its own. `@btravstack/observability` contributes the
+  member that writes a failure as a line; `@btravstack/observability/otel`
+  contributes the one that opens the span and mints
+  `btravstack.<component>.operations` and `.duration`.
+
+  **The three servers gain RED metrics** they never had — rate, errors and
+  duration per request, delivery and activity attempt, at the unit seam.
+
+  **`instrumented` is removed, not deprecated**, from `http()`, `amqp()`,
+  `temporal()`, `cache()`, `mailer()`, `storage()` and `prismaDatabase()`. It
+  defaulted to `true` and put three ports in each module's `Needs`, so a root that
+  wanted a cache and no OpenTelemetry SDK got a compile error naming them and had
+  to pass an option to turn off something it never asked for. Now every one of
+  those modules owes nothing beyond its adapter's own needs, and composing
+  `observability()` and `otel()` is what turns the lines and the instruments on —
+  with no call site to change.
+
+  Two behaviour changes worth knowing:
+
+  - **A successful operation writes no log line.** That is what the metric is
+    for. `@btravstack/mailer` loses its `info` "mail sent" as a result; an
+    application that wants an operator to see every send writes that line where it
+    sends.
+  - **`@btravstack/prisma` needs `Env` and `Logger`** — `Logger` for exactly one
+    line, the `debug` saying engine tracing is off because `@prisma/instrumentation`
+    is absent. That is a startup fact rather than an operation, so no observer can
+    settle it.
+
+### Patch Changes
+
+- 9500292: The README install lines now pin the beta majors. `@orpc/*`,
+  `@temporal-contract/*` and `@amqp-contract/*` each ship a `latest` dist-tag
+  pointing at an older major, so the unversioned line installed the wrong one and
+  the first run failed in type errors.
+- Updated dependencies [dfc126f]
+  - @btravstack/core@0.10.0
+  - @btravstack/config@0.10.0
+  - @btravstack/di@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes
