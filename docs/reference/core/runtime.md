@@ -3,6 +3,11 @@ title: The Runtime contract
 description: Runtime, RuntimeHost, RunUnit, Serving, RuntimePort and RuntimeStartFailed, the unit-of-work types, currentUnit, Clock — and the three contracts a runtime owes that the kernel cannot check.
 ---
 
+<!-- doctest: prelude
+import type { AsyncResult } from "unthrown";
+import type { UnitMeta, UnitRecord, UnitWork } from "@btravstack/core";
+-->
+
 # The `Runtime` contract
 
 > **Reference.** The service behind a runtime port, the host it is handed, the
@@ -131,7 +136,7 @@ with `runtime: "kernel"` when one of its own variables is malformed —
 
 ## `releasedBy`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 const releasedBy: (
@@ -168,7 +173,7 @@ not be folded together.
 
 ## Units of work
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type UnitMeta = {
@@ -213,7 +218,7 @@ const currentUnit: () => UnitRecord | undefined;
 
 ## `Clock` and `systemClock`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type Clock = {

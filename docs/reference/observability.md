@@ -4,10 +4,10 @@ description: The complete surface of @btravstack/observability — the Logger po
 ---
 
 <!-- doctest: prelude
-import { runMain, Logger, Meter, Tracer } from "@btravstack/core";
+import { runMain, Logger, Meter, Tracer, type Attributes, type Level } from "@btravstack/core";
 import { Config } from "@btravstack/config";
 import { HttpModule } from "@btravstack/http-server";
-import { createLogger, jsonSink, kernelEvents, logLevel, observability } from "@btravstack/observability";
+import { createLogger, jsonSink, kernelEvents, logLevel, observability, type Line } from "@btravstack/observability";
 import { otel } from "@btravstack/observability/otel";
 import { cache } from "@btravstack/cache";
 import { redisCache } from "@btravstack/cache/redis";
@@ -26,10 +26,12 @@ import { RequestModule } from "../../request-scope.js";
 > [Log and correlate](/how-to/log-and-correlate); for the generated
 > signatures, see the [API reference](/api/observability/).
 
-Logging, today. The package is named for the whole of observability because
-logs, traces and metrics share a correlation id, a resource, a configuration
-slice and a flush-on-shutdown lifecycle — splitting them across two packages
-would duplicate all four. **Traces and metrics are not here yet.**
+Logs, traces and metrics. The package is named for the whole of observability
+because the three share a correlation id, a resource, a configuration slice and
+a flush-on-shutdown lifecycle — splitting them across two packages would
+duplicate all four. Logging is the root entry point; tracing and metrics ride
+`@btravstack/observability/otel`, whose OpenTelemetry peers a consumer that
+never imports it never installs.
 
 ## Install
 
@@ -143,7 +145,7 @@ package's whole argument:
 
 > Also the kernel's, and imported from there.
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type Level = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
@@ -193,7 +195,7 @@ A line below `level` is dropped before the sink is called and before
 
 ## `Line` and `Sink`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/observability -->
 
 ```ts
 type Line = {

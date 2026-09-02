@@ -24,7 +24,10 @@ Promise<void>` handing `use` a **`Boot`** — `start`'s own signature and
   precedence order: `signals: false` always (last spread, uncancellable —
   process-wide handlers would fight across a file); then a call's own
   options; then `defaults` (**`BootDefaults`** = `StartOptions` minus
-  `signals` and `unit` — a unit module is a call's business); then
+  `signals` and `unit` — a unit module is a call's business; exported, like
+  **`SubmittedUnit`**, because a documented parameter or return type a
+  consumer cannot name is a surface gap, and the doc-samples signature gate
+  is what found both); then
   `probes: false`, `preDrainDelayMs: 0`, a silent `onEvent`. So `boot(m, {
 probes: { port: 0 } })` binds a probe server over the default. Teardown
   is **Defect-only**: `stop()`, `await exited`, and a

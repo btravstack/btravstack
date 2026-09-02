@@ -88,7 +88,12 @@ type Fence = {
   readonly file: string;
   readonly line: number;
   readonly body: string;
-  readonly marker: "include" | "defer" | { readonly isolate: string } | { readonly skip: string };
+  readonly marker:
+    | "include"
+    | "defer"
+    | { readonly isolate: string }
+    | { readonly skip: string }
+    | { readonly signature: string };
 };
 
 type Page = {
@@ -100,7 +105,7 @@ type Page = {
 };
 
 const MARKER =
-  /^<!--\s*doctest:\s*(skip\s*[—–-]\s*(?<reason>.+?)|(?<defer>defer)(\s*[—–-].*)?|isolate(\s*[—–-].*)?|group=(?<group>[a-z-]+))\s*-->$/;
+  /^<!--\s*doctest:\s*(skip\s*[—–-]\s*(?<reason>.+?)|(?<defer>defer)(\s*[—–-].*)?|isolate(\s*[—–-].*)?|signature=(?<signature>\S+)|group=(?<group>[a-z-]+))\s*-->$/;
 
 const parsePage = (file: string): Page | undefined => {
   const lines = readFileSync(file, "utf8").split("\n");
@@ -134,6 +139,9 @@ const parsePage = (file: string): Page | undefined => {
         pageGroup = named as Group;
       } else if (marker.groups?.["reason"] !== undefined) {
         pending = { skip: marker.groups["reason"] };
+        pendingLine = i + 1;
+      } else if (marker.groups?.["signature"] !== undefined) {
+        pending = { signature: marker.groups["signature"] };
         pendingLine = i + 1;
       } else if (marker.groups?.["defer"] !== undefined) {
         pending = "defer";
@@ -254,6 +262,104 @@ const mergeImports = (statements: ReadonlySet<string>): string[] => {
   return [...merged, ...passthrough].sort();
 };
 
+/**
+ * A quoted declaration, checked against the real export instead of skipped.
+ *
+ * A reference page quotes a package's signature as a `const NAME: T;` or a
+ * `type NAME = T;` — neither of which is a runnable program, which is why 49 of
+ * them carried a `skip` reason saying so. Nothing diffed them against `src/`,
+ * and the repository's canonical drift incident (a `Logger` whose documented
+ * parameter order was not the shipped one) went out through exactly this
+ * channel.
+ *
+ * `<!-- doctest: signature=@btravstack/core -->` turns one into a gate: the
+ * quoted type becomes an alias, and two assignments check it against the real
+ * export in both directions, so a drift in either is a compile error naming the
+ * page. The real symbol is reached by an inline `import(…)` type query rather
+ * than an import statement, so nothing collides with the page's own bindings.
+ *
+ * Two shapes are checkable — a value declaration and a type alias with no
+ * parameters. A GENERIC alias would need type arguments this script cannot
+ * invent, and a bare `name(args): T` line is not a declaration at all; both are
+ * carried through unchecked and **named in the generate report**, so a fence
+ * that looks gated and is only half gated says so out loud. A fence with
+ * nothing checkable at all fails the task: that one wants a `skip` reason.
+ */
+const signatureChecks = (
+  fence: Fence,
+  module: string,
+): { readonly code: string; readonly unchecked: readonly string[] } => {
+  // Split on a `;` at DEPTH ZERO only: an object type's every property line
+  // ends in one, and splitting on those would cut a declaration into pieces
+  // that each look like something this function cannot check.
+  const declarations: string[] = [];
+  {
+    // Comments go first, trailing ones included — a `// name defaults to "x"`
+    // after a declaration would otherwise read as a declaration of its own.
+    // The preceding character class is `[ \t]`, never `\s`: eating the newline
+    // would join two lines, and a `;` at the end of the first would land inside
+    // whatever the second says. Requiring space-or-start before `//` is what
+    // keeps a `https://` inside a string literal intact — there the `//`
+    // follows a colon.
+    const source = fence.body.replace(/(^|[ \t])\/\/[^\n]*/g, "$1");
+    let depth = 0;
+    let quote = "";
+    let current = "";
+    for (const character of source) {
+      // A `;` inside a string or template literal is data — `type S = "a;b";`
+      // would otherwise split into two fragments, neither a declaration.
+      if (quote !== "") {
+        current += character;
+        if (character === quote) quote = "";
+        continue;
+      }
+      if (character === '"' || character === "'" || character === "`") quote = character;
+      if ("({[".includes(character)) depth += 1;
+      if (")}]".includes(character)) depth -= 1;
+      if (character === ";" && depth === 0) {
+        declarations.push(current.trim());
+        current = "";
+        continue;
+      }
+      current += character;
+    }
+    if (current.trim() !== "") declarations.push(current.trim());
+  }
+  const checks: string[] = [];
+  const unchecked: string[] = [];
+  for (const declaration of declarations) {
+    const value = /^(?:export\s+)?(?:declare\s+)?const\s+(?<name>\w+)\s*:\s*(?<type>[\s\S]+)$/.exec(
+      declaration,
+    );
+    const alias = /^(?:export\s+)?type\s+(?<name>\w+)\s*=\s*(?<type>[\s\S]+)$/.exec(declaration);
+    const match = value ?? alias;
+    if (!match?.groups) {
+      unchecked.push(declaration.split("\n")[0]!.slice(0, 60));
+      continue;
+    }
+    const { name, type } = match.groups as { name: string; type: string };
+    const real = value ? `typeof import("${module}").${name}` : `import("${module}").${name}`;
+    const quoted = `__quoted_${name}_${fence.line}`;
+    checks.push(
+      `type ${quoted} = ${type};`,
+      `const __sig_${name}_${fence.line}_a: ${real} = null as unknown as ${quoted};`,
+      `const __sig_${name}_${fence.line}_b: ${quoted} = null as unknown as ${real};`,
+      `void __sig_${name}_${fence.line}_a;`,
+      `void __sig_${name}_${fence.line}_b;`,
+    );
+  }
+  if (checks.length === 0) {
+    // oxlint-disable-next-line unthrown/no-throw -- a generator's misconfiguration must fail the generate task loudly
+    throw new Error(
+      `${fence.file}:${fence.line}: a signature fence declares nothing checkable — mark it \`<!-- doctest: skip — <reason> -->\``,
+    );
+  }
+  return { code: checks.join("\n"), unchecked };
+};
+
+/** What a signature fence carried through unchecked, for the generate report. */
+const uncheckedSignatures: string[] = [];
+
 const emit = (page: Page, outDir: string): number => {
   const slug = relative(REPO_ROOT, page.file).replaceAll("/", "__").replace(/\.md$/, "");
   const banner = (fence: Fence) => `// — ${relative(REPO_ROOT, fence.file)}:${fence.line}`;
@@ -270,6 +376,16 @@ const emit = (page: Page, outDir: string): number => {
       if (split.rest !== "") bodies.push(`// — prelude\n${split.rest}`);
     }
     for (const fence of fences) {
+      if (typeof fence.marker === "object" && "signature" in fence.marker) {
+        const checked = signatureChecks(fence, fence.marker.signature);
+        for (const declaration of checked.unchecked) {
+          uncheckedSignatures.push(
+            `${relative(REPO_ROOT, fence.file)}:${fence.line} — ${declaration}`,
+          );
+        }
+        bodies.push(`${banner(fence)}\n${checked.code}`);
+        continue;
+      }
       const split = splitImports(fence.body);
       // A FENCE's relative imports — `./x.js` and `../x.js` alike — are
       // dropped: they narrate the page's own file layout, and the
@@ -303,6 +419,11 @@ const emit = (page: Page, outDir: string): number => {
   const together = [
     ...page.fences.filter((fence) => fence.marker === "include"),
     ...page.fences.filter((fence) => fence.marker === "defer"),
+    // Last: a signature check declares only aliases and two `const`s of its
+    // own, so it can never be what another fence reads.
+    ...page.fences.filter(
+      (fence) => typeof fence.marker === "object" && "signature" in fence.marker,
+    ),
   ];
   const isolated = page.fences.filter(
     (fence): fence is Fence & { marker: { isolate: string } } =>
@@ -408,6 +529,9 @@ const main = (): void => {
   // Opt-outs are part of the output on purpose: silent truncation reads as
   // "covered everything" when it was not.
   for (const skip of skips) report.push(`  skipped: ${skip}`);
+  for (const unchecked of uncheckedSignatures) {
+    report.push(`  unchecked declaration in a signature fence: ${unchecked}`);
+  }
   process.stdout.write(`${report.join("\n")}\n`);
 };
 

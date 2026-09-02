@@ -6,7 +6,7 @@ description: The complete surface of @btravstack/prisma — prismaDatabase, the 
 <!-- doctest: group=order-api -->
 <!-- doctest: prelude
 import { Env } from "@btravstack/config";
-import { Logger, Meter, Tracer } from "@btravstack/core";
+import { Logger } from "@btravstack/core";
 import { Module } from "@btravstack/di";
 import { prismaDatabase, type PrismaLike } from "@btravstack/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -35,21 +35,55 @@ const database = prismaDatabase("OrderDatabase")({
 });
 ```
 
-Returns three pieces, and a composition root wants all three:
-
-| Piece      | What it is                                                            |
-| ---------- | --------------------------------------------------------------------- |
-| `config`   | The provider binding the connection string from the environment.      |
-| `port`     | The port the client is reached through, typed by your `client` arrow. |
-| `provider` | The **resourceful** provider that opens the pool and closes it again. |
+Returns a **module**, augmented with the one thing a composition root needs
+from it — the port. Everything else is inside: the provider binding
+`DATABASE_URL`, the resourceful provider that opens the pool and closes it
+again, the health member, and the loader that turns on engine tracing when an
+OpenTelemetry SDK is composed.
 
 ```ts
 export const PersistenceModule = Module("Persistence")({
   imports: [database],
   exports: [database.port],
-  needs: [Env, Logger, Meter, Tracer],
+  needs: [Env, Logger],
 });
 ```
+
+## Exports
+
+| Export                             | What it is                                                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `prismaDatabase(name)({ client })` | The starter: a `Module` that provides the client port, contributes a health check and an instrumentation loader, and carries `port`. |
+| `database.port`                    | The port your client is reached through, typed by exactly what your `client` arrow returned, with the id you named.                  |
+| `PrismaLike`                       | `{ $disconnect(): Promise<void> }` — the constraint on that client, and the whole of it.                                             |
+| `PrismaOptions<C>`                 | `{ client: (adapter: PrismaPg) => C }`.                                                                                              |
+
+What the module needs is `Env` and `Logger`; what it exports is your port,
+`HealthChecks` and `Instrumentations`. A composition root that re-exports it
+whole passes the last two up to the kernel with no extra line.
+
+## The environment
+
+| Variable       | Required | Default | Semantics                                                                                                               |
+| -------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | yes      | none    | The connection string, read through `Config.string`. Unset **or blank** is a `ConfigInvalid` naming it, at graph build. |
+
+A blank value is a configuration error rather than an absent one — the rule
+[`Config`](/reference/config) fixes once for every field, because a deployment
+that set the variable to nothing meant to set it to something. The failure is
+modeled, so `runMain` prints it and exits **`78`**; nothing crashes on the first
+query.
+
+## Errors
+
+There are none of this package's own. The client provider's error channel is
+**`never`**: opening cannot fail in the application's terms, because Prisma
+dials on the first statement rather than here. What can fail is configuration
+(`ConfigInvalid`, above) and the queries themselves — which belong to
+`@prisma/client`, and to `@unthrown/prisma` if you want them as `Result`s.
+
+The health member's own failure is the kernel's `HealthCheckFailed`, carrying
+the driver's message, and it reaches `/healthz` rather than the caller.
 
 ### `client` — the one thing this package cannot own
 
@@ -77,9 +111,9 @@ owes nothing. There is no flag, as on [`cache`](/reference/cache), `mailer` and
 `storage`.
 
 **The operation says `traced: false`**, which is the one thing this component
-knows and an observer cannot: engine-level tracing is `prismaTracing()`'s job,
-below, and a client-level span would sit alongside Prisma's carrying strictly
-less. Counting and timing still happen.
+knows and an observer cannot: engine-level tracing is the `Instrumentations`
+loader's job, below, and a client-level span would sit alongside Prisma's own
+carrying strictly less. Counting and timing still happen.
 
 ```ts
 prismaDatabase("OrderDatabase")({
@@ -92,7 +126,9 @@ This works on a client the package cannot see the schema of because Prisma's
 intercepts every operation on every model. The wrapper is transparent: whatever
 the query resolves or rejects with is what the caller receives.
 
-The module needs `Env` and nothing else. Composing
+The module needs `Env` and `Logger` — the second for exactly one line, the
+`debug` saying engine tracing is off because the optional peer is absent, which
+is a startup fact rather than an operation an observer could settle. Composing
 [`observability()`](/reference/observability) writes the failed queries as
 lines and `otel()` mints the instruments — neither changes a line of this
 composition, which is what the set port buys over a flag that charged three
@@ -138,10 +174,12 @@ install it still gets the counter and the error line, and the skip is stated at
 `debug` rather than left silent: telemetry you believe you have and do not is
 worse than none.
 
-**`Tracer` is depended on for its ordering, not its value.** Nothing reads it,
-but `otel()` sets the global tracer provider while building that very port, so
-naming it is what guarantees the SDK is up first. A root without `otel()` gets a
-compile error instead of tracing into nothing.
+**It is offered, not registered.** The starter contributes a _loader_ to the
+kernel's `Instrumentations` set port; `otel()` is what runs every contribution,
+so composing this starter declares engine tracing and composing an SDK turns it
+on. A graph with no SDK never imports the package at all — which is why neither
+`Tracer` nor `Meter` is in this module's `needs`: the SDK does the registering,
+so the ordering that once bought a port dependency is now inherent.
 
 **It can be a provider at all** because `@prisma/instrumentation` patches no
 modules: `enable()` sets a helper on `globalThis` under a versioned key and a
@@ -164,10 +202,12 @@ unit-scoped transaction and there will not be one — see
 **A repository base class.** Ports are your application's vocabulary, not this
 package's.
 
-**A health contribution.** `/readyz` answers from the kernel's phase, and there
-is no hook to contribute to. Adding one is a kernel change and a contested one:
-a pod that cannot reach its database arguably should stay ready and fail
-requests rather than flap out of the endpoint list.
+**A readiness contribution.** The starter _does_ contribute a health check —
+`SELECT 1` through `$queryRaw`, named after the starter itself, folded into
+`GET /healthz` with nothing wired — but `/readyz` deliberately does not read it.
+Failing readiness on a dependency every replica shares removes them all at once,
+turning a degraded system into an outage. The kernel reports; an operator
+decides.
 
 **Per-query timing as a histogram.** The counter records how a query came out,
 not how long it took; the span carries the duration. A histogram would be the

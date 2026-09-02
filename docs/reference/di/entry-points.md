@@ -137,7 +137,7 @@ module the kernel forks around **every unit**, and the same gate is checked at
 
 Accepted by `Module.scoped` and `Module.forkScope`:
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/di -->
 
 ```ts
 type ScopedOptions = {

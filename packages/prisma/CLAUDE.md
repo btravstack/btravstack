@@ -6,10 +6,13 @@ you are working under `packages/prisma/`.
 
 ## Public surface
 
-- **`prismaDatabase(name)({ client })` → the module, augmented with `port`** (`prisma.ts`) — the whole
-  surface, returning `{ port, config, provider }`. A composition root puts
-  `config` and `provider` in `provides` and exports `port`; there is nothing
-  else to wire.
+- **`prismaDatabase(name)({ client })` → a MODULE, augmented with `port`**
+  (`prisma.ts`) — the whole surface. A composition root writes
+  `imports: [database]` and exports `database.port`; the config provider, the
+  resourceful client provider, the health member and the instrumentation member
+  are inside it and are never the application's business, which is the bargain
+  `cache({ adapter })` already makes. It needs `Env` and `Logger`, and exports
+  `port`, `HealthChecks` and `Instrumentations`.
   - `client: (adapter: PrismaPg) => C` is **the one thing this
     package cannot own**. A Prisma client is generated per application from its
     own schema, so no client type is shippable — which is also why the
@@ -39,12 +42,10 @@ you are working under `packages/prisma/`.
 **Migrations**, because a deployment runs `prisma migrate deploy` before the
 process starts and an application that migrates at boot races its own replicas.
 **Transactions**, because commit boundaries belong to the adapter and
-`@unthrown/prisma`'s `$tryTransaction` is already the primitive. **A health
-contribution**, because `start.ts`'s `ready()` is
-`tracker.current() === "serving" && !forcedUnready` with no hook to contribute
-to — adding one is a kernel change and a contested one, since a pod that cannot
-reach its database arguably should stay ready and fail requests rather than flap
-out of the endpoint list.
+`@unthrown/prisma`'s `$tryTransaction` is already the primitive. **A readiness
+contribution** — the health member below reports on `/healthz`, and `/readyz`
+deliberately does not read it: failing readiness on a dependency every replica
+shares removes them all at once, turning a degraded system into an outage.
 
 ## Instrumentation, on the family's shape
 
@@ -55,15 +56,15 @@ would carry strictly less beside it. The module needs `Env` and `Logger` —
 the optional peer is absent, which is a STARTUP fact rather than an operation an
 observer could settle.
 
-**It emits no span, deliberately.** `@btravstack/prisma/otel`'s `prismaTracing()`
-enables Prisma's own `@prisma/instrumentation`, which traces at the ENGINE level
+**It emits no span, deliberately.** The `Instrumentations` member below loads
+Prisma's own `@prisma/instrumentation`, which traces at the ENGINE level
 — the real SQL, the connection acquisition, the serialisation. A client-level
 span here would sit beside it on every query carrying strictly less. What the
 wrapper keeps is the pair Prisma's instrumentation does not do at all: a metric,
 and an error line correlated with the ambient unit.
 
-**Engine tracing turns itself on**, with no wiring at a composition root: the
-loader calls `enableTracing`, which **dynamically imports**
+**Engine tracing turns itself on**, with no wiring at a composition root:
+`loadPrismaInstrumentation` **dynamically imports**
 `@prisma/instrumentation` and enables it. The import has to be dynamic — the
 package is an OPTIONAL peer, and a static import would make every consumer
 install it. A failure to resolve is an ordinary answer, logged at `debug`; the
@@ -75,26 +76,19 @@ It can be a provider at all because `@prisma/instrumentation` does **not** patch
 modules: `enable()` sets a helper on `globalThis` under a versioned key and a
 client looks it up per query, so registration order is free. The `--import`
 preload rule in `packages/observability/CLAUDE.md` governs patching
-instrumentations and does not reach this one — a distinction worth keeping
-straight, since an earlier revision applied that rule here without checking
-whether it belonged. The `Tracer` dependency is for ORDERING, not value: it is
-what forces `otel()`'s SDK up first.
+instrumentations and does not reach this one.
 
-**A generated client can be observed, and an earlier revision of this file
-said it could not.** That claim — repeated in issue #135's decision comment —
-missed Prisma's own mechanism: `$extends` takes a `query` component, and
-`$allModels.$allOperations` intercepts every operation on every model. The
-wrapper therefore never needs to know the schema, which is the one thing this
-package cannot see. The seam that genuinely does not exist is the _adapter_
-one; instrumentation was never blocked by it, and the two were wrongly argued
-together.
+**A generated client is observable because Prisma says so**: `$extends` takes a
+`query` component, and `$allModels.$allOperations` intercepts every operation on
+every model, so the wrapper never needs to know the schema — the one thing this
+package cannot see. The seam that genuinely does not exist is the ADAPTER one,
+which is a different argument and the reason issue #135's adapter-seam option
+was refused.
 
-**The branch is inside `acquire`, not between two ports.** `cache` needs
+**The wrapper is inside `acquire`, not between two ports.** `cache` needs
 `Cache` and `CacheBackend` because di allows one provider per port per graph, so
-its observed form has to layer over the plain one. Here the extension wraps
-the client at construction, so one port suffices. Both provider arms are built
-and one is chosen, which is how the conditional return type gets spelled by the
-arms themselves instead of by naming di's provider type.
+its observed form has to layer over the plain one. Here the extension wraps the
+client at construction, so one port suffices and there is nothing to layer.
 
 `instrument` re-raises with **`Promise.reject`, never `throw`** — the rejection
 must reach `@unthrown/prisma`'s `try*` twin unchanged, and rejecting does that
@@ -115,7 +109,8 @@ package and runs against the shared PostgreSQL container.
 
 ## Health check
 
-The starter contributes one `HealthChecks` member, named `the database (named after the starter)`, so the
+The starter contributes one `HealthChecks` member, named after the starter
+itself (`prismaDatabase("OrderDatabase")` contributes `OrderDatabase`), so the
 kernel's `/healthz` reports on it without the application wiring anything. The
 probe is `SELECT 1` through `$queryRaw` — not `$connect()`, because a pooled client reports connected while the server behind it is gone.
 
@@ -135,7 +130,8 @@ The optional peer is still dynamically imported, and a missing one is still
 logged at `debug` rather than failing — the contributor owns that message,
 since it is the one that knows why the load answered nothing.
 
-`Tracer` is no longer in this module's `needs`. It was there for
-ORDERING, to guarantee the SDK was up before the instrumentation was enabled;
-the SDK now does the registering, so the ordering is inherent. `Meter` is what
-still orders this after `otel()`.
+**Neither `Tracer` nor `Meter` is in this module's `needs`.** A `Tracer` was
+once named for ORDERING, to guarantee the SDK was up before the instrumentation
+was enabled; the SDK does the registering now, so the ordering is inherent. What
+the module needs is `Env` and `Logger`, and observation reaches it through the
+`Observers` set port it contributes its own no-op member to.

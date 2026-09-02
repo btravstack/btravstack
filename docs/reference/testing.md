@@ -3,6 +3,23 @@ title: "@btravstack/testing"
 description: The @btravstack/testing surface — bootFixture and Boot, tapped, testRuntime and TestRuntimePort, createFakeClock — with every member's signature and semantics.
 ---
 
+<!-- doctest: prelude
+import type { Env } from "@btravstack/config";
+import type { AnyPort, Module, Scope } from "@btravstack/di";
+import type { RunningApp, RuntimeInfoOf, StartGate, StartOptions } from "@btravstack/core";
+import type {
+  Boot,
+  BootDefaults,
+  FakeClock,
+  SubmittedUnit,
+  TestRuntime,
+  TestRuntimeInfo,
+} from "@btravstack/testing";
+import { TestRuntimePort } from "@btravstack/testing";
+import type { Clock, Runtime, Serving } from "@btravstack/core";
+import type { AsyncResult } from "unthrown";
+-->
+
 # `@btravstack/testing`
 
 > **Reference.** Everything `@btravstack/testing` exports: a vitest fixture
@@ -31,7 +48,7 @@ kernel and its peers, and a runner with the same `use` shape can consume it.
 
 ## `bootFixture(defaults?)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/testing -->
 
 ```ts
 const bootFixture: (
@@ -89,7 +106,7 @@ test already drove to exit.
 
 ## `tapped(module, ports)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: skip — the quoted types name `TapGate`, the phantom gate `tapped` carries, which is internal and has no exported symbol to check against -->
 
 ```ts
 const tapped: <X, E, N, const P extends readonly AnyPort[]>(
@@ -191,7 +208,7 @@ for inside the graph. See
 
 ## `overridden(module, overrides)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: skip — the quoted signature names di's `AnyProviderFor` and `ErrorsOf`, which are internal to that package -->
 
 ```ts
 const overridden: <X, E, N, const O extends readonly AnyProviderFor[]>(
@@ -234,7 +251,7 @@ either is recomposing the lazy way.
 
 ## `testRuntime(name?)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/testing -->
 
 ```ts
 const testRuntime: (name?: string) => TestRuntime; // name defaults to "test"
@@ -279,7 +296,7 @@ abort tests tests of the kernel, not of the fake.
 
 ## `createFakeClock(start?)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/testing -->
 
 ```ts
 const createFakeClock: (start?: number) => FakeClock; // start defaults to 0

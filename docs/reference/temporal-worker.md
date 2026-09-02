@@ -4,7 +4,20 @@ description: The Temporal worker starter — TemporalModule, TemporalActivities,
 ---
 
 <!-- doctest: prelude
-import { TemporalActivities, TemporalModule, TemporalWorkflowActivities } from "@btravstack/temporal-worker";
+import {
+  TemporalActivities,
+  TemporalConfig,
+  TemporalConnection,
+  TemporalModule,
+  TemporalRuntime,
+  TemporalUnreachable,
+  TemporalWorkflowActivities,
+  type ActivitiesInstanceOf,
+  type TemporalOptions,
+} from "@btravstack/temporal-worker";
+import type { ContractDefinition } from "@temporal-contract/contract";
+import type { ConfigInvalid, Env } from "@btravstack/config";
+import type { Module, Scope } from "@btravstack/di";
 import { P } from "unthrown";
 import { TenantId } from "@btravstack/example-order-domain";
 import {
@@ -365,7 +378,7 @@ const orderActivities = TemporalActivities(orderContract)([
 
 ## `temporal(options)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/temporal-worker -->
 
 ```ts
 const temporal: <C extends ContractDefinition>(

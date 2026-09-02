@@ -48,7 +48,8 @@ was folded in here when the container was merged; nothing under
   (page-level context; a prelude may import the REAL artifact a page
   describes, since the generated module lives inside the workspace's `src/`),
   `<!-- doctest: skip — <reason> -->` (reason mandatory, printed at generate
-  time — and see **the skip escape hatch is unguarded** below),
+  time), `<!-- doctest: signature=<module> -->` (a quoted declaration, checked
+  against the real export — see below),
   `<!-- doctest: defer -->` (same module, emitted after the unmarked
   fences, for a composition root shown before its parts), and
   `<!-- doctest: isolate … -->` (own module; a body after `isolate` is that
@@ -58,6 +59,19 @@ was folded in here when the container was merged; nothing under
   one sample that cannot compile anywhere is `pinoSink`'s — no example
   workspace installs `pino` — held by `packages/observability/src/pino.spec.ts`
   and skipped with that reason.
+
+  **A prelude may import the real artifact a page describes; it may NOT import
+  a private workspace** (issue #193). The generated module lives inside an
+  example workspace, so `@btravstack/example-order-*` resolves there and the
+  gate stays green — while a reader on npm cannot install any of it, which
+  makes a "minimal example" unfollowable on the one surface read outside this
+  repository. So a package README's prelude declares the application's own
+  half inline (a `TaggedError`, a `Port`, a `declare const` module) and imports
+  only published packages. That is why `examples/order-amqp-worker` carries
+  `@amqp-contract/contract` and `zod` as devDependencies it never imports
+  itself, both ignored for it in `knip.json`: the amqp README's own contract is
+  built there, from the packages a reader would install, exactly as the
+  temporal README's already was.
 
   **A ` ```tsx ` fence must carry a skip reason.** JSX compiles in no workspace
   here — none installs React — so the extractor admits the fence only to refuse
@@ -74,27 +88,45 @@ was folded in here when the container was merged; nothing under
   application-reality coupling the extraction cannot (its samples call the
   real use cases through the real `auth.ts` by hand).
 
-- **The skip escape hatch is unguarded, and the biggest class inside it is
-  signature displays.** `doctest: skip` is what a fence uses when it is not a
-  program, and **most of the fences that carry one give the same reason** —
-  _"a signature display, not a program: the surface it quotes is compiled as
-  the package itself."_ (`generate` prints every skip and its reason, which is
-  where a current count comes from; two hand-kept numbers stood here and went
-  stale the first time a page added a fence, which is what #192 is about.)
-  That reason is a **claim about a different file**, and
-  nothing checks it: the displayed signature is free to drift from the real
-  one, silently, forever. It has already happened once —
-  `docs/reference/http-server.md`'s `OrpcController` display still showed the
-  two-argument `(deps: D, options: {...})` form after issue #227 moved
-  dependencies into a required `inject` key, and it survived a sweep that
-  compiled every other fence on the site (caught in review on #228, not by the
-  gate).
+- **A signature display is a gate, not a skip** (issue #195).
+  `<!-- doctest: signature=<module> -->` above a fence turns each quoted
+  declaration into a check: the quoted type becomes an alias, and two
+  assignments compare it against the real export in **both** directions, so a
+  drift in either is a compile error naming the page. The real symbol is reached
+  by an inline `import("<module>")` type query, so nothing collides with the
+  page's own bindings, and the module is on the marker because a page quotes
+  several (`Level` is the kernel's, `Line` is observability's).
 
-  So when a public call signature changes, **grep the skip blocks by hand** —
-  they are the one surface `pnpm typecheck` cannot speak for. Gating them
-  properly would mean comparing a display against the emitted `.d.ts`, which
-  is a real feature and not yet worth building; until it is, this paragraph is
-  the reminder.
+  It replaced the repository's largest ungated channel: 49 fences carried the
+  identical skip reason _"a signature display, not a program: the surface it
+  quotes is compiled as the package itself"_ — a **claim about a different
+  file** that nothing checked, and the channel the `Logger`
+  `(message, cause?, attributes?)` lie shipped through. Converting the 26
+  convertible ones found three drifts nobody had noticed: `UnitRecord`
+  documented with the `deadline` field #208 deleted, `htmx()` quoted without the
+  `{ readonly port }` its provider carries, and `BootDefaults`/`SubmittedUnit`
+  documented as part of `@btravstack/testing`'s surface while its `index.ts`
+  exported neither.
+
+  **Two shapes are checkable**: `const NAME: T;` and a type alias with **no
+  parameters**. A generic alias would need type arguments the script cannot
+  invent, and a bare `name(args): T` line is not a declaration at all; both are
+  carried through unchecked and **named in the generate report**, so a fence
+  that looks gated and is only half gated says so out loud. A fence with
+  nothing checkable fails the task — that one wants a `skip`.
+
+  **What stays skipped is what has no exported symbol to check against**, and
+  each says which: `api.OrpcController` (minted by `defineHttp`, and its type
+  names internal `FragmentAt` / `Schemes`), `http()` (its needs channel names
+  the unexported `OrpcRouterPort`), `amqp()` (`AnyAmqpContract`), `tapped`
+  (`TapGate`) and `overridden` (di's `AnyProviderFor`). A skip reason that
+  says "a signature display" and nothing more is now the wrong reason: it means
+  either the marker or an export is missing.
+
+  One limit worth knowing: TypeScript's assignability ignores parameter
+  **optionality**, so turning `(start?: number)` into `(start: number)` in a
+  display does not fail. A parameter's TYPE, a return type, a field, a union
+  member — all do (verified by breaking each shape and watching the gate fire).
 
 - **Two link gates, and each one's soundness is the other's behaviour.**
   `extract-doc-samples.ts` checks RELATIVE links and deliberately skips

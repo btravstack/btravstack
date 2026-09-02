@@ -59,7 +59,7 @@ and an uncaught exception all settle the same one-shot deferred, and the
 
 ## `Phase`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type Phase =

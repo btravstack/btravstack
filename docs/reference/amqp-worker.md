@@ -289,7 +289,7 @@ const orderHandlers = AmqpHandlers(orderContract)([
 
 ## `amqp(options)`
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: skip — the quoted constraint names `AnyAmqpContract`, which this package declares for its own signatures and does not re-export, so there is nothing a signature check could name it by -->
 
 ```ts
 const amqp: <TContract extends AnyAmqpContract>(

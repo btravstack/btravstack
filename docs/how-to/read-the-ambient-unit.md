@@ -10,8 +10,8 @@ import { currentUnit } from "@btravstack/core";
 
 # Read the ambient unit from an adapter
 
-> **How-to.** Read the kernel's per-unit record — trace id, tenant id,
-> deadline, the unit's `AbortSignal` — from a logger, an exporter, a database
+> **How-to.** Read the kernel's per-unit record — trace id, tenant id, the
+> unit's `AbortSignal` — from a logger, an exporter, a database
 > adapter or an activity, without
 > threading it through every signature. For _why_ this is data and not a
 > capability, see [Ambient data, injected capabilities](/explanation/ambient-vs-context).
@@ -22,7 +22,7 @@ continuation, `undefined` outside one.
 
 ## The record
 
-<!-- doctest: skip — a signature display, not a program: the surface it quotes is compiled as the package itself -->
+<!-- doctest: signature=@btravstack/core -->
 
 ```ts
 type UnitRecord = {

@@ -97,6 +97,9 @@ And in a test, the adapter that sends nothing and keeps everything:
 <!-- doctest: skip — the assertion belongs to a spec, and the gate runs the real one in examples/order-amqp-worker -->
 
 ```ts
+import { mailRecorder, recordingMailerProvider } from "@btravstack/mailer";
+import { overridden } from "@btravstack/testing";
+
 const recorder = mailRecorder();
 const app = overridden(NotifierApp, [recordingMailerProvider(recorder)]);
 // … place an order through the real graph …
