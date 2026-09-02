@@ -88,6 +88,7 @@ const GUIDE_SIDEBAR = [
         collapsed: false,
         items: [
           { text: "Tune the drain for Kubernetes", link: "/how-to/tune-the-drain-for-kubernetes" },
+          { text: "Containerize and deploy", link: "/how-to/containerize-and-deploy" },
           { text: "Embed without runMain", link: "/how-to/embed-without-run-main" },
           {
             text: "Run several deployments locally",
@@ -173,6 +174,8 @@ const GUIDE_SIDEBAR = [
         items: [
           { text: "Why btravstack?", link: "/explanation/why-btravstack" },
           { text: "Coming from NestJS", link: "/explanation/coming-from-nestjs" },
+          { text: "Coming from Spring Boot", link: "/explanation/coming-from-spring-boot" },
+          { text: "Coming from AdonisJS", link: "/explanation/coming-from-adonisjs" },
           { text: "One process, one runtime", link: "/explanation/one-process-one-runtime" },
           { text: "Compile errors, not surprises", link: "/explanation/compile-time-wiring" },
           { text: "Nothing throws", link: "/explanation/nothing-throws" },
