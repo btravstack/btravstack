@@ -37,18 +37,25 @@ RUN pnpm fetch
 COPY . .
 RUN pnpm install --frozen-lockfile --offline
 RUN pnpm build
+# `pnpm deploy` writes a self-contained directory with the workspace's own
+# build output and its PRODUCTION dependencies only — the compiler, the test
+# harness and every other devDependency stay in this stage.
+RUN pnpm --filter @acme/orders deploy --prod --legacy /out
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# The application's own compiled output plus production dependencies only —
-# no compiler, no test harness, no source.
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/package.json ./
+COPY --from=build /out ./
 # `node`, not root: the image ships a `node` user for exactly this.
 USER node
 # No entry point: each Deployment names the one it boots.
+
+# The migration image is the BUILD stage, which still has the Prisma CLI and
+# the schema — a `migrate deploy` needs both, and neither belongs in the image
+# that serves traffic.
+FROM build AS migrate
+WORKDIR /app
+CMD ["npx", "prisma", "migrate", "deploy"]
 ```
 
 ::: tip
@@ -130,7 +137,8 @@ reported.
 
 ## The other two deployments
 
-Same image, another command, and the transport's own variables:
+Same image, another command — one entry point per deployment, each a
+`runMain` of a different composition root, all built by the same `pnpm build`:
 
 ```yaml
 # orders-worker: the Temporal deployment
@@ -167,23 +175,31 @@ metadata:
   name: orders-migrate-1.4.0
 spec:
   backoffLimit: 3
+  # Cleans itself up an hour after it finishes, so the next release's Job is
+  # not blocked by this one's leftovers.
+  ttlSecondsAfterFinished: 3600
   template:
     spec:
       restartPolicy: Never
       containers:
         - name: migrate
-          image: registry.example.com/orders:1.4.0
-          command: ["npx", "prisma", "migrate", "deploy"]
+          # The `migrate` target, not the runtime one: `migrate deploy` needs
+          # the Prisma CLI and the schema, and neither is in the image that
+          # serves traffic.
+          image: registry.example.com/orders:1.4.0-migrate
           env:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef: { name: orders, key: database-url }
 ```
 
-The Job's name carries the version, so a re-applied manifest is a new Job
-rather than a completed one nothing re-runs. In a pipeline, apply the Job, wait
-for it (`kubectl wait --for=condition=complete job/orders-migrate-1.4.0`), then
-apply the Deployment.
+**A Job is immutable once created** — neither `metadata.name` nor the pod
+template can be changed by a re-apply — which is why the name carries the
+version: each release applies a _new_ Job rather than trying to update a
+completed one. (`generateName` is the alternative when a release has no version
+string to hang it on.) In a pipeline: apply the Job, wait for it
+(`kubectl wait --for=condition=complete job/orders-migrate-1.4.0`), then apply
+the Deployment.
 
 ::: warning
 An `initContainer` looks like the tidier answer and is not: it runs **once per
