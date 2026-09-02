@@ -309,14 +309,16 @@ An `AsyncResult` is **eager**: building a step starts its activity. So a
 sequence must never construct two steps as siblings — hoist them into `const`s
 and the "sequence" runs as a race, silently, with the types still checking out.
 
-The spelling that avoids it is `flatTap`, which is why `workflows.ts` reads as a
-flat chain rather than a nesting ladder. It runs a failable step, discards its
-value and passes the **original** one through, so each step's error triage and
-compensation sit at one level of indentation instead of accumulating — and the
-next step is a callback, which cannot start before the previous one settles.
+Both spellings in `workflows.ts` avoid it, and neither ever names a step in a
+`const`. `context.saga()` takes **thunks**, so nothing is built until the saga
+reaches it — that is `fulfillOrder`. `chargeOrder`, which compensates on a
+machinery tag the saga's policy refuses, sequences with `flatTap` instead: it
+runs a failable step, discards its value and passes the **original** one
+through, so each step's triage sits at one level of indentation instead of
+accumulating, and the next step is a callback that cannot start before the
+previous one settles.
 
-`chargeOrder` above shows it at two steps; `fulfillOrder` runs three the same
-way. Where a later step needs an earlier step's _value_ rather than just its
+Where a later step needs an earlier step's _value_ rather than just its
 success, `DoAsync().bind(...)` is the same idea with an accumulating scope.
 
 ## The external services

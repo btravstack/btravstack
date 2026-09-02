@@ -198,8 +198,6 @@ minimumReleaseAgeExclude:
   - "@aws-sdk/s3-request-presigner@3.1117.0"
   - "@prisma/instrumentation@7.10.0"
   - "@amqp-contract/client@3.0.0-beta.7"
-  - "@temporal-contract/client@8.0.0-beta.8"
-  - "@temporal-contract/contract@8.0.0-beta.8"
-  - "@temporal-contract/testing@8.0.0-beta.8"
-  - "@temporal-contract/worker@8.0.0-beta.8"
+  # Pulled in transitively by `@temporal-contract/worker`, which builds its
+  # `context.saga()` on it.
   - "@unthrown/saga@5.7.0"
