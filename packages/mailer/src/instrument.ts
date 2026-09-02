@@ -21,7 +21,10 @@ export const instrument = (
       name: "send",
       attributes: { operation: "send" },
       details: {
-        "btravstack.mail.recipients": mail.to.length,
+        // Every envelope line counts, since a cc is a recipient too.
+        "btravstack.mail.recipients":
+          mail.to.length + (mail.cc?.length ?? 0) + (mail.bcc?.length ?? 0),
+        "btravstack.mail.attachments": mail.attachments?.length ?? 0,
         "btravstack.mail.subject": mail.subject,
       },
     });

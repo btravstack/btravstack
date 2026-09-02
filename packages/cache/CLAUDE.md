@@ -16,9 +16,10 @@ Stated once, here.
 
 | Export                            | What it is                                                                                                                                                               |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Cache`                           | The port an application depends on. `get` / `set` / `delete`, all `AsyncResult`.                                                                                         |
+| `Cache`                           | The port an application depends on. `get` / `set` / `delete` / `getOrSet`, all `AsyncResult`.                                                                            |
 | `CacheBackend`                    | The port every adapter provides. Not for application code — see **Why two ports** below.                                                                                 |
-| `CacheService`                    | The service both ports carry.                                                                                                                                            |
+| `CacheService`                    | What `Cache` carries: the backend's three, plus `getOrSet`.                                                                                                              |
+| `CacheBackendService`             | What `CacheBackend` carries, and all an adapter implements: `get` / `set` / `delete`.                                                                                    |
 | `CacheHit`                        | `{ readonly value: unknown }` — what a `get` answers on a hit.                                                                                                           |
 | `CacheUnavailable`                | The modeled failure: `{ operation: "get" \| "set" \| "delete"; key: string }`.                                                                                           |
 | `cache({ adapter })`              | The composition: the adapter's module, plus `Cache` provided from its backend, every call handed to `Observers`. The module owes nothing beyond its adapter's own needs. |
@@ -62,10 +63,19 @@ replaces the Redis adapter under the real root, and the drift gate comes free
 - **A miss is `Ok(undefined)`, and a hit is a one-field record.** Absence is
   the cache working. `CacheHit` exists so a cached `null` and a key nobody set
   stay different facts.
-- **`CacheUnavailable` is modeled, and recovering it is the caller's job.**
-  Whether an outage degrades a request to a miss or fails it depends on what
-  the value is for; `examples/order-api`'s customers controller shows the
-  degrade, recovered at the call.
+- **`CacheUnavailable` is modeled, and recovering it is the caller's job on
+  `get`/`set`/`delete` — but `getOrSet` decides it once.** Whether an outage
+  degrades a request to a miss or fails it depends on what the value is for, so
+  the three primitives report it; the read-through is the one shape where the
+  answer is not in doubt (an unavailable cache runs the loader, a failed write
+  is not the caller's error), which is why it can absorb `CacheUnavailable`
+  and return the loader's own `E`.
+- **`getOrSet` is derived, never implemented.** `readThrough` builds it over
+  `get`/`set` inside `cache()`, so an adapter still writes three methods and
+  the policy has exactly one copy. It also sits OUTSIDE the observing wrapper's
+  reach by construction: the `get` and the `set` it makes are the observed
+  ones, so a read-through emits the hit or miss it really performed rather than
+  a fourth operation nobody's dashboard knows.
 - **Values are `unknown`, encoded by the adapter.** Redis stores JSON; the
   memory adapter stores the reference it was given, which is the honest
   difference rather than a deep-cloning fake. A value `JSON.stringify` cannot
@@ -91,9 +101,11 @@ replaces the Redis adapter under the real root, and the drift gate comes free
 
 ## Deliberately not here
 
-- **No `getOrSet`.** Stampede semantics — lock, early recompute, serve-stale —
-  differ per application, and the two-line read-through the example writes is
-  clearer than a combinator with a policy in it.
+- **No stampede protection.** `getOrSet` is a read-through and nothing more:
+  a hundred concurrent misses run a hundred loaders. Locking, early recompute
+  and serve-stale differ per application and each needs state this port does
+  not have; the day one of them is wanted it is a named option, not a default
+  that changed under everybody.
 - **No eviction and no maximum size on the memory adapter.** A process caching
   unbounded keys grows unbounded; the upgrade path is Redis, which is what a
   deployment with that problem should be running.

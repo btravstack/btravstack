@@ -15,6 +15,7 @@ import {
   Cache,
   CacheBackend,
   CacheUnavailable,
+  type CacheBackendService,
   type CacheHit,
   type CacheService,
 } from "../cache.js";
@@ -23,7 +24,7 @@ import { cache } from "../module.js";
 import { redisCache } from "../redis.js";
 
 /** An adapter that is always down, so the failure arms are reachable without breaking the shared server. */
-const failingBackend: CacheService = {
+export const failingBackend: CacheBackendService = {
   get: (key) => ErrAsync(new CacheUnavailable({ operation: "get", key })),
   set: (key) => ErrAsync(new CacheUnavailable({ operation: "set", key })),
   delete: (key) => ErrAsync(new CacheUnavailable({ operation: "delete", key })),
@@ -41,7 +42,7 @@ export const failingCache = (): Module<CacheBackend, never, never> =>
  * `JSON.stringify` cannot take produces, which the port deliberately does not
  * model.
  */
-const defectiveBackend: CacheService = {
+const defectiveBackend: CacheBackendService = {
   get: () =>
     OkAsync().map((): CacheHit | undefined => {
       // oxlint-disable-next-line unthrown/no-throw -- `Defect` has no public constructor, so a throw inside a combinator is the only way to mint one, and reaching the defect arm is the whole point of this fixture
@@ -82,13 +83,13 @@ export type CacheFixtures = {
   /** The clock the memory adapter measures a ttl against, so an expiry needs no real wait. */
   readonly clock: FakeClock;
   /** The in-memory adapter's service, on that clock. */
-  readonly backend: CacheService;
+  readonly backend: CacheBackendService;
   /** This test's own key space on the shared server — a UUID, so nothing collides and nothing needs cleaning up. */
   readonly keyPrefix: string;
   /** The Redis adapter's service, connected for the length of the test. */
-  readonly redis: CacheService;
+  readonly redis: CacheBackendService;
   /** The same service, after its scope closed — the shape an adapter takes when the server is gone. */
-  readonly disconnected: CacheService;
+  readonly disconnected: CacheBackendService;
   /** An instrumented cache, and the three signals it emits. */
   readonly instrumented: Instrumented;
 };

@@ -34,9 +34,33 @@ export const smtpMailerBackend = (transport: Transporter): MailerService => ({
       transport.sendMail({
         from: mail.from,
         to: [...mail.to],
+        ...(mail.cc === undefined ? {} : { cc: [...mail.cc] }),
+        ...(mail.bcc === undefined ? {} : { bcc: [...mail.bcc] }),
         subject: mail.subject,
         text: mail.text,
         ...(mail.html === undefined ? {} : { html: mail.html }),
+        ...(mail.headers === undefined ? {} : { headers: { ...mail.headers } }),
+        ...(mail.attachments === undefined
+          ? {}
+          : {
+              attachments: mail.attachments.map((attachment) => ({
+                filename: attachment.filename,
+                // A string is handed over as it is — nodemailer encodes it —
+                // and bytes ride a Buffer VIEW over the same memory, so an
+                // attachment is never copied on its way out.
+                content:
+                  typeof attachment.content === "string"
+                    ? attachment.content
+                    : Buffer.from(
+                        attachment.content.buffer,
+                        attachment.content.byteOffset,
+                        attachment.content.byteLength,
+                      ),
+                ...(attachment.contentType === undefined
+                  ? {}
+                  : { contentType: attachment.contentType }),
+              })),
+            }),
       }),
       (cause) =>
         new MailNotSent({

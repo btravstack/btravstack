@@ -50,10 +50,15 @@ export const notify = Provider(
 });
 ```
 
-`Mail` is deliberately small — `{ from, to, subject, text, html? }` — and
-`text` is required: a mail with only HTML is a mail some clients cannot read.
-There is no templating, no attachments and no custom headers, because each is
-a decision a provider's own options model better than a port could.
+`Mail` is the envelope and the body: `{ from, to, cc?, bcc?, subject, text,
+html?, attachments?, headers? }`. `text` is required — a mail with only HTML
+is a mail some clients cannot read — and an attachment is
+`{ filename, content: Uint8Array | string, contentType? }`, bytes or a string
+rather than a path or a stream, since a caller holding a file can read it and
+an adapter should not have to own a lifetime.
+
+There is no templating: `text` and `html` are strings, and what rendered them
+is a library you chose.
 
 **`send` answers when the transport accepted the message**, which is not the
 same as delivered. Nothing this side of a mailbox can promise that; an
@@ -170,7 +175,10 @@ changes a line of this composition.
 
 ## What it deliberately does not do
 
-- **No templating, no attachments, no cc/bcc, no custom headers.**
+- **No templating and no i18n.** `text` and `html` are strings; what rendered
+  them is a library you chose. The envelope itself — `cc`, `bcc`,
+  `attachments`, `headers` — is carried, because the second mail a service
+  sends is an invoice.
 - **No bulk send and no scheduling.** Sending many is your loop; scheduling
   one is [`@btravstack/temporal-worker`](/reference/temporal-worker)'s job.
 - **No address validation.** The transport rejects what it will not take, and

@@ -4,7 +4,12 @@ import { Module, Port, Provider } from "@btravstack/di";
 import { createClient, type RedisClientType } from "redis";
 import { fromPromise, fromSafePromise } from "unthrown";
 
-import { CacheBackend, CacheUnavailable, type CacheHit, type CacheService } from "./cache.js";
+import {
+  CacheBackend,
+  CacheUnavailable,
+  type CacheBackendService,
+  type CacheHit,
+} from "./cache.js";
 
 /** What the graph bound from the environment for the Redis adapter. */
 export class CacheConfig extends Port("CacheConfig")<{ readonly url: string }> {}
@@ -30,7 +35,7 @@ class RedisConnection extends Port("RedisConnection")<RedisClientType> {}
  * cannot take is a **defect**, not a `CacheUnavailable`: a bug in the caller,
  * and an arm no correct program could reach.
  */
-export const redisCacheBackend = (client: RedisClientType): CacheService => ({
+export const redisCacheBackend = (client: RedisClientType): CacheBackendService => ({
   get: (key) =>
     fromPromise(client.get(key), () => new CacheUnavailable({ operation: "get", key })).map(
       (raw): CacheHit | undefined =>

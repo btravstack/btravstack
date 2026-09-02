@@ -1,7 +1,7 @@
 import { observe, type Operation, type Settle } from "@btravstack/core";
 import type { AsyncResult } from "unthrown";
 
-import type { CacheService, CacheUnavailable } from "./cache.js";
+import type { CacheBackendService, CacheUnavailable } from "./cache.js";
 
 type Operation_ = "get" | "set" | "delete";
 type Outcome = "hit" | "miss" | "ok" | "error";
@@ -49,9 +49,9 @@ const observed = <T>(
 };
 
 export const instrument = (
-  backend: CacheService,
+  backend: CacheBackendService,
   observers: readonly ((operation: Operation) => Settle)[],
-): CacheService => ({
+): CacheBackendService => ({
   get: (key) =>
     observed(
       () => backend.get(key),

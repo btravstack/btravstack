@@ -124,5 +124,7 @@ sends are reported unless you say otherwise.
 
 **It does not decide** what happens after a failure — retrying belongs to your
 transport, and the example answers a `RetryableError` so the broker's budget
-owns it. There is no templating, no attachments, no bulk send and no address
-validation; the reasons are in [`CLAUDE.md`](./CLAUDE.md).
+owns it. `Mail` carries the whole envelope — `cc`, `bcc`, `attachments` and
+`headers` beside `to`, `subject` and the two bodies — but there is no
+templating, no bulk send and no address validation; the reasons are in
+[`CLAUDE.md`](./CLAUDE.md).

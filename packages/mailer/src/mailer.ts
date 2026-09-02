@@ -2,18 +2,36 @@ import { Port } from "@btravstack/di";
 import { TaggedError, type AsyncResult } from "unthrown";
 
 /**
- * One message: an address list, a subject and a body. No templating, no
- * attachments, no bcc, no headers — each is a decision an application makes
- * with a library of its own, and a port that guessed would be a worse version
- * of the transport's own options.
+ * One file on a message. `content` is bytes or a string and never a path or a
+ * stream: a port that took either would be asking every adapter to own a
+ * filesystem and a lifetime, where a caller that has a file can read it.
+ */
+export type MailAttachment = {
+  readonly filename: string;
+  readonly content: Uint8Array | string;
+  /** Defaults to whatever the adapter infers from `filename`. */
+  readonly contentType?: string;
+};
+
+/**
+ * One message: the envelope, a subject and a body. No templating — that is an
+ * application's decision with a library of its own — but everything an envelope
+ * carries, because an invoice mail with an attachment is roughly the second one
+ * a service sends, and a port that cannot carry it gets bypassed rather than
+ * extended, losing the recorder and the instrumentation with it.
  */
 export type Mail = {
   readonly from: string;
   readonly to: readonly string[];
+  readonly cc?: readonly string[];
+  readonly bcc?: readonly string[];
   readonly subject: string;
   /** The plain-text body. Required: a mail with only HTML is a mail some clients cannot read. */
   readonly text: string;
   readonly html?: string;
+  readonly attachments?: readonly MailAttachment[];
+  /** Extra headers, verbatim. What an adapter already sets it sets — this does not replace an envelope field. */
+  readonly headers?: Readonly<Record<string, string>>;
 };
 
 /**
