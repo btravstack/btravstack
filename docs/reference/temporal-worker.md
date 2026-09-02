@@ -155,7 +155,9 @@ contract at the type level (`ActivitiesPortOf<C>`, the move the kernel's
 `RuntimePort` makes) — and two activities providers in one graph are di's
 duplicate-provider defect at build. Each activity is a plain function typed by
 the contract (`({ errors, input }) => AsyncResult<…>`), closing over the
-services the provider declared; nothing is read from a context.
+services the provider declared; the record it receives carries the invocation's
+own values — the validated `input` and the contract's `errors` — and no service
+is resolved at call time.
 
 Expanded, the monolithic form looks like this — not a call site inside
 `examples/order-temporal-worker` any more, since `orderContract` now declares

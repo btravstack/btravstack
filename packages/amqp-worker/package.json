@@ -71,7 +71,7 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
-    "@amqp-contract/worker": "^3.0.0-beta.6",
+    "@amqp-contract/worker": "^3.0.0-beta.7",
     "@btravstack/config": "workspace:^",
     "@btravstack/core": "workspace:^",
     "@btravstack/di": "workspace:^",

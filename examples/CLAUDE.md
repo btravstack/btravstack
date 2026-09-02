@@ -182,7 +182,9 @@ is the index of the workspaces themselves.
   outside value becomes the application's vocabulary: the API's
   `bearerAuthenticator` (from there the `Identity` carries it and neither
   controller casts), the customers controller's `TenantId(input.tenantId)`,
-  each Temporal activity's `TenantId(input.tenantId)`, and the relay's
+  each Temporal activity that names a tenant — `fulfillOrder`'s five, not
+  billing's three, which take an `authorizationId` the payment provider owns —
+  and the relay's
   `tenantsOf`, which brands the `OUTBOX_TENANTS` list once at the config
   boundary. The AMQP handlers cast nothing: neither calls a port that names a
   tenant, so there is no boundary there to claim. `prisma-outbox.ts` is the

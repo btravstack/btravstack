@@ -13,7 +13,7 @@
 
 ```sh
 pnpm add @btravstack/amqp-worker @btravstack/core @btravstack/config @btravstack/di unthrown \
-  @amqp-contract/worker@^3.0.0-beta @opentelemetry/api
+  @amqp-contract/worker@^3.0.0-beta.7 @opentelemetry/api
 ```
 
 All six are peer dependencies — install them (`@opentelemetry/api` because

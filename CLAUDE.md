@@ -988,7 +988,7 @@ label=com.btravstack.test-infra)` clears them), and testcontainers' own reuse
   contract until v2 goes stable; raise it deliberately, not on a bot bump.
 - **`temporal-contract` is pinned to an exact beta, for the same shape of
   reason.** `@temporal-contract/{client,contract,testing,worker}` sit at
-  `8.0.0-beta.5` because the `latest` dist-tag is the **7.x** line, which peers
+  `8.0.0-beta.7` because the `latest` dist-tag is the **7.x** line, which peers
   on `unthrown@^4` while this repo pins 5.2.0 — and 7.x ships neither the
   `test-rig` nor the `workflow-bundle` subpath the Temporal example's specs are
   built on. `testcontainers` is an **optional** peer of
