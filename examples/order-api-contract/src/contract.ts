@@ -54,6 +54,18 @@ export type CustomerView = z.infer<typeof customerView>;
 const customerRef = z.object({ id: z.uuidv7().brand("CustomerId") });
 export type CustomerRef = z.infer<typeof customerRef>;
 
+/**
+ * The four halves a page is built from: its items, and each side either open —
+ * a flag and the cursor that continues the listing — or closed, with no cursor
+ * field at all. Spread into the four arms of `list`'s output, which is every
+ * page that exists.
+ */
+const pageItems = { items: z.array(orderView) };
+const aPrevious = { hasPreviousPage: z.literal(true), previousCursor: z.string() };
+const noPrevious = { hasPreviousPage: z.literal(false) };
+const aNext = { hasNextPage: z.literal(true), nextCursor: z.string() };
+const noNext = { hasNextPage: z.literal(false) };
+
 /** The orders slice's own fragment — a contract in its own right, so the slice can be served alone. */
 const ordersContract = authenticated({ user: [] })({
   place: oc
@@ -86,9 +98,20 @@ const ordersContract = authenticated({ user: [] })({
   // wire — and the controller's one branch is where a validated input becomes
   // that union.
   //
-  // Both cursors are nullable rather than optional: a client follows the one it
-  // is paging by until it is `null`, and an absent field would make "no more
-  // pages" and "the server forgot" the same value.
+  // **A flag and its cursor are one fact on the wire too.** The four arms below
+  // are the four pages that exist: a `hasNextPage: true` page carries the
+  // `nextCursor` that continues it, and a `hasNextPage: false` one has no such
+  // field. So a client that checked the flag holds the cursor, with no null to
+  // widen it.
+  //
+  // `strictObject`, so a cursor on a closed side is REFUSED rather than
+  // stripped: the arms differ by which fields they carry, and the JSON Schema
+  // this generates already says `additionalProperties: false` — a stripping
+  // parser would answer what its own published schema rejects.
+  //
+  // A union rather than an intersection of two: `allOf` of closed objects
+  // validates nothing in JSON Schema, and the OpenAPI document is an interop
+  // surface.
   list: oc
     .input(
       z
@@ -103,13 +126,12 @@ const ordersContract = authenticated({ user: [] })({
         }),
     )
     .output(
-      z.object({
-        items: z.array(orderView),
-        previousCursor: z.string().nullable(),
-        nextCursor: z.string().nullable(),
-        hasPreviousPage: z.boolean(),
-        hasNextPage: z.boolean(),
-      }),
+      z.union([
+        z.strictObject({ ...pageItems, ...noPrevious, ...noNext }),
+        z.strictObject({ ...pageItems, ...noPrevious, ...aNext }),
+        z.strictObject({ ...pageItems, ...aPrevious, ...noNext }),
+        z.strictObject({ ...pageItems, ...aPrevious, ...aNext }),
+      ]),
     )
     .errors({ BAD_REQUEST: { data: z.object({ cursor: z.string() }) } }),
 

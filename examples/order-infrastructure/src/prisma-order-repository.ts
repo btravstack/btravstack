@@ -1,5 +1,5 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
-import { MalformedCursor, OrderRepository } from "@btravstack/example-order-application";
+import { MalformedCursor, OrderRepository, page } from "@btravstack/example-order-application";
 import {
   DuplicateOrder,
   Order,
@@ -84,10 +84,11 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
    * only a `cause` — and the value a 400 has to name is the string the caller
    * sent.
    *
-   * The cursors fold the flags into `startCursor`/`endCursor`, which the library
-   * deliberately keeps apart: a LAST page has a non-null `endCursor`, so handing
-   * it back unfolded gives a client a cursor that returns nothing and a loop
-   * that never ends.
+   * The library keeps the flags and `startCursor`/`endCursor` apart — a LAST
+   * page has a non-null `endCursor` — and `page` is where the two become one
+   * fact: a side with no cursor is a side the caller cannot reach, so handing
+   * the pair over unfolded (a cursor that returns nothing, or a flag with
+   * nothing to follow) is not a page this layer can express.
    *
    * `before` pages BACKWARD and hands the rows back in the query's own order, so
    * the previous page reads the way the next one does. The two cursors are
@@ -115,13 +116,12 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
         ),
       )
       .flatMap(([rows, meta]) =>
-        all(rows.map(hydrate)).map((items) => ({
-          items,
-          previousCursor: meta.hasPreviousPage ? meta.startCursor : null,
-          nextCursor: meta.hasNextPage ? meta.endCursor : null,
-          hasPreviousPage: meta.hasPreviousPage,
-          hasNextPage: meta.hasNextPage,
-        })),
+        all(rows.map(hydrate)).map((items) =>
+          page(items, {
+            previous: meta.hasPreviousPage ? meta.startCursor : null,
+            next: meta.hasNextPage ? meta.endCursor : null,
+          }),
+        ),
       ),
 
   // Compensation's persistence arm. `delete`, not `deleteMany`: `tryDelete`

@@ -88,13 +88,7 @@ export const ordersController = api.OrpcController(
             ? { ...page, ...(after === undefined ? {} : { after }) }
             : { ...page, before },
         )
-        .map((found) => ({
-          items: found.items.map(view),
-          previousCursor: found.previousCursor,
-          nextCursor: found.nextCursor,
-          hasPreviousPage: found.hasPreviousPage,
-          hasNextPage: found.hasNextPage,
-        }))
+        .map((found) => ({ ...found, items: found.items.map(view) }))
         .mapErrCases((matcher) =>
           matcher.with(P.tag("MalformedCursor"), (error) =>
             errors.BAD_REQUEST({

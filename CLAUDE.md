@@ -558,6 +558,27 @@ cursor arithmetic, in the adapter, and answers `[rows, meta]` with
 no framework type in any port. Nothing here needs to ship for that to be true,
 which is why nothing does.
 
+**A flag and its cursor are ONE fact, at both ends of the wire.** `Page<T>`
+pairs `hasNextPage: true` with the `nextCursor` that continues the listing and
+gives `hasNextPage: false` no such field at all — the same move as
+`PageRequest`'s exclusive `after`/`before`, and the contract's `list` output is
+the union of the four pages that exist, so a reader that checked the flag holds
+a `string` rather than a `string | null` it has to re-check. `page(items, {
+previous, next })` is the one constructor and DERIVES the flags from the
+cursors, which is what keeps the pair impossible to disagree: a side with no
+cursor is a side the caller cannot reach, so `@unthrown/prisma`'s
+`hasPreviousPage: true` with a null `startCursor` (an empty page past the end)
+is reported as the reachable answer rather than as a flag with nothing to
+follow. The two ends spell it
+differently on purpose: `Page<T>` is an **intersection of two independent
+unions**, one per side, which narrows exactly as four arms would and states
+each side once; the contract's schema is the **union of four `strictObject`
+arms**, because JSON Schema has no working intersection of closed objects
+(`allOf` of two `additionalProperties: false` subschemas validates nothing)
+and the OpenAPI document is an interop surface. `strictObject` rather than
+`object` there because a stripping parser would answer what its own published
+schema rejects.
+
 **The filter is a field, never a query object.** `OrderQuery` is
 `PageRequest & { minQuantity? }`. A port taking a predicate or a `where` record
 would be the application speaking the adapter's language, and the next store

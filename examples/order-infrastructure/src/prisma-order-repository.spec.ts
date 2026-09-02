@@ -188,14 +188,19 @@ describe("OrderPersistenceModule", () => {
       .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000102", 5)))
       .flatMap(() => repository.save(tenant, anOrder("0199a1e0-0000-7000-8000-000000000103", 9)))
       .flatMap(() => repository.list(tenant, { limit: 2 }))
-      .flatMap((page) => repository.list(tenant, { limit: 2, after: page.nextCursor ?? "" }));
+      .flatMap((page) =>
+        repository.list(tenant, {
+          limit: 2,
+          ...(page.hasNextPage ? { after: page.nextCursor } : {}),
+        }),
+      );
 
-    // THEN the remainder arrives once, with no cursor after it: `nextCursor` is
-    // null on a last page even though the library's `endCursor` is not
+    // THEN the remainder arrives once, with no cursor after it: a last page
+    // carries no `nextCursor` FIELD, even though the library's `endCursor` is
+    // not null there
     expect(second).toBeOkWith({
       items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000103" })],
       previousCursor: expect.any(String),
-      nextCursor: null,
       hasPreviousPage: true,
       hasNextPage: false,
     });
@@ -217,13 +222,13 @@ describe("OrderPersistenceModule", () => {
       .flatMap((page) =>
         repository.list(tenant, {
           limit: 2,
-          ...(page.nextCursor === null ? {} : { after: page.nextCursor }),
+          ...(page.hasNextPage ? { after: page.nextCursor } : {}),
         }),
       )
       .flatMap((page) =>
         repository.list(tenant, {
           limit: 2,
-          ...(page.previousCursor === null ? {} : { before: page.previousCursor }),
+          ...(page.hasPreviousPage ? { before: page.previousCursor } : {}),
         }),
       );
 
@@ -235,9 +240,8 @@ describe("OrderPersistenceModule", () => {
         expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000131" }),
         expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000132" }),
       ],
-      previousCursor: null,
-      nextCursor: expect.any(String),
       hasPreviousPage: false,
+      nextCursor: expect.any(String),
       hasNextPage: true,
     });
   });
@@ -258,8 +262,6 @@ describe("OrderPersistenceModule", () => {
         expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000112" }),
         expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000113" }),
       ],
-      previousCursor: null,
-      nextCursor: null,
       hasPreviousPage: false,
       hasNextPage: false,
     });
@@ -278,8 +280,6 @@ describe("OrderPersistenceModule", () => {
     // THEN it sees its own row only, on a server every other spec is writing to
     expect(page).toBeOkWith({
       items: [expect.objectContaining({ id: "0199a1e0-0000-7000-8000-000000000121" })],
-      previousCursor: null,
-      nextCursor: null,
       hasPreviousPage: false,
       hasNextPage: false,
     });

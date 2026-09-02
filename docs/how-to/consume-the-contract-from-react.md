@@ -116,17 +116,21 @@ type Cursor = { readonly after: string } | { readonly before: string } | undefin
 export const ordersPages = orpc.orders.list.infiniteOptions({
   input: (cursor: Cursor) => ({ limit: 20, ...cursor }),
   getNextPageParam: (page): Cursor =>
-    page.nextCursor === null ? undefined : { after: page.nextCursor },
+    page.hasNextPage ? { after: page.nextCursor } : undefined,
   getPreviousPageParam: (page): Cursor =>
-    page.previousCursor === null ? undefined : { before: page.previousCursor },
+    page.hasPreviousPage ? { before: page.previousCursor } : undefined,
   initialPageParam: undefined as Cursor,
 });
 ```
 
-Those two lines are the reason [`orders.list`](/examples/order-api) returns
-**nullable** cursors instead of omitting the fields: "there are no more pages
-that way" has to be a value the client can read, and an absent field would be
-indistinguishable from a server that forgot to send one.
+Those two lines are the reason a page's flag and its cursor are **one fact** in
+[`orders.list`](/examples/order-api)'s output: `hasNextPage: true` carries the
+`nextCursor` that continues the listing, and `hasNextPage: false` has no
+`nextCursor` field at all. Reading the flag is therefore what hands the cursor
+over — typed `string`, with no null to widen it and no `?? ""` to invent one —
+and "there are no more pages that way" is the flag, which every arm of the
+schema requires. A page with a flag and no cursor, or a cursor nobody may use,
+is refused by the server's own output schema before it reaches you.
 
 The cursors are **opaque**. The contract types them `z.string()` and nothing
 narrower, so a component passes back a string it never parses — and the server

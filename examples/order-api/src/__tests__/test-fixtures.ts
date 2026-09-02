@@ -13,6 +13,7 @@ import {
   CustomerRepository,
   MalformedCursor,
   OrderRepository,
+  page,
 } from "@btravstack/example-order-application";
 import {
   Customer,
@@ -145,32 +146,14 @@ const stubbedApi = () =>
     // test exists to rule out. Two pages, so `before` has somewhere to go back
     // to — the direction a "previous" link exercises.
     list: (_tenantId, { after, before }) => {
+      const first = page([anOrder(FIRST_ID, 1)], { previous: null, next: "page-1-end" });
       if (before !== undefined)
         return before === "page-2-start"
-          ? OkAsync({
-              items: [anOrder(FIRST_ID, 1)],
-              previousCursor: null,
-              nextCursor: "page-1-end",
-              hasPreviousPage: false,
-              hasNextPage: true,
-            })
+          ? OkAsync(first)
           : ErrAsync(new MalformedCursor({ cursor: before }));
-      if (after === undefined)
-        return OkAsync({
-          items: [anOrder(FIRST_ID, 1)],
-          previousCursor: null,
-          nextCursor: "page-1-end",
-          hasPreviousPage: false,
-          hasNextPage: true,
-        });
+      if (after === undefined) return OkAsync(first);
       return after === "page-1-end"
-        ? OkAsync({
-            items: [anOrder(SECOND_ID, 2)],
-            previousCursor: "page-2-start",
-            nextCursor: null,
-            hasPreviousPage: true,
-            hasNextPage: false,
-          })
+        ? OkAsync(page([anOrder(SECOND_ID, 2)], { previous: "page-2-start", next: null }))
         : ErrAsync(new MalformedCursor({ cursor: after }));
     },
     remove: () => OkAsync(),
@@ -185,14 +168,7 @@ const unmodelledApi = () =>
   apiWith({
     save: (_tenantId, order) => OkAsync(order),
     find: () => fromSafePromise(Promise.reject(new Error("the database is on fire"))),
-    list: () =>
-      OkAsync({
-        items: [],
-        previousCursor: null,
-        nextCursor: null,
-        hasPreviousPage: false,
-        hasNextPage: false,
-      }),
+    list: () => OkAsync(page([], { previous: null, next: null })),
     remove: () => OkAsync(),
   });
 
@@ -218,14 +194,7 @@ const gatedApi = () => {
         entered();
         return fromSafePromise(held.then(() => anOrder(id, 1)));
       },
-      list: () =>
-        OkAsync({
-          items: [],
-          previousCursor: null,
-          nextCursor: null,
-          hasPreviousPage: false,
-          hasNextPage: false,
-        }),
+      list: () => OkAsync(page([], { previous: null, next: null })),
       remove: () => OkAsync(),
     }),
     arrived,
