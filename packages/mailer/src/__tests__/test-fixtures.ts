@@ -56,8 +56,12 @@ export const aMail = (to: string) => ({
 
 /** What a Mailpit message looks like, narrowed to what the specs read. */
 type Delivered = {
+  readonly ID: string;
   readonly To: readonly { readonly Address: string }[];
+  readonly Cc: readonly { readonly Address: string }[];
   readonly Subject: string;
+  /** A count, which is what the summary carries. */
+  readonly Attachments: number;
 };
 
 export type Instrumented = {
@@ -83,6 +87,8 @@ export type MailerFixtures = {
   readonly unreachable: MailerService;
   /** Reads what Mailpit actually received, by recipient. */
   readonly delivered: (recipient: string) => Promise<readonly Delivered[]>;
+  /** The headers of one received message — the only place a passthrough header is visible. */
+  readonly headersOf: (id: string) => Promise<Readonly<Record<string, readonly string[]>>>;
   /** An instrumented mailer, and the three signals it emits. */
   readonly instrumented: Instrumented;
 };
@@ -141,6 +147,14 @@ export const it = test.extend<MailerFixtures>({
       );
       const body = (await response.json()) as { readonly messages: readonly Delivered[] };
       return body.messages;
+    });
+  },
+  // oxlint-disable-next-line no-empty-pattern -- see above
+  headersOf: async ({}, use) => {
+    const api = inject("__TESTCONTAINERS_MAILPIT_API__");
+    await use(async (id) => {
+      const response = await fetch(`${api}/api/v1/message/${id}/headers`);
+      return (await response.json()) as Readonly<Record<string, readonly string[]>>;
     });
   },
   // oxlint-disable-next-line no-empty-pattern -- see above

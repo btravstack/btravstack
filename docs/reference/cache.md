@@ -41,22 +41,9 @@ export const customersProvider = Provider(Customers)({
   inject: { cache: Cache },
   sync: ({ cache }) => ({
     find: (id) =>
-      cache
-        .get(`customers:${id}`)
-        .recoverErrCases((m) =>
-          m.with(P.tag("CacheUnavailable"), () => undefined),
-        )
-        .flatMap((hit) =>
-          hit === undefined
-            ? findCustomer(id).flatTap((found) =>
-                cache
-                  .set(`customers:${id}`, found, { ttlMs: 60_000 })
-                  .recoverErrCases((m) =>
-                    m.with(P.tag("CacheUnavailable"), () => undefined),
-                  ),
-              )
-            : OkAsync(hit.value as CustomerView),
-        ),
+      cache.getOrSet(`customers:${id}`, () => findCustomer(id), {
+        ttlMs: 60_000,
+      }),
     forget: (id) =>
       cache
         .delete(`customers:${id}`)
@@ -67,13 +54,14 @@ export const customersProvider = Provider(Customers)({
 });
 ```
 
-| Method                        | Answers                                                |
-| ----------------------------- | ------------------------------------------------------ |
-| `get(key)`                    | `AsyncResult<CacheHit \| undefined, CacheUnavailable>` |
-| `set(key, value, { ttlMs? })` | `AsyncResult<void, CacheUnavailable>`                  |
-| `delete(key)`                 | `AsyncResult<void, CacheUnavailable>`                  |
+| Method                              | Answers                                                |
+| ----------------------------------- | ------------------------------------------------------ |
+| `get(key)`                          | `AsyncResult<CacheHit \| undefined, CacheUnavailable>` |
+| `set(key, value, { ttlMs? })`       | `AsyncResult<void, CacheUnavailable>`                  |
+| `delete(key)`                       | `AsyncResult<void, CacheUnavailable>`                  |
+| `getOrSet(key, loader, { ttlMs? })` | `AsyncResult<T, E>` — the loader's own channels        |
 
-Three things the signatures decide:
+Four things the signatures decide:
 
 **A miss is `Ok(undefined)`.** Absence is the cache working, not failing, so
 nothing has to triage a "not found" that was never an error.
@@ -115,6 +103,29 @@ export const readOrMiss = (cache: CacheService, key: string) =>
       matcher.with(P.tag("CacheUnavailable"), () => undefined),
     );
 ```
+
+## `getOrSet`, the one place the policy is decided for you
+
+`getOrSet(key, loader, { ttlMs })` is the read-through above, once, in the
+port — and it is the exception to everything the previous section said,
+because the read-through is the one shape where the answer is not in doubt:
+
+- **An unavailable cache is a miss**, so your loader runs and your caller gets
+  its answer. A cache outage that turned into a 500 would be a cache making
+  your application less available than not having one.
+- **A failed write is not your error**, so what comes back is the value the
+  loader produced. Storing it was best effort by definition.
+
+That is why `CacheUnavailable` is absent from its error channel: what is left
+is the loader's own `E`, so a triage downstream sees only what its domain can
+actually produce. A hit comes back as `T` by cast — the same claim `viewOf`
+makes above, made once, inside the port.
+
+It is **derived, not implemented**: `cache()` builds it over `get` and `set`,
+so an adapter still writes three methods and the two calls it makes are the
+observed ones. There is no stampede protection — a hundred concurrent misses
+run a hundred loaders — and adding one is a named option the day an
+application needs it, not a default that changes under everybody.
 
 ## Keys are yours
 

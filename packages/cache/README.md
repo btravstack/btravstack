@@ -38,7 +38,7 @@ type CustomerView = { readonly id: string; readonly name: string };
 declare const view: (customer: { readonly id: string; readonly name: string }) => CustomerView;
 -->
 
-A read-through, and the two recoveries that make it honest:
+A read-through, which is one call — the degradation policy lives in the port:
 
 ```ts
 import { Cache } from "@btravstack/cache";
@@ -55,37 +55,14 @@ class Customers extends Port("ReadmeCustomers")<{
 const customers = Provider(Customers)({
   inject: { find: FindCustomer, cache: Cache },
   sync: ({ find, cache }) => ({
-    find: (tenantId, id) => {
-      // The key carries the tenant, because the port does not: `Cache` takes
-      // plain strings, and composing them is the application's job.
-      const key = `customers:${tenantId}:${id}`;
-      return (
-        cache
-          .get(key)
-          // An unreachable cache is a miss. Whether an outage degrades a
-          // request or fails it is YOUR decision, which is why the package
-          // models the failure instead of swallowing it.
-          .recoverErrCases((matcher) =>
-            matcher.with(P.tag("CacheUnavailable"), () => undefined),
-          )
-          .flatMap((hit) =>
-            hit === undefined
-              ? find
-                  .execute(TenantId(tenantId), id)
-                  .map(view)
-                  .flatTap((cached) =>
-                    cache
-                      .set(key, cached, { ttlMs: 60_000 })
-                      .recoverErrCases((m) =>
-                        m.with(P.tag("CacheUnavailable"), () => undefined),
-                      ),
-                  )
-              : // The stored value is `unknown`; the cast is the boundary where
-                // it re-enters this application's vocabulary.
-                OkAsync(hit.value as CustomerView),
-          )
-      );
-    },
+    find: (tenantId, id) =>
+      cache.getOrSet<CustomerView, CustomerNotFound>(
+        // The key carries the tenant, because the port does not: `Cache` takes
+        // plain strings, and composing them is the application's job.
+        `customers:${tenantId}:${id}`,
+        () => find.execute(TenantId(tenantId), id).map(view),
+        { ttlMs: 60_000 },
+      ),
   }),
 });
 ```
@@ -118,7 +95,7 @@ export const CustomersApp = Module("CustomersApp")({
 | `adapter`   | `cache({ adapter })`                | the adapter module providing `CacheBackend` — required                            |
 | `clock`     | `memoryCache`                       | what a ttl is measured against (default: the kernel's `systemClock`)              |
 | `REDIS_URL` | environment, read by `redisCache()` | the connection URL — required, validated at graph build                           |
-| `ttlMs`     | `cache.set(key, value, { … })`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted) |
+| `ttlMs`     | `cache.set` / `cache.getOrSet`      | per-entry expiry (default: none — the entry stays until it is deleted or evicted) |
 
 The full table — defaults, semantics and the reasoning — lives on
 [the reference page](https://btravstack.github.io/btravstack/reference/cache),
@@ -137,8 +114,9 @@ no observability compiles, starts and pays an inert call — so the decision
 costs you a port list only if you want the spans and the instruments, and then
 you compose `observability()` and `otel()` and change nothing here.
 
-**It does not decide** whether an unreachable cache degrades your request —
-recover `CacheUnavailable` where you call it — nor what your keys look like,
-nor when to invalidate them. There is no `getOrSet`, no eviction on the memory
-adapter, and no namespace parameter; the reasons are in
-[`CLAUDE.md`](./CLAUDE.md).
+**It does not decide** whether an unreachable cache degrades a `get` — recover
+`CacheUnavailable` where you call it — nor what your keys look like, nor when
+to invalidate them. The one place it does decide is `getOrSet`, where an
+unreachable cache runs your loader and a failed write is not your error. There
+is no stampede protection, no eviction on the memory adapter, and no namespace
+parameter; the reasons are in [`CLAUDE.md`](./CLAUDE.md).

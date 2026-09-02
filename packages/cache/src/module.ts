@@ -2,7 +2,7 @@ import { HealthCheckFailed, HealthChecks, Observers, noObserver } from "@btravst
 import { Module, Provider } from "@btravstack/di";
 import { P } from "unthrown";
 
-import { Cache, CacheBackend } from "./cache.js";
+import { Cache, CacheBackend, readThrough } from "./cache.js";
 import { instrument } from "./instrument.js";
 
 export type CacheOptions<E, N> = {
@@ -69,7 +69,7 @@ export const cache = <E, N>({
       Provider.member(Observers)({ inject: {}, value: noObserver }),
       Provider(Cache)({
         inject: { backend: CacheBackend, observers: Observers },
-        sync: ({ backend, observers }) => instrument(backend, observers),
+        sync: ({ backend, observers }) => readThrough(instrument(backend, observers)),
       }),
       healthCheck,
     ],

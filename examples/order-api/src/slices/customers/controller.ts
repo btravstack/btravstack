@@ -2,7 +2,7 @@ import { Cache } from "@btravstack/cache";
 import { contract, type CustomerView } from "@btravstack/example-order-api-contract";
 import { FindCustomer } from "@btravstack/example-order-application";
 import { TenantId, type Customer } from "@btravstack/example-order-domain";
-import { OkAsync, P } from "unthrown";
+import { P } from "unthrown";
 
 import { api } from "../../auth.js";
 
@@ -26,12 +26,10 @@ const keyFor = (tenantId: string, id: string): string => `customers:${tenantId}:
  * `CustomerView`. A slice is defined by owning its fragment, its controller and
  * its triage, not by owning a private adapter.
  *
- * It also reads through a cache, and the two recoveries are the interesting
- * half: **an unreachable cache is a miss, and a failed write is nothing** — both
- * recovered here, because whether an outage degrades a request or fails it is
- * the application's decision, not the cache package's. A stored value comes back
- * `unknown`, so a hit claims `CustomerView` by cast at the boundary where it
- * re-enters this application's vocabulary.
+ * It also reads through a cache, which is one `getOrSet` call: the degradation
+ * policy — **an unreachable cache is a miss, and a failed write is nothing** —
+ * is the port's, decided once, so what is left here is the key, the ttl and the
+ * loader. Composing the key is still this application's job, tenant included.
  */
 export const customersController = api.OrpcController(
   contract,
@@ -39,30 +37,17 @@ export const customersController = api.OrpcController(
 )({
   inject: { find: FindCustomer, cache: Cache },
   sync: ({ find, cache }) => ({
-    find: ({ errors }, input) => {
-      const key = keyFor(input.tenantId, input.id);
-      return cache
-        .get(key)
-        .recoverErrCases((matcher) => matcher.with(P.tag("CacheUnavailable"), () => undefined))
-        .flatMap((hit) =>
-          hit === undefined
-            ? find
-                .execute(TenantId(input.tenantId), input.id)
-                .map(view)
-                .flatTap((cached) =>
-                  cache
-                    .set(key, cached, { ttlMs: VIEW_TTL_MS })
-                    .recoverErrCases((matcher) =>
-                      matcher.with(P.tag("CacheUnavailable"), () => undefined),
-                    ),
-                )
-            : OkAsync(hit.value as CustomerView),
+    find: ({ errors }, input) =>
+      cache
+        .getOrSet(
+          keyFor(input.tenantId, input.id),
+          () => find.execute(TenantId(input.tenantId), input.id).map(view),
+          { ttlMs: VIEW_TTL_MS },
         )
         .mapErrCases((matcher) =>
           matcher.with(P.tag("CustomerNotFound"), (error) =>
             errors.NOT_FOUND({ message: error.message, data: { id: error.id } }),
           ),
-        );
-    },
+        ),
   }),
 });

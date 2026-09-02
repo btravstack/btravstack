@@ -18,7 +18,8 @@ conditional return type; only what differs is written out here.
 | `Mailer`                            | The port an application depends on: `send(mail)`.                                                                 |
 | `MailerBackend`                     | The port every adapter provides. Not for application code.                                                        |
 | `MailerService`                     | The service both ports carry.                                                                                     |
-| `Mail`                              | `{ from, to, subject, text, html? }`.                                                                             |
+| `Mail`                              | `{ from, to, cc?, bcc?, subject, text, html?, attachments?, headers? }`.                                          |
+| `MailAttachment`                    | `{ filename, content: Uint8Array \| string, contentType? }`.                                                      |
 | `MailNotSent`                       | The modeled failure: `{ to, subject, reason }` — never the body.                                                  |
 | `mailer({ adapter })`               | The composition: the adapter's module, plus the port provided from its backend, every call handed to `Observers`. |
 | `MailerOptions`                     | `{ adapter: Module<MailerBackend, E, N> }`.                                                                       |
@@ -76,8 +77,16 @@ What the observers make of a send:
 
 - **No templating.** A subject and two bodies; rendering belongs to a library
   an application chooses.
-- **No attachments, no cc/bcc, no custom headers.** Each is a decision a
-  provider's own options already model better than a port could.
+- **No templating engine and no i18n**, which is the half of the envelope
+  question that is genuinely an application's: `text` and `html` are strings,
+  and what rendered them is a library the application chose. The envelope
+  itself — cc, bcc, attachments, headers — IS here, because a transactional
+  invoice mail is roughly the second one a service sends and a port that could
+  not carry it would be bypassed rather than extended, losing the recorder,
+  the instrumentation and the health story in one step.
+- **An attachment is bytes or a string, never a path or a stream.** Either
+  would ask every adapter to own a filesystem and a lifetime, where a caller
+  holding a file can read it.
 - **No bulk send and no queue.** Sending many is the caller's loop, and
   scheduling one is `@btravstack/temporal-worker`'s job — the transport role map is
   a decision, not an inventory (root `CLAUDE.md`, thesis #1).

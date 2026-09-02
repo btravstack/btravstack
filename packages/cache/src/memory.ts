@@ -2,7 +2,7 @@ import { systemClock, type Clock } from "@btravstack/core";
 import { Module, Provider } from "@btravstack/di";
 import { OkAsync } from "unthrown";
 
-import { CacheBackend, type CacheHit, type CacheService } from "./cache.js";
+import { CacheBackend, type CacheBackendService, type CacheHit } from "./cache.js";
 
 export type MemoryCacheOptions = {
   /**
@@ -27,7 +27,7 @@ type Entry = { readonly value: unknown; readonly expiresAt: number | undefined }
  * ponytail: no eviction and no maximum size, so a process caching unbounded keys
  * grows unbounded. The upgrade path is the Redis adapter.
  */
-export const memoryCacheBackend = (options: MemoryCacheOptions = {}): CacheService => {
+export const memoryCacheBackend = (options: MemoryCacheOptions = {}): CacheBackendService => {
   const clock = options.clock ?? systemClock;
   const entries = new Map<string, Entry>();
 

@@ -50,10 +50,15 @@ export const notify = Provider(
 });
 ```
 
-`Mail` is deliberately small — `{ from, to, subject, text, html? }` — and
-`text` is required: a mail with only HTML is a mail some clients cannot read.
-There is no templating, no attachments and no custom headers, because each is
-a decision a provider's own options model better than a port could.
+`Mail` is the envelope and the body: `{ from, to, cc?, bcc?, subject, text,
+html?, attachments?, headers? }`. `text` is required — a mail with only HTML
+is a mail some clients cannot read — and an attachment is
+`{ filename, content: Uint8Array | string, contentType? }`, bytes or a string
+rather than a path or a stream, since a caller holding a file can read it and
+an adapter should not have to own a lifetime.
+
+There is no templating: `text` and `html` are strings, and what rendered them
+is a library you chose.
 
 **`send` answers when the transport accepted the message**, which is not the
 same as delivered. Nothing this side of a mailbox can promise that; an

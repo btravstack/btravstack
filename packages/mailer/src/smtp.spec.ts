@@ -34,6 +34,38 @@ describe("smtpMailer", () => {
     );
   });
 
+  it("delivers the rest of the envelope: a cc, an attachment and an extra header", async ({
+    smtp,
+    recipient,
+    delivered,
+    headersOf,
+  }) => {
+    // GIVEN a message carrying everything beyond the required envelope
+    const copied = `cc-${recipient}`;
+
+    // WHEN it is sent
+    await smtp.send({
+      ...aMail(recipient),
+      cc: [copied],
+      attachments: [{ filename: "invoice.txt", content: "total: 42" }],
+      headers: { "X-Order-Id": "o-1" },
+    });
+
+    // THEN the server received all three, rather than an envelope the adapter
+    // quietly dropped on its way to `sendMail`
+    await vi.waitUntil(async () => (await delivered(recipient)).length === 1);
+    const [message] = await delivered(recipient);
+    expect({
+      cc: message?.Cc,
+      attachments: message?.Attachments,
+      header: (await headersOf(message?.ID ?? ""))["X-Order-Id"],
+    }).toEqual({
+      cc: [expect.objectContaining({ Address: copied })],
+      attachments: 1,
+      header: ["o-1"],
+    });
+  });
+
   it("answers MailNotSent when the relay is unreachable", async ({ unreachable, recipient }) => {
     // GIVEN a mailer over a relay that is not listening
     // WHEN a message is sent
