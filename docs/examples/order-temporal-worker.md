@@ -136,12 +136,81 @@ place ──▶ reserveStock ──▶ arrangeShipping ──▶ done
   │             └── cancelPlacement            └── releaseStock, then cancelPlacement
 ```
 
-The triage rule per step: a **declared** error is a permanent domain answer —
-compensate, then re-mint it against `context.errors` so the client branches on
-it by name. Temporal's own machinery tags (an activity that exhausted its
+`context.saga()` owns both halves of that: the LIFO unwind, and the rule for
+which failures earn one. A **declared** error is a permanent domain answer, so
+it compensates. Temporal's own machinery tags (an activity that exhausted its
 retries unmodeled, or was cancelled) are handed back as-is and re-raised by
 `propagateActivityFailure`, and compensation deliberately does **not** run for
-them, since a step that died mid-flight left unknown state.
+them, since a step that died mid-flight left unknown state — so what remains is
+one triage at the end, re-minting each declared error against `context.errors`
+so the client branches on it by name.
+
+<!-- doctest: isolate
+import { orderContract, type PlacedOrder } from "@btravstack/example-order-temporal-contract";
+import {
+  ACTIVITY_CANCELLED_ERROR_TAG,
+  ACTIVITY_ERROR_TAG,
+  declareWorkflow,
+  propagateActivityFailure,
+} from "@temporal-contract/worker/workflow";
+import { P } from "unthrown";
+-->
+
+```ts
+export const fulfillOrder = declareWorkflow({
+  workflowName: "fulfillOrder",
+  contract: orderContract,
+  implementation: (context, args) => {
+    const order = { tenantId: args.tenantId, orderId: args.orderId };
+    // A saga answers its LAST step's value, and this workflow answers the
+    // PLACEMENT's — so the first step keeps it and the last hands it back.
+    let placed!: PlacedOrder;
+
+    return propagateActivityFailure(
+      context
+        .saga()
+        .step(
+          () =>
+            context.activities
+              .place({ ...order, quantity: args.quantity })
+              .tap((placement) => {
+                placed = placement;
+              }),
+          () => context.activities.cancelPlacement(order),
+        )
+        .step(
+          () => context.activities.reserveStock({ ...order, quantity: args.quantity }),
+          () => context.activities.releaseStock(order),
+        )
+        .step(() => context.activities.arrangeShipping(order).map(() => placed))
+        .run()
+        .mapErrCases((matcher) =>
+          matcher
+            .with({ errorName: "InvalidQuantity" }, (error) =>
+              context.errors.InvalidQuantity({ id: error.data.id }),
+            )
+            .with({ errorName: "InvalidOrderId" }, (error) =>
+              context.errors.InvalidOrderId({ id: error.data.id }),
+            )
+            .with({ errorName: "OrderAlreadyPlaced" }, (error) =>
+              context.errors.OrderAlreadyPlaced({ id: error.data.id }),
+            )
+            .with({ errorName: "OutOfStock" }, (error) =>
+              context.errors.OutOfStock({ id: error.data.id }),
+            )
+            .with({ errorName: "ShippingUnavailable" }, (error) =>
+              context.errors.ShippingUnavailable({ id: error.data.id }),
+            )
+            .with(
+              P.tag(ACTIVITY_ERROR_TAG),
+              P.tag(ACTIVITY_CANCELLED_ERROR_TAG),
+              (error) => error,
+            ),
+        ),
+    );
+  },
+});
+```
 
 The compensations declare no errors: compensation is the saga un-deciding, and
 a step that could answer "no" would leave it stuck half-done.
@@ -225,6 +294,14 @@ not be able to answer no. The compensation only runs on an activity failure —
 a machinery tag, not a declared one — because `capturePayment` has no declared
 error of its own to compensate for; anything it fails with is infrastructure,
 which is exactly when the money needs to go back.
+
+**That is also why this one is hand-written where `fulfillOrder` uses
+`context.saga()`.** The saga compensates on a declared error and refuses to on
+a machinery tag, which is the right default and the wrong one here: this
+workflow wants the compensation precisely in the case the default excludes.
+A policy that can be opted out of per workflow would erase the default's value,
+so the boundary is that the two spellings coexist — reach for the saga when a
+declared error is what earns the walk-back.
 
 ## One subtlety worth stealing
 

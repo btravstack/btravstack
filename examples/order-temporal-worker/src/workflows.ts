@@ -1,4 +1,4 @@
-import { orderContract } from "@btravstack/example-order-temporal-contract";
+import { orderContract, type PlacedOrder } from "@btravstack/example-order-temporal-contract";
 import {
   ACTIVITY_CANCELLED_ERROR_TAG,
   ACTIVITY_ERROR_TAG,
@@ -18,27 +18,44 @@ import { ErrAsync, P } from "unthrown";
  * **saga**, and it lives here because it spans services no one of which can own
  * it.
  *
- * The triage rule per step: a DECLARED error is a permanent domain answer —
- * compensate, then re-mint it against `context.errors`. The two machinery tags
- * are Temporal's vocabulary for an activity that failed unmodelled or was
- * cancelled, handed back as-is so `propagateActivityFailure` re-raises the
- * platform's original failure. Compensation deliberately does NOT run on those:
- * a step that died mid-flight left unknown state, and un-deciding what you
- * cannot see is a second bug.
+ * `context.saga()` owns both halves of that: the LIFO unwind, and the rule for
+ * which failures earn one. A DECLARED error is a permanent domain answer, so it
+ * compensates; an activity that failed unmodelled or was cancelled does not,
+ * because a step that died mid-flight left unknown state and un-deciding what
+ * you cannot see is a second bug. That leaves ONE triage at the end, re-minting
+ * each declared error against `context.errors`, in place of the per-step
+ * machinery-tag arm this file used to repeat three times.
  */
 export const fulfillOrder = declareWorkflow({
   workflowName: "fulfillOrder",
   contract: orderContract,
   implementation: (context, args) => {
-    // An `AsyncResult` is eager — building a step IS starting its activity — so
-    // a sequence must never construct two steps as siblings. `flatTap` runs a
-    // failable step, discards its value and passes the original through, which
-    // keeps each step's triage at one level of indentation.
     const order = { tenantId: args.tenantId, orderId: args.orderId };
+    // A saga answers its LAST step's value, and this workflow answers the
+    // PLACEMENT's — so the first step keeps it and the last hands it back. The
+    // binding is local to one invocation, which is what replay needs; module
+    // scope is the hazard, not this.
+    let placed!: PlacedOrder;
 
     return propagateActivityFailure(
-      context.activities
-        .place({ tenantId: args.tenantId, orderId: args.orderId, quantity: args.quantity })
+      context
+        .saga()
+        .step(
+          () =>
+            context.activities.place({ ...order, quantity: args.quantity }).tap((placement) => {
+              placed = placement;
+            }),
+          () => context.activities.cancelPlacement(order),
+        )
+        .step(
+          () => context.activities.reserveStock({ ...order, quantity: args.quantity }),
+          () => context.activities.releaseStock(order),
+        )
+        .step(() => context.activities.arrangeShipping(order).map(() => placed))
+        .run()
+        // The saga hands the failure back unchanged, so the re-mint against
+        // this workflow's own declared errors happens once, here. Widening any
+        // activity's error union fails this match rather than three.
         .mapErrCases((matcher) =>
           matcher
             .with({ errorName: "InvalidQuantity" }, (error) =>
@@ -50,46 +67,13 @@ export const fulfillOrder = declareWorkflow({
             .with({ errorName: "OrderAlreadyPlaced" }, (error) =>
               context.errors.OrderAlreadyPlaced({ id: error.data.id }),
             )
+            .with({ errorName: "OutOfStock" }, (error) =>
+              context.errors.OutOfStock({ id: error.data.id }),
+            )
+            .with({ errorName: "ShippingUnavailable" }, (error) =>
+              context.errors.ShippingUnavailable({ id: error.data.id }),
+            )
             .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) => error),
-        )
-        .flatTap(() =>
-          context.activities
-            .reserveStock({
-              tenantId: args.tenantId,
-              orderId: args.orderId,
-              quantity: args.quantity,
-            })
-            .flatMapErrCases((matcher) =>
-              matcher
-                // The first walk-back: stock said a permanent no, so the
-                // placement is un-decided before the caller hears it.
-                .with({ errorName: "OutOfStock" }, (error) =>
-                  context.activities
-                    .cancelPlacement(order)
-                    .flatMap(() => ErrAsync(context.errors.OutOfStock({ id: error.data.id }))),
-                )
-                .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) =>
-                  ErrAsync(error),
-                ),
-            ),
-        )
-        .flatTap(() =>
-          context.activities.arrangeShipping(order).flatMapErrCases((matcher) =>
-            matcher
-              // The deeper walk-back, in reverse order of the steps it undoes:
-              // release the reservation, then the placement.
-              .with({ errorName: "ShippingUnavailable" }, (error) =>
-                context.activities
-                  .releaseStock(order)
-                  .flatMap(() => context.activities.cancelPlacement(order))
-                  .flatMap(() =>
-                    ErrAsync(context.errors.ShippingUnavailable({ id: error.data.id })),
-                  ),
-              )
-              .with(P.tag(ACTIVITY_ERROR_TAG), P.tag(ACTIVITY_CANCELLED_ERROR_TAG), (error) =>
-                ErrAsync(error),
-              ),
-          ),
         ),
     );
   },
@@ -98,8 +82,14 @@ export const fulfillOrder = declareWorkflow({
 /**
  * The billing workflow: authorize, then capture. A capture that fails after a
  * successful authorization is walked back with `refundPayment`, in reverse
- * order of the step it undoes — the same saga shape `fulfillOrder` runs, at
- * the smallest size that still has a compensation.
+ * order of the step it undoes.
+ *
+ * Hand-written where `fulfillOrder` uses `context.saga()`, and deliberately:
+ * `capturePayment` declares no errors of its own, so anything it fails with is
+ * a machinery tag — the one case the saga's policy refuses to compensate. That
+ * default is right for a step whose failure left unknown state, and wrong
+ * here, where unknown state is exactly when the money has to go back. The two
+ * spellings coexist rather than the policy growing a per-workflow escape.
  */
 export const chargeOrder = declareWorkflow({
   workflowName: "chargeOrder",

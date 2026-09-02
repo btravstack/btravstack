@@ -180,3 +180,10 @@ export const orderContract = defineContract({
 });
 
 export type OrderContract = typeof orderContract;
+
+/**
+ * What a placement answers. Exported because a workflow whose own answer is an
+ * EARLIER step's output has to hold that value across the steps that follow,
+ * and it should name the contract's type rather than restate the shape.
+ */
+export type PlacedOrder = z.infer<typeof orderView>;

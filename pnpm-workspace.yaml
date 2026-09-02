@@ -62,10 +62,10 @@ catalog:
   # 7.x line, which peers on `unthrown@^4` while this repo pins 5.7.0. 8.x also
   # ships the `test-rig` / `workflow-bundle` subpaths the Temporal example's
   # specs are built on. The exact beta is the contract until v8 goes stable.
-  "@temporal-contract/client": 8.0.0-beta.7
-  "@temporal-contract/contract": 8.0.0-beta.7
-  "@temporal-contract/testing": 8.0.0-beta.7
-  "@temporal-contract/worker": 8.0.0-beta.7
+  "@temporal-contract/client": 8.0.0-beta.8
+  "@temporal-contract/contract": 8.0.0-beta.8
+  "@temporal-contract/testing": 8.0.0-beta.8
+  "@temporal-contract/worker": 8.0.0-beta.8
   "@temporalio/activity": 1.23.0
   "@temporalio/client": 1.23.0
   "@temporalio/common": 1.23.0
@@ -183,10 +183,10 @@ minimumReleaseAgeExclude:
   - "@amqp-contract/core@3.0.0-beta.7"
   - "@amqp-contract/testing@3.0.0-beta.7"
   - "@amqp-contract/worker@3.0.0-beta.7"
-  - "@temporal-contract/client@8.0.0-beta.7"
-  - "@temporal-contract/contract@8.0.0-beta.7"
-  - "@temporal-contract/testing@8.0.0-beta.7"
-  - "@temporal-contract/worker@8.0.0-beta.7"
+  - "@temporal-contract/client@8.0.0-beta.8"
+  - "@temporal-contract/contract@8.0.0-beta.8"
+  - "@temporal-contract/testing@8.0.0-beta.8"
+  - "@temporal-contract/worker@8.0.0-beta.8"
   - "@btravstack/entity@0.7.0"
   - "@unthrown/orpc@0.2.0"
   - "@unthrown/oxlint@5.7.0"
@@ -198,3 +198,8 @@ minimumReleaseAgeExclude:
   - "@aws-sdk/s3-request-presigner@3.1117.0"
   - "@prisma/instrumentation@7.10.0"
   - "@amqp-contract/client@3.0.0-beta.7"
+  - "@temporal-contract/client@8.0.0-beta.8"
+  - "@temporal-contract/contract@8.0.0-beta.8"
+  - "@temporal-contract/testing@8.0.0-beta.8"
+  - "@temporal-contract/worker@8.0.0-beta.8"
+  - "@unthrown/saga@5.7.0"

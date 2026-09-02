@@ -465,16 +465,26 @@ indentation rather than accumulating:
 <!-- doctest: skip — a saga excerpt with elided arms; the full workflow is compiled by docs/examples/order-temporal-worker.md -->
 
 ```ts
-context.activities
-  .place(order)
-  .mapErrCases(/* triage */)
-  .flatTap(() =>
-    context.activities.reserveStock(order).flatMapErrCases(/* compensate */),
+context
+  .saga()
+  .step(
+    () => context.activities.place(order),
+    () => context.activities.cancelPlacement(order),
   )
-  .flatTap(() =>
-    context.activities.arrangeShipping(order).flatMapErrCases(/* compensate */),
-  );
+  .step(
+    () => context.activities.reserveStock(order),
+    () => context.activities.releaseStock(order),
+  )
+  .step(() => context.activities.arrangeShipping(order))
+  .run()
+  .mapErrCases(/* one triage, at the end */);
 ```
+
+`context.saga()` runs the undos **LIFO** and decides which failures earn one: a
+declared contract error compensates, an activity that failed unmodelled or was
+cancelled does not — a step that died mid-flight left state nobody can see. So
+the machinery-tag arm every step used to repeat is gone, and the re-mint
+against `context.errors` happens once.
 
 Where a later step needs an earlier step's _value_ rather than just its
 success, `DoAsync().bind("name", (scope) => …)` is the same idea with an
