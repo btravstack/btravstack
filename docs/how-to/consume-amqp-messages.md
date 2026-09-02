@@ -229,7 +229,8 @@ await runMain(OrderAmqpWorker);
 
 ## Configuration and options
 
-`amqp()` provides `AmqpRuntime` and `AmqpConfig` (`{ url }`), and needs the
+`amqp()` provides `AmqpRuntime` and `AmqpConfig` (`{ url, connectTimeoutMs }`),
+and needs the
 handlers port. Options on `AmqpModule` and `amqp()` alike:
 
 | Variable / option        | Default                                | Notes                                                                                        |

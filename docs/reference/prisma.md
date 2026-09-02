@@ -126,7 +126,9 @@ This works on a client the package cannot see the schema of because Prisma's
 intercepts every operation on every model. The wrapper is transparent: whatever
 the query resolves or rejects with is what the caller receives.
 
-The module needs `Env` and nothing else. Composing
+The module needs `Env` and `Logger` — the second for exactly one line, the
+`debug` saying engine tracing is off because the optional peer is absent, which
+is a startup fact rather than an operation an observer could settle. Composing
 [`observability()`](/reference/observability) writes the failed queries as
 lines and `otel()` mints the instruments — neither changes a line of this
 composition, which is what the set port buys over a flag that charged three

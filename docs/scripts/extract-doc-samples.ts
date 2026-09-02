@@ -296,11 +296,24 @@ const signatureChecks = (
   {
     // Comments go first, trailing ones included — a `// name defaults to "x"`
     // after a declaration would otherwise read as a declaration of its own.
-    // `(^|\s)` keeps a `https://` inside a string literal intact.
-    const source = fence.body.replace(/(^|\s)\/\/[^\n]*/g, "");
+    // The preceding character class is `[ \t]`, never `\s`: eating the newline
+    // would join two lines, and a `;` at the end of the first would land inside
+    // whatever the second says. Requiring space-or-start before `//` is what
+    // keeps a `https://` inside a string literal intact — there the `//`
+    // follows a colon.
+    const source = fence.body.replace(/(^|[ \t])\/\/[^\n]*/g, "$1");
     let depth = 0;
+    let quote = "";
     let current = "";
     for (const character of source) {
+      // A `;` inside a string or template literal is data — `type S = "a;b";`
+      // would otherwise split into two fragments, neither a declaration.
+      if (quote !== "") {
+        current += character;
+        if (character === quote) quote = "";
+        continue;
+      }
+      if (character === '"' || character === "'" || character === "`") quote = character;
       if ("({[".includes(character)) depth += 1;
       if (")}]".includes(character)) depth -= 1;
       if (character === ";" && depth === 0) {

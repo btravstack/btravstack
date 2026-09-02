@@ -55,7 +55,7 @@ So the line is: **ambient carries data, the di `Context` carries
 capabilities**. A repository through the store is the untestable coupling. A
 tenant id read by the Postgres adapter is not.
 
-## Why exactly these five
+## Why exactly these four
 
 Each field is a fact the kernel either mints or is handed at `run`, and each is
 one an adapter genuinely needs without being able to declare it.
