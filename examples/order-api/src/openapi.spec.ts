@@ -27,6 +27,7 @@ describe("the API's OpenAPI document", () => {
       security: {
         "/orders/place": [{ user: [] }],
         "/orders/find": [{ user: [] }],
+        "/orders/list": [{ user: [] }],
         "/orders/export": [{ user: ["orders:export"] }, { service: [] }],
         "/customers/find": undefined,
       },

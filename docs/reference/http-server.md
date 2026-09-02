@@ -6,7 +6,7 @@ description: The HTTP starter — defineHttp, HttpModule, OrpcRouter, OrpcContro
 <!-- doctest: prelude
 import { Logger } from "@btravstack/core";
 import { contract, type OrderView } from "@btravstack/example-order-api-contract";
-import { FindOrder, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
+import { FindOrder, ListOrders, OrderApplicationModule, PlaceOrder } from "@btravstack/example-order-application";
 import { OrderPersistenceModule } from "@btravstack/example-order-infrastructure";
 
 import type { Order } from "@btravstack/example-order-domain";
@@ -199,8 +199,8 @@ comes off `context.principal` rather than off the input:
 
 ```ts
 export const ordersRouter = api.OrpcRouter(contract.orders)({
-  inject: { place: PlaceOrder, find: FindOrder },
-  sync: ({ place, find }) => ({
+  inject: { place: PlaceOrder, find: FindOrder, list: ListOrders },
+  sync: ({ place, find, list }) => ({
     place: ({ errors, context }, input) =>
       place
         .execute(context.principal.tenantId, input.id, input.quantity)
@@ -237,6 +237,33 @@ export const ordersRouter = api.OrpcRouter(contract.orders)({
             errors.NOT_FOUND({
               message: error.message,
               data: { id: error.id },
+            }),
+          ),
+        ),
+    // A listing. The one translation is the cursor — the contract carries
+    // `after` and `before` and refuses both, where the port makes them a
+    // union — and the only modeled failure is that cursor, the one field
+    // that came from outside.
+    list: ({ errors, context }, { after, before, ...page }) =>
+      list
+        .execute(
+          context.principal.tenantId,
+          before === undefined
+            ? { ...page, ...(after === undefined ? {} : { after }) }
+            : { ...page, before },
+        )
+        .map((found) => ({
+          items: found.items.map(view),
+          previousCursor: found.previousCursor,
+          nextCursor: found.nextCursor,
+          hasPreviousPage: found.hasPreviousPage,
+          hasNextPage: found.hasNextPage,
+        }))
+        .mapErrCases((matcher) =>
+          matcher.with(P.tag("MalformedCursor"), (error) =>
+            errors.BAD_REQUEST({
+              message: "the cursor could not be read",
+              data: { cursor: error.cursor },
             }),
           ),
         ),

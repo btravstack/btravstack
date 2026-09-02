@@ -25,6 +25,8 @@
       "ignoreDependencies": [
         "@btravstack/entity",
         "@btravstack/prisma",
+        "@orpc/tanstack-query",
+        "@tanstack/query-core",
         "@prisma/adapter-pg",
         "zod"
       ]

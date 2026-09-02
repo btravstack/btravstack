@@ -22,7 +22,7 @@ import {
   type OrderId,
 } from "@btravstack/example-order-domain";
 import { createLogger } from "@btravstack/observability";
-import { ErrAsync } from "unthrown";
+import { ErrAsync, OkAsync } from "unthrown";
 
 import {
   CustomerApplicationModule,
@@ -40,6 +40,14 @@ const orderRepository = Provider(OrderRepository)({
   value: {
     save: (_tenantId: TenantId, order: Order) => ErrAsync(new DuplicateOrder({ id: order.id })),
     find: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
+    list: () =>
+      OkAsync({
+        items: [],
+        previousCursor: null,
+        nextCursor: null,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      }),
     remove: (_tenantId: TenantId, id: string) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
   },
 });

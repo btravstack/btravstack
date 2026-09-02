@@ -1,12 +1,12 @@
 import { Provider, type ServiceOf } from "@btravstack/di";
-import { OrderRepository } from "@btravstack/example-order-application";
+import { MalformedCursor, OrderRepository } from "@btravstack/example-order-application";
 import {
   DuplicateOrder,
   Order,
   OrderNotFound,
   type OrderId,
 } from "@btravstack/example-order-domain";
-import { Err, P, type Result } from "unthrown";
+import { all, Err, P, type Result } from "unthrown";
 
 import { OrderDatabase, type OrderDatabaseClient } from "./database.js";
 
@@ -68,6 +68,60 @@ export const prismaOrderRepository = (db: OrderDatabaseClient): ServiceOf<OrderR
       .tryFindUnique({ where: { tenantId_orderId: { tenantId, orderId: id } } })
       .flatMap((row) =>
         row === null ? Err(new OrderNotFound({ id: id as OrderId })) : hydrate(row),
+      ),
+
+  /**
+   * The listing, and the one place this repository does not write its own
+   * pagination. `@unthrown/prisma`'s `tryPaginate(...).withCursor(...)` owns the
+   * cursor arithmetic — including the off-by-one this example would otherwise
+   * have shipped, where a cursor pointing at a row the filter no longer matches
+   * skips the first element of the page.
+   *
+   * `InvalidCursor` is its ONLY modeled failure, and translating it into the
+   * application's `MalformedCursor` is the same move as `UniqueConstraintViolation`
+   * into `DuplicateOrder` two methods up: the library's vocabulary stops here.
+   * The cursor travels on the application's error because the library's carries
+   * only a `cause` — and the value a 400 has to name is the string the caller
+   * sent.
+   *
+   * The cursors fold the flags into `startCursor`/`endCursor`, which the library
+   * deliberately keeps apart: a LAST page has a non-null `endCursor`, so handing
+   * it back unfolded gives a client a cursor that returns nothing and a loop
+   * that never ends.
+   *
+   * `before` pages BACKWARD and hands the rows back in the query's own order, so
+   * the previous page reads the way the next one does. The two cursors are
+   * exclusive in the port's type, which is the library's rule as well: a page
+   * runs in one direction.
+   */
+  list: (tenantId, { limit, after, before, minQuantity }) =>
+    db.order
+      .tryPaginate({
+        where: {
+          tenantId,
+          ...(minQuantity === undefined ? {} : { quantity: { gte: minQuantity } }),
+        },
+        orderBy: { id: "asc" },
+      })
+      .withCursor(
+        before === undefined
+          ? { limit, ...(after === undefined ? {} : { after }) }
+          : { limit, before },
+      )
+      .mapErrCases((matcher) =>
+        matcher.with(
+          P.tag("InvalidCursor"),
+          () => new MalformedCursor({ cursor: before ?? after ?? "" }),
+        ),
+      )
+      .flatMap(([rows, meta]) =>
+        all(rows.map(hydrate)).map((items) => ({
+          items,
+          previousCursor: meta.hasPreviousPage ? meta.startCursor : null,
+          nextCursor: meta.hasNextPage ? meta.endCursor : null,
+          hasPreviousPage: meta.hasPreviousPage,
+          hasNextPage: meta.hasNextPage,
+        })),
       ),
 
   // Compensation's persistence arm. `delete`, not `deleteMany`: `tryDelete`

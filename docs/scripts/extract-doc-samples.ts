@@ -144,7 +144,10 @@ const parsePage = (file: string): Page | undefined => {
       }
       continue;
     }
-    if (lines[i] !== "```ts") {
+    // `tsx` is admitted only to be REFUSED below unless it carries a skip: JSX
+    // has no workspace that compiles it, and letting the fence language decide
+    // that silently is the ungated channel a skip reason exists to close.
+    if (lines[i] !== "```ts" && lines[i] !== "```tsx") {
       // A fence marker binds to the NEXT line only; anything else resets it,
       // so a stale marker cannot silently skip a fence added later below it.
       if (lines[i]!.trim() !== "" && pending !== "include") {
@@ -155,11 +158,17 @@ const parsePage = (file: string): Page | undefined => {
       }
       continue;
     }
+    const jsx = lines[i] === "```tsx";
     const start = i + 1;
     const body: string[] = [];
     for (i += 1; i < lines.length && lines[i] !== "```"; i += 1) body.push(lines[i]!);
     if (typeof pending === "object" && "skip" in pending) {
       skips.push({ line: start, reason: pending.skip });
+    } else if (jsx) {
+      // oxlint-disable-next-line unthrown/no-throw -- an ungated fence must fail the generate task loudly
+      throw new Error(
+        `${file}:${start}: a \`\`\`tsx fence compiles nowhere — mark it \`<!-- doctest: skip — <reason> -->\``,
+      );
     } else {
       fences.push({ file, line: start, body: body.join("\n"), marker: pending });
     }

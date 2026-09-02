@@ -69,6 +69,50 @@ const ordersContract = authenticated({ user: [] })({
     .output(orderView)
     .errors({ NOT_FOUND: { data: orderRef } }),
 
+  // The shape 80% of a real API has, and the one that decides whether a client
+  // can be written at all.
+  //
+  // `after` and `before` are OPAQUE strings — the cursors a previous page handed
+  // back — so they are `z.string()` and nothing narrower: the server owns their
+  // meaning, and a contract that described it would be publishing the adapter's
+  // ordering. They are also the only parts of this input that did not come from
+  // the caller's own vocabulary, which is why `BAD_REQUEST` is declared here and
+  // names the offending one.
+  //
+  // **At most one of them**, refused by the SCHEMA rather than by the handler: a
+  // page runs in one direction, and "after X and before Y" is a range query
+  // wearing a page's clothes. The application's `PageRequest` makes the pair a
+  // union, so the refusal and the type say the same thing at the two ends of the
+  // wire — and the controller's one branch is where a validated input becomes
+  // that union.
+  //
+  // Both cursors are nullable rather than optional: a client follows the one it
+  // is paging by until it is `null`, and an absent field would make "no more
+  // pages" and "the server forgot" the same value.
+  list: oc
+    .input(
+      z
+        .object({
+          limit: z.number().int().min(1).max(100).default(20),
+          after: z.string().optional(),
+          before: z.string().optional(),
+          minQuantity: z.number().int().min(1).optional(),
+        })
+        .refine(({ after, before }) => after === undefined || before === undefined, {
+          message: "a page runs in one direction: pass `after` or `before`, not both",
+        }),
+    )
+    .output(
+      z.object({
+        items: z.array(orderView),
+        previousCursor: z.string().nullable(),
+        nextCursor: z.string().nullable(),
+        hasPreviousPage: z.boolean(),
+        hasNextPage: z.boolean(),
+      }),
+    )
+    .errors({ BAD_REQUEST: { data: z.object({ cursor: z.string() }) } }),
+
   // Overrides the group default for itself: a service token may export too,
   // and a user token needs the scope.
   export: authenticated(

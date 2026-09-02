@@ -9,7 +9,11 @@ import {
   type Tracer,
 } from "@btravstack/core";
 import { Provider, type Module, type Scope, type ServiceOf } from "@btravstack/di";
-import { CustomerRepository, OrderRepository } from "@btravstack/example-order-application";
+import {
+  CustomerRepository,
+  MalformedCursor,
+  OrderRepository,
+} from "@btravstack/example-order-application";
 import {
   Customer,
   CustomerNotFound,
@@ -33,6 +37,10 @@ import { OrderApi } from "../module.js";
 import { RequestModule } from "../request-scope.js";
 
 const anOrder = (id: string, quantity: number): Order => placeOrder(id, quantity).getOrThrow();
+
+/** The two rows the listing stub pages over, fixed so a spec can name them. */
+const FIRST_ID = "0199a1e0-0000-7000-8000-00000000000a";
+const SECOND_ID = "0199a1e0-0000-7000-8000-00000000000b";
 
 /**
  * Both repositories as overrides, so one call closes both verticals. Only the
@@ -127,6 +135,44 @@ const stubbedApi = () =>
   apiWith({
     save: (_tenantId, order) => OkAsync(order),
     find: (_tenantId, id) => ErrAsync(new OrderNotFound({ id: id as OrderId })),
+    // One page with more behind it, and a cursor nobody but the stub can read —
+    // which is the point: `after` is opaque above the adapter, so the specs
+    // assert the round trip rather than the string.
+    //
+    // Only the cursors it ISSUED move the listing; every other one is
+    // `MalformedCursor`. A stub that accepted any defined cursor would let a
+    // round-trip test pass on an altered cursor, which is the one thing that
+    // test exists to rule out. Two pages, so `before` has somewhere to go back
+    // to — the direction a "previous" link exercises.
+    list: (_tenantId, { after, before }) => {
+      if (before !== undefined)
+        return before === "page-2-start"
+          ? OkAsync({
+              items: [anOrder(FIRST_ID, 1)],
+              previousCursor: null,
+              nextCursor: "page-1-end",
+              hasPreviousPage: false,
+              hasNextPage: true,
+            })
+          : ErrAsync(new MalformedCursor({ cursor: before }));
+      if (after === undefined)
+        return OkAsync({
+          items: [anOrder(FIRST_ID, 1)],
+          previousCursor: null,
+          nextCursor: "page-1-end",
+          hasPreviousPage: false,
+          hasNextPage: true,
+        });
+      return after === "page-1-end"
+        ? OkAsync({
+            items: [anOrder(SECOND_ID, 2)],
+            previousCursor: "page-2-start",
+            nextCursor: null,
+            hasPreviousPage: true,
+            hasNextPage: false,
+          })
+        : ErrAsync(new MalformedCursor({ cursor: after }));
+    },
     remove: () => OkAsync(),
   });
 
@@ -139,6 +185,14 @@ const unmodelledApi = () =>
   apiWith({
     save: (_tenantId, order) => OkAsync(order),
     find: () => fromSafePromise(Promise.reject(new Error("the database is on fire"))),
+    list: () =>
+      OkAsync({
+        items: [],
+        previousCursor: null,
+        nextCursor: null,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      }),
     remove: () => OkAsync(),
   });
 
@@ -164,6 +218,14 @@ const gatedApi = () => {
         entered();
         return fromSafePromise(held.then(() => anOrder(id, 1)));
       },
+      list: () =>
+        OkAsync({
+          items: [],
+          previousCursor: null,
+          nextCursor: null,
+          hasPreviousPage: false,
+          hasNextPage: false,
+        }),
       remove: () => OkAsync(),
     }),
     arrived,

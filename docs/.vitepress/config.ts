@@ -54,6 +54,10 @@ const GUIDE_SIDEBAR = [
           },
           { text: "Protect a procedure", link: "/how-to/protect-a-procedure" },
           { text: "Serve htmx fragments", link: "/how-to/serve-htmx-fragments" },
+          {
+            text: "Consume the contract from React",
+            link: "/how-to/consume-the-contract-from-react",
+          },
         ],
       },
       {

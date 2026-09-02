@@ -5,10 +5,16 @@ import {
   CustomerRepository,
   FindCustomer,
   FindOrder,
+  ListOrders,
   OrderRepository,
   PlaceOrder,
 } from "./ports.js";
-import { findCustomerProvider, findOrderProvider, placeOrderProvider } from "./use-cases.js";
+import {
+  findCustomerProvider,
+  findOrderProvider,
+  listOrdersProvider,
+  placeOrderProvider,
+} from "./use-cases.js";
 
 /**
  * One module per vertical, not one for the layer. A deployment that only
@@ -31,8 +37,8 @@ import { findCustomerProvider, findOrderProvider, placeOrderProvider } from "./u
  */
 export const OrderApplicationModule = Module("OrderApplication")({
   needs: [OrderRepository, Logger],
-  provides: [placeOrderProvider, findOrderProvider],
-  exports: [PlaceOrder, FindOrder],
+  provides: [placeOrderProvider, findOrderProvider, listOrdersProvider],
+  exports: [PlaceOrder, FindOrder, ListOrders],
 });
 
 /**
